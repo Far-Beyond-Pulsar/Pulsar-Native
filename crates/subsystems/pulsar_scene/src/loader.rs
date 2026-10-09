@@ -1,47 +1,25 @@
-//! Pulsar scene import adapter — retained for explicit offline conversion only.
+//! Scene file helpers shared with `engine_backend`: component instance
+//! records from a scene object's props, the legacy material-override
+//! migration, and transform composition.
 //!
-//! ## Design
-//!
-//! Component dispatch goes through the **inventory registration system** for
-//! the legacy import path only:
-//!
-//! 1. Each component crate (e.g. `helio_component`) submits a
-//!    `RuntimeBehaviorRegistration` via `inventory::submit!` in its
-//!    `#[register_runtime_behavior]` proc-macro expansion.
-//! 2. The import adapter creates a [`SceneObjectContext`] that implements
-//!    [`ComponentRuntimeContext`] and owns the renderer handle required by
-//!    legacy conversion callers.
-//! 3. `apply_runtime_behavior_for_class` iterates the inventory and calls the
-//!    matching component's `sync_component`.
-//!
-//! The loader **never touches component field values**.  All parsing, defaults,
-//! and unit conversions live inside the component's `sync_component`.  Adding a
-//! new field to `LightComponent` automatically works here with zero loader edits.
+//! The legacy import adapter that dispatched records through
+//! `ComponentRuntimeBehavior::sync_component` straight into a Helio scene
+//! is gone (Pulsar-Native#1035, Phase 4): every scene is hydrated into
+//! SceneDB, and components reach the renderer through their data.
 //!
 //! ## Linker note
 //!
-//! `helio_component` types are re-exported from `pulsar_scene::rendering` to
-//! create a live code reference.  Without it the linker can silently drop
-//! `helio_component`'s `#[used]` inventory statics.
+//! `helio_component` types are re-exported below to create a live code
+//! reference. Without it the linker can silently drop `helio_component`'s
+//! `#[used]` inventory statics (its world-component and GPU registrations).
 
 use std::collections::HashMap;
-use std::path::Path;
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
-use helio::Renderer;
 use serde_json::Value;
-
-use pulsar_reflection::{
-    apply_runtime_behavior_for_class, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
-    Subsystems,
-};
-
-use crate::format::{SceneFile, SceneLoadError};
 
 // ── Force helio_component into the binary ────────────────────────────────────
 // Re-exporting these types creates a live symbol reference that prevents the
 // linker from dropping helio_component's #[used] inventory statics.
-// (ComponentRuntimeContext dispatch only works if those statics are linked in.)
 pub use helio_component::FoliageComponent as _ForceLink_FoliageComponent;
 pub use helio_component::LightComponent as _ForceLink_LightComponent;
 pub use helio_component::PortalComponent as _ForceLink_PortalComponent;
@@ -50,138 +28,7 @@ pub use helio_component::ReflectionCaptureComponent as _ForceLink_ReflectionCapt
 pub use helio_component::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 pub use helio_component::WaterVolumeComponent as _ForceLink_WaterVolumeComponent;
 
-// ── SceneLoader ───────────────────────────────────────────────────────────────
-
-/// Legacy/imperative scene loader: dispatches a `SceneFile`'s objects
-/// straight into a Helio `Scene` via `ComponentRuntimeBehavior::sync_
-/// component`, bypassing SceneDB entirely.
-///
-/// It is never a runtime loading path. Standalone games, editor PIE, and
-/// embedded games must hydrate `WorldSceneStore` through
-/// `engine_backend::scene::RuntimeLevel`; keeping this adapter on a runtime
-/// path creates a second renderer-private copy of world state.
-#[deprecated(
-    since = "0.1.34",
-    note = "runtime scene loading must hydrate the shared WorldSceneStore \
-            instead (engine_backend::scene::RuntimeLevel); this direct-to-\
-            renderer path is for import/legacy conversion only"
-)]
-pub struct SceneLoader;
-
-impl SceneLoader {
-    pub fn load_file(
-        path: &Path,
-        project_root: &Path,
-        renderer: &mut Renderer,
-    ) -> Result<(), SceneLoadError> {
-        // Explicit import boundary: runtime code must use RuntimeLevel so
-        // SceneDB remains the only authoritative world store.
-        let scene = SceneFile::load(path)?;
-        Self::load_scene(&scene, project_root, renderer)
-    }
-
-    pub fn load_scene(
-        scene: &SceneFile,
-        project_root: &Path,
-        renderer: &mut Renderer,
-    ) -> Result<(), SceneLoadError> {
-        Self::load_objects(&scene.objects, project_root, renderer);
-        Ok(())
-    }
-
-    /// Core import adapter — dispatches every scene object through the legacy
-    /// component system. This function must not be used by runtime loading.
-    ///
-    /// Each object gets a [`SceneObjectContext`] implementing
-    /// [`ComponentRuntimeContext`].  `apply_runtime_behavior_for_class` calls the
-    /// matching component's `sync_component`, which owns all parsing and renderer
-    /// interaction.  The loader never touches component field values.
-    ///
-    /// V1 objects (no `__component_instances`) have synthetic component data
-    /// constructed from their flat props and dispatched through the same path.
-    pub fn load_objects(
-        objects: &[crate::format::SceneObject],
-        project_root: &Path,
-        mut renderer: &mut Renderer,
-    ) {
-        tracing::info!(total = objects.len(), "Loading scene objects");
-
-        for obj in objects {
-            if !obj.visible {
-                continue;
-            }
-            tracing::debug!(id = obj.id, name = obj.name, "Scene object");
-
-            let owner = RuntimeComponentOwner {
-                scene_object_id: &obj.id,
-                position: obj.world_position(),
-                rotation: obj.world_rotation(),
-                scale: obj.world_scale(),
-                props: &obj.props,
-            };
-
-            let instances =
-                component_instances_from_props(&obj.props, obj.component_instances.as_ref());
-            {
-                let mut subsystems = Subsystems::new();
-                subsystems.register_ref::<Renderer>(renderer);
-                // `SceneObjectCache` used to be registered here too
-                // (Pulsar-Native#561) -- deleted along with the type itself,
-                // confirmed fully dead: `StaticMeshComponent` resolves
-                // identity via `scene.object_by_tag` instead, and this loop
-                // constructed a brand-new, empty instance per object anyway
-                // (registered fresh inside the `for obj in objects` loop),
-                // so it could never have cached anything across calls even
-                // if something had read from it.
-                subsystems.register(LiveKeySet::new());
-                let mut ctx = SceneObjectContext {
-                    obj_id: &obj.id,
-                    project_root,
-                    renderer,
-                    subsystems,
-                };
-                for (idx, class_name, data) in &instances {
-                    let handled =
-                        apply_runtime_behavior_for_class(class_name, &owner, *idx, data, &mut ctx);
-                    if !handled {
-                        tracing::debug!(
-                            class = class_name,
-                            id = obj.id,
-                            "No runtime behavior (skipped)"
-                        );
-                    }
-                }
-                renderer = ctx.renderer;
-            }
-        }
-        tracing::info!(objects = objects.len(), "Scene loaded");
-    }
-}
-
-// ── SceneObjectContext — ComponentRuntimeContext impl ─────────────────────────
-
-struct SceneObjectContext<'r, 'p> {
-    obj_id: &'p str,
-    project_root: &'p Path,
-    subsystems: Subsystems,
-    renderer: &'r mut Renderer,
-}
-
-impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
-    fn subsystems_mut(&mut self) -> &mut Subsystems {
-        &mut self.subsystems
-    }
-
-    fn project_root(&self) -> &std::path::Path {
-        self.project_root
-    }
-
-    fn report_error(&mut self, message: String) {
-        tracing::warn!(id = self.obj_id, "{message}");
-    }
-}
-
-// ── Shared public API (called by engine_backend too) ─────────────────────────
+// ── Shared public API (called by engine_backend) ─────────────────────────
 
 /// Extract `(index, class_name, data)` from a component-instances value.
 ///
@@ -200,7 +47,8 @@ pub fn component_instances_from_props(
     let Some(arr) = arr else {
         return Vec::new();
     };
-    arr.iter()
+    let mut records: Vec<_> = arr
+        .iter()
         .enumerate()
         .filter_map(|(fi, entry)| {
             let o = entry.as_object()?;
@@ -216,17 +64,35 @@ pub fn component_instances_from_props(
             let dat = o.get("data").cloned().unwrap_or(Value::Null);
             Some((idx, cls, dat))
         })
-        .collect()
+        .collect();
+    migrate_legacy_material_override_records(&mut records);
+    records
 }
 
-/// Build transform from position / rotation (degrees YXZ) / scale.
-/// Identical to engine's `build_transform`.
-pub fn build_transform_parts(position: [f32; 3], rotation: [f32; 3], scale: [f32; 3]) -> Mat4 {
-    let q = Quat::from_euler(
-        EulerRot::YXZ,
-        rotation[1].to_radians(),
-        rotation[0].to_radians(),
-        rotation[2].to_radians(),
-    );
-    Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
+/// Fold the retired single-material override into StaticMeshComponent's
+/// hidden one-load migration field. This keeps old scene archives readable
+/// while ensuring newly saved components use only mesh-owned material slots.
+pub fn migrate_legacy_material_override_records(records: &mut Vec<(usize, String, Value)>) {
+    let Some(override_index) = records
+        .iter()
+        .position(|(_, class_name, _)| class_name == "MaterialOverrideComponent")
+    else {
+        return;
+    };
+    let legacy_data = records[override_index].2.clone();
+    let Some((_, _, mesh_data)) = records
+        .iter_mut()
+        .find(|(_, class_name, _)| class_name == "StaticMeshComponent")
+    else {
+        records.remove(override_index);
+        return;
+    };
+    let Some(mesh_object) = mesh_data.as_object_mut() else {
+        records.remove(override_index);
+        return;
+    };
+    mesh_object
+        .entry("legacy_material_override")
+        .or_insert(legacy_data);
+    records.remove(override_index);
 }

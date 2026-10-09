@@ -9,13 +9,20 @@ mod fixtures;
 
 fn identifier(name: &str) -> String {
     let mut id = String::from("m_");
-    id.extend(name.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }));
+    id.extend(name.chars().map(|c| {
+        if c.is_ascii_alphanumeric() {
+            c.to_ascii_lowercase()
+        } else {
+            '_'
+        }
+    }));
     id
 }
 
 fn main() {
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"));
-    let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let manifest_dir =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     println!("cargo:rerun-if-changed=src/fixtures.rs");
     println!("cargo:rerun-if-changed=fixtures");
 
@@ -24,9 +31,15 @@ fn main() {
         .map(|dir| dir.filter_map(Result::ok).map(|e| e.path()).collect())
         .unwrap_or_default();
     json.sort();
-    for path in json.into_iter().filter(|p| p.to_string_lossy().ends_with(".module.json")) {
+    for path in json
+        .into_iter()
+        .filter(|p| p.to_string_lossy().ends_with(".module.json"))
+    {
         let text = std::fs::read_to_string(&path).expect("fixture is readable");
-        modules.push(pulsar_script_vm::Module::from_json(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display())));
+        modules.push(
+            pulsar_script_vm::Module::from_json(&text)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display())),
+        );
     }
 
     let mut out = String::new();
@@ -35,7 +48,10 @@ fn main() {
         let id = identifier(&module.name);
         let source = pulsar_script_codegen::generate(module)
             .unwrap_or_else(|e| panic!("fixture `{}`: {e}", module.name));
-        let _ = writeln!(out, "#[allow(clippy::all, dead_code)]\npub mod {id} {{\n{source}\n}}\n");
+        let _ = writeln!(
+            out,
+            "#[allow(clippy::all, dead_code)]\npub mod {id} {{\n{source}\n}}\n"
+        );
         let _ = writeln!(
             arms,
             "        {:?} => Some({id}::link(registry, events, policy)),",

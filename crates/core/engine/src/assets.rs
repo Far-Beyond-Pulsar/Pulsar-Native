@@ -9,6 +9,7 @@
 //! - **Fonts**: TrueType fonts in `assets/fonts/**/*.ttf`
 //! - **Images**: PNG files in `assets/images/**/*.png`
 //! - **Meshes**: All files in `assets/meshes/**`
+//! - **Sounds**: MP3 files in `assets/sound/*.mp3`
 //!
 //! Icons are loaded from the WGPUI-Component crate, while other assets come from the engine.
 //!
@@ -40,6 +41,7 @@ use std::borrow::Cow;
 #[include = "fonts/**/*.ttf"]
 #[include = "images/**/*.png"]
 #[include = "meshes/**"]
+#[include = "sound/*.mp3"]
 #[include = "default.level"]
 pub struct EngineAssets;
 

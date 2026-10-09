@@ -128,8 +128,13 @@ fn registered(bus: &HostBus) -> Option<u64> {
 
 fn publish_on(bus: &HostBus, event: &ScriptProblemsEvent) {
     let Some(id) = registered(bus) else { return };
-    let Ok(json) = serde_json::to_string(event) else { return };
-    if let Err(error) = bus.publish_dyn(Channel::Global, &DynEvent::new(id, vec![DynValue::Str(json)])) {
+    let Ok(json) = serde_json::to_string(event) else {
+        return;
+    };
+    if let Err(error) = bus.publish_dyn(
+        Channel::Global,
+        &DynEvent::new(id, vec![DynValue::Str(json)]),
+    ) {
         tracing::error!("problems bus: publish failed: {error}");
     }
 }
@@ -152,10 +157,15 @@ pub fn subscribe_script_problems(
     subscribe_on(host_bus(), callback)
 }
 
-fn subscribe_on(bus: &HostBus, callback: impl Fn(&ScriptProblemsEvent) + Send + Sync + 'static) -> HostSubscription {
+fn subscribe_on(
+    bus: &HostBus,
+    callback: impl Fn(&ScriptProblemsEvent) + Send + Sync + 'static,
+) -> HostSubscription {
     let id = registered(bus).unwrap_or_else(|| descriptor().id);
     bus.subscribe_dyn(id, SubscribeOptions::default(), move |event| {
-        let Some(DynValue::Str(json)) = event.fields.first() else { return };
+        let Some(DynValue::Str(json)) = event.fields.first() else {
+            return;
+        };
         match serde_json::from_str::<ScriptProblemsEvent>(json) {
             Ok(event) => callback(&event),
             Err(error) => tracing::warn!("problems bus: malformed ScriptProblems ignored: {error}"),
@@ -186,8 +196,14 @@ mod tests {
         publish_on(&host, &ScriptProblemsEvent::Cleared);
         assert_eq!(
             *seen.lock().unwrap(),
-            vec![ScriptProblemsEvent::Reported(problem.clone()), ScriptProblemsEvent::Cleared]
+            vec![
+                ScriptProblemsEvent::Reported(problem.clone()),
+                ScriptProblemsEvent::Cleared
+            ]
         );
-        assert_eq!(problem.summary(), "Door::tick (node divide_7): integer division by zero");
+        assert_eq!(
+            problem.summary(),
+            "Door::tick (node divide_7): integer division by zero"
+        );
     }
 }

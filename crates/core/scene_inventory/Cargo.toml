@@ -1,0 +1,27 @@
+[package]
+name = "scene_inventory"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Executable Phase 0 inventory for the SceneDB corrective plan: links every crate that registers scene components or GPU schemas and checks the closure ledger against the linked registries and the source tree."
+
+[dependencies]
+pulsar_reflection     = { workspace = true }
+pulsar_scenedb        = { workspace = true }
+pulsar_world_registry = { workspace = true }
+regex                 = { workspace = true }
+serde                 = { workspace = true, features = ["derive"] }
+serde_json            = { workspace = true }
+toml                  = { workspace = true }
+
+# Every crate that declares `#[register_world_component]`, `#[derive(EngineClass)]`
+# or `#[derive(SceneStore)]` types the editor links. `src/lib.rs` references each
+# one so its link-time registrations are present in this binary.
+engine_backend = { workspace = true }
+helio_component = { workspace = true }
+pulsar_class = { workspace = true }
+pulsar_physics = { workspace = true }
+pulsar_scene_model = { workspace = true }
+
+[lints]
+workspace = true

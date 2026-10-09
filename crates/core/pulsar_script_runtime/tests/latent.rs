@@ -12,27 +12,66 @@ use Instr::*;
 const TICK: f64 = 0.5;
 
 fn runtime() -> ScriptRuntime {
-    ScriptRuntime::new(std::env::temp_dir().join(format!("pulsar_script_latent_{}", std::process::id())))
+    ScriptRuntime::new(
+        std::env::temp_dir().join(format!("pulsar_script_latent_{}", std::process::id())),
+    )
 }
 
-fn function(name: &str, params: Vec<Type>, ret: Type, extra: Vec<Type>, code: Vec<Instr>) -> Function {
+fn function(
+    name: &str,
+    params: Vec<Type>,
+    ret: Type,
+    extra: Vec<Type>,
+    code: Vec<Instr>,
+) -> Function {
     let mut registers = params.clone();
     registers.extend(extra);
-    Function { name: name.into(), exported: true, params, ret, registers, code, debug: None }
+    Function {
+        name: name.into(),
+        exported: true,
+        params,
+        ret,
+        registers,
+        code,
+        debug: None,
+    }
 }
 
 fn import(name: &str, params: Vec<Type>, ret: Type) -> Import {
-    Import { name: name.into(), sig: Signature::new(params.into_iter().map(Param::new), ret) }
+    Import {
+        name: name.into(),
+        sig: Signature::new(params.into_iter().map(Param::new), ret),
+    }
 }
 
 /// `go` sets `state = 1`, runs `before` (the latent call), then sets
 /// `state = 2`; `fire` bumps `fired`; `is_ready` reads `flag`.
-fn class(imports: Vec<Import>, constants: Vec<Constant>, before: Vec<Instr>, extra: Vec<Type>) -> Module {
+fn class(
+    imports: Vec<Import>,
+    constants: Vec<Constant>,
+    before: Vec<Instr>,
+    extra: Vec<Type>,
+) -> Module {
     let mut m = Module::new("Actor");
     m.variables = vec![
-        Variable { name: "state".into(), ty: Type::Int, default: None, id: None },
-        Variable { name: "flag".into(), ty: Type::Bool, default: None, id: None },
-        Variable { name: "fired".into(), ty: Type::Int, default: None, id: None },
+        Variable {
+            name: "state".into(),
+            ty: Type::Int,
+            default: None,
+            id: None,
+        },
+        Variable {
+            name: "flag".into(),
+            ty: Type::Bool,
+            default: None,
+            id: None,
+        },
+        Variable {
+            name: "fired".into(),
+            ty: Type::Int,
+            default: None,
+            id: None,
+        },
     ];
     m.imports = imports;
     // constants 0 and 1 are the ints 1 and 2; the caller's follow.
@@ -41,13 +80,23 @@ fn class(imports: Vec<Import>, constants: Vec<Constant>, before: Vec<Instr>, ext
     m.constants = all;
     let mut go = vec![Const { dst: 0, index: 0 }, StoreVar { var: 0, src: 0 }];
     go.extend(before);
-    go.extend([Const { dst: 0, index: 1 }, StoreVar { var: 0, src: 0 }, Return { value: None }]);
+    go.extend([
+        Const { dst: 0, index: 1 },
+        StoreVar { var: 0, src: 0 },
+        Return { value: None },
+    ]);
     let mut registers = vec![Type::Int];
     registers.extend(extra);
     m.functions = vec![
         function("go", vec![], Type::Unit, registers, go),
         // flag
-        function("is_ready", vec![], Type::Bool, vec![Type::Bool], vec![LoadVar { dst: 0, var: 1 }, Return { value: Some(0) }]),
+        function(
+            "is_ready",
+            vec![],
+            Type::Bool,
+            vec![Type::Bool],
+            vec![LoadVar { dst: 0, var: 1 }, Return { value: Some(0) }],
+        ),
         // fired += 1
         function(
             "fire",
@@ -57,12 +106,23 @@ fn class(imports: Vec<Import>, constants: Vec<Constant>, before: Vec<Instr>, ext
             vec![
                 LoadVar { dst: 0, var: 2 },
                 Const { dst: 1, index: 0 },
-                Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+                Binary {
+                    op: BinOp::Add,
+                    dst: 0,
+                    a: 0,
+                    b: 1,
+                },
                 StoreVar { var: 2, src: 0 },
                 Return { value: None },
             ],
         ),
-        function("on_ping", vec![], Type::Unit, vec![], vec![Return { value: None }]),
+        function(
+            "on_ping",
+            vec![],
+            Type::Unit,
+            vec![],
+            vec![Return { value: None }],
+        ),
     ];
     m
 }
@@ -96,7 +156,14 @@ fn wait_frames_resumes_on_the_nth_tick_and_never_the_same_one() {
     let (mut rt, mut world) = start(class(
         vec![import("wait::frames", vec![Type::Int], Type::Unit)],
         vec![Constant::Int(3)],
-        vec![Const { dst: 0, index: 2 }, CallNative { import: 0, args: vec![0], dst: None }],
+        vec![
+            Const { dst: 0, index: 2 },
+            CallNative {
+                import: 0,
+                args: vec![0],
+                dst: None,
+            },
+        ],
         vec![],
     ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
@@ -114,7 +181,11 @@ fn wait_next_tick_resumes_on_the_next_tick() {
     let (mut rt, mut world) = start(class(
         vec![import("wait::next_tick", vec![], Type::Unit)],
         vec![],
-        vec![CallNative { import: 0, args: vec![], dst: None }],
+        vec![CallNative {
+            import: 0,
+            args: vec![],
+            dst: None,
+        }],
         vec![],
     ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
@@ -128,7 +199,14 @@ fn wait_until_polls_an_exported_predicate_each_tick() {
     let (mut rt, mut world) = start(class(
         vec![import("wait::until", vec![Type::Str], Type::Unit)],
         vec![Constant::Str("is_ready".into())],
-        vec![Const { dst: 1, index: 2 }, CallNative { import: 0, args: vec![1], dst: None }],
+        vec![
+            Const { dst: 1, index: 2 },
+            CallNative {
+                import: 0,
+                args: vec![1],
+                dst: None,
+            },
+        ],
         vec![Type::Str],
     ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
@@ -144,7 +222,14 @@ fn a_bad_predicate_drops_the_call_with_an_error_instead_of_retrying() {
     let (mut rt, mut world) = start(class(
         vec![import("wait::until", vec![Type::Str], Type::Unit)],
         vec![Constant::Str("nothing_by_this_name".into())],
-        vec![Const { dst: 1, index: 2 }, CallNative { import: 0, args: vec![1], dst: None }],
+        vec![
+            Const { dst: 1, index: 2 },
+            CallNative {
+                import: 0,
+                args: vec![1],
+                dst: None,
+            },
+        ],
         vec![Type::Str],
     ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
@@ -159,7 +244,14 @@ fn wait_event_resumes_right_after_the_event_is_handled() {
     let (mut rt, mut world) = start(class(
         vec![import("wait::event", vec![Type::Str], Type::Unit)],
         vec![Constant::Str("on_ping".into())],
-        vec![Const { dst: 1, index: 2 }, CallNative { import: 0, args: vec![1], dst: None }],
+        vec![
+            Const { dst: 1, index: 2 },
+            CallNative {
+                import: 0,
+                args: vec![1],
+                dst: None,
+            },
+        ],
         vec![Type::Str],
     ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
@@ -181,17 +273,33 @@ fn timer_class(native: &str, extra_params: Vec<Type>, args: Vec<Constant>) -> Mo
     let mut call_args = vec![1u16];
     for (i, constant) in args.iter().enumerate() {
         let reg = 2 + i as u16;
-        code.push(Const { dst: reg, index: 3 + i as u32 });
+        code.push(Const {
+            dst: reg,
+            index: 3 + i as u32,
+        });
         regs.push(constant.ty());
         call_args.push(reg);
     }
-    code.push(CallNative { import: 0, args: call_args, dst: None });
-    class(vec![import(native, params, Type::Int)], constants, code, regs)
+    code.push(CallNative {
+        import: 0,
+        args: call_args,
+        dst: None,
+    });
+    class(
+        vec![import(native, params, Type::Int)],
+        constants,
+        code,
+        regs,
+    )
 }
 
 #[test]
 fn a_timer_fires_once_after_its_delay() {
-    let (mut rt, mut world) = start(timer_class("schedule::call", vec![Type::Float], vec![Constant::Float(1.0)]));
+    let (mut rt, mut world) = start(timer_class(
+        "schedule::call",
+        vec![Type::Float],
+        vec![Constant::Float(1.0)],
+    ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
     tick(&mut rt, &mut world, 1);
     assert_eq!(fired(&rt), 0);
@@ -203,7 +311,11 @@ fn a_timer_fires_once_after_its_delay() {
 
 #[test]
 fn a_repeating_timer_fires_every_interval() {
-    let (mut rt, mut world) = start(timer_class("schedule::repeat", vec![Type::Float], vec![Constant::Float(1.0)]));
+    let (mut rt, mut world) = start(timer_class(
+        "schedule::repeat",
+        vec![Type::Float],
+        vec![Constant::Float(1.0)],
+    ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
     tick(&mut rt, &mut world, 6);
     assert_eq!(fired(&rt), 3, "three seconds");
@@ -211,7 +323,11 @@ fn a_repeating_timer_fires_every_interval() {
 
 #[test]
 fn a_long_hitch_does_not_queue_unbounded_timer_calls() {
-    let (mut rt, mut world) = start(timer_class("schedule::repeat", vec![Type::Float], vec![Constant::Float(0.01)]));
+    let (mut rt, mut world) = start(timer_class(
+        "schedule::repeat",
+        vec![Type::Float],
+        vec![Constant::Float(0.01)],
+    ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
     let errors = rt.tick_all(&mut world, 60.0);
     assert!(errors.is_empty());
@@ -230,8 +346,16 @@ fn timers_are_cleared_by_handle() {
         vec![
             Const { dst: 1, index: 2 },
             Const { dst: 2, index: 3 },
-            CallNative { import: 0, args: vec![1, 2], dst: Some(3) },
-            CallNative { import: 1, args: vec![3], dst: Some(4) },
+            CallNative {
+                import: 0,
+                args: vec![1, 2],
+                dst: Some(3),
+            },
+            CallNative {
+                import: 1,
+                args: vec![3],
+                dst: Some(4),
+            },
         ],
         vec![Type::Str, Type::Float, Type::Int, Type::Bool],
     );
@@ -246,13 +370,25 @@ fn timers_are_cleared_by_handle() {
 fn a_retriggerable_delay_restarts_instead_of_stacking() {
     // go() twice, a second apart: one call, a full delay after the second.
     let mut m = class(
-        vec![import("schedule::restart", vec![Type::Str, Type::Str, Type::Float], Type::Int)],
-        vec![Constant::Str("debounce".into()), Constant::Str("fire".into()), Constant::Float(1.5)],
+        vec![import(
+            "schedule::restart",
+            vec![Type::Str, Type::Str, Type::Float],
+            Type::Int,
+        )],
+        vec![
+            Constant::Str("debounce".into()),
+            Constant::Str("fire".into()),
+            Constant::Float(1.5),
+        ],
         vec![
             Const { dst: 1, index: 2 },
             Const { dst: 2, index: 3 },
             Const { dst: 3, index: 4 },
-            CallNative { import: 0, args: vec![1, 2, 3], dst: Some(4) },
+            CallNative {
+                import: 0,
+                args: vec![1, 2, 3],
+                dst: Some(4),
+            },
         ],
         vec![Type::Str, Type::Str, Type::Float, Type::Int],
     );
@@ -271,22 +407,37 @@ fn a_retriggerable_delay_restarts_instead_of_stacking() {
 
 #[test]
 fn a_timer_for_a_function_that_stops_existing_is_dropped_on_reload() {
-    let (mut rt, mut world) = start(timer_class("schedule::call", vec![Type::Float], vec![Constant::Float(1.0)]));
+    let (mut rt, mut world) = start(timer_class(
+        "schedule::call",
+        vec![Type::Float],
+        vec![Constant::Float(1.0)],
+    ));
     rt.send_event("a", "go", &[], &mut world).unwrap();
-    let mut without_fire = timer_class("schedule::call", vec![Type::Float], vec![Constant::Float(1.0)]);
+    let mut without_fire = timer_class(
+        "schedule::call",
+        vec![Type::Float],
+        vec![Constant::Float(1.0)],
+    );
     without_fire.functions.retain(|f| f.name != "fire");
     rt.reload_class(without_fire).unwrap();
-    assert!(rt.tick_all(&mut world, 2.0).is_empty(), "no error: the timer was dropped at the reload");
+    assert!(
+        rt.tick_all(&mut world, 2.0).is_empty(),
+        "no error: the timer was dropped at the reload"
+    );
 }
 
 #[test]
 fn latent_natives_fail_clearly_where_there_is_no_latent_state() {
-    use std::sync::Arc;
     use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Vm};
+    use std::sync::Arc;
     let module = class(
         vec![import("wait::next_tick", vec![], Type::Unit)],
         vec![],
-        vec![CallNative { import: 0, args: vec![], dst: None }],
+        vec![CallNative {
+            import: 0,
+            args: vec![],
+            dst: None,
+        }],
         vec![],
     );
     let program = Program::link(Arc::new(module), &NativeRegistry::with_engine_natives()).unwrap();
@@ -295,7 +446,16 @@ fn latent_natives_fail_clearly_where_there_is_no_latent_state() {
     let mut instance = program.instantiate();
     let func = program.entry("go").unwrap();
     let mut host = Host::new(&mut world, entity);
-    let error = Vm::new().call(&program, &mut instance, func, &[], &mut host, &mut Budget::new(100)).unwrap_err();
+    let error = Vm::new()
+        .call(
+            &program,
+            &mut instance,
+            func,
+            &[],
+            &mut host,
+            &mut Budget::new(100),
+        )
+        .unwrap_err();
     assert!(error.to_string().contains("no latent actions"), "{error}");
 }
 
@@ -305,7 +465,14 @@ fn a_call_waiting_on_frames_survives_a_reload_that_keeps_its_code_shape() {
         class(
             vec![import("wait::frames", vec![Type::Int], Type::Unit)],
             vec![Constant::Int(3)],
-            vec![Const { dst: 0, index: 2 }, CallNative { import: 0, args: vec![0], dst: None }],
+            vec![
+                Const { dst: 0, index: 2 },
+                CallNative {
+                    import: 0,
+                    args: vec![0],
+                    dst: None,
+                },
+            ],
             vec![],
         )
     };

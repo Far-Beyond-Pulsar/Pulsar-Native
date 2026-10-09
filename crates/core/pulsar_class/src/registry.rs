@@ -135,10 +135,11 @@ impl ClassDefinition {
     /// variable defaults are listed with their kind inferred.
     pub fn variables(&self) -> Vec<ClassVariable> {
         let defaults = self.prefab.variable_defaults();
-        let module =
-            engine_fs::virtual_fs::read_file(&self.dir.join("events").join(".build").join("module.json"))
-                .ok()
-                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+        let module = engine_fs::virtual_fs::read_file(
+            &self.dir.join("events").join(".build").join("module.json"),
+        )
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
         let mut out: Vec<ClassVariable> = Vec::new();
         if let Some(vars) = module
             .as_ref()
@@ -203,7 +204,9 @@ pub const CLASS_DIR_EXTENSION: &str = "class";
 
 /// `name` without a trailing `.class` extension.
 pub fn strip_class_ext(name: &str) -> &str {
-    name.strip_suffix(".class").filter(|n| !n.is_empty()).unwrap_or(name)
+    name.strip_suffix(".class")
+        .filter(|n| !n.is_empty())
+        .unwrap_or(name)
 }
 
 /// The class name of a class directory: its folder name without a
@@ -216,7 +219,11 @@ pub fn class_name_of_dir(dir: &Path) -> String {
 
 /// Directories never searched for classes.
 fn skip_when_searching(name: &str) -> bool {
-    name.starts_with('.') || matches!(name, "target" | "node_modules" | "Content" | "build" | "dist")
+    name.starts_with('.')
+        || matches!(
+            name,
+            "target" | "node_modules" | "Content" | "build" | "dist"
+        )
 }
 
 /// Every class directory of the project at `project_root`: the class
@@ -226,21 +233,32 @@ fn skip_when_searching(name: &str) -> bool {
 /// searched). Sorted, without duplicates.
 pub fn find_class_dirs(project_root: &Path) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = std::fs::read_dir(classes_dir(project_root))
-        .map(|entries| entries.flatten().map(|e| e.path()).filter(|p| is_class_dir(p)).collect())
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| is_class_dir(p))
+                .collect()
+        })
         .unwrap_or_default();
     let mut stack = vec![(project_root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
             }
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
             if skip_when_searching(name) {
                 continue;
             }
-            let is_class_folder = path.extension().and_then(|e| e.to_str()) == Some(CLASS_DIR_EXTENSION);
+            let is_class_folder =
+                path.extension().and_then(|e| e.to_str()) == Some(CLASS_DIR_EXTENSION);
             if is_class_folder && is_class_dir(&path) {
                 found.push(path);
             } else if !is_class_folder && depth < 16 && !is_class_dir(&path) {
@@ -259,7 +277,10 @@ pub fn find_class_dirs(project_root: &Path) -> Vec<PathBuf> {
 pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
     let parent = class_dir.parent()?;
     if parent.file_name().and_then(|n| n.to_str()) == Some("classes") {
-        if let Some(src) = parent.parent().filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("src")) {
+        if let Some(src) = parent
+            .parent()
+            .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("src"))
+        {
             if let Some(root) = src.parent() {
                 return Some(root.to_path_buf());
             }
@@ -433,11 +454,22 @@ impl ClassIndex {
             .iter()
             .filter_map(|entry| {
                 let rel = entry.dir.strip_prefix(root).ok()?;
-                let dir = rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
-                Some(ClassIndexEntry { id: entry.id.clone(), name: entry.name.clone(), dir })
+                let dir = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                Some(ClassIndexEntry {
+                    id: entry.id.clone(),
+                    name: entry.name.clone(),
+                    dir,
+                })
             })
             .collect();
-        Self { format: Self::FORMAT, classes }
+        Self {
+            format: Self::FORMAT,
+            classes,
+        }
     }
 
     /// Read `<root>/Pulsar/class_index.json` (through the virtual
@@ -462,7 +494,11 @@ impl ClassIndex {
         ClassRegistry::from_entries(
             self.classes
                 .iter()
-                .map(|c| ClassEntry { id: c.id.clone(), name: c.name.clone(), dir: root.join(&c.dir) })
+                .map(|c| ClassEntry {
+                    id: c.id.clone(),
+                    name: c.name.clone(),
+                    dir: root.join(&c.dir),
+                })
                 .collect(),
         )
     }
@@ -497,7 +533,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let root = root.path();
         std::fs::create_dir_all(root.join("Pulsar")).unwrap();
-        for dir in ["src/classes/Door", "content/blueprints/NewBlueprintClass.class", "Lamp.class"] {
+        for dir in [
+            "src/classes/Door",
+            "content/blueprints/NewBlueprintClass.class",
+            "Lamp.class",
+        ] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
             std::fs::write(root.join(dir).join("graph_save.json"), "{}").unwrap();
         }
@@ -512,12 +552,23 @@ mod tests {
         names.sort();
         assert_eq!(names, ["Door", "Lamp", "NewBlueprintClass"]);
 
-        let class = registry.by_name("NewBlueprintClass").expect("found by name");
-        assert_eq!(class.dir, root.join("content/blueprints/NewBlueprintClass.class"));
+        let class = registry
+            .by_name("NewBlueprintClass")
+            .expect("found by name");
+        assert_eq!(
+            class.dir,
+            root.join("content/blueprints/NewBlueprintClass.class")
+        );
         // Levels saved before names dropped the extension still resolve.
-        assert_eq!(registry.by_name("NewBlueprintClass.class").map(|e| &e.id), Some(&class.id));
+        assert_eq!(
+            registry.by_name("NewBlueprintClass.class").map(|e| &e.id),
+            Some(&class.id)
+        );
         let instance = ClassInstance::new(class.id.clone(), "NewBlueprintClass.class");
-        assert_eq!(registry.resolve(&instance).map(|e| &e.name), Some(&class.name));
+        assert_eq!(
+            registry.resolve(&instance).map(|e| &e.name),
+            Some(&class.name)
+        );
         assert_eq!(project_root_of_class_dir(&class.dir).as_deref(), Some(root));
     }
 

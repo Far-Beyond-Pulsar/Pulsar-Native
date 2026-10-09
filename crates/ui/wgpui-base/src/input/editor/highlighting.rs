@@ -237,5 +237,3 @@ mod tests {
         assert_eq!(second.foreground, light.colors.foreground);
     }
 }
-
-

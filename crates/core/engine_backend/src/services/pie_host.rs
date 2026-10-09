@@ -26,15 +26,14 @@ use std::sync::Arc;
 
 use libloading::Library;
 use parking_lot::{RwLock, RwLockWriteGuard};
-use pulsar_pie_abi::{
-    EngineContext as PieContext, FnAbiVersion, FnAssetUpdated, FnInit, FnInput, FnResize,
-    FnShutdown, FnTick,
-    InputEvent, INIT_OK, LOG_DEBUG, LOG_ERROR, LOG_INFO, LOG_TRACE, LOG_WARN, PIE_ABI_VERSION,
-    FnEventsSnapshot, SYM_ABI_VERSION, SYM_ASSET_UPDATED, SYM_EVENTS_SNAPSHOT, SYM_INIT, SYM_INPUT, SYM_RESIZE, SYM_SHUTDOWN, SYM_TICK,
-    FnControl, FnEventBus, FnTakeProblems, SYM_CONTROL, SYM_EVENT_BUS, SYM_TAKE_PROBLEMS,
-};
 use pulsar_events::gamma::ffi::{ForeignBus, RawBus};
-
+use pulsar_pie_abi::{
+    EngineContext as PieContext, FnAbiVersion, FnAssetUpdated, FnControl, FnEventBus,
+    FnEventsSnapshot, FnInit, FnInput, FnResize, FnShutdown, FnTakeProblems, FnTick, InputEvent,
+    INIT_OK, LOG_DEBUG, LOG_ERROR, LOG_INFO, LOG_TRACE, LOG_WARN, PIE_ABI_VERSION, SYM_ABI_VERSION,
+    SYM_ASSET_UPDATED, SYM_CONTROL, SYM_EVENTS_SNAPSHOT, SYM_EVENT_BUS, SYM_INIT, SYM_INPUT,
+    SYM_RESIZE, SYM_SHUTDOWN, SYM_TAKE_PROBLEMS, SYM_TICK,
+};
 
 /// The host-side half of the ABI v2 shared-world contract (#635).
 ///
@@ -90,7 +89,8 @@ impl PieWorldBridge {
         // allocation address never moves, so borrowing the allocation through
         // its pointer cannot dangle while the guard is stored here.
         let keep_alive = Arc::clone(&self.store);
-        let static_lock: &'static RwLock<pulsar_scenedb::SceneDb> = unsafe { &*Arc::as_ptr(&keep_alive) };
+        let static_lock: &'static RwLock<pulsar_scenedb::SceneDb> =
+            unsafe { &*Arc::as_ptr(&keep_alive) };
         let mut guard = static_lock.write();
         let ptr = &mut *guard as *mut pulsar_scenedb::SceneDb as *mut c_void;
         self.slice = Some(SliceGuard {
@@ -275,14 +275,24 @@ impl PieHost {
         let shutdown: FnShutdown = *lib
             .get(SYM_SHUTDOWN)
             .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_SHUTDOWN)))?;
-        let asset_updated: Option<FnAssetUpdated> =
-            lib.get::<FnAssetUpdated>(SYM_ASSET_UPDATED).ok().map(|symbol| *symbol);
-        let events_snapshot: Option<FnEventsSnapshot> =
-            lib.get::<FnEventsSnapshot>(SYM_EVENTS_SNAPSHOT).ok().map(|symbol| *symbol);
-        let control: Option<FnControl> = lib.get::<FnControl>(SYM_CONTROL).ok().map(|symbol| *symbol);
-        let take_problems: Option<FnTakeProblems> =
-            lib.get::<FnTakeProblems>(SYM_TAKE_PROBLEMS).ok().map(|symbol| *symbol);
-        let event_bus: Option<FnEventBus> = lib.get::<FnEventBus>(SYM_EVENT_BUS).ok().map(|symbol| *symbol);
+        let asset_updated: Option<FnAssetUpdated> = lib
+            .get::<FnAssetUpdated>(SYM_ASSET_UPDATED)
+            .ok()
+            .map(|symbol| *symbol);
+        let events_snapshot: Option<FnEventsSnapshot> = lib
+            .get::<FnEventsSnapshot>(SYM_EVENTS_SNAPSHOT)
+            .ok()
+            .map(|symbol| *symbol);
+        let control: Option<FnControl> =
+            lib.get::<FnControl>(SYM_CONTROL).ok().map(|symbol| *symbol);
+        let take_problems: Option<FnTakeProblems> = lib
+            .get::<FnTakeProblems>(SYM_TAKE_PROBLEMS)
+            .ok()
+            .map(|symbol| *symbol);
+        let event_bus: Option<FnEventBus> = lib
+            .get::<FnEventBus>(SYM_EVENT_BUS)
+            .ok()
+            .map(|symbol| *symbol);
 
         let color_format = format_to_u32(format)
             .ok_or_else(|| format!("Unsupported viewport format for PiE: {format:?}"))?;
@@ -349,7 +359,10 @@ impl PieHost {
         // #942: the game's hub for editor plugins, for the session.
         let session_bus = event_bus.and_then(|export| {
             let mut raw = std::mem::MaybeUninit::<RawBus>::uninit();
-            let ok = export(raw.as_mut_ptr() as *mut c_void, std::mem::size_of::<RawBus>());
+            let ok = export(
+                raw.as_mut_ptr() as *mut c_void,
+                std::mem::size_of::<RawBus>(),
+            );
             if ok != 1 {
                 return None;
             }
@@ -357,7 +370,9 @@ impl PieHost {
             match ForeignBus::from_raw(raw.assume_init()) {
                 Ok(bus) => Some(bus),
                 Err(error) => {
-                    tracing::warn!("PiE: the game's event bus speaks another Gamma FFI version: {error:?}");
+                    tracing::warn!(
+                        "PiE: the game's event bus speaks another Gamma FFI version: {error:?}"
+                    );
                     None
                 }
             }
@@ -422,7 +437,14 @@ impl PieHost {
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
         unsafe {
-            asset_updated(kind.as_ptr(), kind.len(), id.as_ptr(), id.len(), path.as_ptr(), path.len())
+            asset_updated(
+                kind.as_ptr(),
+                kind.len(),
+                id.as_ptr(),
+                id.len(),
+                path.as_ptr(),
+                path.len(),
+            )
         };
     }
 
@@ -474,7 +496,8 @@ impl PieHost {
 
     /// Whether the simulation is paused; `None` without the entry point.
     pub fn is_paused(&self) -> Option<bool> {
-        self.control(pulsar_pie_abi::control::IS_PAUSED, 0).map(|v| v != 0)
+        self.control(pulsar_pie_abi::control::IS_PAUSED, 0)
+            .map(|v| v != 0)
     }
 
     /// Whether the game supports pause / step.

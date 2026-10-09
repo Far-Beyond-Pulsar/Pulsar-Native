@@ -279,6 +279,13 @@ macro_rules! export_plugin {
         // (asset updates, ...) the editor's own, over Gamma's FFI.
         $crate::pulsar_events::export_host_bus_attach!();
 
+        // Attach to the host's world runtimes when loaded (Pulsar-Native#1083):
+        // `_plugin_attach_world_runtime`, called by the plugin manager before
+        // `_plugin_create`, makes this library's copy of the world crates
+        // share the editor's component ids, counters and registries, so its
+        // component classes are World components of the editor.
+        $crate::pulsar_world_registry::export_world_runtime_attach!();
+
         /// Get the plugin's version information.
         #[no_mangle]
         pub extern "C" fn _plugin_version() -> $crate::version::VersionInfo {

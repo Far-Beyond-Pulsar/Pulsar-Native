@@ -10,12 +10,11 @@
 use std::f32::consts::{PI, TAU};
 
 use gpui::{
-    Action, App, Bounds, Hsla, InteractiveElement as _, IntoElement, MouseMoveEvent,
-    ParentElement, PathBuilder, Pixels, Point, ScrollWheelEvent, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, anchored, canvas, deferred, div, point,
-    prelude::FluentBuilder as _, px,
+    anchored, canvas, deferred, div, point, prelude::FluentBuilder as _, px, Action, App, Bounds,
+    Hsla, InteractiveElement as _, IntoElement, MouseMoveEvent, ParentElement, PathBuilder, Pixels,
+    Point, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled, Window,
 };
-use ui::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
 
 /// Most items shown; more would make wedges too thin to aim at.
 pub const MAX_ITEMS: usize = 12;
@@ -211,7 +210,13 @@ impl RadialMenu {
         builder.move_to(at(r, a0));
         builder.line_to(at(big_r, a0));
         // Increasing angle is clockwise on screen (y points down).
-        builder.arc_to(point(px(big_r), px(big_r)), px(0.), large, true, at(big_r, a1));
+        builder.arc_to(
+            point(px(big_r), px(big_r)),
+            px(0.),
+            large,
+            true,
+            at(big_r, a1),
+        );
         builder.line_to(at(r, a1));
         builder.arc_to(point(px(r), px(r)), px(0.), large, false, at(r, a0));
         builder.close();
@@ -246,7 +251,10 @@ impl RadialMenu {
                 let step = TAU / n.max(1) as f32;
                 for ix in 0..n {
                     let mid = Self::wedge_angle(ix, n);
-                    let (a0, a1) = (mid - step / 2.0 + WEDGE_GAP / 2.0, mid + step / 2.0 - WEDGE_GAP / 2.0);
+                    let (a0, a1) = (
+                        mid - step / 2.0 + WEDGE_GAP / 2.0,
+                        mid + step / 2.0 - WEDGE_GAP / 2.0,
+                    );
                     let is_selected = selected == Some(ix);
                     // The selected wedge slides outward along its centre line.
                     let c = if is_selected {
@@ -258,11 +266,27 @@ impl RadialMenu {
                         center
                     };
                     // Edge first (slightly larger), then the fill over it.
-                    if let Some(edge) = Self::wedge_path(c, r - 1.0, big_r + 1.0, a0 - 0.004, a1 + 0.004) {
-                        window.paint_path(edge, if is_selected { selected_fill } else { wedge_edge });
+                    if let Some(edge) =
+                        Self::wedge_path(c, r - 1.0, big_r + 1.0, a0 - 0.004, a1 + 0.004)
+                    {
+                        window.paint_path(
+                            edge,
+                            if is_selected {
+                                selected_fill
+                            } else {
+                                wedge_edge
+                            },
+                        );
                     }
                     if let Some(fill) = Self::wedge_path(c, r, big_r, a0, a1) {
-                        window.paint_path(fill, if is_selected { selected_fill } else { wedge_fill });
+                        window.paint_path(
+                            fill,
+                            if is_selected {
+                                selected_fill
+                            } else {
+                                wedge_fill
+                            },
+                        );
                     }
                 }
             },
@@ -273,11 +297,19 @@ impl RadialMenu {
         let label_r = (r + big_r) / 2.0;
         let labels = self.items.iter().enumerate().map(|(ix, item)| {
             let mid = Self::wedge_angle(ix, n);
-            let push = if selected == Some(ix) { SELECTED_OFFSET } else { 0.0 };
+            let push = if selected == Some(ix) {
+                SELECTED_OFFSET
+            } else {
+                0.0
+            };
             let x = center.x + px((label_r + push) * mid.cos() - LABEL_BOX.0 / 2.0);
             let y = center.y + px((label_r + push) * mid.sin() - LABEL_BOX.1 / 2.0);
             let is_selected = selected == Some(ix);
-            let color = if is_selected { theme.primary_foreground } else { theme.popover_foreground };
+            let color = if is_selected {
+                theme.primary_foreground
+            } else {
+                theme.popover_foreground
+            };
             v_flex()
                 .absolute()
                 .left(x)
@@ -389,7 +421,10 @@ mod tests {
         assert!((RadialMenu::wedge_angle(1, 4)).abs() < 1e-6);
         for n in 1..=MAX_ITEMS {
             for ix in 0..n {
-                assert_eq!(RadialMenu::index_for_angle(RadialMenu::wedge_angle(ix, n), n), ix);
+                assert_eq!(
+                    RadialMenu::index_for_angle(RadialMenu::wedge_angle(ix, n), n),
+                    ix
+                );
             }
         }
     }

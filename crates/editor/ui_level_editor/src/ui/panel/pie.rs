@@ -11,7 +11,7 @@ use gpui::{App, Window};
 use rust_i18n::t;
 use std::path::Path;
 use std::sync::Arc;
-use ui::{ContextModal as _, notification::Notification};
+use ui::{notification::Notification, ContextModal as _};
 
 use crate::state::{LevelEditorState, PieStartRequest};
 
@@ -57,7 +57,12 @@ pub(crate) fn begin_pie(
     let save_result = {
         let state = shared_state.read();
         let world = state.scene.world();
-        crate::scene_edit::level_io::save_to_file(&world, &scene_path)
+        crate::scene_edit::level_io::save_to_file_with_settings(
+            &world,
+            &scene_path,
+            None,
+            state.scene.world_settings.clone(),
+        )
     };
     if let Err(e) = save_result {
         window.push_notification(
@@ -101,20 +106,31 @@ pub(crate) fn begin_pie(
     );
 
     let shared = shared_state.clone();
-    let _ = std::thread::Builder::new()
-        .name("pie-build".into())
-        .spawn(move || {
-            let result = build_pie_dylib(&root, &scene_path, reload, loaded_artifact.as_ref());
+    editor_task_queue::global().submit(
+        editor_task_queue::TaskDescription::new(
+            "Build game for Play In Editor",
+            "Build",
+            editor_task_queue::TaskDuration::Long,
+        ),
+        move |task| {
+            task.report_progress(0.02, "Preparing project build");
+            let result =
+                build_pie_dylib(&root, &scene_path, reload, loaded_artifact.as_ref(), &task);
             let mut st = shared.write();
             st.play.pie.building = false;
             match result {
-                Ok(req) => st.play.pie.pending_start = Some(req),
-                Err(e) => {
-                    tracing::error!("PiE build failed: {e}");
-                    st.play.pie.last_error = Some(e);
+                Ok(req) => {
+                    st.play.pie.pending_start = Some(req);
+                    Ok(())
+                }
+                Err(error) => {
+                    tracing::error!("PiE build failed: {error}");
+                    st.play.pie.last_error = Some(error.clone());
+                    Err(error)
                 }
             }
-        });
+        },
+    );
 }
 
 /// Ask the viewport to tear down the embedded game, then exit play mode.
@@ -187,6 +203,7 @@ fn build_pie_dylib(
     scene_path: &Path,
     reload: bool,
     loaded_artifact: Option<&(std::path::PathBuf, std::time::SystemTime)>,
+    task: &editor_task_queue::TaskContext,
 ) -> Result<PieStartRequest, String> {
     // PiE uses the release library (faster at runtime, and matches the artifact
     // `cargo build --release` / `cargo run --release` produce).
@@ -196,6 +213,7 @@ fn build_pie_dylib(
     // saved classes. Bad scripts stop Play here instead of surfacing as
     // runtime failures inside the embedded game.
     if let Some(plugins) = plugin_manager::global() {
+        task.report_progress(0.08, "Validating scripts");
         if let Err(summary) = plugins.read().validate_scripts(root) {
             tracing::error!("PiE blocked by script validation:\n{summary}");
             return Err(summary);
@@ -219,6 +237,7 @@ fn build_pie_dylib(
                 scripts_only,
                 "PiE fastpath: no .rs/.toml changes since last build — reusing artifact"
             );
+            task.report_progress(0.95, "Reusing existing build");
             return Ok(PieStartRequest {
                 dylib_path,
                 project_root: root.to_path_buf(),
@@ -231,8 +250,13 @@ fn build_pie_dylib(
 
     // Slow path — regenerate scaffolding (src/lib.rs + the cdylib manifest) and
     // build.
+    if task.is_cancelled() {
+        return Err("Build cancelled".into());
+    }
+    task.report_progress(0.15, "Preparing generated project files");
     engine_backend::services::ensure_core_bootstrap(root)?;
 
+    task.report_progress(0.25, "Compiling game library");
     let output = std::process::Command::new("cargo")
         .arg("build")
         .arg("--lib")
@@ -257,6 +281,8 @@ fn build_pie_dylib(
             dylib_path.display()
         ));
     }
+
+    task.report_progress(0.95, "Finalizing build artifact");
 
     Ok(PieStartRequest {
         dylib_path,

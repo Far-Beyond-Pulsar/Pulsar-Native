@@ -1,167 +1,129 @@
-# SceneDB Migration
+# SceneDB scene data
 
-For the current corrective scope, confirmed violations, implementation order, and acceptance criteria, see [SCENEDB_CORRECTIVE_PLAN.md](SCENEDB_CORRECTIVE_PLAN.md). This older migration outline does not establish that those criteria are implemented.
+SceneDB owns all scene state. This page describes the architecture as built
+by the corrective plan (Pulsar-Native#1035; one PR per phase, #1036 to #1084).
+`crates/core/scene_inventory/ledger.toml` has one closed row per component class, GPU schema,
+buffer, render pass and lifecycle call site, and `cargo test -p scene_inventory`
+checks it against the linked registries and the source tree.
 
-## Objective
+## Data flow
 
-Make SceneDB the sole owner of scene state. The editor must not maintain a
-second scene representation, and the renderer must not share or lock the CPU
-scene world.
+Data flows one way:
 
-## Non-negotiable architecture
+1. An edit (properties panel, gizmo, command, script, plugin, asset drop,
+   class placement) writes the typed value straight into the `World`:
+   `insert`, `get_mut`, `insert_dyn`, or a reflected setter through
+   `get_dyn_mut`. There is no intermediate queue, JSON copy or "refresh"
+   call.
+2. The `World` mirrors `#[gpu]` fields to GPU rows inside that write.
+   `World::flush_gpu_mirror` uploads the dirty rows once per frame.
+3. Systems that need data read the `World` or the GPU mirror. Renderers draw
+   from the mirror; Helio's scene and environment joins derive the rows its
+   passes consume, on the GPU.
 
-- `pulsar_scenedb::SceneDb` owns the authoritative `World` and its lifecycle.
-- Every scene object is a SceneDB entity with typed components.
-- Scene identity, hierarchy, transforms, visibility, render data, and runtime
-  component data live in SceneDB components.
-- `#[derive(SceneStore)]` and `#[gpu]` are the GPU integration path. Normal
-  `World::insert` and `World::get_mut` calls update CPU storage and queue GPU
-  mirror changes; `SceneDb::step`/`flush_gpu_mirror` performs the coalesced
-  upload.
-- SceneDB's phase machine supplies the single-writer/shared-reader discipline.
-- The renderer consumes SceneDB-owned GPU buffers and GPU-side liveness/
-  generation state. It does not read or mutate the CPU `World` every frame.
-- The level editor owns only editor/UI state: tools, panels, camera controls,
-  expansion state, overlays, build state, and play controls.
-- No `Arc<RwLock<WorldSceneStore>>`, copied scene snapshots, renderer-owned
-  scene caches, or parallel metadata scene database may remain in production.
+Nothing in that direction subscribes. Subscriptions run the other way, for
+views (see [Observers](#observers)).
 
-## Transitional code to remove
+## Ownership
 
-- `engine_backend::scene::WorldSceneStore` as an object/hierarchy authority.
-- `ui_level_editor::SceneDatabase` as scene storage.
-- `SceneMetadataDb`/JSON component storage for data that belongs in typed
-  SceneDB components.
-- Renderer `scene_store` locks and per-frame CPU scene scans.
-- `HelioRenderer::sync_scene`/`sync_scene_delta` as a second scene-to-render
-  synchronization system.
-- Manual light/mesh transform rebuilds where SceneDB GPU fields already carry
-  the data.
-- PIE raw pointers and long-lived write guards to scene state.
+- `engine_backend::scene::SharedScene` (`Arc<RwLock<pulsar_scenedb::SceneDb>>`)
+  is the one scene handle. The editor, the renderer, the game tick and
+  play-in-editor share it. There is no second scene store, snapshot or
+  metadata database.
+- Every scene object is a SceneDB entity carrying typed components:
+  `StableId`, `Name`, `Transform`, `Visibility`, and the hierarchy
+  (`Parent`, `SiblingIndex`).
+- Every component attached to an object is its own **component-instance
+  entity** (`pulsar_scene_model::attachments`): the typed value, a
+  `ComponentOwner` (owner object and enabled flag; GPU-mirrored so passes
+  join a component row to its owner on the GPU) and a `ComponentMeta`
+  (stable `ComponentInstanceId`, class name, presentation parent, class-slot
+  provenance). The object's `ComponentAttachments` lists them in
+  presentation order. Several instances of one class are several entities.
+- A class the build does not know, or a record that fails to decode, is kept
+  as an `UnresolvedComponent` that holds the payload verbatim and is never a
+  live component.
+- `RenderProps` holds an object's free-form file `props` only. It holds no
+  component list.
 
-## Migration sequence
+## Components and registration
 
-1. Inventory every `WorldSceneStore` and `SceneDatabase` caller.
-2. Define/register canonical SceneDB components for scene identity,
-   hierarchy, editor-visible object properties, and runtime component data.
-3. Move lifecycle construction/loading/saving to an owning engine/lifecycle
-   object containing `SceneDb`.
-4. Convert editor scene commands and hierarchy/property queries to operate on
-   the owning SceneDB world.
-5. Remove the outer scene lock from renderer construction and make renderer
-   consume SceneDB GPU resources/change results only.
-6. Remove transitional wrappers, indexes, dirty flags, and JSON mirrors after
-   all callers migrate.
-7. Add adversarial tests in each affected crate for identity, hierarchy,
-   despawn/reuse, component mutation, GPU dirty propagation, and concurrent
-   editor-only state access.
+- `#[register_world_component]` on an inherent `impl Type {}` registers a
+  component class with `pulsar_world_registry` (class name = type name):
+  default factory, boundary decoder, clone, erased insert/remove.
+- `#[derive(SceneStore)]` with `#[gpu]` fields generates the GPU mirror.
+  `GpuHeavy<T>` keeps heavy GPU data out of the component column: the column
+  holds only the reference.
+- A component with no runtime consumer yet is declared with
+  `declare_unfinished_component!` (reason and tracking issue) and is
+  reported when attached, instead of looking supported.
+- Native component lifecycles (`begin_play`, `tick`, events, `end_play`)
+  run from `ComponentTickRegistration` on the live typed value.
 
-## Current findings
+## JSON
 
-- The editor lifecycle now constructs `SceneDatabase` first; the renderer
-  receives its shared store handle afterward. The former caller-supplied store
-  constructor boundary (`LevelEditorState::new_with_scene_db` /
-  `SceneDatabase::with_shared_store`) has been removed, so scene construction
-  has one concrete owner while the existing compatibility API remains in place
-  for scene operations.
+JSON exists only at boundaries: level files, the offline migration tool, the
+record API (`pulsar_world_registry::instances`), reflection save codecs and
+asset files. A level's records are migrated (`pulsar_class::records`) and
+decoded once, at load, into component-instance entities. History, undo,
+class instantiation, scripts and the editor clone and write typed values.
 
-- Gizmo mode/highlight state is now editor/renderer mailbox state rather than
-  `WorldSceneStore` state. This removes the mailbox's scene-lock dependency;
-  the renderer still locks the shared store for object synchronization because
-  stable-id/hierarchy/JSON compatibility data has not yet been replaced by
-  typed SceneDB components and GPU change results.
+## Observers
 
-- Remaining renderer boundary: `HelioRenderer` still owns an
-  `Arc<RwLock<WorldSceneStore>>` because its current object sync path needs
-  stable-id lookup, hierarchy traversal, component JSON projection, dirty
-  draining, and the `SceneDb::step` mutable lifecycle call. Removing that
-  lock in the next slice requires first routing those operations through
-  SceneDB-owned typed components/change results; replacing it with another
-  wrapper or snapshot would violate the migration constraints.
+- **Change-journal cursors** (`World::open_change_cursor` / `read_changes`):
+  for incremental work. Each reader owns its cursor and sees every change
+  regardless of other readers; `ChangeRead::Overflowed` (the journal evicted
+  unread entries, or the cursor came from another `World`) tells the reader
+  to rescan once. Users: renderer-side cursor-gated rebuilds, script
+  `ComponentRefWatch` (`pulsar_world_registry::ComponentWatch`), component
+  lifecycle removals.
+- **Object subscriptions** (`World::subscribe_object`): for views. A view
+  that displays an object follows writes made elsewhere (gizmo, script,
+  undo) without polling. The callback runs inside the write with the
+  component's full new value. `pulsar_world_registry::ObjectFeed` clones it,
+  queues an `ObjectUpdate` and wakes the view; the properties panel follows
+  the selected object this way. Renderers and other bulk readers never
+  subscribe.
+- The world's change tracker (`World::revision`) paces idle frames; it is
+  closed once per frame by `engine_backend::scene::end_change_window`.
 
-- The renderer no longer consumes the unused `SceneDbDelta.revision` field or
-  reads `WorldSceneStore::dirty_gen()` while draining a delta. The remaining
-  dirty vectors still carry the compatibility flags needed to dispatch legacy
-  object/component JSON updates. Native `ChangeTracker` is not yet a drop-in
-  replacement: it has no non-destructive pending query in the pinned README/API,
-  and its post-despawn entity signal no longer resolves stable IDs.
+## Renderer
 
-- The renderer's remaining `step()` calls are intentionally after component
-  dispatch because that dispatch can queue GPU-mirror refreshes that must be
-  flushed in the same pass. The play-mode lifecycle already uses
-  `scene::step_scene_for_render`; moving the editor renderer's call to a
-  generic engine tick would require that tick to own the editor's pending
-  component dispatch/refresh boundary as well. Moving `step()` earlier would
-  defer uploads or change ordering, so no safe relocation was made in this
-  slice.
+- The renderer holds the `SharedScene` to flush the GPU mirror, read the
+  revision for frame pacing, and serve picking and selection. It does not
+  scan the scene to discover or project render components.
+- `engine_backend::scene::helio_bridge` attaches the mirror and builds the
+  scene and environment joins. `ensure_gpu_mirror` attaches a mirror late;
+  SceneDB replays existing rows on attach.
+- Helio has no renderer-owned scene registry; the legacy `Scene`/`SceneActor`
+  API is gone ([HELIO_SCENE_API_MIGRATION.md](HELIO_SCENE_API_MIGRATION.md)).
+- The standalone game and the Play-in-Editor viewport build their renderer
+  with `pulsar_game::game_renderer`: the same joins and graph as the editor
+  viewport, over the same `SharedScene`.
 
-- Audited the next duplicated-field candidates. `name`, `visibility`, and
-  `object_type` are already stored canonically as `WorldSceneStore`'s
-  `Name`, `Visibility`, and `ObjectType` components; `SceneDatabase` setters
-  and reads route to those components. `SceneObjectData` is only a serialized
-  UI/API value adapter, so removing its fields would be a broad public
-  serde/API break rather than removing an authority. `SceneMetadataDb` still
-  owns JSON component instances for classes without typed World components;
-  migrating that requires per-class typed registrations and cannot be safely
-  collapsed in this slice. Added a regression test proving the canonical
-  World component round trip.
+## Assets
 
-- Full authority removal is currently blocked at the compatibility API seam,
-  not by an unexamined field: `SceneDatabase::get_object` and
-  `get_all_objects` must still return the public serde-compatible
-  `SceneObjectData` value, while renderer dispatch still consumes serialized
-  component instances for classes that have no typed World registration.
-  Removing those adapters or `SceneMetadataDb` in one pass would either break
-  the editor/plugin API or drop untyped component behavior. The next valid
-  migration must add typed World registrations and migrate one component class
-  at a time before the metadata projection and renderer lock can be removed.
+A mesh asset loads synchronously inside the write that names it (the
+boundary decoder, or the `mesh_asset` property write), so there is no
+in-flight load to cancel or complete stale. Components of one asset share one
+GPU geometry allocation. A re-import publishes `AssetUpdated(Mesh)`; the level
+editor reloads every static mesh naming that file through the same write.
 
-- `Transform` already uses `#[derive(SceneStore)]` with packed `#[gpu]`
-  fields.
-- The renderer currently still receives `Arc<RwLock<WorldSceneStore>>` and
-  performs CPU scans/rebuilds despite that GPU path.
-- `WorldSceneStore` adds stable-id maps, hierarchy maps, dirty flags, revision
-  counters, and a public `world_mut` escape hatch around SceneDB.
-- `SceneDatabase` still owns a shared store and a separate metadata database.
-- `pulsar_scenedb` README says GPU fields are automatically mirrored and that
-  CPU storage uses single-writer/shared-reader phase discipline; it does not
-  require a copied scene snapshot.
+## Architecture checks
+
+`crates/core/scene_inventory/tests/architecture.rs` fails when:
+
+- a removed mechanism gets a production call site again: the shared change
+  queue and its drains, GPU refresh and render arming hooks,
+  `PendingWorldWrites`, CPU projection into pass rows, `RenderProps`
+  component sync, runtime-behavior dispatch, force-resync;
+- a JSON record is decoded outside the listed boundary files;
+- renderer code subscribes to an object;
+- a renderer file gains a `World::query` call that is not listed with its
+  reason (picking, bake input, cursor-gated rebuilds, the voxel path).
 
 ## Working rule
 
-Do not introduce another scene owner, snapshot cache, lock wrapper, or async
-facade. If an API cannot be migrated without one, stop and document the
-specific boundary instead of inventing a parallel representation.
-
-## Progress
-
-### Slice 1 — `PhysicsComponent` (complete)
-
-- `PhysicsComponent` is already registered with `pulsar_world_registry` and
-  is now hydrated directly into the entity's canonical `pulsar_scenedb::World`
-  from `SceneDatabase::add_component` / `add_component_instance`.
-- Enabled Physics data is read from the typed World component by the existing
-  `SceneDatabase::get_components` live overlay and edited through the existing
-  typed property/update paths.
-- The `SceneMetadataDb` record remains only as a UI-compatible attachment,
-  order, and enabled-state index. For an enabled migrated component its
-  `data` is `Value::Null`, so it is not a competing data authority.
-- Disabled Physics entries retain their last serialized value only as a
-  re-enable compatibility seed; enabling hydrates World and clears that seed.
-- Existing public UI APIs remain unchanged. No new wrapper, snapshot, lock, or
-  async facade was added.
-- Regression coverage is in
-  `crates/editor/ui_level_editor/tests/scenedb_migration.rs`.
-
-## Remaining work and blockers
-
-- The metadata list still owns component-instance identity (order, duplicate
-  instances, and enabled state). Moving that identity into SceneDB requires a
-  representation for multiple instances of one Rust component type; the
-  current `World` component model stores one value per `(entity, ComponentId)`.
-- The remaining World-registered classes still use metadata JSON as their
-  hydration seed and need independent slices. Classes without a World
-  registration continue to use the legacy JSON path by design.
-- `RenderProps.component_instances` remains a renderer/file-format projection
-  for compatibility. It is not the source of truth for the migrated Physics
-  data, and renderer/PIE changes are intentionally outside this slice.
+Do not introduce another scene owner, snapshot cache, lock wrapper, write
+queue or async facade. If an API cannot be built without one, stop and
+record the specific boundary in the plan.

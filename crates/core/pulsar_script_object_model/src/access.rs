@@ -1,156 +1,65 @@
-//! Property and method accessors on [`ComponentRef`], with the properties
-//! panel's live-typed-vs-metadata routing (Pulsar-Native#519/#575).
+//! Property and method accessors on [`ComponentRef`].
 //!
-//! Every accessor:
+//! Every attached component instance is its own entity holding its own
+//! typed value (Pulsar-Native#1035, D1), so a reference resolves to exactly
+//! one instance and every accessor goes straight through that typed value
+//! (`pulsar_world_registry`'s dispatcher) -- no JSON copy of "other"
+//! instances, no instance-zero aliasing. Every accessor:
 //! 1. validates actor liveness (`ReferenceDespawned`),
 //! 2. checks class registration (`UnregisteredClass`),
-//! 3. routes by `(class_name, component_index)` identity (see
-//!    [`crate::routing`]): the live-typed index goes straight through the
-//!    typed `World` value -- no JSON on the hot path, `Mut`-guard change
-//!    events firing exactly as for panel edits; any other index is read and
-//!    edited through its own JSON record;
+//! 3. resolves `(class_name, component_index)` -- the actor's
+//!    `component_index`-th instance of the class -- to its instance entity
+//!    (`ComponentMissing`/`InstanceMissing` when absent),
 //! 4. fails with a typed error rather than panicking or guessing (#641).
 //!
-//! Two spellings per operation: [`ComponentRef::get_property`]/
-//! [`ComponentRef::set_property`] are the everyday live-typed calls scripts
-//! and generated code use; [`ComponentRef::get_property_with_instances`]/
-//! [`ComponentRef::set_property_with_instances`] additionally route
-//! non-live indexes through their own records via a
-//! [`ComponentInstanceStore`].
-//!
-//! Method dispatch always targets the live-typed value (the only instance
-//! with executable behavior); `component_index` is not consulted for
-//! methods.
+//! Writes go through SceneDB's write guard, so change events and GPU rows
+//! follow exactly as for properties-panel edits.
 
-use pulsar_reflection::{MethodArgs, MethodReturnValue, PropertyMetadata};
+use pulsar_reflection::{MethodArgs, MethodReturnValue};
 use pulsar_scenedb::World;
 
 use crate::errors::ScriptRefError;
-use crate::instances::ComponentInstanceStore;
 use crate::refs::ComponentRef;
-use crate::routing::{deserialize_property, route, serialize_property, Route};
 
 impl ComponentRef {
-    /// Read one property of the referenced component instance as JSON.
-    ///
-    /// Live-typed path only: `component_index` must address the live-typed
-    /// instance (default index 0). See [`Self::get_property_with_instances`]
-    /// for duplicate-instance routing.
+    /// Read one property of the referenced component instance, typed (as
+    /// the property's getter returns it).
     pub fn get_property(
         &self,
         world: &World,
         property: &str,
-    ) -> Result<serde_json::Value, ScriptRefError> {
-        self.get_property_with_instances(world, None, property)
+    ) -> Result<Box<dyn std::any::Any>, ScriptRefError> {
+        self.validate(world)?;
+        pulsar_world_registry::get_component_property_boxed(
+            world,
+            self.entity,
+            &self.class_name,
+            self.component_index,
+            property,
+        )
     }
 
-    /// Read one property, routing duplicate indexes through `store`'s
-    /// instance records exactly like the properties panel (#519/#561).
-    /// Pass `None` to restrict to the live-typed path.
-    pub fn get_property_with_instances(
-        &self,
-        world: &World,
-        store: Option<&dyn ComponentInstanceStore>,
-        property: &str,
-    ) -> Result<serde_json::Value, ScriptRefError> {
-        let meta = self.property_metadata(property)?;
-        match route(self, world, store)? {
-            Route::Live => {
-                let value = (meta.getter)(self.live_instance(world)?);
-                serialize_property(&self.class_name, property, &*value)
-            }
-            Route::Duplicate { record } => {
-                let scratch =
-                    crate::routing::ScratchInstance::hydrate(&self.class_name, &record.data)?;
-                let value = (meta.getter)(scratch.instance()?);
-                serialize_property(&self.class_name, property, &*value)
-            }
-        }
-    }
-
-    /// Write one property of the referenced component instance from JSON.
-    ///
-    /// The value deserializes against the property's reflected type and the
-    /// setter closure mutates the real storage -- nothing is written on
-    /// failure. Live-typed path only; see
-    /// [`Self::set_property_with_instances`] for duplicate routing.
+    /// Write one property of the referenced component instance from a
+    /// typed value. Its type is checked against the property's first;
+    /// nothing is written on failure.
     pub fn set_property(
         &self,
         world: &mut World,
         property: &str,
-        value: serde_json::Value,
+        value: Box<dyn std::any::Any>,
     ) -> Result<(), ScriptRefError> {
-        self.set_property_with_instances(world, None, property, value)
+        self.validate(world)?;
+        pulsar_world_registry::set_component_property_boxed(
+            world,
+            self.entity,
+            &self.class_name,
+            self.component_index,
+            property,
+            value,
+        )
     }
 
-    /// Write one property, routing duplicate indexes through `store`.
-    ///
-    /// Live case: after the typed value changes, the FULL new shape is
-    /// serialized back into that instance's own record (when supplied) so
-    /// `World` and the records never diverge (Pulsar-Native#561, Bug B).
-    /// Duplicate case: the edit lands only in THAT record.
-    pub fn set_property_with_instances(
-        &self,
-        world: &mut World,
-        mut store: Option<&mut dyn ComponentInstanceStore>,
-        property: &str,
-        value: serde_json::Value,
-    ) -> Result<(), ScriptRefError> {
-        let meta = self.property_metadata(property)?;
-        let typed = deserialize_property(&self.class_name, property, meta.type_info, value)?;
-
-        match route(self, world, store.as_deref())? {
-            Route::Live => {
-                // Scoped so the `&mut World` borrow ends before the record
-                // persist-back below re-indexes the store.
-                let persisted_json = {
-                    let mut instance = self.live_instance_mut(world)?;
-                    (meta.setter)(&mut *instance, typed);
-                    instance.to_json().ok()
-                };
-                if let Some(json) = persisted_json {
-                    if let Some(store) = store.as_mut() {
-                        store.set_instance_data(self.entity, self.component_index, json);
-                    }
-                }
-                Ok(())
-            }
-            Route::Duplicate { record } => {
-                let json = {
-                    let mut scratch =
-                        crate::routing::ScratchInstance::hydrate(&self.class_name, &record.data)?;
-                    {
-                        let mut instance = scratch.instance_mut()?;
-                        (meta.setter)(&mut *instance, typed);
-                    }
-                    scratch.persist()?
-                };
-                let wrote = store
-                    .as_mut()
-                    .map(|s| s.set_instance_data(self.entity, self.component_index, json))
-                    .unwrap_or(false);
-                if !wrote {
-                    return Err(ScriptRefError::InstanceMissing {
-                        entity: self.entity,
-                        class_name: self.class_name.clone(),
-                        component_index: self.component_index,
-                    });
-                }
-                Ok(())
-            }
-        }
-    }
-
-    /// Invoke one blueprint-callable method on the referenced component's
-    /// live-typed value.
-    ///
-    /// DELEGATES to `pulsar_world_registry::invoke_component_method` -- the
-    /// one unified dispatcher (#643): same `MethodMetadata.caller` closures
-    /// every other Blueprint caller uses, plus argument arity/type
-    /// validation that reports typed errors where the raw generated callers
-    /// would panic. Duplicate instances share their class's behavior, so
-    /// this always runs against the live-typed value regardless of
-    /// `component_index`.
+    /// Invoke a reflected method on the referenced component instance.
     pub fn call_method(
         &self,
         world: &mut World,
@@ -167,67 +76,27 @@ impl ComponentRef {
         )
     }
 
-    // ── shared lookup helpers ───────────────────────────────────────────
-
-    fn live_instance<'w>(
-        &self,
-        world: &'w World,
-    ) -> Result<&'w dyn pulsar_reflection::EngineClass, ScriptRefError> {
-        pulsar_world_registry::get_world_component_as_engine_class(
-            &self.class_name,
+    /// The instance entity this reference addresses right now, if any.
+    pub fn instance(&self, world: &World) -> Option<pulsar_scenedb::Entity> {
+        pulsar_world_registry::instances::resolve_instance(
             world,
             self.entity,
-        )
-        .ok_or_else(|| ScriptRefError::ComponentMissing {
-            entity: self.entity,
-            class_name: self.class_name.clone(),
-        })
-    }
-
-    fn live_instance_mut<'w>(
-        &self,
-        world: &'w mut World,
-    ) -> Result<pulsar_world_registry::EngineClassMut<'w>, ScriptRefError> {
-        pulsar_world_registry::get_world_component_as_engine_class_mut(
             &self.class_name,
-            world,
-            self.entity,
+            self.component_index,
         )
-        .ok_or_else(|| ScriptRefError::ComponentMissing {
-            entity: self.entity,
-            class_name: self.class_name.clone(),
-        })
-    }
-
-    /// Reflected metadata for one property, from the registry's shared
-    /// descriptor cache (no instance is constructed per access).
-    fn property_metadata(&self, property: &str) -> Result<std::sync::Arc<PropertyMetadata>, ScriptRefError> {
-        pulsar_world_registry::property_descriptor(&self.class_name, property)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instances::InstanceRecord;
-    use crate::test_support::{FakeInstanceStore, TestGizmo};
+    use crate::test_support::TestGizmo;
     use pulsar_scenedb::Entity;
 
     fn actor(e: Entity) -> crate::refs::ActorRef {
         crate::refs::ActorRef(e)
     }
 
-    fn gizmo_record(charges: i64, enabled: bool) -> InstanceRecord {
-        InstanceRecord {
-            class_name: "TestGizmo".into(),
-            enabled,
-            data: serde_json::json!({ "charges": charges }),
-        }
-    }
-
-    /// #640 acceptance: two entities carrying the same component class --
-    /// writes through each ref land on exactly that ref's target, reads see
-    /// only their own target, and nothing panics.
     #[test]
     fn refs_across_duplicate_class_entities_write_only_their_own_target() {
         let mut world = World::new();
@@ -240,21 +109,29 @@ mod tests {
         let chest_ref = ComponentRef::live(actor(chest), "TestGizmo");
 
         door_ref
-            .set_property(&mut world, "charges", serde_json::json!(11))
+            .set_property(&mut world, "charges", Box::new(11))
             .unwrap();
         chest_ref
-            .set_property(&mut world, "charges", serde_json::json!(22))
+            .set_property(&mut world, "charges", Box::new(22))
             .unwrap();
 
         assert_eq!(world.get::<TestGizmo>(door).unwrap().charges, 11);
         assert_eq!(world.get::<TestGizmo>(chest).unwrap().charges, 22);
         assert_eq!(
-            door_ref.get_property(&world, "charges").unwrap(),
-            serde_json::json!(11)
+            door_ref
+                .get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(11)
         );
         assert_eq!(
-            chest_ref.get_property(&world, "charges").unwrap(),
-            serde_json::json!(22)
+            chest_ref
+                .get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(22)
         );
     }
 
@@ -271,7 +148,7 @@ mod tests {
         let successor = world.spawn(); // may inherit `victim`'s recycled slot
         world.insert(successor, TestGizmo { charges: 99 });
 
-        let result = stale.set_property(&mut world, "charges", serde_json::json!(0));
+        let result = stale.set_property(&mut world, "charges", Box::new(0));
         assert!(
             matches!(result, Err(ScriptRefError::ReferenceDespawned { .. })),
             "stale ref must be refused, got {result:?}"
@@ -283,135 +160,99 @@ mod tests {
         );
     }
 
-    /// #640 acceptance: subscription events observe exactly the writes made
-    /// through the ref (event-level assertions live in subscribe.rs).
+    /// #640 acceptance: a change watch observes the writes made through the
+    /// ref (the detailed assertions live in subscribe.rs).
     #[test]
-    fn set_property_is_observable_through_subscriptions() {
+    fn set_property_is_observable_through_a_change_watch() {
         let mut world = World::new();
         let e = world.spawn();
         world.insert(e, TestGizmo { charges: 0 });
         let r = ComponentRef::live(actor(e), "TestGizmo");
-        let sub = crate::subscribe::subscribe_component(&mut world, &r).unwrap();
+        let mut watch = crate::subscribe::ComponentRefWatch::new();
+        assert!(watch.watch(&world, &r));
 
-        r.set_property(&mut world, "charges", serde_json::json!(5))
-            .unwrap();
+        r.set_property(&mut world, "charges", Box::new(5)).unwrap();
 
-        let events = crate::subscribe::take_change_events_for(&mut world, sub);
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].entity, e);
+        assert_eq!(watch.changed(&world), vec![r.clone()]);
     }
 
-    /// Duplicate instances route by index: index 0 is live-typed; index 1
-    /// reads/writes ONLY its own JSON record (panel parity, #519/#561).
+    /// Attach a `TestGizmo` instance to `owner` through the registry, the
+    /// way the editor and level loading do.
+    fn attach_gizmo(world: &mut World, owner: Entity, charges: i32) -> Entity {
+        pulsar_world_registry::attach_component(
+            world,
+            owner,
+            pulsar_scene_model::NewInstance::new("TestGizmo"),
+            pulsar_world_registry::ComponentPayload::Value(Box::new(TestGizmo { charges })),
+        )
+        .unwrap()
+    }
+
+    /// Several instances of one class on one actor: each index addresses
+    /// its own instance's typed value, for reads, writes and methods alike.
     #[test]
-    fn duplicate_instances_route_by_index_like_the_panel() {
+    fn each_index_addresses_its_own_instance() {
         let mut world = World::new();
         let e = world.spawn();
-        world.insert(e, TestGizmo { charges: 100 }); // hydrated from record 0
-
-        let mut store = FakeInstanceStore::default();
-        store.attach(e, &[gizmo_record(100, true), gizmo_record(200, true)]);
+        let first = attach_gizmo(&mut world, e, 100);
+        let second = attach_gizmo(&mut world, e, 200);
 
         let live = ComponentRef::live(actor(e), "TestGizmo");
         let dup = actor(e).component("TestGizmo", 1);
+        assert_eq!(live.instance(&world), Some(first));
+        assert_eq!(dup.instance(&world), Some(second));
 
-        // Reads come from different storages and never cross.
         assert_eq!(
-            live.get_property_with_instances(&world, Some(&store), "charges")
-                .unwrap(),
-            serde_json::json!(100)
+            live.get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(100)
         );
         assert_eq!(
-            dup.get_property_with_instances(&world, Some(&store), "charges")
-                .unwrap(),
-            serde_json::json!(200)
+            dup.get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(200)
         );
 
-        // Writes likewise.
-        dup.set_property_with_instances(
-            &mut world,
-            Some(&mut store),
-            "charges",
-            serde_json::json!(222),
-        )
-        .unwrap();
+        dup.set_property(&mut world, "charges", Box::new(222))
+            .unwrap();
+        assert_eq!(world.get::<TestGizmo>(second).unwrap().charges, 222);
         assert_eq!(
-            dup.get_property_with_instances(&world, Some(&store), "charges")
-                .unwrap(),
-            serde_json::json!(222)
-        );
-        assert_eq!(
-            live.get_property_with_instances(&world, Some(&store), "charges")
-                .unwrap(),
-            serde_json::json!(100)
-        );
-        assert_eq!(
-            world.get::<TestGizmo>(e).unwrap().charges,
+            world.get::<TestGizmo>(first).unwrap().charges,
             100,
-            "live World value untouched"
+            "the other instance is untouched"
         );
 
-        // Live writes persist back into the record so they never diverge.
-        live.set_property_with_instances(
-            &mut world,
-            Some(&mut store),
-            "charges",
-            serde_json::json!(111),
-        )
-        .unwrap();
-        assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 111);
+        let total = dup
+            .call_method(&mut world, "add_charges", vec![Box::new(1i32)])
+            .unwrap()
+            .expect("method returns new total");
+        assert_eq!(total.downcast_ref::<i32>(), Some(&223));
         assert_eq!(
-            store.record_data(0).unwrap()["charges"],
-            serde_json::json!(111)
-        );
-        assert_eq!(
-            store.record_data(1).unwrap()["charges"],
-            serde_json::json!(222)
+            world.get::<TestGizmo>(first).unwrap().charges,
+            100,
+            "methods hit their own instance too"
         );
     }
 
     /// Missing targets are typed, distinct errors (#641 taxonomy).
     #[test]
     fn missing_targets_are_distinct_typed_errors() {
-        // Registered class, never hydrated -> ComponentMissing.
+        // Registered class, no instance -> ComponentMissing.
         let mut world = World::new();
         let e = world.spawn();
         let r = actor(e).component("TestGizmo", 0);
         let err = r.get_property(&world, "charges").unwrap_err();
         assert!(matches!(err, ScriptRefError::ComponentMissing { .. }));
 
-        // Non-live index without a store -> InstanceMissing.
-        world.insert(e, TestGizmo { charges: 1 });
+        // An index past the actor's instances -> InstanceMissing.
+        attach_gizmo(&mut world, e, 1);
         let dup = actor(e).component("TestGizmo", 3);
         let err = dup.get_property(&world, "charges").unwrap_err();
         assert!(matches!(err, ScriptRefError::InstanceMissing { .. }));
-    }
-
-    /// Index holding another class's record is refused (#519 discipline).
-    #[test]
-    fn mismatched_index_class_pair_is_refused() {
-        let mut world = World::new();
-        let e = world.spawn();
-        world.insert(e, TestGizmo { charges: 1 });
-
-        let mut store = FakeInstanceStore::default();
-        store.attach(
-            e,
-            &[
-                gizmo_record(1, true),
-                InstanceRecord {
-                    class_name: "Other".into(),
-                    enabled: true,
-                    data: serde_json::json!({}),
-                },
-            ],
-        );
-
-        let r = actor(e).component("TestGizmo", 1);
-        let err = r
-            .get_property_with_instances(&world, Some(&store), "charges")
-            .unwrap_err();
-        assert!(matches!(err, ScriptRefError::ClassMismatch { .. }));
     }
 
     /// Unknown property/method names are typed errors, never panics.
@@ -446,47 +287,19 @@ mod tests {
         assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 10);
     }
 
-    /// Malformed JSON for a duplicate instance is a typed Marshalling error
-    /// -- not a panic, not a silent fallback to defaults.
-    #[test]
-    fn malformed_duplicate_record_is_a_marshalling_error() {
-        let mut world = World::new();
-        let e = world.spawn();
-        world.insert(e, TestGizmo { charges: 1 });
-
-        let mut store = FakeInstanceStore::default();
-        store.attach(
-            e,
-            &[
-                gizmo_record(1, true),
-                InstanceRecord {
-                    class_name: "TestGizmo".into(),
-                    enabled: true,
-                    data: serde_json::json!({ "charges": "not-a-number" }),
-                },
-            ],
-        );
-
-        let dup = actor(e).component("TestGizmo", 1);
-        let err = dup
-            .get_property_with_instances(&world, Some(&store), "charges")
-            .unwrap_err();
-        assert!(matches!(err, ScriptRefError::Marshalling { .. }));
-    }
-
-    /// Wrong JSON type for a property is a typed Marshalling error, and
+    /// A value of the wrong type for a property is a typed error, and
     /// nothing is written on failure.
     #[test]
-    fn wrong_value_type_is_a_marshalling_error_and_writes_nothing() {
+    fn wrong_value_type_is_an_argument_type_error_and_writes_nothing() {
         let mut world = World::new();
         let e = world.spawn();
         world.insert(e, TestGizmo { charges: 1 });
         let r = ComponentRef::live(actor(e), "TestGizmo");
 
         let err = r
-            .set_property(&mut world, "charges", serde_json::json!("nope"))
+            .set_property(&mut world, "charges", Box::new("nope"))
             .unwrap_err();
-        assert!(matches!(err, ScriptRefError::Marshalling { .. }));
+        assert!(matches!(err, ScriptRefError::ArgumentType { .. }));
         assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 1);
     }
 }

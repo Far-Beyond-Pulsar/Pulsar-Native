@@ -6,8 +6,8 @@
 //! back into the resource. Bus delivery happens on the publisher's thread, so
 //! the subscription only queues; an async task drains the queue in the window.
 
-use engine_state::playback::{PlayPhase, update_playback_if_changed};
-use pulsar_events::{PlaybackCommand, PlaybackSubscription, subscribe_playback_commands};
+use engine_state::playback::{update_playback_if_changed, PlayPhase};
+use pulsar_events::{subscribe_playback_commands, PlaybackCommand, PlaybackSubscription};
 
 use super::*;
 

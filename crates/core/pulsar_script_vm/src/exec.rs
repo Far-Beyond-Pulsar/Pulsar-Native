@@ -65,6 +65,10 @@ pub fn unary(op: UnOp, value: &Value, checked: bool) -> Result<Value, ScriptErro
         (UnOp::Neg, Value::Float(f)) => Value::Float(-f),
         (UnOp::Not, Value::Bool(b)) => Value::Bool(!b),
         (UnOp::IntToFloat, Value::Int(i)) => Value::Float(*i as f64),
+        (UnOp::IntToI32Checked, Value::Int(i)) if *i < i32::MIN as i64 || *i > i32::MAX as i64 => {
+            return Err(overflow("IntToI32Checked"));
+        }
+        (UnOp::IntToI32Checked, Value::Int(i)) => Value::Int(*i),
         // `i64::MAX as f64` rounds up to 2^63, which is already out of range.
         (UnOp::FloatToInt, Value::Float(f))
             if checked && !(f.is_finite() && *f >= -(2f64.powi(63)) && *f < 2f64.powi(63)) =>
@@ -320,5 +324,7 @@ pub fn collection(op: CollOp, args: &mut [Value]) -> Result<Value, ScriptErrorKi
 /// latent native: see [`crate::latent`]). Generated code checks this after
 /// every native call, as the interpreter does.
 pub fn latent_requested(host: &Host<'_>) -> bool {
-    host.latent.as_deref().is_some_and(crate::latent::Latent::suspend_requested)
+    host.latent
+        .as_deref()
+        .is_some_and(crate::latent::Latent::suspend_requested)
 }

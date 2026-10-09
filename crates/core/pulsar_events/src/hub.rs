@@ -44,8 +44,8 @@ use std::sync::{Arc, RwLock};
 
 use gamma::ffi::RawBus;
 use gamma::{
-    Channel, DynEvent, DynEventError, DynValue, Event, EventDescriptor, FlushReport,
-    RegistryError, SyncEventBus,
+    Channel, DynEvent, DynEventError, DynValue, Event, EventDescriptor, FlushReport, RegistryError,
+    SyncEventBus,
 };
 
 use crate::tap::{Pending, Tap, TapRecord, summarize};
@@ -195,7 +195,11 @@ impl EventHub {
     /// Register an event (a script- or plugin-declared one). Registering
     /// the same descriptor again is a no-op; a different descriptor with
     /// the same name or id is an error.
-    pub fn register(&self, descriptor: EventDescriptor, category: EventCategory) -> Result<u64, RegistryError> {
+    pub fn register(
+        &self,
+        descriptor: EventDescriptor,
+        category: EventCategory,
+    ) -> Result<u64, RegistryError> {
         let id = self.inner.bus.register_descriptor(descriptor)?;
         self.write_info().entry(id).or_insert((category, false));
         Ok(id)
@@ -223,10 +227,16 @@ impl EventHub {
                     .get(&descriptor.id)
                     .cloned()
                     .unwrap_or((EventCategory::Custom(String::new()), false));
-                EventInfo { descriptor, category, builtin }
+                EventInfo {
+                    descriptor,
+                    category,
+                    builtin,
+                }
             })
             .collect();
-        events.sort_by(|a, b| (&a.category, &a.descriptor.name).cmp(&(&b.category, &b.descriptor.name)));
+        events.sort_by(|a, b| {
+            (&a.category, &a.descriptor.name).cmp(&(&b.category, &b.descriptor.name))
+        });
         events
     }
 
@@ -240,7 +250,12 @@ impl EventHub {
     pub fn publish<T: Event + Send>(&self, channel: Channel, event: T) {
         if self.inner.tap.enabled() {
             let descriptor = self.descriptor(T::stable_type_id());
-            self.note(T::stable_type_id(), channel, descriptor.as_deref(), event.to_dyn().as_ref());
+            self.note(
+                T::stable_type_id(),
+                channel,
+                descriptor.as_deref(),
+                event.to_dyn().as_ref(),
+            );
         }
         scope!("EventHub::enqueue");
         self.inner.bus.publish_deferred_to(channel, event);
@@ -263,21 +278,43 @@ impl EventHub {
 
     /// Queue the event registered as `name` with `fields` (in descriptor
     /// order) on `channel`. What script natives use.
-    pub fn publish_named(&self, channel: Channel, name: &str, fields: Vec<DynValue>) -> Result<(), PublishError> {
+    pub fn publish_named(
+        &self,
+        channel: Channel,
+        name: &str,
+        fields: Vec<DynValue>,
+    ) -> Result<(), PublishError> {
         let descriptor = self
             .descriptor_by_name(name)
             .ok_or_else(|| PublishError::UnknownEvent(name.to_owned()))?;
         let event = DynEvent::new(descriptor.id, fields);
         descriptor
             .check(&event)
-            .map_err(|error| PublishError::Fields { event: name.to_owned(), error })?;
+            .map_err(|error| PublishError::Fields {
+                event: name.to_owned(),
+                error,
+            })?;
         self.publish_dyn(channel, event)
-            .map_err(|error| PublishError::Fields { event: name.to_owned(), error })
+            .map_err(|error| PublishError::Fields {
+                event: name.to_owned(),
+                error,
+            })
     }
 
-    fn note(&self, id: u64, channel: Channel, descriptor: Option<&EventDescriptor>, event: Option<&DynEvent>) {
+    fn note(
+        &self,
+        id: u64,
+        channel: Channel,
+        descriptor: Option<&EventDescriptor>,
+        event: Option<&DynEvent>,
+    ) {
         let name = descriptor.map_or_else(|| format!("#{id:016x}"), |d| d.name.clone());
-        self.inner.tap.note(Pending { id, name, channel, summary: summarize(descriptor, event) });
+        self.inner.tap.note(Pending {
+            id,
+            name,
+            channel,
+            summary: summarize(descriptor, event),
+        });
     }
 
     // ---- flushing -----------------------------------------------------------
@@ -291,7 +328,9 @@ impl EventHub {
         if self.inner.tap.enabled() {
             self.inner
                 .tap
-                .delivered(self.frame(), point, |id, channel| bus.subscriber_count(id, channel));
+                .delivered(self.frame(), point, |id, channel| {
+                    bus.subscriber_count(id, channel)
+                });
         }
         if report.hit_round_limit {
             tracing::warn!(%point, remaining = report.remaining, "event flush hit its round limit; the rest waits for the next flush");
@@ -411,14 +450,33 @@ mod tests {
         let hub = EventHub::new();
         let got = Arc::new(Mutex::new(Vec::new()));
         let g = Arc::clone(&got);
-        let _mine = hub.bus().subscribe_with(SubscribeOptions::channel(Channel::Entity(7)), move |e: &Hit| {
-            g.lock().unwrap().push(e.other);
-        });
+        let _mine = hub.bus().subscribe_with(
+            SubscribeOptions::channel(Channel::Entity(7)),
+            move |e: &Hit| {
+                g.lock().unwrap().push(e.other);
+            },
+        );
         let g = Arc::clone(&got);
-        let _global = hub.bus().subscribe(move |_: &Hit| g.lock().unwrap().push(999));
+        let _global = hub
+            .bus()
+            .subscribe(move |_: &Hit| g.lock().unwrap().push(999));
 
-        hub.publish(Channel::Entity(7), Hit { entity: 7, other: 1, impulse: 1.0 });
-        hub.publish(Channel::Entity(8), Hit { entity: 8, other: 2, impulse: 1.0 });
+        hub.publish(
+            Channel::Entity(7),
+            Hit {
+                entity: 7,
+                other: 1,
+                impulse: 1.0,
+            },
+        );
+        hub.publish(
+            Channel::Entity(8),
+            Hit {
+                entity: 8,
+                other: 2,
+                impulse: 1.0,
+            },
+        );
         assert!(got.lock().unwrap().is_empty(), "nothing before the flush");
         let report = hub.flush(FlushPoint::AfterPhysics);
         assert_eq!(report.delivered, 2);
@@ -430,7 +488,9 @@ mod tests {
         let hub = EventHub::new();
         let got = Arc::new(Mutex::new(Vec::new()));
         let g = Arc::clone(&got);
-        let _s = hub.bus().subscribe(move |e: &KeyDown| g.lock().unwrap().push(e.key));
+        let _s = hub
+            .bus()
+            .subscribe(move |e: &KeyDown| g.lock().unwrap().push(e.key));
         assert!(matches!(
             hub.publish_named(Channel::Global, "Nope", vec![]),
             Err(PublishError::UnknownEvent(_))
@@ -439,7 +499,8 @@ mod tests {
             hub.publish_named(Channel::Global, "KeyDown", vec![DynValue::F64(1.0)]),
             Err(PublishError::Fields { .. })
         ));
-        hub.publish_named(Channel::Global, "KeyDown", vec![DynValue::I64(32)]).unwrap();
+        hub.publish_named(Channel::Global, "KeyDown", vec![DynValue::I64(32)])
+            .unwrap();
         hub.flush(FlushPoint::AfterInput);
         assert_eq!(*got.lock().unwrap(), vec![32]);
     }
@@ -448,11 +509,24 @@ mod tests {
     fn custom_events_register_once() {
         let hub = EventHub::new();
         let d = EventDescriptor::dynamic("Door.Opened", [("by", FieldType::U64)]);
-        let id = hub.register(d.clone(), EventCategory::Custom("Door".into())).unwrap();
-        assert_eq!(hub.register(d, EventCategory::Custom("Door".into())).unwrap(), id);
+        let id = hub
+            .register(d.clone(), EventCategory::Custom("Door".into()))
+            .unwrap();
+        assert_eq!(
+            hub.register(d, EventCategory::Custom("Door".into()))
+                .unwrap(),
+            id
+        );
         let conflicting = EventDescriptor::dynamic("Door.Opened", [("by", FieldType::I64)]);
-        assert!(hub.register(conflicting, EventCategory::Custom("Door".into())).is_err());
-        let info = hub.events().into_iter().find(|e| e.descriptor.id == id).unwrap();
+        assert!(
+            hub.register(conflicting, EventCategory::Custom("Door".into()))
+                .is_err()
+        );
+        let info = hub
+            .events()
+            .into_iter()
+            .find(|e| e.descriptor.id == id)
+            .unwrap();
         assert_eq!(info.category.to_string(), "Custom/Door");
     }
 
@@ -460,9 +534,23 @@ mod tests {
     fn tap_records_flushed_events_with_subscriber_counts() {
         let hub = EventHub::new();
         hub.set_tap(true, 2);
-        let _s = hub.bus().subscribe_with(SubscribeOptions::channel(Channel::Entity(3)), |_: &Hit| {});
-        hub.publish(Channel::Global, LevelLoaded { level: "a.level".into() });
-        hub.publish(Channel::Entity(3), Hit { entity: 3, other: 4, impulse: 0.5 });
+        let _s = hub
+            .bus()
+            .subscribe_with(SubscribeOptions::channel(Channel::Entity(3)), |_: &Hit| {});
+        hub.publish(
+            Channel::Global,
+            LevelLoaded {
+                level: "a.level".into(),
+            },
+        );
+        hub.publish(
+            Channel::Entity(3),
+            Hit {
+                entity: 3,
+                other: 4,
+                impulse: 0.5,
+            },
+        );
         hub.publish(Channel::Global, KeyDown { key: 1 });
         assert!(hub.recent_events().is_empty(), "recorded at flush");
         hub.flush(FlushPoint::AfterScripts);
@@ -471,14 +559,22 @@ mod tests {
         assert_eq!(recent[0].name, "Hit");
         assert_eq!(recent[0].subscribers, 1);
         assert_eq!(recent[0].channel, Channel::Entity(3));
-        assert!(recent[0].summary.contains("impulse=0.500"), "{}", recent[0].summary);
+        assert!(
+            recent[0].summary.contains("impulse=0.500"),
+            "{}",
+            recent[0].summary
+        );
         assert_eq!(recent[1].point, FlushPoint::AfterScripts);
         let snapshot = hub.snapshot();
         assert_eq!(snapshot.recent[0].channel, "entity:3");
         let json = serde_json::to_string(&snapshot).unwrap();
         let back: crate::tap::EventsSnapshot = serde_json::from_str(&json).unwrap();
         assert_eq!(back, snapshot);
-        assert!(back.events.iter().any(|e| e.name == "Hit" && e.category == "Physics"));
+        assert!(
+            back.events
+                .iter()
+                .any(|e| e.name == "Hit" && e.category == "Physics")
+        );
         hub.set_tap(false, 0);
         assert!(hub.recent_events().is_empty());
     }
@@ -491,12 +587,17 @@ mod tests {
         hub.set_tap(true, 16);
         let got = Arc::new(Mutex::new(Vec::new()));
         let g = Arc::clone(&got);
-        let _s = hub.bus().subscribe(move |e: &KeyDown| g.lock().unwrap().push(e.key));
+        let _s = hub
+            .bus()
+            .subscribe(move |e: &KeyDown| g.lock().unwrap().push(e.key));
         let plugin = unsafe { gamma::ffi::ForeignBus::from_raw(hub.export_raw()) }.unwrap();
         let second = plugin.clone();
         let descriptor = hub.descriptor_by_name("KeyDown").unwrap();
         second
-            .publish_dyn_deferred(Channel::Global, &gamma::DynEvent::new(descriptor.id, vec![DynValue::I64(7)]))
+            .publish_dyn_deferred(
+                Channel::Global,
+                &gamma::DynEvent::new(descriptor.id, vec![DynValue::I64(7)]),
+            )
             .unwrap();
         drop(second);
         assert!(got.lock().unwrap().is_empty(), "deferred until the flush");
@@ -505,17 +606,27 @@ mod tests {
         let recent = hub.recent_events();
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].name, "KeyDown");
-        assert!(recent[0].summary.starts_with("(plugin)"), "{}", recent[0].summary);
+        assert!(
+            recent[0].summary.starts_with("(plugin)"),
+            "{}",
+            recent[0].summary
+        );
         assert!(recent[0].summary.contains("key=7"), "{}", recent[0].summary);
         // Subscriptions through the table work and are dropped with it.
         let seen = Arc::new(Mutex::new(0));
         let s2 = Arc::clone(&seen);
-        let sub = plugin.subscribe_dyn(descriptor.id, SubscribeOptions::default(), move |_| *s2.lock().unwrap() += 1);
+        let sub = plugin.subscribe_dyn(descriptor.id, SubscribeOptions::default(), move |_| {
+            *s2.lock().unwrap() += 1
+        });
         hub.publish(Channel::Global, KeyDown { key: 1 });
         hub.flush(FlushPoint::AfterInput);
         assert_eq!(*seen.lock().unwrap(), 1);
         drop(sub);
-        assert_eq!(hub.subscriber_count(descriptor.id, Channel::Global), 1, "only the hub's own left");
+        assert_eq!(
+            hub.subscriber_count(descriptor.id, Channel::Global),
+            1,
+            "only the hub's own left"
+        );
         drop(plugin);
     }
 

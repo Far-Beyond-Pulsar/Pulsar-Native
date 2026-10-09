@@ -13,8 +13,10 @@
 //! | [`component`] | the [`ClassInstance`] world component a placed class carries |
 //! | [`overrides`] | JSON diff / merge used for per-instance overrides |
 //! | [`plan`] | which prefab component goes on the root and which on a child |
+//! | [`template`] | a class's slot defaults decoded once; instances clone them |
 //! | [`world`] | [`world::instantiate_class`] and friends, on a SceneDB `World` |
 //! | [`migrate`] | level-file migration from `ScriptComponent`/`blueprint_bindings` |
+//! | [`records`] | component-record migrations at load (legacy shapes, projected props) |
 //! | [`native_script`] | [`NativeScriptComponent`]: binds an object to a Rust script actor |
 //!
 //! Placed instances *reference* their class: a level stores the class GUID
@@ -31,7 +33,9 @@ pub mod native_script;
 pub mod overrides;
 pub mod plan;
 pub mod prefab;
+pub mod records;
 pub mod registry;
+pub mod template;
 pub mod world;
 
 pub use component::ClassInstance;
@@ -43,10 +47,11 @@ pub use plan::{
 pub use prefab::{
     is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE,
 };
+pub use template::{template, ClassTemplate};
 pub use registry::{
-    class_name_of_dir, find_class_dirs, project_root_of_class_dir, strip_class_ext, ClassDefinition,
-    ClassEntry, ClassIndex, ClassIndexEntry, ClassRegistry, ClassVariable, VariableKind, CLASS_DIR_EXTENSION,
-    CLASS_INDEX_FILE,
+    class_name_of_dir, find_class_dirs, project_root_of_class_dir, strip_class_ext,
+    ClassDefinition, ClassEntry, ClassIndex, ClassIndexEntry, ClassRegistry, ClassVariable,
+    VariableKind, CLASS_DIR_EXTENSION, CLASS_INDEX_FILE,
 };
 pub use world::{ClassPlacement, SlotHandle};
 

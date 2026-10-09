@@ -1,12 +1,12 @@
 use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
-use ui::button::ButtonVariants as _;
+use ui::button::{Button, ButtonVariants as _};
 use ui::dock::{DockChannel, DockItem, PanelEvent};
 use ui::workspace::Workspace;
-use ui::{h_flex, v_flex, ActiveTheme};
+use ui::{h_flex, v_flex, ActiveTheme, Selectable};
 
-use super::panel::AssetViewerPanel;
+use super::panel::{AssetViewerPanel, MeshRenderMode};
 use super::workspace_panels::AssetPropertiesPanel;
 
 impl AssetViewerPanel {
@@ -78,8 +78,8 @@ impl Focusable for ViewportPanel {
 
 impl Render for ViewportPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(editor) = self.editor.upgrade() {
-            editor.update(cx, |editor, cx| {
+        if let Some(editor_entity) = self.editor.upgrade() {
+            editor_entity.update(cx, |editor, cx| {
                 editor.render_content(window, cx);
 
                 let surface_elem: gpui::AnyElement = if let Some(surface) = &editor.surface_handle {
@@ -99,7 +99,39 @@ impl Render for ViewportPanel {
                 };
 
                 if editor.is_3d {
+                    let mode = editor.render_mode;
+                    let overlay = h_flex()
+                        .gap_1()
+                        .p_1()
+                        .items_center()
+                        .bg(cx.theme().background.opacity(0.9))
+                        .rounded(cx.theme().radius)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .child(render_mode_button(
+                            "asset_view_lit",
+                            "Lit",
+                            mode == MeshRenderMode::Lit,
+                            editor_entity.clone(),
+                            MeshRenderMode::Lit,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_unlit",
+                            "Unlit",
+                            mode == MeshRenderMode::Unlit,
+                            editor_entity.clone(),
+                            MeshRenderMode::Unlit,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_wireframe",
+                            "Wireframe",
+                            mode == MeshRenderMode::Wireframe,
+                            editor_entity.clone(),
+                            MeshRenderMode::Wireframe,
+                        ));
+
                     div()
+                        .relative()
                         .size_full()
                         .min_h(px(200.0))
                         .bg(gpui::rgb(0x1a1a1a))
@@ -121,6 +153,7 @@ impl Render for ViewportPanel {
                         .on_key_down(AssetViewerPanel::on_key_down(cx))
                         .on_key_up(AssetViewerPanel::on_key_up(cx))
                         .child(surface_elem)
+                        .child(div().absolute().top(px(12.0)).left(px(12.0)).child(overlay))
                         .into_any_element()
                 } else {
                     div()
@@ -155,6 +188,25 @@ impl Render for ViewportPanel {
                 .into_any_element()
         }
     }
+}
+
+fn render_mode_button(
+    id: &'static str,
+    label: &'static str,
+    selected: bool,
+    editor: Entity<AssetViewerPanel>,
+    mode: MeshRenderMode,
+) -> impl IntoElement {
+    Button::new(id)
+        .label(label)
+        .ghost()
+        .selected(selected)
+        .on_click(move |_, _, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.render_mode = mode;
+                cx.notify();
+            });
+        })
 }
 
 impl ui::dock::Panel for ViewportPanel {

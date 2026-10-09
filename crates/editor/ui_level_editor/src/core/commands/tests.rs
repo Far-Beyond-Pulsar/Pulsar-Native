@@ -40,10 +40,7 @@ mod undo_redo_tests {
         );
 
         assert!(state.scene.undo());
-        assert!(
-            crate::scene_edit::objects::get_all_objects(&state.scene.world())
-                .is_empty()
-        );
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
         assert!(!state.scene.can_undo());
         assert!(state.scene.can_redo());
     }
@@ -59,10 +56,7 @@ mod undo_redo_tests {
             },
         );
         state.scene.undo();
-        assert!(
-            crate::scene_edit::objects::get_all_objects(&state.scene.world())
-                .is_empty()
-        );
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
 
         assert!(state.scene.redo());
 
@@ -72,6 +66,42 @@ mod undo_redo_tests {
         );
         assert!(state.scene.can_undo());
         assert!(!state.scene.can_redo());
+    }
+
+    fn object_count(state: &LevelEditorState) -> usize {
+        crate::scene_edit::objects::get_all_objects(&state.scene.world()).len()
+    }
+
+    /// Each history entry keeps the ids of both sides: redoing a removal
+    /// removes the object again, and undoing a redone add removes it again.
+    #[test]
+    fn redo_and_undo_keep_working_after_a_round_trip() {
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Cube"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        execute_command(&mut state, SceneCommand::RemoveObject { id });
+        assert_eq!(object_count(&state), 0);
+
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 1, "undo restores the removed object");
+        assert!(state.scene.redo());
+        assert_eq!(object_count(&state), 0, "redo removes it again");
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 1);
+
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 0, "undo the add");
+        assert!(state.scene.redo());
+        assert_eq!(object_count(&state), 1, "redo the add");
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 0, "undo a redone add");
     }
 
     #[test]
@@ -129,10 +159,7 @@ mod undo_redo_tests {
         // Still exactly the one checkpoint from AddObject -- undoing once
         // now must remove the object, not merely revert the selection.
         assert!(state.scene.undo());
-        assert!(
-            crate::scene_edit::objects::get_all_objects(&state.scene.world())
-                .is_empty()
-        );
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
         assert!(!state.scene.can_undo());
     }
 
@@ -151,7 +178,7 @@ mod undo_redo_tests {
     // unchanged, `execute_command` applies it -- actually reaches the live
     // `World` value and is undo-tracked, with no `serde_json::Value`
     // anywhere on this call path (unlike the tests in `scene_database.rs`,
-    // which exercise `SceneDatabase` methods directly, this goes through the
+    // which exercise the `scene_edit` functions directly, this goes through the
     // actual `SceneCommand` enum + `execute_command` UI code calls).
     #[test]
     fn set_component_property_reaches_the_live_world_value_with_no_json() {
@@ -217,6 +244,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "intensity",
             )
         }
@@ -233,6 +261,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "intensity",
             )
         }
@@ -304,6 +333,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "enabled",
             )
         }
@@ -318,6 +348,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "enabled",
             )
         }
@@ -325,15 +356,13 @@ mod undo_redo_tests {
         assert_eq!(reverted.downcast_ref::<bool>(), Some(&true)); // GeneralLightProps::default()
     }
 
-    // Mirrors the properties panel's refresh gate: after any component
-    // property command, `has_property_changes_for` must report the object so
-    // the frame pump marks the section dirty and pushes the new value into
-    // the cached editors (Pulsar-Native#575).
+    // A component property command writes the live value through the World:
+    // the revision moves, and the selected object's subscription (what the
+    // properties panel follows) delivers the new value.
     #[test]
-    fn a_component_property_command_registers_a_property_change_for_the_object() {
-        use crate::scene_edit::changes::{
-            drain_property_changes, has_property_changes_for,
-        };
+    fn a_component_property_command_reaches_the_object_feed() {
+        use engine_backend::scene::SceneWorldExt;
+        use pulsar_world_registry::{ObjectFeed, ObjectUpdate};
 
         let mut state = LevelEditorState::new();
         let id = execute_command(
@@ -362,7 +391,7 @@ mod undo_redo_tests {
 
         let default_light_json =
             serde_json::to_value(helio_component::LightComponent::default()).unwrap();
-        {
+        let feed = {
             let mut world = state.scene.world_mut();
             crate::scene_edit::components::add_component(
                 &mut world,
@@ -370,12 +399,11 @@ mod undo_redo_tests {
                 "LightComponent".to_string(),
                 default_light_json,
             );
-        }
-
-        let revision_before = {
-            let world = state.scene.world();
-            world.revision()
+            let entity = world.entity_for(&id).unwrap();
+            ObjectFeed::subscribe(&mut world, entity, || {}).unwrap()
         };
+
+        let revision_before = state.scene.world().revision();
         execute_command(
             &mut state,
             SceneCommand::SetComponentProperty {
@@ -386,30 +414,22 @@ mod undo_redo_tests {
                 value: Box::new(false),
             },
         );
-
-        // The panel's frame pump gates on `World::revision()` moving (see
-        // `PropertiesPanelWrapper::sync_sections`). If the live setter path
-        // writes through a raw pointer without touching the change tracker,
-        // the revision never moves and the panel never re-renders -- the
-        // switch stays put even though the World value changed.
-        let revision_after = {
-            let world = state.scene.world();
-            world.revision()
-        };
         assert!(
-            revision_after > revision_before,
-            "live component writes must move the World change-tracker revision (was {revision_before}, now {revision_after})"
+            state.scene.world().revision() > revision_before,
+            "live component writes must move the World revision"
         );
 
-        assert!(
-            has_property_changes_for(&id),
-            "the panel's refresh gate relies on this peek reporting the just-edited object"
-        );
-
-        let drained = drain_property_changes();
-        assert!(
-            drained.class_changed(&id, "LightComponent"),
-            "the section marks cards dirty via class_changed on the drained set"
+        let delivered = feed.take().into_iter().find_map(|update| match update {
+            ObjectUpdate::Changed(delta) => delta
+                .value?
+                .downcast::<helio_component::LightComponent>()
+                .ok(),
+            ObjectUpdate::Despawned => None,
+        });
+        assert_eq!(
+            delivered.map(|light| light.general.enabled),
+            Some(false),
+            "the object's subscription delivers the edited value"
         );
     }
 
@@ -450,6 +470,7 @@ mod undo_redo_tests {
                 &world,
                 &lamp,
                 "LightComponent",
+                0,
                 "movability",
             )
             .and_then(|v| v.downcast_ref::<ObjectMovability>().copied())
@@ -465,9 +486,245 @@ mod undo_redo_tests {
         assert_eq!(result.affected_ids, vec![lamp.clone()]);
         assert_eq!(read(&state), Some(ObjectMovability::Static));
 
-        assert!(!execute_command(&mut state, mark_static()).changed, "already Static");
+        assert!(
+            !execute_command(&mut state, mark_static()).changed,
+            "already Static"
+        );
 
         assert!(state.scene.undo());
         assert_eq!(read(&state), Some(ObjectMovability::Movable));
+    }
+
+    // Pulsar-Native#1035, Phase 3: undo restores typed snapshots in place.
+    // Surviving instances keep their entity and id (nothing is respawned or
+    // decoded), a removed one comes back with its id, and an unresolved
+    // payload is kept as it was.
+    #[test]
+    fn undo_restores_component_instances_in_place() {
+        use engine_backend::scene::{attachments, SceneWorldExt};
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Lamp"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        let (light, unresolved) = {
+            let mut world = state.scene.world_mut();
+            let owner = world.entity_for(&id).unwrap();
+            let light = pulsar_world_registry::attach_value(
+                &mut world,
+                owner,
+                helio_component::LightComponent::default(),
+            )
+            .unwrap();
+            let unresolved = pulsar_world_registry::attach_unresolved(
+                &mut world,
+                owner,
+                attachments::NewInstance::new("NotInThisBuild"),
+                serde_json::json!({ "kept": [1, 2, 3] }),
+                "not registered".to_string(),
+            )
+            .unwrap();
+            (light, unresolved)
+        };
+        let ids = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            let owner = world.entity_for(&id).unwrap();
+            attachments::instances(&world, owner)
+                .into_iter()
+                .map(|instance| (instance, attachments::meta(&world, instance).unwrap().id))
+                .collect::<Vec<_>>()
+        };
+        let before = ids(&state);
+        let intensity = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            world
+                .get::<helio_component::LightComponent>(light)
+                .map(|light| light.intensity.intensity)
+        };
+
+        let result = execute_command(
+            &mut state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "LightComponent".to_string(),
+                component_index: 0,
+                prop_name: "intensity".to_string(),
+                value: Box::new(7.0_f32),
+            },
+        );
+        assert!(result.changed);
+        assert_eq!(intensity(&state), Some(7.0));
+        assert!(state.scene.undo());
+        assert_eq!(ids(&state), before, "same entities, ids and order");
+        assert_eq!(intensity(&state), Some(1000.0), "value restored in place");
+        assert!(state.scene.redo());
+        assert_eq!(ids(&state), before);
+        assert_eq!(intensity(&state), Some(7.0));
+
+        let result = execute_command(
+            &mut state,
+            SceneCommand::RemoveComponent {
+                id: id.clone(),
+                component_index: 1,
+            },
+        );
+        assert!(result.changed);
+        assert_eq!(ids(&state).len(), 1);
+        assert!(state.scene.undo());
+        let after = ids(&state);
+        assert_eq!(after[0], before[0], "the light kept its entity");
+        assert_eq!(after[1].1, before[1].1, "the removed instance kept its id");
+        let world = state.scene.world();
+        let payload = world
+            .get::<attachments::UnresolvedComponent>(after[1].0)
+            .expect("still unresolved");
+        assert_eq!(payload.data, serde_json::json!({ "kept": [1, 2, 3] }));
+        assert_ne!(after[1].0, unresolved, "re-attached as a new entity");
+    }
+
+    // Pulsar-Native#1035, Phase 3: component commands carry typed values
+    // and report a change only when one happened.
+    #[test]
+    fn typed_component_commands_are_undoable_and_report_no_ops() {
+        use engine_backend::scene::{attachments, SceneWorldExt};
+        let mut state = LevelEditorState::new();
+        let mut light = helio_component::LightComponent::default();
+        light.intensity.intensity = 25.0;
+        let added = execute_command(
+            &mut state,
+            SceneCommand::AddObjectWithComponents {
+                data: object("Lamp"),
+                parent_id: None,
+                components: vec![
+                    super::super::TypedComponent::new(light.clone()),
+                    super::super::TypedComponent {
+                        enabled: false,
+                        ..super::super::TypedComponent::new(light)
+                    },
+                ],
+            },
+        );
+        let id = added.affected_ids[0].clone();
+        let instances = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            let owner = world.entity_for(&id).unwrap();
+            attachments::instances(&world, owner)
+                .into_iter()
+                .map(|instance| {
+                    (
+                        attachments::is_enabled(&world, instance),
+                        world
+                            .get::<helio_component::LightComponent>(instance)
+                            .map(|light| light.intensity.intensity),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            instances(&state),
+            vec![(true, Some(25.0)), (false, Some(25.0))],
+            "attached typed, in order, enabled as asked"
+        );
+
+        // Class default when no value is given.
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::AddComponent {
+                    id: id.clone(),
+                    class_name: "LightComponent".into(),
+                    value: None,
+                },
+            )
+            .changed
+        );
+        assert_eq!(instances(&state)[2], (true, Some(1000.0)));
+
+        // A whole-value replacement keeps the instance and is undoable.
+        let mut brighter = helio_component::LightComponent::default();
+        brighter.intensity.intensity = 50.0;
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::SetComponentData {
+                    id: id.clone(),
+                    component_index: 0,
+                    data: super::super::ComponentData::Value(Box::new(brighter)),
+                },
+            )
+            .changed
+        );
+        assert_eq!(instances(&state)[0], (true, Some(50.0)));
+        assert!(state.scene.undo());
+        assert_eq!(instances(&state)[0], (true, Some(25.0)));
+
+        // A value of another class is refused; so is an unresolved payload
+        // for a live instance.
+        for data in [
+            super::super::ComponentData::Value(Box::new(7_u32)),
+            super::super::ComponentData::Unresolved(serde_json::json!({})),
+        ] {
+            assert!(
+                !execute_command(
+                    &mut state,
+                    SceneCommand::SetComponentData {
+                        id: id.clone(),
+                        component_index: 0,
+                        data,
+                    },
+                )
+                .changed
+            );
+        }
+
+        // No-ops push nothing.
+        for no_op in [
+            SceneCommand::SetComponentEnabled {
+                id: id.clone(),
+                component_index: 1,
+                enabled: false,
+            },
+            SceneCommand::ReorderComponent {
+                id: id.clone(),
+                from_index: 1,
+                to_index: 1,
+            },
+            SceneCommand::SetComponentParent {
+                id: id.clone(),
+                component_index: 1,
+                parent_index: None,
+            },
+            SceneCommand::RemoveComponent {
+                id: id.clone(),
+                component_index: 9,
+            },
+        ] {
+            assert!(!execute_command(&mut state, no_op).changed);
+        }
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::SetComponentParent {
+                    id: id.clone(),
+                    component_index: 1,
+                    parent_index: Some(0),
+                },
+            )
+            .changed
+        );
+
+        // Undo the parent link and the added default, then the object with
+        // both of its components in one step.
+        assert!(state.scene.undo());
+        assert!(state.scene.undo());
+        assert_eq!(instances(&state).len(), 2);
+        assert!(state.scene.undo());
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(!state.scene.can_undo());
     }
 }

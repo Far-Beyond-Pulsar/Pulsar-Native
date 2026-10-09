@@ -24,7 +24,10 @@ const INTRINSICS: &[(&str, &[&str])] = &[
 fn stateful_flow_nodes_register_no_script_native() {
     let natives = NativeRegistry::with_engine_natives();
     for (name, _) in INTRINSICS {
-        assert!(natives.get(&format!("std::{name}")).is_none(), "`std::{name}` must not be an importable native");
+        assert!(
+            natives.get(&format!("std::{name}")).is_none(),
+            "`std::{name}` must not be an importable native"
+        );
     }
 }
 
@@ -35,21 +38,33 @@ fn stateful_flow_nodes_keep_their_palette_metadata() {
             .iter()
             .find(|n| n.name == *name)
             .unwrap_or_else(|| panic!("node `{name}` is still in the palette"));
-        assert_eq!(node.exec_outputs, *outputs, "{name}: exec pins come from the declaration's markers");
+        assert_eq!(
+            node.exec_outputs, *outputs,
+            "{name}: exec pins come from the declaration's markers"
+        );
     }
 }
 
 #[test]
 fn the_flow_module_has_no_global_state_or_blocking_calls() {
     let source = include_str!("../src/engine/nodes/flow/mod.rs");
-    for forbidden in ["static ", "thread::sleep", "AtomicBool", "AtomicI32", "Mutex"] {
+    for forbidden in [
+        "static ",
+        "thread::sleep",
+        "AtomicBool",
+        "AtomicI32",
+        "Mutex",
+    ] {
         // Doc and comment text may mention them; code may not.
         let code: String = source
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(!code.contains(forbidden), "the flow nodes still use `{forbidden}`");
+        assert!(
+            !code.contains(forbidden),
+            "the flow nodes still use `{forbidden}`"
+        );
     }
 }
 

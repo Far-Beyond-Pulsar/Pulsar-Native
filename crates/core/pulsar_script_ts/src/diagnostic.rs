@@ -20,7 +20,12 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     pub fn error(message: impl Into<String>, line: u32, column: u32) -> Self {
-        Self { severity: Severity::Error, message: message.into(), line, column }
+        Self {
+            severity: Severity::Error,
+            message: message.into(),
+            line,
+            column,
+        }
     }
 
     pub fn is_error(&self) -> bool {
@@ -60,10 +65,15 @@ impl LineIndex {
 
     /// 1-based `(line, column)`, the column counted in characters.
     pub(crate) fn position(&self, source: &str, offset: u32) -> (u32, u32) {
-        let line = self.starts.partition_point(|&start| start <= offset).saturating_sub(1);
+        let line = self
+            .starts
+            .partition_point(|&start| start <= offset)
+            .saturating_sub(1);
         let start = self.starts[line] as usize;
         let end = (offset as usize).min(source.len());
-        let column = source.get(start..end).map_or(0, |text| text.chars().count());
+        let column = source
+            .get(start..end)
+            .map_or(0, |text| text.chars().count());
         (line as u32 + 1, column as u32 + 1)
     }
 }

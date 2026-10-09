@@ -72,7 +72,9 @@ fn prompt_continue_without_discrete_gpu() -> bool {
             || std::env::var("WLR_RDP_BACKENDS").is_ok();
 
         if !has_display {
-            eprintln!("[gpu_policy] No display server detected (headless/WSL). Continuing with available GPU.");
+            eprintln!(
+                "[gpu_policy] No display server detected (headless/WSL). Continuing with available GPU."
+            );
             return true;
         }
     }
@@ -106,6 +108,20 @@ pub fn enforce_discrete_gpu_policy_or_exit() {
     // detection is irrelevant and the prompt dialog cannot display without WSLg.
     if is_wsl() {
         tracing::info!("WSL detected; skipping discrete GPU policy check");
+        return;
+    }
+
+    let preference = engine_state::settings::global_config()
+        .get(
+            engine_state::settings::NS_EDITOR,
+            "renderer",
+            "gpu_preference",
+        )
+        .ok()
+        .and_then(|value| value.as_str().ok().map(str::to_owned))
+        .unwrap_or_else(|| "high_performance".to_owned());
+    if preference == "low_power" || preference == "auto" {
+        tracing::info!(%preference, "GPU policy uses the configured non-discrete preference");
         return;
     }
 

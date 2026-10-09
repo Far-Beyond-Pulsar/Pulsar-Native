@@ -66,12 +66,16 @@ fn plane_hit(
 #[derive(Clone, Copy, Default)]
 pub struct SplineMode;
 impl ToolMode for SplineMode {
-    fn build_panels(&self, ctx: &mut super::super::ModePanelContext<'_, '_>) -> Vec<std::sync::Arc<dyn ui::dock::PanelView>> {
+    fn build_panels(
+        &self,
+        ctx: &mut super::super::ModePanelContext<'_, '_>,
+    ) -> Vec<std::sync::Arc<dyn ui::dock::PanelView>> {
         let state = ctx.state.clone();
         let owner = ctx.owner.clone();
         let panel = {
             let window = &mut *ctx.window;
-            ctx.cx.new(|cx| crate::ui::panel::spline::SplinePanel::new(state, owner, window, cx))
+            ctx.cx
+                .new(|cx| crate::ui::panel::spline::SplinePanel::new(state, owner, window, cx))
         };
         vec![std::sync::Arc::new(panel)]
     }
@@ -257,19 +261,17 @@ mod tests {
     }
     #[test]
     fn invalid_viewport_cannot_place_points() {
-        assert!(
-            plane_hit(
-                CameraFrame::default(),
-                ViewportFrame {
-                    width: 0.,
-                    height: 0.
-                },
-                0.5,
-                0.5,
-                DrawingPlane::XZ,
-                0.
-            )
-            .is_none()
-        );
+        assert!(plane_hit(
+            CameraFrame::default(),
+            ViewportFrame {
+                width: 0.,
+                height: 0.
+            },
+            0.5,
+            0.5,
+            DrawingPlane::XZ,
+            0.
+        )
+        .is_none());
     }
 }

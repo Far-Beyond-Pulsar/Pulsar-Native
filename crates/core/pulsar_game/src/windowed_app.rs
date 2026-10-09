@@ -18,14 +18,8 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{
-    ensure_gpu_mirror, sync_editor_light_rows, sync_static_mesh_rows, RuntimeLevel,
-};
-use helio::{
-    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
-    RendererConfig,
-};
-use parking_lot::RwLock;
+use engine_backend::scene::RuntimeLevel;
+use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer};
 
 use crate::camera_selection::select_world_camera;
 use crate::freecam::FreeCam;
@@ -79,40 +73,35 @@ impl GameWindow {
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: engine_state::settings::global_config()
+                .get(
+                    engine_state::settings::NS_EDITOR,
+                    "renderer",
+                    "max_frame_latency",
+                )
+                .ok()
+                .and_then(|value| value.as_int().ok())
+                .unwrap_or(2)
+                .clamp(1, 4) as u32,
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
         surface.configure(&device, &surface_config);
 
         // Build the Helio renderer. `pulsar_game` owns its device (unlike the
-        // editor's wgpui-hosted viewport, which shares GPUI's device via
-        // `RendererBuilder::with_external_device`), so we use the plain `build`
-        // constructor with the owning-device default.
-        //
-        // SceneDB's GPU mirror must be attached to the shared world BEFORE
-        // the renderer is constructed: `RendererBuilder::new` requires a
-        // `SceneDbHandle` up front (SceneDB is the sole scene authority).
-        // Idempotent: a second window sharing this `scene_store` gets back
-        // the same mirror rather than a second one.
-        let scene_db_handle =
-            ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
-        let render_config =
-            RendererConfig::new(surface_config.width, surface_config.height, surface_format);
-        let renderer = helio::RendererBuilder::new(render_config, scene_db_handle)
-            .with_editor_mode(desc.editor_mode)
-            // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
-            // All illumination comes from lights in the scene file — same as editor.
-            .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_pass_build_context(Box::new(
-                helio_default_graphs::build_default_graph_external_with_context,
-            ))
-            .build(
-                device.clone(),
-                queue.clone(),
+        // editor's wgpui-hosted viewport, which shares GPUI's device), and
+        // takes its settings from the project (`crate::game_renderer`).
+        let renderer = crate::game_renderer::build_game_renderer(
+            device.clone(),
+            queue.clone(),
+            scene_store,
+            crate::game_renderer::project_renderer_config(
                 surface_config.width,
                 surface_config.height,
                 surface_format,
-            );
+            ),
+            desc.editor_mode,
+            crate::game_renderer::DeviceOwner::Game,
+        );
 
         Self {
             handle,
@@ -232,14 +221,56 @@ struct GpuContext {
     adapter: Option<wgpu::Adapter>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
+    power_preference: wgpu::PowerPreference,
+    hardware_ray_queries: bool,
 }
 
 impl GpuContext {
     fn new(display: winit::event_loop::OwnedDisplayHandle) -> Self {
+        let renderer_config = engine_state::settings::global_config();
+        let backend = renderer_config
+            .get(
+                engine_state::settings::NS_EDITOR,
+                "renderer",
+                "backend_preference",
+            )
+            .ok()
+            .and_then(|value| value.as_str().ok().map(str::to_owned))
+            .unwrap_or_else(|| "auto".to_owned());
+        let backends = match backend.as_str() {
+            "vulkan" => wgpu::Backends::VULKAN,
+            "dx12" => wgpu::Backends::DX12,
+            "metal" => wgpu::Backends::METAL,
+            "gl" => wgpu::Backends::GL,
+            _ => wgpu::Backends::all(),
+        };
+        let power_preference = renderer_config
+            .get(
+                engine_state::settings::NS_EDITOR,
+                "renderer",
+                "gpu_preference",
+            )
+            .ok()
+            .and_then(|value| value.as_str().ok().map(str::to_owned))
+            .map(|preference| match preference.as_str() {
+                "low_power" => wgpu::PowerPreference::LowPower,
+                "auto" => wgpu::PowerPreference::None,
+                _ => wgpu::PowerPreference::HighPerformance,
+            })
+            .unwrap_or(wgpu::PowerPreference::HighPerformance);
+        let hardware_ray_queries = renderer_config
+            .get(
+                engine_state::settings::NS_EDITOR,
+                "renderer",
+                "hardware_ray_queries",
+            )
+            .ok()
+            .and_then(|value| value.as_bool().ok())
+            .unwrap_or(false);
         Self {
             instance: wgpu::Instance::new(
                 wgpu::InstanceDescriptor {
-                    backends: wgpu::Backends::all(),
+                    backends,
                     flags: wgpu::InstanceFlags::empty(),
                     ..wgpu::InstanceDescriptor::new_without_display_handle()
                 }
@@ -248,6 +279,8 @@ impl GpuContext {
             adapter: None,
             device: None,
             queue: None,
+            power_preference,
+            hardware_ray_queries,
         }
     }
 
@@ -258,21 +291,32 @@ impl GpuContext {
 
         let adapter =
             pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
+                power_preference: self.power_preference,
                 compatible_surface: Some(surface),
                 force_fallback_adapter: false,
                 apply_limit_buckets: false,
             }))
             .expect("No suitable GPU adapter found");
 
+        let mut requested_features = required_wgpu_features(adapter.features());
+        if !self.hardware_ray_queries {
+            requested_features.remove(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
+        }
+        let experimental_features =
+            if requested_features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY) {
+                // SAFETY: the editor preference explicitly opts into wgpu's experimental ray query.
+                unsafe { wgpu::ExperimentalFeatures::enabled() }
+            } else {
+                wgpu::ExperimentalFeatures::disabled()
+            };
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("Pulsar GPU Device"),
-            required_features: required_wgpu_features(adapter.features()),
+            required_features: requested_features,
             required_limits: required_wgpu_limits(adapter.limits()),
             // wgpu gates EXPERIMENTAL_* features (Helio requests EXPERIMENTAL_RAY_QUERY
             // when the adapter supports it) behind a second acknowledgement token.
             // Without it, device creation fails with ExperimentalFeaturesNotEnabled.
-            experimental_features: required_experimental_features(adapter.features()),
+            experimental_features,
             ..Default::default()
         }))
         .expect("Failed to create GPU device");
@@ -630,9 +674,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                         let key = code as i64;
                         let channel = pulsar_events::gamma::Channel::Global;
                         if pressed {
-                            self.events.publish(channel, pulsar_events::builtin::KeyDown { key });
+                            self.events
+                                .publish(channel, pulsar_events::builtin::KeyDown { key });
                         } else {
-                            self.events.publish(channel, pulsar_events::builtin::KeyUp { key });
+                            self.events
+                                .publish(channel, pulsar_events::builtin::KeyUp { key });
                         }
                     }
                 }
@@ -665,12 +711,18 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 };
                 let channel = pulsar_events::gamma::Channel::Global;
                 if state == ElementState::Pressed {
-                    self.events.publish(channel, pulsar_events::builtin::MouseButtonDown { button: index });
+                    self.events.publish(
+                        channel,
+                        pulsar_events::builtin::MouseButtonDown { button: index },
+                    );
                     if button == winit::event::MouseButton::Left && !self.cursor_captured {
                         self.capture_cursor(handle);
                     }
                 } else {
-                    self.events.publish(channel, pulsar_events::builtin::MouseButtonUp { button: index });
+                    self.events.publish(
+                        channel,
+                        pulsar_events::builtin::MouseButtonUp { button: index },
+                    );
                 }
             }
 
@@ -683,20 +735,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                     profiling::record_frame_time(now.duration_since(last).as_secs_f32() * 1000.0);
                 }
                 // Advance the shared world's authoritative SceneDB state and
-                // flush its GPU mirror. World content is read by Helio passes
-                // directly from that mirror -- there is no renderer-owned
-                // frame projection or CPU object cache to rebuild here (same
-                // zero-copy seam the editor viewport renderer uses).
-                {
-                    let mut store = self.scene_store.write();
-                    // Runtime uses Helio directly, so it does not pass through
-                    // HelioRenderer's editor-row projection. Hydrated
-                    // LightComponents therefore need the same derived light
-                    // rows authored before SceneDB flushes the GPU mirror.
-                    sync_editor_light_rows(&mut store.world, false, None);
-                    sync_static_mesh_rows(&mut store, None);
-                    store.step();
-                }
+                // flush its GPU mirror. Helio's scene join reads the mirrored
+                // rows directly -- there is no renderer-owned frame projection
+                // or CPU object cache to rebuild here (same seam the editor
+                // viewport renderer uses).
+                self.scene_store.write().step();
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,
                 // then a Camera-typed entity in the SHARED world (#637 --

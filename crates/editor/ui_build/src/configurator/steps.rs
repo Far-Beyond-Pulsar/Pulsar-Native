@@ -61,11 +61,47 @@ const STEPS: [StepRow; 5] = [
 ];
 
 const PRESETS: [(&str, BuildSteps); 5] = [
-    ("Quick check", BuildSteps { update: false, clean: false, check: true, build: false, run: false }),
+    (
+        "Quick check",
+        BuildSteps {
+            update: false,
+            clean: false,
+            check: true,
+            build: false,
+            run: false,
+        },
+    ),
     ("Build", BuildSteps::just_build()),
-    ("Clean build", BuildSteps { update: false, clean: true, check: false, build: true, run: false }),
-    ("Build & run", BuildSteps { update: false, clean: false, check: false, build: true, run: true }),
-    ("Full refresh", BuildSteps { update: true, clean: true, check: false, build: true, run: true }),
+    (
+        "Clean build",
+        BuildSteps {
+            update: false,
+            clean: true,
+            check: false,
+            build: true,
+            run: false,
+        },
+    ),
+    (
+        "Build & run",
+        BuildSteps {
+            update: false,
+            clean: false,
+            check: false,
+            build: true,
+            run: true,
+        },
+    ),
+    (
+        "Full refresh",
+        BuildSteps {
+            update: true,
+            clean: true,
+            check: false,
+            build: true,
+            run: true,
+        },
+    ),
 ];
 
 impl BuildConfiguratorWindow {
@@ -77,14 +113,20 @@ impl BuildConfiguratorWindow {
     ) -> AnyElement {
         let steps = config.steps;
 
-        let presets = h_flex().gap_2().flex_wrap().children(PRESETS.iter().map(|(label, preset)| {
-            let preset = *preset;
-            Button::new(SharedString::from(format!("bc-preset-{label}")))
-                .small()
-                .label(*label)
-                .selected(steps == preset)
-                .on_click(cx.listener(move |this, _, _, cx| this.edit(cx, |c| c.steps = preset)))
-        }));
+        let presets =
+            h_flex()
+                .gap_2()
+                .flex_wrap()
+                .children(PRESETS.iter().map(|(label, preset)| {
+                    let preset = *preset;
+                    Button::new(SharedString::from(format!("bc-preset-{label}")))
+                        .small()
+                        .label(*label)
+                        .selected(steps == preset)
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| this.edit(cx, |c| c.steps = preset)),
+                        )
+                }));
 
         let rows = STEPS.iter().enumerate().map(|(ix, row)| {
             let on = (row.get)(&steps);
@@ -112,7 +154,12 @@ impl BuildConfiguratorWindow {
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .child(div().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).child(row.title))
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child(row.title),
+                        )
                         .child(div().text_xs().text_color(p.muted).child(row.description)),
                 )
                 .child(
@@ -144,8 +191,17 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
         Err(error) => h_flex()
             .gap_2()
             .items_center()
-            .child(Icon::new(IconName::WarningTriangle).size(px(14.)).text_color(p.danger))
-            .child(div().text_sm().text_color(p.danger).child(error.to_string()))
+            .child(
+                Icon::new(IconName::WarningTriangle)
+                    .size(px(14.))
+                    .text_color(p.danger),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(p.danger)
+                    .child(error.to_string()),
+            )
             .into_any_element(),
         Ok(plan) => {
             let env = plan
@@ -170,7 +226,13 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
                     h_flex()
                         .gap_3()
                         .items_baseline()
-                        .child(div().w(px(18.)).text_xs().text_color(p.muted).child(format!("{}.", ix + 1)))
+                        .child(
+                            div()
+                                .w(px(18.))
+                                .text_xs()
+                                .text_color(p.muted)
+                                .child(format!("{}.", ix + 1)),
+                        )
                         .child(div().w(px(190.)).text_sm().child(step.title()))
                         .child(
                             div()
@@ -195,7 +257,11 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
                         .pt_1()
                         .gap_2()
                         .items_center()
-                        .child(Icon::new(IconName::WarningTriangle).size(px(14.)).text_color(p.warning))
+                        .child(
+                            Icon::new(IconName::WarningTriangle)
+                                .size(px(14.))
+                                .text_color(p.warning),
+                        )
                         .child(div().text_sm().text_color(p.warning).child(warning.clone()))
                 }))
                 .into_any_element()
@@ -209,7 +275,12 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
         .bg(p.bg.opacity(0.6))
         .border_1()
         .border_color(p.border)
-        .child(div().text_xs().text_color(p.muted).child("PIPELINE PREVIEW"))
+        .child(
+            div()
+                .text_xs()
+                .text_color(p.muted)
+                .child("PIPELINE PREVIEW"),
+        )
         .child(body)
         .into_any_element()
 }

@@ -252,5 +252,3 @@ impl crate::input::InputExtras for super::EditorExtras {
         )
     }
 }
-
-

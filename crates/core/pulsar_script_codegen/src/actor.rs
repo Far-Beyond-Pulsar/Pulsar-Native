@@ -14,7 +14,7 @@
 
 use std::fmt::Write as _;
 
-use pulsar_script_vm::Module;
+use pulsar_script_vm::{Module, SubscriptionScope};
 
 use crate::{generate_with, CodegenError, Options};
 
@@ -82,7 +82,9 @@ pub fn pascal_case(name: &str) -> String {
         .filter(|s| !s.is_empty())
         .map(|word| {
             let mut chars = word.chars();
-            chars.next().map_or_else(String::new, |first| first.to_uppercase().collect::<String>() + chars.as_str())
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + chars.as_str()
+            })
         })
         .collect()
 }
@@ -90,16 +92,51 @@ pub fn pascal_case(name: &str) -> String {
 const VM: &str = "pulsar_game::scripting::export::vm";
 
 /// The `events.rs` source for class `class_name`, compiled to `module`.
-pub fn generate_actor(class_name: &str, module: &Module, components: &[ComponentSpec]) -> Result<String, ExportError> {
-    if !module.events.is_empty() || !module.subscriptions.is_empty() {
+pub fn generate_actor(
+    class_name: &str,
+    module: &Module,
+    components: &[ComponentSpec],
+) -> Result<String, ExportError> {
+    if let Some((index, subscription)) = module.subscriptions.iter().enumerate().next() {
+        let event = subscription.event.to_string();
+        if let SubscriptionScope::Component(variable) = subscription.scope {
+            let source = module.variables.get(variable as usize).map_or_else(
+                || format!("component-reference variable {variable}"),
+                |value| {
+                    format!(
+                        "component-reference variable {variable} (`{}`: {})",
+                        value.name, value.ty
+                    )
+                },
+            );
+            return Err(ExportError::Unsupported(format!(
+                "`{class_name}` subscription #{index} for event `{event}` uses {source}; exported actors do not \
+                 have the runtime event context needed to resolve that live reference, queue delivery, and dispatch \
+                 its handler. Use the VM compile target for this class."
+            )));
+        }
         return Err(ExportError::Unsupported(format!(
-            "`{class_name}` declares or handles custom events, which an exported actor cannot subscribe to; \
-             use the VM compile target for this class"
+            "`{class_name}` subscription #{index} for event `{event}` uses the `{:?}` scope; exported actors do \
+             not have the runtime event context needed to queue delivery and dispatch its handler. Use the VM \
+             compile target for this class.",
+            subscription.scope
+        )));
+    }
+    if let Some(declaration) = module.events.first() {
+        return Err(ExportError::Unsupported(format!(
+            "`{class_name}` declares event `{}`; exported actors do not have the session event host needed to \
+             register its descriptor and publish payloads. Use the VM compile target for this class.",
+            declaration.name
         )));
     }
     let ident = snake_case(class_name);
     let ty = pascal_case(class_name);
-    let class_source = generate_with(module, &Options { vm_crate: VM.to_owned() })?;
+    let class_source = generate_with(
+        module,
+        &Options {
+            vm_crate: VM.to_owned(),
+        },
+    )?;
     let enabled: Vec<&ComponentSpec> = components.iter().filter(|c| c.enabled).collect();
 
     let mut begin_play = String::new();
@@ -115,17 +152,20 @@ pub fn generate_actor(class_name: &str, module: &Module, components: &[Component
         let mut begin_plays_body = String::new();
         for component in &enabled {
             let class = &component.class_name;
-            let json = component.property_defaults_json.replace('\\', "\\\\").replace('"', "\\\"");
+            let json = component
+                .property_defaults_json
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"");
             let _ = write!(
                 init_body,
-                r#"        if !pulsar_world_registry::world_component_present_for_class("{class}", world, entity) {{
-            if let Err(__e) = pulsar_world_registry::hydrate_world_component_for_class(
-                "{class}",
-                world,
-                entity,
-                &serde_json::from_str::<serde_json::Value>("{json}").unwrap_or_else(|_| serde_json::json!({{}})),
+                r#"        if pulsar_world_registry::instances::resolve_instance(world, entity, "{class}", 0).is_none() {{
+            // The class default, decoded once for every actor of this class.
+            static __DEFAULT: pulsar_world_registry::instances::DefaultCache =
+                pulsar_world_registry::instances::DefaultCache::new();
+            if let Err(__e) = pulsar_world_registry::instances::attach_cached_default(
+                world, entity, "{class}", "{json}", &__DEFAULT,
             ) {{
-                tracing::error!("blueprint `{ident}`: hydrating {class} failed: {{__e}}");
+                tracing::error!("blueprint `{ident}`: attaching {class} failed: {{__e}}");
             }}
         }}
 "#
@@ -151,13 +191,15 @@ pub fn generate_actor(class_name: &str, module: &Module, components: &[Component
             component_helpers,
             r#"
 impl {ty} {{
-    /// Ensure every enabled prefab component exists on the actor's scene
-    /// entity in the LIVE world (#651).
+    /// Ensure every enabled prefab component is attached to the actor's
+    /// scene object in the LIVE world (#651), as a component instance
+    /// (Pulsar-Native#1035).
     ///
-    /// Idempotent and scene-respecting: hydration fires only when the class
-    /// is absent, so per-instance values the scene already hydrated win over
-    /// the defaults baked in at compile time. Failures log and continue:
-    /// one bad component never blocks the actor.
+    /// Idempotent and scene-respecting: a component is attached only when
+    /// the object has no instance of its class, so per-instance values the
+    /// scene already attached win over the defaults baked in at compile
+    /// time. Failures log and continue: one bad component never blocks the
+    /// actor.
     pub fn __init_components(entity: Entity, world: &mut World) {{
 {init_body}    }}
 
@@ -170,8 +212,16 @@ impl {ty} {{
         );
     }
 
-    let class_source: String =
-        class_source.lines().map(|line| if line.is_empty() { "\n".to_owned() } else { format!("    {line}\n") }).collect();
+    let class_source: String = class_source
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                "\n".to_owned()
+            } else {
+                format!("    {line}\n")
+            }
+        })
+        .collect();
 
     Ok(format!(
         r#"//! Blueprint actor: `{ident}`
@@ -258,7 +308,11 @@ mod class {{
 /// The files of one class's `events/` directory in a project that has none
 /// yet (the layout the project builder scans). Existing projects only ever
 /// need `events.rs`.
-pub fn class_files(class_name: &str, module: &Module, components: &[ComponentSpec]) -> Result<Vec<(String, String)>, ExportError> {
+pub fn class_files(
+    class_name: &str,
+    module: &Module,
+    components: &[ComponentSpec],
+) -> Result<Vec<(String, String)>, ExportError> {
     let ident = snake_case(class_name);
     let base = format!("src/classes/{ident}");
     Ok(vec![

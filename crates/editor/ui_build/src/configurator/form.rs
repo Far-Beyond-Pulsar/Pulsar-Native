@@ -28,7 +28,12 @@ pub(super) fn section(
         .child(
             v_flex()
                 .gap_0p5()
-                .child(div().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).child(title))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(title),
+                )
                 .child(div().text_xs().text_color(p.muted).child(description)),
         )
         .child(content)
@@ -36,7 +41,11 @@ pub(super) fn section(
 }
 
 /// A label above a control.
-pub(super) fn labeled(label: &'static str, p: Palette, control: impl IntoElement) -> impl IntoElement {
+pub(super) fn labeled(
+    label: &'static str,
+    p: Palette,
+    control: impl IntoElement,
+) -> impl IntoElement {
     v_flex()
         .gap_1()
         .child(div().text_xs().text_color(p.muted).child(label))
@@ -79,7 +88,10 @@ impl BuildConfiguratorWindow {
         let cards = BuildProfile::ALL.map(|profile| {
             let selected = profile == current;
             div()
-                .id(SharedString::from(format!("bc-profile-{}", profile.label())))
+                .id(SharedString::from(format!(
+                    "bc-profile-{}",
+                    profile.label()
+                )))
                 .flex_1()
                 .min_w_0()
                 .p_3()
@@ -89,11 +101,20 @@ impl BuildConfiguratorWindow {
                 .rounded_md()
                 .border_1()
                 .border_color(if selected { p.primary } else { p.border })
-                .bg(if selected { p.primary.opacity(0.09) } else { p.card.opacity(0.0) })
+                .bg(if selected {
+                    p.primary.opacity(0.09)
+                } else {
+                    p.card.opacity(0.0)
+                })
                 .cursor_pointer()
                 .hover(|s| s.bg(p.hover))
                 .on_click(cx.listener(move |this, _, _, cx| this.edit(cx, |c| c.profile = profile)))
-                .child(div().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).child(profile.label()))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(profile.label()),
+                )
                 .child(div().text_xs().text_color(p.muted).child(profile.summary()))
         });
         section(

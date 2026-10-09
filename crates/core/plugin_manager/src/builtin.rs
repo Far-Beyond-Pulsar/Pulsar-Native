@@ -120,14 +120,23 @@ impl BuiltinEditorRegistry {
     /// by provider id, so it does not depend on link order.
     pub fn register_linked(&mut self) {
         let mut linked: Vec<Arc<dyn BuiltinEditorProvider>> =
-            inventory::iter::<LinkedEditorProvider>.into_iter().map(|l| (l.create)()).collect();
+            inventory::iter::<LinkedEditorProvider>
+                .into_iter()
+                .map(|l| (l.create)())
+                .collect();
         linked.sort_by(|a, b| a.provider_id().cmp(b.provider_id()));
         for provider in linked {
             if self.provider_by_id(provider.provider_id()).is_some() {
-                tracing::warn!("built-in provider `{}` is already registered; skipping the linked one", provider.provider_id());
+                tracing::warn!(
+                    "built-in provider `{}` is already registered; skipping the linked one",
+                    provider.provider_id()
+                );
                 continue;
             }
-            tracing::info!("Registering linked built-in provider: {}", provider.provider_id());
+            tracing::info!(
+                "Registering linked built-in provider: {}",
+                provider.provider_id()
+            );
             self.register_provider(provider);
         }
     }
@@ -145,8 +154,13 @@ impl BuiltinEditorRegistry {
     }
 
     /// Every scripting language from all built-in providers.
-    pub fn get_all_script_languages(&self) -> Vec<std::sync::Arc<dyn plugin_editor_api::ScriptLanguage>> {
-        self.providers.iter().flat_map(|p| p.script_languages()).collect()
+    pub fn get_all_script_languages(
+        &self,
+    ) -> Vec<std::sync::Arc<dyn plugin_editor_api::ScriptLanguage>> {
+        self.providers
+            .iter()
+            .flat_map(|p| p.script_languages())
+            .collect()
     }
 
     /// Get all component definitions from all built-in providers.
@@ -242,7 +256,9 @@ mod tests {
             _: &mut Window,
             _: &mut App,
         ) -> Result<Arc<dyn PanelView>, PluginError> {
-            Err(PluginError::Other { message: "probe".into() })
+            Err(PluginError::Other {
+                message: "probe".into(),
+            })
         }
     }
 
@@ -257,7 +273,11 @@ mod tests {
         assert!(registry.provider_by_id("test.linked-probe").is_some());
         let count = registry.providers().len();
         registry.register_linked();
-        assert_eq!(registry.providers().len(), count, "registering again must not duplicate a provider");
+        assert_eq!(
+            registry.providers().len(),
+            count,
+            "registering again must not duplicate a provider"
+        );
     }
 
     #[test]
@@ -265,6 +285,13 @@ mod tests {
         let mut registry = BuiltinEditorRegistry::new();
         registry.register_provider(Arc::new(Probe));
         registry.register_linked();
-        assert_eq!(registry.providers().iter().filter(|p| p.provider_id() == "test.linked-probe").count(), 1);
+        assert_eq!(
+            registry
+                .providers()
+                .iter()
+                .filter(|p| p.provider_id() == "test.linked-probe")
+                .count(),
+            1
+        );
     }
 }

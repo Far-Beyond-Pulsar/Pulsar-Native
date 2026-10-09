@@ -28,7 +28,7 @@ residency, tracing) is documented in Helio's
 | Layer | Where | Owns |
 |---|---|---|
 | Components | Helio `helio-component` (`components/voxel_component.rs`) | `VoxelTerrainComponent`, generator settings components, `VoxelEditJournal` field, inspector metadata. |
-| World queries | Helio `helio-component` (`components/voxel_world.rs`) | The CPU world of a terrain entity (cached), recipe/brush mapping, block API, scripting world methods, editor framing. |
+| World queries | Helio `helio-component` (`components/voxel_world.rs`) | The CPU world of a terrain instance (cached), recipe/brush mapping, block API, scripting world methods, editor framing. |
 | Canonical world | Helio `helio-pass-voxel-planet` | Grid, terrain generators, edits, `Planet` queries and ray casts, the render pass. |
 | Scene projection | `engine_backend/src/scene/voxel_frame.rs` | Enabled SceneDB rows -> `VoxelSceneEntry` (configuration + shared capabilities, no payload copies). |
 | Backend registry | `engine_backend/.../helio_renderer/voxel_backend.rs` | `VoxelRenderBackend` trait, `VoxelBackendRegistry`, the built-in `PlanetVoxelBackend` (`helio.voxel-terrain`). |
@@ -43,9 +43,10 @@ radius or plane size, voxel size, generator (a `VoxelGeneratorRef` of id and
 version, serialized flat as `generator_id` / `generator_version`), seed,
 editable. The rest (renderer id, chunk layout, LOD, palette) stays serialized
 but hidden. Presets: `VoxelTerrainComponent::planet(radius)`, `::plane(size)`,
-`::infinite_plane()`; a default component is a 4 km plane of the landform
-generator. The world is centred on its entity, which must sit at the origin
-without rotation and with a uniform scale (scale multiplies all sizes).
+`::infinite_plane()`; a default component is a 4 km plane of the layered
+terrain generator (`helio.terrain`). The world is centred on its object,
+which must sit at the origin without rotation and with a uniform scale
+(scale multiplies all sizes).
 
 `Terrain appearance (JSON)` changes shading without rebuilding the world:
 `palette` has 16 `[sRGB red, green, blue, roughness]` entries, `grass` has
@@ -53,9 +54,10 @@ three `[sRGB red, green, blue, 0]` entries (dry, meadow, lush), and `detail`
 is `[patch contrast, pigment variation, edge shading, 0]`. Omitted fields
 inherit defaults; an empty value restores them. The viewport resets colour history on changes.
 
-**Generator settings** live in a separate component on the same entity, named
-by the generator (`VoxelTerrainLayersComponent` for Helio's `helio.terrain`).
-The projection serializes it into the generator's parameters. Choosing a
+**Generator settings** live in a separate component instance on the same
+object, named by the generator (`VoxelTerrainLayersComponent` for Helio's
+`helio.terrain`), found with `resolve_instance`. The projection serializes it
+into the generator's parameters. Choosing a
 generator in the inspector attaches its settings component. Settings changes
 rebuild the world without recompiling shaders.
 
@@ -92,7 +94,7 @@ Random` nodes (`seeded_random`, `seeded_random_range`, `seeded_random_int`:
 equal seed and index, equal number, on every run and machine), applies a
 preset, then adds a crater layer and hills of random size through the
 component's natives. `pulsar_game`'s `random_world_blueprint` test compiles
-the saved graph and runs it against a real terrain entity.
+the saved graph and runs it against a real terrain instance.
 
 **Composition.** Game-specific worlds are classes whose prefab combines these
 components with others (a planet with water and foliage components, say);
@@ -109,8 +111,9 @@ O(1) checks. That matters because the projection copies it every frame.
 Edits belong to the ground they were made on: the journal records that
 terrain's fingerprint (`PlanetRecipe::fingerprint`: form, voxel size,
 generator, seed and settings). When any of these change, the projection
-shows none of the old edits and the scene step (`sync_edit_journals`) drops
-them from the journal, so they are not saved either. A journal with no
+shows none of the old edits and the scene step drops them from the journal
+(`EditJournalSync`: change cursors over the terrain and layer components, so
+frames that change neither cost nothing), so they are not saved either. A journal with no
 terrain yet adopts the first one.
 
 **Sculpting.** A brush sample asks the renderer for the terrain hit under
@@ -123,15 +126,19 @@ reaches at most 500 m.
 
 ## Flow of a frame
 
-1. **Projection.** `project_voxel_entries(world)` maps enabled terrain rows
-   to `VoxelSceneEntry`: id, visibility, shape and size, voxel size,
+1. **Projection.** `project_voxel_entries(world)` maps enabled terrain
+   instances to `VoxelSceneEntry`: id, visibility, shape and size, voxel size,
    generator config (id, version, seed, settings JSON), the edit journal and
-   shared stores. Nothing large is copied.
+   shared stores. Nothing large is copied. The renderer reads it once per
+   world revision (`VoxelSceneRead`), with the sun and what keeps the scene
+   out of camera-relative frames.
 2. **Environment.** The registry reports whether any active backend renders
-   camera-relative and owns the outdoor sky, the ground's local vertical
-   (`ambient_up`), the camera's `altitude` and a certified clip range. The
-   renderer sets the frame's world origin, hemisphere ambient and fallback
-   sky from these.
+   camera-relative, the ground's local vertical (`local_up`), the camera's
+   `altitude` and a certified clip range. The renderer sets the frame's world
+   origin from these when the scene allows it (every authored component and
+   GPU source is reviewed for a moved origin; anything unknown keeps world
+   coordinates and logs `VOXEL_CAMERA_SPACE`). The sky and the light the air
+   casts come from an `AtmosphereComponent` through the environment join.
 3. **Publish.** `publish_frame(entries, VoxelView)` hands the backend the
    f64 eye, camera basis, projection and sun. `PlanetVoxelBackend` resolves
    the entry to a cached `Arc<Planet>`. Only appended edits extend the cached
@@ -152,8 +159,9 @@ via `supports`; ambiguity is an error). Methods and why they exist:
 |---|---|
 | `renderer_id`, `supports` | Selection. |
 | `pass_factory`, `publish_frame`, `needs_frame` | Graph pass, per-frame view, streaming keep-alive. |
-| `camera_relative` | The backend wants camera-local GPU coordinates (planetary precision). |
-| `outdoor_sky`, `ambient_up` | Sky ownership and the hemisphere-ambient axis (the planet's radial). |
+| `camera_relative_frames` | The backend wants camera-local GPU coordinates (planetary precision). |
+| `local_up` | The local vertical (the planet's radial): the camera frame's up. |
+| `configure_appearance` | Terrain appearance (palette, grass, detail) without rebuilding the world. |
 | `camera_clip_range` | Near/far from certified empty space (near up to 50 km in orbit, 5 cm on the ground). |
 | `altitude` | Height above the ground below the eye (camera speed). |
 | `lift_out_of_ground` | Where to put an eye that entered solid voxels (dug air is not solid). |
@@ -207,7 +215,7 @@ and gameplay agree on every block. On generated terrain the older
   `Renderer::set_world_origin` and on to passes as
   `PrepareContext::world_origin`).
 - **Planet-aware camera frame.** The camera keeps a reference frame whose up
-  follows the local vertical (`ambient_up`), carried along by the smallest
+  follows the local vertical (`local_up`), carried along by the smallest
   rotation as it moves. Yaw and pitch are relative to it, so the horizon stays
   level anywhere on a planet. W/S move level, Q/E move along the vertical.
   View, movement, pan, picking, gizmos and brush rays all use the same
@@ -240,10 +248,11 @@ and gameplay agree on every block. On generated terrain the older
   world is its recipe plus ordered brushes; that keeps saves small and CPU
   queries exact, and lets the GPU regenerate any column at any level.
 - **The editor's default Sun points straight down (world -Y),** so the sun
-  is overhead at the pole and lower elsewhere. The planetary fallback sky
-  receives the f64 world eye, scaled radius and scene Sun from the backend;
-  its atmosphere follows the radial horizon, with dim diffuse lighting on
-  the night side. Authored skies take precedence.
+  is overhead at the pole and lower elsewhere. A planet's air is an authored
+  `AtmosphereComponent` placed at its owner (the example level's planet):
+  the atmosphere pass rebases its centre by the frame's world origin, so the
+  horizon and aerial perspective follow the planet at any distance. Without
+  one there is no sky (space, a moon).
 
 ## Diagnostics and tests
 

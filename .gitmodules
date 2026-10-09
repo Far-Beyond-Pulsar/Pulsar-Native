@@ -38,3 +38,6 @@
 	path = crates/renderer/helio
 	url = https://github.com/Far-Beyond-Pulsar/Helio.git
 	branch = main
+[submodule "crates/external/pulsar-reflection"]
+	path = crates/external/pulsar-reflection
+	url = https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection.git

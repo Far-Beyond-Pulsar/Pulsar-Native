@@ -132,15 +132,19 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(pure("entity::none", "Entity").build(|| Entity::DANGLING));
     add(NativeFn::builder("entity::spawn")
         .attr("category", "Entity")
-        .build(|host: &mut Host<'_>| -> Result<Entity, ScriptError> { Ok(host.world_mut()?.spawn()) }));
+        .build(|host: &mut Host<'_>| -> Result<Entity, ScriptError> {
+            Ok(host.world_mut()?.spawn())
+        }));
     add(NativeFn::builder("entity::despawn")
         .attr("category", "Entity")
         .params(["entity"])
-        .build(|host: &mut Host<'_>, e: Entity| -> Result<(), ScriptError> {
-            let world = host.world_mut()?;
-            if world.is_alive(e) {
-                world.despawn(e);
-            }
-            Ok(())
-        }));
+        .build(
+            |host: &mut Host<'_>, e: Entity| -> Result<(), ScriptError> {
+                let world = host.world_mut()?;
+                if world.is_alive(e) {
+                    world.despawn(e);
+                }
+                Ok(())
+            },
+        ));
 }

@@ -16,11 +16,11 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
-    components, level_io, objects,
+    components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
+    SceneObjectData, Transform,
 };
 use helio::{MeshUpload, PackedVertex};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -114,14 +114,14 @@ fn build_batches() -> Vec<Batch> {
     batches
 }
 
-fn light_json(color: [f32; 3], intensity: f32, range: f32) -> Value {
+fn light(color: [f32; 3], intensity: f32, range: f32) -> helio_component::LightComponent {
     let mut light = helio_component::LightComponent::default();
     light.general.enabled = true;
     light.general.light_type = helio_component::LightType::Point;
     light.color.color = [color[0], color[1], color[2], 1.0];
     light.intensity.intensity = intensity;
     light.attenuation.range = range;
-    serde_json::to_value(&light).expect("light serializes")
+    light
 }
 
 fn object(
@@ -174,17 +174,13 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
             ),
             Some(architecture.clone()),
         );
+        let mut mesh_data = super::static_mesh_component_json(&batch.file);
+        mesh_data["legacy_material_override"] = batch.material.clone();
         components::add_component(
             &mut world,
             &id,
             "StaticMeshComponent".to_string(),
-            super::static_mesh_component_json(&batch.file),
-        );
-        components::add_component(
-            &mut world,
-            &id,
-            "MaterialOverrideComponent".to_string(),
-            batch.material.clone(),
+            mesh_data,
         );
     }
 
@@ -201,11 +197,11 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
                 ),
                 Some(folder.clone()),
             );
-            components::add_component(
+            components::add_component_value(
                 &mut world,
                 &id,
-                "LightComponent".to_string(),
-                light_json(color, intensity, range),
+                "LightComponent",
+                Some(Box::new(light(color, intensity, range))),
             );
         }
     };

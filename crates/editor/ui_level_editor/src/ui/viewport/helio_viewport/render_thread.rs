@@ -252,48 +252,44 @@ impl HelioViewport {
         }
         self.pump_started = true;
 
-        crate::ui::frame_pump::spawn_frame_pump(
-            &cx.entity(),
-            window,
-            |this, window, cx| {
-                this.poll_display_refresh(window, cx);
+        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, window, cx| {
+            this.poll_display_refresh(window, cx);
 
-                let published = this.frames_published.load(Ordering::Acquire);
-                if published == this.last_published_frame {
-                    return;
-                }
-                this.last_published_frame = published;
+            let published = this.frames_published.load(Ordering::Acquire);
+            if published == this.last_published_frame {
+                return;
+            }
+            this.last_published_frame = published;
 
-                // A published texture changes no element state, so the frame
-                // only needs compositing — `refresh_buffers` marks the window
-                // dirty without marking any view dirty, and every cached view
-                // replays instead of rebuilding. Scene content (gizmo drags,
-                // camera moves) reaches the texture through that path alone;
-                // it never needs a view rebuild.
-                //
-                // But a view that never prepaints never observes new bounds,
-                // and `WgpuSurface::prepaint` is what resizes the surface to
-                // match its element. So a real notify is issued when the
-                // window viewport size changed since the last full render
-                // (window resize / maximize), or once per
-                // `FULL_RENDER_INTERVAL` of wall-clock time as the fallback for
-                // geometry changes with no size signal — panel splits and
-                // undocks. That bounds their pickup latency without letting
-                // the ancestor-chain rebuild dominate idle frames.
-                let viewport_resized =
-                    Some(window.viewport_size()) != this.viewport_size_at_last_full_render;
-                if this.last_full_render.elapsed() >= FULL_RENDER_INTERVAL
-                    || this.awaiting_render
-                    || viewport_resized
-                {
-                    this.viewport_size_at_last_full_render = Some(window.viewport_size());
-                    this.awaiting_render = true;
-                    cx.notify();
-                } else {
-                    window.refresh_buffers();
-                }
-            },
-        );
+            // A published texture changes no element state, so the frame
+            // only needs compositing — `refresh_buffers` marks the window
+            // dirty without marking any view dirty, and every cached view
+            // replays instead of rebuilding. Scene content (gizmo drags,
+            // camera moves) reaches the texture through that path alone;
+            // it never needs a view rebuild.
+            //
+            // But a view that never prepaints never observes new bounds,
+            // and `WgpuSurface::prepaint` is what resizes the surface to
+            // match its element. So a real notify is issued when the
+            // window viewport size changed since the last full render
+            // (window resize / maximize), or once per
+            // `FULL_RENDER_INTERVAL` of wall-clock time as the fallback for
+            // geometry changes with no size signal — panel splits and
+            // undocks. That bounds their pickup latency without letting
+            // the ancestor-chain rebuild dominate idle frames.
+            let viewport_resized =
+                Some(window.viewport_size()) != this.viewport_size_at_last_full_render;
+            if this.last_full_render.elapsed() >= FULL_RENDER_INTERVAL
+                || this.awaiting_render
+                || viewport_resized
+            {
+                this.viewport_size_at_last_full_render = Some(window.viewport_size());
+                this.awaiting_render = true;
+                cx.notify();
+            } else {
+                window.refresh_buffers();
+            }
+        });
     }
 
     fn record_frame_diagnostics(

@@ -1,0 +1,21 @@
+# The host side of plugin_manager's world-component tests (#1083): owns the
+# world runtime as the editor does, loads a fixture plugin, optionally
+# attaches it to the runtime, and reports what its registration reached.
+[package]
+name = "world_plugin_host"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "world_plugin_host"
+path = "src/main.rs"
+test = false
+doctest = false
+
+[dependencies]
+libloading            = { workspace = true }
+pulsar_reflection     = { workspace = true }
+pulsar_scenedb        = { workspace = true }
+pulsar_world_registry = { workspace = true }
+serde_json            = { workspace = true }

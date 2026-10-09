@@ -265,7 +265,7 @@ jobs:
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
       - name: Run tests
-        run: cargo nextest run --all --no-fail-fast
+        run: cargo nextest run --profile ci --all --no-fail-fast
 
   # Packaging (#926, #889): package the smoke-test project, copy it away from
   # the source tree, run it headless for a few frames and check that

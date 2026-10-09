@@ -3,7 +3,7 @@
 //!
 //! A bare `&mut dyn EngineClass` taken from `Mut::into_inner` reports the
 //! write *when it is borrowed*: every SceneDB hook (GPU mirror upload, change
-//! tracker, subscriptions, journals) fires with the old value, and the edit
+//! tracker, journals, object subscriptions) fires with the old value, and the edit
 //! that follows is never observed. [`EngineClassMut`] keeps the SceneDB guard
 //! alive instead: it derefs to `dyn EngineClass`, and the hooks fire when it
 //! is dropped, after the edit, like `Mut` and `MutDyn`. A guard that was only
@@ -28,16 +28,24 @@ impl<'w> EngineClassMut<'w> {
     /// Borrow `entity`'s `T` as a write guard; `None` if it has none.
     pub fn of<T: EngineClass + Any>(world: &'w mut World, entity: Entity) -> Option<Self> {
         let guard = world.get_dyn_mut(entity, component_id::<T>())?;
-        Some(Self { guard, as_ref: upcast_ref::<T>, as_mut: upcast_mut::<T> })
+        Some(Self {
+            guard,
+            as_ref: upcast_ref::<T>,
+            as_mut: upcast_mut::<T>,
+        })
     }
 }
 
 fn upcast_ref<T: EngineClass + Any>(value: &dyn Any) -> &dyn EngineClass {
-    value.downcast_ref::<T>().expect("EngineClassMut guards the component type it was built for")
+    value
+        .downcast_ref::<T>()
+        .expect("EngineClassMut guards the component type it was built for")
 }
 
 fn upcast_mut<T: EngineClass + Any>(value: &mut dyn Any) -> &mut dyn EngineClass {
-    value.downcast_mut::<T>().expect("EngineClassMut guards the component type it was built for")
+    value
+        .downcast_mut::<T>()
+        .expect("EngineClassMut guards the component type it was built for")
 }
 
 impl Deref for EngineClassMut<'_> {

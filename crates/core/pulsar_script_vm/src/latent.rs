@@ -94,7 +94,9 @@ impl Latent {
 
     fn allocate(&mut self) -> Result<i64, ScriptError> {
         if self.timers.len() >= MAX_TIMERS {
-            return Err(ScriptError::native(format!("too many pending timers (the limit is {MAX_TIMERS})")));
+            return Err(ScriptError::native(format!(
+                "too many pending timers (the limit is {MAX_TIMERS})"
+            )));
         }
         self.next_handle += 1;
         Ok(self.next_handle)
@@ -103,7 +105,12 @@ impl Latent {
     /// Add a timer. `seconds` and `repeat` are clamped to be non-negative;
     /// a repeat of zero would fire every tick, so it is at least a
     /// millisecond. Returns its handle.
-    pub fn set(&mut self, function: &str, seconds: f64, repeat: Option<f64>) -> Result<i64, ScriptError> {
+    pub fn set(
+        &mut self,
+        function: &str,
+        seconds: f64,
+        repeat: Option<f64>,
+    ) -> Result<i64, ScriptError> {
         let handle = self.allocate()?;
         self.timers.push(Timer {
             handle,
@@ -119,7 +126,11 @@ impl Latent {
     /// from `seconds` and the function is the new one. Returns its handle
     /// (the same each time).
     pub fn restart(&mut self, key: &str, function: &str, seconds: f64) -> Result<i64, ScriptError> {
-        if let Some(timer) = self.timers.iter_mut().find(|t| t.key.as_deref() == Some(key)) {
+        if let Some(timer) = self
+            .timers
+            .iter_mut()
+            .find(|t| t.key.as_deref() == Some(key))
+        {
             timer.function = function.to_owned();
             timer.remaining = finite(seconds);
             timer.repeat = None;
@@ -157,7 +168,10 @@ impl Latent {
 
     /// Seconds until a timer fires.
     pub fn remaining(&self, handle: i64) -> Option<f64> {
-        self.timers.iter().find(|t| t.handle == handle).map(|t| t.remaining)
+        self.timers
+            .iter()
+            .find(|t| t.handle == handle)
+            .map(|t| t.remaining)
     }
 
     /// Advance every timer by `delta` seconds and return the functions that
@@ -180,7 +194,11 @@ impl Latent {
                     let mut due_at = timer.remaining;
                     let mut count = 0;
                     while due_at <= 0.0 && count < MAX_CATCH_UP {
-                        fired.push(Fired { handle: timer.handle, function: timer.function.clone(), overdue: -due_at });
+                        fired.push(Fired {
+                            handle: timer.handle,
+                            function: timer.function.clone(),
+                            overdue: -due_at,
+                        });
                         due_at += interval;
                         count += 1;
                     }
@@ -188,7 +206,11 @@ impl Latent {
                     timer.remaining = if due_at <= 0.0 { interval } else { due_at };
                 }
                 None => {
-                    fired.push(Fired { handle: timer.handle, function: timer.function.clone(), overdue: -timer.remaining });
+                    fired.push(Fired {
+                        handle: timer.handle,
+                        function: timer.function.clone(),
+                        overdue: -timer.remaining,
+                    });
                     timer.remaining = f64::NEG_INFINITY;
                 }
             }
@@ -231,9 +253,11 @@ fn finite(seconds: f64) -> f64 {
 }
 
 fn latent<'a, 'h>(host: &'a mut Host<'h>, what: &str) -> Result<&'a mut Latent, ScriptError> {
-    host.latent
-        .as_deref_mut()
-        .ok_or_else(|| ScriptError::native(format!("{what} is not available here: this host has no latent actions")))
+    host.latent.as_deref_mut().ok_or_else(|| {
+        ScriptError::native(format!(
+            "{what} is not available here: this host has no latent actions"
+        ))
+    })
 }
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
@@ -248,11 +272,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         .attr("category", "Flow")
         .attr("access", "read")
         .params(["count"])
-        .build(|host: &mut Host<'_>, count: i64| -> Result<(), ScriptError> {
-            let frames = u32::try_from(count.clamp(1, i64::from(u32::MAX))).unwrap_or(1);
-            latent(host, "wait::frames")?.request(Wake::Frames(frames));
-            Ok(())
-        }));
+        .build(
+            |host: &mut Host<'_>, count: i64| -> Result<(), ScriptError> {
+                let frames = u32::try_from(count.clamp(1, i64::from(u32::MAX))).unwrap_or(1);
+                latent(host, "wait::frames")?.request(Wake::Frames(frames));
+                Ok(())
+            },
+        ));
     add(NativeFn::builder("wait::next_tick")
         .doc("Suspend this call until the next tick.")
         .attr("category", "Flow")
@@ -278,10 +304,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         .attr("category", "Flow")
         .attr("access", "read")
         .params(["name"])
-        .build(|host: &mut Host<'_>, name: String| -> Result<(), ScriptError> {
-            latent(host, "wait::event")?.request(Wake::Event { name });
-            Ok(())
-        }));
+        .build(
+            |host: &mut Host<'_>, name: String| -> Result<(), ScriptError> {
+                latent(host, "wait::event")?.request(Wake::Event { name });
+                Ok(())
+            },
+        ));
 
     add(NativeFn::builder("schedule::call")
         .doc("Call the exported function `function` once after `seconds`. Returns a handle for `schedule::clear`.")
@@ -315,31 +343,41 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         .attr("category", "Schedule")
         .attr("access", "read")
         .params(["handle"])
-        .build(|host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
-            Ok(latent(host, "schedule::clear")?.clear(handle))
-        }));
+        .build(
+            |host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
+                Ok(latent(host, "schedule::clear")?.clear(handle))
+            },
+        ));
     add(NativeFn::builder("schedule::clear_key")
         .doc("Cancel the retriggerable timer with this key. False if there is none.")
         .attr("category", "Schedule")
         .attr("access", "read")
         .params(["key"])
-        .build(|host: &mut Host<'_>, key: String| -> Result<bool, ScriptError> {
-            Ok(latent(host, "schedule::clear_key")?.clear_key(&key))
-        }));
+        .build(
+            |host: &mut Host<'_>, key: String| -> Result<bool, ScriptError> {
+                Ok(latent(host, "schedule::clear_key")?.clear_key(&key))
+            },
+        ));
     add(NativeFn::builder("schedule::pending")
         .doc("Whether the timer is still waiting to fire.")
         .attr("category", "Schedule")
         .attr("access", "read")
         .params(["handle"])
-        .build(|host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
-            Ok(latent(host, "schedule::pending")?.is_pending(handle))
-        }));
+        .build(
+            |host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
+                Ok(latent(host, "schedule::pending")?.is_pending(handle))
+            },
+        ));
     add(NativeFn::builder("schedule::remaining")
         .doc("Seconds until the timer fires; -1 if it is not pending.")
         .attr("category", "Schedule")
         .attr("access", "read")
         .params(["handle"])
-        .build(|host: &mut Host<'_>, handle: i64| -> Result<f64, ScriptError> {
-            Ok(latent(host, "schedule::remaining")?.remaining(handle).unwrap_or(-1.0))
-        }));
+        .build(
+            |host: &mut Host<'_>, handle: i64| -> Result<f64, ScriptError> {
+                Ok(latent(host, "schedule::remaining")?
+                    .remaining(handle)
+                    .unwrap_or(-1.0))
+            },
+        ));
 }

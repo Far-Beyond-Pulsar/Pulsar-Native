@@ -86,26 +86,25 @@ impl From<Entity> for ActorRef {
 /// `(class_name, component_index)` identity (Pulsar-Native#519), usable from
 /// scripts, generated code, and graph pins alike.
 ///
-/// Routing follows the panel exactly (#519/#575): the first enabled instance
-/// of a class is the live-typed value living directly in `World`; every
-/// other index exists only as its own serialized record routed through
-/// [`crate::instances::ComponentInstanceStore`]. Accessors refuse a stale or
-/// mismatched index rather than letting an edit land elsewhere
-/// (`ClassMismatch`/`InstanceMissing`).
+/// The pair resolves to one component-instance entity: the actor's
+/// `component_index`-th attached instance of `class_name` (Pulsar-Native#1035,
+/// D1). Every instance is live and typed; accessors refuse a missing one
+/// (`ComponentMissing`/`InstanceMissing`) rather than letting an edit land
+/// elsewhere.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ComponentRef {
     /// Owning actor.
     pub entity: Entity,
     /// Registered component class name (`pulsar_world_registry` key).
     pub class_name: String,
-    /// Which instance of `class_name` on `entity` this addresses (0-based,
-    /// same numbering as the editor's persisted component list).
+    /// Which instance of `class_name` on `entity` this addresses: 0-based,
+    /// counting only `class_name` instances, in the actor's list order.
     pub component_index: u32,
 }
 
 impl ComponentRef {
-    /// Address the live-typed instance of `class_name` on `actor`
-    /// (convenience for the overwhelmingly common single-instance case).
+    /// Address the first instance of `class_name` on `actor` (convenience
+    /// for the overwhelmingly common single-instance case).
     pub fn live(actor: ActorRef, class_name: impl Into<String>) -> Self {
         actor.component(class_name, 0)
     }

@@ -5,8 +5,8 @@ use smol::Timer;
 use std::{
     path::PathBuf,
     sync::{
-        Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
     },
     time::{Duration, Instant},
 };

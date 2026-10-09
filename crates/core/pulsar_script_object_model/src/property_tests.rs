@@ -117,7 +117,7 @@ impl Churn {
         self.next_marker += 1;
         let r = self.tracked[index].component_ref.clone();
 
-        match r.set_property(&mut self.world, "charges", serde_json::json!(new_value)) {
+        match r.set_property(&mut self.world, "charges", Box::new(new_value)) {
             Ok(()) => self.tracked[index].marker = new_value,
             Err(ScriptRefError::ReferenceDespawned { .. }) => {
                 panic!("live tracked entity refused as despawned: {r:?}")
@@ -151,8 +151,8 @@ impl Churn {
                     )
                 });
             assert_eq!(
-                value,
-                serde_json::json!(t.marker),
+                value.downcast_ref::<i32>().copied(),
+                Some(t.marker),
                 "ref saw another object's value"
             );
         }
@@ -243,8 +243,12 @@ fn recycled_slots_never_adopt_stale_handles() {
 
     // The survivor was never touched and its ref still works...
     assert_eq!(
-        survivor_ref.get_property(&world, "charges").unwrap(),
-        serde_json::json!(survivors_marker)
+        survivor_ref
+            .get_property(&world, "charges")
+            .unwrap()
+            .downcast_ref::<i32>()
+            .copied(),
+        Some(survivors_marker)
     );
     // ...while every stale handle reports staleness, never success.
     for r in &stales {

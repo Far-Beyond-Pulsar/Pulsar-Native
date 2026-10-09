@@ -69,6 +69,10 @@ let json = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(&value)?;
 let value = RUNTIME_TYPE_REGISTRY.deserialize_json_for_type::<MyType>(json)?;
 ```
 
+The JSON codecs are for boundaries (saving, loading, tool and network
+edges). Live values are cloned and written typed, never round-tripped
+through JSON.
+
 ## EngineClass
 
 Engine components implement the `EngineClass` trait (derived via
@@ -117,25 +121,26 @@ Dynamic types are registered in `DYNAMIC_TYPE_REGISTRY` (global `LazyLock`,
 auto-assigns UUIDs). User-defined `.alias.json` files are scanned by
 `engine_fs::UserTypeRegistry` and registered here.
 
-## ComponentRuntimeBehavior
+## Components in the World
 
-Runtime components implement this trait to participate in the ECS tick:
+Engine components are typed values in SceneDB's `World`, registered with
+`#[register_world_component]` on an inherent `impl Type {}`
+(`pulsar_world_registry`; the class name is the type name). Reflection
+supplies their properties and methods: the properties panel, scripts and
+history read and write the live value through `get_dyn` / `get_dyn_mut` and
+the reflected getters and setters. See
+[SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
 
-```rust
-pub trait ComponentRuntimeBehavior {
-    const CLASS_NAME: &'static str;
-    fn sync_component(
-        owner: &RuntimeComponentOwner,
-        component_index: usize,
-        component_data: &Value,
-        context: &mut dyn ComponentRuntimeContext,
-    );
-}
-```
+Component lifecycles (`begin_play`, `tick`, events, `end_play`) are
+`ComponentTickRegistration`s generated for the component and run on the live
+value; see [`COMPONENT_RUNTIME_GAPS.md`](COMPONENT_RUNTIME_GAPS.md).
 
-Registered via `inventory::submit!(RuntimeBehaviorRegistration { ... })`.
-The central system iterates all component instances each frame and calls
-`apply_runtime_behavior_for_class(...)` for each registered behavior.
+`pulsar_reflection` still defines `ComponentRuntimeBehavior`,
+`RuntimeBehaviorRegistration` and `apply_runtime_behavior_for_class` (the
+old JSON `sync_component` dispatch). Pulsar registers no behavior and calls
+no dispatch (Pulsar-Native#1035, Phase 4); the
+`scene_inventory` architecture check fails if a call returns. They remain
+only because `pulsar_reflection` is a separate repository.
 
 ## TypeRenderer
 

@@ -13,14 +13,13 @@ use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable,
 };
 
-use crate::state::LevelEditorState;
 use crate::state::terrain::TerrainDomain;
+use crate::state::LevelEditorState;
 
 pub type SharedState = Arc<parking_lot::RwLock<LevelEditorState>>;
 

@@ -45,6 +45,7 @@ mod tests {
     use super::*;
     use gpui::{prelude::*, px, size, AnyView, Render, StyleRefinement, TestAppContext};
     use std::cell::RefCell;
+    use ui::PixelsExt as _;
 
     struct Leaf {
         animation: SurfaceAnimation,

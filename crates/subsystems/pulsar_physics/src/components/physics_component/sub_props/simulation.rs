@@ -1,6 +1,5 @@
 use engine_class_derive::engine_class;
 use serde_json::Value;
-use std::collections::HashMap;
 
 use super::super::SimulationInterface;
 
@@ -68,33 +67,5 @@ impl SimulationPhysicsProps {
                 _ => self.interface,
             };
         }
-    }
-
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "simulate_physics".to_string(),
-            Value::from(self.simulate_physics),
-        );
-        out.insert(
-            "generate_collision_events".to_string(),
-            Value::from(self.generate_collision_events),
-        );
-        out.insert(
-            "wake_on_collision".to_string(),
-            Value::from(self.wake_on_collision),
-        );
-        out.insert(
-            "enable_sleeping".to_string(),
-            Value::from(self.enable_sleeping),
-        );
-        out.insert(
-            "sleep_threshold".to_string(),
-            Value::from(self.sleep_threshold),
-        );
-        out.insert(
-            "max_delta_time".to_string(),
-            Value::from(self.max_delta_time),
-        );
-        out.insert("interface".to_string(), Value::from(self.interface as u64));
     }
 }

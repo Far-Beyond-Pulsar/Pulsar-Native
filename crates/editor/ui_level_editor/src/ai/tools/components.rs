@@ -3,7 +3,8 @@
 //! Component data is the class's whole-instance JSON -- the shape
 //! `EngineClass::to_json` produces, `#[sub_props]` groups included as nested
 //! objects. Edits are JSON merge patches over that shape, validated against
-//! the class before they are written.
+//! the class and decoded here, at the tool boundary: the commands these
+//! tools issue carry typed values.
 
 use super::*;
 use pulsar_reflection::{EngineClass, REGISTRY, RUNTIME_TYPE_REGISTRY};
@@ -98,7 +99,13 @@ fn validate(class_name: &str, data: &Value) -> Result<()> {
 fn field_list(data: &Value) -> String {
     field_paths(data)
         .iter()
-        .map(|f| format!("{} ({})", f["path"].as_str().unwrap_or_default(), f["type"].as_str().unwrap_or_default()))
+        .map(|f| {
+            format!(
+                "{} ({})",
+                f["path"].as_str().unwrap_or_default(),
+                f["type"].as_str().unwrap_or_default()
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -119,6 +126,50 @@ pub(super) fn build_component_data(class_name: &str, properties: Option<&Value>)
         None => validate(class_name, &data)?,
     }
     Ok(data)
+}
+
+/// Decode `data` as a value of the world component class `class_name`, at
+/// this boundary.
+pub(super) fn decode_component(
+    class_name: &str,
+    data: &Value,
+) -> Result<Box<dyn std::any::Any + Send + Sync>> {
+    match pulsar_world_registry::decode_world_component_value(class_name, data) {
+        Some(Ok(value)) => Ok(value),
+        Some(Err(error)) => bail!(
+            "Data does not fit {class_name}: {error}. Its fields (path, type): {}",
+            field_list(data)
+        ),
+        None => bail!("{class_name} cannot be attached to scene objects in this build"),
+    }
+}
+
+/// The data of the component at `index` (without record metadata), and
+/// whether it is an unresolved payload rather than a live value.
+fn component_data(world: &World, id: &str, index: usize) -> Result<(String, Value, bool)> {
+    use engine_backend::scene::attachments;
+    let instance = scene_edit::components::instance_at(world, id, index)
+        .ok_or_else(|| anyhow!("Component {index} vanished"))?;
+    let class_name = attachments::meta(world, instance)
+        .map(|meta| meta.class_name.clone())
+        .ok_or_else(|| anyhow!("Component {index} vanished"))?;
+    if let Some(unresolved) = world.get::<attachments::UnresolvedComponent>(instance) {
+        return Ok((class_name, unresolved.data.clone(), true));
+    }
+    let data = pulsar_world_registry::instance_engine_class(world, instance)
+        .ok_or_else(|| anyhow!("Component {index} has no value"))?
+        .to_json()
+        .map_err(|error| anyhow!("{class_name} does not encode: {error}"))?;
+    Ok((class_name, data, false))
+}
+
+/// The `SetComponentData` payload for patched `data`.
+fn component_payload(class_name: &str, data: Value, unresolved: bool) -> Result<ComponentData> {
+    Ok(if unresolved {
+        ComponentData::Unresolved(data)
+    } else {
+        ComponentData::Value(decode_component(class_name, &data)?)
+    })
 }
 
 /// Index of the addressed component: `component_index` wins, otherwise the
@@ -144,7 +195,11 @@ fn resolve_index(
     }
 }
 
-fn run(ctx: &ToolContext, id: &str, cmd: impl FnOnce(&World) -> Result<SceneCommand>) -> Result<Value> {
+fn run(
+    ctx: &ToolContext,
+    id: &str,
+    cmd: impl FnOnce(&World) -> Result<SceneCommand>,
+) -> Result<Value> {
     let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, id)?;
@@ -230,9 +285,14 @@ pub fn level_editor_describe_component_class(class_name: String) -> Result<Value
             if example.len() >= 3 {
                 break;
             }
-            if field["type"].as_str().is_some_and(|t| t.starts_with(wanted)) {
+            if field["type"]
+                .as_str()
+                .is_some_and(|t| t.starts_with(wanted))
+            {
                 let path = field["path"].as_str().unwrap_or_default().to_string();
-                example.entry(path).or_insert_with(|| field["value"].clone());
+                example
+                    .entry(path)
+                    .or_insert_with(|| field["value"].clone());
             }
         }
     }
@@ -274,8 +334,13 @@ pub fn level_editor_add_component(
     properties: Option<Value>,
 ) -> Result<Value> {
     let data = build_component_data(&class_name, properties.as_ref())?;
+    let value = decode_component(&class_name, &data)?;
     run(ctx, &id.clone(), |_| {
-        Ok(SceneCommand::AddComponent { id, class_name, data })
+        Ok(SceneCommand::AddComponent {
+            id,
+            class_name,
+            value: Some(value),
+        })
     })
 }
 
@@ -307,16 +372,12 @@ pub fn level_editor_set_component_properties(
     }
     run(ctx, &id.clone(), |world| {
         let index = resolve_index(world, &id, component_index, class_name.as_deref())?;
-        let component = scene_edit::components::get_components(world, &id)
-            .into_iter()
-            .nth(index)
-            .ok_or_else(|| anyhow!("Component {index} vanished"))?;
-        let mut data = component.data;
-        patch_component(&component.class_name, &mut data, &properties)?;
+        let (class_name, mut data, unresolved) = component_data(world, &id, index)?;
+        patch_component(&class_name, &mut data, &properties)?;
         Ok(SceneCommand::SetComponentData {
             id,
             component_index: index,
-            data,
+            data: component_payload(&class_name, data, unresolved)?,
         })
     })
 }
@@ -340,8 +401,8 @@ pub fn level_editor_revert_component_property(
 ) -> Result<Value> {
     run(ctx, &id.clone(), |world| {
         let index = resolve_index(world, &id, component_index, class_name.as_deref())?;
-        let class_name = scene_edit::components::get_component_class_names(world, &id)
-            .swap_remove(index);
+        let class_name =
+            scene_edit::components::get_component_class_names(world, &id).swap_remove(index);
         let registry = scene_edit::classes::project_registry();
         let from_class_slot = scene_edit::classes::slot_defaults(world, &id, &registry)
             .remove(&index)
@@ -355,7 +416,8 @@ pub fn level_editor_revert_component_property(
             let slot_id = scene_edit::classes::class_instance_view(world, &root, &registry)
                 .and_then(|view| {
                     view.slots.into_iter().find(|slot| {
-                        slot.object_id.as_deref() == Some(id.as_str()) && slot.class_name == class_name
+                        slot.object_id.as_deref() == Some(id.as_str())
+                            && slot.class_name == class_name
                     })
                 })
                 .map(|slot| slot.slot_id)
@@ -371,11 +433,12 @@ pub fn level_editor_revert_component_property(
         let default = default_data(instance.as_ref());
         let pointer = format!("/{}", property.replace('.', "/"));
         let value = default.pointer(&pointer).cloned().ok_or_else(|| {
-            anyhow!("{class_name} has no field `{property}`. Fields: {}", field_list(&default))
+            anyhow!(
+                "{class_name} has no field `{property}`. Fields: {}",
+                field_list(&default)
+            )
         })?;
-        let mut data = scene_edit::components::get_components(world, &id)
-            .swap_remove(index)
-            .data;
+        let (_, mut data, unresolved) = component_data(world, &id, index)?;
         let slot = data
             .pointer_mut(&pointer)
             .ok_or_else(|| anyhow!("Component data has no field `{property}`"))?;
@@ -383,7 +446,7 @@ pub fn level_editor_revert_component_property(
         Ok(SceneCommand::SetComponentData {
             id,
             component_index: index,
-            data,
+            data: component_payload(&class_name, data, unresolved)?,
         })
     })
 }
@@ -403,7 +466,10 @@ pub fn level_editor_remove_component(
 ) -> Result<Value> {
     run(ctx, &id.clone(), |world| {
         let component_index = resolve_index(world, &id, component_index, class_name.as_deref())?;
-        Ok(SceneCommand::RemoveComponent { id, component_index })
+        Ok(SceneCommand::RemoveComponent {
+            id,
+            component_index,
+        })
     })
 }
 
@@ -447,7 +513,10 @@ pub fn level_editor_duplicate_component(
 ) -> Result<Value> {
     run(ctx, &id.clone(), |world| {
         resolve_index(world, &id, Some(component_index), None)?;
-        Ok(SceneCommand::DuplicateComponent { id, component_index })
+        Ok(SceneCommand::DuplicateComponent {
+            id,
+            component_index,
+        })
     })
 }
 

@@ -4,21 +4,27 @@
 //! plain components in [`components`]; this crate adds no store around them.
 //! [`world_ext::SceneWorldExt`] gives stateless helpers (identity lookup,
 //! hierarchy, selection) that are derived from those components on demand, and
-//! [`attachments`] records which component instances an object has.
+//! [`attachments`] holds every attached component instance as its own entity
+//! linked to its owner (Pulsar-Native#1035, D1).
 
 pub mod attachments;
 pub mod components;
 pub mod instance;
 pub mod motion;
 pub mod payload_catalog;
+pub mod runtime;
 mod transform_script;
 pub mod world_ext;
 
 use serde::{Deserialize, Serialize};
 
-pub use attachments::ComponentAttachments;
+pub use attachments::{
+    AmbiguousComponent, ClassSlot, ComponentAttachments, ComponentInstanceId, ComponentMeta,
+    ComponentOwner, InstanceError, NewInstance, UnresolvedComponent,
+};
 pub use components::{
-    Name, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform, Visibility,
+    Name, ObjectHidden, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
+    Visibility,
 };
 pub use instance::{ComponentInstance, EditorObjectId};
 pub use payload_catalog::{

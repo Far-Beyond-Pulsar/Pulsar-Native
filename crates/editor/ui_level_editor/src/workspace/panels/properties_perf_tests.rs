@@ -21,14 +21,14 @@
 //! deterministic, rather than wall-clock time, which is not.
 
 use super::{LevelEditorState, PropertiesPanelWrapper};
-use std::sync::Arc;
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use gpui::{
-    IntoElement as _, InteractiveElement as _,
-    AnyElement, AnyView, Context, Entity, IntoElement, Render, Window, div, ParentElement as _, Styled as _,
-    AppContext as _, StyleRefinement, TestAppContext, VisualTestContext, render_stats, size, px,
+    div, px, render_stats, size, AnyElement, AnyView, AppContext as _, Context, Entity,
+    InteractiveElement as _, IntoElement as _, IntoElement, ParentElement as _, Render,
+    StyleRefinement, Styled as _, TestAppContext, VisualTestContext, Window,
 };
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Hosts the panel the way the dock does: behind `.cached(...)`, so a notify
@@ -43,12 +43,19 @@ impl Render for Host {
         // `PROPS_PERF_DEPTH` nests the panel under that many id'd divs to mimic its
         // depth inside the real dock (every id'd element and component copies and
         // hashes the whole id path).
-        let depth: usize = std::env::var("PROPS_PERF_DEPTH").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        let depth: usize = std::env::var("PROPS_PERF_DEPTH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
         let mut el: gpui::AnyElement = AnyView::from(self.panel.clone())
             .cached(StyleRefinement::default().size_full())
             .into_any_element();
         for d in 0..depth {
-            el = div().id(("host-wrap", d)).size_full().child(el).into_any_element();
+            el = div()
+                .id(("host-wrap", d))
+                .size_full()
+                .child(el)
+                .into_any_element();
         }
         div().size_full().child(el)
     }
@@ -72,10 +79,8 @@ fn heaviest_classes(limit: usize) -> Vec<(String, usize)> {
 }
 
 /// A scene with one selected object carrying `class_names` as components.
-fn scene_with_components(
-    class_names: &[String],
-) -> Arc<parking_lot::RwLock<LevelEditorState>> {
-    use crate::commands::{SceneCommand, execute_command};
+fn scene_with_components(class_names: &[String]) -> Arc<parking_lot::RwLock<LevelEditorState>> {
+    use crate::commands::{execute_command, SceneCommand};
 
     let mut state = LevelEditorState::new();
     let id = execute_command(
@@ -149,7 +154,10 @@ fn open_fixture(cx: &mut TestAppContext, class_names: &[String]) -> Fixture {
         Host { panel }
     });
     cx.run_until_parked();
-    let panel = window.root(cx).expect("root view").read_with(cx, |host, _| host.panel.clone());
+    let panel = window
+        .root(cx)
+        .expect("root view")
+        .read_with(cx, |host, _| host.panel.clone());
     let cx = VisualTestContext::from_window(window.into(), cx);
     Fixture { cx, panel }
 }
@@ -173,10 +181,7 @@ fn idle_frame(f: &mut Fixture) -> Duration {
 
 /// Run `frames` frames of `step`, returning mean wall ms and the stats drained
 /// around exactly that stretch.
-fn measure(
-    frames: usize,
-    mut step: impl FnMut() -> Duration,
-) -> (f64, render_stats::Snapshot) {
+fn measure(frames: usize, mut step: impl FnMut() -> Duration) -> (f64, render_stats::Snapshot) {
     render_stats::reset();
     let total: Duration = (0..frames).map(|_| step()).sum();
     let snapshot = render_stats::snapshot();
@@ -216,7 +221,10 @@ fn print_profile(label: &str, frames: usize, wall_ms: f64, s: &render_stats::Sna
         "frame: component global ids",
         "frame: component global ids, id stack depth (sum)",
     ] {
-        eprintln!("  {name:<44} {:>8.1} /frame", counter(s, name) as f64 / frames as f64);
+        eprintln!(
+            "  {name:<44} {:>8.1} /frame",
+            counter(s, name) as f64 / frames as f64
+        );
     }
     let mut elements: Vec<_> = s
         .counters
@@ -318,7 +326,7 @@ struct EditorRowView {
 
 impl Render for EditorRowView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use ui::{ActiveTheme as _, Sizable as _, h_flex, input::NumberInput};
+        use ui::{h_flex, input::NumberInput, ActiveTheme as _, Sizable as _};
         h_flex()
             .w_full()
             .justify_between()
@@ -355,64 +363,98 @@ impl Synth {
                 })
             })
             .collect();
-        Self { kind, inputs, row_views }
+        Self {
+            kind,
+            inputs,
+            row_views,
+        }
     }
 }
 
 impl Render for Synth {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use gpui::prelude::*;
-        use ui::{ActiveTheme as _, Icon, IconName, Sizable as _, button::{Button, ButtonVariants as _}, h_flex, input::{NumberInput, TextInput}, v_flex};
+        use ui::{
+            button::{Button, ButtonVariants as _},
+            h_flex,
+            input::{NumberInput, TextInput},
+            v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
+        };
         let kind = self.kind;
         let row_views = self.row_views.clone();
         let muted = cx.theme().muted_foreground;
-        let rows = self.inputs.iter().enumerate().map(move |(i, input)| -> AnyElement {
-            match kind {
-                Kind::Plain => div().w_full().h(px(20.)).into_any_element(),
-                Kind::FlexRow3 => h_flex()
-                    .w_full()
-                    .child(div().h(px(20.)).w(px(10.)))
-                    .child(div().h(px(20.)).flex_1())
-                    .child(div().h(px(20.)).w(px(10.)))
-                    .into_any_element(),
-                Kind::StatefulDiv => div().id(("row", i)).w_full().h(px(20.)).into_any_element(),
-                Kind::StaticText => div().text_sm().child("Property label").into_any_element(),
-                Kind::TruncateText => div()
-                    .w(px(120.))
-                    .truncate()
-                    .text_sm()
-                    .child("A rather long property label that truncates")
-                    .into_any_element(),
-                Kind::Icon => Icon::new(IconName::Plus).xsmall().into_any_element(),
-                Kind::ButtonIcon => Button::new(("btn", i))
-                    .icon(IconName::Plus)
-                    .ghost()
-                    .xsmall()
-                    .into_any_element(),
-                Kind::TextInput => TextInput::new(input).xsmall().into_any_element(),
-                Kind::NumberInput => NumberInput::new(input).xsmall().w(px(92.)).into_any_element(),
-                Kind::NumberRow => h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(div().text_sm().text_color(muted).child(format!("Property {i}")))
-                    .child(NumberInput::new(input).xsmall().w(px(92.)))
-                    .into_any_element(),
-                Kind::NumberRowInEntity => row_views[i].clone().into_any_element(),
-                Kind::NumberRowDecorated => h_flex()
-                    .w_full()
-                    .items_center()
-                    .gap_1()
-                    .child(div().w(px(2.)).h_full().min_h(px(18.)).rounded(px(1.)))
-                    .child(div().flex_1().min_w_0().child(row_views[i].clone()))
-                    .into_any_element(),
-            }
-        });
-        let depth: usize = std::env::var("PROPS_PERF_DEPTH").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
-        let mut el: AnyElement = v_flex().size_full().gap_1().children(rows.collect::<Vec<_>>()).into_any_element();
+        let rows = self
+            .inputs
+            .iter()
+            .enumerate()
+            .map(move |(i, input)| -> AnyElement {
+                match kind {
+                    Kind::Plain => div().w_full().h(px(20.)).into_any_element(),
+                    Kind::FlexRow3 => h_flex()
+                        .w_full()
+                        .child(div().h(px(20.)).w(px(10.)))
+                        .child(div().h(px(20.)).flex_1())
+                        .child(div().h(px(20.)).w(px(10.)))
+                        .into_any_element(),
+                    Kind::StatefulDiv => {
+                        div().id(("row", i)).w_full().h(px(20.)).into_any_element()
+                    }
+                    Kind::StaticText => div().text_sm().child("Property label").into_any_element(),
+                    Kind::TruncateText => div()
+                        .w(px(120.))
+                        .truncate()
+                        .text_sm()
+                        .child("A rather long property label that truncates")
+                        .into_any_element(),
+                    Kind::Icon => Icon::new(IconName::Plus).xsmall().into_any_element(),
+                    Kind::ButtonIcon => Button::new(("btn", i))
+                        .icon(IconName::Plus)
+                        .ghost()
+                        .xsmall()
+                        .into_any_element(),
+                    Kind::TextInput => TextInput::new(input).xsmall().into_any_element(),
+                    Kind::NumberInput => NumberInput::new(input)
+                        .xsmall()
+                        .w(px(92.))
+                        .into_any_element(),
+                    Kind::NumberRow => h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child(format!("Property {i}")),
+                        )
+                        .child(NumberInput::new(input).xsmall().w(px(92.)))
+                        .into_any_element(),
+                    Kind::NumberRowInEntity => row_views[i].clone().into_any_element(),
+                    Kind::NumberRowDecorated => h_flex()
+                        .w_full()
+                        .items_center()
+                        .gap_1()
+                        .child(div().w(px(2.)).h_full().min_h(px(18.)).rounded(px(1.)))
+                        .child(div().flex_1().min_w_0().child(row_views[i].clone()))
+                        .into_any_element(),
+                }
+            });
+        let depth: usize = std::env::var("PROPS_PERF_DEPTH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let mut el: AnyElement = v_flex()
+            .size_full()
+            .gap_1()
+            .children(rows.collect::<Vec<_>>())
+            .into_any_element();
         for d in 0..depth {
-            el = div().id(("wrap", d)).size_full().child(el).into_any_element();
+            el = div()
+                .id(("wrap", d))
+                .size_full()
+                .child(el)
+                .into_any_element();
         }
         el
     }
@@ -422,11 +464,22 @@ impl Render for Synth {
 #[ignore = "manual measurement; see module docs"]
 fn widget_layout_cost_report(cx: &mut TestAppContext) {
     cx.update(|cx| ui::init(cx));
-    let rows: usize = std::env::var("PROPS_PERF_ROWS").ok().and_then(|v| v.parse().ok()).unwrap_or(200);
+    let rows: usize = std::env::var("PROPS_PERF_ROWS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200);
     let frames = 20;
     eprintln!(
         "{:<22} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9}",
-        "kind (per row)", "elems", "nodes", "layout us", "prepaint us", "paint us", "wall us", "measure", "wall(no stats)"
+        "kind (per row)",
+        "elems",
+        "nodes",
+        "layout us",
+        "prepaint us",
+        "paint us",
+        "wall us",
+        "measure",
+        "wall(no stats)"
     );
     for kind in [
         Kind::Plain,
@@ -495,7 +548,8 @@ fn print_invalidation(label: &str, wall: Duration, s: &render_stats::Snapshot) {
         counter(s, "view cache: reused"),
     );
     for (name, n) in s.counters.iter().filter(|(name, _)| {
-        name.starts_with("notify: ") || name.starts_with("view cache: rebuilt (dependency changed): ")
+        name.starts_with("notify: ")
+            || name.starts_with("view cache: rebuilt (dependency changed): ")
     }) {
         eprintln!("      {n:>4} x {name}");
     }
@@ -507,7 +561,7 @@ fn print_invalidation(label: &str, wall: Duration, s: &render_stats::Snapshot) {
 #[gpui::test]
 #[ignore = "manual measurement; see module docs"]
 fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
-    use gpui::{Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TouchPhase, point};
+    use gpui::{point, Modifiers, MouseButton, ScrollDelta, ScrollWheelEvent, TouchPhase};
 
     let class_names: Vec<String> = heaviest_classes(5).into_iter().map(|(n, _)| n).collect();
     let mut f = open_fixture(cx, &class_names);
@@ -525,7 +579,11 @@ fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
         f.cx.simulate_mouse_move(point(px(250.), px(y)), None, Modifiers::default());
         idle_frame(&mut f);
     }
-    print_invalidation("hover: 20 mouse moves", start.elapsed(), &render_stats::snapshot());
+    print_invalidation(
+        "hover: 20 mouse moves",
+        start.elapsed(),
+        &render_stats::snapshot(),
+    );
 
     // Wheel scroll.
     render_stats::reset();
@@ -539,16 +597,32 @@ fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
         });
         idle_frame(&mut f);
     }
-    print_invalidation("scroll: 10 wheel events", start.elapsed(), &render_stats::snapshot());
+    print_invalidation(
+        "scroll: 10 wheel events",
+        start.elapsed(),
+        &render_stats::snapshot(),
+    );
 
     // Click a field to focus it, then let the caret blink for ~3 s.
     render_stats::reset();
     let start = Instant::now();
     f.cx.simulate_mouse_move(point(px(300.), px(400.)), None, Modifiers::default());
-    f.cx.simulate_mouse_down(point(px(300.), px(400.)), MouseButton::Left, Modifiers::default());
-    f.cx.simulate_mouse_up(point(px(300.), px(400.)), MouseButton::Left, Modifiers::default());
+    f.cx.simulate_mouse_down(
+        point(px(300.), px(400.)),
+        MouseButton::Left,
+        Modifiers::default(),
+    );
+    f.cx.simulate_mouse_up(
+        point(px(300.), px(400.)),
+        MouseButton::Left,
+        Modifiers::default(),
+    );
     idle_frame(&mut f);
-    print_invalidation("click (focus a field)", start.elapsed(), &render_stats::snapshot());
+    print_invalidation(
+        "click (focus a field)",
+        start.elapsed(),
+        &render_stats::snapshot(),
+    );
 
     render_stats::reset();
     let start = Instant::now();
@@ -557,6 +631,10 @@ fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
         f.cx.run_until_parked();
         idle_frame(&mut f);
     }
-    print_invalidation("caret blink: 6 x 500 ms", start.elapsed(), &render_stats::snapshot());
+    print_invalidation(
+        "caret blink: 6 x 500 ms",
+        start.elapsed(),
+        &render_stats::snapshot(),
+    );
     render_stats::set_force_enabled(false);
 }

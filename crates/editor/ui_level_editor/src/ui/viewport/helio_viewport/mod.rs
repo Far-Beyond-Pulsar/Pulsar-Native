@@ -5,7 +5,7 @@
 //!   2. Each frame: `back_view_with_size()` → render → `swap_buffers()`.
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,12 +15,12 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
-use ui::{ActiveTheme as _, ContextModal, notification::Notification};
+use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
-use crate::commands::{SceneCommand, execute_command};
+use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
-use helio_component::asset_component::component_class_for_asset;
+use helio_component::asset_component::component_for_asset;
 use pulsar_reflection::REGISTRY;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.

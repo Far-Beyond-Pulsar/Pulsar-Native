@@ -58,6 +58,10 @@ pub struct TickLoop {
     /// [`enable_scripting`](Self::enable_scripting). Publish input with
     /// [`publish_input`](Self::publish_input).
     pub events: pulsar_events::EventHub,
+    /// Component lifecycle state for macro-registered live SceneDB rows.
+    /// Contains identities only; component data remains authoritative in
+    /// `scene_store` and is borrowed in place for each callback.
+    component_runtime: pulsar_world_registry::ComponentRuntimeState,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
     pub window_manager: Option<Arc<WindowManager>>,
@@ -160,6 +164,14 @@ const MAX_KEPT_PROBLEMS: usize = 256;
 /// The simulation step of one [`TickLoop::step`] in variable-timestep mode.
 const STEP_DELTA: std::time::Duration = std::time::Duration::from_micros(16_667);
 
+fn new_component_event_hub() -> pulsar_events::EventHub {
+    let hub = pulsar_events::EventHub::new();
+    if let Err(error) = pulsar_world_registry::register_component_events(&hub) {
+        tracing::error!(%error, "failed to register native component events");
+    }
+    hub
+}
+
 impl TickLoop {
     /// Build a new `TickLoop` with its own fresh scene store.
     ///
@@ -183,7 +195,8 @@ impl TickLoop {
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
-            events: pulsar_events::EventHub::new(),
+            events: new_component_event_hub(),
+            component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -194,7 +207,11 @@ impl TickLoop {
             reload_armed: false,
             paused: false,
             pending_steps: 0,
-            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            last_time: GameTime {
+                elapsed: std::time::Duration::ZERO,
+                delta: std::time::Duration::ZERO,
+                tick: 0,
+            },
             script_problems: Vec::new(),
             collect_problems: false,
             script_stats: ScriptStats::default(),
@@ -222,7 +239,8 @@ impl TickLoop {
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
-            events: pulsar_events::EventHub::new(),
+            events: new_component_event_hub(),
+            component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -233,7 +251,11 @@ impl TickLoop {
             reload_armed: false,
             paused: false,
             pending_steps: 0,
-            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            last_time: GameTime {
+                elapsed: std::time::Duration::ZERO,
+                delta: std::time::Duration::ZERO,
+                tick: 0,
+            },
             script_problems: Vec::new(),
             collect_problems: false,
             script_stats: ScriptStats::default(),
@@ -251,7 +273,10 @@ impl TickLoop {
     pub fn tick_once(&mut self) -> GameTime {
         if self.paused {
             if self.pending_steps == 0 {
-                return GameTime { delta: std::time::Duration::ZERO, ..self.last_time };
+                return GameTime {
+                    delta: std::time::Duration::ZERO,
+                    ..self.last_time
+                };
             }
             self.pending_steps -= 1;
             let delta = match self.mode {
@@ -345,12 +370,29 @@ impl TickLoop {
         self.events.flush(pulsar_events::FlushPoint::AfterInput);
 
         // Phase 1: ECS systems. Short write scope -- the renderer takes this
-        // same lock every frame to rebuild its draw lists (see
-        // HelioRenderer::sync_scene_delta's phase docs), so nothing here may
-        // hold it across phases.
+        // same lock every frame to step the scene and flush its GPU mirror, so
+        // nothing here may hold it across phases.
         {
             let mut store = self.scene_store.write();
             self.schedule.run(&mut store.world, scenedb_time);
+        }
+
+        // Phase 1b: macro-registered native component callbacks. The
+        // registry resolves each component through a typed SceneDB query and
+        // calls it while borrowing the authoritative row in place. This is
+        // deliberately separate from renderer synchronization and owns no
+        // component copies. The callback contract forbids re-entering World
+        // while its component borrow is held.
+        {
+            let scene_identity = Arc::as_ptr(&self.scene_store) as usize;
+            let mut store = self.scene_store.write();
+            pulsar_world_registry::tick_live_components(
+                &mut store.world,
+                &self.events,
+                time.delta.as_secs_f32(),
+                scene_identity,
+                &mut self.component_runtime,
+            );
         }
 
         // Phase 2: actor lifecycle ticks (`Actor::tick` is deliberately
@@ -366,6 +408,23 @@ impl TickLoop {
             for shell in &mut self.rebinding {
                 shell.tick(&mut store.world);
             }
+            // World-mutating component methods append to per-owner outboxes.
+            // Move them onto Gamma's deferred queue only after actors have
+            // released their component/World borrows; the following flush
+            // invokes subscribers outside the World lock.
+            pulsar_world_registry::flush_component_events(&mut store.world, &self.events);
+        }
+
+        // Actors can remove/disable live components after their component
+        // tick. End their owner-scoped lifecycle now, before SceneDB's
+        // end-of-window cleanup drains the independent removal journal.
+        {
+            let store = self.scene_store.read();
+            pulsar_world_registry::process_component_removals(
+                &store.world,
+                &self.events,
+                &mut self.component_runtime,
+            );
         }
 
         // Flush 2 (after physics): physics runs in the ECS schedule; its
@@ -383,7 +442,9 @@ impl TickLoop {
         // scene: `tick_once` only runs after `spawn_ecs_thread`, once the
         // window is ready. Errors are per instance and logged.
         if let Some(driver) = &self.scripts {
-            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             // Locks the scene itself, in short exclusive stretches around a
             // shared one (see `ScriptDriver::run_frame_shared`).
             let report = driver.run_frame_shared(&self.scene_store, time.delta.as_secs_f64());
@@ -396,6 +457,18 @@ impl TickLoop {
                 let excess = self.script_problems.len().saturating_sub(MAX_KEPT_PROBLEMS);
                 self.script_problems.drain(..excess);
             }
+        }
+
+        // Script commands may remove or disable typed components after the
+        // native component and actor phases. Drain those lifecycle endings
+        // before closing the SceneDB change window as well.
+        {
+            let store = self.scene_store.read();
+            pulsar_world_registry::process_component_removals(
+                &store.world,
+                &self.events,
+                &mut self.component_runtime,
+            );
         }
 
         // Flush 3 (after scripts): what scripts sent (`event::*`,
@@ -416,7 +489,8 @@ impl TickLoop {
     /// Queue an input event (a `pulsar_events::builtin::KeyDown`, ...) on
     /// the global channel; delivered at the next tick's first flush.
     pub fn publish_input<T: pulsar_events::gamma::Event + Send>(&self, event: T) {
-        self.events.publish(pulsar_events::gamma::Channel::Global, event);
+        self.events
+            .publish(pulsar_events::gamma::Channel::Global, event);
     }
 
     /// Block the calling thread, running the tick loop at the target rate.
@@ -444,6 +518,7 @@ impl TickLoop {
         // their `end_play` teardown logic, mirroring `ActorRegistry`'s
         // begin_play/end_play contract for native actors.
         self.end_scripts();
+        self.end_component_runtime();
     }
 
     /// Turn on the script phase for the project at `project_root`: a script
@@ -470,7 +545,9 @@ impl TickLoop {
     /// and capability allowlist of its project settings. Idempotent. The
     /// generated `engine_main::setup()` calls this; nothing about the
     /// project's location is compiled into the game.
-    pub fn enable_project_scripting(&mut self) -> Result<Arc<Mutex<crate::scripting::ScriptDriver>>, String> {
+    pub fn enable_project_scripting(
+        &mut self,
+    ) -> Result<Arc<Mutex<crate::scripting::ScriptDriver>>, String> {
         if let Some(driver) = &self.scripts {
             return Ok(Arc::clone(driver));
         }
@@ -497,11 +574,20 @@ impl TickLoop {
     /// session leaves nothing on its hub.
     pub fn end_scripts(&mut self) {
         if let Some(driver) = &self.scripts {
-            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let mut store = self.scene_store.write();
             driver.end_play_all(&mut store.world);
         }
         self.events.drain_queued();
+    }
+
+    /// End active macro-registered native component lifecycles. Removal and
+    /// disable teardown callbacks receive the stable owner identity because
+    /// the SceneDB row has already been removed by that point.
+    pub fn end_component_runtime(&mut self) {
+        pulsar_world_registry::end_live_components(&mut self.component_runtime, &self.events);
     }
 
     /// Signal the loop to stop after the current tick.
@@ -628,6 +714,12 @@ impl TickLoop {
 
         // The event loop has exited (all windows closed) — stop the ECS thread.
         running_flag.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Drop for TickLoop {
+    fn drop(&mut self) {
+        self.end_component_runtime();
     }
 }
 

@@ -84,39 +84,24 @@ fn bridge_gizmo_get_mut(
     pulsar_world_registry::EngineClassMut::of::<BridgeGizmo>(world, entity)
 }
 
-fn bridge_gizmo_hydrate(
-    world: &mut World,
-    entity: pulsar_scenedb::Entity,
-    data: &serde_json::Value,
-) -> Result<(), String> {
-    let parsed: BridgeGizmo = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
-    world.insert(entity, parsed);
-    Ok(())
-}
-
 fn bridge_gizmo_remove(world: &mut World, entity: pulsar_scenedb::Entity) {
     let _ = world.remove::<BridgeGizmo>(entity);
 }
-
-fn noop_on_removed(
-    _owner: &pulsar_reflection::RuntimeComponentOwner,
-    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-) {
-}
-
-fn noop_refresh(_world: &mut World, _entity: pulsar_scenedb::Entity) {}
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
         class_name: "BridgeGizmo",
         component_type: pulsar_scenedb::component_id::<BridgeGizmo>,
-        hydrate: bridge_gizmo_hydrate,
+        default_value: pulsar_world_registry::values::erased::default_value::<BridgeGizmo>,
+        decode: pulsar_world_registry::values::erased::decode_json::<BridgeGizmo>,
+        clone_value: pulsar_world_registry::values::erased::clone_value::<BridgeGizmo>,
+        value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<BridgeGizmo>,
+        value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<BridgeGizmo>,
+        register_erased: pulsar_scenedb::register_component::<BridgeGizmo>,
         remove: bridge_gizmo_remove,
-        dispatch: |world, entity, _owner, _idx, _ctx| world.get::<BridgeGizmo>(entity).is_some(),
         get_as_engine_class: bridge_gizmo_get,
         get_as_engine_class_mut: bridge_gizmo_get_mut,
-        on_removed: noop_on_removed,
-        refresh_gpu_mirror: noop_refresh,
+        property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }
 
@@ -143,7 +128,11 @@ fn scene_from(saved: &Saved) -> World {
     for (id, parent) in saved {
         let parent = parent.as_deref().map(|p| world.entity_for(p).unwrap());
         world
-            .spawn_object(SpawnObject::new(id.as_str()).with_id(id.as_str()).with_parent(parent))
+            .spawn_object(
+                SpawnObject::new(id.as_str())
+                    .with_id(id.as_str())
+                    .with_parent(parent),
+            )
             .unwrap();
     }
     world
@@ -205,7 +194,7 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
     assert_eq!(resolved.component_index, 0);
 
     resolved
-        .set_property(&mut world, "charge", serde_json::json!(42))
+        .set_property(&mut world, "charge", Box::new(42i32))
         .expect("writes");
 
     let door = world.entity_for("door").unwrap();
@@ -224,8 +213,12 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
     let shared: SharedScene = Arc::new(RwLock::new(scene));
     let again = saved.resolve(&shared.read().world).unwrap();
     assert_eq!(
-        again.get_property(&shared.read().world, "charge").unwrap(),
-        serde_json::json!(42)
+        again
+            .get_property(&shared.read().world, "charge")
+            .unwrap()
+            .downcast_ref::<i32>()
+            .copied(),
+        Some(42)
     );
 }
 

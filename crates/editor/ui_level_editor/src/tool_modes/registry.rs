@@ -3,7 +3,7 @@
 //! Owns registered tool modes and the currently active mode ID.
 //! Provides lookup, switching, and extensibility seams.
 
-use super::{ToolMode, ToolModeContext, level_edit::LevelEditMode};
+use super::{level_edit::LevelEditMode, ToolMode, ToolModeContext};
 
 // ── ToolModeId ─────────────────────────────────────────────────────────────
 

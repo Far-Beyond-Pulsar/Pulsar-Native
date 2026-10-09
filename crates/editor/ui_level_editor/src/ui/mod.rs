@@ -15,7 +15,7 @@ pub use properties::{
     ComponentHierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel,
     TransformSection,
 };
-pub use toolbar::{GLOBAL_TOOLBAR_HEIGHT, GlobalToolbarView, ToolbarPanel, ToolbarView};
+pub use toolbar::{GlobalToolbarView, ToolbarPanel, ToolbarView, GLOBAL_TOOLBAR_HEIGHT};
 pub use viewport::ViewportPanel;
 pub use world_settings::WorldSettingsPanelImpl;
 mod spline_preview;

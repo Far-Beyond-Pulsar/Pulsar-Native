@@ -3,13 +3,13 @@
 
 use std::path::{Path, PathBuf};
 
-use engine_backend::scene::{SceneWorldExt, new_scene};
+use engine_backend::scene::{new_scene, SceneWorldExt};
 use helio_component::components::LightComponent;
 use pulsar_class::ClassRegistry;
 use pulsar_scenedb::World;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use super::super::{Transform, classes, components, history, level_io, objects};
+use super::super::{classes, components, history, level_io, objects, Transform};
 
 fn light_json(intensity: f32) -> Value {
     let mut light = LightComponent::default();
@@ -62,10 +62,18 @@ fn slot(dir: &Path, index: usize) -> String {
         .to_string()
 }
 
+/// The object's first enabled light instance.
+fn light_instance(world: &World, id: &str) -> pulsar_scenedb::Entity {
+    let owner = world.entity_for(id).unwrap();
+    engine_backend::scene::attachments::enabled_components_of::<LightComponent>(world, owner)
+        .first()
+        .expect("LightComponent")
+        .0
+}
+
 fn light(world: &World, id: &str) -> LightComponent {
-    let entity = world.entity_for(id).unwrap();
     world
-        .get::<LightComponent>(entity)
+        .get::<LightComponent>(light_instance(world, id))
         .cloned()
         .expect("LightComponent")
 }
@@ -122,7 +130,7 @@ fn save_writes_only_overrides_and_load_follows_class_edits() {
     let b = place(world, &dir, 1.0);
 
     // Override one value on a, and a variable.
-    let entity = world.entity_for(&a).unwrap();
+    let entity = light_instance(&world, &a);
     world
         .get_mut::<LightComponent>(entity)
         .unwrap()
@@ -225,10 +233,8 @@ fn old_levels_migrate_on_load_and_save_without_the_old_fields() {
             1.0,
             "{id} has the class components"
         );
-        assert!(
-            !components::get_component_class_names(world, id)
-                .contains(&"ScriptComponent".to_string())
-        );
+        assert!(!components::get_component_class_names(world, id)
+            .contains(&"ScriptComponent".to_string()));
     }
     assert_eq!(
         classes::class_instance(world, "bound")
@@ -251,7 +257,7 @@ fn duplicate_and_history_keep_the_class_link() {
     let mut scene = new_scene();
     let world = &mut scene.world;
     let a = place(world, &dir, 0.0);
-    let entity = world.entity_for(&a).unwrap();
+    let entity = light_instance(&world, &a);
     world
         .get_mut::<LightComponent>(entity)
         .unwrap()
@@ -290,7 +296,7 @@ fn details_view_marks_overrides_and_reverts_them() {
     let mut scene = new_scene();
     let world = &mut scene.world;
     let a = place(world, &dir, 0.0);
-    let entity = world.entity_for(&a).unwrap();
+    let entity = light_instance(&world, &a);
     world
         .get_mut::<LightComponent>(entity)
         .unwrap()
@@ -333,7 +339,7 @@ fn details_view_marks_overrides_and_reverts_them() {
 fn class_asset_updates_rebuild_placed_instances() {
     use crate::core::asset_updates;
     use crate::state::LevelEditorState;
-    use plugin_editor_api::{AssetKind, AssetUpdated, publish_asset_updated};
+    use plugin_editor_api::{publish_asset_updated, AssetKind, AssetUpdated};
 
     let (_project, dir) = project_with_lamp(1.0);
     let state = std::sync::Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
@@ -343,7 +349,7 @@ fn class_asset_updates_rebuild_placed_instances() {
         let a = place(&mut world, &dir, 0.0);
         let b = place(&mut world, &dir, 1.0);
         // An unsaved edit on a.
-        let entity = world.entity_for(&a).unwrap();
+        let entity = light_instance(&world, &a);
         world
             .get_mut::<LightComponent>(entity)
             .unwrap()
@@ -383,11 +389,11 @@ fn class_asset_updates_rebuild_placed_instances() {
     );
 }
 
-/// #935: a class edit reaches every placed instance's LIVE components and
-/// the renderer hears about it: after `AssetUpdated`, both instances' lights
-/// (root and generated child) have the new color, and each light entity is
-/// in the change events the renderer drains to re-derive its light rows,
-/// without touching any instance.
+/// #935: a class edit reaches every placed instance's LIVE components: after
+/// `AssetUpdated`, both instances' lights (root and generated child) have
+/// the new color, and so does the light row each one uploads for the
+/// renderer's scene join (`LightSourceRow`, derived on every write), with
+/// nothing armed, marked or drained.
 #[test]
 fn class_color_edit_reaches_live_lights_and_their_render_rows() {
     use crate::core::asset_updates;
@@ -401,9 +407,6 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
         let mut world = st.scene.world_mut();
         let a = place(&mut world, &dir, 0.0);
         let b = place(&mut world, &dir, 4.0);
-        // The renderer armed its row subscriptions and drained its events.
-        engine_backend::scene::arm_render_row_subscriptions(&mut world);
-        world.take_component_change_events();
         (a, b)
     };
     let classes_before = state.read().scene.class_updates;
@@ -427,37 +430,32 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
     );
 
     let st = state.read();
-    let mut world = st.scene.world_mut();
-    let dirty: std::collections::HashSet<_> = world
-        .take_component_change_events()
-        .into_iter()
-        .map(|e| e.entity)
-        .collect();
+    let world = st.scene.world();
     for id in [&a, &b] {
         let kids = children(&world, id);
         assert_eq!(kids.len(), 1);
         for object in [id, &kids[0]] {
+            let live = light(&world, object);
             assert_eq!(
-                light(&world, object).color.color,
+                live.color.color,
                 [1.0, 0.0, 0.0, 1.0],
                 "{object}: live light"
             );
-            let entity = world.entity_for(object).unwrap();
-            assert!(
-                dirty.contains(&entity),
-                "{object}: the renderer re-derives its light row"
+            let row = helio_component::components::LightSourceRow::of(&live);
+            assert_eq!(
+                row.color_intensity[..3],
+                [1.0, 0.0, 0.0],
+                "{object}: the uploaded light row"
             );
         }
     }
-    // What the renderer does with them: rows follow the live lights.
-    engine_backend::scene::sync_editor_light_rows(&mut world, true, Some(&dirty));
 }
 
 /// Reverting a class-slot property and setting/reverting a class variable
 /// go through the normal command path, so undo brings the override back.
 #[test]
 fn reverts_and_variable_edits_are_undoable_commands() {
-    use crate::commands::{SceneCommand, execute_command};
+    use crate::commands::{execute_command, SceneCommand};
     use crate::state::LevelEditorState;
 
     let (project, dir) = project_with_lamp(1.0);
@@ -466,7 +464,7 @@ fn reverts_and_variable_edits_are_undoable_commands() {
     let a = {
         let mut world = state.scene.world_mut();
         let a = place(&mut world, &dir, 0.0);
-        let entity = world.entity_for(&a).unwrap();
+        let entity = light_instance(&world, &a);
         world
             .get_mut::<LightComponent>(entity)
             .unwrap()
@@ -521,12 +519,10 @@ fn reverts_and_variable_edits_are_undoable_commands() {
             value: None,
         },
     );
-    assert!(
-        classes::class_instance(&state.scene.world(), &a)
-            .unwrap()
-            .variable_overrides
-            .is_empty()
-    );
+    assert!(classes::class_instance(&state.scene.world(), &a)
+        .unwrap()
+        .variable_overrides
+        .is_empty());
     state.scene.undo();
     assert_eq!(
         classes::class_instance(&state.scene.world(), &a)
@@ -554,7 +550,12 @@ fn placed_classes_are_class_objects_with_owned_children() {
     assert!(pulsar_class::is_slot_uuid(&slot0));
     let root = world.entity_for(&a).unwrap();
     let placement = pulsar_class::world::placement(world, root);
-    assert_eq!(placement.handle(&slot0).unwrap().entity, root);
+    let handle = placement.handle(&slot0).unwrap().entity;
+    assert_eq!(
+        engine_backend::scene::attachments::owner_of(world, handle),
+        Some(root),
+        "a root slot is a component instance on the root"
+    );
 }
 
 /// #925: Stop restores the editor world exactly as it was before the first
@@ -595,7 +596,7 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
         let mut world = state.scene.world_mut();
         // Gameplay moves the lamp and dims it.
         objects::set_transform(&mut world, &a, Some([5.0, 0.0, 0.0]), None, None);
-        let entity = world.entity_for(&a).unwrap();
+        let entity = light_instance(&world, &a);
         world
             .get_mut::<LightComponent>(entity)
             .unwrap()
@@ -651,4 +652,74 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
         entities_before,
         "entities spawned without a StableId are gone"
     );
+}
+
+/// Pulsar-Native#1035, Phase 3: instances are built from the class's typed
+/// template. An override diff in the nested (`#[sub_props]`) shape lands on
+/// the reflected property without a decode, every instance shares one
+/// template, and a placed instance carries the override.
+#[test]
+fn instances_are_built_from_the_typed_template() {
+    let (_project, dir) = project_with_lamp(1.0);
+    let registry = classes::registry_for_class_dir(&dir);
+    let def = registry.by_name("Lamp").unwrap().load_definition().unwrap();
+    let template = pulsar_class::template(&def);
+    assert!(std::sync::Arc::ptr_eq(
+        &template,
+        &pulsar_class::template(&def)
+    ));
+
+    let mut value: Box<dyn std::any::Any + Send + Sync> = Box::new(LightComponent::default());
+    assert!(pulsar_class::template::apply_diff(
+        "LightComponent",
+        value.as_mut(),
+        &json!({ "intensity": { "intensity": 5.0 } }),
+    ));
+    assert_eq!(
+        value
+            .downcast_ref::<LightComponent>()
+            .unwrap()
+            .intensity
+            .intensity,
+        5.0
+    );
+    assert!(
+        !pulsar_class::template::apply_diff(
+            "LightComponent",
+            value.as_mut(),
+            &json!({ "no_such_field": 1 }),
+        ),
+        "a diff reflection cannot place falls back to a decode"
+    );
+
+    let first = slot(&dir, 0);
+    match template.slot_value(&first, Some(&json!({ "intensity": { "intensity": 7.0 } }))) {
+        Some(pulsar_world_registry::InstanceValue::Value(value)) => assert_eq!(
+            value
+                .downcast_ref::<LightComponent>()
+                .unwrap()
+                .intensity
+                .intensity,
+            7.0
+        ),
+        _ => panic!("a typed value"),
+    }
+    assert_eq!(
+        template
+            .default_property(&first, "intensity")
+            .and_then(|v| v.downcast_ref::<f32>().copied()),
+        Some(1.0)
+    );
+
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = place(world, &dir, 0.0);
+    let root = world.entity_for(&id).unwrap();
+    let mut instance = pulsar_class::world::class_instance_of(world, root).unwrap();
+    instance
+        .component_overrides
+        .insert(first, json!({ "intensity": { "intensity": 9.0 } }));
+    pulsar_class::world::store_class_instance(world, root, &instance);
+    classes::rebuild_instance(world, &id, &registry).unwrap();
+    assert_eq!(light(world, &id).intensity.intensity, 9.0);
 }

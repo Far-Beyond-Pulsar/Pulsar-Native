@@ -9,7 +9,9 @@ use super::PhysicsComponent;
 impl ScenePropsProjector for PhysicsComponent {
     const CLASS_NAME: &'static str = "PhysicsComponent";
 
-    fn apply_scene_props(props: &mut HashMap<String, Value>, component_data: Option<&Value>) {
+    /// Clears the keys this class's values once occupied in an object's
+    /// props (the level-file migration); the values live in the component.
+    fn apply_scene_props(props: &mut HashMap<String, Value>, _component_data: Option<&Value>) {
         for key in [
             "enabled",
             "collision_enabled",
@@ -45,15 +47,6 @@ impl ScenePropsProjector for PhysicsComponent {
             "override_angular_velocity",
         ] {
             props.remove(key);
-        }
-
-        let Some(data) = component_data else {
-            return;
-        };
-
-        let physics = PhysicsComponent::from_component_data(data);
-        for (k, v) in physics.to_scene_props() {
-            props.insert(k, v);
         }
     }
 }

@@ -230,7 +230,7 @@ jobs:
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
       - name: Run unit tests
-        run: cargo nextest run --workspace --locked
+        run: cargo nextest run --profile ci --workspace --locked
 
   check-lockfile:
     needs: [check-version, lint-and-test]

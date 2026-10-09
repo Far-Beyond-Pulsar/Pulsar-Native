@@ -7,12 +7,11 @@
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, Sizable,
     button::ButtonVariants as _,
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction, TextInput},
-    v_flex,
+    v_flex, ActiveTheme, Sizable,
 };
 
 use super::field_bindings::{BoolFieldBinding, F32FieldBinding, FieldBinding, StringFieldBinding};
@@ -152,11 +151,21 @@ impl F32BoundField {
     /// Update the field when scene data changes externally (e.g., from undo/redo)
     pub fn refresh(&self, window: &mut Window, cx: &mut App) {
         if let Some(value) = self.binding.get(&self.object_id, &self.scene_db) {
-            let text = self.binding.to_string(&value);
-            self.input.update(cx, |state, cx| {
-                state.set_value(&text, window, cx);
-            });
+            self.show(value, window, cx);
         }
+    }
+
+    /// Show `value`, delivered by the object's subscription, without
+    /// reading the scene. A field being typed into keeps the user's text:
+    /// the delivered value is the echo of their own edit.
+    pub fn show(&self, value: f32, window: &mut Window, cx: &mut App) {
+        if self.input.read(cx).focus_handle(cx).is_focused(window) {
+            return;
+        }
+        let text = self.binding.to_string(&value);
+        self.input.update(cx, |state, cx| {
+            state.set_value(&text, window, cx);
+        });
     }
 }
 
@@ -264,6 +273,9 @@ impl StringBoundField {
 
     /// Update the field when scene data changes externally
     pub fn refresh(&self, window: &mut Window, cx: &mut App) {
+        if self.input.read(cx).focus_handle(cx).is_focused(window) {
+            return;
+        }
         if let Some(value) = self.binding.get(&self.object_id, &self.scene_db) {
             let text = self.binding.to_string(&value);
             self.input.update(cx, |state, cx| {

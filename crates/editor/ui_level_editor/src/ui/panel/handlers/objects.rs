@@ -7,7 +7,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let mut state = self.shared_state.write();
         execute_command(
             &mut state,
@@ -38,7 +38,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let mut state = self.shared_state.write();
         execute_command(
             &mut state,
@@ -69,7 +69,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
@@ -86,7 +86,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
@@ -102,10 +102,9 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    /// Undo the last mutating scene command (Pulsar-Native#554). Restoring
-    /// replaces `WorldSceneStore` wholesale, so the renderer's delta-sync
-    /// can't diff against it correctly -- `force_full_resync` is required
-    /// here, not optional; see its doc for why.
+    /// Undo the last mutating scene command (Pulsar-Native#554). The restore
+    /// writes through the World like any edit, so the renderer follows it
+    /// from the revision; only the gizmo needs re-syncing.
     pub(in crate::ui::panel) fn on_undo(
         &mut self,
         _: &crate::ui::actions::Undo,
@@ -117,12 +116,6 @@ impl LevelEditorPanel {
         if state.scene.undo() {
             state.scene.bump_revision(true);
             drop(state);
-            // Mailbox, not `gpu_engine.lock()`: this must never be silently
-            // dropped the way a lost `try_lock()`/blocked `.lock()` could --
-            // see `pending_force_full_resync`'s doc.
-            if let Some(mailbox) = &self.helio_mailbox {
-                mailbox.queue_force_full_resync();
-            }
             self.sync_gizmo_to_helio();
         }
         cx.notify();
@@ -139,9 +132,6 @@ impl LevelEditorPanel {
         if state.scene.redo() {
             state.scene.bump_revision(true);
             drop(state);
-            if let Some(mailbox) = &self.helio_mailbox {
-                mailbox.queue_force_full_resync();
-            }
             self.sync_gizmo_to_helio();
         }
         cx.notify();

@@ -5,10 +5,10 @@
 
 use gpui::{prelude::*, *};
 use std::sync::Arc;
-use ui::{ActiveTheme, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme};
 
 use super::bindings::bound_field::{BoolBoundField, StringBoundField};
-use crate::core::commands::{SceneCommand, execute_command};
+use crate::core::commands::{execute_command, SceneCommand};
 use crate::state::LevelEditorState;
 use engine_backend::scene::SharedScene;
 
@@ -31,12 +31,12 @@ impl ObjectHeaderSection {
         use super::bindings::field_bindings::{BoolFieldBinding, StringFieldBinding};
 
         // Name/visible/locked all go through `SceneCommand`/`execute_command`
-        // now (Pulsar-Native#561), not `SceneDatabase::update_object`
+        // now (Pulsar-Native#561), not `scene_edit::objects::update_object`
         // (whole-object overwrite, and -- despite a since-removed comment
         // claiming otherwise -- never actually undo-tracked).
 
         // Name field. Getters use the targeted component reads (see
-        // `SceneDatabase::get_object_name`'s doc) — these run on every scene
+        // `scene_edit::objects::get_object_name`'s doc) — these run on every scene
         // revision bump while this object is selected, and a whole-object
         // read per bump scaled the panel's cost with component count.
         let name_field = cx.new(|cx| {
@@ -73,11 +73,8 @@ impl ObjectHeaderSection {
                 BoolFieldBinding::new_with_db(
                     |id, db| {
                         let world = db.read();
-                        crate::scene_edit::objects::get_object_visibility(
-                            &world.world,
-                            id,
-                        )
-                        .map(|(visible, _)| visible)
+                        crate::scene_edit::objects::get_object_visibility(&world.world, id)
+                            .map(|(visible, _)| visible)
                     },
                     move |id, visible, _db| {
                         execute_command(
@@ -105,11 +102,8 @@ impl ObjectHeaderSection {
                 BoolFieldBinding::new_with_db(
                     |id, db| {
                         let world = db.read();
-                        crate::scene_edit::objects::get_object_visibility(
-                            &world.world,
-                            id,
-                        )
-                        .map(|(_, locked)| locked)
+                        crate::scene_edit::objects::get_object_visibility(&world.world, id)
+                            .map(|(_, locked)| locked)
                     },
                     move |id, locked, _db| {
                         execute_command(

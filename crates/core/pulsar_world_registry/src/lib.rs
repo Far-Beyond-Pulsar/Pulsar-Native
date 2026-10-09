@@ -1,42 +1,27 @@
-//! Bridges reflection-typed, [`pulsar_reflection::ComponentRuntimeBehavior`]-
-//! implementing components into `pulsar_scenedb::World` (Pulsar-Native#555/
+//! Bridges reflection-typed components into `pulsar_scenedb::World` (Pulsar-Native#555/
 //! #556, Phase B4/B5 of the SceneDB + Helio + reflection/properties-panel
 //! unification -- see [Pulsar-Native#561](https://github.com/Far-Beyond-Pulsar/Pulsar-Native/issues/561)).
 //!
 //! ## What this solves
 //!
 //! Before this crate, a component's *live* runtime shape was always
-//! `serde_json::Value`: `HelioRenderer::sync_scene` re-deserialized every
-//! component's JSON into its typed struct on *every rendered frame* (via
-//! `apply_runtime_behavior_for_class`), even though `#[register_runtime_behavior]`
-//! (Phase B2) already made `ComponentRuntimeBehavior::sync_component` itself
-//! typed -- the JSON round trip was purely an artifact of the dispatch
-//! boundary, not the trait.
+//! `serde_json::Value`, re-deserialized into its typed struct on every
+//! rendered frame by a JSON dispatch.
 //!
 //! `#[register_world_component]` (`engine_class_derive`) lets a component opt
 //! into this crate's registry, which provides:
-//! - **`hydrate`**: deserialize a component's JSON *once*, when it's
-//!   actually edited (`SceneDatabase`'s component-mutation hook), and insert
-//!   the typed value into `World` at that entity.
-//! - **`dispatch`**: read the typed value already sitting in `World` and call
-//!   `ComponentRuntimeBehavior::sync_component` directly -- no JSON, no
-//!   `serde_json::from_value` -- on the render hot path.
+//! - **Erased values** ([`values`]): a default factory, a JSON boundary
+//!   decoder, a clone, and insertion of the resulting owned value through
+//!   SceneDB's type-erased `World::insert_dyn`, which runs exactly the write
+//!   hooks a typed insert runs. Hydrating a component is decode + erased
+//!   insert; nothing class-specific happens at insertion.
 //! - **`remove`**: drop the typed value when the component is deleted,
 //!   disabled, or its owning object is despawned.
-//! - **`on_removed`**: the consumer-side teardown counterpart to `hydrate` --
-//!   dispatched (with full `ComponentRuntimeContext`) off `World`'s own
-//!   attached `ChangeTracker`, which already records every component
-//!   removal automatically (`ChangeTracker::drain_component_removals`, no
-//!   manual bookkeeping in this crate or its callers), so a component that
-//!   created external state in `sync_component` (a Helio light, a cached
-//!   GPU actor) can drop it too -- without SceneDB or `World` ever needing
-//!   to know that state, or even the concept of a "class", exists. See
-//!   [`notify_world_component_removed_by_component_id`]'s doc.
-//! - **[`GpuMirrored`]**: the SceneDB-mirrored companion component,
-//!   auto-derived by `engine_class_derive` for any `#[property]` field
-//!   marked `#[gpu]` (packed/fixed-size scalars).
-//!   `#[register_world_component(gpu_mirror)]` wires it into the generated
-//!   `hydrate`/`remove` above. Var-len (`Vec<T>`) and heavy storage shapes
+//! - **[`GpuMirrored`]**: the GPU companion layout auto-derived by
+//!   `engine_class_derive` for any `#[property]` field marked `#[gpu]`
+//!   (packed/fixed-size scalars). It is not a component: the authored type's
+//!   own SceneDB GPU dispatch derives it and writes its row on every insert,
+//!   write, removal and mirror replay. Var-len (`Vec<T>`) and heavy storage shapes
 //!   are SceneDB's own `#[derive(SceneStore)]` concern exclusively -- this
 //!   crate deliberately has no opinion on them (see the engine-class GPU
 //!   de-duplication audit). See [`GpuMirrored`]'s doc for the full design
@@ -57,28 +42,253 @@
 //! Pulsar-Native-internal crate sitting alongside them -- itself depending
 //! on both -- is a clean fit with no cross-repo coordination needed at all.
 //!
-//! ## Why a separate registry from `RuntimeBehaviorRegistration`
+//! ## The runtime-behavior dispatch is gone
 //!
 //! `pulsar_reflection::RuntimeBehaviorRegistration`/`apply_runtime_behavior_for_class`
-//! stay exactly as they are (JSON-based) -- they're still the dispatch path
-//! for anything that only has JSON on hand (`pulsar_scene::SceneLoader`, and
-//! any component that hasn't been migrated onto this registry yet, e.g. the
-//! rest of B5's list before it lands). Migration is opt-in and incremental,
-//! one component at a time, which is exactly why this is a sibling registry
-//! rather than a breaking change to the existing one.
+//! (the JSON dispatch to `ComponentRuntimeBehavior::sync_component`) and this
+//! crate's typed `dispatch` had no production caller left; Pulsar-Native#1035
+//! (Phase 4) removed every registration and the typed path. Components reach
+//! their consumers through their data (SceneDB GPU rows and graph-owned
+//! derivations). Phase 6 dropped the `ComponentRuntimeBehavior` stubs that
+//! only carried a class name: `#[register_world_component]` names the class
+//! after the type.
 
 // Re-exported so `#[register_world_component]` (`engine_class_derive`) can
 // emit `pulsar_world_registry::inventory::submit! { .. }` in the calling
 // crate without that crate needing its own direct `inventory` dependency --
-// same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
+// the same pattern `pulsar_reflection` uses for its own registrations.
 pub use inventory;
+pub use unfinished::{unfinished_component, unfinished_components, UnfinishedComponentRegistration};
+/// Re-exported so generated component code can name the instance types
+/// (`ComponentOwner`) without its own dependency.
+pub use pulsar_scene_model;
+/// VM declarations/codecs referenced by generated component event metadata.
+pub use pulsar_script_vm;
+
+mod component_lifecycle;
+pub use component_lifecycle::{
+    end_live_components, process_component_removals, tick_live_components, ComponentInstanceKey,
+    ComponentRuntimeState,
+};
+
+/// Generated native component lifecycle entry. The callback runs on the
+/// live typed SceneDB value and never deserializes or stores a shadow.
+pub struct ComponentTickRegistration {
+    /// Rust type name used only for deterministic local callback ordering;
+    /// it is not an event id and is never sent across the DLL boundary.
+    pub type_name: &'static str,
+    pub class_name: &'static str,
+    /// Event names with generated native `#[bp_handler]` adapters. Only
+    /// these are subscribed for each active component instance.
+    pub handler_events: &'static [&'static str],
+    pub component_type: fn() -> ComponentId,
+    /// Runs callbacks on every enabled instance of the class, reporting the
+    /// active set: instance entity -> owner object (the actor whose event
+    /// channel the instance uses). The previous set lets generated shims
+    /// invoke `begin_play` only on activation.
+    pub tick: fn(
+        &mut World,
+        &pulsar_events::EventHub,
+        f32,
+        &std::collections::HashMap<Entity, Entity>,
+        &mut std::collections::HashMap<Entity, Entity>,
+        &mut ComponentRuntimeState,
+    ),
+    /// Owner-only teardown after the instance has already been
+    /// removed/disabled; called with its owner object.
+    pub end_play: Option<fn(Entity, &pulsar_events::EventHub)>,
+}
+
+inventory::collect!(ComponentTickRegistration);
+
+/// A stable Gamma event descriptor registered by a component event macro.
+pub struct ComponentEventRegistration {
+    pub class_name: &'static str,
+    pub descriptor: fn() -> pulsar_events::gamma::EventDescriptor,
+    pub declaration: fn() -> pulsar_script_vm::EventDecl,
+}
+
+inventory::collect!(ComponentEventRegistration);
+
+/// Register all link-time component event descriptors on a session hub.
+/// Calling this more than once is safe when descriptors are identical.
+pub fn register_component_events(hub: &pulsar_events::EventHub) -> Result<(), String> {
+    for registration in crate::runtime::events().iter().copied() {
+        hub.register(
+            (registration.descriptor)(),
+            pulsar_events::EventCategory::Gameplay,
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Link-time component event declarations used to install typed local
+/// signatures in the Blueprint bridge after their Gamma descriptors exist.
+pub fn component_event_registrations() -> impl Iterator<Item = &'static ComponentEventRegistration>
+{
+    crate::runtime::events().iter().copied().into_iter()
+}
+
+/// Short-lived, per-entity outbox for events emitted by reflected World
+/// methods. It is transport state only: it does not mirror component fields
+/// and is removed as soon as queued messages have been handed to Gamma.
+#[derive(Default)]
+pub struct ComponentEventOutbox {
+    pub events: Vec<QueuedComponentEvent>,
+}
+
+#[derive(Clone)]
+pub struct QueuedComponentEvent {
+    pub name: String,
+    pub fields: Vec<pulsar_events::gamma::DynValue>,
+}
+
+/// Append a component event to the owner's outbox. Delivery occurs at the
+/// runtime's `AfterPhysics` flush, after the World-mutating call returns.
+pub fn queue_component_event(
+    world: &mut World,
+    entity: Entity,
+    name: impl Into<String>,
+    fields: Vec<pulsar_events::gamma::DynValue>,
+) {
+    let event = QueuedComponentEvent {
+        name: name.into(),
+        fields,
+    };
+    if let Some(mut outbox) = world.get_mut::<ComponentEventOutbox>(entity) {
+        outbox.events.push(event);
+        return;
+    }
+    world.insert(
+        entity,
+        ComponentEventOutbox {
+            events: vec![event],
+        },
+    );
+}
+
+/// Publish queued outbox events after all World borrows for the emitting
+/// phase have ended. Unknown/unregistered names remain queued for the next
+/// phase rather than being silently discarded.
+pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) -> usize {
+    let entities: Vec<_> = world
+        .query::<&ComponentEventOutbox>()
+        .map(|(entity, _)| entity)
+        .collect();
+    let mut delivered = 0;
+    for entity in entities {
+        let Some(mut outbox) = world.remove::<ComponentEventOutbox>(entity) else {
+            continue;
+        };
+        // A component instance's events are addressed to the instance (for
+        // subscriptions to that component) and to its owning object (for
+        // subscriptions to the object), as they were when both were one
+        // entity (Pulsar-Native#1035).
+        let owner = pulsar_scene_model::attachments::owner_of(world, entity);
+        let channels: Vec<Entity> = std::iter::once(entity).chain(owner).collect();
+        let mut pending = Vec::new();
+        for event in outbox.events.drain(..) {
+            let mut published = 0;
+            for channel in &channels {
+                match hub.publish_named(
+                    pulsar_events::gamma::Channel::Entity(channel.bits()),
+                    &event.name,
+                    event.fields.clone(),
+                ) {
+                    Ok(()) => published += 1,
+                    Err(error) => {
+                        tracing::warn!(event = %event.name, %error, "component event was not registered; keeping it queued");
+                        break;
+                    }
+                }
+            }
+            if published == 0 {
+                pending.push(event);
+            } else {
+                delivered += 1;
+            }
+        }
+        if !pending.is_empty() {
+            world.insert(entity, ComponentEventOutbox { events: pending });
+        }
+    }
+    delivered
+}
+
+/// Services available to a live component callback. The component itself is
+/// borrowed from SceneDB for the callback's duration. The context exposes
+/// the owner and a deferred, owner-scoped event writer, but intentionally no
+/// `World` reference: handlers can therefore never re-enter a World borrow.
+pub struct ComponentContext<'a> {
+    pub entity: Entity,
+    pub events: ComponentEventWriter<'a>,
+}
+
+impl<'a> ComponentContext<'a> {
+    #[doc(hidden)]
+    pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
+        Self {
+            entity,
+            events: ComponentEventWriter::new(entity, hub),
+        }
+    }
+}
+
+pub struct ComponentEventWriter<'a> {
+    entity: Entity,
+    hub: &'a pulsar_events::EventHub,
+}
+
+impl<'a> ComponentEventWriter<'a> {
+    #[doc(hidden)]
+    pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
+        Self { entity, hub }
+    }
+
+    /// Publish an already-registered named event on this component owner's
+    /// entity channel. Gamma queues delivery; handlers do not run inline.
+    pub fn emit_named(
+        &self,
+        name: &str,
+        fields: Vec<pulsar_events::gamma::DynValue>,
+    ) -> Result<(), String> {
+        self.hub
+            .publish_named(
+                pulsar_events::gamma::Channel::Entity(self.entity.bits()),
+                name,
+                fields,
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    /// Emit a component event with its original Rust payload type. The VM
+    /// codec wraps it in a stable, versioned byte envelope before Gamma sees
+    /// it; only bytes and the declared event name cross the DLL boundary.
+    pub fn emit_value<T: Clone + Send + Sync + 'static>(
+        &self,
+        name: &str,
+        payload_type: &'static str,
+        payload: &T,
+    ) -> Result<(), String> {
+        let object = pulsar_script_vm::Object::new(payload_type, payload.clone());
+        let bytes = pulsar_script_vm::TypeRegistry::global().encode_event_value(&object)?;
+        self.emit_named(name, vec![pulsar_events::gamma::DynValue::Bytes(bytes)])
+    }
+}
 
 pub mod audit;
+pub mod change_watch;
+pub mod object_feed;
 pub mod dispatch;
 mod engine_class_mut;
 pub mod errors;
+pub mod instances;
 pub mod marshal;
+pub mod runtime;
 pub mod type_shims;
+pub mod unfinished;
+pub mod values;
 // Linked so the math value types and natives are in every host that builds
 // the script registry; nothing references them by name.
 use pulsar_script_math as _;
@@ -89,8 +299,8 @@ mod script_natives;
 // graph nodes) uses to touch live World components. No bespoke dispatch
 // downstream.
 pub use dispatch::{
-    get_component_property, get_component_property_boxed, invoke_component_method, property_descriptor,
-    set_component_property, set_component_property_boxed,
+    get_component_property, get_component_property_boxed, invoke_component_method,
+    property_descriptor, set_component_property, set_component_property_boxed,
 };
 // The one script-facing error taxonomy (#641/#643). Canonical home is this
 // crate (next to the dispatcher whose failures these are);
@@ -98,12 +308,26 @@ pub use dispatch::{
 pub use engine_class_mut::EngineClassMut;
 pub use errors::ScriptRefError;
 // Marshalling (#644): JSON ⇄ Box<dyn Any>.
+pub use instances::{
+    attach_component, attach_record, attach_record_or_unresolved, attach_records,
+    attach_unresolved, attach_value, component_metadata_records, component_records,
+    duplicate_instance, duplicate_instances, instance_engine_class, instance_metadata_record,
+    instance_record, replace_records, restore_instances, set_instance_value, snapshot_instance,
+    snapshot_instances, AttachError, ComponentPayload, InstanceSnapshot, InstanceValue,
+};
 pub use marshal::{any_to_json, json_to_any};
+pub use values::{
+    clone_value, clone_world_component_value, decode_json, decode_world_component_value,
+    insert_world_component_value, new_world_component_value, set_value_property,
+    set_world_component_property, value_engine_class, ComponentValueError,
+};
 // Metadata audit (#645): overload sweep + the deterministic registry
 // snapshot CI golden tests diff against.
+pub use change_watch::ComponentWatch;
+pub use object_feed::{ObjectDelta, ObjectFeed, ObjectUpdate};
 pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 
-use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
+use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, World};
 use serde_json::Value;
 
@@ -122,32 +346,33 @@ pub struct WorldComponentRegistration {
     /// time instead ([`find_by_component_id`]) -- cheap, `component_id::<T>`
     /// caches its own result after the first call regardless of caller.
     ///
-    /// This is the identity `World::remove`/`World::despawn` actually record
-    /// into the attached `ChangeTracker`'s `component_removals` list
-    /// (`SceneDB`, `Entity` + `ComponentId`, no notion of "class name" at
-    /// that layer at all). Lets
-    /// [`notify_world_component_removed_by_component_id`] translate a
-    /// drained removal straight back to this registration with no name
-    /// lookup in between -- `World`/SceneDB never need to know a class name
-    /// exists, and this crate never needs a second, parallel removal-
-    /// tracking mechanism of its own (see that fn's doc).
+    /// This is the identity SceneDB's change journals and object
+    /// subscriptions report (`Entity` + `ComponentId`, no notion of a class
+    /// name at that layer); [`find_by_component_id`] maps it back to this
+    /// registration.
     pub component_type: fn() -> ComponentId,
-    /// Deserialize `data` and insert/overwrite this class's typed component
-    /// on `entity`. Called once per edit (from `SceneDatabase`'s component
-    /// mutation hook), never from the render loop.
-    pub hydrate: fn(&mut World, Entity, &Value) -> Result<(), String>,
+    /// Construct this class's default value, owned and type-erased -- the
+    /// generic factory.
+    pub default_value: fn() -> Box<dyn std::any::Any + Send + Sync>,
+    /// Decode this class's value from its JSON representation. A boundary
+    /// codec (files, external tools): JSON is decoded once, here, and the
+    /// result is an owned typed value. Classes with a legacy file shape or
+    /// asset data to load supply their own (`decode = path`).
+    pub decode: fn(&Value) -> Result<Box<dyn std::any::Any + Send + Sync>, String>,
+    /// Clone a value of this class (`None` if `value` is not this class).
+    pub clone_value: fn(&dyn std::any::Any) -> Option<Box<dyn std::any::Any + Send + Sync>>,
+    /// View an owned value of this class (one not in a `World`, e.g. a
+    /// class template's) as `&dyn EngineClass`, for reflected reads.
+    pub value_as_engine_class: fn(&dyn std::any::Any) -> Option<&dyn EngineClass>,
+    /// [`Self::value_as_engine_class`], mutably, for reflected writes.
+    pub value_as_engine_class_mut: fn(&mut dyn std::any::Any) -> Option<&mut dyn EngineClass>,
+    /// Register this class with SceneDB for type-erased insertion
+    /// (`pulsar_scenedb::register_component::<T>`); idempotent.
+    pub register_erased: fn() -> ComponentId,
     /// Remove this class's typed component from `entity`, if present.
     /// Called when the component is deleted, disabled, or its owning object
     /// is despawned.
     pub remove: fn(&mut World, Entity),
-    /// Dispatch `ComponentRuntimeBehavior::sync_component` using the typed
-    /// value already in `World` -- no JSON deserialize on this path at all.
-    /// Returns `false` (and does nothing) if `entity` doesn't have this
-    /// component in `World` (not hydrated yet); callers should fall back to
-    /// `pulsar_reflection::apply_runtime_behavior_for_class` in that case,
-    /// which still works off the JSON channel unconditionally.
-    pub dispatch:
-        fn(&World, Entity, &RuntimeComponentOwner, usize, &mut dyn ComponentRuntimeContext) -> bool,
     /// Borrow the typed value already in `World` as `&dyn EngineClass` --
     /// the properties panel's *read* path. No JSON, no throwaway `Default`
     /// instance: this is the one real, live value.
@@ -155,65 +380,25 @@ pub struct WorldComponentRegistration {
     /// Borrow the typed value already in `World` as `&mut dyn EngineClass`
     /// -- the properties panel's *write* path, as an [`EngineClassMut`] guard.
     /// Apply a `PropertyMetadata` setter to `&mut *guard`; SceneDB's write
-    /// hooks (GPU mirror, change tracker, subscriptions, journals) fire when
+    /// hooks (GPU mirror, change tracker, journals, object subscriptions) fire when
     /// the guard drops, after the edit (#841).
     pub get_as_engine_class_mut: for<'w> fn(&'w mut World, Entity) -> Option<EngineClassMut<'w>>,
-    /// Called when this class's component is going away -- removed from a
-    /// still-alive object, disabled, or the object itself despawned -- so
-    /// whatever external (non-`World`) state the component's own
-    /// `sync_component` created (a Helio light, a GPU actor, a cache entry)
-    /// gets torn down too.
-    ///
-    /// Deliberately *not* a `World`-mutating call: by the time this runs the
-    /// typed value may already be gone from `World` (see
-    /// `WorldSceneStore::take_pending_component_removals`'s doc for why this
-    /// has to be queued at removal time and drained later, with full
-    /// `ComponentRuntimeContext`, rather than called inline from wherever
-    /// the removal itself happens). This is the missing symmetric half of
-    /// `hydrate`: `hydrate` is "this class's data now exists, adopt it";
-    /// `on_removed` is "this class's data is gone, drop whatever you built
-    /// from it" -- the same component author owns both, and SceneDB/`World`
-    /// stays out of the conversation entirely (it doesn't know a `LightId`
-    /// or a `Scene` exists). Defaults to a no-op (`register_world_component`
-    /// generates one when no `on_removed = ...` override is given) --
-    /// correct for any class whose `sync_component` never created
-    /// consumer-side state that would otherwise leak.
-    pub on_removed: fn(&RuntimeComponentOwner, &mut dyn ComponentRuntimeContext),
-    /// Re-derive this class's `#[gpu]`-mirrored companion component --
-    /// `GpuMirrored`'s associated type -- from `entity`'s CURRENT live
-    /// `World` value of `Self`, and re-`World::insert` it.
-    ///
-    /// Closes a real gap `#[register_world_component(gpu_mirror)]` alone
-    /// didn't: that flag's generated `hydrate` calls `sync_gpu_mirror` once,
-    /// at JSON-hydrate time -- but a live properties-panel edit
-    /// (`update_live_component_property`/`get_as_engine_class_mut`, above)
-    /// mutates `Self` directly and never re-hydrates, so nothing else ever
-    /// told the companion mirror a field had changed. Callers invoke this
-    /// once per COMPONENTS/PROPS-dirty entity per sync pass (see
-    /// `HelioRenderer::sync_scene`/`sync_scene_delta`'s own Phase 2 doc,
-    /// `engine_backend`) -- deliberately NOT folded into `dispatch`
-    /// (`ComponentRuntimeBehavior::sync_component`) itself, which only ever
-    /// gets a read-only `&World` (see that field's own doc for why a
-    /// write-locked lock-through-the-whole-pass regression is exactly what
-    /// that read-only contract exists to avoid).
-    ///
-    /// Defaults to a no-op (`register_world_component` generates one when
-    /// neither the bare `gpu_mirror` flag nor an explicit `refresh_gpu_mirror
-    /// = path` override is given) -- correct for the overwhelming majority
-    /// of classes, which have nothing `#[gpu]`-marked to refresh. The bare
-    /// `gpu_mirror` flag alone generates the obvious default: unconditionally
-    /// re-sync every mirror kind `Self` has one of. A class whose mirror's
-    /// presence is conditional on its own data (`LightComponent`: "disabled
-    /// means absent, not present-with-meaningless-values") supplies
-    /// `refresh_gpu_mirror = path` instead, matching `hydrate`'s own
-    /// enabled-check.
-    pub refresh_gpu_mirror: fn(&mut World, Entity),
+    /// Re-establish data this class derives from its own fields after a
+    /// reflected write: `Some(name)` after a property setter, `None` after a
+    /// reflected method (which may have written anything). Runs inside the
+    /// same write guard as the write itself, so SceneDB observes one commit
+    /// with the final value. A component-owned normalization -- e.g.
+    /// `StaticMeshComponent` loading the asset its `mesh_asset` now names --
+    /// never a GPU refresh: GPU rows follow the write through SceneDB's own
+    /// mirror dispatch. Defaults to a no-op (`property_written = path`
+    /// overrides it with a `fn(&mut Self, Option<&str>)`).
+    pub property_written: fn(&mut dyn EngineClass, Option<&str>),
 }
 
 inventory::collect!(WorldComponentRegistration);
 
 fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
-    inventory::iter::<WorldComponentRegistration>
+    crate::runtime::world_components().iter().copied()
         .into_iter()
         .find(|r| r.class_name == class_name)
 }
@@ -221,59 +406,49 @@ fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
 /// Same lookup as [`find`], keyed by `ComponentId` instead of class name --
 /// what a drained `ChangeTracker::component_removals` entry actually
 /// carries (see `WorldComponentRegistration::component_type`'s doc). A
-/// linear scan over `inventory::iter`, same as `find` -- the registered-
+/// linear scan over the registered classes, same as `find` -- the registered-
 /// class count is small (dozens, not thousands) and this only runs once
 /// per removal event, not per frame per entity, so it isn't worth a
 /// memoized `HashMap` until that stops being true.
 fn find_by_component_id(
     component_type: ComponentId,
 ) -> Option<&'static WorldComponentRegistration> {
-    inventory::iter::<WorldComponentRegistration>
+    crate::runtime::world_components().iter().copied()
         .into_iter()
         .find(|r| (r.component_type)() == component_type)
 }
 
 /// Resolve a registered class's `pulsar_scenedb::ComponentId` -- the erased
-/// identity `World` subscriptions are keyed by (SceneDB#47's
-/// `World::subscribe_id`). This is the subscribe-path counterpart to
-/// [`find_by_component_id`] (the drain-path lookup): an editor caller that
+/// identity change cursors and [`ComponentWatch`] are keyed by. The
+/// watch-path counterpart to [`find_by_component_id`]: an editor caller that
 /// only knows a class NAME (the properties panel's reflection metadata) can
-/// arm a subscription without ever naming the Rust type. Returns `None` for
+/// watch an instance without ever naming the Rust type. Returns `None` for
 /// classes not registered here -- those have no live `World` representation,
-/// so there is nothing to subscribe to.
+/// so there is nothing to watch.
 pub fn component_id_for_class(class_name: &str) -> Option<ComponentId> {
     find(class_name).map(|r| (r.component_type)())
 }
 
-/// Hydrate `class_name`'s typed component from `data` onto `entity`. Returns
-/// `Ok(false)` if `class_name` isn't registered here (not migrated yet, or
-/// not a real component class) -- not an error, it just means the JSON
-/// channel stays authoritative for this class. Returns `Err` only if
-/// `class_name` *is* registered but `data` failed to deserialize.
+/// Hydrate `class_name`'s typed component from `data` onto `entity`: decode
+/// the JSON once into an owned value and insert it through
+/// [`values::insert_world_component_value`] (SceneDB's erased insert, with
+/// every normal write hook). Returns `Ok(false)` if `class_name` isn't
+/// registered here (not a world component class). Returns `Err` only if
+/// `class_name` *is* registered but `data` failed to decode -- nothing is
+/// inserted then.
 pub fn hydrate_world_component_for_class(
     class_name: &str,
     world: &mut World,
     entity: Entity,
     data: &Value,
 ) -> Result<bool, String> {
-    match find(class_name) {
-        Some(registration) => (registration.hydrate)(world, entity, data).map(|()| true),
-        None => Ok(false),
-    }
-}
-
-/// Whether `entity` currently carries a live-typed component of `class_name`
-/// in the `World`. Unregistered classes report `false` (they have no live
-/// representation at all).
-///
-/// This is the idempotence gate scripted hydration needs: generated actors
-/// seed prefab defaults ONLY when the scene hasn't already hydrated the
-/// component onto the entity, so per-instance scene values always win
-/// (#651). Read-only by construction -- it borrows through the same bridge
-/// the properties panel's read path uses.
-pub fn world_component_present_for_class(class_name: &str, world: &World, entity: Entity) -> bool {
-    find(class_name)
-        .is_some_and(|registration| (registration.get_as_engine_class)(world, entity).is_some())
+    let Some(registration) = find(class_name) else {
+        return Ok(false);
+    };
+    let value = (registration.decode)(data)?;
+    values::insert_world_component_value(class_name, world, entity, value)
+        .map(|_| true)
+        .map_err(|error| error.to_string())
 }
 
 /// Remove `class_name`'s typed component from `entity`, if that class is
@@ -286,107 +461,6 @@ pub fn remove_world_component_for_class(
     match find(class_name) {
         Some(registration) => {
             (registration.remove)(world, entity);
-            true
-        }
-        None => false,
-    }
-}
-
-/// Dispatch `class_name`'s `on_removed` hook -- the consumer-side teardown
-/// counterpart to `hydrate`. Returns `false` if `class_name` isn't
-/// registered here (nothing to notify; the JSON-only/legacy dispatch path
-/// has no consumer-side state to tear down in the first place).
-///
-/// Callers don't need to check whether `entity` still has this component in
-/// `World` first -- `on_removed` only ever needs `owner`'s tag/position, not
-/// a live `World` lookup, so it's safe to call after the typed value (or
-/// `entity` itself) is already gone. In practice callers reach this class
-/// name via [`notify_world_component_removed_by_component_id`] below, which
-/// is what a real removal event (`World`'s attached `ChangeTracker`) hands
-/// you -- this `class_name`-keyed spelling exists for callers that already
-/// have the name some other way (tests, anything working off the JSON/class
-/// registry side).
-pub fn notify_world_component_removed(
-    class_name: &str,
-    owner: &RuntimeComponentOwner,
-    context: &mut dyn ComponentRuntimeContext,
-) -> bool {
-    match find(class_name) {
-        Some(registration) => {
-            (registration.on_removed)(owner, context);
-            true
-        }
-        None => false,
-    }
-}
-
-/// Dispatch `on_removed` for whichever registered class owns
-/// `component_type` -- the direct consumer of a
-/// `pulsar_scenedb::ChangeTracker::drain_component_removals()` entry.
-///
-/// This is the actual removal-detection mechanism (Pulsar-Native#561's
-/// "zero dupe state" cleanup): `World::remove`/`World::despawn` already
-/// record every component removal into the `SharedChangeTracker` attached
-/// at `WorldSceneStore` construction, automatically, for every mutation, no
-/// `_tracked` call or manual bookkeeping needed anywhere (same "attach
-/// once, every write already knows" shape `#[gpu]` mirroring already uses).
-/// A caller (`HelioRenderer`'s sync pass) drains that list once per sync
-/// pass and calls this per entry -- SceneDB/`World` never need to know a
-/// "class" or "component trait" concept exists at all; this crate is the
-/// only place that translates a bare `ComponentId` back into "which
-/// registered class is this, and what does removal mean to it".
-///
-/// Returns `false` if `component_type` isn't a registered class (nothing to
-/// notify -- e.g. a plain bookkeeping component like `Parent`/`Transform`
-/// with no `#[register_world_component]` at all).
-pub fn notify_world_component_removed_by_component_id(
-    component_type: ComponentId,
-    owner: &RuntimeComponentOwner,
-    context: &mut dyn ComponentRuntimeContext,
-) -> bool {
-    match find_by_component_id(component_type) {
-        Some(registration) => {
-            (registration.on_removed)(owner, context);
-            true
-        }
-        None => false,
-    }
-}
-
-/// Dispatch `class_name`'s `ComponentRuntimeBehavior::sync_component`
-/// directly off `entity`'s typed `World` value, if that class is registered
-/// here and hydrated on `entity`. Returns `false` otherwise -- callers
-/// should fall back to `pulsar_reflection::apply_runtime_behavior_for_class`.
-pub fn dispatch_world_component_for_class(
-    class_name: &str,
-    world: &World,
-    entity: Entity,
-    owner: &RuntimeComponentOwner,
-    component_index: usize,
-    context: &mut dyn ComponentRuntimeContext,
-) -> bool {
-    match find(class_name) {
-        Some(registration) => {
-            (registration.dispatch)(world, entity, owner, component_index, context)
-        }
-        None => false,
-    }
-}
-
-/// Re-derive `class_name`'s `#[gpu]`-mirrored companion component(s) on
-/// `entity` from its current live `World` value, if that class is
-/// registered here. Returns `false` if `class_name` isn't registered --
-/// callers don't need to check first (see `WorldComponentRegistration::
-/// refresh_gpu_mirror`'s own doc for why every registration has an entry
-/// here regardless, defaulting to a no-op).
-pub fn refresh_world_component_gpu_mirror_for_class(
-    class_name: &str,
-    world: &mut World,
-    entity: Entity,
-) -> bool {
-    match find(class_name) {
-        Some(registration) => {
-            (registration.refresh_gpu_mirror)(world, entity);
             true
         }
         None => false,
@@ -420,14 +494,10 @@ pub fn get_world_component_as_engine_class_mut<'w>(
     (find(class_name)?.get_as_engine_class_mut)(world, entity)
 }
 
-/// Every currently-registered `World`-backed class name. `SceneDatabase`
-/// uses this to know which classes to check for removal when an object's
-/// component list changes -- a class present in `World` from a previous
-/// hydration but no longer in the object's current enabled component list
-/// needs `remove` called, and this is how it finds out which classes to
-/// even ask about.
+/// Every currently-registered `World`-backed class name (the add-component
+/// menu, inventory checks).
 pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str> {
-    inventory::iter::<WorldComponentRegistration>
+    crate::runtime::world_components().iter().copied()
         .into_iter()
         .map(|r| r.class_name)
 }
@@ -479,6 +549,12 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
 /// A type whose `#[gpu]`-marked `#[property]` fields (`engine_class_derive`)
 /// have an automatically-derived, `Pod`, SceneDB-mirrorable translation.
 ///
+/// The translation is never stored as a component. `engine_class_derive`
+/// registers a SceneDB GPU dispatch for the authored type that calls
+/// [`Self::to_gpu_mirror`] and writes the companion's packed row
+/// (`pulsar_scenedb::gpu::write_derived_row`), so the row follows the
+/// authored value through every SceneDB write, removal and mirror replay.
+///
 /// `engine_class_derive` generates an impl of this for EVERY
 /// `#[engine_class(...)]`-processed struct, unconditionally -- including
 /// ones with zero `#[gpu]` fields, which get `GpuMirror = NoGpuMirror` (see
@@ -499,26 +575,6 @@ pub trait GpuMirrored {
     /// Translate `self`'s current `#[gpu]`-marked fields (and its
     /// `#[sub_props]` fields' own translations) into `Self::GpuMirror`.
     fn to_gpu_mirror(&self) -> Self::GpuMirror;
-
-    /// Insert `self`'s current GPU mirror onto `entity` -- a `World::insert`
-    /// away from being SceneDB-mirrored automatically, same as any other
-    /// `#[gpu]` write. A no-op default would be wrong here (every type gets
-    /// SOME impl of this trait, including ones with real fields to mirror),
-    /// so this is a real, non-overridable default method: `#[engine_class]`
-    /// never needs to generate a per-type version of this, only
-    /// `to_gpu_mirror` and the associated type above.
-    fn sync_gpu_mirror(&self, world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-        world.insert(entity, self.to_gpu_mirror());
-    }
-
-    /// Drop `entity`'s mirrored `Self::GpuMirror`, if it has one. Harmless
-    /// (a plain `World::remove` miss) for a type whose `GpuMirror` is
-    /// `NoGpuMirror` and was never actually inserted anywhere -- see
-    /// `sync_gpu_mirror`'s doc for why every type still has an impl to call
-    /// this through.
-    fn remove_gpu_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-        let _ = world.remove::<Self::GpuMirror>(entity);
-    }
 }
 
 /// Wraps ANY `Copy` type for GPU mirroring, treating its exact Rust memory
@@ -668,8 +724,8 @@ mod tests {
     use std::collections::HashMap;
 
     #[derive(Clone, Debug, PartialEq, Default, serde::Deserialize)]
-    struct TestComponent {
-        value: i32,
+    pub(crate) struct TestComponent {
+        pub(crate) value: i32,
     }
 
     // Minimal hand-written `EngineClass` impl -- in real components this
@@ -707,73 +763,42 @@ mod tests {
         EngineClassMut::of::<TestComponent>(world, entity)
     }
 
-    fn test_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
+    fn test_default() -> Box<dyn std::any::Any + Send + Sync> {
+        Box::new(TestComponent { value: 0 })
+    }
+
+    fn test_decode(data: &Value) -> Result<Box<dyn std::any::Any + Send + Sync>, String> {
         let parsed: TestComponent =
             serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
-        world.insert(entity, parsed);
-        Ok(())
+        Ok(Box::new(parsed))
+    }
+
+    fn test_clone(value: &dyn std::any::Any) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+        value
+            .downcast_ref::<TestComponent>()
+            .map(|v| Box::new(v.clone()) as Box<dyn std::any::Any + Send + Sync>)
     }
 
     fn test_remove(world: &mut World, entity: Entity) {
         let _ = world.remove::<TestComponent>(entity);
     }
 
-    fn test_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
-    }
-
-    fn test_dispatch(
-        world: &World,
-        entity: Entity,
-        _owner: &RuntimeComponentOwner,
-        _component_index: usize,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) -> bool {
-        world.get::<TestComponent>(entity).is_some()
-    }
-
-    fn test_refresh_gpu_mirror(_world: &mut World, _entity: Entity) {}
+    fn test_property_written(_value: &mut dyn EngineClass, _property: Option<&str>) {}
 
     inventory::submit! {
         WorldComponentRegistration {
             class_name: "TestComponent",
             component_type: pulsar_scenedb::component_id::<TestComponent>,
-            hydrate: test_hydrate,
+            default_value: test_default,
+            decode: test_decode,
+            clone_value: test_clone,
+            value_as_engine_class: |_| None,
+            value_as_engine_class_mut: |_| None,
+            register_erased: pulsar_scenedb::register_component::<TestComponent>,
             remove: test_remove,
-            dispatch: test_dispatch,
             get_as_engine_class: test_get,
             get_as_engine_class_mut: test_get_mut,
-            on_removed: test_on_removed,
-            refresh_gpu_mirror: test_refresh_gpu_mirror,
-        }
-    }
-
-    struct DummyContext {
-        subsystems: pulsar_reflection::Subsystems,
-    }
-
-    impl ComponentRuntimeContext for DummyContext {
-        fn subsystems_mut(&mut self) -> &mut pulsar_reflection::Subsystems {
-            &mut self.subsystems
-        }
-        fn project_root(&self) -> &std::path::Path {
-            std::path::Path::new(".")
-        }
-        fn report_error(&mut self, _message: String) {}
-    }
-
-    fn dummy_context() -> DummyContext {
-        DummyContext {
-            subsystems: pulsar_reflection::Subsystems::new(),
-        }
-    }
-
-    fn dummy_owner(props: &HashMap<String, Value>) -> RuntimeComponentOwner<'_> {
-        RuntimeComponentOwner {
-            scene_object_id: "test",
-            position: [0.0; 3],
-            rotation: [0.0; 3],
-            scale: [1.0; 3],
-            props,
+            property_written: test_property_written,
         }
     }
 
@@ -783,22 +808,9 @@ mod tests {
     }
 
     #[test]
-    fn hydrate_dispatch_remove_round_trip() {
+    fn hydrate_remove_round_trip() {
         let mut world = World::new();
         let entity = world.spawn();
-        let props = HashMap::new();
-        let mut ctx = dummy_context();
-
-        // Not hydrated yet -- dispatch is a clean no-op, not a panic.
-        assert!(!dispatch_world_component_for_class(
-            "TestComponent",
-            &world,
-            entity,
-            &dummy_owner(&props),
-            0,
-            &mut ctx
-        ));
-
         let hydrated = hydrate_world_component_for_class(
             "TestComponent",
             &mut world,
@@ -812,14 +824,6 @@ mod tests {
             Some(&TestComponent { value: 42 })
         );
 
-        assert!(dispatch_world_component_for_class(
-            "TestComponent",
-            &world,
-            entity,
-            &dummy_owner(&props),
-            0,
-            &mut ctx
-        ));
 
         assert!(remove_world_component_for_class(
             "TestComponent",
@@ -844,22 +848,33 @@ mod tests {
             &serde_json::json!({"value": 1}),
         )
         .unwrap();
-        world.subscribe::<TestComponent>(entity).unwrap();
-        world.take_component_change_events();
+        let mut cursor = world.open_change_cursor::<TestComponent>();
+        let mut changes = Vec::new();
 
         {
-            let guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+            let guard =
+                get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
+                    .unwrap();
             let _ = guard.to_json();
         }
-        assert!(world.take_component_change_events().is_empty(), "a read is not a mutation");
+        let _ = world.read_changes(&mut cursor, &mut changes);
+        assert!(changes.is_empty(), "a read is not a mutation");
 
-        let mut guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
-        guard.as_any_mut().downcast_mut::<TestComponent>().unwrap().value = 7;
+        let mut guard =
+            get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+        guard
+            .as_any_mut()
+            .downcast_mut::<TestComponent>()
+            .unwrap()
+            .value = 7;
         drop(guard);
-        let events = world.take_component_change_events();
-        assert_eq!(events.len(), 1, "{events:?}");
-        assert_eq!(events[0].kind, ComponentChangeKind::Mutated);
-        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 7 }));
+        let _ = world.read_changes(&mut cursor, &mut changes);
+        assert_eq!(changes.len(), 1, "{changes:?}");
+        assert_eq!(changes[0].kind, ComponentChangeKind::Mutated);
+        assert_eq!(
+            world.get::<TestComponent>(entity),
+            Some(&TestComponent { value: 7 })
+        );
     }
 
     #[test]
@@ -907,93 +922,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn notify_removed_dispatches_the_registered_hook() {
-        // `on_removed` deliberately takes no `World`/`Entity` at all (see its
-        // doc) -- the only way to observe it fired is a side channel.
-        thread_local! {
-            static FIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-        }
-        fn recording_on_removed(
-            _owner: &RuntimeComponentOwner,
-            _context: &mut dyn ComponentRuntimeContext,
-        ) {
-            FIRED.with(|f| f.set(true));
-        }
-
-        // A distinct component TYPE (not just a distinct class name) --
-        // `component_type` must be unique per registration for the
-        // by-ComponentId lookup test below to mean anything.
-        #[derive(Clone)]
-        struct NotifyRemovedTestComponent2;
-
-        // A second registration, distinct class name, so this test's
-        // `inventory::submit!` doesn't collide with `TestComponent`'s.
-        inventory::submit! {
-            WorldComponentRegistration {
-                class_name: "NotifyRemovedTestComponent",
-                component_type: pulsar_scenedb::component_id::<NotifyRemovedTestComponent2>,
-                hydrate: test_hydrate,
-                remove: test_remove,
-                dispatch: test_dispatch,
-                get_as_engine_class: test_get,
-                get_as_engine_class_mut: test_get_mut,
-                on_removed: recording_on_removed,
-                refresh_gpu_mirror: test_refresh_gpu_mirror,
-            }
-        }
-
-        let props = HashMap::new();
-        let owner = dummy_owner(&props);
-        let mut ctx = dummy_context();
-
-        assert!(
-            !FIRED.with(|f| f.get()),
-            "must not have fired before notify is called"
-        );
-        assert!(notify_world_component_removed(
-            "NotifyRemovedTestComponent",
-            &owner,
-            &mut ctx
-        ));
-        assert!(
-            FIRED.with(|f| f.get()),
-            "notify must invoke the registered on_removed hook"
-        );
-
-        assert!(!notify_world_component_removed(
-            "NotRegistered",
-            &owner,
-            &mut ctx
-        ));
-
-        FIRED.with(|f| f.set(false));
-        assert!(notify_world_component_removed_by_component_id(
-            pulsar_scenedb::component_id::<NotifyRemovedTestComponent2>(),
-            &owner,
-            &mut ctx,
-        ));
-        assert!(
-            FIRED.with(|f| f.get()),
-            "the ComponentId-keyed lookup must find the same registration"
-        );
-
-        // A ComponentId nothing registered (this test's own bare marker
-        // type) must be a clean no-op, not a panic.
-        struct NeverRegistered;
-        assert!(!notify_world_component_removed_by_component_id(
-            pulsar_scenedb::component_id::<NeverRegistered>(),
-            &owner,
-            &mut ctx,
-        ));
-    }
 
     #[test]
     fn unregistered_class_is_a_clean_no_op_everywhere() {
         let mut world = World::new();
         let entity = world.spawn();
-        let props = HashMap::new();
-        let mut ctx = dummy_context();
 
         assert_eq!(
             hydrate_world_component_for_class(
@@ -1009,14 +942,6 @@ mod tests {
             "NotRegistered",
             &mut world,
             entity
-        ));
-        assert!(!dispatch_world_component_for_class(
-            "NotRegistered",
-            &world,
-            entity,
-            &dummy_owner(&props),
-            0,
-            &mut ctx
         ));
     }
 

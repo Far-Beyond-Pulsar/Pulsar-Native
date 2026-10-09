@@ -21,15 +21,15 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use gpui::{App, Window};
 use rust_i18n::t;
 use ui::ContextModal as _;
 
-use crate::scene_edit::{LevelEditorCameraState, classes, level_io};
-use crate::{LevelEditorState, request_thumbnail_capture};
+use crate::scene_edit::{classes, level_io, LevelEditorCameraState};
+use crate::{request_thumbnail_capture, LevelEditorState};
 
 type StateArc = Arc<parking_lot::RwLock<LevelEditorState>>;
 
@@ -68,7 +68,15 @@ pub(crate) fn save_level(
     window: &mut Window,
     cx: &mut App,
 ) {
-    save_in_background(state, path, editor_camera, SaveKind::Level, window, cx, |_, _, _| {});
+    save_in_background(
+        state,
+        path,
+        editor_camera,
+        SaveKind::Level,
+        window,
+        cx,
+        |_, _, _| {},
+    );
 }
 
 /// Save in the background, then call `then(result)` on the UI thread (e.g.
@@ -168,13 +176,17 @@ fn save_blocking(
     };
     let snapshot = {
         let scene = scene.read();
-        level_io::snapshot_level(&scene.world, &registry, editor_camera)
+        let settings = state.read().scene.world_settings.clone();
+        level_io::snapshot_level(&scene.world, &registry, editor_camera, settings)
     };
 
     // Write in save order; a snapshot older than one already written to the
     // same file is stale.
     let mut last_written = LAST_WRITTEN.lock();
-    if last_written.get(path).is_some_and(|&newest| number < newest) {
+    if last_written
+        .get(path)
+        .is_some_and(|&newest| number < newest)
+    {
         return Ok(SaveOutcome::Superseded);
     }
     level_io::write_level(snapshot, path)?;
@@ -185,7 +197,7 @@ fn save_blocking(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::{SceneCommand, execute_command};
+    use crate::commands::{execute_command, SceneCommand};
     use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 
     fn state_with_object(name: &str) -> StateArc {
@@ -220,7 +232,10 @@ mod tests {
         assert!(state.read().scene.has_unsaved_changes);
 
         let n = NEXT_SAVE.fetch_add(1, Ordering::Relaxed);
-        assert!(matches!(save_blocking(&state, &path, None, SaveKind::Level, n), Ok(SaveOutcome::Saved)));
+        assert!(matches!(
+            save_blocking(&state, &path, None, SaveKind::Level, n),
+            Ok(SaveOutcome::Saved)
+        ));
         assert!(!state.read().scene.has_unsaved_changes);
         assert!(std::fs::read_to_string(&path).unwrap().contains("Crate"));
     }
@@ -233,11 +248,23 @@ mod tests {
         let newer = NEXT_SAVE.fetch_add(1, Ordering::Relaxed);
 
         assert!(matches!(
-            save_blocking(&state_with_object("Newer"), &path, None, SaveKind::Level, newer),
+            save_blocking(
+                &state_with_object("Newer"),
+                &path,
+                None,
+                SaveKind::Level,
+                newer
+            ),
             Ok(SaveOutcome::Saved)
         ));
         assert!(matches!(
-            save_blocking(&state_with_object("Older"), &path, None, SaveKind::Level, older),
+            save_blocking(
+                &state_with_object("Older"),
+                &path,
+                None,
+                SaveKind::Level,
+                older
+            ),
             Ok(SaveOutcome::Superseded)
         ));
         let written = std::fs::read_to_string(&path).unwrap();

@@ -28,7 +28,9 @@ use pulsar_script_vm::{script_value_ops, script_value_type};
 fn numbers<const N: usize>(text: &str) -> Result<[f64; N], String> {
     let values: Vec<f64> = serde_json::from_str(text).map_err(|e| e.to_string())?;
     let found = values.len();
-    let array: [f64; N] = values.try_into().map_err(|_| format!("expected {N} numbers, found {found}"))?;
+    let array: [f64; N] = values
+        .try_into()
+        .map_err(|_| format!("expected {N} numbers, found {found}"))?;
     match array.iter().find(|v| !v.is_finite()) {
         Some(v) => Err(format!("`{v}` is not a finite number")),
         None => Ok(array),
@@ -38,13 +40,42 @@ fn numbers<const N: usize>(text: &str) -> Result<[f64; N], String> {
 fn f32s<const N: usize>(text: &str) -> Result<[f32; N], String> {
     Ok(numbers::<N>(text)?.map(|v| v as f32))
 }
-script_value_type!(Vec2, "Vec2", decode = |t| Ok(Vec2::from_array(f32s::<2>(t)?)), encode = |v| literal::vec2(*v));
-script_value_type!(Vec3, "Vec3", decode = |t| Ok(Vec3::from_array(f32s::<3>(t)?)), encode = |v| literal::vec3(*v));
-script_value_type!(Vec4, "Vec4", decode = |t| Ok(Vec4::from_array(f32s::<4>(t)?)), encode = |v| literal::vec4(*v));
-script_value_type!(DVec3, "DVec3", decode = |t| Ok(DVec3::from_array(numbers::<3>(t)?)), encode = |v| literal::dvec3(*v));
-script_value_type!(Quat, "Quat", decode = |t| Ok(Quat::from_array(f32s::<4>(t)?)), encode = |v| literal::quat(*v));
-script_value_type!(Mat4, "Mat4", decode = |t| Ok(Mat4::from_cols_array(&f32s::<16>(t)?)), encode = |v| literal::mat4(*v));
-
+script_value_type!(
+    Vec2,
+    "Vec2",
+    decode = |t| Ok(Vec2::from_array(f32s::<2>(t)?)),
+    encode = |v| literal::vec2(*v)
+);
+script_value_type!(
+    Vec3,
+    "Vec3",
+    decode = |t| Ok(Vec3::from_array(f32s::<3>(t)?)),
+    encode = |v| literal::vec3(*v)
+);
+script_value_type!(
+    Vec4,
+    "Vec4",
+    decode = |t| Ok(Vec4::from_array(f32s::<4>(t)?)),
+    encode = |v| literal::vec4(*v)
+);
+script_value_type!(
+    DVec3,
+    "DVec3",
+    decode = |t| Ok(DVec3::from_array(numbers::<3>(t)?)),
+    encode = |v| literal::dvec3(*v)
+);
+script_value_type!(
+    Quat,
+    "Quat",
+    decode = |t| Ok(Quat::from_array(f32s::<4>(t)?)),
+    encode = |v| literal::quat(*v)
+);
+script_value_type!(
+    Mat4,
+    "Mat4",
+    decode = |t| Ok(Mat4::from_cols_array(&f32s::<16>(t)?)),
+    encode = |v| literal::mat4(*v)
+);
 
 /// The literal text of each math value, for compilers emitting constants.
 pub mod literal {
@@ -76,9 +107,39 @@ pub mod literal {
 
 // `==` and string conversion in scripts. Floating-point equality is exact,
 // as for `float`; use the types' `approx_eq` natives for tolerance.
-script_value_ops!(Vec2, "Vec2", eq = |a, b| a == b, display = |v| v.to_string());
-script_value_ops!(Vec3, "Vec3", eq = |a, b| a == b, display = |v| v.to_string());
-script_value_ops!(Vec4, "Vec4", eq = |a, b| a == b, display = |v| v.to_string());
-script_value_ops!(DVec3, "DVec3", eq = |a, b| a == b, display = |v| v.to_string());
-script_value_ops!(Quat, "Quat", eq = |a, b| a == b, display = |v| v.to_string());
-script_value_ops!(Mat4, "Mat4", eq = |a, b| a == b, display = |v| v.to_string());
+script_value_ops!(
+    Vec2,
+    "Vec2",
+    eq = |a, b| a == b,
+    display = |v| v.to_string()
+);
+script_value_ops!(
+    Vec3,
+    "Vec3",
+    eq = |a, b| a == b,
+    display = |v| v.to_string()
+);
+script_value_ops!(
+    Vec4,
+    "Vec4",
+    eq = |a, b| a == b,
+    display = |v| v.to_string()
+);
+script_value_ops!(
+    DVec3,
+    "DVec3",
+    eq = |a, b| a == b,
+    display = |v| v.to_string()
+);
+script_value_ops!(
+    Quat,
+    "Quat",
+    eq = |a, b| a == b,
+    display = |v| v.to_string()
+);
+script_value_ops!(
+    Mat4,
+    "Mat4",
+    eq = |a, b| a == b,
+    display = |v| v.to_string()
+);

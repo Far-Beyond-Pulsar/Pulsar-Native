@@ -471,5 +471,3 @@ mod tests {
         assert_eq!(matcher.label(), "2/2");
     }
 }
-
-

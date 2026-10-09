@@ -19,14 +19,13 @@
 //!   panic on argument-count/type mismatches, so the dispatcher validates
 //!   arity and exact `TypeId` match BEFORE handing args to a closure and
 //!   reports [`ScriptRefError::ArgumentCount`]/[`ArgumentType`] instead.
-//! - **Panel-parity identity** (#519). `(class_name, component_index)`:
-//!   index 0 is the live-typed value. Property access through THIS layer
-//!   rejects other indexes with [`ScriptRefError::InstanceMissing`]
-//!   (duplicate records live behind the object-model crate's
-//!   `ComponentInstanceStore`, not here). Methods are class-level behavior
-//!   shared by every duplicate instance, so they execute against the
-//!   live-typed value regardless of index -- the semantics
-//!   `ComponentRef::call_method` established.
+//! - **Instance identity** (Pulsar-Native#1035, D1). Every attached
+//!   instance is its own entity holding its own typed value, so an address
+//!   resolves to exactly one instance: `entity` is either that instance
+//!   entity, or its owner object with `component_index` as the class-local
+//!   ordinal (0 = the object's first instance of the class, enabled or
+//!   not). Properties and methods act on the addressed instance; there is
+//!   no "live-typed index" and no JSON copy of the others.
 //! - **Mutations ride the real storage.** Setters go through the typed
 //!   World bridge, so SceneDB's `Mut` guards fire subscription/GPU events
 //!   exactly like properties-panel edits.
@@ -80,13 +79,15 @@ pub fn invoke_component_method(
             })?;
     validate_args(class_name, &meta, &args)?;
 
-    let _ = component_index; // methods are class-level behavior; see module doc
-    let mut instance = crate::get_world_component_as_engine_class_mut(class_name, world, entity)
-        .ok_or_else(|| ScriptRefError::ComponentMissing {
-            entity,
-            class_name: class_name.to_string(),
-        })?;
-    Ok((meta.caller)(&mut *instance, args))
+    let property_written =
+        crate::find(class_name).map(|registration| registration.property_written);
+    let mut instance = live_instance_mut(world, entity, class_name, component_index)?;
+    let result = (meta.caller)(&mut *instance, args);
+    // The method may have written any field.
+    if let Some(property_written) = property_written {
+        property_written(&mut *instance, None);
+    }
+    Ok(result)
 }
 
 /// Read one reflected property of an entity's live-typed component value as
@@ -168,50 +169,6 @@ pub fn set_component_property_boxed(
     set_typed(world, entity, class_name, component_index, &meta, value)
 }
 
-/// Convert graph-domain JSON argument values into a method's declared
-/// parameter types, driven by reflection metadata.
-///
-/// The shared front half of [`invoke_component_method`] for callers whose
-/// values start as JSON — the VM's comp_call trampoline and PBGC's generated
-/// actors both stage arguments this way, so both cross into typed dispatch
-/// identically. Arity is validated here ([`ScriptRefError::ArgumentCount`]);
-/// each value deserializes against its parameter's reflected type
-/// ([`ScriptRefError::Marshalling`] on mismatch, nothing partially
-/// converted). Unknown methods are [`ScriptRefError::UnknownMethod`], never a
-/// silent empty arg list.
-pub fn json_args_to_method_args(
-    class_name: &str,
-    method: &str,
-    values: Vec<Value>,
-) -> Result<MethodArgs, ScriptRefError> {
-    let meta =
-        REGISTRY
-            .get_method(class_name, method)
-            .ok_or_else(|| ScriptRefError::UnknownMethod {
-                class_name: class_name.to_string(),
-                method: method.to_string(),
-            })?;
-    if values.len() != meta.params.len() {
-        return Err(ScriptRefError::ArgumentCount {
-            class_name: class_name.to_string(),
-            method: meta.name.to_string(),
-            expected: meta.params.len(),
-            got: values.len(),
-        });
-    }
-    meta.params
-        .iter()
-        .zip(values)
-        .map(|(param, value)| {
-            crate::marshal::json_to_any(
-                &format!("{class_name}.{} (arg {})", meta.name, param.name),
-                param.type_info,
-                value,
-            )
-        })
-        .collect()
-}
-
 // ── shared internals ───────────────────────────────────────────────────────
 
 fn property_context(class_name: &str, property: &str) -> String {
@@ -226,8 +183,13 @@ fn set_typed(
     meta: &PropertyMetadata,
     typed: Box<dyn Any>,
 ) -> Result<(), ScriptRefError> {
+    let property_written =
+        crate::find(class_name).map(|registration| registration.property_written);
     let mut instance = live_instance_mut(world, entity, class_name, component_index)?;
     (meta.setter)(&mut *instance, typed);
+    if let Some(property_written) = property_written {
+        property_written(&mut *instance, Some(meta.name));
+    }
     Ok(())
 }
 
@@ -241,20 +203,32 @@ fn set_typed(
 /// construction. Only the type-bound closures are used, never the
 /// throwaway's values. Nothing here refers to an entity or a borrowed
 /// component, so the cache can never hold a stale pointer.
-pub fn property_descriptor(class_name: &str, property: &str) -> Result<Arc<PropertyMetadata>, ScriptRefError> {
-    static CACHE: LazyLock<RwLock<HashMap<String, Arc<ClassProperties>>>> = LazyLock::new(Default::default);
+pub fn property_descriptor(
+    class_name: &str,
+    property: &str,
+) -> Result<Arc<PropertyMetadata>, ScriptRefError> {
+    static CACHE: LazyLock<RwLock<HashMap<String, Arc<ClassProperties>>>> =
+        LazyLock::new(Default::default);
 
     let unknown = || ScriptRefError::UnknownProperty {
         class_name: class_name.to_string(),
         property: property.to_string(),
     };
-    let cached = CACHE.read().unwrap_or_else(PoisonError::into_inner).get(class_name).cloned();
+    let cached = CACHE
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(class_name)
+        .cloned();
     let class = match cached {
         Some(class) => class,
         None => {
             let instance = REGISTRY.create_instance(class_name).ok_or_else(unknown)?;
             let built: Arc<ClassProperties> = Arc::new(
-                instance.get_properties().into_iter().map(|p| (p.name, Arc::new(p))).collect(),
+                instance
+                    .get_properties()
+                    .into_iter()
+                    .map(|p| (p.name, Arc::new(p)))
+                    .collect(),
             );
             let mut cache = CACHE.write().unwrap_or_else(PoisonError::into_inner);
             Arc::clone(cache.entry(class_name.to_owned()).or_insert(built))
@@ -265,20 +239,39 @@ pub fn property_descriptor(class_name: &str, property: &str) -> Result<Arc<Prope
 
 type ClassProperties = HashMap<&'static str, Arc<PropertyMetadata>>;
 
+/// The instance entity an address names; see the module doc.
+fn addressed_instance(
+    world: &World,
+    entity: Entity,
+    class_name: &str,
+    component_index: u32,
+) -> Result<Entity, ScriptRefError> {
+    crate::instances::resolve_instance(world, entity, class_name, component_index).ok_or_else(
+        || {
+            if component_index == 0 {
+                ScriptRefError::ComponentMissing {
+                    entity,
+                    class_name: class_name.to_string(),
+                }
+            } else {
+                ScriptRefError::InstanceMissing {
+                    entity,
+                    class_name: class_name.to_string(),
+                    component_index,
+                }
+            }
+        },
+    )
+}
+
 fn live_instance<'w>(
     world: &'w World,
     entity: Entity,
     class_name: &str,
     component_index: u32,
 ) -> Result<&'w dyn pulsar_reflection::EngineClass, ScriptRefError> {
-    if component_index != 0 {
-        return Err(ScriptRefError::InstanceMissing {
-            entity,
-            class_name: class_name.to_string(),
-            component_index,
-        });
-    }
-    crate::get_world_component_as_engine_class(class_name, world, entity).ok_or_else(|| {
+    let instance = addressed_instance(world, entity, class_name, component_index)?;
+    crate::get_world_component_as_engine_class(class_name, world, instance).ok_or_else(|| {
         ScriptRefError::ComponentMissing {
             entity,
             class_name: class_name.to_string(),
@@ -292,14 +285,8 @@ fn live_instance_mut<'w>(
     class_name: &str,
     component_index: u32,
 ) -> Result<crate::EngineClassMut<'w>, ScriptRefError> {
-    if component_index != 0 {
-        return Err(ScriptRefError::InstanceMissing {
-            entity,
-            class_name: class_name.to_string(),
-            component_index,
-        });
-    }
-    crate::get_world_component_as_engine_class_mut(class_name, world, entity).ok_or_else(|| {
+    let instance = addressed_instance(world, entity, class_name, component_index)?;
+    crate::get_world_component_as_engine_class_mut(class_name, world, instance).ok_or_else(|| {
         ScriptRefError::ComponentMissing {
             entity,
             class_name: class_name.to_string(),

@@ -19,11 +19,45 @@ use std::any::Any;
 /// enough to be useful in logs without requiring the payload itself to be
 /// `Debug` (`Box<dyn Any>` isn't, and boxing a closure to fake it would be
 /// its own complexity for zero real benefit).
+/// A typed component value a command attaches: its registered class name
+/// and an owned value of that class.
+pub struct TypedComponent {
+    pub class_name: String,
+    pub enabled: bool,
+    pub value: Box<dyn Any + Send + Sync>,
+}
+
+impl TypedComponent {
+    pub fn new<T: pulsar_reflection::EngineClass + Send + Sync>(value: T) -> Self {
+        Self {
+            class_name: T::class_name().to_string(),
+            enabled: true,
+            value: Box::new(value),
+        }
+    }
+}
+
+/// The value `SetComponentData` writes.
+pub enum ComponentData {
+    /// A value of the instance's class.
+    Value(Box<dyn Any + Send + Sync>),
+    /// A new payload for an unresolved instance (a class this build does
+    /// not register), kept as it is.
+    Unresolved(serde_json::Value),
+}
+
 pub enum SceneCommand {
     /// Add a new object.  The `id` field in `data` is ignored — SceneDb assigns it.
     AddObject {
         data: SceneObjectData,
         parent_id: Option<String>,
+    },
+    /// Add a new object (as `AddObject`) with typed component values
+    /// attached, in order, in the same undo step.
+    AddObjectWithComponents {
+        data: SceneObjectData,
+        parent_id: Option<String>,
+        components: Vec<TypedComponent>,
     },
     /// Remove an object and all descendants.
     /// Place an instance of the class in `class_dir` (#921): the root with
@@ -84,7 +118,7 @@ pub enum SceneCommand {
     ///
     /// Pulsar-Native#561: added so the properties panel's name field can go
     /// through `execute_command` (undo-tracked) like every other edit,
-    /// instead of calling `SceneDatabase::update_object` (whole-object
+    /// instead of calling `scene_edit::objects::update_object` (whole-object
     /// overwrite, NOT undo-tracked despite a comment that used to claim
     /// otherwise) directly.
     SetName {
@@ -109,8 +143,7 @@ pub enum SceneCommand {
     ///
     /// The single, unified write path for every component-property edit in
     /// the properties panel -- replaces calling
-    /// `SceneDatabase::update_live_component_property`/
-    /// `update_component_property` directly from UI code, so every such
+    /// `update_live_component_property` directly from UI code, so every such
     /// edit is undo-tracked and goes through exactly one code path.
     ///
     /// `component_index` identifies WHICH instance of `class_name` is being
@@ -126,13 +159,12 @@ pub enum SceneCommand {
         prop_name: String,
         value: Box<dyn Any + Send>,
     },
-    /// Attach a new component instance of `class_name`. `data` is the
-    /// class's whole-instance JSON (the `EngineClass::to_json` shape,
-    /// `#[sub_props]` nesting included).
+    /// Attach a new component instance of `class_name` holding `value` (a
+    /// value of that class), or the class default when `None`.
     AddComponent {
         id: String,
         class_name: String,
-        data: serde_json::Value,
+        value: Option<Box<dyn Any + Send + Sync>>,
     },
     /// Detach the component at `component_index`.
     RemoveComponent {
@@ -162,14 +194,13 @@ pub enum SceneCommand {
         component_index: usize,
         parent_index: Option<usize>,
     },
-    /// Replace one component instance's whole data (same shape as
-    /// `AddComponent::data`). For callers holding JSON rather than a typed
-    /// widget value -- the AI tools -- so nested fields need no per-property
-    /// setter lookup.
+    /// Replace one component instance's whole value. For callers that
+    /// build a complete value rather than set one property (the AI tools,
+    /// spline edits).
     SetComponentData {
         id: String,
         component_index: usize,
-        data: serde_json::Value,
+        data: ComponentData,
     },
     /// Revert a placed class instance's slot to the class: one property
     /// (dot `path` into the component data) or, with `path: None`, the whole
@@ -206,6 +237,23 @@ impl std::fmt::Debug for SceneCommand {
                 .field("data.id", &data.id)
                 .field("data.name", &data.name)
                 .field("parent_id", parent_id)
+                .finish(),
+            Self::AddObjectWithComponents {
+                data,
+                parent_id,
+                components,
+            } => f
+                .debug_struct("AddObjectWithComponents")
+                .field("data.id", &data.id)
+                .field("data.name", &data.name)
+                .field("parent_id", parent_id)
+                .field(
+                    "components",
+                    &components
+                        .iter()
+                        .map(|c| c.class_name.as_str())
+                        .collect::<Vec<_>>(),
+                )
                 .finish(),
             Self::InstantiateClass {
                 class_dir,

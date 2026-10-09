@@ -5,10 +5,9 @@ use crate::ui::HierarchyPanel;
 use gpui::*;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    v_flex,
+    v_flex, ActiveTheme, IconName, Sizable,
 };
 
 /// Hierarchy Panel
@@ -57,17 +56,13 @@ impl HierarchyPanelWrapper {
         }
         self.pump_started = true;
 
-        crate::ui::frame_pump::spawn_frame_pump(
-            &cx.entity(),
-            window,
-            |this, _window, cx| {
-                let signature = this.signature();
-                if signature != this.last_signature {
-                    this.last_signature = signature;
-                    cx.notify();
-                }
-            },
-        );
+        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
+            let signature = this.signature();
+            if signature != this.last_signature {
+                this.last_signature = signature;
+                cx.notify();
+            }
+        });
     }
 }
 
@@ -97,7 +92,7 @@ impl Render for HierarchyPanelWrapper {
             .ghost()
             .xsmall()
             .on_click(move |_, _, _cx| {
-                use crate::commands::{SceneCommand, execute_command};
+                use crate::commands::{execute_command, SceneCommand};
                 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 
                 let mut state = state_clone.write();
@@ -129,20 +124,11 @@ impl Render for HierarchyPanelWrapper {
 
         let wrapper_entity = cx.entity().downgrade();
 
-        v_flex()
-            .size_full()
-            .bg(cx.theme().sidebar)
-            .p_1()
-            .child({
-                let _scope = gpui::render_stats::scope("hierarchy panel: element build");
-                self.hierarchy.render(
-                    &state,
-                    self.state.clone(),
-                    wrapper_entity,
-                    add_button,
-                    cx,
-                )
-            })
+        v_flex().size_full().bg(cx.theme().sidebar).p_1().child({
+            let _scope = gpui::render_stats::scope("hierarchy panel: element build");
+            self.hierarchy
+                .render(&state, self.state.clone(), wrapper_entity, add_button, cx)
+        })
     }
 }
 

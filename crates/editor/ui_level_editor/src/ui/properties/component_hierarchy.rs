@@ -9,17 +9,17 @@
 //! - **Shift+Drag** - Remove parent (un-nest to root level)
 //! - **Click chevron** - Expand/collapse components with children
 
+use crate::commands::{execute_command, SceneCommand};
 use crate::state::LevelEditorState;
 use engine_backend::ComponentInstance;
-use engine_backend::scene::SharedScene;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, IconName,
-    Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::popup_menu::PopupMenu,
+    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, IconName,
+    Sizable,
 };
 
 // ── Drag Payload ──────────────────────────────────────────────────────────────
@@ -54,7 +54,6 @@ struct ComponentItem {
     index: usize,
     instance: ComponentInstance,
     object_id: String,
-    scene_db: SharedScene,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     selected: bool,
     children_indices: Vec<usize>,
@@ -116,7 +115,6 @@ impl HierarchyItem for ComponentItem {
     where
         V: Render,
     {
-        let scene_db = self.scene_db.clone();
         let toggle_object_id = self.object_id.clone();
         let index = self.index;
         let toggle_state = self.state_arc.clone();
@@ -137,20 +135,14 @@ impl HierarchyItem for ComponentItem {
             })
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
-                let mut state = toggle_state.write();
-                let changed = {
-                    let mut world = scene_db.write();
-                    crate::scene_edit::components::set_component_enabled(
-                        &mut world.world,
-                        &toggle_object_id,
-                        index,
-                        !enabled,
-                    )
-                };
-                if changed {
-                    state.scene.revision = state.scene.revision.saturating_add(1);
-                    state.scene.has_unsaved_changes = true;
-                }
+                execute_command(
+                    &mut toggle_state.write(),
+                    SceneCommand::SetComponentEnabled {
+                        id: toggle_object_id.clone(),
+                        component_index: index,
+                        enabled: !enabled,
+                    },
+                );
             });
 
         Some(h_flex().gap_1().child(toggle_button).into_any_element())
@@ -162,44 +154,32 @@ impl HierarchyItem for ComponentItem {
         _window: &mut Window,
         _cx: &mut Context<PopupMenu>,
     ) -> PopupMenu {
-        let duplicate_scene_db = self.scene_db.clone();
         let duplicate_object_id = self.object_id.clone();
         let duplicate_index = self.index;
         let duplicate_state = self.state_arc.clone();
-        let delete_scene_db = self.scene_db.clone();
         let delete_object_id = self.object_id.clone();
         let delete_index = self.index;
         let delete_state = self.state_arc.clone();
 
         menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
-            let duplicated = {
-                let mut world = duplicate_scene_db.write();
-                crate::scene_edit::components::duplicate_component(
-                    &mut world.world,
-                    &duplicate_object_id,
-                    duplicate_index,
-                )
-            };
-            if duplicated.is_some() {
-                let mut state = duplicate_state.write();
-                state.scene.revision = state.scene.revision.saturating_add(1);
-                state.scene.has_unsaved_changes = true;
-            }
+            execute_command(
+                &mut duplicate_state.write(),
+                SceneCommand::DuplicateComponent {
+                    id: duplicate_object_id.clone(),
+                    component_index: duplicate_index,
+                },
+            );
         })
         .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
             let _ = app;
-            {
-                let mut world = delete_scene_db.write();
-                crate::scene_edit::components::remove_component(
-                    &mut world.world,
-                    &delete_object_id,
-                    delete_index,
-                );
-            }
-            let mut state = delete_state.write();
-            state.scene.revision = state.scene.revision.saturating_add(1);
-            state.scene.has_unsaved_changes = true;
+            execute_command(
+                &mut delete_state.write(),
+                SceneCommand::RemoveComponent {
+                    id: delete_object_id.clone(),
+                    component_index: delete_index,
+                },
+            );
         })
     }
 }
@@ -207,17 +187,14 @@ impl HierarchyItem for ComponentItem {
 // ── Component Hierarchy Panel ─────────────────────────────────────────────────
 
 /// Component Hierarchy - Shows all components in a tree structure
+/// Every edit it offers is a `SceneCommand`, so each is one undo step.
 pub struct ComponentHierarchyPanel {
     object_id: String,
-    scene_db: SharedScene,
 }
 
 impl ComponentHierarchyPanel {
-    pub fn new(object_id: String, scene_db: SharedScene) -> Self {
-        Self {
-            object_id,
-            scene_db,
-        }
+    pub fn new(object_id: String) -> Self {
+        Self { object_id }
     }
 
     /// Get the parent index of a component from its data
@@ -260,7 +237,6 @@ impl ComponentHierarchyPanel {
                     index: idx,
                     instance: instance.clone(),
                     object_id: self.object_id.clone(),
-                    scene_db: self.scene_db.clone(),
                     state_arc: state_arc.clone(),
                     selected: false, // TODO: Implement selection
                     children_indices,
@@ -301,8 +277,8 @@ impl ComponentHierarchyPanel {
             .collect();
 
         let object_id = self.object_id.clone();
-        let scene_db = self.scene_db.clone();
-        let scene_db_for_root_drop = self.scene_db.clone();
+        let state_arc_for_root_drop = state_arc.clone();
+        let state_arc_for_drop = state_arc.clone();
         let state_arc_for_expand = state_arc.clone();
         let state_arc_for_nest = state_arc.clone();
         let notify_entity = cx.entity().downgrade();
@@ -325,12 +301,13 @@ impl ComponentHierarchyPanel {
                         if payload.object_id != object_id {
                             return;
                         }
-                        let mut world = scene_db_for_root_drop.write();
-                        crate::scene_edit::components::set_component_parent(
-                            &mut world.world,
-                            &object_id,
-                            payload.component_index,
-                            None,
+                        execute_command(
+                            &mut state_arc_for_root_drop.write(),
+                            SceneCommand::SetComponentParent {
+                                id: object_id.clone(),
+                                component_index: payload.component_index,
+                                parent_index: None,
+                            },
                         );
                     }
                 }),
@@ -390,32 +367,27 @@ impl ComponentHierarchyPanel {
                         return;
                     }
 
-                    if modifiers.shift {
-                        let mut world = scene_db.write();
-                        crate::scene_edit::components::set_component_parent(
-                            &mut world.world,
-                            &object_id,
-                            from_idx,
-                            None,
-                        );
-                    } else if modifiers.alt {
-                        let mut world = scene_db.write();
-                        crate::scene_edit::components::reorder_component(
-                            &mut world.world,
-                            &object_id,
-                            from_idx,
-                            to_idx,
-                        );
-                    } else {
-                        {
-                            let mut world = scene_db.write();
-                            crate::scene_edit::components::set_component_parent(
-                                &mut world.world,
-                                &object_id,
-                                from_idx,
-                                Some(to_idx),
-                            );
+                    let command = if modifiers.shift {
+                        SceneCommand::SetComponentParent {
+                            id: object_id.clone(),
+                            component_index: from_idx,
+                            parent_index: None,
                         }
+                    } else if modifiers.alt {
+                        SceneCommand::ReorderComponent {
+                            id: object_id.clone(),
+                            from_index: from_idx,
+                            to_index: to_idx,
+                        }
+                    } else {
+                        SceneCommand::SetComponentParent {
+                            id: object_id.clone(),
+                            component_index: from_idx,
+                            parent_index: Some(to_idx),
+                        }
+                    };
+                    execute_command(&mut state_arc_for_drop.write(), command);
+                    if !modifiers.shift && !modifiers.alt {
                         state_arc_for_nest
                             .write()
                             .hierarchy

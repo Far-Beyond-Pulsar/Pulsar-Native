@@ -9,13 +9,11 @@
 #![allow(dead_code)]
 
 use pulsar_reflection::{
-    ComponentMethodRegistration, EngineClass, MethodMetadata, MethodFlags, MethodReturnType,
+    ComponentMethodRegistration, EngineClass, MethodFlags, MethodMetadata, MethodReturnType,
     PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
-
-use crate::instances::{ComponentInstanceStore, InstanceRecord};
 
 /// Test component: one reflected `i32` property and one blueprint-callable
 /// method, registered into BOTH registries the real classes register into.
@@ -109,37 +107,16 @@ fn test_gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
         .map(|c| c as &dyn EngineClass)
 }
 
-fn test_gizmo_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+fn test_gizmo_get_mut(
+    world: &mut World,
+    entity: Entity,
+) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
     pulsar_world_registry::EngineClassMut::of::<TestGizmo>(world, entity)
-}
-
-fn test_gizmo_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
-    let parsed: TestGizmo = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
-    world.insert(entity, parsed);
-    Ok(())
 }
 
 fn test_gizmo_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<TestGizmo>(entity);
 }
-
-fn test_gizmo_on_removed(
-    _owner: &pulsar_reflection::RuntimeComponentOwner,
-    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-) {
-}
-
-fn test_gizmo_dispatch(
-    world: &World,
-    entity: Entity,
-    _owner: &pulsar_reflection::RuntimeComponentOwner,
-    _component_index: usize,
-    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-) -> bool {
-    world.get::<TestGizmo>(entity).is_some()
-}
-
-fn test_gizmo_refresh_gpu_mirror(_world: &mut World, _entity: Entity) {}
 
 fn test_gizmo_test_methods() -> Vec<pulsar_reflection::MethodMetadata> {
     <TestGizmo as EngineClass>::get_methods()
@@ -155,13 +132,16 @@ pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
         class_name: "TestGizmo",
         component_type: pulsar_scenedb::component_id::<TestGizmo>,
-        hydrate: test_gizmo_hydrate,
+        default_value: pulsar_world_registry::values::erased::default_value::<TestGizmo>,
+        decode: pulsar_world_registry::values::erased::decode_json::<TestGizmo>,
+        clone_value: pulsar_world_registry::values::erased::clone_value::<TestGizmo>,
+        value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<TestGizmo>,
+        value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<TestGizmo>,
+        register_erased: pulsar_scenedb::register_component::<TestGizmo>,
         remove: test_gizmo_remove,
-        dispatch: test_gizmo_dispatch,
         get_as_engine_class: test_gizmo_get,
         get_as_engine_class_mut: test_gizmo_get_mut,
-        on_removed: test_gizmo_on_removed,
-        refresh_gpu_mirror: test_gizmo_refresh_gpu_mirror,
+        property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }
 
@@ -178,57 +158,5 @@ pulsar_reflection::inventory::submit! {
     ComponentMethodRegistration {
         class_name: "TestGizmo",
         methods: test_gizmo_test_methods,
-    }
-}
-
-/// In-memory [`ComponentInstanceStore`] mirroring the editor's persisted
-/// component list shape -- records attached positionally to one entity.
-#[derive(Default)]
-pub(crate) struct FakeInstanceStore {
-    entity: Option<Entity>,
-    records: Vec<InstanceRecord>,
-}
-
-impl FakeInstanceStore {
-    /// Attach records to one entity, in list order.
-    pub fn attach(&mut self, entity: Entity, records: &[InstanceRecord]) {
-        self.entity = Some(entity);
-        self.records = records.to_vec();
-    }
-
-    pub fn record_data(&self, index: u32) -> Option<&Value> {
-        self.records.get(index as usize).map(|r| &r.data)
-    }
-}
-
-impl ComponentInstanceStore for FakeInstanceStore {
-    fn live_component_index(&self, entity: Entity, class_name: &str) -> Option<u32> {
-        if self.entity != Some(entity) {
-            return None;
-        }
-        self.records
-            .iter()
-            .position(|r| r.enabled && r.class_name == class_name)
-            .map(|i| i as u32)
-    }
-
-    fn instance_record(&self, entity: Entity, index: u32) -> Option<InstanceRecord> {
-        if self.entity != Some(entity) {
-            return None;
-        }
-        self.records.get(index as usize).cloned()
-    }
-
-    fn set_instance_data(&mut self, entity: Entity, index: u32, data: Value) -> bool {
-        if self.entity != Some(entity) {
-            return false;
-        }
-        match self.records.get_mut(index as usize) {
-            Some(record) => {
-                record.data = data;
-                true
-            }
-            None => false,
-        }
     }
 }

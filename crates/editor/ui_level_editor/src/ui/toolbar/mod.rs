@@ -5,10 +5,10 @@ use rust_i18n::t;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, ContextModal as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     notification::Notification,
+    ActiveTheme, ContextModal as _,
 };
 
 mod actions;
@@ -25,13 +25,13 @@ mod view;
 
 pub use actions::*;
 use feature_toggles::FeatureToggles;
-use mode_indicator::ModeIndicator;
-use tool_mode_dropdown::ToolModeDropdown;
-pub use global_toolbar::{GLOBAL_TOOLBAR_HEIGHT, GlobalToolbarView};
-pub use view::ToolbarView;
+pub use global_toolbar::{GlobalToolbarView, GLOBAL_TOOLBAR_HEIGHT};
 use level_editor_menus::LevelEditorMenus;
-use snap_controls::TransformSnapControls;
+use mode_indicator::ModeIndicator;
 use snap_controls::SnapPanel;
+use snap_controls::TransformSnapControls;
+use tool_mode_dropdown::ToolModeDropdown;
+pub use view::ToolbarView;
 
 use crate::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
 use crate::LevelEditorState;
@@ -302,6 +302,10 @@ impl ToolbarPanel {
                 s.overlays.state.show_performance_overlay =
                     !s.overlays.state.show_performance_overlay;
             });
-        if is_profiling { btn.primary() } else { btn }
+        if is_profiling {
+            btn.primary()
+        } else {
+            btn
+        }
     }
 }

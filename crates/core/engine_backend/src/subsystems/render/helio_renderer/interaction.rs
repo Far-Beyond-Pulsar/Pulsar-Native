@@ -11,9 +11,15 @@ static ROTATION_SNAP: AtomicU32 = AtomicU32::new(15.0f32.to_bits());
 static SCALE_SNAP: AtomicU32 = AtomicU32::new(0.1f32.to_bits());
 
 pub(super) fn set_snap_settings(location: f32, rotation: f32, scale: f32) {
-    if location.is_finite() && location > 0.0 { LOCATION_SNAP.store(location.to_bits(), Ordering::Relaxed); }
-    if rotation.is_finite() && rotation > 0.0 { ROTATION_SNAP.store(rotation.to_bits(), Ordering::Relaxed); }
-    if scale.is_finite() && scale > 0.0 { SCALE_SNAP.store(scale.to_bits(), Ordering::Relaxed); }
+    if location.is_finite() && location > 0.0 {
+        LOCATION_SNAP.store(location.to_bits(), Ordering::Relaxed);
+    }
+    if rotation.is_finite() && rotation > 0.0 {
+        ROTATION_SNAP.store(rotation.to_bits(), Ordering::Relaxed);
+    }
+    if scale.is_finite() && scale > 0.0 {
+        SCALE_SNAP.store(scale.to_bits(), Ordering::Relaxed);
+    }
 }
 const HANDLE_PIXELS: f32 = 112.0;
 const PICK_MARGIN: f32 = 7.0;
@@ -375,12 +381,16 @@ impl SceneInteraction {
         match drag.mode {
             GizmoType::Translate => {
                 let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
-                for value in &mut next.position { *value = (*value / step).round() * step; }
+                for value in &mut next.position {
+                    *value = (*value / step).round() * step;
+                }
             }
             GizmoType::Rotate => {}
             GizmoType::Scale => {
                 let step = f32::from_bits(SCALE_SNAP.load(Ordering::Relaxed));
-                for value in &mut next.scale { *value = ((*value / step).round() * step).max(0.001); }
+                for value in &mut next.scale {
+                    *value = ((*value / step).round() * step).max(0.001);
+                }
             }
             GizmoType::None => {}
         }
@@ -424,7 +434,10 @@ impl SceneInteraction {
         let active_rotation_axis = self.drag.and_then(|drag| {
             (drag.mode == GizmoType::Rotate)
                 .then_some(drag.handle)
-                .and_then(|handle| match handle { Handle::Axis(axis) => Some(axis), _ => None })
+                .and_then(|handle| match handle {
+                    Handle::Axis(axis) => Some(axis),
+                    _ => None,
+                })
         });
         // Submit the complete widget under one lock and upload generation.
         renderer.debug_batch(|batch| {
@@ -467,12 +480,17 @@ impl SceneInteraction {
                     .drag
                     .filter(|drag| drag.mode == GizmoType::Rotate)
                     .and_then(|drag| {
-                        let Handle::Axis(axis) = drag.handle else { return None };
-                        let snap_step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed))
-                            .to_radians();
+                        let Handle::Axis(axis) = drag.handle else {
+                            return None;
+                        };
+                        let snap_step =
+                            f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed)).to_radians();
                         let snapped_angle = (drag.angle / snap_step).round() * snap_step;
                         let local_axis = [Vec3::X, Vec3::Y, Vec3::Z][axis];
-                        Some(basis * Mat3::from_quat(Quat::from_axis_angle(local_axis, snapped_angle)))
+                        Some(
+                            basis
+                                * Mat3::from_quat(Quat::from_axis_angle(local_axis, snapped_angle)),
+                        )
                     })
                     .unwrap_or(basis);
                 let axes: Vec<usize> = active_rotation_axis
@@ -498,13 +516,17 @@ impl SceneInteraction {
                 // is captured, expose its entire 360-degree ring and remove
                 // the other rings so the active rotation range is unambiguous.
                 if let Some(axis) = active_rotation_axis {
-                    if mesh.handle != Handle::Axis(axis) { continue; }
+                    if mesh.handle != Handle::Axis(axis) {
+                        continue;
+                    }
                 }
                 if !self.handle_visible(mesh.handle, pivot, basis, length) {
                     continue;
                 }
                 let base = if self.mode == GizmoType::Rotate {
-                    let Handle::Axis(axis) = mesh.handle else { continue };
+                    let Handle::Axis(axis) = mesh.handle else {
+                        continue;
+                    };
                     rotation_axis_color(axis)
                 } else if active == Some(mesh.handle) {
                     [1.0, 0.8, 0.12, 1.0]
@@ -535,10 +557,11 @@ impl SceneInteraction {
             }
             if let Some(drag) = self.drag.filter(|drag| drag.mode == GizmoType::Rotate) {
                 if let Handle::Axis(axis) = drag.handle {
-                    let snap_step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed))
-                        .to_radians();
+                    let snap_step =
+                        f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed)).to_radians();
                     let snapped_angle = (drag.angle / snap_step).round() * snap_step;
-                    let shown_angle = snapped_angle.clamp(-std::f32::consts::TAU, std::f32::consts::TAU);
+                    let shown_angle =
+                        snapped_angle.clamp(-std::f32::consts::TAU, std::f32::consts::TAU);
                     let segments = ((shown_angle.abs() / std::f32::consts::TAU) * 96.0)
                         .ceil()
                         .max(1.0) as usize;
@@ -555,15 +578,35 @@ impl SceneInteraction {
                         let inner_b = pivot + (radial(b) * 0.81 + axis_vector * 0.008) * length;
                         let outer_a = pivot + (radial(a) * 0.89 + axis_vector * 0.008) * length;
                         let outer_b = pivot + (radial(b) * 0.89 + axis_vector * 0.008) * length;
-                        batch.tri(inner_a.to_array(), inner_b.to_array(), outer_b.to_array(), color);
-                        batch.tri(inner_a.to_array(), outer_b.to_array(), outer_a.to_array(), color);
+                        batch.tri(
+                            inner_a.to_array(),
+                            inner_b.to_array(),
+                            outer_b.to_array(),
+                            color,
+                        );
+                        batch.tri(
+                            inner_a.to_array(),
+                            outer_b.to_array(),
+                            outer_a.to_array(),
+                            color,
+                        );
 
                         let inner_a = pivot + (radial(a) * 0.81 - axis_vector * 0.008) * length;
                         let inner_b = pivot + (radial(b) * 0.81 - axis_vector * 0.008) * length;
                         let outer_a = pivot + (radial(a) * 0.89 - axis_vector * 0.008) * length;
                         let outer_b = pivot + (radial(b) * 0.89 - axis_vector * 0.008) * length;
-                        batch.tri(inner_a.to_array(), outer_b.to_array(), inner_b.to_array(), color);
-                        batch.tri(inner_a.to_array(), outer_a.to_array(), outer_b.to_array(), color);
+                        batch.tri(
+                            inner_a.to_array(),
+                            outer_b.to_array(),
+                            inner_b.to_array(),
+                            color,
+                        );
+                        batch.tri(
+                            inner_a.to_array(),
+                            outer_a.to_array(),
+                            outer_b.to_array(),
+                            color,
+                        );
                     }
                 }
             }
@@ -634,7 +677,9 @@ fn projected_ring_initial_angle(
             continue;
         }
         let point = view
-            .project(pivot + length * 0.85 * (basis.col(u) * angle.cos() + basis.col(v) * angle.sin()))
+            .project(
+                pivot + length * 0.85 * (basis.col(u) * angle.cos() + basis.col(v) * angle.sin()),
+            )
             .unwrap_or(center);
         let distance = point.distance_squared(cursor);
         if distance < best.0 {

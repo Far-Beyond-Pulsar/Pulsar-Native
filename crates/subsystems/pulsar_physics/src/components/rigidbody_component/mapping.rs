@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::collections::HashMap;
 
 use super::RigidbodyComponent;
 
@@ -15,16 +14,5 @@ impl RigidbodyComponent {
             rigidbody.advanced.apply_from_component_data(obj);
         }
         rigidbody
-    }
-
-    pub fn to_scene_props(&self) -> HashMap<String, Value> {
-        let mut out = HashMap::new();
-        self.general.apply_to_scene_props(&mut out);
-        self.velocity.apply_to_scene_props(&mut out);
-        self.damping.apply_to_scene_props(&mut out);
-        self.forces.apply_to_scene_props(&mut out);
-        self.constraints.apply_to_scene_props(&mut out);
-        self.advanced.apply_to_scene_props(&mut out);
-        out
     }
 }

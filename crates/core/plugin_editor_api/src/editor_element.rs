@@ -13,6 +13,7 @@
 //! This prevents the entire editor from being reconstructed every frame — the
 //! persistent state lives in the `EditorHandle`, only the element tree is ephemeral.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -24,6 +25,54 @@ use ui::dock::PanelView;
 
 use crate::error::PluginError;
 use crate::identifiers::EditorId;
+
+/// Typed, host-owned preference values supplied when a plugin editor opens.
+#[derive(Clone, Debug, Default)]
+pub struct EditorSettingsSnapshot {
+    values: HashMap<String, EditorSettingValue>,
+}
+
+#[derive(Clone, Debug)]
+pub enum EditorSettingValue {
+    Boolean(bool),
+    Integer(i64),
+    Float(f64),
+    Text(String),
+}
+
+impl EditorSettingsSnapshot {
+    pub fn new(values: HashMap<String, EditorSettingValue>) -> Self {
+        Self { values }
+    }
+
+    pub fn boolean(&self, key: &str, fallback: bool) -> bool {
+        match self.values.get(key) {
+            Some(EditorSettingValue::Boolean(value)) => *value,
+            _ => fallback,
+        }
+    }
+
+    pub fn integer(&self, key: &str, fallback: i64) -> i64 {
+        match self.values.get(key) {
+            Some(EditorSettingValue::Integer(value)) => *value,
+            _ => fallback,
+        }
+    }
+
+    pub fn float(&self, key: &str, fallback: f64) -> f64 {
+        match self.values.get(key) {
+            Some(EditorSettingValue::Float(value)) => *value,
+            _ => fallback,
+        }
+    }
+
+    pub fn text(&self, key: &str, fallback: &str) -> String {
+        match self.values.get(key) {
+            Some(EditorSettingValue::Text(value)) => value.clone(),
+            _ => fallback.to_owned(),
+        }
+    }
+}
 
 // ============================================================================
 // Editor Factory
@@ -38,7 +87,12 @@ pub struct EditorFactory {
     pub editor_id: EditorId,
     /// The creation function.
     pub create: Box<
-        dyn Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
+        dyn Fn(
+                PathBuf,
+                &EditorSettingsSnapshot,
+                &mut Window,
+                &mut App,
+            ) -> Result<Arc<dyn PanelView>, PluginError>
             + Send
             + Sync,
     >,
@@ -48,9 +102,27 @@ impl EditorFactory {
     pub fn new(
         editor_id: EditorId,
         create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
-            + 'static
-            + Send
-            + Sync,
+        + 'static
+        + Send
+        + Sync,
+    ) -> Self {
+        Self {
+            editor_id,
+            create: Box::new(move |path, _settings, window, cx| create(path, window, cx)),
+        }
+    }
+
+    pub fn new_with_settings(
+        editor_id: EditorId,
+        create: impl Fn(
+            PathBuf,
+            &EditorSettingsSnapshot,
+            &mut Window,
+            &mut App,
+        ) -> Result<Arc<dyn PanelView>, PluginError>
+        + 'static
+        + Send
+        + Sync,
     ) -> Self {
         Self {
             editor_id,
@@ -84,11 +156,28 @@ impl EditorFactoryRegistry {
         &mut self,
         editor_id: EditorId,
         create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
-            + 'static
-            + Send
-            + Sync,
+        + 'static
+        + Send
+        + Sync,
     ) {
         self.factories.push(EditorFactory::new(editor_id, create));
+    }
+
+    pub fn register_fn_with_settings(
+        &mut self,
+        editor_id: EditorId,
+        create: impl Fn(
+            PathBuf,
+            &EditorSettingsSnapshot,
+            &mut Window,
+            &mut App,
+        ) -> Result<Arc<dyn PanelView>, PluginError>
+        + 'static
+        + Send
+        + Sync,
+    ) {
+        self.factories
+            .push(EditorFactory::new_with_settings(editor_id, create));
     }
 
     /// Look up a factory by editor ID.

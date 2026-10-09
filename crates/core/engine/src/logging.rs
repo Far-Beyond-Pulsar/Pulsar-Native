@@ -12,13 +12,13 @@ use directories::ProjectDirs;
 use serde_json;
 use std::fs;
 use tracing::Subscriber;
+use tracing_subscriber::Layer;
 use tracing_subscriber::fmt::{
-    format::{FormatEvent, FormatFields, Writer},
     FmtContext,
+    format::{FormatEvent, FormatFields, Writer},
 };
 use tracing_subscriber::layer::Context as LayerContext;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::Layer;
 use ui_log_viewer::publish_live_log;
 
 #[allow(dead_code)]
@@ -61,8 +61,14 @@ pub fn init(verbose: bool) -> LogGuard {
                 .join("logs");
             fs::create_dir_all(&fallback_dir)?;
             let fallback_path = fallback_dir.join("engine.log");
-            std::env::set_var("PULSAR_ENGINE_LOG_FILE", fallback_path.to_string_lossy().to_string());
-            std::fs::OpenOptions::new().create(true).append(true).open(fallback_path)
+            std::env::set_var(
+                "PULSAR_ENGINE_LOG_FILE",
+                fallback_path.to_string_lossy().to_string(),
+            );
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(fallback_path)
         })
         .expect("Failed to open engine.log for writing");
     let (non_blocking, guard) = tracing_appender::non_blocking(engine_log_file);

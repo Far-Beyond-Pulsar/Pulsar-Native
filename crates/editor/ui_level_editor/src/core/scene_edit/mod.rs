@@ -12,18 +12,18 @@
 //! | [`components`] | attach/remove/enable/reorder component instances, live property edits |
 //! | [`level_io`] | `.level` file save/load |
 //! | [`history`] | undo/redo snapshots (editor-owned; SceneDB has no undo) |
-//! | [`changes`] | which component properties changed, for the properties panel's relevance gate |
 //! | [`classes`] | placed class instances: placement, rebuild, overrides, revert (#921) |
 //!
-//! JSON is used for persistence and for dormant or unregistered component
-//! instances; live registered component values in the world are authoritative.
+//! Every attached component is its own entity holding its typed value
+//! (Pulsar-Native#1035, D1). JSON is used only at boundaries: persistence,
+//! history, tools, and the payload of a class this build does not register.
 
+use crate::world_settings_data::WorldSettingsData;
 use engine_backend::ComponentInstance;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
-pub mod changes;
 pub mod classes;
 pub mod components;
 pub mod history;
@@ -35,60 +35,8 @@ mod hlfs_cathedral;
 #[cfg(test)]
 mod tests;
 
-pub use changes::PropertyChangeSet;
 pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType};
 pub use history::{SceneHistoryDelta, SceneHistorySnapshot};
-
-/// Whether `class_name` has a live typed component registered in the world
-/// (as opposed to being a JSON-only attachment).
-fn is_scenedb_authority_class(class_name: &str) -> bool {
-    pulsar_world_registry::component_id_for_class(class_name).is_some()
-}
-
-/// The `__`-prefixed editor metadata keys of a component's JSON (e.g.
-/// `__parent_index`), which live on the attachment record rather than in the
-/// typed component.
-fn attachment_data(data: &Value) -> Value {
-    let metadata: serde_json::Map<String, Value> = data
-        .as_object()
-        .into_iter()
-        .flat_map(|map| map.iter())
-        .filter(|(key, _)| key.starts_with("__"))
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    if metadata.is_empty() {
-        Value::Null
-    } else {
-        Value::Object(metadata)
-    }
-}
-
-fn overlay_live_data(data: &Value, mut live: Value) -> Value {
-    if let (Some(metadata), Some(live)) = (attachment_data(data).as_object(), live.as_object_mut())
-    {
-        live.extend(metadata.clone());
-    }
-    live
-}
-
-fn remap_component_parents(
-    components: &mut [ComponentInstance],
-    remap: impl Fn(usize) -> Option<usize>,
-) {
-    for component in components {
-        let Some(data) = component.data.as_object_mut() else {
-            continue;
-        };
-        let Some(parent) = data.get("__parent_index").and_then(Value::as_u64) else {
-            continue;
-        };
-        if let Some(parent) = remap(parent as usize) {
-            data.insert("__parent_index".into(), serde_json::json!(parent));
-        } else {
-            data.remove("__parent_index");
-        }
-    }
-}
 
 // ── Transform ─────────────────────────────────────────────────────────────
 
@@ -157,7 +105,9 @@ pub struct SceneObjectData {
     /// exclusively through the [`components`] functions.
     #[serde(default)]
     pub props: HashMap<String, Value>,
-    /// Reflection-based component instances (projection of the attachments).
+    /// Inline component instances of an object being added (older v2
+    /// level files and add-object callers). Read models leave it `None`:
+    /// the attached instances are read through [`components`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub component_instances: Option<Value>,
 }
@@ -182,6 +132,10 @@ pub struct LevelFile {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub blueprint_bindings: pulsar_scene::BlueprintBindings,
     pub metadata: LevelMetadata,
+    /// Per-level simulation and gameplay settings. Missing values in older
+    /// files use [`WorldSettingsData::default`].
+    #[serde(default)]
+    pub world_settings: WorldSettingsData,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<LevelEditorFileState>,
 }
@@ -209,10 +163,9 @@ pub struct LevelEditorCameraState {
 // ── Blueprint helpers ──────────────────────────────────────────────────────
 
 /// A `StaticMeshComponent` data payload carrying every texture slot the
-/// current class requires (Helio#237). Older scenes predate the slots; the
-/// legacy `props.mesh_asset` projection and tests must emit all of them or
-/// hydration's deserialization rejects the instance outright. Empty paths
-/// mean "slot unassigned", which hydrate treats as zero-semantics.
+/// current class requires (Helio#237), for the HLFS demo scene builder.
+/// Empty paths mean "slot unassigned".
+#[cfg(test)]
 fn static_mesh_component_json(mesh_asset: &str) -> Value {
     serde_json::json!({
         "mesh_asset": mesh_asset,

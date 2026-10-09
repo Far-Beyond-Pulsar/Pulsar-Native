@@ -1,11 +1,11 @@
 //! Scene spline storage and undoable authoring operations.
 
 use crate::{
-    commands::{CommandResult, SceneCommand, execute_command},
+    commands::{execute_command, CommandResult, ComponentData, SceneCommand, TypedComponent},
     scene_edit::{self, ObjectType, SceneObjectData, Transform},
     state::{
-        LevelEditorState,
         spline::{SplineData, SplinePoint},
+        LevelEditorState,
     },
 };
 use glam::{Mat4, Quat, Vec3};
@@ -22,33 +22,29 @@ pub const SPLINE_CLASS: &str = helio_component::components::SPLINE_CLASS_NAME;
 pub const LEGACY_SPLINE_PROPERTY: &str = "editor_spline";
 
 /// The object's live spline component: its index in the object's
-/// component list and its current value, read off the World (the
+/// component list and a copy of its current value, read off the World (the
 /// `component_instances` on a `SceneObjectData` is only a load-time copy).
-fn live_component(world: &World, id: &str) -> Option<(usize, serde_json::Value)> {
-    scene_edit::components::get_components(world, id)
+fn live_component(world: &World, id: &str) -> Option<(usize, SplineData)> {
+    use engine_backend::scene::{attachments, SceneWorldExt};
+    let owner = world.entity_for(id)?;
+    let (index, instance) = attachments::instances(world, owner)
         .into_iter()
         .enumerate()
-        .find(|(_, component)| component.enabled && component.class_name == SPLINE_CLASS)
-        .map(|(index, component)| (index, component.data))
+        .find(|(_, instance)| {
+            attachments::is_enabled(world, *instance)
+                && attachments::meta(world, *instance)
+                    .is_some_and(|meta| meta.class_name == SPLINE_CLASS)
+        })?;
+    Some((index, world.get::<SplineData>(instance)?.clone()))
 }
 
 pub fn data(world: &World, object: &SceneObjectData) -> Option<SplineData> {
-    let value = live_component(world, &object.id)
-        .map(|(_, data)| data)
-        .or_else(|| object.props.get(LEGACY_SPLINE_PROPERTY).cloned())?;
-    let data: SplineData = serde_json::from_value(value).ok()?;
+    let data = match live_component(world, &object.id) {
+        Some((_, data)) => data,
+        // An older level's curve, still in its JSON prop.
+        None => serde_json::from_value(object.props.get(LEGACY_SPLINE_PROPERTY)?.clone()).ok()?,
+    };
     data.is_valid().then_some(data)
-}
-
-/// `component_instances` for a new spline object: `AddObject` hydrates it
-/// into the World as the object's spline component.
-pub fn component_instances(curve: &SplineData) -> Option<serde_json::Value> {
-    let data = serde_json::to_value(curve).ok()?;
-    Some(serde_json::json!([{
-        "class_name": SPLINE_CLASS,
-        "enabled": true,
-        "data": data,
-    }]))
 }
 
 /// Replace `object`'s curve with `curve`, undoably: through its spline
@@ -62,7 +58,6 @@ pub fn write(
     if !curve.is_valid() {
         return None;
     }
-    let data = serde_json::to_value(curve).ok()?;
     let index = live_component(&state.scene.world(), &object.id).map(|(index, _)| index);
     let result = match index {
         Some(component_index) => execute_command(
@@ -70,7 +65,7 @@ pub fn write(
             SceneCommand::SetComponentData {
                 id: object.id.clone(),
                 component_index,
-                data,
+                data: ComponentData::Value(Box::new(curve.clone())),
             },
         ),
         None => {
@@ -79,7 +74,7 @@ pub fn write(
                 SceneCommand::AddComponent {
                     id: object.id.clone(),
                     class_name: SPLINE_CLASS.to_string(),
-                    data,
+                    value: Some(Box::new(curve.clone())),
                 },
             );
             if object.props.get(LEGACY_SPLINE_PROPERTY).is_some() {
@@ -156,13 +151,14 @@ pub fn create(state: &mut LevelEditorState, curve: SplineData) {
         children: vec![],
         scene_path: String::new(),
         props: Default::default(),
-        component_instances: component_instances(&curve),
+        component_instances: None,
     };
     let result = execute_command(
         state,
-        SceneCommand::AddObject {
+        SceneCommand::AddObjectWithComponents {
             data: object,
             parent_id: None,
+            components: vec![TypedComponent::new(curve)],
         },
     );
     if let Some(id) = result.affected_ids.first() {
@@ -290,7 +286,10 @@ mod tests {
         let object = selected(&state).unwrap().0;
         let saved = scene_edit::components::get_components(&state.scene.world(), &object.id);
         let spline = saved.iter().find(|c| c.class_name == SPLINE_CLASS).unwrap();
-        assert_eq!(serde_json::from_value::<SplineData>(spline.data.clone()).unwrap(), curve);
+        assert_eq!(
+            serde_json::from_value::<SplineData>(spline.data.clone()).unwrap(),
+            curve
+        );
     }
     #[test]
     fn edits_reach_the_world_component_the_renderer_reads() {
@@ -301,7 +300,10 @@ mod tests {
         let object = selected(&state).unwrap().0;
         let world = state.scene.world();
         let entity = world.entity_for(&object.id).unwrap();
-        let live = world.get::<SplineData>(entity).expect("typed World component");
+        let (_, live) =
+            engine_backend::scene::attachments::enabled_components_of::<SplineData>(&world, entity)
+                .pop()
+                .expect("typed World component");
         assert!(live.closed);
         assert!(object.props.get(LEGACY_SPLINE_PROPERTY).is_none());
     }
@@ -327,7 +329,13 @@ mod tests {
             LEGACY_SPLINE_PROPERTY.into(),
             serde_json::to_value(&legacy).unwrap(),
         );
-        let result = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id: None });
+        let result = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object,
+                parent_id: None,
+            },
+        );
         select(&mut state, result.affected_ids[0].clone());
         assert_eq!(selected(&state).unwrap().1, legacy);
         edit(&mut state, |d| d.closed = true);

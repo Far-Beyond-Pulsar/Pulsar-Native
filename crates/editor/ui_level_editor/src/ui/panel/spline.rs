@@ -1,14 +1,14 @@
 //! Scene spline browser, point inspector, curve configuration and authoring tools.
 use crate::{
-    commands::{SceneCommand, execute_command},
+    commands::{execute_command, SceneCommand},
     core::splines,
     scene_edit::SceneObjectData,
     state::{
-        LevelEditorState,
         spline::{
-            CurveAlgorithm, CurveAlgorithmText, DrawingPlane, SplineData, SplineDomain, SplinePoint,
-            SplineTool,
+            CurveAlgorithm, CurveAlgorithmText, DrawingPlane, SplineData, SplineDomain,
+            SplinePoint, SplineTool,
         },
+        LevelEditorState,
     },
 };
 use gpui::*;
@@ -18,12 +18,11 @@ use std::{
     sync::Arc,
 };
 use ui::{
-    ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, TextInput},
-    v_flex,
+    v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable,
 };
 
 type SharedState = Arc<parking_lot::RwLock<LevelEditorState>>;
@@ -101,7 +100,7 @@ impl SplinePanel {
         let st = state.read();
         (
             st.scene.world_revision(),
-            st.scene.subscriptions_epoch(),
+            st.scene.rebuild_epoch,
             st.scene.selected_object(),
             st.editor.spline.clone(),
         )
@@ -111,18 +110,14 @@ impl SplinePanel {
             return;
         }
         self.pump_started = true;
-        crate::ui::frame_pump::spawn_frame_pump(
-            &cx.entity(),
-            window,
-            |this, _, cx| {
-                let signature = Self::signature(&this.state);
-                if signature != this.last_signature {
-                    splines::sync_selection(&mut this.state.write());
-                    this.last_signature = Self::signature(&this.state);
-                    cx.notify();
-                }
-            },
-        );
+        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _, cx| {
+            let signature = Self::signature(&this.state);
+            if signature != this.last_signature {
+                splines::sync_selection(&mut this.state.write());
+                this.last_signature = Self::signature(&this.state);
+                cx.notify();
+            }
+        });
     }
     fn action(
         &self,
@@ -611,12 +606,10 @@ impl SplinePanel {
         let mut result = vec![self.section("LevelEditor.SplinePanel.ControlPoints", rows, cx)];
         if let Some(i) = settings.selected_point.filter(|&i| i < curve.points.len()) {
             let p = &curve.points[i];
-            let mut position = vec![
-                div()
-                    .text_xs()
-                    .child(t!("LevelEditor.SplinePanel.LocalSpace").to_string())
-                    .into_any_element(),
-            ];
+            let mut position = vec![div()
+                .text_xs()
+                .child(t!("LevelEditor.SplinePanel.LocalSpace").to_string())
+                .into_any_element()];
             for (axis, key) in [
                 "LevelEditor.SplinePanel.X",
                 "LevelEditor.SplinePanel.Y",
@@ -1146,14 +1139,12 @@ impl Render for SplinePanel {
             (Tab::Points, Some((o, d))) => self.points(o, d, &settings, window, cx),
             (Tab::Curve, Some((o, d))) => self.curve(o, d, window, cx),
             (Tab::Tools, _) => self.tools(&selected, &settings, window, cx),
-            _ => vec![
-                div()
-                    .p_3()
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(t!("LevelEditor.SplinePanel.SelectSpline").to_string())
-                    .into_any_element(),
-            ],
+            _ => vec![div()
+                .p_3()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child(t!("LevelEditor.SplinePanel.SelectSpline").to_string())
+                .into_any_element()],
         };
         let mut body = v_flex()
             .id("spline-scroll")

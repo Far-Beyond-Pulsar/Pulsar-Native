@@ -3,26 +3,22 @@
 //! An instance is a root object carrying a [`ClassInstance`] component plus
 //! the prefab components the [`plan`](crate::plan) put on it, and one
 //! generated child object per component that needs its own entity. Every
-//! component created from a slot carries `__slot_id` metadata in its
-//! component record, which is how [`slot_map`] finds slot → entity/component
-//! and how generated children are told apart from objects the user parented
-//! under an instance.
+//! component instance created from a slot records that slot as typed
+//! provenance ([`pulsar_scene_model::ClassSlot`] on its `ComponentMeta`),
+//! which is how [`slot_map`] finds slot → component instance and how
+//! generated children are told apart from objects the user parented under
+//! an instance.
 //!
-//! Component records are the object's `ComponentAttachments` (the editor's
-//! per-object component list); objects without one (runtime hydration) are
-//! read from `RenderProps::component_instances`.
-//!
-//! The editor normalizes records after these calls with its own
-//! `sync_registered_component_props_to_scene_db`; the functions here keep
-//! records and typed World components consistent on their own so the
-//! runtime and tests need nothing else.
+//! Components are component-instance entities (Pulsar-Native#1035, D1).
+//! [`component_records`] is their JSON boundary view, used where class
+//! overrides are still diffed as JSON (Phase 3 converts that).
 
 use std::collections::BTreeMap;
 
 use glam::{EulerRot, Mat4, Quat, Vec3};
+use pulsar_scene_model::attachments::{self, NewInstance};
 use pulsar_scene_model::{
-    ComponentAttachments, ComponentInstance, ObjectType, RenderProps, SceneError, SceneWorldExt,
-    SpawnObject, Transform, Visibility,
+    ComponentInstance, ObjectType, SceneError, SceneWorldExt, SpawnObject, Transform, Visibility,
 };
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
@@ -34,51 +30,17 @@ use crate::plan::{
     PlannedComponent,
 };
 use crate::registry::{ClassDefinition, ClassRegistry};
-use crate::{child_stable_id, CLASS_INSTANCE, REMOVED_KEY, SLOT_ID_KEY, TRANSFORM_KEY};
+use crate::template::{template, ClassTemplate};
+use crate::{child_stable_id, CLASS_INSTANCE, REMOVED_KEY, SLOT_ID_KEY};
+use pulsar_world_registry::InstanceValue;
 
 // ── Component records ─────────────────────────────────────────────────────
 
-/// The component records of `entity`: its `ComponentAttachments`, or the
-/// `RenderProps::component_instances` projection when it has none.
+/// The component records of `entity`: each attached instance's class,
+/// enabled flag and data (its live value, or a kept unresolved payload),
+/// with slot metadata.
 pub fn component_records(world: &World, entity: Entity) -> Vec<ComponentInstance> {
-    if let Some(attachments) = world.get::<ComponentAttachments>(entity) {
-        return attachments.0.clone();
-    }
-    world
-        .get::<RenderProps>(entity)
-        .and_then(|props| props.component_instances.as_ref())
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| {
-                    Some(ComponentInstance {
-                        class_name: item.get("class_name")?.as_str()?.to_string(),
-                        enabled: item.get("enabled").and_then(Value::as_bool).unwrap_or(true),
-                        data: item.get("data").cloned().unwrap_or(Value::Null),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn write_records(world: &mut World, entity: Entity, records: Vec<ComponentInstance>) {
-    let projection = Value::Array(
-        records
-            .iter()
-            .enumerate()
-            .map(|(index, c)| {
-                serde_json::json!({
-                    "index": index, "class_name": c.class_name, "data": c.data, "enabled": c.enabled
-                })
-            })
-            .collect(),
-    );
-    if let Some(mut props) = world.get_mut::<RenderProps>(entity) {
-        props.component_instances = Some(projection);
-    }
-    world.insert(entity, ComponentAttachments(records));
+    pulsar_world_registry::component_records(world, entity)
 }
 
 /// Slot id recorded on a component record.
@@ -86,91 +48,29 @@ pub fn record_slot_id(record: &ComponentInstance) -> Option<&str> {
     record.data.get(SLOT_ID_KEY).and_then(Value::as_str)
 }
 
-/// The data of record `index` on `entity`, read live from the World when it
-/// is the class's live-typed instance (first enabled record of a registered
-/// class), metadata keys included.
-pub fn live_record_data(
-    world: &World,
-    entity: Entity,
-    records: &[ComponentInstance],
-    index: usize,
-) -> Value {
-    let Some(record) = records.get(index) else {
-        return Value::Null;
-    };
-    let is_live = record.enabled
-        && pulsar_world_registry::component_id_for_class(&record.class_name).is_some()
-        && records
-            .iter()
-            .position(|r| r.enabled && r.class_name == record.class_name)
-            == Some(index);
-    if is_live {
-        if let Some(live) = pulsar_world_registry::get_world_component_as_engine_class(
-            &record.class_name,
-            world,
-            entity,
-        ) {
-            if let Ok(mut json) = live.to_json() {
-                let (meta, _) = split_meta(&record.data);
-                if let Some(map) = json.as_object_mut() {
-                    map.extend(meta);
-                }
-                return json;
-            }
-        }
-    }
-    record.data.clone()
+/// The class slot a component instance was placed from.
+pub fn instance_slot_id(world: &World, instance: Entity) -> Option<&str> {
+    attachments::meta(world, instance)?
+        .class_slot
+        .as_ref()
+        .map(|slot| slot.slot_id.as_str())
 }
 
-/// Append components to `entity`: the first enabled record of each
-/// registered class is hydrated into its typed World component.
+/// Append components to `entity`, each as its own component instance. A
+/// record this build cannot decode is kept as an explicit unresolved
+/// payload (and reported), never silently dropped or half-attached.
 pub fn attach_components(world: &mut World, entity: Entity, components: Vec<ComponentInstance>) {
-    let mut records = component_records(world, entity);
-    for component in components {
-        let registered =
-            pulsar_world_registry::component_id_for_class(&component.class_name).is_some();
-        let first_enabled = !records
-            .iter()
-            .any(|r| r.enabled && r.class_name == component.class_name);
-        if component.enabled && registered && first_enabled {
-            if let Err(error) = pulsar_world_registry::hydrate_world_component_for_class(
-                &component.class_name,
-                world,
-                entity,
-                &component.data,
-            ) {
-                tracing::warn!(class = %component.class_name, "Class component failed to hydrate: {error}");
-            }
-        }
-        records.push(component);
-    }
-    write_records(world, entity, records);
-}
-
-/// Re-hydrate / remove typed components so each registered class's typed
-/// value matches the first enabled record (records whose data is metadata
-/// only are the editor's marker for "the typed value is authoritative").
-fn resync_typed(world: &mut World, entity: Entity, records: &[ComponentInstance]) {
-    let classes: Vec<&'static str> =
-        pulsar_world_registry::registered_world_component_classes().collect();
-    for class_name in classes {
-        match records
-            .iter()
-            .find(|r| r.enabled && r.class_name == class_name)
-        {
-            Some(record) => {
-                let (_, body) = split_meta(&record.data);
-                if body.as_object().is_some_and(|m| !m.is_empty()) {
-                    let _ = pulsar_world_registry::hydrate_world_component_for_class(
-                        class_name,
-                        world,
-                        entity,
-                        &record.data,
-                    );
+    for component in &components {
+        match pulsar_world_registry::attach_record_or_unresolved(world, entity, component, None) {
+            Ok(instance) => {
+                if let Some(unresolved) =
+                    world.get::<pulsar_scene_model::UnresolvedComponent>(instance)
+                {
+                    tracing::warn!(class = %component.class_name, "Class component kept unresolved: {}", unresolved.reason);
                 }
             }
-            None => {
-                pulsar_world_registry::remove_world_component_for_class(class_name, world, entity);
+            Err(error) => {
+                tracing::warn!(class = %component.class_name, "Class component could not be attached: {error}");
             }
         }
     }
@@ -178,59 +78,43 @@ fn resync_typed(world: &mut World, entity: Entity, records: &[ComponentInstance]
 
 // ── ClassInstance access ──────────────────────────────────────────────────
 
-/// The `ClassInstance` on `entity`: the typed World value, or the record's
-/// JSON when it is not live (disabled, or not hydrated).
+/// The `ClassInstance` component instance on `entity`.
+pub fn class_instance_entity(world: &World, entity: Entity) -> Option<Entity> {
+    pulsar_world_registry::instances::resolve_instance(world, entity, CLASS_INSTANCE, 0)
+}
+
+/// The `ClassInstance` on `entity`.
 pub fn class_instance_of(world: &World, entity: Entity) -> Option<ClassInstance> {
-    if let Some(instance) = world.get::<ClassInstance>(entity) {
-        return Some(instance.clone());
-    }
-    component_records(world, entity)
-        .into_iter()
-        .find(|r| r.class_name == CLASS_INSTANCE)
-        .and_then(|r| ClassInstance::from_json(&r.data))
+    world
+        .get::<ClassInstance>(class_instance_entity(world, entity)?)
+        .cloned()
 }
 
 /// Whether `entity` is a class instance root.
 pub fn is_class_root(world: &World, entity: Entity) -> bool {
-    world.get::<ClassInstance>(entity).is_some()
-        || component_records(world, entity)
-            .iter()
-            .any(|r| r.class_name == CLASS_INSTANCE)
+    class_instance_entity(world, entity).is_some()
 }
 
-/// Write `instance` back onto its root (typed value and record).
+/// Write `instance` onto its root: a typed write of the root's
+/// `ClassInstance`, attached first when the root has none.
 pub fn store_class_instance(world: &mut World, root: Entity, instance: &ClassInstance) {
-    let value = instance.to_value();
-    let mut records = component_records(world, root);
-    let mut found = false;
-    for record in &mut records {
-        if record.class_name == CLASS_INSTANCE {
-            found = true;
-            let (_, body) = split_meta(&record.data);
-            // Keep "typed value is authoritative" markers as they are.
-            if !body.as_object().is_some_and(|m| m.is_empty()) {
-                record.data = value.clone();
+    match class_instance_entity(world, root) {
+        Some(holder) => {
+            world.insert(holder, instance.clone());
+        }
+        None => {
+            let mut spec = NewInstance::new(CLASS_INSTANCE);
+            spec.index = Some(0);
+            if let Err(error) = pulsar_world_registry::attach_component(
+                world,
+                root,
+                spec,
+                pulsar_world_registry::ComponentPayload::Value(Box::new(instance.clone())),
+            ) {
+                tracing::warn!("ClassInstance could not be attached: {error}");
             }
-            break;
         }
     }
-    if !found {
-        records.insert(
-            0,
-            ComponentInstance {
-                class_name: CLASS_INSTANCE.into(),
-                enabled: true,
-                data: value.clone(),
-            },
-        );
-    }
-    let _ = pulsar_world_registry::hydrate_world_component_for_class(
-        CLASS_INSTANCE,
-        world,
-        root,
-        &value,
-    );
-    write_records(world, root, records);
 }
 
 // ── Generated children and slots ──────────────────────────────────────────
@@ -239,8 +123,12 @@ pub fn store_class_instance(world: &mut World, root: Entity, instance: &ClassIns
 /// component records come from slots and its parent chain reaches a class
 /// root through generated objects only.
 pub fn is_generated_child(world: &World, entity: Entity) -> bool {
-    let records = component_records(world, entity);
-    if records.is_empty() || !records.iter().all(|r| record_slot_id(r).is_some()) {
+    let instances = attachments::instances(world, entity);
+    if instances.is_empty()
+        || !instances
+            .iter()
+            .all(|i| instance_slot_id(world, *i).is_some())
+    {
         return false;
     }
     match world.parent_of(entity) {
@@ -267,9 +155,12 @@ pub fn generated_children(world: &World, root: Entity) -> Vec<Entity> {
 /// Where a slot's component lives.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SlotLocation {
+    /// The object the slot's component is attached to.
     pub entity: Entity,
-    /// Index into that entity's component records.
+    /// Index into that object's component list.
     pub index: usize,
+    /// The component-instance entity holding the slot's value.
+    pub instance: Entity,
     pub class_name: String,
 }
 
@@ -277,12 +168,19 @@ pub struct SlotLocation {
 pub fn slot_map(world: &World, root: Entity) -> BTreeMap<String, SlotLocation> {
     let mut map = BTreeMap::new();
     for entity in std::iter::once(root).chain(generated_children(world, root)) {
-        for (index, record) in component_records(world, entity).iter().enumerate() {
-            if let Some(slot) = record_slot_id(record) {
-                map.entry(slot.to_string()).or_insert(SlotLocation {
+        for (index, instance) in attachments::instances(world, entity)
+            .into_iter()
+            .enumerate()
+        {
+            let Some(meta) = attachments::meta(world, instance) else {
+                continue;
+            };
+            if let Some(slot) = &meta.class_slot {
+                map.entry(slot.slot_id.clone()).or_insert(SlotLocation {
                     entity,
                     index,
-                    class_name: record.class_name.clone(),
+                    instance,
+                    class_name: meta.class_name.clone(),
                 });
             }
         }
@@ -290,12 +188,13 @@ pub fn slot_map(world: &World, root: Entity) -> BTreeMap<String, SlotLocation> {
     map
 }
 
-/// A component slot of a placed instance, resolved to the entity holding
-/// the instance's real component.
+/// A component slot of a placed instance, resolved to the
+/// component-instance entity holding its real value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SlotHandle {
     pub slot_id: String,
     pub class_name: String,
+    /// The component-instance entity.
     pub entity: Entity,
 }
 
@@ -334,7 +233,7 @@ pub fn placement(world: &World, root: Entity) -> ClassPlacement {
             .map(|(slot_id, loc)| SlotHandle {
                 slot_id,
                 class_name: loc.class_name,
-                entity: loc.entity,
+                entity: loc.instance,
             })
             .collect(),
         children: generated_children(world, root),
@@ -367,10 +266,19 @@ pub fn compose(parent: &Transform, local: &LocalTransform) -> Transform {
 }
 
 fn local_transform_of(world: &World, entity: Entity) -> LocalTransform {
-    component_records(world, entity)
-        .iter()
-        .find_map(|r| r.data.get(TRANSFORM_KEY))
-        .map(LocalTransform::from_value)
+    attachments::instances(world, entity)
+        .into_iter()
+        .find_map(|instance| {
+            attachments::meta(world, instance)?
+                .class_slot
+                .as_ref()?
+                .local_transform
+        })
+        .map(|t| LocalTransform {
+            position: t.position,
+            rotation: t.rotation,
+            scale: t.scale,
+        })
         .unwrap_or_default()
 }
 
@@ -392,11 +300,54 @@ pub fn relayout_generated_children(world: &mut World, root: Entity) -> Vec<Entit
 
 // ── Instantiation ─────────────────────────────────────────────────────────
 
-fn planned_record(component: PlannedComponent) -> ComponentInstance {
-    ComponentInstance {
-        class_name: component.class_name,
+/// Attach planned `component` to `owner`: its slot's template value with
+/// the instance's overrides applied (nothing decoded), slot provenance
+/// recorded. A slot with no typed default is kept as an unresolved payload
+/// (and reported), never dropped.
+fn attach_planned(
+    world: &mut World,
+    owner: Entity,
+    template: &ClassTemplate,
+    component: &PlannedComponent,
+    local: Option<&LocalTransform>,
+) {
+    let Some(value) = template.slot_value(&component.slot_id, component.overrides.as_ref()) else {
+        tracing::warn!(slot = %component.slot_id, "Planned class slot missing from its template");
+        return;
+    };
+    let spec = NewInstance {
         enabled: component.enabled,
-        data: component.data,
+        class_slot: Some(pulsar_scene_model::ClassSlot {
+            slot_id: component.slot_id.clone(),
+            local_transform: local.map(|local| Transform {
+                position: local.position,
+                rotation: local.rotation,
+                scale: local.scale,
+            }),
+        }),
+        ..NewInstance::new(component.class_name.clone())
+    };
+    let attached = match value {
+        InstanceValue::Value(value) => pulsar_world_registry::attach_component(
+            world,
+            owner,
+            spec,
+            pulsar_world_registry::ComponentPayload::Value(value),
+        ),
+        InstanceValue::Unresolved(unresolved) => {
+            tracing::warn!(class = %component.class_name, "Class component kept unresolved: {}", unresolved.reason);
+            pulsar_world_registry::attach_unresolved(
+                world,
+                owner,
+                spec,
+                unresolved.data,
+                unresolved.reason,
+            )
+            .map_err(Into::into)
+        }
+    };
+    if let Err(error) = attached {
+        tracing::warn!(class = %component.class_name, "Class component could not be attached: {error}");
     }
 }
 
@@ -410,24 +361,33 @@ pub fn clear_generated(world: &mut World, root: Entity) {
             world.despawn_tree(child);
         }
     }
-    let mut records = component_records(world, root);
-    let before = records.len();
-    records.retain(|r| record_slot_id(r).is_none());
-    if records.len() != before {
-        resync_typed(world, root, &records);
-        write_records(world, root, records);
+    for instance in attachments::instances(world, root) {
+        if instance_slot_id(world, instance).is_some() {
+            attachments::detach(world, instance);
+        }
     }
 }
 
 /// Build the class components of the instance at `root` from `def`, the
 /// current class definition, applying the root's `ClassInstance` overrides.
 /// Anything a previous expansion created is replaced. Returns the placement
-/// (a handle per slot, and the generated children).
+/// (a handle per slot, and the generated children). Values come from the
+/// class's cached [`template`](crate::template::template).
 pub fn expand_class_instance(
     world: &mut World,
     root: Entity,
     def: &ClassDefinition,
 ) -> ClassPlacement {
+    expand_from_template(world, root, &template(def))
+}
+
+/// [`expand_class_instance`] from an already built template.
+pub fn expand_from_template(
+    world: &mut World,
+    root: Entity,
+    template: &ClassTemplate,
+) -> ClassPlacement {
+    let def = &template.def;
     clear_generated(world, root);
     let mut instance = class_instance_of(world, root).unwrap_or_default();
     // Overrides saved under slot ids the class has since replaced move to the
@@ -437,11 +397,9 @@ pub fn expand_class_instance(
     }
     let plan = plan_instance(def, &instance);
 
-    attach_components(
-        world,
-        root,
-        plan.root.into_iter().map(planned_record).collect(),
-    );
+    for component in &plan.root {
+        attach_planned(world, root, template, component, None);
+    }
 
     let root_id = world.stable_id_of(root).unwrap_or_default().to_string();
     let mut spawned: Vec<(String, Entity)> = Vec::new();
@@ -471,7 +429,13 @@ pub fn expand_class_instance(
                 continue;
             }
         };
-        attach_components(world, entity, vec![planned_record(child.component)]);
+        attach_planned(
+            world,
+            entity,
+            template,
+            &child.component,
+            Some(&child.local),
+        );
         spawned.push((slot_id, entity));
     }
     placement(world, root)
@@ -483,13 +447,23 @@ pub fn expand_class_instance(
 pub fn instantiate_class(
     world: &mut World,
     def: &ClassDefinition,
+    instance: ClassInstance,
+    spawn: SpawnObject,
+) -> Result<ClassPlacement, SceneError> {
+    instantiate_template(world, &template(def), instance, spawn)
+}
+
+/// [`instantiate_class`] from an already built template.
+pub fn instantiate_template(
+    world: &mut World,
+    template: &ClassTemplate,
     mut instance: ClassInstance,
     spawn: SpawnObject,
 ) -> Result<ClassPlacement, SceneError> {
     let root = world.spawn_object(spawn)?;
-    instance.class = def.id.clone();
-    instance.class_name = def.name.clone();
-    Ok(build_instance_root(world, def, instance, root))
+    instance.class = template.def.id.clone();
+    instance.class_name = template.def.name.clone();
+    Ok(build_instance_root(world, template, instance, root))
 }
 
 /// [`instantiate_class`] onto `entity`, an already spawned but still bare
@@ -498,32 +472,35 @@ pub fn instantiate_class(
 pub fn instantiate_class_into(
     world: &mut World,
     def: &ClassDefinition,
+    instance: ClassInstance,
+    spawn: SpawnObject,
+    entity: Entity,
+) -> Result<ClassPlacement, SceneError> {
+    instantiate_template_into(world, &template(def), instance, spawn, entity)
+}
+
+/// [`instantiate_class_into`] from an already built template.
+pub fn instantiate_template_into(
+    world: &mut World,
+    template: &ClassTemplate,
     mut instance: ClassInstance,
     spawn: SpawnObject,
     entity: Entity,
 ) -> Result<ClassPlacement, SceneError> {
     world.spawn_object_into(entity, spawn)?;
-    instance.class = def.id.clone();
-    instance.class_name = def.name.clone();
-    Ok(build_instance_root(world, def, instance, entity))
+    instance.class = template.def.id.clone();
+    instance.class_name = template.def.name.clone();
+    Ok(build_instance_root(world, template, instance, entity))
 }
 
 fn build_instance_root(
     world: &mut World,
-    def: &ClassDefinition,
+    template: &ClassTemplate,
     instance: ClassInstance,
     root: Entity,
 ) -> ClassPlacement {
-    attach_components(
-        world,
-        root,
-        vec![ComponentInstance {
-            class_name: CLASS_INSTANCE.into(),
-            enabled: true,
-            data: instance.to_value(),
-        }],
-    );
-    expand_class_instance(world, root, def)
+    store_class_instance(world, root, &instance);
+    expand_from_template(world, root, template)
 }
 
 /// Expand every class instance root in `world` from `registry`. Instances
@@ -550,13 +527,29 @@ pub fn expand_roots(
         .filter(|&entity| world.is_alive(entity) && is_class_root(world, entity))
         .collect();
     let mut report = ExpandReport::default();
+    // Each class is read and its template built once for the whole call,
+    // however many instances it has.
+    let mut templates: std::collections::HashMap<
+        std::path::PathBuf,
+        std::sync::Arc<ClassTemplate>,
+    > = std::collections::HashMap::new();
     for root in roots {
         let Some(instance) = class_instance_of(world, root) else {
             continue;
         };
         let id = world.stable_id_of(root).unwrap_or_default().to_string();
-        match registry.definition_for(&instance) {
-            Some(def) => {
+        let resolved = registry.resolve(&instance).and_then(|entry| {
+            if let Some(template) = templates.get(&entry.dir) {
+                return Some(std::sync::Arc::clone(template));
+            }
+            let def = registry.definition_for(&instance)?;
+            let template = template(&def);
+            templates.insert(entry.dir.clone(), std::sync::Arc::clone(&template));
+            Some(template)
+        });
+        match resolved {
+            Some(template) => {
+                let def = &template.def;
                 // Refresh the GUID when the instance was matched by name.
                 if instance.class != def.id {
                     let mut fixed = instance.clone();
@@ -564,7 +557,7 @@ pub fn expand_roots(
                     fixed.class_name = def.name.clone();
                     store_class_instance(world, root, &fixed);
                 }
-                let placement = expand_class_instance(world, root, &def);
+                let placement = expand_from_template(world, root, &template);
                 report.expanded.push((id, placement));
             }
             None => {
@@ -608,8 +601,9 @@ pub fn collect_overrides(world: &World, root: Entity, def: &ClassDefinition) -> 
                 .insert(slot.clone(), serde_json::json!({ REMOVED_KEY: true }));
             continue;
         };
-        let records = component_records(world, location.entity);
-        let live = live_record_data(world, location.entity, &records, location.index);
+        let live = pulsar_world_registry::instance_record(world, location.instance, None)
+            .map(|record| record.data)
+            .unwrap_or(Value::Null);
         let (_, live_body) = split_meta(&live);
         let default = slot_default(def, slot).unwrap_or(Value::Null);
         match diff(&default, &live_body) {

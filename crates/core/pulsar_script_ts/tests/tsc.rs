@@ -64,7 +64,11 @@ export default class Beacon extends ScriptClass {
 #[ignore = "needs Node and network: runs tsc over the generated declarations"]
 fn declarations_and_sample_classes_type_check_with_tsc() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("pulsar.d.ts"), declarations(&NativeRegistry::with_engine_natives())).unwrap();
+    std::fs::write(
+        dir.path().join("pulsar.d.ts"),
+        declarations(&NativeRegistry::with_engine_natives()),
+    )
+    .unwrap();
     let mut files = vec!["pulsar.d.ts".to_owned()];
     for (name, source) in SAMPLES {
         std::fs::write(dir.path().join(format!("{name}.ts")), source).unwrap();
@@ -90,6 +94,13 @@ fn declarations_and_sample_classes_type_check_with_tsc() {
         .current_dir(dir.path())
         .output()
         .expect("npx is available");
-    let text = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-    assert!(output.status.success(), "tsc rejected the declarations or a sample class:\n{text}");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.status.success(),
+        "tsc rejected the declarations or a sample class:\n{text}"
+    );
 }

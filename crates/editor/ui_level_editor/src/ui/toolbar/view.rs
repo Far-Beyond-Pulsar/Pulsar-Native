@@ -28,12 +28,12 @@ use gpui::*;
 use ui::dock::PanelEvent;
 use ui::input::{InputEvent, InputState, TextInput};
 
-use super::ToolbarPanel;
 use super::snap_controls::{SnapKind, SnapPanel};
-use crate::LevelEditorState;
+use super::ToolbarPanel;
 use crate::state::EditorMode;
 use crate::tool_modes::ToolModeId;
 use crate::ui::frame_pump::spawn_frame_pump;
+use crate::LevelEditorState;
 
 /// Every piece of [`LevelEditorState`] the toolbar's element tree depends on.
 ///
@@ -99,45 +99,82 @@ impl ToolbarView {
         let last_signature = ToolbarSignature::of(&state.read());
         if let Some(mailbox) = &helio_mailbox {
             let state = state.read();
-            mailbox.set_gizmo_snap_settings(state.editor.location_snap, state.editor.rotation_snap, state.editor.scale_snap);
+            mailbox.set_gizmo_snap_settings(
+                state.editor.location_snap,
+                state.editor.rotation_snap,
+                state.editor.scale_snap,
+            );
         }
-        let custom_snaps: [Entity<InputState>; 3] = ["Custom", "Custom", "Custom"].map(|placeholder| {
-            cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
-        });
+        let custom_snaps: [Entity<InputState>; 3] = ["Custom", "Custom", "Custom"]
+            .map(|placeholder| cx.new(|cx| InputState::new(window, cx).placeholder(placeholder)));
         let mut custom_snap_subscriptions = Vec::with_capacity(3);
         for (index, input) in custom_snaps.iter().enumerate() {
             let state_for_input = state.clone();
             let input_for_event = input.clone();
             let mailbox_for_input = helio_mailbox.clone();
-            custom_snap_subscriptions.push(cx.subscribe_in(input, window, move |_this, _, event: &InputEvent, _, cx| {
-                if matches!(event, InputEvent::Change | InputEvent::Blur | InputEvent::PressEnter { .. }) {
-                    input_for_event.update(cx, |input, _| {
-                        if let Ok(value) = input.text().to_string().parse::<f32>() {
-                            if value.is_finite() && value > 0.0 {
-                                let (location, rotation, scale) = {
-                                    let mut state = state_for_input.write();
-                                    match index {
-                                        0 => state.editor.location_snap = value,
-                                        1 => state.editor.rotation_snap = value,
-                                        _ => state.editor.scale_snap = value,
-                                    }
-                                    (state.editor.location_snap, state.editor.rotation_snap, state.editor.scale_snap)
-                                };
-                                if let Some(mailbox) = &mailbox_for_input {
-                                    mailbox.set_gizmo_snap_settings(location, rotation, scale);
+            custom_snap_subscriptions.push(cx.subscribe_in(
+                input,
+                window,
+                move |_this, _, event: &InputEvent, _, cx| {
+                    if matches!(
+                        event,
+                        InputEvent::Change | InputEvent::Blur | InputEvent::PressEnter { .. }
+                    ) {
+                        input_for_event.update(cx, |input, _| {
+                                    if let Ok(value) = input.text().to_string().parse::<f32>() {
+                                        if value.is_finite() && value > 0.0 {
+                                            let (location, rotation, scale, persisted) = {
+                                                let mut state = state_for_input.write();
+                                                match index {
+                                                    0 => state.editor.location_snap = value,
+                                                    1 => state.editor.rotation_snap = value,
+                                                    _ => state.editor.scale_snap = value,
+                                                }
+                                                (
+                                                    state.editor.location_snap,
+                                                    state.editor.rotation_snap,
+                                                    state.editor.scale_snap,
+                                                    value,
+                                                )
+                                            };
+                                            let key = match index {
+                                                0 => "location_snap",
+                                                1 => "rotation_snap",
+                                                _ => "scale_snap",
+                                            };
+                                            if let Err(error) = engine_state::GlobalSettings::new()
+                                                .set_and_save(
+                                                    "viewport",
+                                                    key,
+                                                    engine_state::ConfigValue::Float(
+                                                        persisted as f64,
+                                                    ),
+                                                )
+                                            {
+                                                tracing::warn!(%error, "Could not persist viewport snap setting");
+                                            }
+                                            if let Some(mailbox) = &mailbox_for_input {
+                                                mailbox.set_gizmo_snap_settings(location, rotation, scale);
+                                            }
                                 }
                             }
-                        }
-                    });
-                }
-            }));
+                        });
+                    }
+                },
+            ));
         }
-        let snap_panels: [Entity<SnapPanel>; 3] = [SnapKind::Location, SnapKind::Rotation, SnapKind::Scale].map(|kind| {
-            let input = custom_snaps[match kind { SnapKind::Location => 0, SnapKind::Rotation => 1, SnapKind::Scale => 2 }].clone();
-            let state = state.clone();
-            let mailbox = helio_mailbox.clone();
-            cx.new(|cx| SnapPanel::new(cx, kind, input, state, mailbox))
-        });
+        let snap_panels: [Entity<SnapPanel>; 3] =
+            [SnapKind::Location, SnapKind::Rotation, SnapKind::Scale].map(|kind| {
+                let input = custom_snaps[match kind {
+                    SnapKind::Location => 0,
+                    SnapKind::Rotation => 1,
+                    SnapKind::Scale => 2,
+                }]
+                .clone();
+                let state = state.clone();
+                let mailbox = helio_mailbox.clone();
+                cx.new(|cx| SnapPanel::new(cx, kind, input, state, mailbox))
+            });
         Self {
             toolbar: ToolbarPanel::new(),
             state,
@@ -206,7 +243,12 @@ impl Render for ToolbarView {
         }
         drop(_mailbox_scope);
         let _panel_scope = gpui::render_stats::scope("toolbar: panel element build");
-        self.toolbar
-            .render(&state, self.state.clone(), self.gpu_engine.clone(), &self.snap_panels, cx)
+        self.toolbar.render(
+            &state,
+            self.state.clone(),
+            self.gpu_engine.clone(),
+            &self.snap_panels,
+            cx,
+        )
     }
 }

@@ -81,13 +81,22 @@ impl Default for EditorDomain {
         let mut tool_mode_registry = crate::tool_modes::ToolModeRegistry::builtin();
         crate::tool_modes::register_tool_modes(&mut tool_mode_registry);
 
+        let setting_float = |key: &str, fallback: f32| {
+            engine_state::settings::global_config()
+                .get(engine_state::settings::NS_EDITOR, "viewport", key)
+                .ok()
+                .and_then(|value| value.as_float().ok())
+                .filter(|value| value.is_finite())
+                .unwrap_or(fallback as f64) as f32
+        };
+
         Self {
             current_tool: TransformTool::Move,
             camera_mode: CameraMode::Perspective,
-            camera_move_speed: 10.0,
-            location_snap: 1.0,
-            rotation_snap: 15.0,
-            scale_snap: 0.1,
+            camera_move_speed: setting_float("camera_move_speed", 10.0).clamp(1.0, 100.0),
+            location_snap: setting_float("location_snap", 1.0).clamp(0.01, 1000.0),
+            rotation_snap: setting_float("rotation_snap", 15.0).clamp(0.1, 360.0),
+            scale_snap: setting_float("scale_snap", 0.1).clamp(0.01, 10.0),
             show_wireframe: false,
             show_lighting: true,
             show_grid: true,
@@ -151,6 +160,13 @@ impl EditorDomain {
     }
 
     pub fn adjust_camera_move_speed(&mut self, delta: f32) {
-        self.camera_move_speed = (self.camera_move_speed + delta).clamp(0.5, 100.0);
+        self.camera_move_speed = (self.camera_move_speed + delta).clamp(1.0, 100.0);
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "viewport",
+            "camera_move_speed",
+            engine_state::ConfigValue::Float(self.camera_move_speed as f64),
+        ) {
+            tracing::warn!(%error, "Could not persist viewport camera speed");
+        }
     }
 }

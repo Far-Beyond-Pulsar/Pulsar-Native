@@ -73,6 +73,7 @@ use pulsar_class::{ClassEntry, ClassId, ClassInstance, ClassRegistry, LocalTrans
 use pulsar_scenedb::{ChangeCursor, ChangeRead, ComponentChange, Entity, World};
 use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
 use pulsar_script_vm::{DebugCommand, DebugSnapshot, LibraryId};
+use pulsar_world_registry::pulsar_scene_model::attachments;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -354,10 +355,20 @@ pub struct ScriptDriver {
     rescan_registry: bool,
     config: ScriptingConfig,
     cursor: Option<ChangeCursor>,
+    /// `ComponentOwner` changes: an instance enabled or disabled. Opened
+    /// with `cursor`.
+    owner_cursor: Option<ChangeCursor>,
     tracked: HashMap<Entity, Tracked>,
+    /// Each tracked object's `ClassInstance` component instance -> the
+    /// object, so a change on an instance already despawned still names
+    /// its object (Pulsar-Native#1035).
+    holders: HashMap<Entity, Entity>,
     by_instance: HashMap<String, Entity>,
     /// Class GUID → the runtime's class name (the module name).
     loaded: HashMap<ClassId, String>,
+    /// Class GUID → its template (slot defaults decoded once), for
+    /// `world::spawn`. Dropped on a class reload or registry rescan.
+    templates: HashMap<ClassId, Arc<pulsar_class::ClassTemplate>>,
     globals: Vec<String>,
     globals_started: bool,
     spawn_serial: u64,
@@ -400,9 +411,12 @@ impl ScriptDriver {
             rescan_registry: false,
             config,
             cursor: None,
+            owner_cursor: None,
             tracked: HashMap::new(),
+            holders: HashMap::new(),
             by_instance: HashMap::new(),
             loaded: HashMap::new(),
+            templates: HashMap::new(),
             globals: Vec::new(),
             globals_started: false,
             spawn_serial: 0,
@@ -428,6 +442,15 @@ impl ScriptDriver {
             old.clear();
         }
         let events = ScriptEvents::new(hub);
+        for registration in pulsar_world_registry::component_event_registrations() {
+            let declaration = (registration.declaration)();
+            if let Err(error) = events
+                .bridge()
+                .register_event_decl(registration.class_name, &declaration)
+            {
+                tracing::warn!(event = %declaration.name, %error, "component event could not be linked to Blueprint");
+            }
+        }
         for entry in self.registry.entries() {
             events.bridge().add_class(&entry.name, entry.id.as_str());
         }
@@ -437,7 +460,9 @@ impl ScriptDriver {
         }
         self.events = Some(events);
         self.predeclare_project_events();
-        self.resubscribe(None);
+        // Component-scoped subscriptions are resolved at the next script
+        // phase, when the driver has a read/write borrow of the live World.
+        self.resubscribe(None, None);
     }
 
     /// Declare the events of every compiled class in the project on the
@@ -482,7 +507,7 @@ impl ScriptDriver {
 
     /// (Re)subscribe the live instances of `class` (the runtime's class
     /// name), or of every class when `None`.
-    fn resubscribe(&mut self, class: Option<&str>) {
+    fn resubscribe(&mut self, class: Option<&str>, world: Option<&World>) {
         let Some(events) = self.events.as_mut() else {
             return;
         };
@@ -511,7 +536,8 @@ impl ScriptDriver {
             .collect();
         for (id, class_name, guid, entity) in targets {
             // Timers and queued handler calls survive a class reload.
-            for failure in events.resubscribe(&self.runtime, &id, &class_name, &guid, entity) {
+            for failure in events.resubscribe(&self.runtime, &id, &class_name, &guid, entity, world)
+            {
                 tracing::warn!("{failure}");
             }
         }
@@ -523,11 +549,12 @@ impl ScriptDriver {
         class: &str,
         guid: &str,
         entity: Option<Entity>,
+        world: Option<&World>,
         report: &mut DriverReport,
     ) {
         if let Some(events) = self.events.as_mut() {
             events.bridge().add_class(class, guid);
-            for failure in events.subscribe(&self.runtime, id, class, guid, entity) {
+            for failure in events.subscribe(&self.runtime, id, class, guid, entity, world) {
                 tracing::warn!("{failure}");
                 report.failures.push(failure);
             }
@@ -673,7 +700,11 @@ impl ScriptDriver {
     ///    concurrently; the renderer's own readers are not blocked.
     /// 3. **Write lock**: every other instance, then the commands scripts
     ///    queued (spawns, destroys).
-    pub fn run_frame_shared(&mut self, scene: &engine_backend::scene::SharedScene, delta_time: f64) -> DriverReport {
+    pub fn run_frame_shared(
+        &mut self,
+        scene: &engine_backend::scene::SharedScene,
+        delta_time: f64,
+    ) -> DriverReport {
         use std::time::Instant;
         let mut report = DriverReport::default();
         let mut locks = LockTimes::default();
@@ -745,6 +776,10 @@ impl ScriptDriver {
         }
         if let Some(events) = self.events.as_mut() {
             events.announce_level(&self.level);
+            for failure in events.reconcile_component_subscriptions(&self.runtime, world) {
+                tracing::warn!("{failure}");
+                report.failures.push(failure);
+            }
             report
                 .script_errors
                 .extend(events.run_calls(&mut self.runtime, world));
@@ -754,7 +789,12 @@ impl ScriptDriver {
 
     /// The last part of a frame, with exclusive access: fire hub timers and
     /// apply the commands scripts queued.
-    fn frame_finish(&mut self, world: &mut World, mut scope: CommandScope, report: &mut DriverReport) {
+    fn frame_finish(
+        &mut self,
+        world: &mut World,
+        mut scope: CommandScope,
+        report: &mut DriverReport,
+    ) {
         if let Some(events) = &self.events {
             events.bridge().fire_timers(self.runtime.time());
         }
@@ -914,6 +954,10 @@ impl ScriptDriver {
 
     fn reconcile_into(&mut self, world: &mut World, report: &mut DriverReport) {
         let reloads = std::mem::take(&mut *self.reloads.lock().unwrap_or_else(|p| p.into_inner()));
+        if !reloads.is_empty() {
+            // A class asset changed: spawn from its new definition.
+            self.templates.clear();
+        }
         for event in reloads {
             if let Some(class) = self.reload_class_for_asset_into(world, &event, report) {
                 tracing::info!(class = %class, "Reloaded script class after an asset update");
@@ -921,33 +965,45 @@ impl ScriptDriver {
         }
         if !self.globals_started {
             self.globals_started = true;
-            self.start_globals(report);
+            self.start_globals(world, report);
         }
-        let dirty = match self.cursor.as_mut() {
-            None => {
-                // Opened before the scan under the same world borrow: every
-                // later change is in the journal, nothing is missed.
-                self.cursor = Some(world.open_change_cursor::<ClassInstance>());
-                None
-            }
-            Some(cursor) => {
+        let dirty = match (self.cursor.as_mut(), self.owner_cursor.as_mut()) {
+            (Some(cursor), Some(owner_cursor)) => {
                 self.scratch.clear();
-                match world.read_changes(cursor, &mut self.scratch) {
-                    ChangeRead::Complete => {
+                let instances = world.read_changes(cursor, &mut self.scratch);
+                let changed_instances = self.scratch.len();
+                let owners = world.read_changes(owner_cursor, &mut self.scratch);
+                match (instances, owners) {
+                    (ChangeRead::Complete, ChangeRead::Complete) => {
                         let mut seen = HashSet::new();
                         Some(
                             self.scratch
                                 .iter()
-                                .map(|change| change.entity)
+                                .enumerate()
+                                // An owner change concerns a script only on a
+                                // `ClassInstance` holder (enabled/disabled).
+                                .filter(|(i, change)| {
+                                    *i < changed_instances
+                                        || world.get::<ClassInstance>(change.entity).is_some()
+                                        || self.holders.contains_key(&change.entity)
+                                })
+                                .map(|(_, change)| self.object_of_holder(world, change.entity))
                                 .filter(|entity| seen.insert(*entity))
                                 .collect::<Vec<_>>(),
                         )
                     }
-                    ChangeRead::Overflowed => {
-                        tracing::info!("ClassInstance change journal overflowed; rescanning");
+                    _ => {
+                        tracing::info!("A ClassInstance or ComponentOwner journal overflowed; rescanning");
                         None
                     }
                 }
+            }
+            _ => {
+                // Opened before the scan under the same world borrow: every
+                // later change is in the journal, nothing is missed.
+                self.cursor = Some(world.open_change_cursor::<ClassInstance>());
+                self.owner_cursor = Some(world.open_change_cursor::<attachments::ComponentOwner>());
+                None
             }
         };
         match dirty {
@@ -960,12 +1016,24 @@ impl ScriptDriver {
         }
     }
 
+    /// The object a `ClassInstance` change on `holder` concerns: the
+    /// holder's owner, or for a holder already gone, the object it was
+    /// tracked for.
+    fn object_of_holder(&self, world: &World, holder: Entity) -> Entity {
+        if world.is_alive(holder) {
+            return attachments::object_of(world, holder);
+        }
+        self.holders.get(&holder).copied().unwrap_or(holder)
+    }
+
     /// Stop instances whose object is gone and start or refresh every live
     /// `ClassInstance`, by depth then StableId.
     fn rescan(&mut self, world: &mut World, report: &mut DriverReport) {
+        let mut objects = HashSet::new();
         let mut roots: Vec<(usize, String, Entity)> = world
             .query::<&ClassInstance>()
-            .map(|(entity, _)| entity)
+            .map(|(holder, _)| attachments::object_of(world, holder))
+            .filter(|object| objects.insert(*object))
             .collect::<Vec<_>>()
             .into_iter()
             .map(|entity| {
@@ -991,14 +1059,20 @@ impl ScriptDriver {
     }
 
     fn sync_entity(&mut self, world: &mut World, entity: Entity, report: &mut DriverReport) {
-        let live = world
+        let holder = world
             .is_alive(entity)
-            .then(|| world.get::<ClassInstance>(entity).cloned())
+            .then(|| pulsar_class::world::class_instance_entity(world, entity))
             .flatten();
-        let Some(instance) = live else {
+        // A disabled `ClassInstance` runs no script, like an absent one.
+        let Some(instance) = holder
+            .filter(|holder| attachments::is_enabled(world, *holder))
+            .and_then(|holder| world.get::<ClassInstance>(holder).cloned())
+        else {
             self.stop(world, entity, report);
             return;
         };
+        self.holders.retain(|_, object| *object != entity);
+        self.holders.insert(holder.expect("resolved above"), entity);
         let Some(tracked) = self.tracked.get(&entity).cloned() else {
             self.start(world, entity, &instance, report);
             return;
@@ -1097,7 +1171,14 @@ impl ScriptDriver {
                     tracked.instance = Some(id.clone());
                 }
                 self.by_instance.insert(id.clone(), entity);
-                self.subscribe_instance(&id, &class, entry.id.as_str(), Some(entity), report);
+                self.subscribe_instance(
+                    &id,
+                    &class,
+                    entry.id.as_str(),
+                    Some(entity),
+                    Some(world),
+                    report,
+                );
                 report.started.push(id);
             }
             Err(error) => {
@@ -1109,6 +1190,7 @@ impl ScriptDriver {
     }
 
     fn stop(&mut self, world: &mut World, entity: Entity, report: &mut DriverReport) {
+        self.holders.retain(|_, object| *object != entity);
         let Some(tracked) = self.tracked.remove(&entity) else {
             return;
         };
@@ -1144,7 +1226,7 @@ impl ScriptDriver {
         }
     }
 
-    fn start_globals(&mut self, report: &mut DriverReport) {
+    fn start_globals(&mut self, world: &World, report: &mut DriverReport) {
         for class_ref in self.config.global_scripts.clone() {
             let Some(entry) = self.resolve_class_ref(&class_ref) else {
                 let message = format!("global script class '{class_ref}' is not in this project");
@@ -1168,7 +1250,14 @@ impl ScriptDriver {
             match self.runtime.spawn(id.clone(), &class, None, &[]) {
                 Ok(()) => {
                     self.globals.push(id.clone());
-                    self.subscribe_instance(&id, &class, entry.id.as_str(), None, report);
+                    self.subscribe_instance(
+                        &id,
+                        &class,
+                        entry.id.as_str(),
+                        None,
+                        Some(world),
+                        report,
+                    );
                     report.started.push(id);
                 }
                 Err(error) => {
@@ -1185,6 +1274,7 @@ impl ScriptDriver {
     fn refresh_registry(&mut self) {
         if self.rescan_registry {
             self.registry = ClassRegistry::scan(&self.project_root);
+            self.templates.clear();
             if let Some(events) = &self.events {
                 for entry in self.registry.entries() {
                     events.bridge().add_class(&entry.name, entry.id.as_str());
@@ -1351,7 +1441,7 @@ impl ScriptDriver {
                             self.loaded.insert(entry.id.clone(), name.clone());
                         }
                         // Its subscriptions may have changed.
-                        self.resubscribe(Some(&name));
+                        self.resubscribe(Some(&name), Some(world));
                     }
                     Err(error) => {
                         // The old code keeps running.
@@ -1379,7 +1469,7 @@ impl ScriptDriver {
                     bind_class_slots(&mut self.runtime, &id, world, root);
                 }
                 None => {
-                    if let Some(instance) = world.get::<ClassInstance>(root).cloned() {
+                    if let Some(instance) = pulsar_class::world::class_instance_of(world, root) {
                         self.try_spawn(world, root, &instance.variable_overrides, &entry, report);
                     }
                 }
@@ -1492,16 +1582,23 @@ impl ScriptDriver {
         if !world.is_alive(entity) {
             return;
         }
-        let def = self
-            .resolve_class_ref(class)
-            .and_then(|entry| match entry.load_definition() {
-                Ok(def) => Some(def),
+        let template = self.resolve_class_ref(class).and_then(|entry| {
+            if let Some(template) = self.templates.get(&entry.id) {
+                return Some(Arc::clone(template));
+            }
+            match entry.load_definition() {
+                Ok(def) => {
+                    let template = pulsar_class::template(&def);
+                    self.templates.insert(entry.id.clone(), Arc::clone(&template));
+                    Some(template)
+                }
                 Err(error) => {
                     tracing::warn!(class = %entry.name, "Class definition unreadable: {error}");
                     None
                 }
-            });
-        let Some(def) = def else {
+            }
+        });
+        let Some(template) = template else {
             let message = format!("world::spawn: class '{class}' is not in this project");
             tracing::warn!("{message}");
             report.failures.push(message);
@@ -1523,6 +1620,7 @@ impl ScriptDriver {
                 ..Transform::default()
             },
         };
+        let def = &template.def;
         let stable_id = self.next_spawn_id(world, &def.name);
         let spec = SpawnObject {
             stable_id: Some(stable_id),
@@ -1532,9 +1630,9 @@ impl ScriptDriver {
             visibility: Default::default(),
             object_type: ObjectType::Blueprint,
         };
-        match pulsar_class::world::instantiate_class_into(
+        match pulsar_class::world::instantiate_template_into(
             world,
-            &def,
+            &template,
             ClassInstance::default(),
             spec,
             entity,

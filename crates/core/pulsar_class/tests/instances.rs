@@ -1,13 +1,12 @@
 //! Class instances in a real World: instantiation, slot lookup, override
 //! round trips and unresolved classes (Pulsar-Native#921).
 
-use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
+use engine_class_derive::{engine_class, register_world_component};
 use pulsar_class::world::{
     class_instance_of, collect_overrides, expand_all, generated_children, instantiate_class,
     is_generated_child, placement, slot_map, store_class_instance,
 };
 use pulsar_class::{ClassInstance, ClassRegistry, CLASS_INSTANCE};
-use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 use pulsar_scene_model::{ComponentInstance, SceneWorldExt, SpawnObject, Transform};
 use pulsar_scenedb::{Entity, World};
 use serde_json::json;
@@ -21,17 +20,7 @@ pub struct TestLamp {
 }
 
 #[register_world_component]
-#[register_runtime_behavior]
-impl ComponentRuntimeBehavior for TestLamp {
-    const CLASS_NAME: &'static str = "TestLamp";
-    fn sync_component(
-        _owner: &RuntimeComponentOwner,
-        _index: usize,
-        _component: &Self,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) {
-    }
-}
+impl TestLamp {}
 
 fn write_class(project: &std::path::Path, name: &str, prefab: serde_json::Value) {
     let dir = project.join("src").join("classes").join(name);
@@ -80,9 +69,17 @@ fn spawn_at(name: &str, x: f32) -> SpawnObject {
         })
 }
 
-fn lamp(world: &World, entity: Entity) -> TestLamp {
+/// The object's one enabled `TestLamp` instance entity.
+fn lamp_instance(world: &World, object: Entity) -> Entity {
+    pulsar_scene_model::attachments::single_enabled_component_of::<TestLamp>(world, object)
+        .expect("one TestLamp")
+        .expect("typed TestLamp")
+        .0
+}
+
+fn lamp(world: &World, object: Entity) -> TestLamp {
     world
-        .get::<TestLamp>(entity)
+        .get::<TestLamp>(lamp_instance(world, object))
         .cloned()
         .expect("typed TestLamp")
 }
@@ -123,10 +120,17 @@ fn two_components_of_one_type_put_the_second_on_a_child() {
         assert!(is_generated_child(&world, child));
         assert_eq!(lamp(&world, child).label, "second");
 
-        // Slot UUIDs resolve once into handles on this instance.
+        // Slot UUIDs resolve once into handles on this instance: each names
+        // the component instance itself, attached to the root or the child.
         let placed = placement(&world, root);
-        assert_eq!(placed.handle(&slot(&def, 0)).unwrap().entity, root);
-        assert_eq!(placed.handle(&slot(&def, 1)).unwrap().entity, child);
+        assert_eq!(
+            placed.handle(&slot(&def, 0)).unwrap().entity,
+            lamp_instance(&world, root)
+        );
+        assert_eq!(
+            placed.handle(&slot(&def, 1)).unwrap().entity,
+            lamp_instance(&world, child)
+        );
         assert_eq!(placed.children, [child]);
         assert_eq!(slot_map(&world, root).len(), 2);
     }
@@ -170,9 +174,11 @@ fn overrides_survive_a_class_edit_and_the_rest_updates() {
     .root();
 
     // Edit instance a: one root component value, one child value, one variable.
-    world.get_mut::<TestLamp>(a).unwrap().intensity = 9.0;
+    let a_lamp = lamp_instance(&world, a);
+    world.get_mut::<TestLamp>(a_lamp).unwrap().intensity = 9.0;
     let a_child = generated_children(&world, a)[0];
-    world.get_mut::<TestLamp>(a_child).unwrap().label = "custom".into();
+    let a_child_lamp = lamp_instance(&world, a_child);
+    world.get_mut::<TestLamp>(a_child_lamp).unwrap().label = "custom".into();
     let mut instance = class_instance_of(&world, a).unwrap();
     instance
         .variable_overrides

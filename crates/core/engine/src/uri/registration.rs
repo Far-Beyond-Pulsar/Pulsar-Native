@@ -4,7 +4,7 @@
 
 use anyhow::{Context, Result};
 use std::env;
-use sysuri::{is_registered, register, UriScheme};
+use sysuri::{UriScheme, is_registered, register};
 
 const SCHEME_NAME: &str = "pulsar";
 const SCHEME_DESCRIPTION: &str = "Pulsar Engine Project Protocol";

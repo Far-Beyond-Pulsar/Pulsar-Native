@@ -427,10 +427,19 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // script native is registered for it (see the `intrinsic` attribute).
     // `args_str` is a pretty-printed token stream whose spacing and line breaks
     // vary, so compare it without whitespace.
-    let intrinsic = args_str.split_whitespace().collect::<String>().contains("intrinsic:true");
+    let intrinsic = args_str
+        .split_whitespace()
+        .collect::<String>()
+        .contains("intrinsic:true");
     let capability = native_capability(&args_str, &category_str);
     let explicit_outputs: Vec<String> = extract_string_value(&args_str, "outputs")
-        .map(|list| list.split(',').filter_map(|pair| Some(pair.split(':').next()?.trim().to_owned()).filter(|n| !n.is_empty())).collect())
+        .map(|list| {
+            list.split(',')
+                .filter_map(|pair| {
+                    Some(pair.split(':').next()?.trim().to_owned()).filter(|n| !n.is_empty())
+                })
+                .collect()
+        })
         .unwrap_or_default();
     let script_native = if intrinsic {
         quote! {}
@@ -512,7 +521,8 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // markers became the exec pins above); what is emitted cannot run.
     let emitted = if intrinsic {
         let mut stub = input.clone();
-        let message = format!("`{fn_name_str}` is a Blueprint compiler intrinsic and has no executable body");
+        let message =
+            format!("`{fn_name_str}` is a Blueprint compiler intrinsic and has no executable body");
         stub.block = Box::new(syn::parse_quote!({ unreachable!(#message) }));
         stub
     } else {
@@ -570,13 +580,14 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
 /// Types a `#[blueprint]` function may use (by value) to also become a
 /// script VM native. Anything else keeps the node Blueprint-only.
 const SCRIPT_NATIVE_TYPES: &[&str] = &[
-    "bool", "i8", "i16", "i32", "i64", "isize", "i128", "u8", "u16", "u32", "u64", "usize", "u128", "f32", "f64",
-    "String",
+    "bool", "i8", "i16", "i32", "i64", "isize", "i128", "u8", "u16", "u32", "u64", "usize", "u128",
+    "f32", "f64", "String",
 ];
 
 /// Types usable as a map key in a script native.
 const SCRIPT_KEY_TYPES: &[&str] = &[
-    "bool", "i8", "i16", "i32", "i64", "isize", "i128", "u8", "u16", "u32", "u64", "usize", "u128", "String",
+    "bool", "i8", "i16", "i32", "i64", "isize", "i128", "u8", "u16", "u32", "u64", "usize", "u128",
+    "String",
 ];
 
 fn is_ident_in(ty: &syn::Type, names: &[&str]) -> bool {
@@ -585,12 +596,16 @@ fn is_ident_in(ty: &syn::Type, names: &[&str]) -> bool {
 
 /// The generic arguments of `Name<..>`, when `ty` is that path.
 fn generic_args<'t>(ty: &'t syn::Type, name: &str) -> Option<Vec<&'t syn::Type>> {
-    let syn::Type::Path(path) = ty else { return None };
+    let syn::Type::Path(path) = ty else {
+        return None;
+    };
     let segment = path.path.segments.last()?;
     if path.qself.is_some() || segment.ident != name {
         return None;
     }
-    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return None;
+    };
     args.args
         .iter()
         .map(|arg| match arg {
@@ -626,7 +641,9 @@ fn is_script_native_type(ty: &syn::Type) -> bool {
             false
         }
         syn::Type::Array(array) => is_script_native_type(&array.elem),
-        syn::Type::Tuple(tuple) => tuple.elems.len() <= 6 && tuple.elems.iter().all(is_script_native_type),
+        syn::Type::Tuple(tuple) => {
+            tuple.elems.len() <= 6 && tuple.elems.iter().all(is_script_native_type)
+        }
         syn::Type::Paren(paren) => is_script_native_type(&paren.elem),
         _ => false,
     }
@@ -639,12 +656,16 @@ fn native_slot(ty: &syn::Type) -> Option<(syn::Type, bool)> {
     if is_script_native_type(ty) {
         return Some((ty.clone(), false));
     }
-    let syn::Type::Reference(reference) = ty else { return None };
+    let syn::Type::Reference(reference) = ty else {
+        return None;
+    };
     if reference.mutability.is_some() {
         return None;
     }
     match &*reference.elem {
-        syn::Type::Path(path) if path.path.is_ident("str") => Some((syn::parse_quote!(::std::string::String), true)),
+        syn::Type::Path(path) if path.path.is_ident("str") => {
+            Some((syn::parse_quote!(::std::string::String), true))
+        }
         syn::Type::Slice(slice) if is_script_native_type(&slice.elem) => {
             let element = &slice.elem;
             Some((syn::parse_quote!(::std::vec::Vec<#element>), true))
@@ -688,7 +709,10 @@ impl ExecOutputRewriter {
 
 impl syn::visit_mut::VisitMut for ExecOutputRewriter {
     fn visit_expr_mut(&mut self, expr: &mut syn::Expr) {
-        let is_loop = matches!(expr, syn::Expr::ForLoop(_) | syn::Expr::While(_) | syn::Expr::Loop(_));
+        let is_loop = matches!(
+            expr,
+            syn::Expr::ForLoop(_) | syn::Expr::While(_) | syn::Expr::Loop(_)
+        );
         if let syn::Expr::Macro(m) = expr {
             if let Some(replacement) = self.replacement(&m.mac) {
                 *expr = replacement;
@@ -734,7 +758,11 @@ fn control_flow_selector(
     use syn::visit_mut::VisitMut;
 
     let mut body = (*input.block).clone();
-    let mut rewriter = ExecOutputRewriter { labels: Vec::new(), loop_depth: 0, in_loop: false };
+    let mut rewriter = ExecOutputRewriter {
+        labels: Vec::new(),
+        loop_depth: 0,
+        in_loop: false,
+    };
     rewriter.visit_block_mut(&mut body);
     if rewriter.in_loop || rewriter.labels.is_empty() {
         return quote! {};
@@ -745,11 +773,21 @@ fn control_flow_selector(
     let mut sig_params = Vec::new();
     let mut extracts = Vec::new();
     for (index, arg) in input.sig.inputs.iter().enumerate() {
-        let FnArg::Typed(typed) = arg else { return quote! {} };
-        let Pat::Ident(ident) = &*typed.pat else { return quote! {} };
+        let FnArg::Typed(typed) = arg else {
+            return quote! {};
+        };
+        let Pat::Ident(ident) = &*typed.pat else {
+            return quote! {};
+        };
         let pat = &ident.ident;
-        let Some((slot_ty, borrowed)) = native_slot(&typed.ty) else { return quote! {} };
-        let pass = if borrowed { quote! { &__bp_arg } } else { quote! { __bp_arg } };
+        let Some((slot_ty, borrowed)) = native_slot(&typed.ty) else {
+            return quote! {};
+        };
+        let pass = if borrowed {
+            quote! { &__bp_arg }
+        } else {
+            quote! { __bp_arg }
+        };
         let ty = &typed.ty;
         fn_params.push(quote! { #pat: #ty });
         sig_params.push(quote! {
@@ -862,12 +900,22 @@ fn script_native_registration(
     let mut closure_params = Vec::new();
     let mut call_args = Vec::new();
     for (index, arg) in input.sig.inputs.iter().enumerate() {
-        let FnArg::Typed(typed) = arg else { return quote! {} };
-        let Pat::Ident(ident) = &*typed.pat else { return quote! {} };
+        let FnArg::Typed(typed) = arg else {
+            return quote! {};
+        };
+        let Pat::Ident(ident) = &*typed.pat else {
+            return quote! {};
+        };
         let arg_ident = quote::format_ident!("a{index}");
-        let Some((slot_ty, borrowed)) = native_slot(&typed.ty) else { return quote! {} };
+        let Some((slot_ty, borrowed)) = native_slot(&typed.ty) else {
+            return quote! {};
+        };
         closure_params.push(quote! { #arg_ident: #slot_ty });
-        call_args.push(if borrowed { quote! { &#arg_ident } } else { quote! { #arg_ident } });
+        call_args.push(if borrowed {
+            quote! { &#arg_ident }
+        } else {
+            quote! { #arg_ident }
+        });
         params.push(ident.ident.to_string().trim_start_matches('_').to_string());
     }
     if params.len() > 6 {
@@ -906,9 +954,17 @@ fn script_native_registration(
     };
     let fn_ident = &input.sig.ident;
     let call = quote! { #fn_ident(#(#call_args),*) };
-    let call = if wrap_outcome { quote! { ::pulsar_script_vm::Outcome(#call) } } else { call };
+    let call = if wrap_outcome {
+        quote! { ::pulsar_script_vm::Outcome(#call) }
+    } else {
+        call
+    };
     let native_name = format!("std::{name}");
-    let pure = if node_type == "pure" { quote! { .side_effect_free() } } else { quote! {} };
+    let pure = if node_type == "pure" {
+        quote! { .side_effect_free() }
+    } else {
+        quote! {}
+    };
     let cfg = if native_only {
         quote! { #[cfg(all(feature = "script-natives", not(target_arch = "wasm32")))] }
     } else {

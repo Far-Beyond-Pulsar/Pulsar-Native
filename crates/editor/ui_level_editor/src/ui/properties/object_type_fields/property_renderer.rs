@@ -27,57 +27,45 @@ use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::World;
 use std::any::Any;
 use std::sync::Arc;
-use ui::{ActiveTheme, Icon, IconName, Sizable, button::ButtonVariants as _, h_flex, v_flex};
+use ui::{button::ButtonVariants as _, h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 use super::category_section::group_rows_by_category;
 use super::{ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
-use crate::core::commands::{SceneCommand, execute_command};
+use crate::core::commands::{execute_command, SceneCommand};
 
-/// Read a property value from the live World, with JSON and default-instance
-/// fallbacks.  Used only when the batch read (via `with_world_component`)
-/// fails — e.g. the entity doesn't exist in the World.
-fn read_property_from_world(
+/// A card's values for an unresolved instance (data this build could not
+/// turn into a live value), read from the instance's own payload in the
+/// world: decoded whole when the class accepts it now, otherwise field by
+/// field (top level, or one `#[sub_props]` group down), with the class
+/// default for a field the payload lacks or cannot supply.
+fn read_unresolved_card_values(
     world: &World,
     object_id: &crate::scene_edit::ObjectId,
     class_name: &str,
-    prop: &PropertyMetadata,
-    component: &ComponentInstance,
-    default_instance: &dyn pulsar_reflection::EngineClass,
-) -> Box<dyn Any> {
-    crate::scene_edit::components::read_live_component_property(
-        world, object_id, class_name, prop.name,
-    )
-    .or_else(|| {
-        component
-            .data
-            .get(prop.name)
-            .filter(|json| !json.is_null())
-            .and_then(|json| {
-                RUNTIME_TYPE_REGISTRY
-                    .deserialize_json_for_type(prop.type_info, json.clone())
-                    .ok()
-            })
-    })
-    .unwrap_or_else(|| (prop.getter)(default_instance))
-}
-
-/// Pull a card's value snapshot from its OWN metadata JSON blob (falling
-/// back to the default instance for absent/null fields) -- the source of
-/// truth for every NON-live-typed instance card. A duplicate instance has no
-/// `World` presence (`World` holds one typed value per `(entity, type)`), so
-/// reading "the" live value here would silently show another instance's
-/// fields -- exactly Pulsar-Native#519's bug, on the read side.
-fn read_card_values_from_metadata(
-    component: &ComponentInstance,
+    index: usize,
     properties: &[PropertyMetadata],
     default_instance: &dyn pulsar_reflection::EngineClass,
 ) -> Vec<Box<dyn Any>> {
+    let payload = crate::scene_edit::components::unresolved_payload(world, object_id, index)
+        .unwrap_or(serde_json::Value::Null);
+    if let Some(Ok(decoded)) = REGISTRY.create_instance_from_json(class_name, &payload) {
+        return properties
+            .iter()
+            .map(|prop| (prop.getter)(decoded.as_ref()))
+            .collect();
+    }
+    let field = |name: &str| {
+        let map = payload.as_object()?;
+        map.get(name).or_else(|| {
+            map.values()
+                .filter_map(serde_json::Value::as_object)
+                .find_map(|group| group.get(name))
+        })
+    };
     properties
         .iter()
         .map(|prop| {
-            component
-                .data
-                .get(prop.name)
+            field(prop.name)
                 .filter(|json| !json.is_null())
                 .and_then(|json| {
                     RUNTIME_TYPE_REGISTRY
@@ -89,46 +77,37 @@ fn read_card_values_from_metadata(
         .collect()
 }
 
-/// Pull a card's full value snapshot fresh from the live sources: one
-/// batched `World` read when the entity/component is hydrated, otherwise
-/// per-property fallback reads (live miss → JSON → default instance). This
-/// is the only place a clean render still touches `World` — every other
-/// render serves from [`ObjectTypeFieldsSection::world_value_cache`].
+/// Pull a live card's full value snapshot fresh from the world: one batched
+/// read of the instance's typed value (the default instance's values if it
+/// vanished meanwhile). This is the only place a clean render still touches
+/// `World` -- every other render serves from
+/// [`ObjectTypeFieldsSection::world_value_cache`].
 fn read_card_values_fresh(
     world: &World,
     object_id: &crate::scene_edit::ObjectId,
     class_name: &str,
+    index: usize,
     properties: &[PropertyMetadata],
-    component: &ComponentInstance,
     default_instance: &dyn pulsar_reflection::EngineClass,
 ) -> Vec<Box<dyn Any>> {
-    let batch = crate::scene_edit::components::with_world_component(
+    crate::scene_edit::components::with_world_component(
         world,
         object_id,
         class_name,
+        index,
         |instance| {
             properties
                 .iter()
                 .map(|prop| (prop.getter)(instance))
                 .collect::<Vec<_>>()
         },
-    );
-    match batch {
-        Some(values) => values,
-        None => properties
+    )
+    .unwrap_or_else(|| {
+        properties
             .iter()
-            .map(|prop| {
-                read_property_from_world(
-                    world,
-                    object_id,
-                    class_name,
-                    prop,
-                    component,
-                    default_instance,
-                )
-            })
-            .collect(),
-    }
+            .map(|prop| (prop.getter)(default_instance))
+            .collect()
+    })
 }
 
 impl ObjectTypeFieldsSection {
@@ -194,7 +173,7 @@ impl ObjectTypeFieldsSection {
         attached
             .iter()
             .enumerate()
-            .filter_map(|(idx, component)| {
+            .filter_map(|(idx, _)| {
                 let class_name = &class_names[idx];
                 if class_name == pulsar_class::CLASS_INSTANCE {
                     return self.render_class_card(window, cx);
@@ -224,17 +203,18 @@ impl ObjectTypeFieldsSection {
                 let card_key = (class_name.clone(), idx);
                 let editor_key = format!("{class_name}#{idx}");
 
-                // Which instance of this class is the live-typed one? Only
-                // that card reads (and subscribes to) `World`; every OTHER
-                // instance reads and writes its own metadata JSON blob --
-                // `World` physically holds one typed value per
-                // `(entity, ComponentId)`, so duplicates cannot share it.
-                let live_idx = {
+                // Every instance holds its own typed value in `World`
+                // (Pulsar-Native#1035); a live card reads it once, then
+                // follows the object's subscription. Only an unresolved
+                // payload (a class this build does not register) reads its
+                // own JSON.
+                let live = {
                     let world = scene_db.read();
-                    crate::scene_edit::components::live_typed_component_index(
+                    crate::scene_edit::components::is_live_instance(
                         &world.world,
                         &object_id,
                         class_name,
+                        idx,
                     )
                 };
 
@@ -242,7 +222,7 @@ impl ObjectTypeFieldsSection {
                 //
                 // Clean card + cached snapshot: lend the cached values to the
                 // row builder below, zero `World` traffic. Dirty or never-
-                // pulled card: arm its World subscription (live cards, once
+                // pulled card: bind it to its instance (live cards, once
                 // per mounted card) and pull fresh values from whichever
                 // source backs THIS instance.
                 let card_dirty = self.dirty_classes.remove(&card_key);
@@ -255,34 +235,40 @@ impl ObjectTypeFieldsSection {
                     self.world_value_cache.remove(&card_key)
                 };
                 if values.is_none() {
-                    if live_idx == Some(idx)
-                        && !self.world_subs.contains_key(&card_key)
+                    let scene = scene_db.read();
+                    let world = &scene.world;
+                    // Bind the card to its instance entity, so the values
+                    // the object's subscription delivers land on it.
+                    if live
                         && !self.unsubscribable_classes.contains(class_name.as_str())
+                        && !self.card_entities.values().any(|card| card == &card_key)
                     {
                         if pulsar_world_registry::component_id_for_class(class_name).is_none() {
                             self.unsubscribable_classes.insert(class_name.clone());
-                        } else if let Some(sub) = {
-                            let mut world = scene_db.write();
-                            crate::scene_edit::components::subscribe_component(
-                                &mut world.world,
-                                &object_id,
-                                class_name,
-                            )
-                        } {
-                            self.world_subs.insert(card_key.clone(), sub);
+                        } else if let Some(instance) =
+                            crate::scene_edit::components::instance_at(world, &object_id, idx)
+                        {
+                            self.card_entities.insert(instance, card_key.clone());
                         }
                     }
-                    values = Some(if live_idx == Some(idx) {
+                    values = Some(if live {
                         read_card_values_fresh(
-                            &scene_db.read().world,
+                            world,
                             &object_id,
                             class_name,
+                            idx,
                             &properties,
-                            component,
                             default_inst,
                         )
                     } else {
-                        read_card_values_from_metadata(component, &properties, default_inst)
+                        read_unresolved_card_values(
+                            world,
+                            &object_id,
+                            class_name,
+                            idx,
+                            &properties,
+                            default_inst,
+                        )
                     });
                 }
                 let values = values.expect("fresh pull or cache hit fills this");
@@ -353,11 +339,10 @@ impl ObjectTypeFieldsSection {
                         .and_then(|d| d.as_ref())
                     {
                         Some(default) => {
-                            let overridden =
-                                !crate::scene_edit::classes::property_equals_default(
-                                    value.as_ref(),
-                                    default.as_ref(),
-                                );
+                            let overridden = !crate::scene_edit::classes::property_equals_default(
+                                value.as_ref(),
+                                default.as_ref(),
+                            );
                             let revert = {
                                 let state_arc = self.state_arc.clone();
                                 let oid = object_id.clone();
@@ -428,6 +413,19 @@ impl ObjectTypeFieldsSection {
                                         .child(class_name.clone()),
                                 ),
                         )
+                        // A class the engine keeps but does not consume yet says
+                        // so, with its tracking issue (Pulsar-Native#1035, Phase 4).
+                        .children(pulsar_world_registry::unfinished_component(class_name).map(
+                            |unfinished| {
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().warning)
+                                    .child(format!(
+                                        "Unfinished: {}. Tracked in {}.",
+                                        unfinished.reason, unfinished.issue
+                                    ))
+                            },
+                        ))
                         .children(uncategorized)
                         .into_any_element(),
                 )
@@ -448,7 +446,7 @@ impl ObjectTypeFieldsSection {
             return Some(Arc::clone(values));
         }
         let default = self.slot_defaults.get(&idx)?;
-        let instance = default.instance.as_deref()?;
+        let instance = default.instance()?;
         let getters = instance.get_properties();
         let values: Vec<Option<Box<dyn Any>>> = properties
             .iter()

@@ -24,6 +24,7 @@ pub mod scripting;
 // Window / rendering integration
 pub mod camera_selection;
 pub mod freecam;
+pub mod game_renderer;
 pub mod window;
 pub mod windowed_app;
 
@@ -58,6 +59,10 @@ pub mod script_refs;
 pub mod scene {
     pub use engine_backend::scene::{Name, Transform, Visibility};
     pub use helio_component::components::{LightComponent, MeshAssetPath, StaticMeshComponent};
+    /// Components attach to objects as instance entities (Pulsar-Native#1035):
+    /// `attach_value` adds one, `attachments` finds and edits them.
+    pub use pulsar_world_registry::pulsar_scene_model::attachments;
+    pub use pulsar_world_registry::{attach_value, AttachError};
 }
 
 // Exported (generated) actors name this crate as `pulsar_game`; inside it,
@@ -81,8 +86,8 @@ mod test_probe;
 /// Convenience prelude — glob-import this to get the whole public API.
 pub mod prelude {
     pub use crate::{
-        scripting::ScriptRuntime,
         freecam::FreeCam,
+        scripting::ScriptRuntime,
         tick::{ScriptStats, SharedTickLoop, TickLoop},
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };

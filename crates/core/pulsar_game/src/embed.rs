@@ -22,8 +22,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows};
-use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
+use helio::{Camera, Renderer, RendererConfig};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
     EngineContext as PieContext, InputEvent, LogFn, INIT_ERR, INIT_OK, LOG_ERROR, LOG_INFO,
@@ -76,14 +75,21 @@ impl PieSession {
                 .subscribe_class_reloads()
         });
         if let (Some(level), Some(driver)) = (level, &tick_loop.scripts) {
-            driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).set_level_name(level);
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .set_level_name(level);
         }
         // Play-in-Editor is a debugging session: record recently flushed
         // events for the editor's events panel (`pie_events_snapshot`) and
         // keep script problems for the problems panel.
         tick_loop.events.set_tap(true, PIE_EVENT_TAP_CAPACITY);
         tick_loop.collect_script_problems(true);
-        Self { tick_loop, _class_reloads: class_reloads, problems: Vec::new() }
+        Self {
+            tick_loop,
+            _class_reloads: class_reloads,
+            problems: Vec::new(),
+        }
     }
 
     /// Run one simulation frame (nothing while paused, unless a step is
@@ -94,9 +100,13 @@ impl PieSession {
         // the Blueprint editor's existing node selection/highlight path can
         // follow a live debugger stop across the PIE dylib boundary.
         if let Some(driver) = &self.tick_loop.scripts {
-            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             for (instance, snapshot) in driver.take_debug_events() {
-                let Some(frame) = snapshot.call_stack.last() else { continue };
+                let Some(frame) = snapshot.call_stack.last() else {
+                    continue;
+                };
                 let class = driver.runtime().class_of(&instance).map(str::to_owned);
                 let stop = match snapshot.reason {
                     pulsar_script_vm::StopReason::Breakpoint => "breakpoint",
@@ -355,24 +365,18 @@ impl EmbeddedGame {
 
         // ── Renderer seam onto the shared world (#637/#634) ──────────────────
         // The world already holds the level (the host hydrated it before Play,
-        // and under v2 we adopted that very store). SceneDB's GPU mirror must
-        // be attached BEFORE the renderer is constructed: `RendererBuilder::new`
-        // requires a `SceneDbHandle` up front (SceneDB is the sole scene
-        // authority). When the editor's own viewport already wired the
-        // mirror, this is idempotent and just returns that same handle.
+        // and under v2 we adopted that very store). The renderer is the
+        // standalone game's (`crate::game_renderer`) on the host's device; its
+        // GPU mirror is the editor viewport's when that already attached one.
         let scene_store = Arc::clone(&tick_loop.scene_store);
-        let scene_db_handle =
-            ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
-
-        let config = RendererConfig::new(width, height, color_format);
-        let renderer = RendererBuilder::new(config, scene_db_handle)
-            .with_external_device()
-            .with_editor_mode(false)
-            .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_pass_build_context(Box::new(
-                helio_default_graphs::build_default_graph_external_with_context,
-            ))
-            .build(device.clone(), queue.clone(), width, height, color_format);
+        let renderer = crate::game_renderer::build_game_renderer(
+            device.clone(),
+            queue.clone(),
+            &scene_store,
+            RendererConfig::new(width, height, color_format),
+            false,
+            crate::game_renderer::DeviceOwner::Host,
+        );
 
         // Under v2 the world comes pre-hydrated by the host, so the old
         // editor-camera file seeding is gone too -- camera selection prefers
@@ -415,16 +419,12 @@ impl EmbeddedGame {
         self.session.tick();
 
         // 2. Advance the shared world's authoritative SceneDB state and flush
-        //    its GPU mirror. World content is read by Helio passes directly
-        //    from that mirror -- there is no renderer-owned frame projection
-        //    or CPU object cache to rebuild here (same zero-copy seam the
-        //    editor viewport renderer uses). A runtime-spawned entity or a
-        //    moved object therefore shows up on the very next frame.
-        {
-            let mut store = self.scene_store.write();
-            sync_static_mesh_rows(&mut store, None);
-            store.step();
-        }
+        //    its GPU mirror. Helio's scene join reads the mirrored rows
+        //    directly -- there is no renderer-owned frame projection or CPU
+        //    object cache to rebuild here (same seam the editor viewport
+        //    renderer uses). A runtime-spawned entity or a moved object
+        //    therefore shows up on the very next frame.
+        self.scene_store.write().step();
 
         // 3. Camera. A Camera-typed entity in the shared world drives the
         //    view when present (#637 -- no more unconditional freecam); the
@@ -479,17 +479,25 @@ impl EmbeddedGame {
             input_kind::KEY => {
                 let key = i64::from(ev.button_or_key);
                 if ev.pressed != 0 {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::KeyDown { key });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::KeyDown { key });
                 } else {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::KeyUp { key });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::KeyUp { key });
                 }
             }
             input_kind::MOUSE_BUTTON => {
                 let button = i64::from(ev.button_or_key);
                 if ev.pressed != 0 {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::MouseButtonDown { button });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::MouseButtonDown { button });
                 } else {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::MouseButtonUp { button });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::MouseButtonUp { button });
                 }
             }
             _ => {}
@@ -610,7 +618,11 @@ pub unsafe fn pie_asset_updated(
 /// A simulation control command ([`pulsar_pie_abi::control`]); 0 when no
 /// game runs.
 pub fn pie_control(command: u32, arg: u64) -> u64 {
-    GAME.with(|g| g.borrow_mut().as_mut().map_or(0, |game| game.session.control(command, arg)))
+    GAME.with(|g| {
+        g.borrow_mut()
+            .as_mut()
+            .map_or(0, |game| game.session.control(command, arg))
+    })
 }
 
 /// Write the script problems raised since the last call (JSON array) into
@@ -626,7 +638,9 @@ pub unsafe fn pie_take_problems(out: *mut u8, capacity: usize) -> usize {
         if game.session.problems().is_empty() {
             return 0;
         }
-        let Ok(json) = serde_json::to_vec(game.session.problems()) else { return 0 };
+        let Ok(json) = serde_json::to_vec(game.session.problems()) else {
+            return 0;
+        };
         if !out.is_null() && json.len() <= capacity {
             // SAFETY: `out` is valid for `capacity >= len` bytes (caller).
             unsafe { std::ptr::copy_nonoverlapping(json.as_ptr(), out, json.len()) };

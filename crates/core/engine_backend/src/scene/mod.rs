@@ -6,15 +6,6 @@
 //! components on demand. The editor, the renderer and the play-mode runtime
 //! all share one [`SharedScene`].
 
-// Resolved per-light GPU frames (Pulsar-Native#636) -- transform-folded
-// light state maintained at change time from World subscriptions, replacing
-// rebuild_light_frame's per-frame CPU combine.
-pub mod light_frame;
-
-// Resolved per-instance mesh frames (Pulsar-Native#638) -- the transform-
-// derived half of each static-mesh instance, same subscription-maintained
-// pattern as light_frame.
-pub mod mesh_frame;
 #[cfg(feature = "render")]
 pub mod voxel_frame;
 #[cfg(feature = "render")]
@@ -25,44 +16,32 @@ pub mod voxel_source;
 pub mod render_resources;
 
 // Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
-// into WorldSceneStore/SceneDb instead of pulsar_scene::SceneLoader's direct
+// into SceneDb instead of pulsar_scene::SceneLoader's direct
 // Helio Scene writes.
 pub mod runtime_level;
 
 // World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
 
-// Script object model bridge (Pulsar-Native#639) -- `WorldSceneStore` as
+// Script object model bridge (Pulsar-Native#639) -- `SceneDb` as
 // the StableId⇄Entity resolver + duplicate-instance store the script-facing
 // handles route through. Impls only; no new storage.
 pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 #[cfg(feature = "render")]
-pub mod editor_rows;
-// Rows authored by components' runtime behavior (atmosphere, post-process
-// volumes, fog, reflection captures, water, portals, foliage).
-#[cfg(feature = "render")]
-pub mod component_rows;
-#[cfg(feature = "render")]
-// Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
-// attach + per-frame static-mesh/light frame assembly.
+// Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
+// and Helio's scene join over the authored rows.
 pub mod helio_bridge;
 
-// Re-export new system types for convenience
 #[cfg(feature = "render")]
 pub use helio_bridge::{
-    arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, ensure_gpu_mirror,
-    mark_render_components_changed, retire_gpu_rows_for_entity, sync_static_mesh_rows,
+    ensure_gpu_mirror, environment_join, environment_join_keys, scene_join, scene_join_keys,
 };
-#[cfg(feature = "render")]
-pub use editor_rows::sync_editor_light_rows;
 #[cfg(feature = "render")]
 pub mod editor_postprocess;
 #[cfg(feature = "render")]
-pub use editor_postprocess::{
-    apply_editor_postprocess, editor_postprocess_is_current, EditorPostProcess,
-};
+pub use editor_postprocess::EditorPostProcess;
 
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for
@@ -76,8 +55,6 @@ pub fn install_scenedb_inspector(world: &mut pulsar_scenedb::World) -> bool {
 pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }
-pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
-pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
 pub use pulsar_scene_model::{
     attachments, components, instance, world_ext, ComponentAttachments, ComponentInstance,
     EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps,
@@ -113,8 +90,9 @@ pub fn new_scene() -> pulsar_scenedb::SceneDb {
 /// Close this frame's change window: drop everything the world's change
 /// tracker recorded since the last call and start a new frame.
 ///
-/// Nothing in the engine consumes the tracker's history yet (replication
-/// will drain it itself), and an undrained tracker grows with every write,
+/// Nothing in the engine consumes the tracker's history (replication will
+/// drain it itself; component lifecycles and other incremental readers use
+/// change-journal cursors), and an undrained tracker grows with every write,
 /// forever: component deltas, spawns, despawns and removals. It also slows
 /// every change record down, since each one searches the frame's list.
 /// Called once per frame by the game tick and the renderer; calling it
@@ -127,8 +105,6 @@ pub fn end_change_window(world: &pulsar_scenedb::World) {
         tracker.end_frame();
     }
 }
-
-use glam::Mat4;
 
 // ─── Gizmo state ─────────────────────────────────────────────────────────────
 
@@ -186,7 +162,10 @@ mod change_window_tests {
             }
         }
         let tracker = world.change_tracker().expect("attached").clone();
-        assert!(!tracker.lock().drain_component_removals().is_empty(), "removals were recorded");
+        assert!(
+            !tracker.lock().drain_component_removals().is_empty(),
+            "removals were recorded"
+        );
 
         let entity = world.spawn();
         world.insert(entity, Visibility::default());
@@ -194,7 +173,11 @@ mod change_window_tests {
         super::end_change_window(world);
 
         let delta = tracker.drain_with_world(world);
-        assert!(delta.spawned.is_empty() && delta.despawned.is_empty() && delta.component_deltas.is_empty());
+        assert!(
+            delta.spawned.is_empty()
+                && delta.despawned.is_empty()
+                && delta.component_deltas.is_empty()
+        );
         assert!(tracker.drain_component_removals().is_empty());
     }
 }

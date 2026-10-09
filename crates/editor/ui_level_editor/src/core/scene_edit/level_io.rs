@@ -10,11 +10,12 @@ use pulsar_scenedb::World;
 use super::classes::{self, project_registry};
 use super::{ComponentInstance, ObjectId, SceneObjectData};
 
-use super::components::{
-    add_component_instance, get_components, get_components_metadata, remove_component,
-};
+use engine_backend::scene::SceneWorldExt;
+
+use super::components::{get_components, replace_components};
 use super::objects::{add_object, clear, get_all_objects};
 use super::{LevelEditorCameraState, LevelEditorFileState, LevelFile, LevelMetadata};
+use crate::world_settings_data::WorldSettingsData;
 
 /// Serialize the scene to a JSON level file.
 pub fn save_to_file<P: AsRef<Path>>(world: &World, path: P) -> Result<(), String> {
@@ -27,7 +28,24 @@ pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
     path: P,
     editor_camera: Option<LevelEditorCameraState>,
 ) -> Result<(), String> {
-    save_with_classes(world, path, editor_camera, &project_registry())
+    let settings = read_existing_world_settings(path.as_ref());
+    save_with_classes_and_settings(world, path, editor_camera, settings, &project_registry())
+}
+
+/// Save a level with an explicit snapshot of its world settings.
+pub fn save_to_file_with_settings<P: AsRef<Path>>(
+    world: &World,
+    path: P,
+    editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
+) -> Result<(), String> {
+    save_with_classes_and_settings(
+        world,
+        path,
+        editor_camera,
+        world_settings,
+        &project_registry(),
+    )
 }
 
 /// The objects and component lists a save writes.
@@ -98,7 +116,30 @@ pub(crate) fn save_with_classes<P: AsRef<Path>>(
     editor_camera: Option<LevelEditorCameraState>,
     registry: &ClassRegistry,
 ) -> Result<(), String> {
-    write_level(snapshot_level(world, registry, editor_camera), path.as_ref())
+    let settings = read_existing_world_settings(path.as_ref());
+    save_with_classes_and_settings(world, path, editor_camera, settings, registry)
+}
+
+pub(crate) fn save_with_classes_and_settings<P: AsRef<Path>>(
+    world: &World,
+    path: P,
+    editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
+    registry: &ClassRegistry,
+) -> Result<(), String> {
+    write_level(
+        snapshot_level(world, registry, editor_camera, world_settings),
+        path.as_ref(),
+    )
+}
+
+fn read_existing_world_settings(path: &Path) -> WorldSettingsData {
+    virtual_fs::read_file(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|value| value.get("world_settings").cloned())
+        .and_then(|settings| serde_json::from_value(settings).ok())
+        .unwrap_or_default()
 }
 
 /// Everything a save needs from the world, captured in one pass.
@@ -114,6 +155,7 @@ pub struct LevelSnapshot {
     /// for deciding which legacy blueprint bindings still need carrying over.
     class_names: HashMap<ObjectId, String>,
     editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
 }
 
 /// Capture what [`write_level`] writes. `registry` should be the project's
@@ -123,6 +165,7 @@ pub fn snapshot_level(
     world: &World,
     registry: &ClassRegistry,
     editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
 ) -> LevelSnapshot {
     profiling::profile_scope!("scene_edit::snapshot_level");
     let (objects, components) = level_contents(world, registry);
@@ -142,6 +185,7 @@ pub fn snapshot_level(
         components,
         class_names,
         editor_camera,
+        world_settings,
     }
 }
 
@@ -153,6 +197,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         components,
         class_names,
         editor_camera,
+        world_settings,
     } = snapshot;
     if let Some(parent_dir) = path.parent() {
         virtual_fs::create_dir_all(parent_dir)
@@ -189,6 +234,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
             modified: now,
             editor_version: env!("CARGO_PKG_VERSION").into(),
         },
+        world_settings,
         editor: editor_camera
             .map(|camera| LevelEditorFileState {
                 camera: Some(camera),
@@ -224,6 +270,51 @@ fn unmigrated_bindings(
     bindings
 }
 
+/// Report component data of a registered class that does not decode even
+/// after the load migrations. The editor keeps it as an unresolved payload
+/// (so saving loses nothing and it can be fixed by hand); the runtime
+/// refuses such a level, so it is a warning here, never silent.
+fn report_invalid_known_data(world: &World, path: &Path) {
+    for (instance, (meta, unresolved)) in world.query::<(
+        &engine_backend::scene::attachments::ComponentMeta,
+        &engine_backend::scene::attachments::UnresolvedComponent,
+    )>() {
+        if pulsar_world_registry::component_id_for_class(&meta.class_name).is_none() {
+            continue;
+        }
+        let object = engine_backend::scene::attachments::owner_of(world, instance)
+            .and_then(|owner| world.stable_id_of(owner))
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+        tracing::warn!(
+            object = %object,
+            class = %meta.class_name,
+            path = %path.display(),
+            "Component data is invalid for its class and was kept unresolved (the runtime will refuse this level): {}",
+            unresolved.reason
+        );
+    }
+}
+
+/// Say what the load-time record migrations changed (`pulsar_class::records`).
+pub(crate) fn log_record_migrations(
+    records: &pulsar_class::records::RecordMigrations,
+    path: &Path,
+) {
+    for id in &records.material_overrides {
+        tracing::info!(object = %id, path = %path.display(), "Folded MaterialOverrideComponent into the mesh's material slots");
+    }
+    for (id, class) in &records.nested {
+        tracing::info!(object = %id, class = %class, path = %path.display(), "Rewrote flat component data to the class's shape");
+    }
+    for id in &records.mesh_asset_props {
+        tracing::info!(object = %id, path = %path.display(), "Turned props.mesh_asset into a StaticMeshComponent");
+    }
+    for (id, keys) in &records.stripped_props {
+        tracing::info!(object = %id, path = %path.display(), ?keys, "Removed component copies from object props");
+    }
+}
+
 /// Load a scene from a JSON level file (replaces the current scene).
 pub fn load_from_file<P: AsRef<Path>>(world: &mut World, path: P) -> Result<(), String> {
     load_from_file_with_editor_camera(world, path).map(|_| ())
@@ -234,7 +325,15 @@ pub fn load_from_file_with_editor_camera<P: AsRef<Path>>(
     world: &mut World,
     path: P,
 ) -> Result<Option<LevelEditorCameraState>, String> {
-    load_with_classes(world, path, &project_registry())
+    load_from_file_with_editor_camera_and_settings(world, path).map(|(camera, _)| camera)
+}
+
+/// Load a scene and return its persisted editor camera and world settings.
+pub fn load_from_file_with_editor_camera_and_settings<P: AsRef<Path>>(
+    world: &mut World,
+    path: P,
+) -> Result<(Option<LevelEditorCameraState>, WorldSettingsData), String> {
+    load_with_classes_and_settings(world, path, &project_registry())
 }
 
 /// [`load_from_file_with_editor_camera`] with an explicit class registry.
@@ -247,6 +346,14 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
     path: P,
     registry: &ClassRegistry,
 ) -> Result<Option<LevelEditorCameraState>, String> {
+    load_with_classes_and_settings(world, path, registry).map(|(camera, _)| camera)
+}
+
+pub(crate) fn load_with_classes_and_settings<P: AsRef<Path>>(
+    world: &mut World,
+    path: P,
+    registry: &ClassRegistry,
+) -> Result<(Option<LevelEditorCameraState>, WorldSettingsData), String> {
     profiling::profile_scope!("scene_edit::load_from_file");
     let bytes =
         virtual_fs::read_file(path.as_ref()).map_err(|e| format!("Failed to read file: {e}"))?;
@@ -262,6 +369,7 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
             path.as_ref().display()
         );
     }
+    log_record_migrations(&report.records, path.as_ref());
     let level_file: LevelFile =
         serde_json::from_value(value).map_err(|e| format!("Failed to parse JSON: {e}"))?;
     if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {
@@ -281,14 +389,11 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
     // When present, persisted components are authoritative and replace defaults.
     if has_persisted_components {
         for (object_id, components) in level_file.components {
-            while !get_components_metadata(world, &object_id).is_empty() {
-                remove_component(world, &object_id, 0);
-            }
-            for component in components {
-                add_component_instance(world, &object_id, component);
-            }
+            replace_components(world, &object_id, &components);
         }
     }
+
+    report_invalid_known_data(world, path.as_ref());
 
     let unresolved = classes::rebuild_all_instances(world, registry);
     if !unresolved.is_empty() {
@@ -304,7 +409,10 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
         path.as_ref().display(),
         level_file.version
     );
-    Ok(level_file.editor.and_then(|editor| editor.camera))
+    Ok((
+        level_file.editor.and_then(|editor| editor.camera),
+        level_file.world_settings,
+    ))
 }
 
 #[cfg(test)]
@@ -328,10 +436,19 @@ mod voxel_example_tests {
         assert_eq!(entries[0].renderer_id, "helio.voxel-terrain");
         assert_eq!(entries[0].generator.as_ref().unwrap().version, 1);
         // The Earth preset (seed 75: foothills at the pole, a range 23 km away).
-        let stacks: Vec<_> = world.query::<&helio_component::VoxelTerrainLayersComponent>().map(|(_, c)| c.stack.clone()).collect();
+        let stacks: Vec<_> = engine_backend::scene::attachments::enabled_components::<helio_component::VoxelTerrainLayersComponent>(&world)
+            .map(|(_, _, c)| c.stack.clone())
+            .collect();
         assert_eq!(stacks, [helio_component::VoxelTerrainStack::earth()]);
         // Graded like an outdoor scene: one unbound volume tone maps it.
-        let volumes: Vec<_> = world.query::<&helio_component::PostProcessVolumeComponent>().map(|(_, v)| v.clone()).collect();
+        let volumes: Vec<_> = engine_backend::scene::attachments::enabled_components::<helio_component::PostProcessVolumeComponent>(&world)
+            .map(|(_, _, v)| v.clone())
+            .collect();
+        // The planet's air, centred on the planet's object.
+        let air: Vec<_> = engine_backend::scene::attachments::enabled_components::<helio_component::AtmosphereComponent>(&world)
+            .map(|(_, _, a)| a.placement)
+            .collect();
+        assert_eq!(air, [helio_component::AtmospherePlacement::PlanetAtOwner]);
         assert_eq!(volumes.len(), 1);
         assert!(volumes[0].unbound && volumes[0].settings.tonemap_operator == helio_component::TonemapOperator::Aces);
     }

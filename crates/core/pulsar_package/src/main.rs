@@ -63,10 +63,22 @@ enum Command {
 }
 
 fn main() {
-    tracing_subscriber::fmt().with_writer(std::io::stderr).init();
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
     let cli = Cli::parse();
     let code = match cli.command {
-        Command::Package { project, out, profile, target, loose, skip_build, startup_level, engine_assets, report } => {
+        Command::Package {
+            project,
+            out,
+            profile,
+            target,
+            loose,
+            skip_build,
+            startup_level,
+            engine_assets,
+            report,
+        } => {
             let options = pulsar_package::PackageOptions {
                 project,
                 out,
@@ -95,7 +107,11 @@ fn main() {
                         result.classes.len(),
                         result.levels.len(),
                         result.assets,
-                        result.pak.as_ref().map(|p| format!(", {}", p.display())).unwrap_or_default(),
+                        result
+                            .pak
+                            .as_ref()
+                            .map(|p| format!(", {}", p.display()))
+                            .unwrap_or_default(),
                         result
                             .executable
                             .as_ref()
@@ -110,20 +126,25 @@ fn main() {
                 }
             }
         }
-        Command::BuildScripts { project, profile } => match pulsar_package::build_scripts(&project, profile) {
-            Ok(output) => {
-                for problem in &output.problems {
-                    eprintln!("{problem}");
+        Command::BuildScripts { project, profile } => {
+            match pulsar_package::build_scripts(&project, profile) {
+                Ok(output) => {
+                    for problem in &output.problems {
+                        eprintln!("{problem}");
+                    }
+                    let scripted = output.classes.iter().filter(|c| c.module.is_some()).count();
+                    println!(
+                        "{} classes, {scripted} with scripts: all compile and link",
+                        output.classes.len()
+                    );
+                    0
                 }
-                let scripted = output.classes.iter().filter(|c| c.module.is_some()).count();
-                println!("{} classes, {scripted} with scripts: all compile and link", output.classes.len());
-                0
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    1
+                }
             }
-            Err(error) => {
-                eprintln!("error: {error}");
-                1
-            }
-        },
+        }
     };
     std::process::exit(code);
 }

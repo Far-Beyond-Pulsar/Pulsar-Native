@@ -59,6 +59,11 @@ pub fn init(cx: &mut gpui::App) {
 
     root::register_window_wrappers(cx);
 
+    // The shader editor is linked as a built-in provider, so its dynamic
+    // plugin `on_load` hook is never run. Register its format renderer before
+    // the file drawer can request material previews.
+    shader_editor_plugin::register_material_thumbnail_renderer();
+
     // Register global keybindings for actions that must work anywhere in the app
     #[cfg(target_os = "windows")]
     let toggle_palette = gpui::KeyBinding::new::<ToggleCommandPalette>(

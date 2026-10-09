@@ -10,15 +10,12 @@ pub mod scene;
 pub mod services;
 pub mod subsystems;
 
-// Force-link `helio_component`: this crate is the one that actually runs
-// `dispatch_world_component_for_class`/`apply_runtime_behavior_for_class`
-// against its `inventory`-based `#[register_world_component]`/
-// `#[register_runtime_behavior]` registrations (see
-// `subsystems::render::helio_renderer::renderer`), but unlike its sibling
-// crates (`ui_level_editor`, `pulsar_scene`), it does not name every
-// `helio_component` type directly. Without an explicit symbol reference the
-// linker can dead-strip the rest of `helio_component`'s `#[used]` inventory
-// statics in an optimized build.
+// Force-link `helio_component`: this crate relies on its `inventory`-based
+// registrations (`#[register_world_component]`, its GPU row registrations),
+// but unlike its sibling crates (`ui_level_editor`, `pulsar_scene`) it does
+// not name every `helio_component` type directly. Without an explicit symbol
+// reference the linker can dead-strip the rest of `helio_component`'s
+// `#[used]` inventory statics in an optimized build.
 use helio_component as _;
 
 #[cfg(feature = "render")]

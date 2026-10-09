@@ -10,6 +10,10 @@ impl FileManagerDrawer {
                 | "obj"
                 | "usd"
                 | "usda"
+                | "usdc"
+                | "usdz"
+                | "uasset"
+                | "umap"
                 | "png"
                 | "jpg"
                 | "jpeg"
@@ -17,6 +21,7 @@ impl FileManagerDrawer {
                 | "tga"
                 | "bmp"
                 | "gif"
+                | "material"
         )
     }
 
@@ -25,14 +30,16 @@ impl FileManagerDrawer {
         path: &std::path::Path,
         cx: &mut gpui::Context<Self>,
     ) {
-        if path.is_dir() {
-            return;
-        }
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
+        // `.material` is a folder-based asset containing the actual graph in
+        // shader_graph_save.json; pass the asset folder to its registered hook.
+        if path.is_dir() && ext != "material" {
+            return;
+        }
         if !Self::is_thumbable_ext(&ext) || self.thumbnails.contains_key(path) {
             return;
         }
@@ -40,8 +47,9 @@ impl FileManagerDrawer {
         let abs = path.to_path_buf();
         let root = self.thumbnail_cache_root.clone();
         let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<image::RgbaImage>>>(1);
+        ui_common::asset_thumbnails::register_mesh_thumbnail_renderer();
         engine_fs::thumbnails::service().request(abs.clone(), root, move |rgba| {
-            smol::block_on(tx.send(rgba));
+            let _ = smol::block_on(tx.send(rgba));
         });
         cx.spawn(async move |this, cx| {
             let Ok(maybe) = rx.recv().await else {

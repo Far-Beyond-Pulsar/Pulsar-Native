@@ -8,8 +8,7 @@
 //! (`{ "mode": "rust", "script_crate", "actor_type" }`), which the level
 //! migration converts.
 
-use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
-use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
+use engine_class_derive::{engine_class, register_world_component};
 
 /// Component class name of [`NativeScriptComponent`].
 pub const NATIVE_SCRIPT_COMPONENT: &str = "NativeScriptComponent";
@@ -38,15 +37,4 @@ impl NativeScriptComponent {
 // Spawning native actors from this binding is the script-runtime phase's
 // job (#922); the component is data only for now.
 #[register_world_component]
-#[register_runtime_behavior]
-impl ComponentRuntimeBehavior for NativeScriptComponent {
-    const CLASS_NAME: &'static str = NATIVE_SCRIPT_COMPONENT;
-
-    fn sync_component(
-        _owner: &RuntimeComponentOwner,
-        _component_index: usize,
-        _component: &Self,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) {
-    }
-}
+impl NativeScriptComponent {}

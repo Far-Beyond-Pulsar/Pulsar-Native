@@ -12,21 +12,37 @@
 
 use std::path::PathBuf;
 
-use pulsar_script_vm::{
-    BinOp, Constant, Function, Instr, Module, Type, Variable,
-};
+use pulsar_script_vm::{BinOp, Constant, Function, Instr, Module, Type, Variable};
 
 fn probe_module() -> Module {
     let mut m = Module::new("export_probe");
     m.variables = vec![
-        Variable { name: "beats".into(), ty: Type::Int, default: None, id: None },
-        Variable { name: "woke".into(), ty: Type::Int, default: None, id: None },
+        Variable {
+            name: "beats".into(),
+            ty: Type::Int,
+            default: None,
+            id: None,
+        },
+        Variable {
+            name: "woke".into(),
+            ty: Type::Int,
+            default: None,
+            id: None,
+        },
     ];
     m.constants = vec![Constant::Int(1), Constant::Float(0.0)];
     let func = |name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>| {
         let mut registers = params.clone();
         registers.extend(extra);
-        Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code, debug: None }
+        Function {
+            name: name.into(),
+            exported: true,
+            params,
+            ret: Type::Unit,
+            registers,
+            code,
+            debug: None,
+        }
     };
     // begin_play: wait (zero seconds: resumes on the next tick), then woke = 1
     m.functions.push(func(
@@ -49,7 +65,12 @@ fn probe_module() -> Module {
         vec![
             Instr::LoadVar { dst: 1, var: 0 },
             Instr::Const { dst: 2, index: 0 },
-            Instr::Binary { op: BinOp::Add, dst: 1, a: 1, b: 2 },
+            Instr::Binary {
+                op: BinOp::Add,
+                dst: 1,
+                a: 1,
+                b: 2,
+            },
             Instr::StoreVar { var: 0, src: 1 },
             Instr::Return { value: None },
         ],
@@ -71,6 +92,7 @@ fn main() {
             None => format!("{line}\n"),
         })
         .collect();
-    let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR")).join("export_probe_actor.rs");
+    let out =
+        PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR")).join("export_probe_actor.rs");
     std::fs::write(out, source).expect("write the probe actor");
 }

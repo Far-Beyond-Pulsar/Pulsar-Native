@@ -27,12 +27,14 @@ pub enum AssetKind {
 impl AssetKind {
     /// The kind of a file by its extension.
     pub fn from_path(path: &str) -> Self {
-        let ext = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+        let ext = path
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_ascii_lowercase())
+            .unwrap_or_default();
         match ext.as_str() {
             "mesh" | "fbx" | "gltf" | "glb" | "obj" | "ply" | "stl" => Self::Mesh,
-            "png" | "jpg" | "jpeg" | "tga" | "bmp" | "gif" | "webp" | "hdr" | "exr" | "ktx2" | "dds" | "tex" => {
-                Self::Texture
-            }
+            "png" | "jpg" | "jpeg" | "tga" | "bmp" | "gif" | "webp" | "hdr" | "exr" | "ktx2"
+            | "dds" | "tex" => Self::Texture,
             "mat" | "material" | "pmat" => Self::Material,
             "wav" | "ogg" | "mp3" | "flac" => Self::Audio,
             _ => Self::Other,
@@ -81,7 +83,10 @@ impl AssetRegistry {
     pub const FORMAT: u32 = 1;
 
     pub fn new() -> Self {
-        Self { format: Self::FORMAT, assets: BTreeMap::new() }
+        Self {
+            format: Self::FORMAT,
+            assets: BTreeMap::new(),
+        }
     }
 
     pub fn insert(&mut self, record: AssetRecord) {

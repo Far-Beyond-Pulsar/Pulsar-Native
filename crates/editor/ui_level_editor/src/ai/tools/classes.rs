@@ -127,7 +127,10 @@ pub fn level_editor_set_class_variable(
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     let value = (!value.is_null()).then_some(value);
-    let result = execute_command(&mut state, SceneCommand::SetClassVariable { id, name, value });
+    let result = execute_command(
+        &mut state,
+        SceneCommand::SetClassVariable { id, name, value },
+    );
     Ok(command_json(&result))
 }
 
@@ -149,6 +152,9 @@ pub fn level_editor_revert_class_slot(
     let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
-    let result = execute_command(&mut state, SceneCommand::RevertClassSlot { id, slot_id, path });
+    let result = execute_command(
+        &mut state,
+        SceneCommand::RevertClassSlot { id, slot_id, path },
+    );
     Ok(command_json(&result))
 }

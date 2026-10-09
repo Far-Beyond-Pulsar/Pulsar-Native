@@ -5,10 +5,10 @@
 //! action handlers live in the sibling [`handlers`] module; the
 //! Play-In-Editor dylib build pipeline lives in [`pie`].
 
-mod handlers;
-pub(crate) mod pie;
 mod camera;
+mod handlers;
 mod lifecycle;
+pub(crate) mod pie;
 mod playback_host;
 pub(crate) mod spline;
 mod workspace_sync;
@@ -27,7 +27,7 @@ use super::viewport::helio_viewport::HelioViewport;
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use std::sync::{Arc, Mutex};
 use ui::settings::EngineSettings;
-use ui::{ContextModal as _, notification::Notification};
+use ui::{notification::Notification, ContextModal as _};
 
 use super::actions::*;
 use super::{ToolbarView, ViewportPanel};
@@ -56,7 +56,7 @@ pub struct LevelEditorPanel {
     viewport: Entity<HelioViewport>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
     // Cheap, `gpu_engine`-lock-free handle for one-shot editor commands
-    // (gizmo mode, deselect, force-full-resync) -- see `HelioEditorMailbox`'s
+    // (gizmo mode, deselect) -- see `HelioEditorMailbox`'s
     // doc. Fetched once at construction, not re-locked per command.
     helio_mailbox: Option<HelioEditorMailbox>,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
@@ -103,6 +103,8 @@ pub struct LevelEditorPanel {
 
     /// Rebuilds placed class instances when a class asset is updated (#921).
     _class_updates: plugin_editor_api::AssetSubscription,
+    /// Re-imported meshes reload in place.
+    _mesh_updates: plugin_editor_api::AssetSubscription,
 }
 
 impl Drop for LevelEditorPanel {
@@ -326,12 +328,17 @@ impl Render for LevelEditorPanel {
             // Undo/redo: Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 let modifiers = &event.keystroke.modifiers;
-                if !this.focus_handle.contains_focused(window, cx) || !modifiers.control || modifiers.alt {
+                if !this.focus_handle.contains_focused(window, cx)
+                    || !modifiers.control
+                    || modifiers.alt
+                {
                     return;
                 }
                 match (event.keystroke.key.as_ref(), modifiers.shift) {
                     ("z", false) => this.on_undo(&crate::ui::actions::Undo, window, cx),
-                    ("z", true) | ("y", false) => this.on_redo(&crate::ui::actions::Redo, window, cx),
+                    ("z", true) | ("y", false) => {
+                        this.on_redo(&crate::ui::actions::Redo, window, cx)
+                    }
                     _ => {}
                 }
             }))

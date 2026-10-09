@@ -30,7 +30,12 @@ use pulsar_script_vm::{BinOp, Constant, Function, Instr, Module, Type, Variable}
 /// A class with one variable, `count`, that `tick` increments.
 fn counter_class(name: &str) -> Module {
     let mut m = Module::new(name);
-    m.variables = vec![Variable { name: "count".into(), ty: Type::Int, default: Some(Constant::Int(0)), id: None }];
+    m.variables = vec![Variable {
+        name: "count".into(),
+        ty: Type::Int,
+        default: Some(Constant::Int(0)),
+        id: None,
+    }];
     m.constants = vec![Constant::Int(1)];
     m.functions.push(Function {
         name: "tick".into(),
@@ -41,7 +46,12 @@ fn counter_class(name: &str) -> Module {
         code: vec![
             Instr::LoadVar { dst: 1, var: 0 },
             Instr::Const { dst: 2, index: 0 },
-            Instr::Binary { op: BinOp::Add, dst: 1, a: 1, b: 2 },
+            Instr::Binary {
+                op: BinOp::Add,
+                dst: 1,
+                a: 1,
+                b: 2,
+            },
             Instr::StoreVar { var: 0, src: 1 },
             Instr::Return { value: None },
         ],
@@ -54,11 +64,14 @@ fn counter_class(name: &str) -> Module {
 fn generate_project(project: &Path, class: &str) {
     // 1. Engine-owned bootstrap: Cargo.toml (baked deps + patches), main.rs,
     //    lib.rs (PIE shim), engine_main.rs, Pulsar/level.json.
-    engine_backend::services::ensure_core_bootstrap(project).expect("bootstrap files for the generated project");
+    engine_backend::services::ensure_core_bootstrap(project)
+        .expect("bootstrap files for the generated project");
 
     // 2. The class tree, through the exporter's public API: the same call the
     //    Blueprint Editor makes after compiling a class.
-    for (path, content) in class_files(class, &counter_class(class), &[]).expect("the class exports") {
+    for (path, content) in
+        class_files(class, &counter_class(class), &[]).expect("the class exports")
+    {
         let path = project.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).expect("class directory");
         std::fs::write(path, content).expect("class file");
@@ -67,7 +80,8 @@ fn generate_project(project: &Path, class: &str) {
     // 3. The bootstrap scans src/classes/ to regenerate classes/mod.rs; run
     //    it again now that the class directory exists so the module tree is
     //    fully wired.
-    engine_backend::services::ensure_core_bootstrap(project).expect("classes/mod.rs regeneration after writing the class tree");
+    engine_backend::services::ensure_core_bootstrap(project)
+        .expect("classes/mod.rs regeneration after writing the class tree");
 }
 
 /// Generate the full project and `cargo check` it against current pins.
@@ -82,19 +96,39 @@ fn generated_project_compiles_against_current_pins() {
     // (#653) is part of that contract: it must exist AND its path
     // dependencies must resolve to real manifests (a wrong engine-checkout
     // anchor otherwise surfaces only as cargo ENOENT).
-    for required in ["Cargo.toml", "src/main.rs", "src/lib.rs", "src/classes/mod.rs", "src/classes/drift_probe/events/events.rs"] {
-        assert!(project.path().join(required).exists(), "generated project is missing {required}");
+    for required in [
+        "Cargo.toml",
+        "src/main.rs",
+        "src/lib.rs",
+        "src/classes/mod.rs",
+        "src/classes/drift_probe/events/events.rs",
+    ] {
+        assert!(
+            project.path().join(required).exists(),
+            "generated project is missing {required}"
+        );
     }
     let script_manifest = std::fs::read_dir(project.path().join("scripts"))
         .ok()
-        .and_then(|entries| entries.flatten().find(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)))
+        .and_then(|entries| {
+            entries
+                .flatten()
+                .find(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        })
         .map(|e| e.path().join("Cargo.toml"))
         .expect("scripts/ crate scaffolded");
-    assert!(script_manifest.exists(), "scaffolded script crate manifest missing: {}", script_manifest.display());
-    let script_text = std::fs::read_to_string(&script_manifest).expect("script crate manifest readable");
+    assert!(
+        script_manifest.exists(),
+        "scaffolded script crate manifest missing: {}",
+        script_manifest.display()
+    );
+    let script_text =
+        std::fs::read_to_string(&script_manifest).expect("script crate manifest readable");
     const PATH_KEY: &str = "path = \"";
     for line in script_text.lines() {
-        let Some(start) = line.find(PATH_KEY) else { continue };
+        let Some(start) = line.find(PATH_KEY) else {
+            continue;
+        };
         let rest = &line[start + PATH_KEY.len()..];
         let Some(end) = rest.find('"') else { continue };
         let dep_path = &rest[..end];
@@ -103,13 +137,21 @@ fn generated_project_compiles_against_current_pins() {
         } else {
             script_manifest.parent().unwrap().join(dep_path)
         };
-        assert!(resolved.join("Cargo.toml").exists(), "script crate path dep does not resolve: {dep_path} -> {}", resolved.display());
+        assert!(
+            resolved.join("Cargo.toml").exists(),
+            "script crate path dep does not resolve: {dep_path} -> {}",
+            resolved.display()
+        );
     }
 
     // Compile it. A shared target dir makes repeat runs incremental.
     let started = std::time::Instant::now();
-    let status = cargo_check(project.path()).unwrap_or_else(|e| panic!("failed to spawn cargo check: {e}"));
-    println!("cargo check of the generated project finished in {:?} ({status})", started.elapsed());
+    let status =
+        cargo_check(project.path()).unwrap_or_else(|e| panic!("failed to spawn cargo check: {e}"));
+    println!(
+        "cargo check of the generated project finished in {:?} ({status})",
+        started.elapsed()
+    );
     assert!(
         status.success(),
         "freshly generated project failed to compile against current pins \
@@ -134,7 +176,8 @@ fn exported_class_variables_are_per_actor_in_debug_and_release() {
     // same Pulsar-Reflection rev the workspace pins.
     let rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae";
     let generated_manifest = project.path().join("Cargo.toml");
-    let mut manifest = std::fs::read_to_string(&generated_manifest).expect("generated project manifest");
+    let mut manifest =
+        std::fs::read_to_string(&generated_manifest).expect("generated project manifest");
     manifest.push_str(&format!(
         "\n[patch.\"https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection\"]\npulsar_reflection = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection\", rev = \"{rev}\" }}\npulsar_reflection_derive = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection\", rev = \"{rev}\" }}\n"
     ));
@@ -179,8 +222,16 @@ fn main() {
             String::from_utf8_lossy(&output.stderr)
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in ["after_first=Some(1)", "second=Some(1)", "after_first_again=Some(2)", "second_again=Some(1)"] {
-            assert!(stdout.contains(expected), "missing {expected} in {profile} output:\n{stdout}");
+        for expected in [
+            "after_first=Some(1)",
+            "second=Some(1)",
+            "after_first_again=Some(2)",
+            "second_again=Some(1)",
+        ] {
+            assert!(
+                stdout.contains(expected),
+                "missing {expected} in {profile} output:\n{stdout}"
+            );
         }
         println!("exported {profile} variable trace:\n{stdout}");
     }
@@ -202,13 +253,22 @@ fn cargo_check(project_dir: &Path) -> std::io::Result<std::process::ExitStatus> 
     // Surface compiler errors on failure instead of swallowing them.
     let output = cmd.output()?;
     if !output.status.success() {
-        eprintln!("cargo check stdout:\n{}", String::from_utf8_lossy(&output.stdout));
-        eprintln!("cargo check stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+        eprintln!(
+            "cargo check stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        eprintln!(
+            "cargo check stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     Ok(output.status)
 }
 
-fn cargo_run_generated_probe(project_dir: &Path, profile: &str) -> std::io::Result<std::process::Output> {
+fn cargo_run_generated_probe(
+    project_dir: &Path,
+    profile: &str,
+) -> std::io::Result<std::process::Output> {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join("pulsar_drift_check_target"));
@@ -217,7 +277,9 @@ fn cargo_run_generated_probe(project_dir: &Path, profile: &str) -> std::io::Resu
     if profile == "release" {
         cmd.arg("--release");
     }
-    cmd.current_dir(project_dir).env("CARGO_TARGET_DIR", target_dir).output()
+    cmd.current_dir(project_dir)
+        .env("CARGO_TARGET_DIR", target_dir)
+        .output()
 }
 
 fn cargo_exe() -> std::path::PathBuf {

@@ -192,7 +192,15 @@ mod tests {
             Ok(1)
         );
         assert_eq!(catalog.get("alpha"), Some(&payload(1)));
-        assert_eq!(catalog.apply_batch(1, &[PayloadMutation::Delete { key: "alpha".into() }]), Ok(2));
+        assert_eq!(
+            catalog.apply_batch(
+                1,
+                &[PayloadMutation::Delete {
+                    key: "alpha".into()
+                }]
+            ),
+            Ok(2)
+        );
         assert_eq!(catalog.get("alpha"), None);
         assert_eq!(catalog.get("beta"), Some(&payload(2)));
     }

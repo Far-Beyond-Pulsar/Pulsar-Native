@@ -1,6 +1,5 @@
 use engine_class_derive::engine_class;
 use serde_json::Value;
-use std::collections::HashMap;
 
 use crate::components::physics_component::InterpolationMethod;
 
@@ -92,48 +91,5 @@ impl AdvancedRigidbodyProps {
         if let Some(v) = obj.get("enable_gravity").and_then(|v| v.as_bool()) {
             self.enable_gravity = v;
         }
-    }
-
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "enable_transform_interpolation".to_string(),
-            Value::from(self.enable_transform_interpolation),
-        );
-        out.insert(
-            "interpolation_method".to_string(),
-            Value::from(self.interpolation_method as u64),
-        );
-        out.insert(
-            "min_translation_for_interpolation".to_string(),
-            Value::from(self.min_translation_for_interpolation),
-        );
-        out.insert(
-            "min_rotation_for_interpolation".to_string(),
-            Value::from(self.min_rotation_for_interpolation),
-        );
-        out.insert(
-            "enable_sync_to_physics".to_string(),
-            Value::from(self.enable_sync_to_physics),
-        );
-        out.insert(
-            "enable_sleeping".to_string(),
-            Value::from(self.enable_sleeping),
-        );
-        out.insert(
-            "sleep_threshold".to_string(),
-            Value::from(self.sleep_threshold),
-        );
-        out.insert(
-            "wake_on_collision".to_string(),
-            Value::from(self.wake_on_collision),
-        );
-        out.insert(
-            "disable_collision".to_string(),
-            Value::from(self.disable_collision),
-        );
-        out.insert(
-            "enable_gravity".to_string(),
-            Value::from(self.enable_gravity),
-        );
     }
 }

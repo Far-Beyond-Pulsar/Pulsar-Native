@@ -3,9 +3,7 @@
 //! A placed class is a root object with a `ClassInstance` component, the
 //! class's prefab components, and generated child objects for components
 //! that need their own entity (see `pulsar_class::plan`). This module wraps
-//! `pulsar_class::world` with the editor's component bookkeeping (component
-//! records are normalized through
-//! [`sync_registered_component_props_to_scene_db`]) and provides the data
+//! `pulsar_class::world` with the editor's object ids and provides the data
 //! side of the details panel: which values an instance overrides, and
 //! reverting them to the class default.
 
@@ -17,7 +15,6 @@ use pulsar_class::{ClassDefinition, ClassInstance, ClassRegistry};
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
-use super::components::sync_registered_component_props_to_scene_db;
 use super::objects::remove_object;
 use super::{ObjectId, ObjectType, Transform};
 
@@ -114,16 +111,12 @@ fn id_of(world: &World, entity: Entity) -> Option<ObjectId> {
     world.stable_id_of(entity).map(str::to_string)
 }
 
-/// Normalize the component records of `root` and its generated children.
-fn sync_instance(world: &mut World, root: Entity) -> Vec<ObjectId> {
-    let mut ids = Vec::new();
-    for e in std::iter::once(root).chain(class_world::generated_children(world, root)) {
-        if let Some(id) = id_of(world, e) {
-            sync_registered_component_props_to_scene_db(world, &id);
-            ids.push(id);
-        }
-    }
-    ids
+/// The ids of `root` and its generated children.
+fn instance_object_ids(world: &World, root: Entity) -> Vec<ObjectId> {
+    std::iter::once(root)
+        .chain(class_world::generated_children(world, root))
+        .filter_map(|e| id_of(world, e))
+        .collect()
 }
 
 // ── Placement ──────────────────────────────────────────────────────────────
@@ -161,7 +154,7 @@ pub fn instantiate_class(
             return None;
         }
     };
-    Some(sync_instance(world, root))
+    Some(instance_object_ids(world, root))
 }
 
 /// Place an instance of the class in `class_dir` (a content-browser or
@@ -206,13 +199,7 @@ pub fn duplicate_instance_with(
     let source = super::objects::get_object(world, id)?;
     let instance = current_overrides(world, id, registry)?;
     let def = registry.definition_for(&instance)?;
-    let extra: Vec<super::ComponentInstance> = super::components::get_components(world, id)
-        .into_iter()
-        .filter(|c| {
-            c.class_name != pulsar_class::CLASS_INSTANCE
-                && c.data.get(pulsar_class::SLOT_ID_KEY).is_none()
-        })
-        .collect();
+    let source_root = entity(world, id)?;
     let ids = instantiate_class(
         world,
         &def,
@@ -222,8 +209,18 @@ pub fn duplicate_instance_with(
         source.parent.as_deref(),
     )?;
     let root_id = ids.first()?.clone();
-    for component in extra {
-        super::components::add_component_instance(world, &root_id, component);
+    // The components the user added to the source (not built from the
+    // class): copies of their values.
+    let root = entity(world, &root_id)?;
+    let added = |world: &World, instance: Entity| {
+        engine_backend::scene::attachments::meta(world, instance).is_some_and(|meta| {
+            meta.class_name != pulsar_class::CLASS_INSTANCE && meta.class_slot.is_none()
+        })
+    };
+    if let Err(error) =
+        pulsar_world_registry::duplicate_instances(world, source_root, root, added, false)
+    {
+        tracing::error!("Could not copy the added components of '{id}': {error}");
     }
     Some(root_id)
 }
@@ -255,7 +252,7 @@ pub fn rebuild_instance(
     }
     class_world::expand_class_instance(world, root, &def);
     remember_built_definition(&def);
-    Some(sync_instance(world, root))
+    Some(instance_object_ids(world, root))
 }
 
 /// Rebuild every class instance in the world (after a level load). Returns
@@ -493,8 +490,6 @@ pub fn set_variable(
         );
     }
     class_world::store_class_instance(world, root, &instance);
-    sync_registered_component_props_to_scene_db(world, id);
-    super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }
 
@@ -510,8 +505,6 @@ pub fn revert_variable(world: &mut World, id: &str, name: &str) -> bool {
         return false;
     }
     class_world::store_class_instance(world, root, &instance);
-    sync_registered_component_props_to_scene_db(world, id);
-    super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }
 
@@ -583,26 +576,35 @@ pub fn class_root_of(world: &World, id: &str) -> Option<Entity> {
     }
 }
 
-/// Class default of one component built from a class slot.
+/// Class default of one component built from a class slot, read from the
+/// class's cached template (decoded once per class definition).
 pub struct SlotDefault {
     pub slot_id: String,
     pub class_name: String,
-    /// The slot's default data, normalized to the component's shape.
-    pub data: Value,
-    /// The default as a reflected instance, for per-property reads.
-    pub instance: Option<Box<dyn pulsar_reflection::EngineClass>>,
+    template: std::sync::Arc<pulsar_class::ClassTemplate>,
 }
 
 impl SlotDefault {
+    /// The slot's default data, normalized to the component's shape (what
+    /// override diffs are taken against).
+    pub fn data(&self) -> Value {
+        self.template
+            .slot(&self.slot_id)
+            .map(|slot| slot.default_data.clone())
+            .unwrap_or(Value::Null)
+    }
+
+    /// The default as a reflected value, for per-property reads.
+    pub fn instance(&self) -> Option<&dyn pulsar_reflection::EngineClass> {
+        let slot = self.template.slot(&self.slot_id)?;
+        let value = slot.value.as_ref().ok()?;
+        pulsar_world_registry::value_engine_class(&slot.class_name, value.as_ref())
+    }
+
     /// The class default of property `prop_name` (typed, as the property's
     /// getter returns it).
     pub fn property(&self, prop_name: &str) -> Option<Box<dyn std::any::Any>> {
-        let instance = self.instance.as_deref()?;
-        instance
-            .get_properties()
-            .into_iter()
-            .find(|p| p.name == prop_name)
-            .map(|p| (p.getter)(instance))
+        self.template.default_property(&self.slot_id, prop_name)
     }
 }
 
@@ -624,29 +626,26 @@ pub fn slot_defaults(
     let Some(def) = registry.definition_for(&instance) else {
         return out;
     };
+    let template = pulsar_class::template(&def);
     let Some(object) = entity(world, id) else {
         return out;
     };
-    for (index, record) in class_world::component_records(world, object)
-        .iter()
+    for (index, component) in engine_backend::scene::attachments::instances(world, object)
+        .into_iter()
         .enumerate()
     {
-        let Some(slot) = class_world::record_slot_id(record) else {
+        let Some(slot) = class_world::instance_slot_id(world, component) else {
             continue;
         };
-        let Some(data) = pulsar_class::plan::slot_default(&def, slot) else {
+        let Some(slot_template) = template.slot(slot) else {
             continue;
         };
-        let instance = pulsar_reflection::REGISTRY
-            .create_instance_from_json(&record.class_name, &data)
-            .and_then(Result::ok);
         out.insert(
             index,
             SlotDefault {
                 slot_id: slot.to_string(),
-                class_name: record.class_name.clone(),
-                data,
-                instance,
+                class_name: slot_template.class_name.clone(),
+                template: std::sync::Arc::clone(&template),
             },
         );
     }

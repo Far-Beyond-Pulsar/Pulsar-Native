@@ -13,26 +13,24 @@
 
 use std::collections::HashSet;
 
+use engine_backend::scene::attachments;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_component::{VoxelComponent, VoxelTerrainComponent};
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
 
 use super::widgets::{
-    SharedState, ToolSpec, collapsible_header, info_row, panel_header, segmented_row, stepper_row,
-    swatch_color, tool_grid,
+    collapsible_header, info_row, panel_header, segmented_row, stepper_row, swatch_color,
+    tool_grid, SharedState, ToolSpec,
 };
-use crate::commands::{SceneCommand, execute_command};
+use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
-use crate::state::terrain::{
-    BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget,
-};
+use crate::state::terrain::{BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget};
 use crate::tool_modes::dispatcher::ToolModeDispatcher;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,7 +98,7 @@ impl Signature {
 fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
     let world = state.scene.world();
     let mut rows = Vec::new();
-    for (entity, component) in world.query::<&VoxelTerrainComponent>() {
+    for (entity, _, component) in attachments::enabled_components::<VoxelTerrainComponent>(&world) {
         if component.enabled {
             rows.push(BodyRow {
                 hex: format!("{:016x}", entity.bits()),
@@ -111,7 +109,7 @@ fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
             });
         }
     }
-    for (entity, component) in world.query::<&VoxelComponent>() {
+    for (entity, _, component) in attachments::enabled_components::<VoxelComponent>(&world) {
         if component.enabled {
             rows.push(BodyRow {
                 hex: format!("{:016x}", entity.bits()),
@@ -153,17 +151,13 @@ impl TerrainPanel {
             return;
         }
         self.pump_started = true;
-        crate::ui::frame_pump::spawn_frame_pump(
-            &cx.entity(),
-            window,
-            |this, _window, cx| {
-                let signature = Signature::of(&this.state);
-                if signature != this.last_signature {
-                    this.last_signature = signature;
-                    cx.notify();
-                }
-            },
-        );
+        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
+            let signature = Signature::of(&this.state);
+            if signature != this.last_signature {
+                this.last_signature = signature;
+                cx.notify();
+            }
+        });
     }
 
     fn toggle_section(&mut self, id: &'static str) {
@@ -322,13 +316,16 @@ impl TerrainPanel {
                     children: Vec::new(),
                     scene_path: String::new(),
                     props: Default::default(),
-                    component_instances: Some(serde_json::json!([{
-                        "class_name": "VoxelTerrainComponent",
-                        "enabled": true,
-                        "data": serde_json::to_value(VoxelTerrainComponent::default()).unwrap_or_default(),
-                    }])),
+                    component_instances: None,
                 };
-                execute_command(&mut st, SceneCommand::AddObject { data, parent_id: None });
+                execute_command(
+                    &mut st,
+                    SceneCommand::AddObjectWithComponents {
+                        data,
+                        parent_id: None,
+                        components: vec![TypedComponent::new(VoxelTerrainComponent::default())],
+                    },
+                );
             })
             .into_any_element();
 

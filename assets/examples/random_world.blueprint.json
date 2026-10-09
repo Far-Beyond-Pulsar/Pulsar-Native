@@ -1645,7 +1645,7 @@
     ],
     "custom_event_defs": {}
   },
-  "local_macros": [],
+  "subgraphs": [],
   "local_events": [],
   "variables": [
     {

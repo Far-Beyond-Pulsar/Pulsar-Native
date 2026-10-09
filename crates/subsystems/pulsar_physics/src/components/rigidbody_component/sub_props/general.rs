@@ -1,6 +1,5 @@
 use engine_class_derive::engine_class;
 use serde_json::Value;
-use std::collections::HashMap;
 
 use crate::components::physics_component::MotionType;
 
@@ -59,17 +58,5 @@ impl GeneralRigidbodyProps {
         if let Some(v) = obj.get("override_mass").and_then(|v| v.as_bool()) {
             self.override_mass = v;
         }
-    }
-
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert("enabled".to_string(), Value::from(self.enabled));
-        out.insert("mass".to_string(), Value::from(self.mass));
-        out.insert("mass_scale".to_string(), Value::from(self.mass_scale));
-        out.insert("density".to_string(), Value::from(self.density));
-        out.insert(
-            "motion_type".to_string(),
-            Value::from(self.motion_type as u64),
-        );
-        out.insert("override_mass".to_string(), Value::from(self.override_mass));
     }
 }

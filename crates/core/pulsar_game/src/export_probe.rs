@@ -25,9 +25,18 @@ fn emitted_actor_signatures_match_the_pinned_actor_trait() {
         SOURCE.contains(REFERENCE_TICK_SIGNATURE),
         "the emitted Actor::tick drifted from the pinned time-free trait (expected `{REFERENCE_TICK_SIGNATURE}`)"
     );
-    assert!(SOURCE.contains(REFERENCE_BEGIN_PLAY_SIGNATURE), "the emitted Actor::begin_play drifted from the pinned trait");
-    assert!(!SOURCE.contains("GameTime"), "`Actor::tick` is time-free at the pin; no GameTime may be emitted");
-    assert!(!SOURCE.contains("gamma_core"), "emitted code names `gamma_core`, which the pinned graph does not provide");
+    assert!(
+        SOURCE.contains(REFERENCE_BEGIN_PLAY_SIGNATURE),
+        "the emitted Actor::begin_play drifted from the pinned trait"
+    );
+    assert!(
+        !SOURCE.contains("GameTime"),
+        "`Actor::tick` is time-free at the pin; no GameTime may be emitted"
+    );
+    assert!(
+        !SOURCE.contains("gamma_core"),
+        "emitted code names `gamma_core`, which the pinned graph does not provide"
+    );
 }
 
 /// The generated actor runs on the real tick loop: a waiting `begin_play`
@@ -39,8 +48,10 @@ fn the_generated_actor_registers_and_ticks_through_the_real_tick_loop() {
     let mut game = crate::tick::TickLoop::new(pulsar_core::TickMode::default(), 0);
     {
         let mut store = game.scene_store.write();
-        game.actors.register(generated::ExportProbe::new(), &mut store.world);
-        game.actors.register(generated::ExportProbe::new(), &mut store.world);
+        game.actors
+            .register(generated::ExportProbe::new(), &mut store.world);
+        game.actors
+            .register(generated::ExportProbe::new(), &mut store.world);
     }
     for _ in 0..3 {
         game.tick_once();

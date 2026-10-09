@@ -66,7 +66,10 @@ impl BuildConfiguratorWindow {
         let chips: Vec<AnyElement> = if selected.is_empty() {
             vec![chip("This machine (default)", None, p, cx)]
         } else {
-            selected.iter().map(|&platform| chip(platform.label(), Some(platform), p, cx)).collect()
+            selected
+                .iter()
+                .map(|&platform| chip(platform.label(), Some(platform), p, cx))
+                .collect()
         };
 
         let presets = h_flex()
@@ -115,11 +118,21 @@ impl BuildConfiguratorWindow {
                 .hover(|s| s.bg(p.hover))
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_family(family, cx)))
                 .child(
-                    Icon::new(if open { IconName::ChevronDown } else { IconName::ChevronRight })
-                        .size(px(14.))
-                        .text_color(p.muted),
+                    Icon::new(if open {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .size(px(14.))
+                    .text_color(p.muted),
                 )
-                .child(div().flex_1().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).child(family.label()))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(family.label()),
+                )
                 .child(
                     div()
                         .text_xs()
@@ -128,9 +141,11 @@ impl BuildConfiguratorWindow {
                 );
 
             let rows = open.then(|| {
-                v_flex().pl_6().children(members.into_iter().map(|platform| {
-                    platform_row(platform, selected.contains(&platform), p, cx)
-                }))
+                v_flex().pl_6().children(
+                    members.into_iter().map(|platform| {
+                        platform_row(platform, selected.contains(&platform), p, cx)
+                    }),
+                )
             });
             groups.push(v_flex().child(header).children(rows).into_any_element());
         }
@@ -148,8 +163,16 @@ impl BuildConfiguratorWindow {
                     h_flex()
                         .gap_2()
                         .items_center()
-                        .child(Icon::new(IconName::Search).size(px(14.)).text_color(p.muted))
-                        .child(div().flex_1().child(TextInput::new(&self.platform_search).small())),
+                        .child(
+                            Icon::new(IconName::Search)
+                                .size(px(14.))
+                                .text_color(p.muted),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .child(TextInput::new(&self.platform_search).small()),
+                        ),
                 )
                 .child(
                     div()
@@ -177,9 +200,9 @@ impl BuildConfiguratorWindow {
                                 .children(groups),
                         )
                         .child(Scrollbar::vertical(
-                                    &self.platform_scroll_state,
-                                    &self.platform_scroll,
-                                )),
+                            &self.platform_scroll_state,
+                            &self.platform_scroll,
+                        )),
                 ),
         )
     }
@@ -220,19 +243,18 @@ fn platform_row(
     p: Palette,
     cx: &mut Context<BuildConfiguratorWindow>,
 ) -> AnyElement {
-    let detail = platform.triple().unwrap_or("Needs the console SDK; cargo cannot build it");
-    let row = h_flex()
-        .w_full()
-        .px_2()
-        .py(px(3.))
-        .gap_3()
-        .items_center();
+    let detail = platform
+        .triple()
+        .unwrap_or("Needs the console SDK; cargo cannot build it");
+    let row = h_flex().w_full().px_2().py(px(3.)).gap_3().items_center();
     if platform.is_buildable() {
         row.child(
             Checkbox::new(SharedString::from(format!("bc-plat-{}", platform.id())))
                 .label(platform.label())
                 .checked(selected)
-                .on_click(cx.listener(move |this, _: &bool, _, cx| this.toggle_platform(platform, cx))),
+                .on_click(
+                    cx.listener(move |this, _: &bool, _, cx| this.toggle_platform(platform, cx)),
+                ),
         )
         .child(div().flex_1())
         .child(div().text_xs().text_color(p.muted).child(detail))

@@ -1,6 +1,5 @@
 use engine_class_derive::engine_class;
 use serde_json::Value;
-use std::collections::HashMap;
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Forces", category_color = "#F59E0B")]
@@ -120,71 +119,4 @@ impl ForcesRigidbodyProps {
         }
     }
 
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "gravity_enabled".to_string(),
-            Value::from(self.gravity_enabled),
-        );
-        out.insert("gravity_scale".to_string(), Value::from(self.gravity_scale));
-        out.insert(
-            "custom_gravity".to_string(),
-            serde_json::json!([
-                self.custom_gravity[0],
-                self.custom_gravity[1],
-                self.custom_gravity[2]
-            ]),
-        );
-        out.insert(
-            "apply_force".to_string(),
-            serde_json::json!([
-                self.apply_force[0],
-                self.apply_force[1],
-                self.apply_force[2]
-            ]),
-        );
-        out.insert(
-            "apply_force_position".to_string(),
-            serde_json::json!([
-                self.apply_force_position[0],
-                self.apply_force_position[1],
-                self.apply_force_position[2]
-            ]),
-        );
-        out.insert(
-            "apply_impulse".to_string(),
-            serde_json::json!([
-                self.apply_impulse[0],
-                self.apply_impulse[1],
-                self.apply_impulse[2]
-            ]),
-        );
-        out.insert(
-            "apply_impulse_position".to_string(),
-            serde_json::json!([
-                self.apply_impulse_position[0],
-                self.apply_impulse_position[1],
-                self.apply_impulse_position[2]
-            ]),
-        );
-        out.insert(
-            "apply_torque".to_string(),
-            serde_json::json!([
-                self.apply_torque[0],
-                self.apply_torque[1],
-                self.apply_torque[2]
-            ]),
-        );
-        out.insert(
-            "apply_angular_impulse".to_string(),
-            serde_json::json!([
-                self.apply_angular_impulse[0],
-                self.apply_angular_impulse[1],
-                self.apply_angular_impulse[2]
-            ]),
-        );
-        out.insert(
-            "disable_all_forces".to_string(),
-            Value::from(self.disable_all_forces),
-        );
-    }
 }

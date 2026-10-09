@@ -12,21 +12,16 @@ use engine_backend::scene::{
 };
 use pulsar_scenedb::{Entity, World};
 
-use super::components::{
-    attach_component_instance, clear_components, descendant_ids, get_components,
-    get_components_metadata, merge_component_props, sync_registered_component_props_to_scene_db,
-};
-use super::{
-    ComponentInstance, ObjectId, SceneObjectData, Transform, find_script_path,
-    static_mesh_component_json,
-};
+use super::components::{clear_components, get_component_class_names, replace_components};
+use super::{find_script_path, ComponentInstance, ObjectId, SceneObjectData, Transform};
 
 // ── Read model ─────────────────────────────────────────────────────────────
 
 /// Build a [`SceneObjectData`] for `entity` straight off its components: transform,
 /// name, visibility, type and render props plus the derived `parent` / `children`
-/// / `scene_path`. Does NOT merge live component props (see
-/// [`merge_component_props`]); callers that need that do it afterward.
+/// / `scene_path`. `props` are the object's own render props only: component
+/// values are read from their instances, never copied into them
+/// (Pulsar-Native#1035, Phase 3).
 pub fn entity_to_scene_object_data(world: &World, entity: Entity) -> SceneObjectData {
     let transform = world
         .get::<WorldTransform>(entity)
@@ -60,7 +55,7 @@ pub fn entity_to_scene_object_data(world: &World, entity: Entity) -> SceneObject
             .collect(),
         scene_path: scene_path(world, entity),
         props: render_props.props,
-        component_instances: render_props.component_instances,
+        component_instances: None,
     }
 }
 
@@ -98,9 +93,6 @@ pub fn get_all_objects(world: &World) -> Vec<SceneObjectData> {
     profiling::profile_scope!("scene_edit::get_all_objects");
     let mut out = Vec::new();
     collect_dfs(world, None, &mut out);
-    for obj in &mut out {
-        merge_component_props(world, &obj.id.clone(), &mut obj.props);
-    }
     out
 }
 
@@ -116,9 +108,7 @@ pub fn get_root_objects(world: &World) -> Vec<SceneObjectData> {
 /// Minimal hierarchy projection: component-backed object rows plus root ids.
 /// This is intentionally not a history snapshot and does not merge expensive
 /// component metadata; hierarchy editing reads those details on demand.
-pub fn get_hierarchy_projection(
-    world: &World,
-) -> (Vec<HierarchyObjectProjection>, Vec<ObjectId>) {
+pub fn get_hierarchy_projection(world: &World) -> (Vec<HierarchyObjectProjection>, Vec<ObjectId>) {
     profiling::profile_scope!("scene_edit::get_hierarchy_projection");
     let mut objects = Vec::new();
     fn collect(world: &World, parent: Option<Entity>, out: &mut Vec<HierarchyObjectProjection>) {
@@ -148,7 +138,10 @@ pub struct HierarchyObjectProjection {
 }
 
 pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> HierarchyObjectProjection {
-    let visibility = world.get::<WorldVisibility>(entity).copied().unwrap_or_default();
+    let visibility = world
+        .get::<WorldVisibility>(entity)
+        .copied()
+        .unwrap_or_default();
     let icon_asset = world
         .get::<RenderProps>(entity)
         .and_then(|props| props.props.get("icon_asset"))
@@ -159,9 +152,16 @@ pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> Hierarch
     HierarchyObjectProjection {
         id: id_of(entity).unwrap_or_default(),
         name: name_of(world, entity),
-        object_type: world.get::<ObjectType>(entity).copied().unwrap_or(ObjectType::Empty),
+        object_type: world
+            .get::<ObjectType>(entity)
+            .copied()
+            .unwrap_or(ObjectType::Empty),
         visible: visibility.visible,
-        children: world.children_of(Some(entity)).into_iter().filter_map(id_of).collect(),
+        children: world
+            .children_of(Some(entity))
+            .into_iter()
+            .filter_map(id_of)
+            .collect(),
         icon_asset,
     }
 }
@@ -200,9 +200,7 @@ pub fn get_object_visibility(world: &World, id: &str) -> Option<(bool, bool)> {
 /// Single object by ID, `None` if not found.
 pub fn get_object(world: &World, id: &str) -> Option<SceneObjectData> {
     let entity = world.entity_for(id)?;
-    let mut data = entity_to_scene_object_data(world, entity);
-    merge_component_props(world, id, &mut data.props);
-    Some(data)
+    Some(entity_to_scene_object_data(world, entity))
 }
 
 /// Direct children of `id`.
@@ -262,7 +260,7 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
     // v2 scene objects may carry component instances inline. Preserve those
     // instances before the normal hydration pass; otherwise World-registered
     // components (notably StaticMeshComponent) never reach the live world.
-    let mut inline_components = obj
+    let inline_components = obj
         .component_instances
         .as_ref()
         .and_then(serde_json::Value::as_array)
@@ -286,23 +284,8 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    // A few older scene files projected StaticMeshComponent's asset path into
-    // `props` without a component-instances entry. Treat that as a load-time
-    // compatibility form so those scenes also get a typed component.
-    if inline_components.is_empty() {
-        if let Some(mesh_asset) = obj
-            .props
-            .get("mesh_asset")
-            .and_then(serde_json::Value::as_str)
-            .filter(|path| !path.trim().is_empty())
-        {
-            inline_components.push(ComponentInstance {
-                class_name: "StaticMeshComponent".to_string(),
-                enabled: true,
-                data: static_mesh_component_json(mesh_asset),
-            });
-        }
-    }
+    // (A bare `props.mesh_asset` in an older level becomes a mesh component
+    // in the load migration, `pulsar_class::records`, not here.)
     let blueprint_script_path = (obj.object_type == ObjectType::Blueprint)
         .then(|| find_script_path(&obj.props, obj.component_instances.as_ref()))
         .filter(|path| !path.trim().is_empty());
@@ -333,11 +316,9 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
     let object_id = world.stable_id_of(entity).unwrap_or_default().to_string();
     if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
         render_props.props = obj.props;
-        render_props.component_instances = obj.component_instances;
     }
-
-    for component in inline_components {
-        attach_component_instance(world, &object_id, component, false);
+    if !inline_components.is_empty() {
+        replace_components(world, &object_id, &inline_components);
     }
 
     // Legacy callers still describe a placed class by its directory path
@@ -346,8 +327,6 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
     if let Some(script_path) = blueprint_script_path {
         adopt_legacy_script_path(world, &object_id, &script_path);
     }
-
-    sync_registered_component_props_to_scene_db(world, &object_id);
     object_id
 }
 
@@ -355,10 +334,9 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
 /// `ClassInstance`. A path that names no class is left as it is, with a
 /// warning: `ScriptComponent` is retired and nothing runs it.
 fn adopt_legacy_script_path(world: &mut World, object_id: &str, script_path: &str) {
-    let components = get_components_metadata(world, object_id);
-    if components
+    if get_component_class_names(world, object_id)
         .iter()
-        .any(|c| c.class_name == pulsar_class::CLASS_INSTANCE)
+        .any(|class| class == pulsar_class::CLASS_INSTANCE)
     {
         return;
     }
@@ -371,36 +349,36 @@ fn adopt_legacy_script_path(world: &mut World, object_id: &str, script_path: &st
         );
         return;
     };
-    // Drop the class's ScriptComponent: the ClassInstance replaces it.
-    let kept: Vec<ComponentInstance> = super::components::get_components(world, object_id)
-        .into_iter()
-        .filter(|c| {
-            !(c.class_name == "ScriptComponent"
-                && c.data
-                    .get("script_asset")
-                    .and_then(serde_json::Value::as_str)
-                    .and_then(|p| registry.resolve_script_asset(p))
-                    .is_some())
-        })
-        .collect();
-    clear_components(world, object_id);
-    attach_component_instance(
-        world,
-        object_id,
-        ComponentInstance {
-            class_name: pulsar_class::CLASS_INSTANCE.to_string(),
-            enabled: true,
-            data: pulsar_class::ClassInstance::new(entry.id.clone(), entry.name.clone()).to_value(),
-        },
-        false,
-    );
-    for component in kept {
-        attach_component_instance(world, object_id, component, false);
+    let Some(entity) = world.entity_for(object_id) else {
+        return;
+    };
+    // Drop the class's ScriptComponent: the ClassInstance replaces it. A
+    // retired ScriptComponent is an unresolved instance; its path is in the
+    // kept payload.
+    let script_components: Vec<Entity> =
+        engine_backend::scene::attachments::instances(world, entity)
+            .into_iter()
+            .filter(|instance| {
+                engine_backend::scene::attachments::meta(world, *instance)
+                    .is_some_and(|meta| meta.class_name == "ScriptComponent")
+                    && world
+                        .get::<engine_backend::scene::attachments::UnresolvedComponent>(*instance)
+                        .and_then(|unresolved| unresolved.data.get("script_asset"))
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(|p| registry.resolve_script_asset(p))
+                        .is_some()
+            })
+            .collect();
+    for instance in script_components {
+        engine_backend::scene::attachments::detach(world, instance);
     }
-    if let Some(entity) = world.entity_for(object_id) {
-        if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
-            render_props.props.remove("script_asset");
-        }
+    pulsar_class::world::store_class_instance(
+        world,
+        entity,
+        &pulsar_class::ClassInstance::new(entry.id.clone(), entry.name.clone()),
+    );
+    if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
+        render_props.props.remove("script_asset");
     }
     super::classes::rebuild_instance(world, object_id, &registry);
 }
@@ -429,20 +407,8 @@ pub fn remove_object(world: &mut World, id: &str) -> bool {
     let Some(entity) = world.entity_for(id) else {
         return false;
     };
-    // Registered typed components are torn down with the entity; clear the
-    // attachment records first so no dangling component state outlives it.
-    let mut ids = vec![id.to_string()];
-    descendant_ids(world, entity, &mut ids);
-    for object_id in &ids {
-        clear_components(world, object_id);
-        // Packed/`Pod` GPU-mirrored renderer rows (e.g. a static mesh's
-        // draw row) aren't cleaned up by despawn itself -- see
-        // `retire_gpu_rows_for_entity`'s doc. Must run before `despawn_tree`
-        // below while these entities are still addressable.
-        if let Some(entity) = world.entity_for(object_id) {
-            engine_backend::scene::retire_gpu_rows_for_entity(world, entity);
-        }
-    }
+    // Despawning the tree detaches (despawns) every object's component
+    // instances, and despawn clears each entity's GPU rows.
     world.despawn_tree(entity);
     true
 }
@@ -481,7 +447,6 @@ pub fn update_object(world: &mut World, obj: SceneObjectData) -> bool {
     if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
         render_props.props = obj.props;
     }
-    sync_registered_component_props_to_scene_db(world, &id);
     super::classes::relayout_children(world, &id);
     true
 }
@@ -605,19 +570,12 @@ pub fn duplicate_object(world: &mut World, id: &str) -> Option<ObjectId> {
             return Some(new_id);
         }
     }
+    // A copy of a class's generated child is an ordinary object: its copies
+    // drop the slot provenance so it is saved and never mistaken for the
+    // class's own.
     let from_generated_child = super::classes::is_generated_child(world, id);
-    let mut source_components = get_components(world, id);
-    if from_generated_child {
-        // A copy of a class's generated child is an ordinary object: drop the
-        // slot markers so it is saved and never mistaken for the class's own.
-        for component in &mut source_components {
-            if let Some(map) = component.data.as_object_mut() {
-                map.remove(pulsar_class::SLOT_ID_KEY);
-                map.remove(pulsar_class::TRANSFORM_KEY);
-            }
-        }
-    }
-    let mut obj = get_object(world, id)?;
+    let source = world.entity_for(id)?;
+    let mut obj = entity_to_scene_object_data(world, source);
     obj.id = String::new(); // force auto-assign
     obj.name = format!("{} (Copy)", obj.name);
     obj.children = vec![];
@@ -626,13 +584,17 @@ pub fn duplicate_object(world: &mut World, id: &str) -> Option<ObjectId> {
     if new_id.is_empty() {
         return None;
     }
-
+    let copy = world.entity_for(&new_id)?;
     clear_components(world, &new_id);
-    for component in source_components {
-        attach_component_instance(world, &new_id, component, false);
+    if let Err(error) = pulsar_world_registry::duplicate_instances(
+        world,
+        source,
+        copy,
+        |_, _| true,
+        !from_generated_child,
+    ) {
+        tracing::error!("Could not copy the components of '{id}': {error}");
     }
-    sync_registered_component_props_to_scene_db(world, &new_id);
-
     Some(new_id)
 }
 
@@ -683,7 +645,6 @@ pub(super) fn spawn_raw(world: &mut World, obj: &SceneObjectData) -> Result<Enti
         .map_err(|e| e.to_string())?;
     if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
         render_props.props = obj.props.clone();
-        render_props.component_instances = obj.component_instances.clone();
     }
     Ok(entity)
 }

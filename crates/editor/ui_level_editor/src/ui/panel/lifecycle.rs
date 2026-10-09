@@ -72,16 +72,17 @@ impl LevelEditorPanel {
             }
             let load_result = {
                 let mut world = scene_db.write();
-                crate::scene_edit::level_io::load_from_file_with_editor_camera(
+                crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
                     &mut world.world,
                     &default_path,
                 )
             };
             match load_result {
-                Ok(editor_camera) => {
+                Ok((editor_camera, world_settings)) => {
                     self.apply_editor_camera_state(editor_camera.as_ref());
                     let mut w = self.shared_state.write();
                     w.scene.current_scene = Some(default_path);
+                    w.scene.world_settings = world_settings;
                     w.scene.has_unsaved_changes = false;
                     w.scene.bump_revision(false);
                 }
@@ -127,14 +128,15 @@ impl LevelEditorPanel {
                     }
                     let load_result = {
                         let mut world = scene_db.write();
-                        crate::scene_edit::level_io::load_from_file_with_editor_camera(
+                        crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
                             &mut world.world,
                             &default_path,
                         )
                     };
                     match load_result {
-                        Ok(editor_camera) => {
+                        Ok((editor_camera, world_settings)) => {
                             self.apply_editor_camera_state(editor_camera.as_ref());
+                            self.shared_state.write().scene.world_settings = world_settings;
                             tracing::info!("Default level seeded at {:?}", default_path)
                         }
                         Err(e) => tracing::warn!("Seeded default level but reload failed: {e}"),
@@ -171,15 +173,17 @@ impl LevelEditorPanel {
         }
         let editor_camera = {
             let mut world = scene_db.write();
-            crate::scene_edit::level_io::load_from_file_with_editor_camera(
+            crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
                 &mut world.world,
                 &path,
             )?
         };
+        let (editor_camera, world_settings) = editor_camera;
         panel.apply_editor_camera_state(editor_camera.as_ref());
         {
             let mut state = panel.shared_state.write();
             state.scene.current_scene = Some(path);
+            state.scene.world_settings = world_settings;
             state.scene.has_unsaved_changes = false;
             state.scene.bump_revision(false);
         }
@@ -205,7 +209,7 @@ impl LevelEditorPanel {
         let physics_query = engine_backend::EngineBackend::global()
             .and_then(|backend| backend.read().get_physics_query_service());
 
-        // Construct editor state first: SceneDatabase owns the SceneDB-backed
+        // Construct editor state first: its scene owns the SceneDB-backed
         // store, and the renderer receives only its shared access handle.
         let state = LevelEditorState::new();
         let scene_store = state.scene.shared_scene();
@@ -233,8 +237,8 @@ impl LevelEditorPanel {
             }
         }
 
-        // SceneDatabase and HelioRenderer share the same store `Arc`, so every
-        // add/remove/update made through SceneDatabase is visible to the
+        // The scene and HelioRenderer share the same store `Arc`, so every
+        // add/remove/update made through the scene is visible to the
         // renderer's next sync pass without a separate write-through call.
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
@@ -247,7 +251,7 @@ impl LevelEditorPanel {
         let debug_replace_with_yellow = false;
 
         // Create HelioViewport — renders via WgpuSurfaceHandle every GPUI frame.
-        // It receives shared_state so viewport drop actions mutate SceneDatabase
+        // It receives shared_state so viewport drop actions mutate the scene
         // through the same command path as the rest of the editor.
         let viewport = cx.new(|cx| {
             HelioViewport::new(
@@ -312,11 +316,11 @@ impl LevelEditorPanel {
                     crate::ui::panel::pie::finish_stop(&mut s, false);
                 }
                 // Undo/redo from a caller without a renderer handle (the AI
-                // tools). Cleared only once the resync is actually queued.
-                if poll_state.read().scene.pending_renderer_resync {
+                // tools) may have changed the selection. Cleared only once
+                // the gizmo follows it.
+                if poll_state.read().scene.pending_selection_sync {
                     if let Ok(mut engine) = poll_gpu.try_lock() {
-                        poll_state.write().scene.pending_renderer_resync = false;
-                        engine.force_full_resync();
+                        poll_state.write().scene.pending_selection_sync = false;
                         engine.sync_selection_to_helio();
                     }
                 }
@@ -386,14 +390,20 @@ impl LevelEditorPanel {
             }
         });
 
-
         let playback_host = Self::bind_playback_host(window, cx);
 
         let toolbar = cx.new(|cx| {
-            ToolbarView::new(window, cx, shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
+            ToolbarView::new(
+                window,
+                cx,
+                shared_state.clone(),
+                gpu_engine.clone(),
+                helio_mailbox.clone(),
+            )
         });
         let class_updates =
             crate::core::asset_updates::subscribe_class_updates(shared_state.clone());
+        let mesh_updates = crate::core::asset_updates::subscribe_mesh_updates(shared_state.clone());
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -403,6 +413,7 @@ impl LevelEditorPanel {
             helio_mailbox,
             render_enabled,
             _class_updates: class_updates,
+            _mesh_updates: mesh_updates,
             shared_state,
             workspace: None,
             game_panel: None,

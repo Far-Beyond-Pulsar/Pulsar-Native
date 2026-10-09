@@ -19,7 +19,7 @@ fn program() -> Program {
     // Linking pulsar_std is what registers its nodes as natives.
     assert!(!pulsar_std::get_all_nodes().is_empty());
     let asset = deserialize_blueprint(EXAMPLE).expect("the example parses");
-    let graph = expand_graph(&asset.main_graph, asset.local_macros.iter().map(|m| (m.id.clone(), m.graph.clone()))).expect("the example lowers");
+    let graph = expand_graph(&asset.main_graph, asset.subgraphs.iter().map(|m| (m.id.clone(), m.graph.clone()))).expect("the example lowers");
     let natives = NativeRegistry::with_engine_natives();
     let variables = [VariableSource { id: Some("var_seed".into()), name: "seed".into(), type_name: "i64".into(), default: Some(serde_json::json!(7)) }];
     let source = ClassSource { name: "RandomWorld", graph: &graph, variables: &variables, events: &[], known_events: &[], version: 0 };
@@ -27,20 +27,23 @@ fn program() -> Program {
     Program::link(Arc::new(module), &natives).expect("the example links")
 }
 
-/// The stack the example builds for `seed` on a fresh Earth-preset entity.
+/// The stack the example builds for `seed` on a fresh object with an
+/// Earth-preset terrain and layer stack attached.
 fn build(program: &Program, seed: i64) -> VoxelTerrainStack {
     let mut world = World::new();
-    let entity = world.spawn();
-    world.insert(entity, VoxelTerrainComponent::planet(1_000_000.0));
-    world.insert(entity, VoxelTerrainLayersComponent::default());
+    let object = world.spawn();
+    let terrain =
+        pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000_000.0)).unwrap();
+    let layers =
+        pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default()).unwrap();
     let mut instance = program.instantiate();
     program.set_var(&mut instance, program.variable("seed").unwrap(), Value::Int(seed)).unwrap();
     Vm::new()
-        .call(program, &mut instance, program.entry("begin_play").unwrap(), &[], &mut Host::new(&mut world, entity), &mut Budget::new(100_000))
+        .call(program, &mut instance, program.entry("begin_play").unwrap(), &[], &mut Host::new(&mut world, object), &mut Budget::new(100_000))
         .unwrap_or_else(|e| panic!("seed {seed}: begin_play failed: {e}"));
     // The generator accepts it: the planet builds.
-    terrain_world(&world, entity).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
-    world.get::<VoxelTerrainLayersComponent>(entity).unwrap().stack.clone()
+    terrain_world(&world, terrain).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+    world.get::<VoxelTerrainLayersComponent>(layers).unwrap().stack.clone()
 }
 
 #[test]

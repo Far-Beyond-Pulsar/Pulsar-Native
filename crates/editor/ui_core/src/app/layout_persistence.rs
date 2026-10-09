@@ -37,8 +37,8 @@ use std::time::Duration;
 use gpui::{Bounds, Context, Entity, EntityId, Pixels, Window, WindowBounds};
 use serde::{Deserialize, Serialize};
 use ui::dock::{
-    DockAreaState, DockEvent, DockItem, DockPlacement, DockState, PanelInfo, PanelState,
-    PanelView, TabPanel,
+    DockAreaState, DockEvent, DockItem, DockPlacement, DockState, PanelInfo, PanelState, PanelView,
+    TabPanel,
 };
 
 use super::PulsarApp;
@@ -99,7 +99,9 @@ impl SavedWindow {
         let sized = usable(size.width) && usable(size.height);
         match self.state {
             SavedWindowState::Windowed => sized.then_some(WindowBounds::Windowed(self.bounds)),
-            SavedWindowState::Maximized => Some(WindowBounds::Maximized(self.restore_bounds(sized))),
+            SavedWindowState::Maximized => {
+                Some(WindowBounds::Maximized(self.restore_bounds(sized)))
+            }
             SavedWindowState::Fullscreen => {
                 Some(WindowBounds::Fullscreen(self.restore_bounds(sized)))
             }
@@ -214,7 +216,10 @@ fn read_layout(path: &Path) -> Option<SavedLayout> {
             None
         }
         Err(error) => {
-            tracing::warn!("ignoring unreadable saved layout {}: {error}", path.display());
+            tracing::warn!(
+                "ignoring unreadable saved layout {}: {error}",
+                path.display()
+            );
             None
         }
     }
@@ -379,6 +384,7 @@ impl Restorer {
         let manager = plugin_manager::global()?;
         let mut manager = manager.write();
         manager.set_project_root(Some(self.project_root.clone()));
+        super::refresh_plugin_editor_settings(&mut manager);
         match manager.create_editor_for_file(&path, window, cx) {
             Ok(panel) => Some(panel),
             Err(error) => {
@@ -660,23 +666,32 @@ mod tests {
         write_layout(&path, &layout).unwrap();
         let read = read_layout(&path).expect("layout reads back");
         assert_eq!(read.dock.center, layout.dock.center);
-        assert!(!path.with_extension("json.tmp").exists(), "temp file renamed away");
+        assert!(
+            !path.with_extension("json.tmp").exists(),
+            "temp file renamed away"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn tile_bounds_and_stacking_survive_a_write_and_read() {
-        use gpui::{point, px, size, Bounds};
+        use gpui::{Bounds, point, px, size};
         use ui::dock::TileMeta;
 
         let metas = vec![
             TileMeta {
-                bounds: Bounds { origin: point(px(10.), px(20.)), size: size(px(300.), px(200.)) },
+                bounds: Bounds {
+                    origin: point(px(10.), px(20.)),
+                    size: size(px(300.), px(200.)),
+                },
                 z_index: 1,
             },
             TileMeta {
-                bounds: Bounds { origin: point(px(50.), px(60.)), size: size(px(400.), px(250.)) },
+                bounds: Bounds {
+                    origin: point(px(50.), px(60.)),
+                    size: size(px(400.), px(250.)),
+                },
                 z_index: 0,
             },
         ];
@@ -690,7 +705,10 @@ mod tests {
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
             window: None,
-            dock: DockAreaState { center: tiles, ..Default::default() },
+            dock: DockAreaState {
+                center: tiles,
+                ..Default::default()
+            },
         };
 
         write_layout(&path, &layout).unwrap();
@@ -769,16 +787,20 @@ mod tests {
             origin: point(px(0.), px(0.)),
             size: size(px(10.), px(10.)),
         };
-        assert!(SavedWindow::capture(WindowBounds::Windowed(tiny), None)
-            .to_window_bounds()
-            .is_none());
+        assert!(
+            SavedWindow::capture(WindowBounds::Windowed(tiny), None)
+                .to_window_bounds()
+                .is_none()
+        );
         let nan = Bounds {
             origin: point(px(0.), px(0.)),
             size: size(px(f32::NAN), px(900.)),
         };
-        assert!(SavedWindow::capture(WindowBounds::Windowed(nan), None)
-            .to_window_bounds()
-            .is_none());
+        assert!(
+            SavedWindow::capture(WindowBounds::Windowed(nan), None)
+                .to_window_bounds()
+                .is_none()
+        );
     }
 
     #[test]

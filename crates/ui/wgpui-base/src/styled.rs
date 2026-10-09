@@ -79,13 +79,21 @@ pub trait StyledExt: Styled + Sized {
     /// Fallback setters for elements without dedicated accessibility metadata.
     /// `Div` and `Stateful<Div>` provide an inherent `aria_label` that retains
     /// the label; these generic fallbacks remain no-ops.
-    fn role(self, _role: Role) -> Self { self }
+    fn role(self, _role: Role) -> Self {
+        self
+    }
 
-    fn aria_label(self, _label: impl Into<gpui::SharedString>) -> Self { self }
+    fn aria_label(self, _label: impl Into<gpui::SharedString>) -> Self {
+        self
+    }
 
-    fn aria_numeric_value(self, _value: f64) -> Self { self }
+    fn aria_numeric_value(self, _value: f64) -> Self {
+        self
+    }
 
-    fn flex_grow_1(self) -> Self { self.flex_grow() }
+    fn flex_grow_1(self) -> Self {
+        self.flex_grow()
+    }
 
     /// Lays children out in a row, centered on the cross axis.
     ///
@@ -289,5 +297,3 @@ mod tests {
         assert_eq!(cx.debug_bounds("col-stretch").unwrap().size.width, px(200.));
     }
 }
-
-

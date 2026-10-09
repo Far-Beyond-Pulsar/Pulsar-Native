@@ -3,9 +3,12 @@
 use std::sync::Arc;
 
 use pulsar_scenedb::World;
-use pulsar_script_ts::{compile_class, declarations, ClassSchema, ClassSource, Compiled, DeclaredField};
+use pulsar_script_ts::{
+    compile_class, declarations, ClassSchema, ClassSource, Compiled, DeclaredField,
+};
 use pulsar_script_vm::{
-    Budget, Completion, Continuation, Host, Instance, Module, NativeRegistry, Program, ScriptError, Value, Vm,
+    Budget, Completion, Continuation, Host, Instance, Module, NativeRegistry, Program, ScriptError,
+    Value, Vm,
 };
 
 use pulsar_script_math as _;
@@ -15,19 +18,35 @@ fn registry() -> NativeRegistry {
 }
 
 fn compile(source: &str) -> Compiled {
-    compile_class(&ClassSource { class_name: "Test", file: "class.ts", source, schema: None }, &registry())
+    compile_class(
+        &ClassSource {
+            class_name: "Test",
+            file: "class.ts",
+            source,
+            schema: None,
+        },
+        &registry(),
+    )
 }
 
 fn module(source: &str) -> Module {
     let compiled = compile(source);
-    assert!(compiled.diagnostics.is_empty(), "unexpected diagnostics: {:#?}", compiled.diagnostics);
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "unexpected diagnostics: {:#?}",
+        compiled.diagnostics
+    );
     compiled.module.expect("a module")
 }
 
 fn errors(source: &str) -> Vec<String> {
     let compiled = compile(source);
     assert!(compiled.module.is_none(), "this source must not compile");
-    compiled.diagnostics.iter().map(ToString::to_string).collect()
+    compiled
+        .diagnostics
+        .iter()
+        .map(ToString::to_string)
+        .collect()
 }
 
 /// A class instance on a world, driven by hand.
@@ -46,17 +65,37 @@ impl Run {
         let instance = program.instantiate();
         let mut world = World::new();
         let entity = world.spawn();
-        Self { program, instance, vm: Vm::new(), world, entity, time: 0.0 }
+        Self {
+            program,
+            instance,
+            vm: Vm::new(),
+            world,
+            entity,
+            time: 0.0,
+        }
     }
 
     fn start(&mut self, name: &str, args: &[Value]) -> Result<Completion, ScriptError> {
-        let func = self.program.entry(name).unwrap_or_else(|| panic!("no exported `{name}`"));
+        let func = self
+            .program
+            .entry(name)
+            .unwrap_or_else(|| panic!("no exported `{name}`"));
         let mut host = Host::at_time(&mut self.world, self.entity, self.time);
-        self.vm.start(&self.program, &mut self.instance, func, args, &mut host, &mut Budget::new(100_000))
+        self.vm.start(
+            &self.program,
+            &mut self.instance,
+            func,
+            args,
+            &mut host,
+            &mut Budget::new(100_000),
+        )
     }
 
     fn call(&mut self, name: &str, args: &[Value]) -> Value {
-        match self.start(name, args).unwrap_or_else(|e| panic!("{name} failed: {e}")) {
+        match self
+            .start(name, args)
+            .unwrap_or_else(|e| panic!("{name} failed: {e}"))
+        {
             Completion::Returned(value) => value,
             Completion::Waiting { .. } | Completion::Paused { .. } => panic!("{name} waited"),
         }
@@ -64,11 +103,23 @@ impl Run {
 
     fn resume(&mut self, continuation: Continuation) -> Result<Completion, ScriptError> {
         let mut host = Host::at_time(&mut self.world, self.entity, self.time);
-        self.vm.resume(&self.program, &mut self.instance, continuation, &mut host, &mut Budget::new(100_000))
+        self.vm.resume(
+            &self.program,
+            &mut self.instance,
+            continuation,
+            &mut host,
+            &mut Budget::new(100_000),
+        )
     }
 
     fn var(&self, name: &str) -> Value {
-        self.program.var(&self.instance, self.program.variable(name).expect("variable")).expect("value").clone()
+        self.program
+            .var(
+                &self.instance,
+                self.program.variable(name).expect("variable"),
+            )
+            .expect("value")
+            .clone()
     }
 }
 
@@ -132,8 +183,14 @@ fn fields_arithmetic_loops_and_calls_run_correctly() {
     assert_eq!(run.call("classify", &[int(-3)]), Value::from("negative"));
     assert_eq!(run.call("classify", &[int(0)]), Value::from("zero"));
     assert_eq!(run.call("classify", &[int(7)]), Value::from("positive"));
-    assert_eq!(run.call("both", &[Value::Bool(true), Value::Bool(false)]), Value::Bool(true));
-    assert_eq!(run.call("both", &[Value::Bool(true), Value::Bool(true)]), Value::Bool(false));
+    assert_eq!(
+        run.call("both", &[Value::Bool(true), Value::Bool(false)]),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        run.call("both", &[Value::Bool(true), Value::Bool(true)]),
+        Value::Bool(false)
+    );
 }
 
 #[test]
@@ -195,15 +252,30 @@ fn async_methods_wait_in_game_time_and_nested_waits_resume() {
         }
         "#,
     ));
-    let Completion::Waiting { seconds, continuation } = run.start("delayed", &[]).unwrap() else { panic!("should wait") };
+    let Completion::Waiting {
+        seconds,
+        continuation,
+    } = run.start("delayed", &[]).unwrap()
+    else {
+        panic!("should wait")
+    };
     assert_eq!(seconds, 1.5);
     assert_eq!(run.var("count"), int(1));
     run.time = 1.5;
-    let Completion::Waiting { seconds, continuation } = run.resume(continuation).unwrap() else { panic!("waits again, in inner") };
+    let Completion::Waiting {
+        seconds,
+        continuation,
+    } = run.resume(continuation).unwrap()
+    else {
+        panic!("waits again, in inner")
+    };
     assert_eq!(seconds, 0.5);
     assert_eq!(continuation.functions(), ["delayed", "inner"]);
     run.time = 2.0;
-    assert!(matches!(run.resume(continuation).unwrap(), Completion::Returned(_)));
+    assert!(matches!(
+        run.resume(continuation).unwrap(),
+        Completion::Returned(_)
+    ));
     assert_eq!(run.var("count"), int(1111));
 }
 
@@ -228,9 +300,18 @@ fn natives_value_types_and_properties_work() {
         "#,
     ));
     assert_eq!(run.call("height", &[]), float(2.0));
-    let Value::Float(length) = run.call("length_after_move", &[]) else { panic!() };
-    assert!((length - (1.0f64 + 36.0 + 9.0).sqrt()).abs() < 1e-5, "{length}");
-    assert_eq!(run.call("height", &[]), float(6.0), "the field was updated with value semantics");
+    let Value::Float(length) = run.call("length_after_move", &[]) else {
+        panic!()
+    };
+    assert!(
+        (length - (1.0f64 + 36.0 + 9.0).sqrt()).abs() < 1e-5,
+        "{length}"
+    );
+    assert_eq!(
+        run.call("height", &[]),
+        float(6.0),
+        "the field was updated with value semantics"
+    );
     assert_eq!(run.call("root", &[float(16.0)]), float(4.0));
     assert_eq!(run.call("name_length", &[Value::from("héllo")]), int(5));
     assert_eq!(run.call("me", &[]), Value::Entity(run.entity));
@@ -245,7 +326,11 @@ fn runtime_errors_report_the_typescript_line_and_column() {
     ));
     let error = run.start("divide", &[int(1), int(0)]).unwrap_err();
     let location = error.location().expect("a source location");
-    assert_eq!((location.file.as_str(), location.line, location.column), ("class.ts", Some(3), Some(16)), "{error}");
+    assert_eq!(
+        (location.file.as_str(), location.line, location.column),
+        ("class.ts", Some(3), Some(16)),
+        "{error}"
+    );
 }
 
 #[test]
@@ -273,35 +358,86 @@ fn compound_assignment_and_updates_follow_javascript() {
 #[test]
 fn unsupported_constructs_are_rejected_with_a_position_and_a_reason() {
     for (source, needle) in [
-        ("import x from 'y';\nexport default class Test {}", "imports are not supported"),
-        ("export default class Test { f(): void { const g = () => 1; } }", "this expression is not supported"),
-        ("export default class Test { f(): string { return `a${1}`; } }", "template literals"),
-        ("export default class Test { f(x: int): void { switch (x) {} } }", "`switch`"),
-        ("export default class Test { f(): void { try {} catch (e) {} } }", "`try`"),
-        ("export default class Test { constructor() {} }", "constructor"),
+        (
+            "import x from 'y';\nexport default class Test {}",
+            "imports are not supported",
+        ),
+        (
+            "export default class Test { f(): void { const g = () => 1; } }",
+            "this expression is not supported",
+        ),
+        (
+            "export default class Test { f(): string { return `a${1}`; } }",
+            "template literals",
+        ),
+        (
+            "export default class Test { f(x: int): void { switch (x) {} } }",
+            "`switch`",
+        ),
+        (
+            "export default class Test { f(): void { try {} catch (e) {} } }",
+            "`try`",
+        ),
+        (
+            "export default class Test { constructor() {} }",
+            "constructor",
+        ),
         ("export default class Test { static s = 1; }", "static"),
-        ("export default class Test { f(x: any): void {} }", "not supported"),
-        ("export default class Test { get x(): int { return 1; } }", "accessors"),
-        ("export default class Test { f(): void { for (const a of []) {} } }", "for ... of"),
-        ("export default class Test { f(): void { var x = 1; } }", "var"),
-        ("export default class Test extends Other {}", "may only extend `ScriptClass`"),
+        (
+            "export default class Test { f(x: any): void {} }",
+            "not supported",
+        ),
+        (
+            "export default class Test { get x(): int { return 1; } }",
+            "accessors",
+        ),
+        (
+            "export default class Test { f(): void { for (const a of []) {} } }",
+            "for ... of",
+        ),
+        (
+            "export default class Test { f(): void { var x = 1; } }",
+            "var",
+        ),
+        (
+            "export default class Test extends Other {}",
+            "may only extend `ScriptClass`",
+        ),
     ] {
         let found = errors(source);
-        assert!(found.iter().any(|m| m.contains(needle)), "`{source}` should say `{needle}`, got {found:?}");
-        assert!(found.iter().all(|m| m.contains(':') || m.starts_with("error")), "{found:?}");
+        assert!(
+            found.iter().any(|m| m.contains(needle)),
+            "`{source}` should say `{needle}`, got {found:?}"
+        );
+        assert!(
+            found
+                .iter()
+                .all(|m| m.contains(':') || m.starts_with("error")),
+            "{found:?}"
+        );
     }
 }
 
 #[test]
 fn type_errors_name_the_types_and_suggest_the_fix() {
-    let found = errors("export default class Test { f(a: int, b: number): number { return a + b; } }");
-    assert!(found[0].contains("different types (`int` and `number`)") && found[0].contains("as number"), "{found:?}");
+    let found =
+        errors("export default class Test { f(a: int, b: number): number { return a + b; } }");
+    assert!(
+        found[0].contains("different types (`int` and `number`)") && found[0].contains("as number"),
+        "{found:?}"
+    );
 
     let found = errors("export default class Test { f(): int { return 1.5; } }");
-    assert!(found[0].contains("expected `int`, found `number`"), "{found:?}");
+    assert!(
+        found[0].contains("expected `int`, found `number`"),
+        "{found:?}"
+    );
 
     let found = errors("export default class Test { f(): void { let s: string = 1; } }");
-    assert!(found[0].contains("expected `string`, found `int`"), "{found:?}");
+    assert!(
+        found[0].contains("expected `string`, found `int`"),
+        "{found:?}"
+    );
 
     let found = errors("export default class Test { f(): void { this.nope = 1; } }");
     assert!(found[0].contains("no field `nope`"), "{found:?}");
@@ -313,25 +449,49 @@ fn type_errors_name_the_types_and_suggest_the_fix() {
     assert!(found[0].contains("takes 1 argument(s), got 2"), "{found:?}");
 
     // Value types compare with `==` (they register equality); ordering and arithmetic are methods.
-    let found = errors("export default class Test { f(v: Vec3, w: Vec3): boolean { return v < w; } }");
-    assert!(found[0].contains("does not apply to `Vec3`") && found[0].contains("a.add(b)"), "{found:?}");
+    let found =
+        errors("export default class Test { f(v: Vec3, w: Vec3): boolean { return v < w; } }");
+    assert!(
+        found[0].contains("does not apply to `Vec3`") && found[0].contains("a.add(b)"),
+        "{found:?}"
+    );
 }
 
 #[test]
 fn control_flow_and_async_rules_are_enforced() {
-    assert!(errors("export default class Test { f(): int { if (true) { return 1; } } }")[0].contains("not all code paths"));
+    assert!(
+        errors("export default class Test { f(): int { if (true) { return 1; } } }")[0]
+            .contains("not all code paths")
+    );
     // The parser itself refuses a top-level `await` in a non-async method.
-    assert!(errors("export default class Test { f(): void { await wait(1); } }")[0].contains("await"));
-    assert!(errors("export default class Test { async f(): Promise<void> { wait(1); } }")[0].contains("must be awaited"));
-    assert!(errors("export default class Test { async g(): Promise<void> {} f(): void { this.g(); } }")[0].contains("is async"));
-    assert!(errors("export default class Test { f(): void { break; } }")[0].contains("outside a loop"));
-    assert!(errors("export default class Test { async f(): Promise<int> { return 1; } }")[0].contains("Promise<void>"));
+    assert!(
+        errors("export default class Test { f(): void { await wait(1); } }")[0].contains("await")
+    );
+    assert!(
+        errors("export default class Test { async f(): Promise<void> { wait(1); } }")[0]
+            .contains("must be awaited")
+    );
+    assert!(errors(
+        "export default class Test { async g(): Promise<void> {} f(): void { this.g(); } }"
+    )[0]
+    .contains("is async"));
+    assert!(
+        errors("export default class Test { f(): void { break; } }")[0].contains("outside a loop")
+    );
+    assert!(
+        errors("export default class Test { async f(): Promise<int> { return 1; } }")[0]
+            .contains("Promise<void>")
+    );
 }
 
 #[test]
 fn lifecycle_methods_have_fixed_signatures() {
-    assert!(errors("export default class Test { tick(): void {} }")[0].contains("`tick` must be declared"));
-    assert!(errors("export default class Test { begin_play(x: int): void {} }")[0].contains("`begin_play` must be declared"));
+    assert!(errors("export default class Test { tick(): void {} }")[0]
+        .contains("`tick` must be declared"));
+    assert!(
+        errors("export default class Test { begin_play(x: int): void {} }")[0]
+            .contains("`begin_play` must be declared")
+    );
     // The right shapes compile.
     module("export default class Test { begin_play(): void {} tick(delta: number): void {} end_play(): void {} migrate(from: int): void {} }");
 }
@@ -339,7 +499,10 @@ fn lifecycle_methods_have_fixed_signatures() {
 #[test]
 fn the_class_must_be_named_after_its_directory() {
     let found = errors("export default class Other {}");
-    assert!(found[0].contains("named `Other` but its directory is `Test`"), "{found:?}");
+    assert!(
+        found[0].contains("named `Other` but its directory is `Test`"),
+        "{found:?}"
+    );
     assert!(errors("// nothing here")[0].contains("no class found"));
 }
 
@@ -352,27 +515,63 @@ fn syntax_errors_come_from_the_parser_with_a_position() {
 // ---- schema and identity -------------------------------------------------------------
 
 fn field(name: &str, ty: &str, renamed_from: Option<&str>) -> DeclaredField {
-    DeclaredField { name: name.into(), ty: ty.into(), renamed_from: renamed_from.map(Into::into) }
+    DeclaredField {
+        name: name.into(),
+        ty: ty.into(),
+        renamed_from: renamed_from.map(Into::into),
+    }
 }
 
 #[test]
 fn a_fields_id_survives_reordering_and_its_version_only_moves_when_the_schema_does() {
-    let first = ClassSchema::reconcile(None, &[field("a", "int", None), field("b", "string", None)]).unwrap();
+    let first =
+        ClassSchema::reconcile(None, &[field("a", "int", None), field("b", "string", None)])
+            .unwrap();
     assert_eq!(first.version, 1);
-    let (id_a, id_b) = (first.id_of("a").unwrap().to_owned(), first.id_of("b").unwrap().to_owned());
+    let (id_a, id_b) = (
+        first.id_of("a").unwrap().to_owned(),
+        first.id_of("b").unwrap().to_owned(),
+    );
     assert_ne!(id_a, id_b);
 
-    let reordered = ClassSchema::reconcile(Some(&first), &[field("b", "string", None), field("a", "int", None)]).unwrap();
-    assert_eq!((reordered.id_of("a"), reordered.id_of("b")), (Some(id_a.as_str()), Some(id_b.as_str())));
+    let reordered = ClassSchema::reconcile(
+        Some(&first),
+        &[field("b", "string", None), field("a", "int", None)],
+    )
+    .unwrap();
+    assert_eq!(
+        (reordered.id_of("a"), reordered.id_of("b")),
+        (Some(id_a.as_str()), Some(id_b.as_str()))
+    );
     assert_eq!(reordered.version, 1, "reordering is not a schema change");
 
-    let added = ClassSchema::reconcile(Some(&reordered), &[field("a", "int", None), field("b", "string", None), field("c", "bool", None)]).unwrap();
+    let added = ClassSchema::reconcile(
+        Some(&reordered),
+        &[
+            field("a", "int", None),
+            field("b", "string", None),
+            field("c", "bool", None),
+        ],
+    )
+    .unwrap();
     assert_eq!(added.version, 2);
     assert_eq!(added.id_of("a"), Some(id_a.as_str()));
 
-    let retyped = ClassSchema::reconcile(Some(&added), &[field("a", "number", None), field("b", "string", None), field("c", "bool", None)]).unwrap();
+    let retyped = ClassSchema::reconcile(
+        Some(&added),
+        &[
+            field("a", "number", None),
+            field("b", "string", None),
+            field("c", "bool", None),
+        ],
+    )
+    .unwrap();
     assert_eq!(retyped.version, 3, "a type change raises the version");
-    assert_eq!(retyped.id_of("a"), Some(id_a.as_str()), "and keeps the identity");
+    assert_eq!(
+        retyped.id_of("a"),
+        Some(id_a.as_str()),
+        "and keeps the identity"
+    );
 }
 
 #[test]
@@ -380,29 +579,68 @@ fn renamed_from_keeps_the_identity_and_a_plain_rename_does_not() {
     let first = ClassSchema::reconcile(None, &[field("old", "int", None)]).unwrap();
     let id = first.id_of("old").unwrap().to_owned();
 
-    let renamed = ClassSchema::reconcile(Some(&first), &[field("new", "int", Some("old"))]).unwrap();
+    let renamed =
+        ClassSchema::reconcile(Some(&first), &[field("new", "int", Some("old"))]).unwrap();
     assert_eq!(renamed.id_of("new"), Some(id.as_str()));
     assert_eq!(renamed.version, 2);
 
     let plain = ClassSchema::reconcile(Some(&first), &[field("new", "int", None)]).unwrap();
-    assert_ne!(plain.id_of("new"), Some(id.as_str()), "without `@renamedFrom` it is a new field");
+    assert_ne!(
+        plain.id_of("new"),
+        Some(id.as_str()),
+        "without `@renamedFrom` it is a new field"
+    );
 
-    assert!(ClassSchema::reconcile(Some(&first), &[field("x", "int", Some("never_existed"))]).is_err());
-    assert!(ClassSchema::reconcile(Some(&first), &[field("a", "int", Some("old")), field("b", "int", Some("old"))]).is_err());
+    assert!(
+        ClassSchema::reconcile(Some(&first), &[field("x", "int", Some("never_existed"))]).is_err()
+    );
+    assert!(ClassSchema::reconcile(
+        Some(&first),
+        &[
+            field("a", "int", Some("old")),
+            field("b", "int", Some("old"))
+        ]
+    )
+    .is_err());
     assert!(ClassSchema::reconcile(None, &[field("x", "int", Some("old"))]).is_err());
 }
 
 #[test]
 fn compiling_applies_the_schema_to_the_module() {
-    let source = "export default class Test { @renamedFrom(\"hp\") health: int = 3; mana: number = 1.5; }";
-    let previous = ClassSchema::reconcile(None, &[field("hp", "int", None), field("mana", "number", None)]).unwrap();
-    let compiled = compile_class(&ClassSource { class_name: "Test", file: "class.ts", source, schema: Some(&previous) }, &registry());
-    assert!(compiled.diagnostics.is_empty(), "{:?}", compiled.diagnostics);
+    let source =
+        "export default class Test { @renamedFrom(\"hp\") health: int = 3; mana: number = 1.5; }";
+    let previous = ClassSchema::reconcile(
+        None,
+        &[field("hp", "int", None), field("mana", "number", None)],
+    )
+    .unwrap();
+    let compiled = compile_class(
+        &ClassSource {
+            class_name: "Test",
+            file: "class.ts",
+            source,
+            schema: Some(&previous),
+        },
+        &registry(),
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
     let (module, schema) = (compiled.module.unwrap(), compiled.schema.unwrap());
     assert_eq!(module.class_version, schema.version);
     assert_eq!(module.class_version, 2);
-    let health = module.variables.iter().find(|v| v.name == "health").unwrap();
-    assert_eq!(health.id.as_deref(), previous.id_of("hp"), "the module's variable carries the old field's id");
+    let health = module
+        .variables
+        .iter()
+        .find(|v| v.name == "health")
+        .unwrap();
+    assert_eq!(
+        health.id.as_deref(),
+        previous.id_of("hp"),
+        "the module's variable carries the old field's id"
+    );
 }
 
 // ---- declarations -----------------------------------------------------------------------
@@ -411,7 +649,11 @@ fn compiling_applies_the_schema_to_the_module() {
 fn declarations_cover_natives_value_types_and_are_deterministic() {
     let registry = registry();
     let dts = declarations(&registry);
-    assert_eq!(dts, declarations(&registry), "the same registry produces the same text");
+    assert_eq!(
+        dts,
+        declarations(&registry),
+        "the same registry produces the same text"
+    );
     for expected in [
         "declare function wait(seconds: number): Promise<void>;",
         "declare namespace math {",
@@ -426,7 +668,10 @@ fn declarations_cover_natives_value_types_and_are_deterministic() {
     ] {
         assert!(dts.contains(expected), "missing `{expected}` in:\n{dts}");
     }
-    assert!(!dts.contains("function new("), "reserved words are sanitised");
+    assert!(
+        !dts.contains("function new("),
+        "reserved words are sanitised"
+    );
 }
 
 #[test]

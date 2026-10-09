@@ -192,7 +192,10 @@ mod fs_context_tests {
 
     #[test]
     fn verbatim_prefix_is_stripped() {
-        assert_eq!(strip_verbatim(r"\\?\C:\a\b".into()), std::path::PathBuf::from(r"C:\a\b"));
+        assert_eq!(
+            strip_verbatim(r"\\?\C:\a\b".into()),
+            std::path::PathBuf::from(r"C:\a\b")
+        );
         assert_eq!(
             strip_verbatim(r"\\?\UNC\srv\share\x".into()),
             std::path::PathBuf::from(r"\\srv\share\x")

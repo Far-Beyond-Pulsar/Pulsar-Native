@@ -7,12 +7,11 @@
 //! (running on the GPUI main thread) can detect changes made by background
 //! threads (AI tools, asset import, etc.) and trigger a re-render.
 
-use crate::scene_edit::{
-    self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData,
-};
 use crate::scene_edit::history::VoxelEditJournal;
-use engine_backend::scene::SharedScene;
+use crate::scene_edit::{self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData};
+use crate::world_settings_data::WorldSettingsData;
 use engine_backend::scene::SceneWorldExt;
+use engine_backend::scene::SharedScene;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
@@ -57,9 +56,11 @@ pub struct SceneDomain {
     /// The scene — single source of truth for all scene data. Panels read and
     /// edit its `World` directly (see [`Self::world`] / [`Self::world_mut`]).
     pub scene: SharedScene,
-    /// Bumped whenever the whole scene is rebuilt in place (undo/redo, leaving
-    /// play mode). Subscriptions die with the entities they watched, so anything
-    /// caching against them must re-arm when this moves.
+    /// Settings persisted alongside the current level's scene data.
+    pub world_settings: WorldSettingsData,
+    /// Bumped whenever the whole scene is rebuilt in place (leaving play
+    /// mode). Objects are respawned, so anything caching entities must rebind
+    /// when this moves.
     pub rebuild_epoch: u64,
     /// Snapshot of scene state when entering play mode (for reset on stop).
     /// Immutable snapshot captured before PIE; it carries parent links and
@@ -81,10 +82,10 @@ pub struct SceneDomain {
     /// Monotonic revision counter — bumped on every mutation so pollers
     /// (and the observer system) can detect external changes.
     pub revision: u64,
-    /// Set by callers without a renderer handle (the AI tools) after undo/redo;
-    /// the panel poller takes it and forces a full renderer resync, the same
-    /// thing the Undo/Redo actions do directly.
-    pub pending_renderer_resync: bool,
+    /// Set by callers without a renderer handle (the AI tools) after undo/redo,
+    /// which may change the selection; the panel poller takes it and points
+    /// the gizmo at the restored selection.
+    pub pending_selection_sync: bool,
     /// Undo history (Pulsar-Native#554) — one entry per mutating
     /// `SceneCommand` (`commands.rs::execute_command` pushes onto this),
     /// oldest first. Bounded at [`MAX_UNDO_HISTORY`].
@@ -101,6 +102,7 @@ impl Default for SceneDomain {
     fn default() -> Self {
         Self {
             scene: Arc::new(RwLock::new(engine_backend::scene::new_scene())),
+            world_settings: WorldSettingsData::default(),
             rebuild_epoch: 0,
             snapshot: None,
             play_entities: None,
@@ -109,7 +111,7 @@ impl Default for SceneDomain {
             current_scene: None,
             has_unsaved_changes: false,
             revision: 0,
-            pending_renderer_resync: false,
+            pending_selection_sync: false,
             undo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
             redo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
             voxel_undo: VecDeque::new(),
@@ -127,6 +129,7 @@ impl SceneDomain {
     pub(crate) fn clone_for_tool_query(&self) -> Self {
         Self {
             scene: Arc::clone(&self.scene),
+            world_settings: self.world_settings.clone(),
             rebuild_epoch: self.rebuild_epoch,
             snapshot: None,
             play_entities: None,
@@ -135,7 +138,7 @@ impl SceneDomain {
             current_scene: self.current_scene.clone(),
             has_unsaved_changes: self.has_unsaved_changes,
             revision: self.revision,
-            pending_renderer_resync: self.pending_renderer_resync,
+            pending_selection_sync: self.pending_selection_sync,
             undo_stack: VecDeque::new(),
             redo_stack: VecDeque::new(),
             voxel_undo: VecDeque::new(),
@@ -166,12 +169,6 @@ impl SceneDomain {
     /// editor mutates (the PIE host handing its world to the guest, the renderer).
     pub fn shared_scene(&self) -> SharedScene {
         Arc::clone(&self.scene)
-    }
-
-    /// Rebuild generation; see [`Self::rebuild_epoch`]. Subscriptions armed against an
-    /// older generation are dead and must be re-armed.
-    pub fn subscriptions_epoch(&self) -> u64 {
-        self.rebuild_epoch
     }
 
     // ── Selection ─────────────────────────────────────────────────────────
@@ -225,15 +222,8 @@ impl SceneDomain {
     // `execute_command` -- they have their own pre/post semantics (push onto
     // the *other* stack) that don't fit that flow.
     //
-    // Note for callers driving the renderer (`panel.rs`'s `on_undo`/
-    // `on_redo`): a successful restore replaces `WorldSceneStore` wholesale,
-    // which the renderer's delta-sync path (`HelioRenderer::sync_scene_delta`)
-    // can't correctly diff against its own `known_ids`/cache state -- it was
-    // never told about entities that silently stopped existing because the
-    // whole store swapped rather than being individually despawned. Callers
-    // MUST force a full resync afterward (`GpuRenderer::force_full_resync`)
-    // or removed objects can be left behind in the Helio scene. See that
-    // method's doc.
+    // Restores write through the World like any edit, so the renderer and
+    // every change watch follow them; nothing needs a resync afterward.
 
     /// Capture the scene's current state for later restore. Exposed so
     /// `execute_command` can capture *before* running a command (the state
@@ -263,7 +253,9 @@ impl SceneDomain {
     /// Commit a voxel append-range without capturing the terrain component.
     pub fn commit_voxel_journal(&mut self, journal: VoxelEditJournal) {
         self.voxel_undo.push_back(journal);
-        if self.voxel_undo.len() > MAX_UNDO_HISTORY { self.voxel_undo.pop_front(); }
+        if self.voxel_undo.len() > MAX_UNDO_HISTORY {
+            self.voxel_undo.pop_front();
+        }
         self.voxel_redo.clear();
     }
 
@@ -276,9 +268,8 @@ impl SceneDomain {
     }
 
     /// Undo the last mutating command. Returns `true` if something was
-    /// undone (the caller should then force a renderer resync -- see this
-    /// section's top doc -- and bump the revision/mark unsaved, which this
-    /// method deliberately leaves to the caller since it has no `cx` to
+    /// undone (the caller should then bump the revision/mark unsaved, which
+    /// this method deliberately leaves to the caller since it has no `cx` to
     /// notify with here).
     pub fn undo(&mut self) -> bool {
         if let Some(journal) = self.voxel_undo.pop_back() {
@@ -298,9 +289,11 @@ impl SceneDomain {
             self.undo_stack.push_back(delta);
             return false;
         }
+        // Redo returns to the state just left. Keeping `before` keeps the
+        // ids it names in scope, so redoing a removal removes the object.
         self.redo_stack.push_back(SceneHistoryDelta {
-            before: current,
-            after: delta.after,
+            before: delta.before,
+            after: current,
         });
         if self.redo_stack.len() > MAX_UNDO_HISTORY {
             self.redo_stack.pop_front();
@@ -328,9 +321,11 @@ impl SceneDomain {
             self.redo_stack.push_back(delta);
             return false;
         }
+        // Undo returns to the state just left; `after` keeps its ids in
+        // scope, so undoing a redone add removes the object.
         self.undo_stack.push_back(SceneHistoryDelta {
-            before: delta.before,
-            after: current,
+            before: current,
+            after: delta.after,
         });
         if self.undo_stack.len() > MAX_UNDO_HISTORY {
             self.undo_stack.pop_front();
@@ -341,15 +336,28 @@ impl SceneDomain {
     fn apply_voxel_journal(&mut self, journal: &VoxelEditJournal, redo: bool) -> bool {
         let mut world = self.world_mut();
         for entry in &journal.entries {
-            let Some(entity) = world.entity_for(&entry.id) else { return false; };
-            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else { return false; };
+            let Some(entity) =
+                engine_backend::scene::attachments::instance_by_id(&world, entry.instance)
+            else {
+                return false;
+            };
+            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity)
+            else {
+                return false;
+            };
             if redo {
-                if terrain.edits.len() != entry.before_len { return false; }
+                if terrain.edits.len() != entry.before_len {
+                    return false;
+                }
                 terrain.edits.extend(entry.edits.iter().cloned());
                 terrain.source_revision = entry.after_revision;
             } else {
-                if terrain.edits.len() < entry.before_len + entry.edits.len() { return false; }
-                while terrain.edits.len() > entry.before_len { terrain.edits.pop(); }
+                if terrain.edits.len() < entry.before_len + entry.edits.len() {
+                    return false;
+                }
+                while terrain.edits.len() > entry.before_len {
+                    terrain.edits.pop();
+                }
                 terrain.source_revision = entry.before_revision;
             }
         }

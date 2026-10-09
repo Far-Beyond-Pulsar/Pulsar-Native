@@ -43,7 +43,7 @@
 //! ## The shared-world contract (ABI v2, issue #635)
 //!
 //! `EngineContext::shared_world` is a `*const c_void` that both sides
-//! reinterpret as `*const RwLock<WorldSceneStore>` (the concrete types live in
+//! reinterpret as `*const RwLock<SceneDb>` (the concrete types live in
 //! `engine_backend::scene`, linked identically into host and guest from the
 //! same workspace build -- the same single-universe guarantee the raw wgpu
 //! handles above rely on). The guest NEVER locks that RwLock directly: all
@@ -55,7 +55,7 @@
 //!
 //! 1. **Guest tick slice**: during [`SYM_TICK`] the guest calls
 //!    `lock_shared_world(userdata)` once, receives an exclusive
-//!    `*mut WorldSceneStore` (as `*mut c_void`), runs simulation + render
+//!    `*mut SceneDb` (as `*mut c_void`), runs simulation + render
 //!    preparation against it, and calls `unlock_shared_world(userdata)`
 //!    exactly once before returning. The pointer is invalid after unlock --
 //!    never cached across slices, never freed.
@@ -66,10 +66,10 @@
 //! 3. **Non-reentrancy as witness**: a second `lock_shared_world` call while
 //!    one slice is open returns null. This makes the callback pair a dynamic
 //!    borrow witness: at most one exclusive slice exists at any time, which
-//!    is what makes handing the guest `&mut WorldSceneStore` sound rather
+//!    is what makes handing the guest `&mut SceneDb` sound rather
 //!    than trusting convention.
 //!
-//! ### FFI safety story for `&mut WorldSceneStore` (decision)
+//! ### FFI safety story for `&mut SceneDb` (decision)
 //!
 //! Two designs were weighed (issue #635's last checklist item):
 //!
@@ -79,7 +79,7 @@
 //!   submit and apply (violating same-frame visibility).
 //! * *Direct exclusive reference under witness* (**chosen**) -- the lock
 //!   callback pair IS the witness: it hands out one provably-unaliased
-//!   `&mut WorldSceneStore` per tick slice. Soundness rests on three
+//!   `&mut SceneDb` per tick slice. Soundness rests on three
 //!   invariants, all enforced mechanically: (a) the guest runs its slice on
 //!   the single thread that owns the embedded game (`thread_local!` GAME,
 //!   unchanged since #243); (b) exclusivity is guaranteed by the host's own
@@ -145,7 +145,7 @@ pub type LogFn =
 
 /// Acquire the host's authoritative world for ONE guest tick slice.
 ///
-/// Returns an exclusive `*mut WorldSceneStore` (as `*mut c_void`) that is valid
+/// Returns an exclusive `*mut SceneDb` (as `*mut c_void`) that is valid
 /// until the matching [`UnlockWorldFn`] call, or null if a slice is already
 /// open (non-reentrancy witness -- see the module doc's locking protocol).
 /// The returned pointer must never be cached past unlock, written through as
@@ -206,7 +206,7 @@ pub struct EngineContext {
     pub out_texture: *const c_void,
 
     // ── ABI v2 additions (#635): the shared-world token ────────────────────
-    /// The host's authoritative world: `*const RwLock<WorldSceneStore>` (the
+    /// The host's authoritative world: `*const RwLock<SceneDb>` (the
     /// allocation behind the host's `Arc`, which outlives the whole PIE
     /// session). Under v2 this is non-null and OWNERSHIP OF SCENE STATE stays
     /// with the host -- the guest adopts it (via the documented single-count

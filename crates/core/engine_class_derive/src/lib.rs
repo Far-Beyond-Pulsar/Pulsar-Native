@@ -16,7 +16,7 @@
 //!   `#[gpu]` bullet.
 //! - `#[gpu]` (a `#[property]` field, or a `Vec<T>` field): opts the field
 //!   into an auto-generated, `#[derive(pulsar_scenedb::SceneStore)]`-backed
-//!   companion component -- `pulsar_world_registry::GpuMirrored` for a
+//!   GPU companion layout -- `pulsar_world_registry::GpuMirrored` for a
 //!   fixed-size/packed field (numeric primitives and arrays as-is, `bool`/
 //!   a plain enum cast to `u32`), `GpuListMirrored` for a `Vec<T>` one (a
 //!   SEPARATE companion, deliberately -- see that trait's own doc). Every
@@ -30,13 +30,13 @@
 //!   right choice when the struct's `Vec<T>` `#[gpu]` field payload itself
 //!   IS the component (`StaticMeshComponent::vertices`/`indices`), not a
 //!   translation of some other editor-facing shape.
-//! - `#[register_world_component(...)]`: wires a `ComponentRuntimeBehavior`
-//!   impl into `pulsar_world_registry`'s `World`-storage bridge --
-//!   `hydrate`/`remove`/`on_removed`/`dispatch`, plus (via the `gpu_mirror`
-//!   bare flag) auto-syncing the `#[gpu]`-derived companions above at
-//!   hydrate/remove time AND on every subsequent live properties-panel edit
-//!   (`refresh_gpu_mirror`, overridable for a class like `LightComponent`
-//!   whose mirror's presence is conditional on its own data). See that
+//! - `#[register_world_component(...)]`: on an inherent `impl Type {}`,
+//!   wires the component into `pulsar_world_registry`'s `World`-storage
+//!   bridge -- a default factory, a JSON boundary decoder, a clone, erased
+//!   SceneDB registration, `remove`, and a
+//!   `property_written` normalization hook. The `#[gpu]` companions above
+//!   are never inserted or refreshed by anyone: the authored struct's own
+//!   SceneDB GPU dispatch derives and writes them on every write. See that
 //!   macro's own doc for the full option list.
 //!
 //! # Example
@@ -57,9 +57,9 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Field, Fields, ItemImpl, ItemStruct, Lit,
-    Meta, MetaNameValue,
-    parse::{Parse, ParseStream},
+    Attribute, Data, DeriveInput, Expr, Field, Fields, ItemImpl, ItemStruct, ItemTrait, Lit, Meta,
+    MetaNameValue,
+    parse::{Parse, ParseStream, Parser},
     parse_macro_input,
     punctuated::Punctuated,
 };
@@ -75,6 +75,7 @@ use syn::{
         engine_class_serialize,
         engine_class_deserialize,
         engine_class_scene_store,
+        engine_class_gpu_rows,
         gpu
     )
 )]
@@ -108,6 +109,12 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         .attrs
         .iter()
         .any(|a| a.path().is_ident("engine_class_scene_store"));
+    // `#[engine_class(gpu_rows)]` stamps this marker: only then does the
+    // generated GPU companion get a SceneDB row (see `gpu_mirror_codegen`).
+    let gpu_rows = input
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("engine_class_gpu_rows"));
 
     // Extract direct #[property] fields and optional #[sub_props] flattening fields.
     let (property_impls, property_fields, sub_props_fields, gpu_leaf_fields): (
@@ -242,7 +249,28 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         }
     };
 
-    let gpu_mirror_tokens = gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields);
+    // A `scene_store` struct's `#[gpu]` fields -- scalar ones included --
+    // are mirrored by its own `#[derive(SceneStore)]`, which registers the
+    // struct's GPU dispatch. A generated companion would register a second
+    // dispatch for the same component, so it gets none; `#[sub_props]`
+    // groups (which only a companion can carry) are refused.
+    let gpu_leaf_fields = if scene_store_routed {
+        if !sub_props_fields.is_empty() {
+            return syn::Error::new_spanned(
+                &input,
+                "a `scene_store` #[engine_class] mirrors its #[gpu] fields through its own \
+                 #[derive(pulsar_scenedb::SceneStore)], which cannot carry #[sub_props] GPU \
+                 groups; move the sub-props' #[gpu] fields onto the struct itself",
+            )
+            .to_compile_error()
+            .into();
+        }
+        Vec::new()
+    } else {
+        gpu_leaf_fields
+    };
+    let gpu_mirror_tokens =
+        gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields, gpu_rows);
 
     // Generate auto-property methods (getters and setters). Their metadata
     // rides the property's own category so blueprint palette grouping keeps
@@ -526,9 +554,8 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut add_default = false;
     let mut add_clone = false;
     let mut add_debug = false;
-    let mut register_runtime = false;
-    let mut register_scene_props = false;
     let mut add_scene_store = false;
+    let mut add_gpu_rows = false;
     let mut no_register = false;
 
     for arg in args {
@@ -538,10 +565,9 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) if path.is_ident("default") => add_default = true,
             Meta::Path(path) if path.is_ident("clone") => add_clone = true,
             Meta::Path(path) if path.is_ident("debug") => add_debug = true,
-            Meta::Path(path) if path.is_ident("runtime_behavior") => register_runtime = true,
             Meta::Path(path) if path.is_ident("no_register") => no_register = true,
-            Meta::Path(path) if path.is_ident("scene_props_applier") => register_scene_props = true,
             Meta::Path(path) if path.is_ident("scene_store") => add_scene_store = true,
+            Meta::Path(path) if path.is_ident("gpu_rows") => add_gpu_rows = true,
             Meta::NameValue(name_value) if name_value.path.is_ident("category") => {
                 if let Expr::Lit(expr_lit) = &name_value.value {
                     if let Lit::Str(lit_str) = &expr_lit.lit {
@@ -681,6 +707,13 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         quote! {}
     };
+    // `gpu_rows`: the generated `#[gpu]` companion is uploaded as a SceneDB
+    // GPU row (see `gpu_mirror_codegen`).
+    let gpu_rows_marker_attr = if add_gpu_rows {
+        quote! { #[engine_class_gpu_rows] }
+    } else {
+        quote! {}
+    };
 
     let sub_props_marker_impl = if no_register {
         let name = &item_struct.ident;
@@ -690,61 +723,6 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let name = &item_struct.ident;
-    // Same deserialize-shim reasoning as `register_runtime_behavior`'s own
-    // codegen below (see its comment): `sync_component` is typed `&Self`,
-    // but `RuntimeBehaviorRegistration.sync` must be a concrete, non-generic
-    // `fn` pointer for `inventory::submit!` and still deals in
-    // `&serde_json::Value` (most callers only have JSON at dispatch time),
-    // so a small per-type shim bridges the two.
-    let runtime_registration = if register_runtime {
-        let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", name);
-        quote! {
-            #[doc(hidden)]
-            #[allow(non_snake_case)]
-            fn #shim_fn_name(
-                owner: &pulsar_reflection::RuntimeComponentOwner,
-                component_index: usize,
-                component_data: &::serde_json::Value,
-                context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-            ) {
-                let parsed: #name = match ::serde_json::from_value(component_data.clone()) {
-                    Ok(value) => value,
-                    Err(error) => {
-                        context.report_error(format!(
-                            "{} on '{}' is invalid: {error}",
-                            <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                            owner.scene_object_id,
-                        ));
-                        return;
-                    }
-                };
-                <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
-            }
-
-            pulsar_reflection::inventory::submit! {
-                pulsar_reflection::RuntimeBehaviorRegistration {
-                    class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                    sync: #shim_fn_name,
-                }
-            }
-        }
-    } else {
-        quote! {}
-    };
-
-    let scene_props_registration = if register_scene_props {
-        quote! {
-            pulsar_reflection::inventory::submit! {
-                pulsar_reflection::ScenePropsApplierRegistration {
-                    class_name: <#name as pulsar_reflection::ScenePropsProjector>::CLASS_NAME,
-                    apply: <#name as pulsar_reflection::ScenePropsProjector>::apply_scene_props,
-                }
-            }
-        }
-    } else {
-        quote! {}
-    };
-
     // SceneDB storage (Pod/HasTypeToken/SceneColumnSet/GpuColumnSet) is no
     // longer hand-generated here -- `add_scene_store` instead adds
     // `::pulsar_scenedb::SceneStore` to `derive_additions` above, which
@@ -765,339 +743,720 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #serialize_marker_attr
         #deserialize_marker_attr
         #scene_store_marker_attr
+        #gpu_rows_marker_attr
         #item_struct
         #sub_props_marker_impl
-        #runtime_registration
-        #scene_props_registration
     }
     .into()
 }
 
-#[proc_macro_derive(RegisterRuntimeBehavior)]
-pub fn derive_register_runtime_behavior(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
-    let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", name);
-
-    let generated = quote! {
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #shim_fn_name(
-            owner: &pulsar_reflection::RuntimeComponentOwner,
-            component_index: usize,
-            component_data: &::serde_json::Value,
-            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-        ) {
-            let parsed: #name = match ::serde_json::from_value(component_data.clone()) {
-                Ok(value) => value,
-                Err(error) => {
-                    context.report_error(format!(
-                        "{} on '{}' is invalid: {error}",
-                        <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                        owner.scene_object_id,
-                    ));
-                    return;
-                }
-            };
-            <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
-        }
-
-        pulsar_reflection::inventory::submit! {
-            pulsar_reflection::RuntimeBehaviorRegistration {
-                class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                sync: #shim_fn_name,
-            }
-        }
-    };
-
-    generated.into()
-}
-
 #[proc_macro_attribute]
-pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new_spanned(
-            proc_macro2::TokenStream::from(attr),
-            "#[register_runtime_behavior] does not accept arguments",
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let impl_block = parse_macro_input!(item as ItemImpl);
-
-    if !impl_block.generics.params.is_empty() {
-        return syn::Error::new_spanned(
-            &impl_block.generics,
-            "#[register_runtime_behavior] does not support generic impl blocks",
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let Some((_, trait_path, _)) = &impl_block.trait_ else {
-        return syn::Error::new_spanned(
-            &impl_block.self_ty,
-            "#[register_runtime_behavior] must be used on `impl ComponentRuntimeBehavior for Type`",
-        )
-        .to_compile_error()
-        .into();
+pub fn register_component_runtime(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = match syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
+        .parse(attr)
+    {
+        Ok(args) => args,
+        Err(error) => return error.to_compile_error().into(),
     };
-
-    let Some(trait_ident) = trait_path.segments.last().map(|s| &s.ident) else {
+    let enabled_field = args.iter().find_map(|meta| match meta {
+        syn::Meta::NameValue(value) if value.path.is_ident("enabled") => match &value.value {
+            syn::Expr::Path(path) => path.path.get_ident().cloned(),
+            _ => None,
+        },
+        _ => None,
+    });
+    let explicit_class = args.iter().find_map(|meta| match meta {
+        syn::Meta::NameValue(value) if value.path.is_ident("class") => match &value.value {
+            syn::Expr::Lit(expr) => match &expr.lit {
+                syn::Lit::Str(value) => Some(value.value()),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    });
+    if args.iter().any(|meta| !matches!(meta, syn::Meta::NameValue(value) if value.path.is_ident("enabled") || value.path.is_ident("class")))
+        || (args.iter().any(|meta| matches!(meta, syn::Meta::NameValue(value) if value.path.is_ident("enabled"))) && enabled_field.is_none())
+        || (args.iter().any(|meta| matches!(meta, syn::Meta::NameValue(value) if value.path.is_ident("class"))) && explicit_class.is_none())
+    {
+        return syn::Error::new(proc_macro2::Span::call_site(), "expected optional `enabled = field_name` and/or `class = \"ComponentClass\"`")
+            .to_compile_error()
+            .into();
+    }
+    let mut impl_block = parse_macro_input!(item as ItemImpl);
+    if impl_block.trait_.is_some() || !impl_block.generics.params.is_empty() {
         return syn::Error::new_spanned(
-            trait_path,
-            "invalid trait path for #[register_runtime_behavior]",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    if trait_ident != "ComponentRuntimeBehavior" {
-        return syn::Error::new_spanned(
-            trait_path,
-            "#[register_runtime_behavior] must target `ComponentRuntimeBehavior` impl",
+            &impl_block,
+            "#[register_component_runtime] requires a non-generic inherent impl block",
         )
         .to_compile_error()
         .into();
     }
-
     let self_ty = &impl_block.self_ty;
-    let Some(self_ty_ident) = (match &**self_ty {
-        syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| &s.ident),
+    let Some(ty_ident) = (match &**self_ty {
+        syn::Type::Path(path) => path.path.segments.last().map(|segment| &segment.ident),
         _ => None,
     }) else {
+        return syn::Error::new_spanned(self_ty, "expected a named component type")
+            .to_compile_error()
+            .into();
+    };
+    let class_name = explicit_class.unwrap_or_else(|| ty_ident.to_string());
+    let mut handler_calls = Vec::new();
+    let mut handler_events = std::collections::BTreeSet::new();
+    for item in &mut impl_block.items {
+        let syn::ImplItem::Fn(method) = item else {
+            continue;
+        };
+        let Some(handler_attr_index) = method
+            .attrs
+            .iter()
+            .position(|attr| attr.path().is_ident("bp_handler"))
+        else {
+            continue;
+        };
+        let handler_attr = method.attrs.remove(handler_attr_index);
+        let event_short_name = handler_attr.parse_args::<syn::LitStr>();
+        let event_short_name = match event_short_name {
+            Ok(name) => name.value(),
+            Err(error) => {
+                return syn::Error::new_spanned(
+                    handler_attr,
+                    format!("expected #[bp_handler(\"event_name\")]: {error}"),
+                )
+                .to_compile_error()
+                .into();
+            }
+        };
+        if method.sig.inputs.len() < 3
+            || !matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(receiver)) if receiver.reference.is_some() && receiver.mutability.is_some())
+            || !matches!(method.sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+            || !matches!(method.sig.output, syn::ReturnType::Default)
+        {
+            return syn::Error::new_spanned(
+                &method.sig,
+                "bp_handler must have signature `fn handler(&mut self, context: &mut ComponentContext, event_argument..., payload)`",
+            )
+            .to_compile_error()
+            .into();
+        }
+        let event_name = format!("{class_name}.{event_short_name}");
+        let method_name = method.sig.ident.clone();
+        if !handler_events.insert(event_name.clone()) {
+            return syn::Error::new_spanned(
+                &method.sig,
+                format!("multiple native handlers target component event `{event_name}`"),
+            )
+            .to_compile_error()
+            .into();
+        }
+        let mut decoded_names = Vec::new();
+        let mut decode_fields = Vec::new();
+        for (index, arg) in method.sig.inputs.iter().skip(2).enumerate() {
+            let syn::FnArg::Typed(arg) = arg else {
+                unreachable!("validated")
+            };
+            let syn::Pat::Ident(pattern) = arg.pat.as_ref() else {
+                return syn::Error::new_spanned(
+                    &arg.pat,
+                    "native event handler arguments must use named identifiers",
+                )
+                .to_compile_error()
+                .into();
+            };
+            let syn::Type::Path(path) = arg.ty.as_ref() else {
+                return syn::Error::new_spanned(
+                    &arg.ty,
+                    "native event handler arguments must be owned named value types",
+                )
+                .to_compile_error()
+                .into();
+            };
+            if path.qself.is_some()
+                || path
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|segment| !matches!(segment.arguments, syn::PathArguments::None))
+            {
+                return syn::Error::new_spanned(
+                    &arg.ty,
+                    "native event handler arguments must use concrete registered value types",
+                )
+                .to_compile_error()
+                .into();
+            }
+            let payload_ident = path.path.segments.last().unwrap().ident.clone();
+            let payload_name = payload_ident.to_string();
+            let local = quote::format_ident!("__pulsar_handler_arg_{index}");
+            let payload_type = &arg.ty;
+            decoded_names.push(local.clone());
+            decode_fields.push(quote::quote! {
+                let Some(pulsar_events::gamma::DynValue::Bytes(bytes)) = queued_event.fields.get(#index) else {
+                    tracing::warn!(event = #event_name, "native component event handler received malformed payload fields");
+                    continue;
+                };
+                let decoded = pulsar_world_registry::pulsar_script_vm::TypeRegistry::global()
+                    .decode_event_value(#payload_name, bytes);
+                let #local = match decoded.and_then(|object| {
+                    object.downcast_ref::<#payload_type>()
+                        .cloned()
+                        .ok_or_else(|| format!("decoded event field was not {}", #payload_name))
+                }) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        tracing::warn!(event = #event_name, %error, "native component event handler field decode failed");
+                        continue;
+                    }
+                };
+            });
+            let _ = pattern;
+        }
+        let handler_field_count = decoded_names.len();
+        handler_calls.push(quote::quote! {
+            #event_name => {
+                if queued_event.fields.len() != #handler_field_count {
+                    tracing::warn!(event = #event_name, expected = #handler_field_count, actual = queued_event.fields.len(), "native component event handler received the wrong field count");
+                    continue;
+                }
+                #(#decode_fields)*
+                component.#method_name(&mut context, #(#decoded_names),*);
+            }
+        });
+    }
+    let tick = impl_block.items.iter().find_map(|item| match item {
+        syn::ImplItem::Fn(method) if method.sig.ident == "tick" => Some(method),
+        _ => None,
+    });
+    let Some(tick) = tick else {
         return syn::Error::new_spanned(
-            self_ty,
-            "#[register_runtime_behavior] requires a simple named type (no generics, no qualified paths)",
+            &impl_block,
+            "the impl must define `fn tick(&mut self, context: &mut ComponentContext, delta_seconds: f32)`",
         )
         .to_compile_error()
         .into();
     };
-    let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", self_ty_ident);
+    let tick_sig = &tick.sig;
+    let valid_args = tick_sig.inputs.len() == 3
+        && matches!(tick_sig.inputs.first(), Some(syn::FnArg::Receiver(receiver)) if receiver.reference.is_some() && receiver.mutability.is_some())
+        && matches!(tick_sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+        && matches!(tick_sig.inputs.iter().nth(2), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Path(path) if path.path.is_ident("f32")));
+    if !valid_args || !matches!(tick_sig.output, syn::ReturnType::Default) {
+        return syn::Error::new_spanned(
+            tick_sig,
+            "tick must have signature `fn tick(&mut self, context: &mut ComponentContext, delta_seconds: f32)` and return `()`",
+        )
+        .to_compile_error()
+        .into();
+    }
 
-    // `RuntimeBehaviorRegistration.sync` is a plain `fn` pointer (`inventory::
-    // submit!` needs a concrete static, not a generic) and still deals in
-    // `&serde_json::Value` (most callers -- e.g. a scene-file loader -- only
-    // have JSON on hand at dispatch time), while `sync_component` itself is
-    // typed `&Self` (see `ComponentRuntimeBehavior`'s doc in pulsar_reflection
-    // for why). This shim is the one deserialize call that bridges the two,
-    // generated here so component authors never hand-write JSON parsing. A
-    // parse failure is reported via `ComponentRuntimeContext::report_error`,
-    // not a panic.
-    let output = quote! {
+    let begin_play = impl_block.items.iter().find_map(|item| match item {
+        syn::ImplItem::Fn(method) if method.sig.ident == "begin_play" => Some(method),
+        _ => None,
+    });
+    if let Some(begin_play) = begin_play {
+        let sig = &begin_play.sig;
+        let valid = sig.inputs.len() == 2
+            && matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(receiver)) if receiver.reference.is_some() && receiver.mutability.is_some())
+            && matches!(sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+            && matches!(sig.output, syn::ReturnType::Default);
+        if !valid {
+            return syn::Error::new_spanned(sig, "begin_play must have signature `fn begin_play(&mut self, context: &mut ComponentContext)`")
+                .to_compile_error()
+                .into();
+        }
+    }
+    let end_play = impl_block.items.iter().find_map(|item| match item {
+        syn::ImplItem::Fn(method) if method.sig.ident == "end_play" => Some(method),
+        _ => None,
+    });
+    if let Some(end_play) = end_play {
+        let sig = &end_play.sig;
+        let valid = sig.inputs.len() == 2
+            && matches!(sig.inputs.first(), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "Entity")))
+            && matches!(sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+            && matches!(sig.output, syn::ReturnType::Default);
+        if !valid {
+            return syn::Error::new_spanned(sig, "end_play must have signature `fn end_play(entity: Entity, context: &mut ComponentContext)`")
+                .to_compile_error()
+                .into();
+        }
+    }
+
+    let shim = quote::format_ident!("__pulsar_component_tick_{}", ty_ident);
+    let end_shim = quote::format_ident!("__pulsar_component_end_{}", ty_ident);
+    let enabled = enabled_field.map(|field| quote::quote! { component.#field });
+    let begin_call = begin_play.map(|_| quote::quote! { component.begin_play(&mut context); });
+    let end_callback = end_play.map(|_| {
+        quote::quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #end_shim(entity: pulsar_scenedb::Entity, events: &pulsar_events::EventHub) {
+                let mut context = pulsar_world_registry::ComponentContext::new(entity, events);
+                #self_ty::end_play(entity, &mut context);
+            }
+        }
+    });
+    let end_callback_value = end_play
+        .map(|_| quote::quote! { Some(#end_shim) })
+        .unwrap_or_else(|| quote::quote! { None });
+    let activation_check = if let Some(enabled) = enabled {
+        quote::quote! { if !#enabled { continue; } }
+    } else {
+        quote::quote! {}
+    };
+    let handler_event_names = handler_events.iter().collect::<Vec<_>>();
+    quote::quote! {
         #impl_block
+
+        #end_callback
 
         #[doc(hidden)]
         #[allow(non_snake_case)]
-        fn #shim_fn_name(
-            owner: &pulsar_reflection::RuntimeComponentOwner,
-            component_index: usize,
-            component_data: &::serde_json::Value,
-            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
+        fn #shim(
+            world: &mut pulsar_scenedb::World,
+            events: &pulsar_events::EventHub,
+            delta_seconds: f32,
+            previous: &std::collections::HashMap<pulsar_scenedb::Entity, pulsar_scenedb::Entity>,
+            current: &mut std::collections::HashMap<pulsar_scenedb::Entity, pulsar_scenedb::Entity>,
+            runtime: &mut pulsar_world_registry::ComponentRuntimeState,
         ) {
-            let parsed: #self_ty = match ::serde_json::from_value(component_data.clone()) {
-                Ok(value) => value,
-                Err(error) => {
-                    context.report_error(format!(
-                        "{} on '{}' is invalid: {error}",
-                        <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                        owner.scene_object_id,
-                    ));
-                    return;
+            // Every enabled instance ticks on its own; its owner object is the
+            // actor whose event channel it uses.
+            for (entity, (mut component, link)) in world.query::<(
+                &mut #self_ty,
+                &pulsar_world_registry::pulsar_scene_model::ComponentOwner,
+            )>() {
+                if !link.is_enabled() { continue; }
+                #activation_check
+                let owner = link.entity();
+                let first_frame = !previous.contains_key(&entity);
+                current.insert(entity, owner);
+                let instance = pulsar_world_registry::ComponentInstanceKey {
+                    component_type: pulsar_scenedb::component_id::<#self_ty>(),
+                    entity,
+                };
+                runtime.subscribe_instance(instance, owner, events, &[#(#handler_event_names),*]);
+                let mut context = pulsar_world_registry::ComponentContext::new(owner, events);
+                if first_frame { #begin_call }
+                for queued_event in runtime.take_events(instance) {
+                    match queued_event.name.as_str() {
+                        #(#handler_calls)*
+                        _ => {}
+                    }
                 }
-            };
-            <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
-        }
-
-        pulsar_reflection::inventory::submit! {
-            pulsar_reflection::RuntimeBehaviorRegistration {
-                class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                sync: #shim_fn_name,
+                component.tick(&mut context, delta_seconds);
             }
         }
-    };
 
-    output.into()
+        pulsar_world_registry::inventory::submit! {
+            pulsar_world_registry::ComponentTickRegistration {
+                type_name: stringify!(#self_ty),
+                class_name: #class_name,
+                handler_events: &[#(#handler_event_names),*],
+                component_type: pulsar_scenedb::component_id::<#self_ty>,
+                tick: #shim,
+                end_play: #end_callback_value,
+            }
+        }
+    }
+    .into()
 }
 
-/// Opt a component into `pulsar_world_registry`'s `World` bridge
-/// (Pulsar-Native#555/#556, Phase B4/B5): its typed value can be hydrated
-/// from JSON once per edit and inserted into `pulsar_scenedb::World`, then
-/// `HelioRenderer::sync_scene` dispatches `ComponentRuntimeBehavior::
-/// sync_component` directly off that typed value -- no per-frame
-/// `serde_json::from_value` for this component's class.
+/// Declare named events owned by a component. The generated writer method
+/// accepts the declared arguments followed by the declared return payload.
+/// Each argument and the payload remain their original Rust types and become
+/// matching Blueprint pins; the macro uses stable names and versioned codecs
+/// only at the Gamma DLL boundary.
 ///
-/// Applied *in addition to* `#[register_runtime_behavior]` (same `impl
-/// ComponentRuntimeBehavior for Type` block, stack both attributes) -- this
-/// is deliberately a separate, opt-in macro so migrating a component onto
-/// `World`-backed storage doesn't touch the already-shipped
-/// `RuntimeBehaviorRegistration`/JSON dispatch path at all. Components that
-/// haven't been migrated yet keep working exactly as before, through that
-/// unchanged path.
+/// ```ignore
+/// #[component_events(class = "VoxelTerrainComponent")]
+/// pub trait TerrainEvents {
+///     #[bp_event]
+///     fn block_broken() -> BlockData {}
+///     fn block_changed(x: i32, y: i32, material: String) -> BlockData {}
+/// }
+/// // `context.events.block_broken(data)` and
+/// // `context.events.block_changed(x, y, material, data)` after importing the generated
+/// // `TerrainEventWriterExt` trait.
+/// ```
+#[proc_macro_attribute]
+pub fn component_events(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let metas = match syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
+        .parse(attr)
+    {
+        Ok(metas) => metas,
+        Err(error) => return error.to_compile_error().into(),
+    };
+    let class_name = metas.iter().find_map(|meta| match meta {
+        syn::Meta::NameValue(value) if value.path.is_ident("class") => match &value.value {
+            syn::Expr::Lit(expr) => match &expr.lit {
+                syn::Lit::Str(value) => Some(value.clone()),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    });
+    let Some(class_name) = class_name else {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "expected `class = \"ComponentClassName\"`",
+        )
+        .to_compile_error()
+        .into();
+    };
+    let mut event_trait = parse_macro_input!(item as ItemTrait);
+    if !event_trait.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &event_trait.generics,
+            "component event traits cannot be generic",
+        )
+        .to_compile_error()
+        .into();
+    }
+    let trait_name = event_trait.ident.clone();
+    let visibility = event_trait.vis.clone();
+    let emitter_name = quote::format_ident!("{}EventWriterExt", trait_name);
+    let original_items = std::mem::take(&mut event_trait.items);
+    let mut event_methods = Vec::new();
+    let mut event_impl_methods = Vec::new();
+    let mut descriptor_submits = Vec::new();
+    let mut payload_registrations = Vec::new();
+    let mut registered_payloads = std::collections::HashSet::new();
+    for trait_item in original_items {
+        let syn::TraitItem::Fn(mut method) = trait_item else {
+            return syn::Error::new_spanned(
+                trait_item,
+                "component event traits may contain only event methods",
+            )
+            .to_compile_error()
+            .into();
+        };
+        let is_bp_event = method
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("bp_event"));
+        if !is_bp_event {
+            return syn::Error::new_spanned(&method, "event methods must be marked `#[bp_event]`")
+                .to_compile_error()
+                .into();
+        }
+        method
+            .attrs
+            .retain(|attr| !attr.path().is_ident("bp_event"));
+        if !method.sig.generics.params.is_empty() || method.sig.variadic.is_some() {
+            return syn::Error::new_spanned(
+                &method.sig,
+                "component event declarations cannot be generic or variadic",
+            )
+            .to_compile_error()
+            .into();
+        }
+        let syn::ReturnType::Type(_, payload_type) = &method.sig.output else {
+            return syn::Error::new_spanned(
+                &method.sig,
+                "event declarations must return their payload type",
+            )
+            .to_compile_error()
+            .into();
+        };
+        if !matches!(payload_type.as_ref(), syn::Type::Path(path) if path.qself.is_none() && path.path.segments.last().is_some_and(|segment| matches!(segment.arguments, syn::PathArguments::None)))
+        {
+            return syn::Error::new_spanned(
+                payload_type,
+                "event return payloads must be owned, concrete named Rust value types",
+            )
+            .to_compile_error()
+            .into();
+        }
+        let event_name = format!("{}.{}", class_name.value(), method.sig.ident);
+        let method_name = method.sig.ident.clone();
+        let descriptor_fn =
+            quote::format_ident!("__pulsar_event_descriptor_{}_{}", trait_name, method_name);
+        let declaration_fn =
+            quote::format_ident!("__pulsar_event_declaration_{}_{}", trait_name, method_name);
+        fn event_value_type(ty: &syn::Type) -> Option<(&syn::Type, bool)> {
+            match ty {
+                syn::Type::Path(path) if path.qself.is_none() => Some((ty, false)),
+                syn::Type::Reference(reference) if reference.mutability.is_none() => {
+                    match reference.elem.as_ref() {
+                        syn::Type::Path(path) if path.qself.is_none() => {
+                            Some((&reference.elem, true))
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        fn register_event_value(
+            ty: &syn::Type,
+            trait_name: &syn::Ident,
+            registrations: &mut Vec<proc_macro2::TokenStream>,
+            registered: &mut std::collections::HashSet<String>,
+        ) -> Result<(String, syn::Type), syn::Error> {
+            let Some((base, _)) = event_value_type(ty) else {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "event fields must be named, non-generic Rust value types (or shared references to them)",
+                ));
+            };
+            let syn::Type::Path(path) = base else {
+                unreachable!()
+            };
+            let ident = path
+                .path
+                .segments
+                .last()
+                .map(|segment| segment.ident.clone())
+                .expect("nonempty type path");
+            if path
+                .path
+                .segments
+                .last()
+                .is_some_and(|segment| !matches!(segment.arguments, syn::PathArguments::None))
+            {
+                return Err(syn::Error::new_spanned(
+                    base,
+                    "generic event value types need a concrete registered wrapper type",
+                ));
+            }
+            let name = ident.to_string();
+            let key = quote::quote!(#base).to_string();
+            if registered.insert(key) {
+                let encode_fn =
+                    quote::format_ident!("__pulsar_event_encode_{}_{}", trait_name, ident);
+                let decode_fn =
+                    quote::format_ident!("__pulsar_event_decode_{}_{}", trait_name, ident);
+                registrations.push(quote::quote! {
+                    #[doc(hidden)]
+                    #[allow(non_snake_case)]
+                    fn #encode_fn(value: &#base) -> Result<Vec<u8>, String> {
+                        ::serde_json::to_vec(value).map_err(|error| error.to_string())
+                    }
+                    #[doc(hidden)]
+                    #[allow(non_snake_case)]
+                    fn #decode_fn(bytes: &[u8]) -> Result<#base, String> {
+                        ::serde_json::from_slice(bytes).map_err(|error| error.to_string())
+                    }
+                    pulsar_world_registry::pulsar_script_vm::script_value_type!(#base, #name);
+                    pulsar_world_registry::pulsar_script_vm::script_event_codec!(
+                        #base, #name, encode = #encode_fn, decode = #decode_fn,
+                    );
+                });
+            }
+            Ok((name, base.clone()))
+        }
+        let mut argument_parameters = Vec::new();
+        let mut argument_values = Vec::new();
+        let mut declaration_fields = Vec::new();
+        let mut descriptor_fields = Vec::new();
+        for input in &method.sig.inputs {
+            let syn::FnArg::Typed(input) = input else {
+                return syn::Error::new_spanned(input, "event methods cannot have a receiver")
+                    .to_compile_error()
+                    .into();
+            };
+            let syn::Pat::Ident(pattern) = input.pat.as_ref() else {
+                return syn::Error::new_spanned(
+                    &input.pat,
+                    "event arguments must use named identifiers",
+                )
+                .to_compile_error()
+                .into();
+            };
+            let name = &pattern.ident;
+            let name_str = name.to_string();
+            let argument_type = &input.ty;
+            let (value_name, base_type) = match register_event_value(
+                &input.ty,
+                &trait_name,
+                &mut payload_registrations,
+                &mut registered_payloads,
+            ) {
+                Ok(value) => value,
+                Err(error) => return error.to_compile_error().into(),
+            };
+            let (_, by_ref) = event_value_type(&input.ty).unwrap();
+            let _ = base_type;
+            let owned_value = if by_ref {
+                quote::quote!((*#name).clone())
+            } else {
+                quote::quote!(#name.clone())
+            };
+            argument_parameters.push(quote::quote!(#name: #argument_type));
+            argument_values.push(quote::quote! {
+                fields.push(pulsar_events::gamma::DynValue::Bytes(
+                    pulsar_world_registry::pulsar_script_vm::TypeRegistry::global()
+                        .encode_event_value(&pulsar_world_registry::pulsar_script_vm::Object::new(#value_name, #owned_value))?
+                ));
+            });
+            declaration_fields.push(quote::quote!(pulsar_world_registry::pulsar_script_vm::EventField::new(#name_str, pulsar_world_registry::pulsar_script_vm::Type::Object(#value_name.to_owned()))));
+            descriptor_fields
+                .push(quote::quote!((#name_str, pulsar_events::gamma::FieldType::Bytes)));
+        }
+        let (payload_name, payload_base) = match register_event_value(
+            payload_type,
+            &trait_name,
+            &mut payload_registrations,
+            &mut registered_payloads,
+        ) {
+            Ok(value) => value,
+            Err(error) => return error.to_compile_error().into(),
+        };
+        let _ = payload_base;
+        let payload_parameter = quote::format_ident!("__pulsar_payload");
+        let payload_value_type = payload_type;
+        let mut all_event_fields = declaration_fields;
+        all_event_fields.push(quote::quote!(pulsar_world_registry::pulsar_script_vm::EventField::new("payload", pulsar_world_registry::pulsar_script_vm::Type::Object(#payload_name.to_owned()))));
+        let mut all_descriptor_fields = descriptor_fields;
+        all_descriptor_fields.push(quote::quote!((
+            "payload",
+            pulsar_events::gamma::FieldType::Bytes
+        )));
+        event_methods.push(quote::quote! {
+            fn #method_name(&self, #(#argument_parameters,)* #payload_parameter: #payload_value_type) -> Result<(), String>
+            where
+                #payload_value_type: Clone + Send + Sync + 'static,
+            ;
+        });
+        event_impl_methods.push(quote::quote! {
+            fn #method_name(&self, #(#argument_parameters,)* #payload_parameter: #payload_value_type) -> Result<(), String>
+            where
+                #payload_value_type: Clone + Send + Sync + 'static,
+            {
+                let mut fields = Vec::new();
+                #(#argument_values)*
+                fields.push(pulsar_events::gamma::DynValue::Bytes(
+                    pulsar_world_registry::pulsar_script_vm::TypeRegistry::global()
+                        .encode_event_value(&pulsar_world_registry::pulsar_script_vm::Object::new(#payload_name, #payload_parameter.clone()))?
+                ));
+                self.emit_named(#event_name, fields)
+            }
+        });
+        descriptor_submits.push(quote::quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #descriptor_fn() -> pulsar_events::gamma::EventDescriptor {
+                pulsar_events::gamma::EventDescriptor::dynamic(
+                    #event_name,
+                    [#(#all_descriptor_fields),*],
+                )
+            }
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #declaration_fn() -> pulsar_world_registry::pulsar_script_vm::EventDecl {
+                pulsar_world_registry::pulsar_script_vm::EventDecl {
+                    name: #event_name.to_owned(),
+                    fields: vec![#(#all_event_fields),*],
+                }
+            }
+            pulsar_world_registry::inventory::submit! {
+                pulsar_world_registry::ComponentEventRegistration {
+                    class_name: #class_name,
+                    descriptor: #descriptor_fn,
+                    declaration: #declaration_fn,
+                }
+            }
+        });
+    }
+    quote::quote! {
+        #event_trait
+
+        #visibility trait #emitter_name {
+            #(#event_methods)*
+        }
+
+        impl<'__pulsar_event> #emitter_name for pulsar_world_registry::ComponentEventWriter<'__pulsar_event> {
+            #(#event_impl_methods)*
+        }
+
+        #(#payload_registrations)*
+        #(#descriptor_submits)*
+    }
+    .into()
+}
+
+/// `#[register_world_component]`'s optional arguments:
 ///
-/// Same validation as `#[register_runtime_behavior]` -- see that macro's
-/// implementation for why each check exists; kept as a near-identical
-/// sibling rather than factored together, since the two attributes are
-/// meant to be readable and removable independently as B5 rolls out one
-/// component at a time.
-/// `#[register_world_component]`'s optional arguments -- `hydrate =
-/// path::to::fn`, `remove = path::to::fn`, and `on_removed = path::to::fn`.
-/// `hydrate` is an escape hatch for a type that needs to do
-/// more at hydrate time than "deserialize this JSON, `world.insert` it"
-/// (the auto-generated default). The motivating case (Pulsar-Native#561
-/// Phase D): `StaticMeshComponent` owns loading its own mesh file (project-
-/// root-relative path resolution, `engine_state::get_project_path()` --
-/// already globally accessible, no context object needed -- then parsing
-/// the file into vertex/index data) and populating its own `#[gpu]`-mirrored
-/// `Vec<T>` fields with the result, once, at the exact point its data
-/// changes -- not per render frame, and not through any Helio-specific
-/// code (`sync_component`'s dispatch only ever gets `&World`, deliberately
-/// -- see that fn's own doc -- so it structurally can't do this; hydrate is
-/// the one call site that already has `&mut World`).
+/// - `decode = path` -- `fn(&serde_json::Value) -> Result<Self, String>`.
+///   The JSON boundary decoder for this class, replacing the generated
+///   `serde_json::from_value`. For a class whose file shape has legacy
+///   variants (`LightComponent`'s flat intensity) or that loads asset data
+///   its serialized form only references (`StaticMeshComponent`'s mesh
+///   file). Decoding is the only class-specific step of hydration: the
+///   decoded value is inserted through SceneDB's erased insert, with every
+///   normal write hook.
+/// - `remove = path` -- `fn(&mut pulsar_scenedb::World,
+///   pulsar_scenedb::Entity)`, replacing the generated
+///   `world.remove::<Self>(entity)`.
+/// - `property_written = path` -- `fn(&mut Self, Option<&str>)`, run under
+///   the same write guard right after a reflected property setter
+///   (`Some(name)`) or method (`None`), so the class can re-establish data it
+///   derives from its own fields. Generated as a no-op. Never a GPU refresh:
+///   GPU rows, including the generated `#[gpu]` companion, follow every write
+///   through SceneDB's own mirror dispatch.
 ///
-/// `path` must name a function with EXACTLY the signature the auto-
-/// generated hydrate would have had: `fn(&mut pulsar_scenedb::World,
-/// pulsar_scenedb::Entity, &serde_json::Value) -> Result<(), String>` --
-/// used directly as the registration's function pointer, no wrapper
-/// generated, so a signature mismatch is a plain, ordinary compile error at
-/// the `WorldComponentRegistration` construction site below, not a
-/// mysterious one inside macro-generated code.
+/// Each `path` is used directly as a function pointer (or wrapped by a
+/// one-line generated adapter), so a signature mismatch is an ordinary
+/// compile error at the registration.
 struct RegisterWorldComponentArgs {
-    custom_hydrate: Option<syn::Path>,
-    /// `#[register_world_component(on_removed = path::to::fn)]` -- the
-    /// consumer-side teardown counterpart to `hydrate`, called when this
-    /// class's component is removed/disabled/despawned (see
-    /// `WorldComponentRegistration::on_removed`'s doc, `pulsar_world_registry`).
-    /// `path` must name a function with EXACTLY the signature
-    /// `fn(&pulsar_reflection::RuntimeComponentOwner, &mut dyn
-    /// pulsar_reflection::ComponentRuntimeContext)` -- same "used directly as
-    /// the fn pointer, no wrapper" rule as `custom_hydrate` above. Omitted by
-    /// default: most components create nothing outside `World` that needs
-    /// tearing down, so a generated no-op is the right default (see
-    /// `on_removed_fn_def`/`on_removed_fn_ref` below).
-    on_removed: Option<syn::Path>,
-    /// `#[register_world_component(remove = path::to::fn)]` -- an escape
-    /// hatch for a type whose hydrate ALSO populates a companion `World`
-    /// component (e.g. `LightComponent`'s auto-generated `#[gpu]`-mirrored
-    /// `LightComponentGpuMirror`, Pulsar-Native#561) that removing just
-    /// `Self` would leave orphaned.
-    /// `path` must name a function with EXACTLY the signature
-    /// `fn(&mut pulsar_scenedb::World, pulsar_scenedb::Entity)` -- same
-    /// "used directly as the fn pointer, no wrapper" rule as `custom_hydrate`.
-    /// Omitted by default: the generated `world.remove::<Self>(entity)` is
-    /// correct for any class that doesn't hydrate a companion component.
+    decode: Option<syn::Path>,
     custom_remove: Option<syn::Path>,
-    /// `#[register_world_component(gpu_mirror)]` -- a bare flag (like
-    /// `custom_remove`'s inverse, no `= path`) that makes the DEFAULT
-    /// (non-custom) generated `hydrate`/`remove` also call `Self`'s
-    /// `pulsar_world_registry::GpuMirrored::sync_gpu_mirror`/
-    /// `remove_gpu_mirror`, its `GpuListMirrored::sync_gpu_list_mirror`/
-    /// `remove_gpu_list_mirror`, AND its `GpuHeavyMirrored::sync_gpu_heavy_
-    /// mirror`/`remove_gpu_heavy_mirror` (the packed-scalar, var-len-list,
-    /// and heavy/handle-split companions respectively -- see
-    /// `GpuListMirrored`'s/`GpuHeavyMirrored`'s docs for why each is
-    /// separate) -- the auto-derived counterpart to
-    /// `LightComponent`'s hand-written `hydrate_light_component`/
-    /// `remove_light_component` (Pulsar-Native#561). Explicit opt-in rather
-    /// than automatic for every type (`#[engine_class]` already generates a
-    /// `GpuMirrored` impl unconditionally, including a trivial `NoGpuMirror`
-    /// one): `#[register_world_component]` is a SEPARATE macro invocation
-    /// (on the `impl ComponentRuntimeBehavior` block, not the struct) with
-    /// no visibility into whether `#[engine_class]` found any `#[gpu]`
-    /// fields on `Self` -- inserting a `NoGpuMirror` component onto every
-    /// entity of every class, unconditionally, would be a real archetype-
-    /// fragmentation cost for the overwhelming majority of classes that
-    /// have nothing to mirror, so the human states it instead of the two
-    /// macros trying to silently coordinate. Only meaningful alongside the
-    /// DEFAULT hydrate/remove -- combined with `hydrate = ...`/`remove =
-    /// ...`, this flag has no effect (the custom function fully replaces
-    /// the generated body); call `sync_gpu_mirror`/`remove_gpu_mirror`
-    /// directly from the custom function instead, same as `LightComponent`
-    /// does today for its own hand-written (pre-auto-mirror) case.
-    gpu_mirror: bool,
-    /// `#[register_world_component(refresh_gpu_mirror = path::to::fn)]` --
-    /// an escape hatch for a class whose `#[gpu]`-mirrored companion's
-    /// presence is conditional on its own data, the same way `remove` is an
-    /// escape hatch for `hydrate`/`remove`'s default bodies. `path` must
-    /// name a function with EXACTLY the signature `fn(&mut pulsar_scenedb::
-    /// World, pulsar_scenedb::Entity)` -- same "used directly as the fn
-    /// pointer, no wrapper" rule as `custom_remove`. Independent of
-    /// `gpu_mirror`: given alone (no bare `gpu_mirror` flag), it still wires
-    /// up `WorldComponentRegistration::refresh_gpu_mirror`, since that field
-    /// is what a live properties-panel edit needs re-run on regardless of
-    /// whether `hydrate`/`remove` also got the generic treatment. Given
-    /// alongside `gpu_mirror`, it replaces that flag's default unconditional
-    /// resync the same way `hydrate = ...` replaces the default hydrate body
-    /// (see `WorldComponentRegistration::refresh_gpu_mirror`'s own doc,
-    /// `pulsar_world_registry`, for why this exists as a distinct hook
-    /// rather than being folded into `dispatch`).
-    refresh_gpu_mirror: Option<syn::Path>,
+    property_written: Option<syn::Path>,
 }
 
 impl syn::parse::Parse for RegisterWorldComponentArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut custom_hydrate = None;
-        let mut on_removed = None;
-        let mut custom_remove = None;
-        let mut gpu_mirror = false;
-        let mut refresh_gpu_mirror = None;
+        let mut args = RegisterWorldComponentArgs {
+            decode: None,
+            custom_remove: None,
+            property_written: None,
+        };
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
-            match key.to_string().as_str() {
-                "hydrate" => {
-                    let _: syn::Token![=] = input.parse()?;
-                    custom_hydrate = Some(input.parse()?);
-                }
-                "on_removed" => {
-                    let _: syn::Token![=] = input.parse()?;
-                    on_removed = Some(input.parse()?);
-                }
-                "remove" => {
-                    let _: syn::Token![=] = input.parse()?;
-                    custom_remove = Some(input.parse()?);
-                }
-                "gpu_mirror" => {
-                    gpu_mirror = true;
-                }
-                "refresh_gpu_mirror" => {
-                    let _: syn::Token![=] = input.parse()?;
-                    refresh_gpu_mirror = Some(input.parse()?);
-                }
+            let _: syn::Token![=] = input.parse()?;
+            let slot = match key.to_string().as_str() {
+                "decode" => &mut args.decode,
+                "remove" => &mut args.custom_remove,
+                "property_written" => &mut args.property_written,
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
                         format!(
-                            "unknown #[register_world_component] option `{other}` (expected `hydrate`, `remove`, `on_removed`, `gpu_mirror`, or `refresh_gpu_mirror`)"
+                            "unknown #[register_world_component] option `{other}` (expected `decode`, `remove`, or `property_written`)"
                         ),
                     ));
                 }
-            }
+            };
+            *slot = Some(input.parse()?);
             if input.peek(syn::Token![,]) {
                 input.parse::<syn::Token![,]>()?;
             } else {
                 break;
             }
         }
-        Ok(RegisterWorldComponentArgs {
-            custom_hydrate,
-            on_removed,
-            custom_remove,
-            gpu_mirror,
-            refresh_gpu_mirror,
-        })
+        Ok(args)
     }
 }
 
+/// Opt a component into `pulsar_world_registry`'s `World` bridge
+/// (Pulsar-Native#555/#556, Phase B4/B5): its typed value can be hydrated
+/// from JSON once (a boundary decode) and inserted into `pulsar_scenedb::World`
+/// through SceneDB's erased insert.
+///
+/// Applied to an inherent `impl Type {}` block (emitted unchanged); the
+/// class is named after the type. Components reach their consumers through
+/// their data: there is no per-component runtime behavior to register
+/// (Pulsar-Native#1035, Phases 4 and 6).
 #[proc_macro_attribute]
 pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = if attr.is_empty() {
         RegisterWorldComponentArgs {
-            custom_hydrate: None,
-            on_removed: None,
+            decode: None,
             custom_remove: None,
-            gpu_mirror: false,
-            refresh_gpu_mirror: None,
+            property_written: None,
         }
     } else {
         match syn::parse::<RegisterWorldComponentArgs>(attr) {
@@ -1117,28 +1476,10 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         .into();
     }
 
-    let Some((_, trait_path, _)) = &impl_block.trait_ else {
+    if impl_block.trait_.is_some() {
         return syn::Error::new_spanned(
             &impl_block.self_ty,
-            "#[register_world_component] must be used on `impl ComponentRuntimeBehavior for Type`",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    let Some(trait_ident) = trait_path.segments.last().map(|s| &s.ident) else {
-        return syn::Error::new_spanned(
-            trait_path,
-            "invalid trait path for #[register_world_component]",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    if trait_ident != "ComponentRuntimeBehavior" {
-        return syn::Error::new_spanned(
-            trait_path,
-            "#[register_world_component] must target `ComponentRuntimeBehavior` impl",
+            "#[register_world_component] goes on an inherent `impl Type {}` block",
         )
         .to_compile_error()
         .into();
@@ -1156,88 +1497,24 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         .to_compile_error()
         .into();
     };
-    let hydrate_fn_name = quote::format_ident!("__pulsar_world_hydrate_{}", self_ty_ident);
+    let class_name = syn::LitStr::new(&self_ty_ident.to_string(), self_ty_ident.span());
+    let default_fn_name = quote::format_ident!("__pulsar_world_default_{}", self_ty_ident);
+    let decode_fn_name = quote::format_ident!("__pulsar_world_decode_{}", self_ty_ident);
+    let clone_fn_name = quote::format_ident!("__pulsar_world_clone_{}", self_ty_ident);
     let remove_fn_name = quote::format_ident!("__pulsar_world_remove_{}", self_ty_ident);
-    let dispatch_fn_name = quote::format_ident!("__pulsar_world_dispatch_{}", self_ty_ident);
     let get_fn_name = quote::format_ident!("__pulsar_world_get_engine_class_{}", self_ty_ident);
     let get_mut_fn_name =
         quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", self_ty_ident);
-    let on_removed_fn_name = quote::format_ident!("__pulsar_world_on_removed_{}", self_ty_ident);
-    let refresh_gpu_mirror_fn_name =
-        quote::format_ident!("__pulsar_world_refresh_gpu_mirror_{}", self_ty_ident);
+    let property_written_fn_name =
+        quote::format_ident!("__pulsar_world_property_written_{}", self_ty_ident);
 
-    // Note this macro does NOT emit `#impl_block` -- unlike
-    // `#[register_runtime_behavior]`, it's meant to be stacked alongside
-    // that macro on the same impl block, and only one of the two attributes
-    // on an item should re-emit the original block (attribute macros
-    // compose top-to-bottom; whichever runs first passes its output to the
-    // next, so re-emitting from both would duplicate the impl). Convention
-    // here: `#[register_runtime_behavior]` keeps ownership of emitting the
-    // block; `#[register_world_component]` is written *above* it and must
-    // only add new items.
-    // Default auto-generated hydrate, emitted only when no `hydrate = path`
-    // override was given (see `RegisterWorldComponentArgs`'s doc) -- when
-    // one was, the registration below points its `hydrate` field straight
-    // at the caller-named function instead, and this default is skipped
-    // entirely (never generated, so a hand-written hydrate never competes
-    // with an unused generated one under the same name).
-    let gpu_mirror_sync = args.gpu_mirror.then(|| {
-        quote! {
-            <#self_ty as pulsar_world_registry::GpuMirrored>::sync_gpu_mirror(&parsed, world, entity);
-        }
-    });
-    let (hydrate_fn_def, hydrate_fn_ref) = match &args.custom_hydrate {
-        None => (
-            quote! {
-                #[doc(hidden)]
-                #[allow(non_snake_case)]
-                fn #hydrate_fn_name(
-                    world: &mut pulsar_scenedb::World,
-                    entity: pulsar_scenedb::Entity,
-                    data: &::serde_json::Value,
-                ) -> ::std::result::Result<(), ::std::string::String> {
-                    let parsed: #self_ty = ::serde_json::from_value(data.clone())
-                        .map_err(|error| error.to_string())?;
-                    #gpu_mirror_sync
-                    world.insert(entity, parsed);
-                    Ok(())
-                }
-            },
-            quote! { #hydrate_fn_name },
-        ),
-        Some(custom) => (quote! {}, quote! { #custom }),
+    let decode_expr = match &args.decode {
+        Some(custom) => quote! { #custom(data)? },
+        None => quote! {
+            ::pulsar_world_registry::decode_json::<#self_ty>(data)?
+        },
     };
 
-    // Same optional-override shape as `hydrate` above: a generated no-op
-    // when no `on_removed = path` was given (the common case -- most
-    // components create nothing outside `World` for `sync_component` to
-    // have to unwind), or the caller-named function used directly as the
-    // registration's fn pointer otherwise.
-    let (on_removed_fn_def, on_removed_fn_ref) = match &args.on_removed {
-        None => (
-            quote! {
-                #[doc(hidden)]
-                #[allow(non_snake_case)]
-                fn #on_removed_fn_name(
-                    _owner: &pulsar_reflection::RuntimeComponentOwner,
-                    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-                ) {
-                }
-            },
-            quote! { #on_removed_fn_name },
-        ),
-        Some(custom) => (quote! {}, quote! { #custom }),
-    };
-
-    // Same optional-override shape as `hydrate`/`on_removed` above: a
-    // generated `world.remove::<Self>(entity)` when no `remove = path` was
-    // given (correct for any class that doesn't hydrate a companion
-    // component), or the caller-named function used directly otherwise.
-    let gpu_mirror_remove = args.gpu_mirror.then(|| {
-        quote! {
-            <#self_ty as pulsar_world_registry::GpuMirrored>::remove_gpu_mirror(world, entity);
-        }
-    });
     let (remove_fn_def, remove_fn_ref) = match &args.custom_remove {
         None => (
             quote! {
@@ -1245,7 +1522,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 #[allow(non_snake_case)]
                 fn #remove_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
                     let _ = world.remove::<#self_ty>(entity);
-                    #gpu_mirror_remove
                 }
             },
             quote! { #remove_fn_name },
@@ -1253,81 +1529,58 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         Some(custom) => (quote! {}, quote! { #custom }),
     };
 
-    // `WorldComponentRegistration::refresh_gpu_mirror`'s generated body
-    // (`pulsar_world_registry`'s own doc has the full rationale). Three
-    // shapes, same override-beats-flag precedence `hydrate`/`remove` use:
-    //   - `refresh_gpu_mirror = path` given: use directly, no wrapper.
-    //   - bare `gpu_mirror` flag, no override: unconditionally re-sync every
-    //     mirror kind `#self_ty` has one of, re-borrowing `world` once to
-    //     read `Self` and compute the (small, `Pod`/cheap) mirror values,
-    //     THEN inserting them -- can't hold `component: &Self` (itself
-    //     borrowed from `world`) across the `world.insert` calls that need
-    //     `&mut world`, same reason `hydrate`'s default body works off a
-    //     freshly-deserialized, `world`-independent `parsed` instead.
-    //   - neither: a no-op, same shape as `on_removed`'s default.
-    let (refresh_gpu_mirror_fn_def, refresh_gpu_mirror_fn_ref) = match &args.refresh_gpu_mirror {
-        Some(custom) => (quote! {}, quote! { #custom }),
-        None if args.gpu_mirror => (
-            quote! {
-                #[doc(hidden)]
-                #[allow(non_snake_case)]
-                fn #refresh_gpu_mirror_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-                    let Some(gpu_mirror) =
-                        world.get::<#self_ty>(entity).map(|component| {
-                            <#self_ty as pulsar_world_registry::GpuMirrored>::to_gpu_mirror(component)
-                        })
-                    else {
-                        return;
-                    };
-                    world.insert(entity, gpu_mirror);
-                }
-            },
-            quote! { #refresh_gpu_mirror_fn_name },
-        ),
-        None => (
-            quote! {
-                #[doc(hidden)]
-                #[allow(non_snake_case)]
-                fn #refresh_gpu_mirror_fn_name(_world: &mut pulsar_scenedb::World, _entity: pulsar_scenedb::Entity) {
-                }
-            },
-            quote! { #refresh_gpu_mirror_fn_name },
-        ),
+    let property_written_body = match &args.property_written {
+        Some(custom) => quote! {
+            if let Some(value) = value.as_any_mut().downcast_mut::<#self_ty>() {
+                #custom(value, property);
+            }
+        },
+        None => quote! {
+            let _ = (value, property);
+        },
     };
 
     let output = quote! {
-        #hydrate_fn_def
-        #on_removed_fn_def
         #remove_fn_def
-        #refresh_gpu_mirror_fn_def
 
         #[doc(hidden)]
         #[allow(non_snake_case)]
-        fn #dispatch_fn_name(
-            world: &pulsar_scenedb::World,
-            entity: pulsar_scenedb::Entity,
-            owner: &pulsar_reflection::RuntimeComponentOwner,
-            component_index: usize,
-            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-        ) -> bool {
-            match world.get::<#self_ty>(entity) {
-                Some(component) => {
-                    <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(
-                        owner, component_index, component, context,
-                    );
-                    true
-                }
-                None => false,
-            }
+        fn #default_fn_name() -> ::std::boxed::Box<dyn ::std::any::Any + Send + Sync> {
+            ::std::boxed::Box::new(<#self_ty as ::core::default::Default>::default())
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #decode_fn_name(
+            data: &::serde_json::Value,
+        ) -> ::std::result::Result<::std::boxed::Box<dyn ::std::any::Any + Send + Sync>, ::std::string::String> {
+            let value: #self_ty = #decode_expr;
+            Ok(::std::boxed::Box::new(value))
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #clone_fn_name(
+            value: &dyn ::std::any::Any,
+        ) -> ::std::option::Option<::std::boxed::Box<dyn ::std::any::Any + Send + Sync>> {
+            value
+                .downcast_ref::<#self_ty>()
+                .map(|value| ::std::boxed::Box::new(::core::clone::Clone::clone(value))
+                    as ::std::boxed::Box<dyn ::std::any::Any + Send + Sync>)
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #property_written_fn_name(
+            value: &mut dyn pulsar_reflection::EngineClass,
+            property: ::std::option::Option<&str>,
+        ) {
+            #property_written_body
         }
 
         // Direct live access to the real `World`-resident value as `&(mut)
-        // dyn EngineClass` -- this is the properties panel's edit path
-        // (Pulsar-Native#561): `get_properties()`'s getter/setter closures
-        // already walk `#[sub_props]` nesting correctly, so applying them
-        // straight to this reference mutates the one real component in
-        // place. No JSON, no throwaway instance, no second copy of the
-        // state to keep in sync.
+        // dyn EngineClass` -- the properties panel's read and edit paths
+        // (Pulsar-Native#561). No JSON, no throwaway instance.
         #[doc(hidden)]
         #[allow(non_snake_case)]
         fn #get_fn_name(
@@ -1346,22 +1599,25 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
             entity: pulsar_scenedb::Entity,
         ) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
             // A guard, not a bare `&mut`: SceneDB's write hooks (GPU mirror,
-            // change tracker, subscriptions, journals) fire when it drops,
+            // change tracker, journals, object subscriptions) fire when it drops,
             // after the edit, and only if it was written through (#841).
             pulsar_world_registry::EngineClassMut::of::<#self_ty>(world, entity)
         }
 
         pulsar_world_registry::inventory::submit! {
             pulsar_world_registry::WorldComponentRegistration {
-                class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                class_name: #class_name,
                 component_type: pulsar_scenedb::component_id::<#self_ty>,
-                hydrate: #hydrate_fn_ref,
+                default_value: #default_fn_name,
+                decode: #decode_fn_name,
+                clone_value: #clone_fn_name,
+                value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<#self_ty>,
+                value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<#self_ty>,
+                register_erased: pulsar_scenedb::register_component::<#self_ty>,
                 remove: #remove_fn_ref,
-                dispatch: #dispatch_fn_name,
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,
-                on_removed: #on_removed_fn_ref,
-                refresh_gpu_mirror: #refresh_gpu_mirror_fn_ref,
+                property_written: #property_written_fn_name,
             }
         }
 
@@ -1633,6 +1889,12 @@ struct GpuLeafField {
 /// group happens to contribute real fields this time or the zero-sized
 /// `NoGpuMirror`).
 ///
+/// The companion is never inserted as a component. The generated code
+/// registers a SceneDB GPU dispatch for the authored struct itself that
+/// derives the companion and writes its packed row
+/// (`pulsar_scenedb::gpu::write_derived_row`), plus the matching clear, so the
+/// row follows the authored value through SceneDB's own write lifecycle.
+///
 /// No error return: every `#[gpu]` field is accepted unconditionally (see
 /// [`GpuLeafField`]'s doc) -- a type that genuinely can't work here (not
 /// `Copy`) fails at the generated `GpuRepr<T>` field's own bound, an
@@ -1641,6 +1903,7 @@ fn gpu_mirror_codegen(
     name: &syn::Ident,
     gpu_leaf_fields: &[GpuLeafField],
     sub_props_fields: &[&Field],
+    gpu_rows: bool,
 ) -> proc_macro2::TokenStream {
     if gpu_leaf_fields.is_empty() && sub_props_fields.is_empty() {
         // Nothing to mirror -- the trivial, common-case impl.
@@ -1655,6 +1918,59 @@ fn gpu_mirror_codegen(
     }
 
     let mirror_name = quote::format_ident!("{}GpuMirror", name);
+    let dispatch_fn_name = quote::format_ident!("__pulsar_gpu_companion_dispatch_{}", name);
+    let clear_fn_name = quote::format_ident!("__pulsar_gpu_companion_clear_{}", name);
+    // Only an opted-in class (`#[engine_class(gpu_rows)]`) uploads its
+    // companion as a SceneDB GPU row; otherwise the companion is a CPU
+    // mapping helper (e.g. `LightComponent`'s, which its derived light row is
+    // built from) and nothing is uploaded that no pass reads
+    // (Pulsar-Native#1035, Phase 4).
+    let gpu_row_registration = if gpu_rows {
+        quote! {
+        // The companion is not a component anyone inserts. `#name`'s own
+        // SceneDB GPU dispatch derives it from the live value and writes its
+        // packed row, so the row follows every insert (typed or erased),
+        // `get_mut` write, removal, despawn and mirror replay of `#name`
+        // through SceneDB's normal write path -- no refresh call, no second
+        // stored copy to keep in step.
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #dispatch_fn_name(
+            mirror: &::pulsar_scenedb::gpu::GpuMirrorHandle,
+            row: u32,
+            data: *const (),
+            is_new_insert: bool,
+        ) {
+            // SAFETY: SceneDB reaches this only through `#name`'s own
+            // `ComponentId`, with a pointer to a live `#name`.
+            let value = unsafe { &*(data as *const #name) };
+            let derived = <#name as pulsar_world_registry::GpuMirrored>::to_gpu_mirror(value);
+            ::pulsar_scenedb::gpu::write_derived_row(mirror, row, &derived, is_new_insert);
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #clear_fn_name(mirror: &::pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+            ::pulsar_scenedb::gpu::clear_derived_row::<#mirror_name>(mirror, row);
+        }
+
+        ::pulsar_scenedb::pulsar_reflection::inventory::submit! {
+            ::pulsar_scenedb::gpu::GpuMirrorRegistration {
+                component_id: ::pulsar_scenedb::component_id::<#name>,
+                dispatch: #dispatch_fn_name,
+            }
+        }
+
+        ::pulsar_scenedb::pulsar_reflection::inventory::submit! {
+            ::pulsar_scenedb::gpu::world_mirror::GpuClearRegistration {
+                component_id: ::pulsar_scenedb::component_id::<#name>,
+                clear: #clear_fn_name,
+            }
+        }
+        }
+    } else {
+        quote! {}
+    };
 
     let leaf_field_defs = gpu_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
@@ -1725,6 +2041,8 @@ fn gpu_mirror_codegen(
                 }
             }
         }
+
+        #gpu_row_registration
     }
 }
 

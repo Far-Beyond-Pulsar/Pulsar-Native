@@ -8,7 +8,9 @@
 use std::sync::Arc;
 
 use crate::compiled::{Cx, Exit};
-use crate::debugger::{DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot, RegisterSnapshot, StopReason};
+use crate::debugger::{
+    DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot, RegisterSnapshot, StopReason,
+};
 use crate::error::{ScriptError, ScriptErrorKind};
 use crate::exec::{self, binary, binary_scalar, unary};
 use crate::link::{FuncId, Instance, Program};
@@ -330,7 +332,14 @@ impl Vm {
     /// [`push_frame`](Self::push_frame) for a call from the running frame:
     /// the arguments are copied register to register, with no intermediate
     /// allocation.
-    fn push_frame_from(&mut self, program: &Program, func: u32, caller_base: usize, args: &[Reg], ret_dst: Option<Reg>) {
+    fn push_frame_from(
+        &mut self,
+        program: &Program,
+        func: u32,
+        caller_base: usize,
+        args: &[Reg],
+        ret_dst: Option<Reg>,
+    ) {
         let base = self.regs.len();
         self.regs
             .extend(program.registers[func as usize].iter().cloned());
@@ -565,7 +574,11 @@ impl Vm {
                     // A latent native (`wait::frames`, ..) asked for the call to
                     // suspend: park it right after the call; the runtime reads what
                     // it is waiting for from the host's latent state.
-                    if host.latent.as_deref().is_some_and(crate::latent::Latent::suspend_requested) {
+                    if host
+                        .latent
+                        .as_deref()
+                        .is_some_and(crate::latent::Latent::suspend_requested)
+                    {
                         self.frames.last_mut().expect("active").pc = next;
                         return Ok(self.suspend(program, frame_base, 0.0));
                     }
@@ -646,7 +659,10 @@ impl Vm {
                             value: self.regs[frame.base + index].clone(),
                         })
                         .collect(),
-                    output_values: function.debug.as_ref().into_iter()
+                    output_values: function
+                        .debug
+                        .as_ref()
+                        .into_iter()
                         .flat_map(|debug| debug.register_sources.iter())
                         .filter_map(|source| {
                             let register = usize::from(source.register);

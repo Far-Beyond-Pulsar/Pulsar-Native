@@ -87,6 +87,14 @@ pub struct ToggleViewMode;
 
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager, no_json)]
+pub struct PopoutFileManager;
+
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager, no_json)]
+pub struct DockFileManager;
+
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager, no_json)]
 pub struct Copy;
 
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]

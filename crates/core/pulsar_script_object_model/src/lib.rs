@@ -16,7 +16,7 @@
 //!
 //! - **One world.** Handles are meaningless without a world argument; all
 //!   accessors take `&pulsar_scenedb::World`/`&mut World` explicitly (the
-//!   same `Arc<RwLock<WorldSceneStore>>` handle pattern handoff A
+//!   same `Arc<RwLock<SceneDb>>` handle pattern handoff A
 //!   established; callers pass `store.read().world()` / `.world_mut()`).
 //! - **Validated per access.** A ref that was valid when stored may be stale
 //!   when used; storing refs freely is safe and supported. Staleness is an
@@ -25,10 +25,10 @@
 //!   missing, or mismatched targets ([`errors`]), including the
 //!   `Entity::DANGLING` sentinel (scripts' `entity::none()`, #888); see
 //!   [`contract`] for the full handle-semantics page (#641).
-//! - **Panel-parity routing.** Property reads/writes route exactly like the
-//!   properties panel (#519/#575): the first enabled instance of a class is
-//!   the *live-typed* value in `World`; every other index lives as JSON in
-//!   its own instance record ([`instances::ComponentInstanceStore`]).
+//! - **One instance, one value.** Every attached component instance is its
+//!   own entity holding its own typed value (Pulsar-Native#1035, D1); a
+//!   [`ComponentRef`] resolves to exactly one of them, and every accessor
+//!   reads and writes that typed value.
 //!
 //! ## Module map
 //!
@@ -36,10 +36,8 @@
 //! |---|---|
 //! | [`refs`] | `ActorRef`/`ComponentRef` value types + liveness validation |
 //! | [`errors`] | the typed error taxonomy (#641) |
-//! | [`instances`] | duplicate-instance storage seam (JSON records) |
-//! | [`routing`] | live-typed-vs-duplicate routing internals |
 //! | [`access`] | property/method accessors |
-//! | [`subscribe`] | change-notification helpers over SceneDB#47 subscriptions |
+//! | [`subscribe`] | change watching over SceneDB change journals |
 //! | [`resolution`] | StableId <-> Entity serialization + resolution (#639) |
 //! | [`reflect`] | identity types through reflection registries (#642) |
 //! | [`dispatch`] | demo dynamic-dispatch methods taking/returning refs (#642) |
@@ -51,11 +49,9 @@ pub mod access;
 pub mod contract;
 pub mod dispatch;
 pub mod errors;
-pub mod instances;
 pub mod reflect;
 pub mod refs;
 pub mod resolution;
-pub mod routing;
 pub mod subscribe;
 pub mod world_host;
 
@@ -66,5 +62,4 @@ mod property_tests;
 pub(crate) mod test_support;
 
 pub use errors::ScriptRefError;
-pub use instances::{ComponentInstanceStore, InstanceRecord};
 pub use refs::{ActorRef, ComponentRef};

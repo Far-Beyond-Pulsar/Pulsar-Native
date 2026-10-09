@@ -96,7 +96,8 @@ impl PrefabAsset {
         }
         let bytes = engine_fs::virtual_fs::read_file(&path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        let text = String::from_utf8(bytes).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        let text = String::from_utf8(bytes)
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let mut prefab: Self = serde_json::from_str(&text)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
         let renamed = prefab.reassign_slot_ids();

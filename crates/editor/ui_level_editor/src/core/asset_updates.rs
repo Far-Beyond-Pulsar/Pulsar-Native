@@ -12,11 +12,10 @@
 
 use std::sync::Arc;
 
-use engine_backend::scene::SceneWorldExt;
 use parking_lot::RwLock;
 use plugin_editor_api::{AssetKind, AssetSubscription, AssetUpdated};
 
-use crate::scene_edit::{ObjectId, classes};
+use crate::scene_edit::{classes, ObjectId};
 use crate::state::LevelEditorState;
 
 /// Subscribe the editor at `state` to class asset updates for as long as
@@ -43,21 +42,10 @@ pub fn handle_asset_update(
     let touched = {
         let state = state.read();
         let mut world = state.scene.world_mut();
-        let touched = classes::apply_class_asset_update(&mut world, event);
-        // #935: rebuilt generated children are new entities, and their
-        // components were inserted before anything watched them, so the
-        // renderer saw no change for them. Arm their render-row
-        // subscriptions, then report every rebuilt component as changed
-        // (GPU mirror refresh + a `Mut` write, what a property edit does),
-        // so each instance's light / mesh rows are re-derived at the next
-        // frame, not when the object is next touched.
-        for id in &touched {
-            if let Some(entity) = world.entity_for(id) {
-                engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
-                engine_backend::scene::mark_render_components_changed(&mut world, entity);
-            }
-        }
-        touched
+        // Rebuilt instances are ordinary component writes: their GPU rows
+        // follow through SceneDB's own write path, and the renderer's scene
+        // join picks them up with nothing armed or marked here (#935).
+        classes::apply_class_asset_update(&mut world, event)
     };
     let mut state = state.write();
     if !touched.is_empty() {
@@ -72,4 +60,60 @@ pub fn handle_asset_update(
         state.play.pie.pending_asset_updates.push(event.clone());
     }
     touched
+}
+
+/// Subscribe the editor at `state` to mesh asset updates (a re-import): every
+/// static mesh naming the updated file reloads it.
+pub fn subscribe_mesh_updates(state: Arc<RwLock<LevelEditorState>>) -> AssetSubscription {
+    plugin_editor_api::subscribe_asset_updates(Some(AssetKind::Mesh), move |event| {
+        let reloaded = handle_mesh_update(&state, event);
+        if reloaded > 0 {
+            tracing::info!(
+                meshes = reloaded,
+                "Reloaded meshes after a mesh asset update"
+            );
+        }
+    })
+}
+
+/// Reload every `StaticMeshComponent` whose `mesh_asset` resolves to the
+/// updated file, through the same `mesh_asset` write the properties panel
+/// makes (one write per mesh, its GPU rows following). Returns how many
+/// reloaded.
+pub fn handle_mesh_update(state: &Arc<RwLock<LevelEditorState>>, event: &AssetUpdated) -> usize {
+    use helio_component::components::StaticMeshComponent;
+    let (Some(path), Some(project)) = (event.path.as_ref(), engine_state::get_project_path())
+    else {
+        return 0;
+    };
+    let canonical =
+        |path: &std::path::Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let updated = canonical(path);
+    let project = std::path::PathBuf::from(project);
+    let state = state.read();
+    let mut world = state.scene.world_mut();
+    let matching: Vec<(
+        pulsar_scenedb::Entity,
+        helio_component::components::MeshAssetPath,
+    )> = world
+        .query::<&StaticMeshComponent>()
+        .filter(|(_, mesh)| {
+            !mesh.mesh_asset.as_str().is_empty()
+                && canonical(&helio_component::subsystems::resolve_asset_path(
+                    &project,
+                    mesh.mesh_asset.as_str(),
+                )) == updated
+        })
+        .map(|(instance, mesh)| (instance, mesh.mesh_asset.clone()))
+        .collect();
+    for (instance, mesh_asset) in &matching {
+        let _ = pulsar_world_registry::set_world_component_property(
+            "StaticMeshComponent",
+            &mut world,
+            *instance,
+            "mesh_asset",
+            Box::new(mesh_asset.clone()),
+        );
+    }
+    matching.len()
 }

@@ -8,16 +8,17 @@ use std::collections::HashMap;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, AssignmentOperator, AssignmentTarget, BinaryOperator, BindingPattern, Class, ClassElement,
-    ClassHeritage, Declaration, ExportDefaultDeclarationKind, Expression, ForStatementInit, FormalParameter,
-    Function, LogicalOperator, MethodDefinitionKind, PropertyKey, SimpleAssignmentTarget,
-    Statement, TSAccessibility, TSType, TSTypeName, UnaryOperator, UpdateOperator, VariableDeclarationKind,
+    Argument, AssignmentOperator, AssignmentTarget, BinaryOperator, BindingPattern, Class,
+    ClassElement, ClassHeritage, Declaration, ExportDefaultDeclarationKind, Expression,
+    ForStatementInit, FormalParameter, Function, LogicalOperator, MethodDefinitionKind,
+    PropertyKey, SimpleAssignmentTarget, Statement, TSAccessibility, TSType, TSTypeName,
+    UnaryOperator, UpdateOperator, VariableDeclarationKind,
 };
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType, Span};
 use pulsar_script_vm::{
-    verify, BinOp, Constant, DebugInfo, Function as VmFunction, Import, Instr, Module, NativeRegistry, Param, Reg,
-    SourceLoc, Type, TypeRegistry, UnOp, Variable,
+    verify, BinOp, Constant, DebugInfo, Function as VmFunction, Import, Instr, Module,
+    NativeRegistry, Param, Reg, SourceLoc, Type, TypeRegistry, UnOp, Variable,
 };
 
 use crate::declarations::callable;
@@ -56,14 +57,23 @@ pub fn compile_class(src: &ClassSource<'_>, natives: &NativeRegistry) -> Compile
     for error in parsed.diagnostics.errors() {
         let offset = error.labels.first().map_or(0, |l| l.offset());
         let (line, column) = cx.lines.position(src.source, offset);
-        cx.diagnostics.push(Diagnostic::error(error.message.to_string(), line, column));
+        cx.diagnostics
+            .push(Diagnostic::error(error.message.to_string(), line, column));
     }
     if !cx.diagnostics.is_empty() {
-        return Compiled { module: None, diagnostics: cx.diagnostics, schema: None };
+        return Compiled {
+            module: None,
+            diagnostics: cx.diagnostics,
+            schema: None,
+        };
     }
 
     let Some(class) = cx.find_class(&parsed.program.body) else {
-        return Compiled { module: None, diagnostics: cx.diagnostics, schema: None };
+        return Compiled {
+            module: None,
+            diagnostics: cx.diagnostics,
+            schema: None,
+        };
     };
     cx.compile(class)
 }
@@ -134,7 +144,8 @@ impl<'a> Cx<'a> {
 
     fn err(&mut self, span: Span, message: impl Into<String>) {
         let (line, column) = self.lines.position(self.src.source, span.start);
-        self.diagnostics.push(Diagnostic::error(message, line, column));
+        self.diagnostics
+            .push(Diagnostic::error(message, line, column));
     }
 
     fn unsupported(&mut self, span: Span, what: &str) {
@@ -156,7 +167,8 @@ impl<'a> Cx<'a> {
                 },
                 Statement::ExportDeclaration(e) => match &e.declaration {
                     Declaration::ClassDeclaration(c) => Some(&**c),
-                    Declaration::TSTypeAliasDeclaration(_) | Declaration::TSInterfaceDeclaration(_) => None,
+                    Declaration::TSTypeAliasDeclaration(_)
+                    | Declaration::TSInterfaceDeclaration(_) => None,
                     _ => {
                         self.err(e.span, "only the script class may be exported");
                         None
@@ -168,13 +180,18 @@ impl<'a> Cx<'a> {
                 }
                 Statement::ClassDeclaration(c) => Some(&**c),
                 // Types are checked by tooling against the generated declarations; they carry no behaviour.
-                Statement::TSTypeAliasDeclaration(_) | Statement::TSInterfaceDeclaration(_) | Statement::EmptyStatement(_) => None,
+                Statement::TSTypeAliasDeclaration(_)
+                | Statement::TSInterfaceDeclaration(_)
+                | Statement::EmptyStatement(_) => None,
                 Statement::ImportDeclaration(i) => {
                     self.err(i.span, "imports are not supported: everything a class may use is declared by the generated declarations");
                     None
                 }
                 other => {
-                    self.err(other.span(), "only the script class may appear at the top level");
+                    self.err(
+                        other.span(),
+                        "only the script class may appear at the top level",
+                    );
                     None
                 }
             };
@@ -188,7 +205,10 @@ impl<'a> Cx<'a> {
         }
         if found.is_none() && self.diagnostics.is_empty() {
             self.diagnostics.push(Diagnostic::error(
-                format!("no class found: declare `export default class {} {{ .. }}`", self.src.class_name),
+                format!(
+                    "no class found: declare `export default class {} {{ .. }}`",
+                    self.src.class_name
+                ),
                 0,
                 0,
             ));
@@ -226,9 +246,16 @@ impl<'a> Cx<'a> {
                     "float" => Some(Type::Float),
                     "Entity" => Some(Type::Entity),
                     "Map" => {
-                        let args: Vec<_> = reference.type_arguments.iter().flat_map(|a| a.params.iter()).collect();
+                        let args: Vec<_> = reference
+                            .type_arguments
+                            .iter()
+                            .flat_map(|a| a.params.iter())
+                            .collect();
                         let [key, value] = args[..] else {
-                            self.err(span, "`Map` takes a key and a value type: `Map<string, int>`");
+                            self.err(
+                                span,
+                                "`Map` takes a key and a value type: `Map<string, int>`",
+                            );
                             return None;
                         };
                         let key = self.resolve_type(key)?;
@@ -239,7 +266,9 @@ impl<'a> Cx<'a> {
                         Some(Type::map(key, self.resolve_type(value)?))
                     }
                     _ if types.component(name).is_some() => Some(Type::Component(name.to_owned())),
-                    _ if types.value_types().any(|v| v == name) => Some(Type::Object(name.to_owned())),
+                    _ if types.value_types().any(|v| v == name) => {
+                        Some(Type::Object(name.to_owned()))
+                    }
                     _ => {
                         self.err(span, format!("unknown type `{name}`"));
                         None
@@ -253,8 +282,13 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn annotation(&mut self, annotation: &Option<oxc_allocator::Box<'_, oxc_ast::ast::TSTypeAnnotation<'_>>>) -> Option<Type> {
-        annotation.as_ref().and_then(|a| self.resolve_type(&a.type_annotation))
+    fn annotation(
+        &mut self,
+        annotation: &Option<oxc_allocator::Box<'_, oxc_ast::ast::TSTypeAnnotation<'_>>>,
+    ) -> Option<Type> {
+        annotation
+            .as_ref()
+            .and_then(|a| self.resolve_type(&a.type_annotation))
     }
 
     // ---- constants and imports -----------------------------------------------
@@ -272,7 +306,10 @@ impl<'a> Cx<'a> {
             return Some(i);
         }
         let native = self.natives.get(name)?;
-        self.imports.push(Import { name: name.to_owned(), sig: native.sig.clone() });
+        self.imports.push(Import {
+            name: name.to_owned(),
+            sig: native.sig.clone(),
+        });
         let index = (self.imports.len() - 1) as u32;
         self.import_index.insert(name.to_owned(), index);
         Some(index)
@@ -280,7 +317,11 @@ impl<'a> Cx<'a> {
 
     /// The native for `namespace.member`, accepting the sanitized spelling
     /// (`string_`, `new_`) the generated declarations use.
-    fn native(&self, namespace: &str, member: &str) -> Option<std::sync::Arc<pulsar_script_vm::NativeFn>> {
+    fn native(
+        &self,
+        namespace: &str,
+        member: &str,
+    ) -> Option<std::sync::Arc<pulsar_script_vm::NativeFn>> {
         let candidates = |s: &str| {
             let mut v = vec![s.to_owned()];
             if let Some(stripped) = s.strip_suffix('_') {
@@ -306,8 +347,17 @@ impl<'a> Cx<'a> {
         let class_name = self.src.class_name.to_owned();
         match &class.id {
             Some(id) if id.name.as_str() == class_name => {}
-            Some(id) => self.err(id.span, format!("the class is named `{}` but its directory is `{class_name}`: they must match", id.name)),
-            None => self.err(class.span, format!("the class needs a name: `{class_name}`")),
+            Some(id) => self.err(
+                id.span,
+                format!(
+                    "the class is named `{}` but its directory is `{class_name}`: they must match",
+                    id.name
+                ),
+            ),
+            None => self.err(
+                class.span,
+                format!("the class needs a name: `{class_name}`"),
+            ),
         }
         if !class.decorators.is_empty() {
             self.unsupported(class.span, "class decorators");
@@ -333,8 +383,13 @@ impl<'a> Cx<'a> {
                         self.err(property.span, format!("field `{name}` is declared twice"));
                         continue;
                     }
-                    declared.push(DeclaredField { name: name.clone(), ty: ty.to_string(), renamed_from });
-                    self.fields.insert(name.clone(), (variables.len() as u32, ty.clone()));
+                    declared.push(DeclaredField {
+                        name: name.clone(),
+                        ty: ty.to_string(),
+                        renamed_from,
+                    });
+                    self.fields
+                        .insert(name.clone(), (variables.len() as u32, ty.clone()));
                     variables.push((name, ty, default));
                 }
             }
@@ -356,7 +411,9 @@ impl<'a> Cx<'a> {
                 ClassElement::MethodDefinition(method) => {
                     if method.kind != MethodDefinitionKind::Method {
                         let what = match method.kind {
-                            MethodDefinitionKind::Constructor => "a constructor: initialise fields where they are declared",
+                            MethodDefinitionKind::Constructor => {
+                                "a constructor: initialise fields where they are declared"
+                            }
                             _ => "accessors",
                         };
                         self.unsupported(method.span, what);
@@ -371,7 +428,11 @@ impl<'a> Cx<'a> {
                         continue;
                     };
                     let name = key.name.as_str().to_owned();
-                    let exported = !name.starts_with('_') && !matches!(method.accessibility, Some(TSAccessibility::Private | TSAccessibility::Protected));
+                    let exported = !name.starts_with('_')
+                        && !matches!(
+                            method.accessibility,
+                            Some(TSAccessibility::Private | TSAccessibility::Protected)
+                        );
                     if self.methods.contains_key(&name) {
                         self.err(method.span, format!("method `{name}` is declared twice"));
                         continue;
@@ -382,7 +443,10 @@ impl<'a> Cx<'a> {
                     }
                 }
                 ClassElement::PropertyDefinition(_) => {}
-                other => self.unsupported(other.span(), "static blocks, accessors and index signatures"),
+                other => self.unsupported(
+                    other.span(),
+                    "static blocks, accessors and index signatures",
+                ),
             }
         }
         self.check_lifecycle();
@@ -397,7 +461,11 @@ impl<'a> Cx<'a> {
         }
 
         if self.diagnostics.iter().any(Diagnostic::is_error) {
-            return Compiled { module: None, diagnostics: self.diagnostics, schema };
+            return Compiled {
+                module: None,
+                diagnostics: self.diagnostics,
+                schema,
+            };
         }
         let schema = schema.expect("reconciled when there are no errors");
         let mut module = Module::new(class_name);
@@ -406,14 +474,31 @@ impl<'a> Cx<'a> {
         module.imports = std::mem::take(&mut self.imports);
         module.variables = variables
             .into_iter()
-            .map(|(name, ty, default)| Variable { id: schema.id_of(&name).map(str::to_owned), name, ty, default })
+            .map(|(name, ty, default)| Variable {
+                id: schema.id_of(&name).map(str::to_owned),
+                name,
+                ty,
+                default,
+            })
             .collect();
         module.functions = functions;
         if let Err(error) = verify(&module) {
-            self.diagnostics.push(Diagnostic::error(format!("internal error: the compiled module does not verify: {error}"), 0, 0));
-            return Compiled { module: None, diagnostics: self.diagnostics, schema: Some(schema) };
+            self.diagnostics.push(Diagnostic::error(
+                format!("internal error: the compiled module does not verify: {error}"),
+                0,
+                0,
+            ));
+            return Compiled {
+                module: None,
+                diagnostics: self.diagnostics,
+                schema: Some(schema),
+            };
         }
-        Compiled { module: Some(module), diagnostics: self.diagnostics, schema: Some(schema) }
+        Compiled {
+            module: Some(module),
+            diagnostics: self.diagnostics,
+            schema: Some(schema),
+        }
     }
 
     /// `begin_play()`, `tick(dt: number)`, `end_play()` and `migrate(from: int)` have fixed signatures.
@@ -422,18 +507,32 @@ impl<'a> Cx<'a> {
             ("begin_play", vec![], "begin_play(): void"),
             ("end_play", vec![], "end_play(): void"),
             ("tick", vec![Type::Float], "tick(delta: number): void"),
-            ("migrate", vec![Type::Int], "migrate(fromVersion: int): void"),
+            (
+                "migrate",
+                vec![Type::Int],
+                "migrate(fromVersion: int): void",
+            ),
         ];
         for (name, params, text) in expect {
             if let Some(sig) = self.methods.get(name).cloned() {
-                if sig.params != params || sig.ret != Type::Unit || sig.is_async && name == "migrate" {
-                    self.diagnostics.push(Diagnostic::error(format!("`{name}` must be declared `{text}`"), 0, 0));
+                if sig.params != params
+                    || sig.ret != Type::Unit
+                    || sig.is_async && name == "migrate"
+                {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("`{name}` must be declared `{text}`"),
+                        0,
+                        0,
+                    ));
                 }
             }
         }
     }
 
-    fn field(&mut self, property: &oxc_ast::ast::PropertyDefinition<'_>) -> Option<(String, Type, Option<Constant>, Option<String>)> {
+    fn field(
+        &mut self,
+        property: &oxc_ast::ast::PropertyDefinition<'_>,
+    ) -> Option<(String, Type, Option<Constant>, Option<String>)> {
         if property.r#static || property.computed || property.declare {
             self.unsupported(property.span, "static, computed or `declare` fields");
             return None;
@@ -447,7 +546,10 @@ impl<'a> Cx<'a> {
         for decorator in &property.decorators {
             match renamed_from_decorator(&decorator.expression) {
                 Some(old) => renamed_from = Some(old),
-                None => self.err(decorator.span, "the only decorator a field may have is `@renamedFrom(\"oldName\")`"),
+                None => self.err(
+                    decorator.span,
+                    "the only decorator a field may have is `@renamedFrom(\"oldName\")`",
+                ),
             }
         }
         let annotated = self.annotation(&property.type_annotation);
@@ -463,13 +565,23 @@ impl<'a> Cx<'a> {
         };
         let ty = match (annotated, inferred) {
             (Some(a), Some(i)) if a != i => {
-                self.err(property.span, format!("field `{name}` is `{}` but its initializer is `{}`", crate::declarations::ts_type(&a), crate::declarations::ts_type(&i)));
+                self.err(
+                    property.span,
+                    format!(
+                        "field `{name}` is `{}` but its initializer is `{}`",
+                        crate::declarations::ts_type(&a),
+                        crate::declarations::ts_type(&i)
+                    ),
+                );
                 return None;
             }
             (Some(a), _) => a,
             (None, Some(i)) => i,
             (None, None) => {
-                self.err(property.span, format!("field `{name}` needs a type annotation or an initializer"));
+                self.err(
+                    property.span,
+                    format!("field `{name}` needs a type annotation or an initializer"),
+                );
                 return None;
             }
         };
@@ -477,7 +589,8 @@ impl<'a> Cx<'a> {
     }
 
     fn method_sig(&mut self, function: &Function<'_>, index: u32) -> Option<MethodSig> {
-        if function.generator || function.type_parameters.is_some() || function.this_param.is_some() {
+        if function.generator || function.type_parameters.is_some() || function.this_param.is_some()
+        {
             self.unsupported(function.span, "generators, generics and `this` parameters");
             return None;
         }
@@ -523,7 +636,12 @@ impl<'a> Cx<'a> {
             self.err(function.span, "an async method returns `Promise<void>`");
             ok = false;
         }
-        ok.then_some(MethodSig { index, params, ret, is_async: function.r#async })
+        ok.then_some(MethodSig {
+            index,
+            params,
+            ret,
+            is_async: function.r#async,
+        })
     }
 
     fn param(&mut self, parameter: &FormalParameter<'_>) -> Option<(String, Type)> {
@@ -536,7 +654,10 @@ impl<'a> Cx<'a> {
             return None;
         }
         let Some(annotation) = &parameter.type_annotation else {
-            self.err(parameter.span, format!("parameter `{}` needs a type annotation", id.name));
+            self.err(
+                parameter.span,
+                format!("parameter `{}` needs a type annotation", id.name),
+            );
             return None;
         };
         let ty = self.resolve_type(&annotation.type_annotation)?;
@@ -550,15 +671,26 @@ impl<'a> Cx<'a> {
     // ---- constant expressions -----------------------------------------------------
 
     /// A field initializer: a literal, or `T.new_(numbers..)` of a value type.
-    fn const_value(&mut self, expr: &Expression<'_>, expected: Option<&Type>) -> Option<(Constant, Type)> {
+    fn const_value(
+        &mut self,
+        expr: &Expression<'_>,
+        expected: Option<&Type>,
+    ) -> Option<(Constant, Type)> {
         match expr {
             Expression::ParenthesizedExpression(p) => self.const_value(&p.expression, expected),
             Expression::BooleanLiteral(b) => Some((Constant::Bool(b.value), Type::Bool)),
-            Expression::StringLiteral(s) => Some((Constant::Str(s.value.as_str().to_owned()), Type::Str)),
-            Expression::NumericLiteral(n) => Some(number_constant(n.value, n.raw.as_ref().map(|r| r.as_str()), expected)),
+            Expression::StringLiteral(s) => {
+                Some((Constant::Str(s.value.as_str().to_owned()), Type::Str))
+            }
+            Expression::NumericLiteral(n) => Some(number_constant(
+                n.value,
+                n.raw.as_ref().map(|r| r.as_str()),
+                expected,
+            )),
             Expression::UnaryExpression(u) if u.operator == UnaryOperator::UnaryNegation => {
                 if let Expression::NumericLiteral(n) = &u.argument {
-                    let (constant, ty) = number_constant(-n.value, n.raw.as_ref().map(|r| r.as_str()), expected);
+                    let (constant, ty) =
+                        number_constant(-n.value, n.raw.as_ref().map(|r| r.as_str()), expected);
                     return Some((constant, ty));
                 }
                 self.err(expr.span(), "a field initializer must be a literal");
@@ -584,17 +716,33 @@ impl<'a> Cx<'a> {
                     match argument.as_expression().and_then(numeric_literal) {
                         Some(value) => parts.push(value),
                         None => {
-                            self.err(argument.span(), "value-type initializers take number literals");
+                            self.err(
+                                argument.span(),
+                                "value-type initializers take number literals",
+                            );
                             return None;
                         }
                     }
                 }
-                let json = format!("[{}]", parts.iter().map(f64::to_string).collect::<Vec<_>>().join(","));
+                let json = format!(
+                    "[{}]",
+                    parts
+                        .iter()
+                        .map(f64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
                 if let Err(message) = TypeRegistry::global().decode_value(name, &json) {
                     self.err(expr.span(), format!("not a valid `{name}`: {message}"));
                     return None;
                 }
-                Some((Constant::Value { ty: name.to_owned(), json }, Type::Object(name.to_owned())))
+                Some((
+                    Constant::Value {
+                        ty: name.to_owned(),
+                        json,
+                    },
+                    Type::Object(name.to_owned()),
+                ))
             }
             _ => {
                 self.err(expr.span(), "a field initializer must be a literal");
@@ -605,7 +753,13 @@ impl<'a> Cx<'a> {
 
     // ---- methods ---------------------------------------------------------------------
 
-    fn lower_method(&mut self, function: &Function<'_>, name: &str, exported: bool, sig: &MethodSig) -> Option<VmFunction> {
+    fn lower_method(
+        &mut self,
+        function: &Function<'_>,
+        name: &str,
+        exported: bool,
+        sig: &MethodSig,
+    ) -> Option<VmFunction> {
         let Some(body) = &function.body else {
             self.err(function.span, format!("method `{name}` has no body"));
             return None;
@@ -621,9 +775,18 @@ impl<'a> Cx<'a> {
             loc: None,
         };
         for (parameter, ty) in function.params.items.iter().zip(&sig.params) {
-            let BindingPattern::BindingIdentifier(id) = &parameter.pattern else { continue };
+            let BindingPattern::BindingIdentifier(id) = &parameter.pattern else {
+                continue;
+            };
             let reg = self.new_reg(&mut f, ty.clone());
-            f.scopes[0].insert(id.name.as_str().to_owned(), Local { reg, ty: ty.clone(), mutable: true });
+            f.scopes[0].insert(
+                id.name.as_str().to_owned(),
+                Local {
+                    reg,
+                    ty: ty.clone(),
+                    mutable: true,
+                },
+            );
         }
         for statement in &body.statements {
             self.statement(&mut f, statement);
@@ -634,7 +797,10 @@ impl<'a> Cx<'a> {
         if sig.ret == Type::Unit {
             self.emit(&mut f, Instr::Return { value: None });
         } else if !terminated {
-            self.err(function.span, format!("not all code paths of `{name}` return a value"));
+            self.err(
+                function.span,
+                format!("not all code paths of `{name}` return a value"),
+            );
         } else {
             // Every path returns, so this is never reached.
             let here = Self::here(&f);
@@ -653,7 +819,11 @@ impl<'a> Cx<'a> {
 
     fn new_reg(&mut self, f: &mut Fx, ty: Type) -> Reg {
         if f.regs.len() >= usize::from(Reg::MAX) {
-            self.diagnostics.push(Diagnostic::error("the method needs too many registers: split it up", 0, 0));
+            self.diagnostics.push(Diagnostic::error(
+                "the method needs too many registers: split it up",
+                0,
+                0,
+            ));
             return 0;
         }
         f.regs.push(ty);
@@ -662,7 +832,12 @@ impl<'a> Cx<'a> {
 
     fn at(&mut self, f: &mut Fx, span: Span) {
         let (line, column) = self.lines.position(self.src.source, span.start);
-        f.loc = Some(SourceLoc { file: self.src.file.to_owned(), node: String::new(), line: Some(line), column: Some(column) });
+        f.loc = Some(SourceLoc {
+            file: self.src.file.to_owned(),
+            node: String::new(),
+            line: Some(line),
+            column: Some(column),
+        });
     }
 
     fn emit(&mut self, f: &mut Fx, instr: Instr) -> usize {
@@ -686,7 +861,12 @@ impl<'a> Cx<'a> {
     }
 
     fn patch_branch(f: &mut Fx, at: usize, then: Option<u32>, otherwise: Option<u32>) {
-        if let Instr::Branch { then: t, otherwise: o, .. } = &mut f.code[at] {
+        if let Instr::Branch {
+            then: t,
+            otherwise: o,
+            ..
+        } = &mut f.code[at]
+        {
             if let Some(then) = then {
                 *t = then;
             }
@@ -714,8 +894,17 @@ impl<'a> Cx<'a> {
             }
             Statement::VariableDeclaration(declaration) => self.declaration(f, declaration),
             Statement::IfStatement(s) => {
-                let Some(cond) = self.boolean(f, &s.test) else { return };
-                let branch = self.emit(f, Instr::Branch { cond, then: 0, otherwise: 0 });
+                let Some(cond) = self.boolean(f, &s.test) else {
+                    return;
+                };
+                let branch = self.emit(
+                    f,
+                    Instr::Branch {
+                        cond,
+                        then: 0,
+                        otherwise: 0,
+                    },
+                );
                 Self::patch_branch(f, branch, Some(Self::here(f)), None);
                 self.scoped(f, &s.consequent);
                 match &s.alternate {
@@ -730,8 +919,17 @@ impl<'a> Cx<'a> {
             }
             Statement::WhileStatement(s) => {
                 let top = Self::here(f);
-                let Some(cond) = self.boolean(f, &s.test) else { return };
-                let branch = self.emit(f, Instr::Branch { cond, then: 0, otherwise: 0 });
+                let Some(cond) = self.boolean(f, &s.test) else {
+                    return;
+                };
+                let branch = self.emit(
+                    f,
+                    Instr::Branch {
+                        cond,
+                        then: 0,
+                        otherwise: 0,
+                    },
+                );
                 Self::patch_branch(f, branch, Some(Self::here(f)), None);
                 f.loops.push(LoopCtx::default());
                 self.scoped(f, &s.body);
@@ -765,7 +963,14 @@ impl<'a> Cx<'a> {
                             f.scopes.pop();
                             return;
                         };
-                        let at = self.emit(f, Instr::Branch { cond, then: 0, otherwise: 0 });
+                        let at = self.emit(
+                            f,
+                            Instr::Branch {
+                                cond,
+                                then: 0,
+                                otherwise: 0,
+                            },
+                        );
                         Self::patch_branch(f, at, Some(Self::here(f)), None);
                         Some(at)
                     }
@@ -820,8 +1025,16 @@ impl<'a> Cx<'a> {
                 (None, Type::Unit) => {
                     self.emit(f, Instr::Return { value: None });
                 }
-                (None, ret) => self.err(s.span, format!("this method returns `{}`", crate::declarations::ts_type(&ret))),
-                (Some(argument), Type::Unit) => self.err(argument.span(), "this method returns `void`"),
+                (None, ret) => self.err(
+                    s.span,
+                    format!(
+                        "this method returns `{}`",
+                        crate::declarations::ts_type(&ret)
+                    ),
+                ),
+                (Some(argument), Type::Unit) => {
+                    self.err(argument.span(), "this method returns `void`")
+                }
                 (Some(argument), ret) => {
                     if let Some((reg, ty)) = self.expression(f, argument, Some(&ret), false) {
                         if ty == ret {
@@ -851,7 +1064,10 @@ impl<'a> Cx<'a> {
 
     fn declaration(&mut self, f: &mut Fx, declaration: &oxc_ast::ast::VariableDeclaration<'_>) {
         if declaration.kind == VariableDeclarationKind::Var {
-            self.err(declaration.span, "use `let` or `const`: `var` is hoisted function-wide");
+            self.err(
+                declaration.span,
+                "use `let` or `const`: `var` is hoisted function-wide",
+            );
             return;
         }
         for declarator in &declaration.declarations {
@@ -865,12 +1081,18 @@ impl<'a> Cx<'a> {
             }
             let name = id.name.as_str().to_owned();
             if f.scopes.last().is_some_and(|s| s.contains_key(&name)) {
-                self.err(id.span, format!("`{name}` is already declared in this scope"));
+                self.err(
+                    id.span,
+                    format!("`{name}` is already declared in this scope"),
+                );
                 continue;
             }
             let (reg, ty) = match (&declarator.init, annotated) {
                 (Some(init), annotated) => {
-                    let Some((value, ty)) = self.expression(f, init, annotated.as_ref(), false) else { continue };
+                    let Some((value, ty)) = self.expression(f, init, annotated.as_ref(), false)
+                    else {
+                        continue;
+                    };
                     if let Some(a) = &annotated {
                         if *a != ty {
                             self.mismatch(init.span(), a, &ty);
@@ -883,16 +1105,32 @@ impl<'a> Cx<'a> {
                     }
                     // A fresh register: the variable must not alias a value it was copied from.
                     let reg = self.new_reg(f, ty.clone());
-                    self.emit(f, Instr::Move { dst: reg, src: value });
+                    self.emit(
+                        f,
+                        Instr::Move {
+                            dst: reg,
+                            src: value,
+                        },
+                    );
                     (reg, ty)
                 }
                 (None, Some(ty)) => (self.new_reg(f, ty.clone()), ty),
                 (None, None) => {
-                    self.err(declarator.span, format!("`{name}` needs a type annotation or an initializer"));
+                    self.err(
+                        declarator.span,
+                        format!("`{name}` needs a type annotation or an initializer"),
+                    );
                     continue;
                 }
             };
-            f.scopes.last_mut().expect("a scope").insert(name, Local { reg, ty, mutable: declaration.kind != VariableDeclarationKind::Const });
+            f.scopes.last_mut().expect("a scope").insert(
+                name,
+                Local {
+                    reg,
+                    ty,
+                    mutable: declaration.kind != VariableDeclarationKind::Const,
+                },
+            );
         }
     }
 
@@ -903,7 +1141,10 @@ impl<'a> Cx<'a> {
                 "expected `{}`, found `{}`{}",
                 crate::declarations::ts_type(expected),
                 crate::declarations::ts_type(found),
-                if matches!((expected, found), (Type::Int, Type::Float) | (Type::Float, Type::Int)) {
+                if matches!(
+                    (expected, found),
+                    (Type::Int, Type::Float) | (Type::Float, Type::Int)
+                ) {
                     " (convert with `x as int` or `x as number`)"
                 } else {
                     ""
@@ -926,13 +1167,26 @@ impl<'a> Cx<'a> {
 
     /// Lower `expr`. `expected` steers numeric literals (an integer literal is a
     /// `number` where one is expected). `statement`: the value is unused.
-    fn expression(&mut self, f: &mut Fx, expr: &Expression<'_>, expected: Option<&Type>, statement: bool) -> Option<Val> {
+    fn expression(
+        &mut self,
+        f: &mut Fx,
+        expr: &Expression<'_>,
+        expected: Option<&Type>,
+        statement: bool,
+    ) -> Option<Val> {
         match expr {
-            Expression::ParenthesizedExpression(p) => self.expression(f, &p.expression, expected, statement),
-            Expression::BooleanLiteral(b) => Some(self.constant(f, Constant::Bool(b.value), Type::Bool)),
-            Expression::StringLiteral(s) => Some(self.constant(f, Constant::Str(s.value.as_str().to_owned()), Type::Str)),
+            Expression::ParenthesizedExpression(p) => {
+                self.expression(f, &p.expression, expected, statement)
+            }
+            Expression::BooleanLiteral(b) => {
+                Some(self.constant(f, Constant::Bool(b.value), Type::Bool))
+            }
+            Expression::StringLiteral(s) => {
+                Some(self.constant(f, Constant::Str(s.value.as_str().to_owned()), Type::Str))
+            }
             Expression::NumericLiteral(n) => {
-                let (constant, ty) = number_constant(n.value, n.raw.as_ref().map(|r| r.as_str()), expected);
+                let (constant, ty) =
+                    number_constant(n.value, n.raw.as_ref().map(|r| r.as_str()), expected);
                 Some(self.constant(f, constant, ty))
             }
             Expression::Identifier(id) => match lookup(f, id.name.as_str()) {
@@ -943,7 +1197,10 @@ impl<'a> Cx<'a> {
                 }
             },
             Expression::ThisExpression(t) => {
-                self.err(t.span, "`this` can only be used to reach a field or method: `this.name`");
+                self.err(
+                    t.span,
+                    "`this` can only be used to reach a field or method: `this.name`",
+                );
                 None
             }
             Expression::StaticMemberExpression(member) => self.member(f, member),
@@ -957,7 +1214,10 @@ impl<'a> Cx<'a> {
             Expression::UpdateExpression(u) => self.update(f, u),
             Expression::TSAsExpression(a) => self.convert(f, a),
             Expression::TemplateLiteral(t) => {
-                self.unsupported(t.span, "template literals: join strings with `+` and convert with `x as string`");
+                self.unsupported(
+                    t.span,
+                    "template literals: join strings with `+` and convert with `x as string`",
+                );
                 None
             }
             other => {
@@ -975,7 +1235,11 @@ impl<'a> Cx<'a> {
     }
 
     /// `this.name` read, or a getter native on a value or component.
-    fn member(&mut self, f: &mut Fx, member: &oxc_ast::ast::StaticMemberExpression<'_>) -> Option<Val> {
+    fn member(
+        &mut self,
+        f: &mut Fx,
+        member: &oxc_ast::ast::StaticMemberExpression<'_>,
+    ) -> Option<Val> {
         let name = member.property.name.as_str();
         if matches!(member.object, Expression::ThisExpression(_)) {
             if let Some((var, ty)) = self.fields.get(name).cloned() {
@@ -1008,35 +1272,66 @@ impl<'a> Cx<'a> {
         let receiver_type = match &ty {
             Type::Component(t) | Type::Object(t) => t.clone(),
             other => {
-                self.err(member.span, format!("`{}` has no property `{name}`", crate::declarations::ts_type(other)));
+                self.err(
+                    member.span,
+                    format!(
+                        "`{}` has no property `{name}`",
+                        crate::declarations::ts_type(other)
+                    ),
+                );
                 return None;
             }
         };
-        let Some(native) = self.native(&receiver_type, name).filter(|n| n.sig.params.len() == 1 && n.sig.ret != Type::Unit) else {
-            self.err(member.span, format!("`{receiver_type}` has no property `{name}`"));
+        let Some(native) = self
+            .native(&receiver_type, name)
+            .filter(|n| n.sig.params.len() == 1 && n.sig.ret != Type::Unit)
+        else {
+            self.err(
+                member.span,
+                format!("`{receiver_type}` has no property `{name}`"),
+            );
             return None;
         };
         let import = self.import(&native.name)?;
         let ret = native.sig.ret.clone();
         let dst = self.new_reg(f, ret.clone());
-        self.emit(f, Instr::CallNative { import, args: vec![receiver], dst: Some(dst) });
+        self.emit(
+            f,
+            Instr::CallNative {
+                import,
+                args: vec![receiver],
+                dst: Some(dst),
+            },
+        );
         Some((dst, ret))
     }
 
-    fn call(&mut self, f: &mut Fx, call: &oxc_ast::ast::CallExpression<'_>, statement: bool) -> Option<Val> {
+    fn call(
+        &mut self,
+        f: &mut Fx,
+        call: &oxc_ast::ast::CallExpression<'_>,
+        statement: bool,
+    ) -> Option<Val> {
         self.at(f, call.span);
         if call.optional || call.type_arguments.is_some() {
             self.unsupported(call.span, "optional chaining and explicit type arguments");
             return None;
         }
-        let args: Vec<&Expression<'_>> = call.arguments.iter().filter_map(Argument::as_expression).collect();
+        let args: Vec<&Expression<'_>> = call
+            .arguments
+            .iter()
+            .filter_map(Argument::as_expression)
+            .collect();
         if args.len() != call.arguments.len() {
             self.unsupported(call.span, "spread arguments");
             return None;
         }
         match &call.callee {
             Expression::Identifier(id) if id.name.as_str() == "wait" => {
-                self.err(call.span, "`wait(..)` must be awaited: `await wait(seconds)` in an `async` method");
+                self.err(
+                    call.span,
+                    "`wait(..)` must be awaited: `await wait(seconds)` in an `async` method",
+                );
                 None
             }
             Expression::StaticMemberExpression(member) => {
@@ -1059,15 +1354,31 @@ impl<'a> Cx<'a> {
                 let receiver_type = match &ty {
                     Type::Component(t) | Type::Object(t) => t.clone(),
                     other => {
-                        self.err(call.span, format!("`{}` has no method `{name}`", crate::declarations::ts_type(other)));
+                        self.err(
+                            call.span,
+                            format!(
+                                "`{}` has no method `{name}`",
+                                crate::declarations::ts_type(other)
+                            ),
+                        );
                         return None;
                     }
                 };
                 let Some(native) = self.native(&receiver_type, name) else {
-                    self.err(call.span, format!("`{receiver_type}` has no method `{name}`"));
+                    self.err(
+                        call.span,
+                        format!("`{receiver_type}` has no method `{name}`"),
+                    );
                     return None;
                 };
-                self.call_native(f, call.span, &native, Some((receiver, ty)), &args, statement)
+                self.call_native(
+                    f,
+                    call.span,
+                    &native,
+                    Some((receiver, ty)),
+                    &args,
+                    statement,
+                )
             }
             other => {
                 self.unsupported(other.span(), "calling this expression");
@@ -1076,13 +1387,23 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn call_method(&mut self, f: &mut Fx, span: Span, name: &str, args: &[&Expression<'_>], awaited: bool) -> Option<Val> {
+    fn call_method(
+        &mut self,
+        f: &mut Fx,
+        span: Span,
+        name: &str,
+        args: &[&Expression<'_>],
+        awaited: bool,
+    ) -> Option<Val> {
         let Some(sig) = self.methods.get(name).cloned() else {
             self.err(span, format!("the class has no method `{name}`"));
             return None;
         };
         if sig.is_async && !awaited {
-            self.err(span, format!("`{name}` is async: call it as `await this.{name}(..)`"));
+            self.err(
+                span,
+                format!("`{name}` is async: call it as `await this.{name}(..)`"),
+            );
             return None;
         }
         if !sig.is_async && awaited {
@@ -1095,14 +1416,35 @@ impl<'a> Cx<'a> {
         }
         let regs = self.arguments(f, span, name, &sig.params, args)?;
         let dst = (sig.ret != Type::Unit).then(|| self.new_reg(f, sig.ret.clone()));
-        self.emit(f, Instr::Call { func: sig.index, args: regs, dst });
+        self.emit(
+            f,
+            Instr::Call {
+                func: sig.index,
+                args: regs,
+                dst,
+            },
+        );
         Some((dst.unwrap_or(0), sig.ret))
     }
 
     /// Lower `args` against `params`.
-    fn arguments(&mut self, f: &mut Fx, span: Span, what: &str, params: &[Type], args: &[&Expression<'_>]) -> Option<Vec<Reg>> {
+    fn arguments(
+        &mut self,
+        f: &mut Fx,
+        span: Span,
+        what: &str,
+        params: &[Type],
+        args: &[&Expression<'_>],
+    ) -> Option<Vec<Reg>> {
         if args.len() != params.len() {
-            self.err(span, format!("`{what}` takes {} argument(s), got {}", params.len(), args.len()));
+            self.err(
+                span,
+                format!(
+                    "`{what}` takes {} argument(s), got {}",
+                    params.len(),
+                    args.len()
+                ),
+            );
             return None;
         }
         let mut regs = Vec::new();
@@ -1137,7 +1479,14 @@ impl<'a> Cx<'a> {
                 return None;
             };
             if first.ty != ty {
-                self.err(span, format!("`{}` needs a `{}` receiver", native.name, crate::declarations::ts_type(&first.ty)));
+                self.err(
+                    span,
+                    format!(
+                        "`{}` needs a `{}` receiver",
+                        native.name,
+                        crate::declarations::ts_type(&first.ty)
+                    ),
+                );
                 return None;
             }
             regs.push(reg);
@@ -1149,20 +1498,38 @@ impl<'a> Cx<'a> {
         let import = self.import(&native.name)?;
         let ret = native.sig.ret.clone();
         let dst = (ret != Type::Unit).then(|| self.new_reg(f, ret.clone()));
-        self.emit(f, Instr::CallNative { import, args: regs, dst });
+        self.emit(
+            f,
+            Instr::CallNative {
+                import,
+                args: regs,
+                dst,
+            },
+        );
         Some((dst.unwrap_or(0), ret))
     }
 
-    fn await_expression(&mut self, f: &mut Fx, a: &oxc_ast::ast::AwaitExpression<'_>) -> Option<Val> {
+    fn await_expression(
+        &mut self,
+        f: &mut Fx,
+        a: &oxc_ast::ast::AwaitExpression<'_>,
+    ) -> Option<Val> {
         if !f.is_async {
             self.err(a.span, "`await` is only allowed in an `async` method");
             return None;
         }
         let Expression::CallExpression(call) = &a.argument else {
-            self.err(a.span, "only `await wait(seconds)` and `await this.method()` are supported");
+            self.err(
+                a.span,
+                "only `await wait(seconds)` and `await this.method()` are supported",
+            );
             return None;
         };
-        let args: Vec<&Expression<'_>> = call.arguments.iter().filter_map(Argument::as_expression).collect();
+        let args: Vec<&Expression<'_>> = call
+            .arguments
+            .iter()
+            .filter_map(Argument::as_expression)
+            .collect();
         match &call.callee {
             Expression::Identifier(id) if id.name.as_str() == "wait" => {
                 if args.len() != 1 {
@@ -1174,22 +1541,33 @@ impl<'a> Cx<'a> {
                 self.emit(f, Instr::Wait { seconds: regs[0] });
                 Some((0, Type::Unit))
             }
-            Expression::StaticMemberExpression(member) if matches!(member.object, Expression::ThisExpression(_)) => {
+            Expression::StaticMemberExpression(member)
+                if matches!(member.object, Expression::ThisExpression(_)) =>
+            {
                 self.at(f, a.span);
                 self.call_method(f, call.span, member.property.name.as_str(), &args, true)
             }
             _ => {
-                self.err(a.span, "only `await wait(seconds)` and `await this.method()` are supported");
+                self.err(
+                    a.span,
+                    "only `await wait(seconds)` and `await this.method()` are supported",
+                );
                 None
             }
         }
     }
 
-    fn unary(&mut self, f: &mut Fx, u: &oxc_ast::ast::UnaryExpression<'_>, expected: Option<&Type>) -> Option<Val> {
+    fn unary(
+        &mut self,
+        f: &mut Fx,
+        u: &oxc_ast::ast::UnaryExpression<'_>,
+        expected: Option<&Type>,
+    ) -> Option<Val> {
         match u.operator {
             UnaryOperator::UnaryNegation => {
                 if let Expression::NumericLiteral(n) = &u.argument {
-                    let (constant, ty) = number_constant(-n.value, n.raw.as_ref().map(|r| r.as_str()), expected);
+                    let (constant, ty) =
+                        number_constant(-n.value, n.raw.as_ref().map(|r| r.as_str()), expected);
                     return Some(self.constant(f, constant, ty));
                 }
                 let (reg, ty) = self.expression(f, &u.argument, expected, false)?;
@@ -1198,14 +1576,28 @@ impl<'a> Cx<'a> {
                     return None;
                 }
                 let dst = self.new_reg(f, ty.clone());
-                self.emit(f, Instr::Unary { op: UnOp::Neg, dst, src: reg });
+                self.emit(
+                    f,
+                    Instr::Unary {
+                        op: UnOp::Neg,
+                        dst,
+                        src: reg,
+                    },
+                );
                 Some((dst, ty))
             }
             UnaryOperator::UnaryPlus => self.expression(f, &u.argument, expected, false),
             UnaryOperator::LogicalNot => {
                 let reg = self.boolean(f, &u.argument)?;
                 let dst = self.new_reg(f, Type::Bool);
-                self.emit(f, Instr::Unary { op: UnOp::Not, dst, src: reg });
+                self.emit(
+                    f,
+                    Instr::Unary {
+                        op: UnOp::Not,
+                        dst,
+                        src: reg,
+                    },
+                );
                 Some((dst, Type::Bool))
             }
             _ => {
@@ -1216,24 +1608,47 @@ impl<'a> Cx<'a> {
     }
 
     /// Both operands, steering a numeric literal by the other side's type.
-    fn operands(&mut self, f: &mut Fx, left: &Expression<'_>, right: &Expression<'_>, hint: Option<&Type>) -> Option<(Val, Val)> {
+    fn operands(
+        &mut self,
+        f: &mut Fx,
+        left: &Expression<'_>,
+        right: &Expression<'_>,
+        hint: Option<&Type>,
+    ) -> Option<(Val, Val)> {
         if is_number_literal(left) && !is_number_literal(right) {
             let r = self.expression(f, right, hint, false)?;
             let l = self.expression(f, left, Some(&r.1), false)?;
             return Some((l, r));
         }
         let l = self.expression(f, left, hint, false)?;
-        let hint = if is_number_literal(right) { Some(&l.1) } else { None };
+        let hint = if is_number_literal(right) {
+            Some(&l.1)
+        } else {
+            None
+        };
         let r = self.expression(f, right, hint, false)?;
         Some((l, r))
     }
 
-    fn binary(&mut self, f: &mut Fx, b: &oxc_ast::ast::BinaryExpression<'_>, expected: Option<&Type>) -> Option<Val> {
+    fn binary(
+        &mut self,
+        f: &mut Fx,
+        b: &oxc_ast::ast::BinaryExpression<'_>,
+        expected: Option<&Type>,
+    ) -> Option<Val> {
         let arithmetic = matches!(
             b.operator,
-            BinaryOperator::Addition | BinaryOperator::Subtraction | BinaryOperator::Multiplication | BinaryOperator::Division | BinaryOperator::Remainder
+            BinaryOperator::Addition
+                | BinaryOperator::Subtraction
+                | BinaryOperator::Multiplication
+                | BinaryOperator::Division
+                | BinaryOperator::Remainder
         );
-        let hint = if arithmetic { expected.filter(|t| t.is_numeric()) } else { None };
+        let hint = if arithmetic {
+            expected.filter(|t| t.is_numeric())
+        } else {
+            None
+        };
         let (left, right) = self.operands(f, &b.left, &b.right, hint)?;
         self.at(f, b.span);
         let op = match b.operator {
@@ -1256,7 +1671,14 @@ impl<'a> Cx<'a> {
         self.binary_op(f, b.span, op, left, right)
     }
 
-    fn binary_op(&mut self, f: &mut Fx, span: Span, op: BinOp, left: Val, right: Val) -> Option<Val> {
+    fn binary_op(
+        &mut self,
+        f: &mut Fx,
+        span: Span,
+        op: BinOp,
+        left: Val,
+        right: Val,
+    ) -> Option<Val> {
         if left.1 != right.1 {
             self.err(
                 span,
@@ -1264,7 +1686,11 @@ impl<'a> Cx<'a> {
                     "the operands have different types (`{}` and `{}`){}",
                     crate::declarations::ts_type(&left.1),
                     crate::declarations::ts_type(&right.1),
-                    if left.1.is_numeric() && right.1.is_numeric() { ": convert one with `x as number` or `x as int`" } else { "" }
+                    if left.1.is_numeric() && right.1.is_numeric() {
+                        ": convert one with `x as number` or `x as int`"
+                    } else {
+                        ""
+                    }
                 ),
             );
             return None;
@@ -1273,20 +1699,50 @@ impl<'a> Cx<'a> {
         let result = match op {
             BinOp::Add if matches!(ty, Type::Int | Type::Float | Type::Str) => ty.clone(),
             BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem if ty.is_numeric() => ty.clone(),
-            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge if matches!(ty, Type::Int | Type::Float | Type::Str) => Type::Bool,
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
+                if matches!(ty, Type::Int | Type::Float | Type::Str) =>
+            {
+                Type::Bool
+            }
             BinOp::Eq | BinOp::Ne
-                if matches!(ty, Type::Int | Type::Float | Type::Str | Type::Bool | Type::Entity | Type::Component(_))
-                    || pulsar_script_vm::TypeRegistry::global().supports_eq(&ty) =>
+                if matches!(
+                    ty,
+                    Type::Int
+                        | Type::Float
+                        | Type::Str
+                        | Type::Bool
+                        | Type::Entity
+                        | Type::Component(_)
+                ) || pulsar_script_vm::TypeRegistry::global().supports_eq(&ty) =>
             {
                 Type::Bool
             }
             _ => {
-                self.err(span, format!("this operator does not apply to `{}`{}", crate::declarations::ts_type(&ty), if matches!(ty, Type::Object(_)) { ": use the type's methods (`a.add(b)`, `a.eq(b)`)" } else { "" }));
+                self.err(
+                    span,
+                    format!(
+                        "this operator does not apply to `{}`{}",
+                        crate::declarations::ts_type(&ty),
+                        if matches!(ty, Type::Object(_)) {
+                            ": use the type's methods (`a.add(b)`, `a.eq(b)`)"
+                        } else {
+                            ""
+                        }
+                    ),
+                );
                 return None;
             }
         };
         let dst = self.new_reg(f, result.clone());
-        self.emit(f, Instr::Binary { op, dst, a: left.0, b: right.0 });
+        self.emit(
+            f,
+            Instr::Binary {
+                op,
+                dst,
+                a: left.0,
+                b: right.0,
+            },
+        );
         Some((dst, result))
     }
 
@@ -1297,12 +1753,31 @@ impl<'a> Cx<'a> {
         }
         let left = self.boolean(f, &l.left)?;
         let result = self.new_reg(f, Type::Bool);
-        self.emit(f, Instr::Move { dst: result, src: left });
-        let branch = self.emit(f, Instr::Branch { cond: left, then: 0, otherwise: 0 });
+        self.emit(
+            f,
+            Instr::Move {
+                dst: result,
+                src: left,
+            },
+        );
+        let branch = self.emit(
+            f,
+            Instr::Branch {
+                cond: left,
+                then: 0,
+                otherwise: 0,
+            },
+        );
         // `&&` evaluates the right side when the left is true, `||` when false.
         let right_start = Self::here(f);
         let right = self.boolean(f, &l.right)?;
-        self.emit(f, Instr::Move { dst: result, src: right });
+        self.emit(
+            f,
+            Instr::Move {
+                dst: result,
+                src: right,
+            },
+        );
         let end = Self::here(f);
         match l.operator {
             LogicalOperator::And => Self::patch_branch(f, branch, Some(right_start), Some(end)),
@@ -1311,13 +1786,31 @@ impl<'a> Cx<'a> {
         Some((result, Type::Bool))
     }
 
-    fn conditional(&mut self, f: &mut Fx, c: &oxc_ast::ast::ConditionalExpression<'_>, expected: Option<&Type>) -> Option<Val> {
+    fn conditional(
+        &mut self,
+        f: &mut Fx,
+        c: &oxc_ast::ast::ConditionalExpression<'_>,
+        expected: Option<&Type>,
+    ) -> Option<Val> {
         let cond = self.boolean(f, &c.test)?;
-        let branch = self.emit(f, Instr::Branch { cond, then: 0, otherwise: 0 });
+        let branch = self.emit(
+            f,
+            Instr::Branch {
+                cond,
+                then: 0,
+                otherwise: 0,
+            },
+        );
         Self::patch_branch(f, branch, Some(Self::here(f)), None);
         let (a, ty) = self.expression(f, &c.consequent, expected, false)?;
         let result = self.new_reg(f, ty.clone());
-        self.emit(f, Instr::Move { dst: result, src: a });
+        self.emit(
+            f,
+            Instr::Move {
+                dst: result,
+                src: a,
+            },
+        );
         let over = self.emit(f, Instr::Jump { target: 0 });
         Self::patch_branch(f, branch, None, Some(Self::here(f)));
         let (b, other) = self.expression(f, &c.alternate, Some(&ty), false)?;
@@ -1325,7 +1818,13 @@ impl<'a> Cx<'a> {
             self.mismatch(c.alternate.span(), &ty, &other);
             return None;
         }
-        self.emit(f, Instr::Move { dst: result, src: b });
+        self.emit(
+            f,
+            Instr::Move {
+                dst: result,
+                src: b,
+            },
+        );
         Self::patch(f, over, Self::here(f));
         Some((result, ty))
     }
@@ -1342,7 +1841,14 @@ impl<'a> Cx<'a> {
             (Type::Float, Type::Int) => UnOp::FloatToInt,
             (Type::Int | Type::Float | Type::Bool, Type::Str) => UnOp::ToStr,
             _ => {
-                self.err(a.span, format!("cannot convert `{}` to `{}`", crate::declarations::ts_type(&ty), crate::declarations::ts_type(&target)));
+                self.err(
+                    a.span,
+                    format!(
+                        "cannot convert `{}` to `{}`",
+                        crate::declarations::ts_type(&ty),
+                        crate::declarations::ts_type(&target)
+                    ),
+                );
                 return None;
             }
         };
@@ -1353,7 +1859,11 @@ impl<'a> Cx<'a> {
 
     // ---- assignment ------------------------------------------------------------------------
 
-    fn assignment(&mut self, f: &mut Fx, a: &oxc_ast::ast::AssignmentExpression<'_>) -> Option<Val> {
+    fn assignment(
+        &mut self,
+        f: &mut Fx,
+        a: &oxc_ast::ast::AssignmentExpression<'_>,
+    ) -> Option<Val> {
         let target = self.target(f, &a.left)?;
         let current = target.ty().clone();
         let value = match a.operator {
@@ -1403,14 +1913,24 @@ impl<'a> Cx<'a> {
             Type::Int => self.constant(f, Constant::Int(1), Type::Int),
             _ => self.constant(f, Constant::Float(1.0), Type::Float),
         };
-        let op = if u.operator == UpdateOperator::Increment { BinOp::Add } else { BinOp::Sub };
+        let op = if u.operator == UpdateOperator::Increment {
+            BinOp::Add
+        } else {
+            BinOp::Sub
+        };
         let new = self.binary_op(f, u.span, op, old.clone(), one)?;
         // A postfix update yields the old value, so keep it in its own register.
         let previous = if u.prefix {
             None
         } else {
             let keep = self.new_reg(f, ty.clone());
-            self.emit(f, Instr::Move { dst: keep, src: old.0 });
+            self.emit(
+                f,
+                Instr::Move {
+                    dst: keep,
+                    src: old.0,
+                },
+            );
             Some(keep)
         };
         self.write_target(f, &target, new.0);
@@ -1429,18 +1949,22 @@ impl<'a> Cx<'a> {
 
     fn simple_target(&mut self, f: &mut Fx, target: &SimpleAssignmentTarget<'_>) -> Option<Target> {
         match target {
-            SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => match lookup(f, id.name.as_str()) {
-                Some(local) if local.mutable => Some(Target::Local(local.reg, local.ty)),
-                Some(_) => {
-                    self.err(id.span, format!("`{}` is a `const`", id.name));
-                    None
+            SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
+                match lookup(f, id.name.as_str()) {
+                    Some(local) if local.mutable => Some(Target::Local(local.reg, local.ty)),
+                    Some(_) => {
+                        self.err(id.span, format!("`{}` is a `const`", id.name));
+                        None
+                    }
+                    None => {
+                        self.err(id.span, format!("unknown name `{}`", id.name));
+                        None
+                    }
                 }
-                None => {
-                    self.err(id.span, format!("unknown name `{}`", id.name));
-                    None
-                }
-            },
-            SimpleAssignmentTarget::StaticMemberExpression(member) if matches!(member.object, Expression::ThisExpression(_)) => {
+            }
+            SimpleAssignmentTarget::StaticMemberExpression(member)
+                if matches!(member.object, Expression::ThisExpression(_)) =>
+            {
                 let name = member.property.name.as_str();
                 match self.fields.get(name) {
                     Some((var, ty)) => Some(Target::Field(*var, ty.clone())),
@@ -1512,7 +2036,9 @@ fn numeric_literal(e: &Expression<'_>) -> Option<f64> {
     match e {
         Expression::NumericLiteral(n) => Some(n.value),
         Expression::ParenthesizedExpression(p) => numeric_literal(&p.expression),
-        Expression::UnaryExpression(u) if u.operator == UnaryOperator::UnaryNegation => numeric_literal(&u.argument).map(|v| -v),
+        Expression::UnaryExpression(u) if u.operator == UnaryOperator::UnaryNegation => {
+            numeric_literal(&u.argument).map(|v| -v)
+        }
         _ => None,
     }
 }
@@ -1524,7 +2050,10 @@ fn number_constant(value: f64, raw: Option<&str>, expected: Option<&Type>) -> (C
         let r = r.to_ascii_lowercase();
         r.starts_with("0x") || r.starts_with("0b") || r.starts_with("0o") || !r.contains(['.', 'e'])
     });
-    let as_int = integral_syntax && value.fract() == 0.0 && value.abs() < 9.2e18 && !matches!(expected, Some(Type::Float));
+    let as_int = integral_syntax
+        && value.fract() == 0.0
+        && value.abs() < 9.2e18
+        && !matches!(expected, Some(Type::Float));
     if as_int {
         (Constant::Int(value as i64), Type::Int)
     } else {
@@ -1534,8 +2063,12 @@ fn number_constant(value: f64, raw: Option<&str>, expected: Option<&Type>) -> (C
 
 /// `@renamedFrom("old")` -> `old`.
 fn renamed_from_decorator(expression: &Expression<'_>) -> Option<String> {
-    let Expression::CallExpression(call) = expression else { return None };
-    let Expression::Identifier(callee) = &call.callee else { return None };
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return None;
+    };
     if callee.name.as_str() != "renamedFrom" || call.arguments.len() != 1 {
         return None;
     }
@@ -1550,7 +2083,10 @@ fn terminates(statement: &Statement<'_>) -> bool {
     match statement {
         Statement::ReturnStatement(_) => true,
         Statement::BlockStatement(b) => b.body.iter().any(terminates),
-        Statement::IfStatement(i) => i.alternate.as_ref().is_some_and(|alt| terminates(&i.consequent) && terminates(alt)),
+        Statement::IfStatement(i) => i
+            .alternate
+            .as_ref()
+            .is_some_and(|alt| terminates(&i.consequent) && terminates(alt)),
         _ => false,
     }
 }

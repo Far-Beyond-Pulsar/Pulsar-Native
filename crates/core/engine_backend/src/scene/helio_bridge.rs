@@ -1,347 +1,90 @@
 //! SceneDB's GPU-mirror attachment seam for Helio 3.0.
-///
-/// SceneDB owns all active world and asset state. Helio receives the
-/// cloneable GPU mirror during renderer construction and consumes the mirror's
-/// component buffers directly. This module contains no renderer scene, frame
-/// projection, material table, subscription cache, or per-frame input
-/// assembly.
-use std::{collections::HashSet, sync::Arc};
+//!
+//! SceneDB owns all world and asset state; component values mirror their own
+//! GPU rows on every write. Helio receives the cloneable GPU mirror during
+//! renderer construction, and its scene join ([`scene_join`]) turns the
+//! authored rows (mesh and light instances, their owner links, the owner
+//! objects' transforms and visibility) into the object, material and light
+//! rows its passes draw, on the GPU, whenever they change. This module keeps
+//! no frame projection, render-row subscription, material table or
+//! per-frame input assembly (Pulsar-Native#1035, Phase 2). Its environment
+//! join ([`environment_join`]) does the same for fog volumes, post-process
+//! volumes, camera post-process settings, water volumes, foliage and
+//! atmospheres (Phase 4).
+use std::sync::Arc;
 
-use helio_component::components::StaticMeshComponent;
+use helio_component::components::{
+    AtmosphereSourceRow, CameraPostProcessSourceRow, FoliageSourceRow, GlobalFogSourceRow, LightSourceRow,
+    LocalFogSourceRow, PostProcessVolumeSourceRow, StaticMeshComponent, StaticMeshDraw,
+    WaterVolumeSourceRow, CAMERA_POST_PROCESS_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER,
+    GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
+    MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
+    WATER_VOLUME_SOURCES_BUFFER, ATMOSPHERE_SOURCES_BUFFER,
+};
+use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
+use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
-use crate::scene::{Transform, Visibility};
+use pulsar_scene_model::attachments::ComponentOwner;
+use pulsar_scene_model::ObjectHidden;
 
-/// Arm the change-time projection once for the currently live scene. Future
-/// transform/material/visibility edits are delivered as entity-specific
-/// events, so the renderer can update only the affected derived row.
-pub fn arm_render_row_subscriptions(world: &mut pulsar_scenedb::World) {
-    let mesh_entities: Vec<_> = world
-        .query::<&StaticMeshComponent>()
-        .map(|(entity, _)| entity)
-        .collect();
-    for entity in mesh_entities {
-        arm_render_row_subscriptions_for_entity(world, entity);
-    }
-    let light_entities: Vec<_> = world
-        .query::<&helio_component::components::LightComponent>()
-        .map(|(entity, _)| entity)
-        .collect();
-    for entity in light_entities {
-        arm_render_row_subscriptions_for_entity(world, entity);
-    }
-    // Meshes and lights were armed above, row sources included.
-    let objects: Vec<_> = world
-        .query::<&crate::scene::StableId>()
-        .map(|(entity, _)| entity)
-        .filter(|&entity| world.get::<StaticMeshComponent>(entity).is_none()
-            && world.get::<helio_component::components::LightComponent>(entity).is_none())
-        .collect();
-    for entity in objects {
-        super::component_rows::arm_component_row_subscriptions(world, entity);
+/// Where this engine's authored rows live, for Helio's scene join. The
+/// names are the buffers the components below register: the instance owner
+/// links (`ComponentOwner`), object visibility (`Visibility`'s derived
+/// `ObjectHidden`) and transforms (`Transform`, packed), the mesh geometry
+/// handles and derived draw rows (`StaticMeshComponent`, `StaticMeshDraw`),
+/// and the light rows (`LightComponent`'s derived `LightSourceRow`).
+pub fn scene_join_keys() -> SceneJoinKeys {
+    // A var-len field's handle table is its pool key + `::handles`.
+    SceneJoinKeys {
+        owners: BufferKey::of("component_owners"),
+        generations: ENTITY_GENERATIONS_KEY,
+        hidden: BufferKey::of("object_hidden"),
+        transforms: BufferKey::of("Transform::packed"),
+        vertex_handles: BufferKey::of("builtin_mesh_vertex::handles"),
+        index_handles: BufferKey::of("builtin_mesh_index::handles"),
+        mesh_bounds: BufferKey::of(MESH_BOUNDS_BUFFER),
+        mesh_flags: BufferKey::of(MESH_FLAGS_BUFFER),
+        section_handles: BufferKey::of("static_mesh_draw_sections::handles"),
+        mesh_sections: BufferKey::of(MESH_SECTIONS_BUFFER),
+        light_sources: BufferKey::of(LIGHT_SOURCES_BUFFER),
     }
 }
 
-/// Arm subscriptions for one newly-created entity without revisiting the rest
-/// of the scene. Structural editor commands call this immediately after spawn.
-pub fn arm_render_row_subscriptions_for_entity(
-    world: &mut pulsar_scenedb::World,
-    entity: pulsar_scenedb::Entity,
-) {
-    if world.get::<StaticMeshComponent>(entity).is_some() {
-        let _ = world.subscribe::<StaticMeshComponent>(entity);
-        let _ = world.subscribe::<Transform>(entity);
-        let _ = world.subscribe::<Visibility>(entity);
-        let _ = world.subscribe::<helio_component::components::MaterialOverrideComponent>(entity);
-    }
-    if world
-        .get::<helio_component::components::LightComponent>(entity)
-        .is_some()
-    {
-        let _ = world.subscribe::<helio_component::components::LightComponent>(entity);
-        let _ = world.subscribe::<Transform>(entity);
-        let _ = world.subscribe::<Visibility>(entity);
-    }
-    super::component_rows::arm_component_row_subscriptions(world, entity);
+/// Helio's scene join over this engine's rows, for
+/// `RendererBuilder::with_scene_derivation`. `editor` adds the light icon
+/// billboards.
+pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
+    Box::new(SceneJoin::new(device, scene_join_keys(), editor))
 }
 
-/// Report `entity`'s render-relevant components as changed to the render-row
-/// subscriptions (#935), as a property edit through `Mut` would: its light
-/// and mesh rows are re-derived at the renderer's next sync. Use after
-/// components were (re)inserted before the entity's subscriptions were
-/// armed (a class instance rebuilt from its class), which records no
-/// change event. Also refreshes every registered class's GPU mirror.
-pub fn mark_render_components_changed(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-    if !world.is_alive(entity) {
-        return;
-    }
-    let classes: Vec<&'static str> = pulsar_world_registry::registered_world_component_classes().collect();
-    for class_name in classes {
-        if pulsar_world_registry::world_component_present_for_class(class_name, world, entity) {
-            pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(class_name, world, entity);
-        }
-    }
-    if let Some(mut light) = world.get_mut::<helio_component::components::LightComponent>(entity) {
-        std::ops::DerefMut::deref_mut(&mut light);
-    }
-    if let Some(mut mesh) = world.get_mut::<StaticMeshComponent>(entity) {
-        std::ops::DerefMut::deref_mut(&mut mesh);
-    }
-    if let Some(mut transform) = world.get_mut::<Transform>(entity) {
-        std::ops::DerefMut::deref_mut(&mut transform);
+/// Where this engine's environment rows live, for Helio's environment join:
+/// the same owner, visibility and transform rows as the scene join, and the
+/// rows fog volumes, post-process volumes, camera post-process, water,
+/// foliage and atmosphere components derive (Pulsar-Native#1035, Phase 4).
+pub fn environment_join_keys() -> EnvironmentJoinKeys {
+    let scene = scene_join_keys();
+    EnvironmentJoinKeys {
+        owners: scene.owners,
+        generations: scene.generations,
+        hidden: scene.hidden,
+        transforms: scene.transforms,
+        global_fog: BufferKey::of(GLOBAL_FOG_SOURCES_BUFFER),
+        local_fog: BufferKey::of(LOCAL_FOG_SOURCES_BUFFER),
+        post_process_volumes: BufferKey::of(POST_PROCESS_VOLUME_SOURCES_BUFFER),
+        camera_post_process: BufferKey::of(CAMERA_POST_PROCESS_SOURCES_BUFFER),
+        water_volumes: BufferKey::of(WATER_VOLUME_SOURCES_BUFFER),
+        foliage: BufferKey::of(FOLIAGE_SOURCES_BUFFER),
+        atmospheres: BufferKey::of(ATMOSPHERE_SOURCES_BUFFER),
     }
 }
 
-struct EditorMeshRow;
-
-/// Keep SceneDB's `helio::Movability` on `entity` equal to its authored
-/// `movability` (Pulsar-Native#837), written only on change so an idle
-/// frame stays clean. Passes read the SceneDB component, never the
-/// authored property. A mesh's value wins over a light's on the same
-/// entity: the mesh is what the caches that read it describe.
-pub(crate) fn project_movability(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-    let authored = world
-        .get::<StaticMeshComponent>(entity)
-        .map(|mesh| mesh.movability)
-        .or_else(|| {
-            world
-                .get::<helio_component::components::LightComponent>(entity)
-                .map(|light| light.general.movability)
-        });
-    match authored {
-        Some(authored) => {
-            let promised = helio::Movability::from(authored);
-            if world.get::<helio::Movability>(entity) != Some(&promised) {
-                world.insert(entity, promised);
-            }
-        }
-        None => {
-            world.remove::<helio::Movability>(entity);
-        }
-    }
-}
-
-/// Object-row flags for `mesh`'s authored movability: a movable mesh draws
-/// into the dynamic shadow atlas, anything else into the cached static one.
-fn object_row_flags(mesh: &StaticMeshComponent) -> u32 {
-    if helio::Movability::from(mesh.movability).can_move() {
-        helio::INSTANCE_FLAG_MOVABLE
-    } else {
-        0
-    }
-}
-
-/// Remove `entity`'s `StaticObjectComponent` row so it stops being drawn.
-/// SceneDB zeroes a component's GPU row when the component is removed (or
-/// its entity despawns), which the object-batch pass's `mesh_generation != 0`
-/// liveness check then treats as dead.
-fn retire_static_object_row(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-    world.remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
-}
-
-/// Retire the renderer rows derived for `entity`. `World::despawn` also
-/// clears every `#[gpu]` row the entity carries, so calling this first is
-/// no longer required for correctness; it remains the explicit hook for
-/// dropping derived rows from an entity that stays alive.
-pub fn retire_gpu_rows_for_entity(
-    world: &mut pulsar_scenedb::World,
-    entity: pulsar_scenedb::Entity,
-) {
-    retire_static_object_row(world, entity);
-}
-
-/// Author the GPU draw rows directly in SceneDB from the live mesh entities.
-/// The object-batch pass reads these rows and the mesh ranges from the same
-/// SceneDB mirror; no renderer object table or CPU frame cache is involved.
-pub fn sync_static_mesh_rows(
-    scene_db: &mut pulsar_scenedb::SceneDb,
-    dirty: Option<&HashSet<pulsar_scenedb::Entity>>,
-) {
-    profiling::profile_scope!("HelioBridge::sync_static_mesh_rows");
-    if dirty.is_none() {
-        let stale: Vec<_> = scene_db
-            .world
-            .query::<&EditorMeshRow>()
-            .filter(|(entity, _)| scene_db.world.get::<StaticMeshComponent>(*entity).is_none())
-            .map(|(entity, _)| entity)
-            .collect();
-        for entity in stale {
-            retire_static_object_row(&mut scene_db.world, entity);
-            scene_db.world.remove::<EditorMeshRow>(entity);
-            project_movability(&mut scene_db.world, entity);
-        }
-    }
-    tracing::debug!(
-        mesh_components = scene_db.world.query::<&StaticMeshComponent>().count(),
-        object_rows = scene_db
-            .world
-            .query::<&helio_pass_gbuffer::StaticObjectComponent>()
-            .count(),
-        "[SceneDB render diagnostics] static sync entered"
-    );
-    let Some(mirror) = scene_db.world.gpu_mirror().cloned() else {
-        return;
-    };
-    let entities: Vec<_> = dirty.map_or_else(
-        || {
-            scene_db
-                .world
-                .query::<&StaticMeshComponent>()
-                .map(|(entity, _)| entity)
-                .collect()
-        },
-        |dirty| dirty.iter().copied().collect(),
-    );
-    for entity in entities {
-        if scene_db.world.get::<StaticMeshComponent>(entity).is_none() {
-            retire_static_object_row(&mut scene_db.world, entity);
-            if scene_db.world.get::<EditorMeshRow>(entity).is_some() {
-                scene_db.world.remove::<EditorMeshRow>(entity);
-                project_movability(&mut scene_db.world, entity);
-            }
-            continue;
-        }
-        project_movability(&mut scene_db.world, entity);
-        tracing::debug!(
-            entity = entity.index(),
-            "[SceneDB render diagnostics] evaluating StaticMeshComponent"
-        );
-        let Some(transform) = scene_db.world.get::<Transform>(entity).copied() else {
-            retire_static_object_row(&mut scene_db.world, entity);
-            continue;
-        };
-        if scene_db
-            .world
-            .get::<Visibility>(entity)
-            .is_some_and(|v| !v.visible)
-        {
-            retire_static_object_row(&mut scene_db.world, entity);
-            continue;
-        }
-        // Real, geometry-derived local bounds (see `bounds_local`'s doc) --
-        // computed once at hydrate time from the mesh's actual vertex
-        // positions, not guessed from the transform's scale.
-        let (bounds_local, flags) = scene_db
-            .world
-            .get::<StaticMeshComponent>(entity)
-            .map(|c| (c.bounds_local, object_row_flags(c)))
-            .unwrap_or(([0.0, 0.0, 0.0, 0.5], 0));
-        let Some(vertices) =
-            StaticMeshComponent::vertices_gpu_handle(mirror.store(), entity.index())
-                .filter(|r| r.count != 0)
-        else {
-            retire_static_object_row(&mut scene_db.world, entity);
-            continue;
-        };
-        tracing::debug!(
-            entity = entity.index(),
-            vertex_offset = vertices.offset,
-            vertex_count = vertices.count,
-            "[SceneDB render diagnostics] vertex range resolved"
-        );
-        let Some(indices) = StaticMeshComponent::indices_gpu_handle(mirror.store(), entity.index())
-            .filter(|r| r.count != 0)
-        else {
-            retire_static_object_row(&mut scene_db.world, entity);
-            continue;
-        };
-        // A level-authored `MaterialOverrideComponent` defines the surface;
-        // otherwise fall back to a default brown material that is only
-        // inserted once. Rewrites are guarded so unchanged rows stay clean.
-        let desired = match scene_db
-            .world
-            .get::<helio_component::components::MaterialOverrideComponent>(entity)
-        {
-            Some(o) => Some(helio_pass_gbuffer::MaterialComponent::from_surface(
-                [o.base_color[0], o.base_color[1], o.base_color[2]],
-                o.alpha,
-                o.roughness,
-                o.metallic,
-                o.emissive_color,
-                o.emissive_intensity,
-            )),
-            None => None,
-        };
-        let existing = scene_db
-            .world
-            .get::<helio_pass_gbuffer::MaterialComponent>(entity)
-            .copied();
-        match (desired, existing) {
-            (Some(d), Some(e)) if d == e => {}
-            (Some(d), _) => {
-                scene_db.world.insert(entity, d);
-            }
-            (None, None) => {
-                scene_db.world.insert(
-                    entity,
-                    helio_pass_gbuffer::MaterialComponent::new(
-                        [0.22, 0.15, 0.08, 1.0],
-                        0.7,
-                        0.0,
-                        [0.0; 3],
-                        0.0,
-                    ),
-                );
-            }
-            (None, Some(_)) => {}
-        }
-        let model = glam::Mat4::from_scale_rotation_translation(
-            glam::Vec3::from_array(transform.scale),
-            glam::Quat::from_euler(
-                glam::EulerRot::YXZ,
-                transform.rotation[1].to_radians(),
-                transform.rotation[0].to_radians(),
-                transform.rotation[2].to_radians(),
-            ),
-            glam::Vec3::from_array(transform.position),
-        );
-        // World-space bounding sphere: transform the mesh's local-space
-        // bounds center through `model`, and scale the local radius by the
-        // largest axis scale factor -- conservative under non-uniform scale
-        // (the scaled ellipsoid's farthest extent along its longest axis is
-        // `radius * max_scale_component`, so a sphere of that radius fully
-        // contains it, even though it isn't the tightest possible bound).
-        let local_center =
-            glam::Vec3::from_array([bounds_local[0], bounds_local[1], bounds_local[2]]);
-        let world_center = model.transform_point3(local_center);
-        let world_radius =
-            bounds_local[3] * glam::Vec3::from_array(transform.scale).abs().max_element();
-        let world_radius = world_radius.max(0.0);
-        let world_extents = glam::Vec3::splat(world_radius);
-        let world_center_vec = glam::Vec3::new(world_center.x, world_center.y, world_center.z);
-
-        let object_row = helio_pass_gbuffer::StaticObjectComponent::new(
-            entity.index(),
-            entity.generation().wrapping_add(1),
-            entity.index(),
-            entity.generation().wrapping_add(1),
-            model,
-            [world_center.x, world_center.y, world_center.z, world_radius],
-            indices.count,
-            indices.offset,
-            vertices.offset as i32,
-            0,
-            0,
-            flags,
-        );
-        // Write only on change. Every `insert` bumps the SceneDB revision, and
-        // that revision is what the status bar / hierarchy / properties panels
-        // and the renderer's own idle check poll: an unconditional write here
-        // made the world look edited on every render frame, dirtying those
-        // panels and defeating idle detection.
-        if scene_db
-            .world
-            .get::<helio_pass_gbuffer::StaticObjectComponent>(entity)
-            != Some(&object_row)
-        {
-            scene_db.world.insert(entity, object_row);
-        }
-        if scene_db.world.get::<EditorMeshRow>(entity).is_none() {
-            scene_db.world.insert(entity, EditorMeshRow);
-        }
-    }
+/// Helio's environment join over this engine's rows, for
+/// `RendererBuilder::with_scene_derivation`.
+pub fn environment_join(device: &wgpu::Device) -> Box<EnvironmentJoin> {
+    Box::new(EnvironmentJoin::new(device, environment_join_keys()))
 }
 
 /// Ensure that the authoritative SceneDB world has one GPU mirror for Helio's
@@ -355,10 +98,10 @@ pub fn sync_static_mesh_rows(
 /// replacing its device, queue, pools, or residency state. This is required
 /// when multiple renderer views share one SceneDB world.
 ///
-/// A world populated before GPU initialization must be re-dispatched once
-/// after attachment because SceneDB intentionally does not replay historical
-/// writes into a mirror that did not exist yet. The values are copied only for
-/// that one-time re-dispatch; they are never retained by the bridge.
+/// A world populated before GPU initialization needs nothing further: SceneDB
+/// writes every existing GPU-bearing component into the mirror when it is
+/// attached, for every schema, so this helper keeps no list of types to
+/// re-insert.
 pub fn ensure_gpu_mirror(
     scene_db: &mut pulsar_scenedb::SceneDb,
     device: Arc<wgpu::Device>,
@@ -367,63 +110,6 @@ pub fn ensure_gpu_mirror(
     if let Some(existing) = scene_db.world.gpu_mirror() {
         return existing.clone();
     }
-
-    let existing_lights: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_forward_lit::LightComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_billboards: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_billboard::BillboardComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_transforms: Vec<_> = scene_db
-        .world
-        .query::<&Transform>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_materials: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::MaterialComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-
-    let existing_static_meshes: Vec<_> = scene_db
-        .world
-        .query::<&StaticMeshComponent>()
-        .map(|(entity, component)| (entity, component.clone()))
-        .collect();
-    let existing_decals: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_decal::DecalComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_water_volumes: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_water_sim::WaterVolumeComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_water_hitboxes: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_water_sim::WaterHitboxComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_groups: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::RenderGroupComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_sublevels: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::SublevelComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_sectioned_objects: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::SectionedObjectComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
 
     let ctx = EngineGpuContext::new(device.clone(), queue.clone());
     let gpu_cfg = SceneGpuConfig {
@@ -435,67 +121,34 @@ pub fn ensure_gpu_mirror(
         max_cells_metadata: 16,
     };
     let mut gpu_store = SceneGpuStore::new(&ctx, gpu_cfg);
-    // Register before the first write, as in the Cathedral/Billboard demos.
-    helio_pass_forward_lit::LightComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        helio_pass_forward_lit::MAX_LIGHTS,
-        &device,
-    );
-    helio_pass_billboard::BillboardComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        1024,
-        &device,
-    );
 
     // These are SceneDB component columns. Capacities are initial capacities
     // only; growable registration remains the sole owner of GPU storage and
     // deduplication behavior.
     StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
+    // The scene join's inputs (see `scene_join_keys`); the object, material
+    // and light rows passes draw are the join's outputs, not SceneDB's.
+    StaticMeshDraw::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
+    LightSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
+    ComponentOwner::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
+    ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     helio_pass_decal::DecalComponent::register_gpu_columns_growable(&mut gpu_store, 256, &device);
-    helio_pass_water_sim::WaterVolumeComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        64,
-        &device,
-    );
     helio_pass_water_sim::WaterHitboxComponent::register_gpu_columns_growable(
         &mut gpu_store,
         256,
         &device,
     );
-    helio_pass_gbuffer::RenderGroupComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        256,
-        &device,
-    );
-    helio_pass_gbuffer::SublevelComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        64,
-        &device,
-    );
-    helio_pass_gbuffer::SectionedObjectComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        256,
-        &device,
-    );
-    helio_pass_gbuffer::StaticObjectComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        &device,
-    );
-    helio_pass_gbuffer::MaterialComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        &device,
-    );
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    // The editor viewport's post-process baseline; see `editor_postprocess`.
-    helio_pass_sky::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, &device);
-    helio_pass_postprocess::PostProcessVolumeComponent::register_gpu_columns_growable(&mut gpu_store, 64, &device);
-    helio_pass_postprocess::CameraPostProcessComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4,
-        &device,
-    );
+    // The environment join's inputs (see `environment_join_keys`); the fog
+    // media, post-process volume, camera, water volume and foliage rows the
+    // passes read are its outputs.
+    GlobalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
+    LocalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    PostProcessVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    CameraPostProcessSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
+    WaterVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
+    FoliageSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
+    AtmosphereSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
 
     // SceneDB owns residency budgets and tier configuration. The bridge only
     // installs project settings while constructing the shared store.
@@ -529,47 +182,16 @@ pub fn ensure_gpu_mirror(
         }
     }
 
-    let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue);
+    let material_texture_limit =
+        helio_mats::MaterialBindingConfig::for_device(&device).max_textures;
+    let texture_store = Arc::new(std::sync::RwLock::new(
+        pulsar_scenedb::gpu::TextureStore::new(material_texture_limit as u32),
+    ));
+    let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue)
+        .with_texture_store(texture_store)
+        .expect("register SceneDB material texture store");
     scene_db.world.attach_gpu_mirror(mirror.clone());
     crate::scene::install_scenedb_inspector(&mut scene_db.world);
-
-    for (entity, component) in existing_lights {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_billboards {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_transforms {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_materials {
-        scene_db.world.insert(entity, component);
-    }
-
-    // Re-dispatch existing typed rows exactly once so the newly attached
-    // mirror receives their component data. No row is retained after
-    // insertion, and no Helio-side copy is created.
-    for (entity, component) in existing_static_meshes {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_decals {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_water_volumes {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_water_hitboxes {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_groups {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_sublevels {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_sectioned_objects {
-        scene_db.world.insert(entity, component);
-    }
 
     tracing::info!("SceneDB GPU mirror attached for Helio 3.0");
     mirror
@@ -578,10 +200,72 @@ pub fn ensure_gpu_mirror(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use helio_default_graphs::scene_join as join;
 
     #[test]
     fn a_new_scene_does_not_have_a_gpu_mirror() {
         let scene_db = pulsar_scenedb::SceneDb::new();
         assert!(!scene_db.world.has_gpu_mirror());
+    }
+
+    /// The join reads these rows with fixed layouts; a drift here must fail
+    /// a test, not draw garbage.
+    #[test]
+    fn the_rows_the_scene_join_reads_have_its_layouts() {
+        use std::mem::size_of;
+        assert_eq!(size_of::<ComponentOwner>() as u64, join::OWNER_ROW_BYTES);
+        assert_eq!(size_of::<ObjectHidden>() as u64, join::HIDDEN_ROW_BYTES);
+        assert_eq!(
+            size_of::<crate::scene::Transform>() as u64,
+            join::TRANSFORM_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<pulsar_scenedb::gpu::VarLenHandle>() as u64,
+            join::HANDLE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<helio_component::components::MeshSectionDraw>() as u64,
+            join::MESH_SECTION_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<LightSourceRow>() as u64,
+            join::LIGHT_SOURCE_ROW_BYTES
+        );
+        assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
+        assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);
+    }
+
+    #[test]
+    fn the_rows_the_environment_join_reads_have_its_layouts() {
+        use helio_default_graphs::environment_join as env;
+        use std::mem::size_of;
+        assert_eq!(
+            size_of::<GlobalFogSourceRow>() as u64,
+            env::GLOBAL_FOG_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<LocalFogSourceRow>() as u64,
+            env::LOCAL_FOG_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<PostProcessVolumeSourceRow>() as u64,
+            env::POST_PROCESS_VOLUME_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<CameraPostProcessSourceRow>() as u64,
+            env::CAMERA_POST_PROCESS_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<WaterVolumeSourceRow>() as u64,
+            env::WATER_VOLUME_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<FoliageSourceRow>() as u64,
+            env::FOLIAGE_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<AtmosphereSourceRow>() as u64,
+            env::ATMOSPHERE_SOURCE_ROW_BYTES
+        );
     }
 }

@@ -28,5 +28,3 @@ impl RenderOnce for Textarea {
         self.state
     }
 }
-
-

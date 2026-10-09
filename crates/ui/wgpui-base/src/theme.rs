@@ -130,5 +130,3 @@ mod tests {
         let _ = theme.styles();
     }
 }
-
-

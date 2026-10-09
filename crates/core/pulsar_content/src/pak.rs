@@ -103,7 +103,12 @@ impl PakWriter {
         let mut out = BufWriter::new(File::create(&path)?);
         // Placeholder header, rewritten by `finish`.
         out.write_all(&[0u8; HEADER_LEN as usize])?;
-        Ok(Self { out, path, offset: HEADER_LEN, entries: BTreeMap::new() })
+        Ok(Self {
+            out,
+            path,
+            offset: HEADER_LEN,
+            entries: BTreeMap::new(),
+        })
     }
 
     /// Add `bytes` as content-relative `path`. Returns its entry.
@@ -116,7 +121,11 @@ impl PakWriter {
             return Err(PakError::Duplicate(path));
         }
         self.out.write_all(bytes)?;
-        let entry = PakEntry { offset: self.offset, len: bytes.len() as u64, hash: content_hash(bytes) };
+        let entry = PakEntry {
+            offset: self.offset,
+            len: bytes.len() as u64,
+            hash: content_hash(bytes),
+        };
         self.offset += entry.len;
         self.entries.insert(path, entry);
         Ok(entry)
@@ -166,7 +175,10 @@ pub struct PakReader {
 
 impl std::fmt::Debug for PakReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PakReader").field("path", &self.path).field("entries", &self.entries.len()).finish()
+        f.debug_struct("PakReader")
+            .field("path", &self.path)
+            .field("entries", &self.entries.len())
+            .finish()
     }
 }
 
@@ -177,19 +189,25 @@ impl PakReader {
         let mut file = File::open(&path)?;
         let file_len = file.metadata()?.len();
         let mut header = [0u8; HEADER_LEN as usize];
-        file.read_exact(&mut header).map_err(|_| PakError::NotAPak)?;
+        file.read_exact(&mut header)
+            .map_err(|_| PakError::NotAPak)?;
         if header[..8] != PAK_MAGIC {
             return Err(PakError::NotAPak);
         }
-        let u32_at = |at: usize| u32::from_le_bytes(header[at..at + 4].try_into().unwrap_or_default());
-        let u64_at = |at: usize| u64::from_le_bytes(header[at..at + 8].try_into().unwrap_or_default());
+        let u32_at =
+            |at: usize| u32::from_le_bytes(header[at..at + 4].try_into().unwrap_or_default());
+        let u64_at =
+            |at: usize| u64::from_le_bytes(header[at..at + 8].try_into().unwrap_or_default());
         let version = u32_at(8);
         if version != PAK_VERSION {
             return Err(PakError::UnsupportedVersion(version));
         }
         let count = u32_at(16) as usize;
         let (toc_offset, toc_len) = (u64_at(24), u64_at(32));
-        if toc_len > MAX_TOC_LEN || toc_offset.checked_add(toc_len) != Some(file_len) || toc_offset < HEADER_LEN {
+        if toc_len > MAX_TOC_LEN
+            || toc_offset.checked_add(toc_len) != Some(file_len)
+            || toc_offset < HEADER_LEN
+        {
             return Err(PakError::Corrupt("table of contents out of range".into()));
         }
         file.seek(SeekFrom::Start(toc_offset))?;
@@ -200,12 +218,15 @@ impl PakReader {
         let mut entries = BTreeMap::new();
         let mut at = 0usize;
         let take = |at: &mut usize, n: usize| -> Result<&[u8], PakError> {
-            let slice = toc.get(*at..*at + n).ok_or_else(|| PakError::Corrupt("truncated table of contents".into()))?;
+            let slice = toc
+                .get(*at..*at + n)
+                .ok_or_else(|| PakError::Corrupt("truncated table of contents".into()))?;
             *at += n;
             Ok(slice)
         };
         for _ in 0..count {
-            let path_len = u16::from_le_bytes(take(&mut at, 2)?.try_into().unwrap_or_default()) as usize;
+            let path_len =
+                u16::from_le_bytes(take(&mut at, 2)?.try_into().unwrap_or_default()) as usize;
             let path = std::str::from_utf8(take(&mut at, path_len)?)
                 .map_err(|_| PakError::Corrupt("non-UTF-8 path".into()))?
                 .to_owned();
@@ -213,7 +234,9 @@ impl PakReader {
             let len = u64::from_le_bytes(take(&mut at, 8)?.try_into().unwrap_or_default());
             let hash = u128::from_le_bytes(take(&mut at, 16)?.try_into().unwrap_or_default());
             if offset < HEADER_LEN || offset.checked_add(len).is_none_or(|end| end > toc_offset) {
-                return Err(PakError::Corrupt(format!("`{path}` points outside the blob area")));
+                return Err(PakError::Corrupt(format!(
+                    "`{path}` points outside the blob area"
+                )));
             }
             if crate::normalize_rel(&path).as_deref() != Some(path.as_str()) {
                 return Err(PakError::BadPath(path));
@@ -221,9 +244,16 @@ impl PakReader {
             entries.insert(path, PakEntry { offset, len, hash });
         }
         if at != toc.len() {
-            return Err(PakError::Corrupt("trailing bytes in table of contents".into()));
+            return Err(PakError::Corrupt(
+                "trailing bytes in table of contents".into(),
+            ));
         }
-        Ok(Self { path, file: Mutex::new(file), entries, toc_hash })
+        Ok(Self {
+            path,
+            file: Mutex::new(file),
+            entries,
+            toc_hash,
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -256,7 +286,10 @@ impl PakReader {
             None => !self.entries.is_empty(),
             Some(dir) => {
                 let prefix = format!("{dir}/");
-                self.entries.range(prefix.clone()..).next().is_some_and(|(p, _)| p.starts_with(&prefix))
+                self.entries
+                    .range(prefix.clone()..)
+                    .next()
+                    .is_some_and(|(p, _)| p.starts_with(&prefix))
             }
         }
     }
@@ -270,7 +303,9 @@ impl PakReader {
         };
         let mut out: BTreeMap<String, (bool, u64)> = BTreeMap::new();
         for (path, entry) in self.entries.range(prefix.clone()..) {
-            let Some(rest) = path.strip_prefix(&prefix) else { break };
+            let Some(rest) = path.strip_prefix(&prefix) else {
+                break;
+            };
             match rest.split_once('/') {
                 Some((child, _)) => {
                     out.entry(child.to_owned()).or_insert((true, 0));
@@ -280,12 +315,16 @@ impl PakReader {
                 }
             }
         }
-        out.into_iter().map(|(name, (is_dir, len))| (name, is_dir, len)).collect()
+        out.into_iter()
+            .map(|(name, (is_dir, len))| (name, is_dir, len))
+            .collect()
     }
 
     /// Read content-relative `path`, checking its hash.
     pub fn read(&self, path: &str) -> Result<Vec<u8>, PakError> {
-        let entry = *self.entry(path).ok_or_else(|| PakError::Missing(path.to_owned()))?;
+        let entry = *self
+            .entry(path)
+            .ok_or_else(|| PakError::Missing(path.to_owned()))?;
         let mut bytes = vec![0u8; entry.len as usize];
         {
             let mut file = self.file.lock();
@@ -308,11 +347,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(PAK_FILE_NAME);
         let mut writer = PakWriter::create(&path).unwrap();
-        writer.add("Pulsar/project.json", br#"{"name":"x"}"#).unwrap();
+        writer
+            .add("Pulsar/project.json", br#"{"name":"x"}"#)
+            .unwrap();
         writer.add("assets\\meshes/a.mesh", &[1, 2, 3]).unwrap();
         writer.add("empty.txt", b"").unwrap();
-        assert!(matches!(writer.add("./Pulsar/project.json", b"again"), Err(PakError::Duplicate(_))));
-        assert!(matches!(writer.add("../escape", b""), Err(PakError::BadPath(_))));
+        assert!(matches!(
+            writer.add("./Pulsar/project.json", b"again"),
+            Err(PakError::Duplicate(_))
+        ));
+        assert!(matches!(
+            writer.add("../escape", b""),
+            Err(PakError::BadPath(_))
+        ));
         let written = writer.finish().unwrap();
         assert_eq!(written.len(), 3);
 
@@ -327,9 +374,16 @@ mod tests {
         assert!(!pak.contains_dir("asset"));
         assert_eq!(
             pak.list_dir(""),
-            vec![("Pulsar".into(), true, 0), ("assets".into(), true, 0), ("empty.txt".into(), false, 0)]
+            vec![
+                ("Pulsar".into(), true, 0),
+                ("assets".into(), true, 0),
+                ("empty.txt".into(), false, 0)
+            ]
         );
-        assert_eq!(pak.list_dir("assets/meshes"), vec![("a.mesh".into(), false, 3)]);
+        assert_eq!(
+            pak.list_dir("assets/meshes"),
+            vec![("a.mesh".into(), false, 3)]
+        );
     }
 
     #[test]
@@ -350,7 +404,10 @@ mod tests {
         assert!(matches!(PakReader::open(&path), Err(PakError::NotAPak)));
         bytes[8] = 9; // version
         std::fs::write(&path, &bytes).unwrap();
-        assert!(matches!(PakReader::open(&path), Err(PakError::UnsupportedVersion(9))));
+        assert!(matches!(
+            PakReader::open(&path),
+            Err(PakError::UnsupportedVersion(9))
+        ));
         bytes[8] = 1;
         bytes.truncate(bytes.len() - 1);
         std::fs::write(&path, &bytes).unwrap();

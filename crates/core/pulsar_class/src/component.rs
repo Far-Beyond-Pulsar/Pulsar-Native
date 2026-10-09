@@ -2,8 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
-use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
+use engine_class_derive::{engine_class, register_world_component};
 use serde_json::Value;
 
 use crate::id::ClassId;
@@ -61,15 +60,4 @@ impl ClassInstance {
 // follows it in phase B (#922). Registering it makes it a typed World
 // component that saves, loads and reaches scripts like every other one.
 #[register_world_component]
-#[register_runtime_behavior]
-impl ComponentRuntimeBehavior for ClassInstance {
-    const CLASS_NAME: &'static str = "ClassInstance";
-
-    fn sync_component(
-        _owner: &RuntimeComponentOwner,
-        _component_index: usize,
-        _component: &Self,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) {
-    }
-}
+impl ClassInstance {}

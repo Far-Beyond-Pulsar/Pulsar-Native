@@ -177,10 +177,12 @@ mod permanent_library;
 mod registry;
 pub mod tool_bridge;
 
-pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider};
 /// Re-exported so a linked provider can `inventory::submit!` without its own
 /// dependency (see [`LinkedEditorProvider`]).
-pub use inventory;
+pub use ::inventory;
+pub use builtin::{
+    BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
+};
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use tool_bridge::PluginToolBridge;
@@ -287,6 +289,9 @@ pub struct PluginManager {
     /// Project root path for editor context
     project_root: Option<PathBuf>,
 
+    /// Host-owned editor settings passed to plugin editor factories.
+    editor_settings: EditorSettingsSnapshot,
+
     /// Statusbar buttons registered by all plugins
     /// Stored with plugin ownership tracking for proper cleanup
     statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
@@ -343,6 +348,7 @@ impl PluginManager {
             builtin_registry: BuiltinEditorRegistry::new(),
             engine_version: VersionInfo::current(),
             project_root: None,
+            editor_settings: EditorSettingsSnapshot::default(),
             statusbar_buttons: Vec::new(),
             plugin_subsystems: Vec::new(),
             plugin_component_registrations: Vec::new(),
@@ -353,6 +359,11 @@ impl PluginManager {
     /// Set the project root path for editor context.
     pub fn set_project_root(&mut self, project_root: Option<PathBuf>) {
         self.project_root = project_root;
+    }
+
+    /// Replace the host-owned settings passed to subsequently created plugin editors.
+    pub fn set_editor_settings_snapshot(&mut self, settings: EditorSettingsSnapshot) {
+        self.editor_settings = settings;
     }
 
     /// Get a mutable reference to the built-in editor registry.
@@ -578,6 +589,23 @@ impl PluginManager {
 
         tracing::debug!("✅ Version check passed for plugin at {:?}", path);
 
+        // Attach the plugin's world crates to the editor's world runtimes
+        // before it runs any code of its own, so its component classes are
+        // World components of the editor (#1083). A library built from other
+        // world-crate sources or features refuses, and is not loaded.
+        match attach_world_runtime(&library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the world runtimes", path),
+            Some(false) => {
+                return Err(PluginManagerError::WorldRuntimeRefused {
+                    path: path.to_path_buf(),
+                })
+            }
+            None => tracing::debug!(
+                "Plugin at {:?} predates the shared world runtimes; its component classes stay local",
+                path
+            ),
+        }
+
         // Give the plugin the host's event bus before it runs any code of
         // its own, so its asset updates and events reach the editor (#930).
         match attach_event_bus(&library) {
@@ -720,6 +748,26 @@ impl PluginManager {
             );
             for (name, _) in &component_regs {
                 tracing::debug!("    - Component: {}", name);
+            }
+            // A plugin class is a World component only when its
+            // `#[register_world_component]` registration reached the host's
+            // registry: the class has one, and the plugin attached to the
+            // editor's world runtimes (#1083). A plugin built before them
+            // registered into its own copy's registry, which the host never
+            // reads (#1081).
+            let unregistered: Vec<&str> = component_regs
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .filter(|name| pulsar_world_registry::component_id_for_class(name).is_none())
+                .collect();
+            if !unregistered.is_empty() {
+                tracing::warn!(
+                    "plugin {} provides components that are not World components: {}. \
+                     They have no #[register_world_component], or the plugin predates \
+                     the shared world runtimes; they cannot be placed in a level.",
+                    plugin_id,
+                    unregistered.join(", ")
+                );
             }
             self.plugin_component_registrations.extend(component_regs);
         }
@@ -961,16 +1009,26 @@ impl PluginManager {
     /// Run every scripting language's pre-Play validation on
     /// `project_root`. `Err` joins the failures.
     pub fn validate_scripts(&self, project_root: &std::path::Path) -> Result<(), String> {
+        let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
+            .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                component_class: registration.class_name.to_owned(),
+                event: (registration.declaration)(),
+            })
+            .collect();
         let failures: Vec<String> = self
             .script_languages()
             .iter()
             .filter_map(|lang| {
-                lang.validate_project(project_root)
+                lang.validate_project_with_component_events(project_root, &component_events)
                     .err()
                     .map(|e| format!("{}: {e}", lang.display_name()))
             })
             .collect();
-        if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
     }
 
     /// Get all component definitions registered by all plugins and built-in providers.
@@ -1106,6 +1164,7 @@ impl PluginManager {
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
         let file_path_for_decoration = file_path.clone();
+        let settings = self.editor_settings.clone();
 
         let plugin =
             self.plugins
@@ -1148,7 +1207,7 @@ impl PluginManager {
             }
         })?;
 
-        (factory.create)(file_path, window, cx)
+        (factory.create)(file_path, &settings, window, cx)
             .map(|panel| self.decorate_editor_panel_for_path(panel, &file_path_for_decoration))
             .map_err(|e| PluginManagerError::PluginError {
                 plugin_id: plugin_id.clone(),
@@ -1323,6 +1382,10 @@ pub enum PluginManagerError {
         actual: VersionInfo,
     },
 
+    /// The plugin's world crates refused the editor's world runtimes: the
+    /// library was built from other world-crate sources or features.
+    WorldRuntimeRefused { path: PathBuf },
+
     /// Failed to create plugin instance
     PluginCreationFailed { message: String },
 
@@ -1397,6 +1460,12 @@ impl std::fmt::Display for PluginManagerError {
                     actual.rustc_version_hash,
                 )
             }
+            Self::WorldRuntimeRefused { path } => write!(
+                f,
+                "Plugin '{}' refused the editor's world runtimes: it was built from other \
+                 SceneDB or world-registry sources or features. Rebuild it against this engine.",
+                path.display()
+            ),
             Self::PluginCreationFailed { message } => {
                 write!(f, "Failed to create plugin: {}", message)
             }
@@ -1426,6 +1495,24 @@ impl std::fmt::Display for PluginManagerError {
 }
 
 impl std::error::Error for PluginManagerError {}
+
+/// Attach `library`'s world crates to this process's world runtimes through
+/// its [`ATTACH_SYMBOL`](pulsar_world_registry::runtime::ATTACH_SYMBOL) entry
+/// point (exported by `export_plugin!`). `None` when the library does not
+/// export it (built before #1083); `Some(false)` when it refused them.
+pub fn attach_world_runtime(library: &PermanentLibrary) -> Option<bool> {
+    // SAFETY: the symbol is `pulsar_world_registry::runtime::AttachFn` in
+    // every library exporting it (generated by `export_world_runtime_attach!`).
+    let attach: libloading::Symbol<pulsar_world_registry::runtime::AttachFn> = unsafe {
+        library.get(pulsar_world_registry::runtime::ATTACH_SYMBOL.as_bytes())
+    }
+    .ok()?;
+    let host: *const pulsar_world_registry::runtime::WorldRuntimes =
+        pulsar_world_registry::runtime::host();
+    // SAFETY: `host` is this process's runtimes, which live for the process;
+    // plugins are never unloaded.
+    Some(unsafe { attach(host.cast()) })
+}
 
 /// Hand `library` the host's Gamma event bus through its
 /// [`ATTACH_SYMBOL`](pulsar_events::host::ATTACH_SYMBOL) entry point

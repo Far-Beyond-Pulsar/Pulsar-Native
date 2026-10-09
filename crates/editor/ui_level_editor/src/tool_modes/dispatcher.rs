@@ -5,8 +5,8 @@ use std::sync::Mutex;
 use engine_backend::services::gpu_renderer::GpuRenderer;
 
 use super::{
-    CameraFrame, ToolModeContext, ToolModeId, ToolPointerEvent, ToolPointerResult, ViewportFrame,
-    level_edit::LevelEditMode,
+    level_edit::LevelEditMode, CameraFrame, ToolModeContext, ToolModeId, ToolPointerEvent,
+    ToolPointerResult, ViewportFrame,
 };
 use crate::state::LevelEditorState;
 
@@ -107,19 +107,38 @@ impl ToolModeDispatcher {
         use helio_voxel_data::VoxelBrushShape;
         let voxel = &mut state.editor.voxel;
         match edit {
-            ToolWidgetEdit::SetSegmented { id: "voxel_mode", value } => {
+            ToolWidgetEdit::SetSegmented {
+                id: "voxel_mode",
+                value,
+            } => {
                 voxel.mode = match *value {
                     "build" => VoxelSculptMode::Build,
                     "paint" => VoxelSculptMode::Paint,
                     _ => VoxelSculptMode::Dig,
                 }
             }
-            ToolWidgetEdit::SetSegmented { id: "voxel_shape", value } => {
-                voxel.shape = if *value == "cube" { VoxelBrushShape::Cube } else { VoxelBrushShape::Sphere }
+            ToolWidgetEdit::SetSegmented {
+                id: "voxel_shape",
+                value,
+            } => {
+                voxel.shape = if *value == "cube" {
+                    VoxelBrushShape::Cube
+                } else {
+                    VoxelBrushShape::Sphere
+                }
             }
-            ToolWidgetEdit::SetSlider { id: "voxel_radius", value } => voxel.set_radius(*value),
-            ToolWidgetEdit::SetSlider { id: "voxel_material", value } => voxel.set_material(value.round() as u32),
-            ToolWidgetEdit::SetToggle { id: "voxel_block", on } => voxel.single_block = *on,
+            ToolWidgetEdit::SetSlider {
+                id: "voxel_radius",
+                value,
+            } => voxel.set_radius(*value),
+            ToolWidgetEdit::SetSlider {
+                id: "voxel_material",
+                value,
+            } => voxel.set_material(value.round() as u32),
+            ToolWidgetEdit::SetToggle {
+                id: "voxel_block",
+                on,
+            } => voxel.single_block = *on,
             _ => return false,
         }
         true

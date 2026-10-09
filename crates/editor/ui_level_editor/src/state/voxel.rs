@@ -28,7 +28,14 @@ pub struct VoxelSculptDomain {
 
 impl Default for VoxelSculptDomain {
     fn default() -> Self {
-        Self { mode: VoxelSculptMode::Dig, shape: VoxelBrushShape::Sphere, radius_m: 1.5, material: 15, single_block: false, favorite_materials: 0 }
+        Self {
+            mode: VoxelSculptMode::Dig,
+            shape: VoxelBrushShape::Sphere,
+            radius_m: 1.5,
+            material: 15,
+            single_block: false,
+            favorite_materials: 0,
+        }
     }
 }
 
@@ -100,6 +107,7 @@ pub struct VoxelStroke {
 #[derive(Clone)]
 struct VoxelStrokeTerrain {
     id: crate::scene_edit::ObjectId,
+    instance: engine_backend::scene::attachments::ComponentInstanceId,
     before_len: usize,
     before_revision: u64,
 }
@@ -107,13 +115,21 @@ struct VoxelStrokeTerrain {
 /// Grace period after release before a stroke becomes an undo step.
 const STROKE_SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
 
-/// Every voxel terrain object and the sum of their source revisions.
+/// Every attached voxel terrain instance and the sum of their source
+/// revisions.
 fn terrains(world: &pulsar_scenedb::World) -> (Vec<VoxelStrokeTerrain>, u64) {
+    use engine_backend::scene::attachments;
     let mut ids = Vec::new();
     let mut revision = 0u64;
-    for (entity, terrain) in world.query::<&helio_component::VoxelTerrainComponent>() {
-        if let Some(id) = world.stable_id_of(entity) {
-            ids.push(VoxelStrokeTerrain { id: id.to_string(), before_len: terrain.edits.len(), before_revision: terrain.source_revision });
+    for (instance, terrain) in world.query::<&helio_component::VoxelTerrainComponent>() {
+        let id = attachments::owner_of(world, instance).and_then(|owner| world.stable_id_of(owner));
+        if let (Some(id), Some(meta)) = (id, attachments::meta(world, instance)) {
+            ids.push(VoxelStrokeTerrain {
+                id: id.to_string(),
+                instance: meta.id,
+                before_len: terrain.edits.len(),
+                before_revision: terrain.source_revision,
+            });
             revision = revision.wrapping_add(terrain.source_revision);
         }
     }
@@ -127,7 +143,11 @@ impl VoxelStroke {
         let world = state.scene.world();
         let (ids, revision) = terrains(&world);
         drop(world);
-        state.editor.voxel_stroke = Some(Self { before: ids, revision, ended_at: None });
+        state.editor.voxel_stroke = Some(Self {
+            before: ids,
+            revision,
+            ended_at: None,
+        });
     }
 
     /// Mark the stroke released.
@@ -141,7 +161,10 @@ impl VoxelStroke {
     /// with `force`). Returns whether a step was recorded.
     pub fn finish(state: &mut crate::state::LevelEditorState, force: bool) -> bool {
         let settled = state.editor.voxel_stroke.as_ref().is_some_and(|stroke| {
-            force || stroke.ended_at.is_some_and(|at| at.elapsed() >= STROKE_SETTLE)
+            force
+                || stroke
+                    .ended_at
+                    .is_some_and(|at| at.elapsed() >= STROKE_SETTLE)
         });
         if !settled {
             return false;
@@ -154,19 +177,34 @@ impl VoxelStroke {
         }
         let mut entries = Vec::new();
         for terrain_before in stroke.before {
-            let Some(entity) = world.entity_for(&terrain_before.id) else { continue; };
-            let terrain = world.get::<helio_component::VoxelTerrainComponent>(entity).unwrap();
+            let Some(terrain) =
+                engine_backend::scene::attachments::instance_by_id(&world, terrain_before.instance)
+                    .and_then(|instance| {
+                        world.get::<helio_component::VoxelTerrainComponent>(instance)
+                    })
+            else {
+                continue;
+            };
             entries.push(crate::scene_edit::history::VoxelEditJournalEntry {
                 id: terrain_before.id,
+                instance: terrain_before.instance,
                 before_len: terrain_before.before_len,
                 before_revision: terrain_before.before_revision,
-                edits: terrain.edits.iter_from(terrain_before.before_len).copied().collect(),
+                edits: terrain
+                    .edits
+                    .iter_from(terrain_before.before_len)
+                    .copied()
+                    .collect(),
                 after_revision: terrain.source_revision,
             });
         }
         drop(world);
-        if entries.is_empty() { return false; }
-        state.scene.commit_voxel_journal(crate::scene_edit::history::VoxelEditJournal { entries });
+        if entries.is_empty() {
+            return false;
+        }
+        state
+            .scene
+            .commit_voxel_journal(crate::scene_edit::history::VoxelEditJournal { entries });
         true
     }
 }
@@ -225,14 +263,26 @@ mod tests {
         };
         let edits = |state: &crate::state::LevelEditorState| {
             let world = state.scene.world();
-            world.get::<VoxelTerrainComponent>(world.entity_for(&id).unwrap()).unwrap().edits.len()
+            let terrain = engine_backend::scene::attachments::enabled_components_of::<
+                VoxelTerrainComponent,
+            >(&world, world.entity_for(&id).unwrap())[0]
+                .0;
+            world
+                .get::<VoxelTerrainComponent>(terrain)
+                .unwrap()
+                .edits
+                .len()
         };
 
         VoxelStroke::begin(&mut state);
         // The render thread commits two brush samples during the drag.
         for x in [1.0, 2.0] {
             let mut world = state.scene.world_mut();
-            let entity = world.entity_for(&id).unwrap();
+            let owner = world.entity_for(&id).unwrap();
+            let entity = engine_backend::scene::attachments::enabled_components_of::<
+                VoxelTerrainComponent,
+            >(&world, owner)[0]
+                .0;
             let mut terrain = world.get_mut::<VoxelTerrainComponent>(entity).unwrap();
             terrain.edits.push(helio_voxel_data::VoxelBrushEdit {
                 center: [x, 0.0, 0.0],
@@ -244,7 +294,10 @@ mod tests {
             terrain.source_revision += 1;
         }
         VoxelStroke::end(&mut state);
-        assert!(!VoxelStroke::finish(&mut state, false), "the last samples may still be in flight");
+        assert!(
+            !VoxelStroke::finish(&mut state, false),
+            "the last samples may still be in flight"
+        );
         assert!(VoxelStroke::finish(&mut state, true));
         assert_eq!(edits(&state), 2);
 

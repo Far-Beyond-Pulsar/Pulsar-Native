@@ -18,6 +18,8 @@ editor = [
     "dep:image",
     "dep:tool_registry",
     "dep:tool_registry_macros",
+    "dep:editor_task_queue",
+    "dep:smol",
 ]
 remote = ["dep:ureq", "dep:urlencoding", "dep:base64"]
 p2p = ["dep:futures", "dep:pulsar-multiplayer-core"]
@@ -43,6 +45,8 @@ ureq = { version = "3.0", features = ["json"], optional = true }
 base64 = { workspace = true, optional = true }
 tool_registry = { workspace = true, optional = true }
 tool_registry_macros = { workspace = true, optional = true }
+editor_task_queue = { workspace = true, optional = true }
+smol = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["sync"] }
 futures = { workspace = true, optional = true }
 pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core", optional = true }

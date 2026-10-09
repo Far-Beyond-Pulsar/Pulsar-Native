@@ -23,6 +23,7 @@ pulsar_world_registry = { workspace = true }
 
 # Engine
 engine_state.workspace = true
+editor_task_queue.workspace = true
 engine_backend.workspace = true
 # Level file format types shared with the runtime loader (SceneFile's
 # BlueprintBindings, #650) so editor saves round-trip the section.
@@ -88,6 +89,11 @@ tempfile = { workspace = true }
 # Headless `TestAppContext` window for the properties-panel layout budget test
 # (`workspace/panels/properties_perf_tests.rs`). Test binaries only.
 gpui-ce = { workspace = true, features = ["test-support"] }
+# Blocks on wgpu adapter/device requests in the headless render baseline
+# (`tests/phase0_render_baseline.rs`); same pin engine_backend uses.
+pollster = "=0.4.0"
+# Surfaces renderer and asset warnings in that test's output.
+tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true

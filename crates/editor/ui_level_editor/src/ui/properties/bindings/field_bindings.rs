@@ -73,8 +73,7 @@ impl FieldBinding for F32FieldBinding {
 
         let getter = self.getter.as_ref()?;
         let world = db.read();
-        crate::scene_edit::objects::get_object(&world.world, object_id)
-            .map(|obj| getter(&obj))
+        crate::scene_edit::objects::get_object(&world.world, object_id).map(|obj| getter(&obj))
     }
 
     fn set(&self, object_id: &ObjectId, value: f32, db: &SharedScene) -> bool {
@@ -83,15 +82,10 @@ impl FieldBinding for F32FieldBinding {
         }
 
         let mut world = db.write();
-        if let Some(mut obj) =
-            crate::scene_edit::objects::get_object(&world.world, object_id)
-        {
+        if let Some(mut obj) = crate::scene_edit::objects::get_object(&world.world, object_id) {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return crate::scene_edit::objects::update_object(
-                    &mut world.world,
-                    obj,
-                );
+                return crate::scene_edit::objects::update_object(&mut world.world, obj);
             }
         }
         false
@@ -145,8 +139,7 @@ impl FieldBinding for StringFieldBinding {
         }
         let getter = self.getter.as_ref()?;
         let world = db.read();
-        crate::scene_edit::objects::get_object(&world.world, object_id)
-            .map(|obj| getter(&obj))
+        crate::scene_edit::objects::get_object(&world.world, object_id).map(|obj| getter(&obj))
     }
 
     fn set(&self, object_id: &ObjectId, value: String, db: &SharedScene) -> bool {
@@ -154,15 +147,10 @@ impl FieldBinding for StringFieldBinding {
             return setter_db(object_id, value, db);
         }
         let mut world = db.write();
-        if let Some(mut obj) =
-            crate::scene_edit::objects::get_object(&world.world, object_id)
-        {
+        if let Some(mut obj) = crate::scene_edit::objects::get_object(&world.world, object_id) {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return crate::scene_edit::objects::update_object(
-                    &mut world.world,
-                    obj,
-                );
+                return crate::scene_edit::objects::update_object(&mut world.world, obj);
             }
         }
         false
@@ -214,8 +202,7 @@ impl FieldBinding for BoolFieldBinding {
         }
         let getter = self.getter.as_ref()?;
         let world = db.read();
-        crate::scene_edit::objects::get_object(&world.world, object_id)
-            .map(|obj| getter(&obj))
+        crate::scene_edit::objects::get_object(&world.world, object_id).map(|obj| getter(&obj))
     }
 
     fn set(&self, object_id: &ObjectId, value: bool, db: &SharedScene) -> bool {
@@ -223,15 +210,10 @@ impl FieldBinding for BoolFieldBinding {
             return setter_db(object_id, value, db);
         }
         let mut world = db.write();
-        if let Some(mut obj) =
-            crate::scene_edit::objects::get_object(&world.world, object_id)
-        {
+        if let Some(mut obj) = crate::scene_edit::objects::get_object(&world.world, object_id) {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return crate::scene_edit::objects::update_object(
-                    &mut world.world,
-                    obj,
-                );
+                return crate::scene_edit::objects::update_object(&mut world.world, obj);
             }
         }
         false

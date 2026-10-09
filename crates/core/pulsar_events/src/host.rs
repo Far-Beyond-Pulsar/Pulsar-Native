@@ -103,8 +103,13 @@ impl HostBus {
     /// Register a descriptor (identical re-registration is a no-op).
     pub fn register_descriptor(&self, descriptor: &EventDescriptor) -> Result<(), String> {
         match self {
-            Self::Local(bus) => bus.register_descriptor(descriptor.clone()).map(drop).map_err(|e| e.to_string()),
-            Self::Foreign(bus) => bus.register_descriptor(descriptor).map_err(|e| format!("{e:?}")),
+            Self::Local(bus) => bus
+                .register_descriptor(descriptor.clone())
+                .map(drop)
+                .map_err(|e| e.to_string()),
+            Self::Foreign(bus) => bus
+                .register_descriptor(descriptor)
+                .map_err(|e| format!("{e:?}")),
         }
     }
 
@@ -112,7 +117,9 @@ impl HostBus {
     pub fn publish_dyn(&self, channel: gamma::Channel, event: &DynEvent) -> Result<(), String> {
         match self {
             Self::Local(bus) => bus.publish_dyn(channel, event).map_err(|e| e.to_string()),
-            Self::Foreign(bus) => bus.publish_dyn(channel, event).map_err(|e| format!("{e:?}")),
+            Self::Foreign(bus) => bus
+                .publish_dyn(channel, event)
+                .map_err(|e| format!("{e:?}")),
         }
     }
 

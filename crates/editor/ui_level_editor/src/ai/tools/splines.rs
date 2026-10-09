@@ -13,14 +13,16 @@ use tool_registry_macros::tool;
 const ALGORITHMS: &str = "linear, catmull_rom, bezier, hermite, b_spline";
 
 fn parse_algorithm(name: &str) -> Result<CurveAlgorithm> {
-    Ok(match name.to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
-        "linear" => CurveAlgorithm::Linear,
-        "catmull_rom" | "catmullrom" => CurveAlgorithm::CatmullRom,
-        "bezier" => CurveAlgorithm::Bezier,
-        "hermite" => CurveAlgorithm::Hermite,
-        "b_spline" | "bspline" => CurveAlgorithm::BSpline,
-        other => bail!("Unknown algorithm '{other}'. Use one of: {ALGORITHMS}"),
-    })
+    Ok(
+        match name.to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
+            "linear" => CurveAlgorithm::Linear,
+            "catmull_rom" | "catmullrom" => CurveAlgorithm::CatmullRom,
+            "bezier" => CurveAlgorithm::Bezier,
+            "hermite" => CurveAlgorithm::Hermite,
+            "b_spline" | "bspline" => CurveAlgorithm::BSpline,
+            other => bail!("Unknown algorithm '{other}'. Use one of: {ALGORITHMS}"),
+        },
+    )
 }
 
 fn spline_json(object: &SceneObjectData, curve: &SplineData) -> Value {
@@ -42,10 +44,13 @@ fn check_curve(curve: &SplineData) -> Result<()> {
     if curve.points.len() > 4096 {
         bail!("A spline holds at most 4096 points");
     }
-    let finite = curve
-        .points
-        .iter()
-        .all(|p| p.position.iter().chain(&p.arrive).chain(&p.leave).all(|v| v.is_finite()));
+    let finite = curve.points.iter().all(|p| {
+        p.position
+            .iter()
+            .chain(&p.arrive)
+            .chain(&p.leave)
+            .all(|v| v.is_finite())
+    });
     if !finite || !curve.tension.is_finite() {
         bail!("Spline values must be finite numbers");
     }
@@ -122,9 +127,16 @@ pub fn level_editor_create_spline(
         children: vec![],
         scene_path: String::new(),
         props: Default::default(),
-        component_instances: splines::component_instances(&curve),
+        component_instances: None,
     };
-    let result = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id });
+    let result = execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: object,
+            parent_id,
+            components: vec![TypedComponent::new(curve.clone())],
+        },
+    );
     let id = result
         .affected_ids
         .first()
@@ -176,7 +188,9 @@ pub fn level_editor_edit_spline(
         new_points = true;
     }
     if let Some(points) = append_points {
-        curve.points.extend(points.into_iter().map(SplinePoint::new));
+        curve
+            .points
+            .extend(points.into_iter().map(SplinePoint::new));
         new_points = true;
     }
     if let Some(closed) = closed {
@@ -198,10 +212,14 @@ pub fn level_editor_edit_spline(
         Some("reverse") => curve.reverse(),
         Some("smooth") => curve.smooth(amount.unwrap_or(0.5).clamp(0.0, 1.0)),
         Some("resample") => {
-            let count = amount.map(|a| a.round() as usize).unwrap_or(curve.points.len());
+            let count = amount
+                .map(|a| a.round() as usize)
+                .unwrap_or(curve.points.len());
             curve.resample(count.clamp(2, 4096));
         }
-        Some(other) => bail!("Unknown operation '{other}'. Use auto_tangents, reverse, smooth or resample."),
+        Some(other) => {
+            bail!("Unknown operation '{other}'. Use auto_tangents, reverse, smooth or resample.")
+        }
     }
     check_curve(&curve)?;
     let result = splines::write(&mut state, &object, &curve)

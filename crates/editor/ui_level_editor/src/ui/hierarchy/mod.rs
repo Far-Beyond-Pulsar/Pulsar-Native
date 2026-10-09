@@ -7,12 +7,12 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, Icon,
-    IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex,
     hierarchical_tree::tree_colors,
     menu::popup_menu::PopupMenu,
+    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, Icon,
+    IconName, Sizable, StyledExt,
 };
 
 /// GPUI Render impl for the hierarchy drag ghost label.
@@ -52,7 +52,8 @@ struct SceneObjectItem {
     is_selected: bool,
     is_folder: bool,
     class_role: ClassRole,
-    /// SceneDB's projected `helio::Movability` (#837); `None` for objects
+    /// The object's authored movability (#837,
+    /// `helio_component::components::object_movability`); `None` for objects
     /// with no mesh or light.
     movability: Option<helio::Movability>,
 }
@@ -158,7 +159,7 @@ impl HierarchyItem for SceneObjectItem {
                 "Show object"
             })
             .on_click(move |_, _, cx| {
-                use crate::commands::{SceneCommand, execute_command};
+                use crate::commands::{execute_command, SceneCommand};
                 let mut state = visibility_state.write();
                 let found = {
                     let world = state.scene.world();
@@ -178,7 +179,7 @@ impl HierarchyItem for SceneObjectItem {
             .icon(IconName::Copy)
             .tooltip("Duplicate object")
             .on_click(move |_, _, cx| {
-                use crate::commands::{SceneCommand, execute_command};
+                use crate::commands::{execute_command, SceneCommand};
                 let mut state = duplicate_state.write();
                 execute_command(
                     &mut state,
@@ -198,7 +199,7 @@ impl HierarchyItem for SceneObjectItem {
             .icon(IconName::Trash)
             .tooltip("Delete object")
             .on_click(move |_, _, cx| {
-                use crate::commands::{SceneCommand, execute_command};
+                use crate::commands::{execute_command, SceneCommand};
                 let mut state = delete_state.write();
                 execute_command(
                     &mut state,
@@ -220,10 +221,11 @@ impl HierarchyItem for SceneObjectItem {
                 .border_color(cx.theme().border)
                 .child(text)
         };
-        let row = h_flex().gap_0p5().when(
-            self.movability == Some(helio::Movability::Static),
-            |row| row.child(badge("static", cx)),
-        );
+        let row = h_flex()
+            .gap_0p5()
+            .when(self.movability == Some(helio::Movability::Static), |row| {
+                row.child(badge("static", cx))
+            });
         Some(match self.class_role {
             // Class-owned children come and go with their class: no
             // duplicate/delete of their own.
@@ -251,7 +253,7 @@ impl HierarchyItem for SceneObjectItem {
         _window: &mut Window,
         _cx: &mut Context<PopupMenu>,
     ) -> PopupMenu {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
 
         if self.class_role == ClassRole::Owned {
             return menu;
@@ -321,7 +323,7 @@ impl HierarchyItem for SceneObjectItem {
 /// Hierarchy Panel - Scene outliner showing all objects in a tree structure
 pub struct HierarchyPanel {
     /// `(store_revision, selected)` the cached items were built from. Keyed on
-    /// the shared store's own mutation counter (`SceneDatabase::store_revision`)
+    /// the world's own mutation counter (`World::revision`)
     /// rather than `scene.revision`: the render thread writes gizmo-drag
     /// results and click-selects straight into the store without ever touching
     /// the UI-side revision counter.
@@ -353,29 +355,25 @@ impl HierarchyPanel {
 
         let world = state.scene.world();
         let _snapshot_scope = gpui::render_stats::scope("hierarchy: ECS snapshot");
-        let (all_objects, root_ids) =
-            crate::scene_edit::objects::get_hierarchy_projection(&world);
+        let (all_objects, root_ids) = crate::scene_edit::objects::get_hierarchy_projection(&world);
         drop(_snapshot_scope);
         self.cached_items = all_objects
             .into_iter()
             .map(|obj| {
                 let is_selected = selected.as_deref() == Some(obj.id.as_str());
                 let is_folder = matches!(obj.object_type, ObjectType::Folder);
-                let class_role =
-                    if crate::scene_edit::classes::is_class_root(&world, &obj.id) {
-                        ClassRole::Root
-                    } else if crate::scene_edit::classes::is_generated_child(
-                        &world, &obj.id,
-                    ) {
-                        ClassRole::Owned
-                    } else {
-                        ClassRole::None
-                    };
+                let class_role = if crate::scene_edit::classes::is_class_root(&world, &obj.id) {
+                    ClassRole::Root
+                } else if crate::scene_edit::classes::is_generated_child(&world, &obj.id) {
+                    ClassRole::Owned
+                } else {
+                    ClassRole::None
+                };
                 let movability = {
                     use engine_backend::scene::SceneWorldExt;
-                    world
-                        .entity_for(&obj.id)
-                        .and_then(|entity| world.get::<helio::Movability>(entity).copied())
+                    world.entity_for(&obj.id).and_then(|entity| {
+                        helio_component::components::object_movability(&world, entity)
+                    })
                 };
                 SceneObjectItem {
                     object: Rc::new(obj),
@@ -429,10 +427,8 @@ impl HierarchyPanel {
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.AddFolder"))
                     .on_click(move |_, _, _| {
-                        use crate::commands::{SceneCommand, execute_command};
-                        use crate::scene_edit::{
-                            ObjectType, SceneObjectData, Transform,
-                        };
+                        use crate::commands::{execute_command, SceneCommand};
+                        use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
                         let mut state = state_clone.write();
                         execute_command(
                             &mut state,
@@ -464,7 +460,7 @@ impl HierarchyPanel {
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.DeleteSelected"))
                     .on_click(move |_, _, _| {
-                        use crate::commands::{SceneCommand, execute_command};
+                        use crate::commands::{execute_command, SceneCommand};
                         if let Some(id) = state_clone.read().scene.selected_object() {
                             let mut state = state_clone.write();
                             execute_command(&mut state, SceneCommand::RemoveObject { id });
@@ -488,7 +484,7 @@ impl HierarchyPanel {
             root_drop_zone: Some((
                 "Root".to_string(),
                 Arc::new(move |payload: HierarchyDragPayload| {
-                    use crate::commands::{SceneCommand, execute_command};
+                    use crate::commands::{execute_command, SceneCommand};
                     let mut state = state_arc.write();
                     execute_command(
                         &mut state,
@@ -550,7 +546,7 @@ impl HierarchyPanel {
                       modifiers: &Modifiers,
                       _window,
                       cx| {
-                    use crate::commands::{SceneCommand, execute_command};
+                    use crate::commands::{execute_command, SceneCommand};
                     if payload.object_id == *target_id {
                         return;
                     }

@@ -10,6 +10,7 @@ use helio_voxel_data::{
     VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
     VoxelSourceWriter, VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
 };
+use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
 
 use crate::scene::{Transform, Visibility};
@@ -215,11 +216,10 @@ pub fn terrain_fingerprint(entry: &VoxelSceneEntry) -> u64 {
 /// generator, seed or settings changed drops the edits made on the old one
 /// (and saves without them). Returns how many edits were dropped.
 pub fn sync_edit_journals(world: &mut World) -> usize {
-    let stale: Vec<(Entity, u64)> = world
-        .query::<&VoxelTerrainComponent>()
-        .filter_map(|(entity, component)| {
-            let fingerprint = terrain_fingerprint(&terrain_entry(world, entity, component).ok()?);
-            (fingerprint != 0 && component.edits.terrain() != fingerprint).then_some((entity, fingerprint))
+    let stale: Vec<(Entity, u64)> = attachments::enabled_components::<VoxelTerrainComponent>(world)
+        .filter_map(|(instance, _, component)| {
+            let fingerprint = terrain_fingerprint(&terrain_entry(world, instance, component).ok()?);
+            (fingerprint != 0 && component.edits.terrain() != fingerprint).then_some((instance, fingerprint))
         })
         .collect();
     let mut dropped = 0;
@@ -236,39 +236,91 @@ pub fn sync_edit_journals(world: &mut World) -> usize {
     dropped
 }
 
+/// Runs [`sync_edit_journals`] when a terrain or its layer settings changed:
+/// change cursors over both, so frames that change neither cost nothing.
+pub struct EditJournalSync {
+    cursors: [pulsar_scenedb::ChangeCursor; 2],
+    /// The world revision at the last poll; a smaller one means the world
+    /// was replaced, and the cursors with it.
+    revision: u64,
+    synced: bool,
+    scratch: Vec<pulsar_scenedb::ComponentChange>,
+}
+
+impl EditJournalSync {
+    pub fn new(world: &World) -> Self {
+        Self {
+            cursors: [
+                world.open_change_cursor::<VoxelTerrainComponent>(),
+                world.open_change_cursor::<helio_component::VoxelTerrainLayersComponent>(),
+            ],
+            revision: world.revision(),
+            synced: false,
+            scratch: Vec::new(),
+        }
+    }
+
+    /// Drops edits made on ground a terrain no longer has, when anything
+    /// that shapes the ground changed since the last poll. Returns how many
+    /// edits were dropped.
+    pub fn poll(&mut self, world: &mut World) -> usize {
+        if world.revision() < self.revision {
+            *self = Self::new(world);
+        }
+        self.revision = world.revision();
+        let mut changed = !self.synced;
+        for cursor in &mut self.cursors {
+            self.scratch.clear();
+            changed |= world.read_changes(cursor, &mut self.scratch)
+                == pulsar_scenedb::ChangeRead::Overflowed
+                || !self.scratch.is_empty();
+        }
+        if !changed {
+            return 0;
+        }
+        self.synced = true;
+        sync_edit_journals(world)
+    }
+}
+
 pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String>) {
     profiling::profile_scope!("voxel_project_entries");
     let mut entries = Vec::new();
     let mut errors = Vec::new();
-    for (entity, component) in world.query::<&VoxelComponent>() {
+    for (instance, owner, component) in attachments::enabled_components::<VoxelComponent>(world) {
         if !component.enabled {
             continue;
         }
-        match object_entry(world, entity, component) {
+        match object_entry(world, instance, component) {
             Ok(mut entry) => {
-                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entry.visible = world.get::<Visibility>(owner).is_none_or(|v| v.visible);
                 entries.push(entry);
             }
-            Err(error) => errors.push(format!("voxel object {}: {error}", entity.bits())),
+            Err(error) => errors.push(format!("voxel object {}: {error}", instance.bits())),
         }
     }
-    for (entity, component) in world.query::<&VoxelTerrainComponent>() {
+    for (instance, owner, component) in
+        attachments::enabled_components::<VoxelTerrainComponent>(world)
+    {
         if !component.enabled {
             continue;
         }
-        match terrain_entry(world, entity, component) {
+        match terrain_entry(world, instance, component) {
             Ok(mut entry) => {
-                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entry.visible = world.get::<Visibility>(owner).is_none_or(|v| v.visible);
                 entries.push(entry);
             }
-            Err(error) => errors.push(format!("voxel terrain {}: {error}", entity.bits())),
+            Err(error) => errors.push(format!("voxel terrain {}: {error}", instance.bits())),
         }
     }
     (entries, errors)
 }
 
-fn origin_scale(world: &World, entity: Entity) -> Result<([f64; 3], f64), &'static str> {
-    let transform = world.get::<Transform>(entity).copied().unwrap_or_default();
+/// World origin and uniform scale of `instance`'s owner object.
+fn origin_scale(world: &World, instance: Entity) -> Result<([f64; 3], f64), &'static str> {
+    let transform = attachments::owner_component::<Transform>(world, instance)
+        .copied()
+        .unwrap_or_default();
     if transform
         .rotation
         .iter()
@@ -442,6 +494,19 @@ pub(super) fn terrain_entry(
     })
 }
 
+/// A fresh object with one attached, enabled `class_name` instance (value
+/// not yet inserted); returns the instance entity.
+#[cfg(test)]
+pub(super) fn spawn_test_instance(world: &mut World, class_name: &str) -> Entity {
+    let owner = world.spawn();
+    attachments::spawn_instance(
+        world,
+        owner,
+        pulsar_scene_model::NewInstance::new(class_name),
+    )
+    .expect("spawn test instance")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -523,9 +588,9 @@ mod tests {
     #[test]
     fn projects_multiple_rows_with_generation_identity_and_rejects_bad_domains() {
         let mut world = World::new();
-        let object = world.spawn();
+        let object = spawn_test_instance(&mut world, "VoxelComponent");
         world.insert(object, VoxelComponent::default());
-        let terrain = world.spawn();
+        let terrain = spawn_test_instance(&mut world, "VoxelTerrainComponent");
         world.insert(terrain, VoxelTerrainComponent::default());
         let (entries, errors) = project_voxel_entries(&world);
         assert!(errors.is_empty());
@@ -566,9 +631,13 @@ mod tests {
     fn edits_are_dropped_when_the_ground_changes() {
         use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
         let mut world = World::new();
-        let entity = world.spawn();
-        world.insert(entity, VoxelTerrainComponent::planet(1_000.0));
-        world.insert(entity, VoxelTerrainLayersComponent::default());
+        let object = world.spawn();
+        let entity =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000.0))
+                .unwrap();
+        let layers =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default())
+                .unwrap();
         let edit = helio_voxel_data::VoxelBrushEdit {
             center: [0.0, 1_000.0, 0.0],
             radius: 1.0,
@@ -592,9 +661,41 @@ mod tests {
         // So does another layer stack.
         world.get_mut::<VoxelTerrainComponent>(entity).unwrap().edits.push(edit);
         assert_eq!(sync_edit_journals(&mut world), 0);
-        world.get_mut::<VoxelTerrainLayersComponent>(entity).unwrap().stack.layers.push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
+        world.get_mut::<VoxelTerrainLayersComponent>(layers).unwrap().stack.layers.push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
         assert_eq!(sync_edit_journals(&mut world), 1);
         assert_eq!((edits(&world), projected(&world)), (0, 0));
+    }
+
+    #[test]
+    fn journals_are_checked_only_when_a_terrain_or_its_layers_change() {
+        use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
+        let mut world = World::new();
+        let object = world.spawn();
+        let terrain =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000.0))
+                .unwrap();
+        let layers =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default())
+                .unwrap();
+        let mut sync = EditJournalSync::new(&world);
+        let edit = helio_voxel_data::VoxelBrushEdit {
+            center: [0.0, 1_000.0, 0.0],
+            radius: 1.0,
+            shape: helio_voxel_data::VoxelBrushShape::Sphere,
+            op: helio_voxel_data::VoxelBrushOp::Remove,
+            material: 0,
+        };
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
+        assert_eq!(sync.poll(&mut world), 0, "the journal adopts its ground");
+        assert_eq!(sync.poll(&mut world), 0);
+        // Another stack is other ground: its edits go.
+        world.get_mut::<VoxelTerrainLayersComponent>(layers).unwrap().stack.layers.push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
+        assert_eq!(sync.poll(&mut world), 1);
+        assert_eq!(world.get::<VoxelTerrainComponent>(terrain).unwrap().edits.len(), 0);
+        // Dropping them wrote the terrain; the re-check finds nothing more.
+        assert_eq!(sync.poll(&mut world), 0);
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
+        assert_eq!(sync.poll(&mut world), 0, "edits on the current ground stay");
     }
 
     #[test]
@@ -606,7 +707,10 @@ mod tests {
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
         let descriptor = entry.generator_descriptor().unwrap();
         assert_eq!(descriptor.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
-        assert_eq!(descriptor.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
+        assert_eq!(
+            descriptor.version,
+            helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION
+        );
         assert_eq!(entry.world.shape, VoxelWorldShape::Plane);
         assert_eq!(entry.voxel_size, 0.1);
     }
@@ -615,15 +719,24 @@ mod tests {
     fn presets_set_the_world_form() {
         let mut world = World::new();
         for (terrain, shape) in [
-            (VoxelTerrainComponent::planet(1_000.0), VoxelWorldShape::Sphere),
+            (
+                VoxelTerrainComponent::planet(1_000.0),
+                VoxelWorldShape::Sphere,
+            ),
             (VoxelTerrainComponent::plane(512.0), VoxelWorldShape::Plane),
-            (VoxelTerrainComponent::infinite_plane(), VoxelWorldShape::InfinitePlane),
+            (
+                VoxelTerrainComponent::infinite_plane(),
+                VoxelWorldShape::InfinitePlane,
+            ),
         ] {
             let entity = world.spawn();
             world.insert(entity, terrain);
             let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
             assert_eq!(entry.world.shape, shape);
-            assert_eq!(entry.generator_descriptor().unwrap().id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+            assert_eq!(
+                entry.generator_descriptor().unwrap().id,
+                helio_voxel_data::VOXEL_TERRAIN_GENERATOR
+            );
         }
     }
 }

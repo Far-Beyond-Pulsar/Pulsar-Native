@@ -79,10 +79,15 @@ impl ScriptRuntime {
             .iter()
             .filter(|id| !self.pending_begin_play.contains(id))
             .filter(|id| {
-                let Some(instance) = self.instances.get(*id) else { return false };
+                let Some(instance) = self.instances.get(*id) else {
+                    return false;
+                };
                 instance.paused.is_empty()
                     && instance.debugger.breakpoints().next().is_none()
-                    && self.classes.get(&instance.class).is_some_and(|c| c.program.access() == Access::Read)
+                    && self
+                        .classes
+                        .get(&instance.class)
+                        .is_some_and(|c| c.program.access() == Access::Read)
             })
             .cloned()
             .collect()
@@ -101,8 +106,10 @@ impl ScriptRuntime {
     pub fn run_read_stage(&mut self, world: &World, delta_time: f64) -> Vec<RuntimeError> {
         let started = Instant::now();
         let ids = self.read_stage_ids();
-        let mut batch: Vec<(String, ScriptInstance)> =
-            ids.iter().filter_map(|id| self.instances.remove(id).map(|i| (id.clone(), i))).collect();
+        let mut batch: Vec<(String, ScriptInstance)> = ids
+            .iter()
+            .filter_map(|id| self.instances.remove(id).map(|i| (id.clone(), i)))
+            .collect();
         let threads = self.worker_count(batch.len());
         let context = ReadContext {
             classes: &self.classes,
@@ -160,11 +167,19 @@ impl ScriptRuntime {
             .cloned()
             .collect();
         let mut errors: Vec<RuntimeError> = std::mem::take(&mut self.deferred_errors);
-        errors.extend(ids.iter().flat_map(|id| self.fire_timers(id, delta_time, world)));
+        errors.extend(
+            ids.iter()
+                .flat_map(|id| self.fire_timers(id, delta_time, world)),
+        );
         errors.extend(ids.iter().flat_map(|id| self.resume_due(id, world)));
         errors.extend(ids.iter().filter_map(|id| {
-            let func = self.instances.get(id).and_then(|i| self.classes.get(&i.class)).and_then(|c| c.entries.tick)?;
-            self.call(id, func, &[Value::Float(delta_time)], world).err()
+            let func = self
+                .instances
+                .get(id)
+                .and_then(|i| self.classes.get(&i.class))
+                .and_then(|c| c.entries.tick)?;
+            self.call(id, func, &[Value::Float(delta_time)], world)
+                .err()
         }));
         for error in &errors {
             tracing::warn!("{error}");
@@ -213,35 +228,61 @@ fn run_instance(
     instance: &mut ScriptInstance,
     delta_time: f64,
 ) -> Vec<RuntimeError> {
-    let Some(class) = context.classes.get(&instance.class) else { return Vec::new() };
+    let Some(class) = context.classes.get(&instance.class) else {
+        return Vec::new();
+    };
     let mut errors = Vec::new();
-    let run = |instance: &mut ScriptInstance, outcome: Result<Completion, pulsar_script_vm::ScriptError>, spent: u64| {
+    let run = |instance: &mut ScriptInstance,
+               outcome: Result<Completion, pulsar_script_vm::ScriptError>,
+               spent: u64| {
         instance.instructions_executed = instance.instructions_executed.saturating_add(spent);
         match outcome {
             Ok(Completion::Returned(_)) => None,
-            Ok(Completion::Waiting { seconds, continuation }) => {
+            Ok(Completion::Waiting {
+                seconds,
+                continuation,
+            }) => {
                 park(instance, context.time, seconds, continuation);
                 None
             }
             // Instances being debugged never run here.
             Ok(Completion::Paused { .. }) => None,
-            Err(source) => Some(RuntimeError::Script { object_id: object_id.to_owned(), class: instance.class.clone(), source }),
+            Err(source) => Some(RuntimeError::Script {
+                object_id: object_id.to_owned(),
+                class: instance.class.clone(),
+                source,
+            }),
         }
     };
-    let limit = context.class_budgets.get(&instance.class).copied().unwrap_or(context.default_budget);
+    let limit = context
+        .class_budgets
+        .get(&instance.class)
+        .copied()
+        .unwrap_or(context.default_budget);
     let entity = instance.entity.unwrap_or(Entity::DANGLING);
 
     // Timers.
     for timer in instance.latent.advance(delta_time) {
         let Some(func) = class.program.entry(&timer.function) else {
-            errors.push(RuntimeError::UnknownEvent { class: instance.class.clone(), name: timer.function });
+            errors.push(RuntimeError::UnknownEvent {
+                class: instance.class.clone(),
+                name: timer.function,
+            });
             continue;
         };
         let mut budget = Budget::new(limit);
         let before = budget.remaining;
         let outcome = {
-            let mut host = Host::read_only(context.world, entity, context.time).with_latent(Some(&mut instance.latent));
-            vm.start(&class.program, &mut instance.state, func, &[], &mut host, &mut budget)
+            let mut host = Host::read_only(context.world, entity, context.time)
+                .with_latent(Some(&mut instance.latent));
+            vm.start(
+                &class.program,
+                &mut instance.state,
+                func,
+                &[],
+                &mut host,
+                &mut budget,
+            )
         };
         errors.extend(run(instance, outcome, before - budget.remaining));
     }
@@ -251,19 +292,25 @@ fn run_instance(
     let mut still = Vec::new();
     for (wake, continuation) in std::mem::take(&mut instance.blocked) {
         match wake {
-            Wake::Frames(remaining) if remaining > 1 => still.push((Wake::Frames(remaining - 1), continuation)),
+            Wake::Frames(remaining) if remaining > 1 => {
+                still.push((Wake::Frames(remaining - 1), continuation))
+            }
             Wake::Frames(_) => ready.push(continuation),
             Wake::Event { name } => still.push((Wake::Event { name }, continuation)),
-            Wake::Until { predicate } => match predicate_holds(context, vm, instance, class, &predicate, limit) {
-                Ok(true) => ready.push(continuation),
-                Ok(false) => still.push((Wake::Until { predicate }, continuation)),
-                Err(error) => errors.push(error_for(object_id, instance, error)),
-            },
+            Wake::Until { predicate } => {
+                match predicate_holds(context, vm, instance, class, &predicate, limit) {
+                    Ok(true) => ready.push(continuation),
+                    Ok(false) => still.push((Wake::Until { predicate }, continuation)),
+                    Err(error) => errors.push(error_for(object_id, instance, error)),
+                }
+            }
         }
     }
     instance.blocked = still;
     let now = context.time;
-    let (mut due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut instance.waiting).into_iter().partition(|(at, _)| *at <= now);
+    let (mut due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut instance.waiting)
+        .into_iter()
+        .partition(|(at, _)| *at <= now);
     instance.waiting = later;
     due.sort_by(|a, b| a.0.total_cmp(&b.0));
     due.extend(ready.into_iter().map(|continuation| (now, continuation)));
@@ -271,8 +318,15 @@ fn run_instance(
         let mut budget = Budget::new(limit);
         let before = budget.remaining;
         let outcome = {
-            let mut host = Host::read_only(context.world, entity, now).with_latent(Some(&mut instance.latent));
-            vm.resume(&class.program, &mut instance.state, continuation, &mut host, &mut budget)
+            let mut host =
+                Host::read_only(context.world, entity, now).with_latent(Some(&mut instance.latent));
+            vm.resume(
+                &class.program,
+                &mut instance.state,
+                continuation,
+                &mut host,
+                &mut budget,
+            )
         };
         errors.extend(run(instance, outcome, before - budget.remaining));
     }
@@ -282,8 +336,16 @@ fn run_instance(
         let mut budget = Budget::new(limit);
         let before = budget.remaining;
         let outcome = {
-            let mut host = Host::read_only(context.world, entity, now).with_latent(Some(&mut instance.latent));
-            vm.start(&class.program, &mut instance.state, func, &[Value::Float(delta_time)], &mut host, &mut budget)
+            let mut host =
+                Host::read_only(context.world, entity, now).with_latent(Some(&mut instance.latent));
+            vm.start(
+                &class.program,
+                &mut instance.state,
+                func,
+                &[Value::Float(delta_time)],
+                &mut host,
+                &mut budget,
+            )
         };
         errors.extend(run(instance, outcome, before - budget.remaining));
     }
@@ -300,7 +362,10 @@ fn predicate_holds(
     name: &str,
     limit: u64,
 ) -> Result<bool, PredicateError> {
-    let func = class.program.entry(name).ok_or_else(|| PredicateError::Missing(name.to_owned()))?;
+    let func = class
+        .program
+        .entry(name)
+        .ok_or_else(|| PredicateError::Missing(name.to_owned()))?;
     let function = &class.program.module().functions[func.0 as usize];
     if !function.params.is_empty() || function.ret != Type::Bool {
         return Err(PredicateError::Shape(format!(
@@ -311,12 +376,28 @@ fn predicate_holds(
     }
     let mut budget = Budget::new(limit);
     let before = budget.remaining;
-    let mut host = Host::read_only(context.world, instance.entity.unwrap_or(Entity::DANGLING), context.time);
-    let outcome = vm.call(&class.program, &mut instance.state, func, &[], &mut host, &mut budget);
-    instance.instructions_executed = instance.instructions_executed.saturating_add(before - budget.remaining);
+    let mut host = Host::read_only(
+        context.world,
+        instance.entity.unwrap_or(Entity::DANGLING),
+        context.time,
+    );
+    let outcome = vm.call(
+        &class.program,
+        &mut instance.state,
+        func,
+        &[],
+        &mut host,
+        &mut budget,
+    );
+    instance.instructions_executed = instance
+        .instructions_executed
+        .saturating_add(before - budget.remaining);
     match outcome {
         Ok(Value::Bool(holds)) => Ok(holds),
-        Ok(other) => Err(PredicateError::Shape(format!("`{name}` returned {}, expected bool", other.kind()))),
+        Ok(other) => Err(PredicateError::Shape(format!(
+            "`{name}` returned {}, expected bool",
+            other.kind()
+        ))),
         Err(source) => Err(PredicateError::Script(source)),
     }
 }
@@ -329,10 +410,18 @@ enum PredicateError {
 
 fn error_for(object_id: &str, instance: &ScriptInstance, error: PredicateError) -> RuntimeError {
     match error {
-        PredicateError::Missing(name) => RuntimeError::UnknownEvent { class: instance.class.clone(), name },
-        PredicateError::Shape(reason) => RuntimeError::State { object_id: object_id.to_owned(), reason },
-        PredicateError::Script(source) => {
-            RuntimeError::Script { object_id: object_id.to_owned(), class: instance.class.clone(), source }
-        }
+        PredicateError::Missing(name) => RuntimeError::UnknownEvent {
+            class: instance.class.clone(),
+            name,
+        },
+        PredicateError::Shape(reason) => RuntimeError::State {
+            object_id: object_id.to_owned(),
+            reason,
+        },
+        PredicateError::Script(source) => RuntimeError::Script {
+            object_id: object_id.to_owned(),
+            class: instance.class.clone(),
+            source,
+        },
     }
 }

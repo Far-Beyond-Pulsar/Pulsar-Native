@@ -173,6 +173,9 @@ pub fn render_folder_node(
     let pi = p.clone();
     let p_path = p.clone();
     let pd = p.clone();
+    let pd_for_internal = p.clone();
+    let pd_for_asset = p.clone();
+    let pd_for_asset_drop = p.clone();
     let exp = node.expanded;
     let has = !node.children.is_empty();
     let indent = px(depth as f32 * 20.0 + 4.0);
@@ -217,7 +220,18 @@ pub fn render_folder_node(
                 move |d, _: &DragMoveEvent<gpui::ExternalPaths>, _w, cx| {
                     d.hovered_drop_folder = Some(pd.clone());
                     d.show_drop_hint = true;
+                    d.start_breadcrumb_hover_timer(&pd, cx);
                     cx.notify();
+                },
+            ))
+            .on_drag_move(
+                cx.listener(move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&pd_for_internal, cx);
+                }),
+            )
+            .on_drag_move(cx.listener(
+                move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&pd_for_asset, cx);
                 },
             ))
             .drag_over::<DraggedFile>(|s, _, _, cx| {
@@ -230,12 +244,27 @@ pub fn render_folder_node(
                     .border_1()
                     .border_color(cx.theme().accent)
             })
+            .drag_over::<plugin_editor_api::AssetPayload>(|s, _, _, cx| {
+                s.bg(cx.theme().accent.opacity(0.2))
+                    .border_1()
+                    .border_color(cx.theme().accent)
+            })
             .on_drop(cx.listener(move |d, drag: &DraggedFile, w, cx| {
                 d.handle_drop_on_folder_new(&pi, &drag.paths, w, cx)
             }))
             .on_drop(cx.listener(move |d, ext: &gpui::ExternalPaths, w, cx| {
                 d.handle_external_drop_on_folder(&p_path, ext.paths(), w, cx)
             }))
+            .on_drop(
+                cx.listener(move |d, asset: &plugin_editor_api::AssetPayload, w, cx| {
+                    d.handle_drop_on_folder_new(
+                        &pd_for_asset_drop,
+                        &[std::path::PathBuf::from(&asset.engine_path)],
+                        w,
+                        cx,
+                    )
+                }),
+            )
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |d, _: &MouseDownEvent, _w, cx| {

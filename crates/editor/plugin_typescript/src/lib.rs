@@ -24,5 +24,7 @@
 mod compile;
 mod provider;
 
-pub use compile::{compile_class_dir, compile_project_classes, validate_project_classes, CLASS_FILE, SCHEMA_FILE};
+pub use compile::{
+    compile_class_dir, compile_project_classes, validate_project_classes, CLASS_FILE, SCHEMA_FILE,
+};
 pub use provider::{script_language, TypeScriptLanguage};
