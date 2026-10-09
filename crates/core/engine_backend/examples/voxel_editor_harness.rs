@@ -284,6 +284,10 @@ fn main() {
                     if let Some(ms) = h.frame() {
                         times.push(ms);
                     }
+                    // HARNESS_DRAG_FRAMES=1: every frame of the stroke (flicker).
+                    if std::env::var_os("HARNESS_DRAG_FRAMES").is_some() {
+                        h.capture(&format!("drag_{n}_{f:03}"));
+                    }
                 }
                 queue.lock().expect("pointer queue").push(PendingPointerEvent::LeftRelease);
                 h.report(&format!("drag {:?} r {radius} m", op), &times);

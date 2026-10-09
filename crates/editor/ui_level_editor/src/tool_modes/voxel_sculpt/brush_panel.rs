@@ -191,7 +191,14 @@ impl VoxelSculptPanel {
                 div()
                     .text_xs()
                     .text_color(theme.danger)
-                    .child(t!("LevelEditor.VoxelPanel.InvalidRadius").to_string()),
+                    .child(
+                        t!(
+                            "LevelEditor.VoxelPanel.InvalidRadius",
+                            min => format!("{MIN_RADIUS_M:.2}"),
+                            max => format!("{MAX_RADIUS_M:.2}")
+                        )
+                        .to_string(),
+                    ),
             );
         }
         let footprint = if brush.single_block {

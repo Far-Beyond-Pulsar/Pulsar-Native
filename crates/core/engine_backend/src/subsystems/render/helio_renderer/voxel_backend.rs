@@ -753,6 +753,23 @@ impl PlanetVoxelBackend {
             .or_else(|| self.cached_planet(entry))
     }
 
+    /// The world the camera measures against for `entry`: its built world
+    /// whatever brushes this frame adds or undoes. The renderer asks before
+    /// `prepare` applies them; without this every edit frame had no ground,
+    /// so the near plane jumped from the clearance to 5 cm and the fly
+    /// speed to its default, and back the next frame.
+    fn camera_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
+        self.cached
+            .as_ref()
+            .filter(|c| {
+                c.id == entry.id
+                    && c.world == entry.world
+                    && entry.generator.as_ref() == Some(&c.generator)
+            })
+            .map(|c| &c.planet)
+            .or_else(|| self.cached_planet(entry))
+    }
+
     /// The world on screen for `entry`: its current one, or while a change
     /// to it is rejected, its last good one.
     fn cached_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
@@ -839,7 +856,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
     }
 
     fn altitude(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<f64> {
-        self.cached_planet(source)
+        self.camera_planet(source)
             .map(|planet| planet.ground_height(eye))
     }
 
@@ -856,7 +873,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         {
             return None;
         }
-        self.cached_planet(source)
+        self.camera_planet(source)
             .map(|planet| planet.surface_point(direction, clearance))
     }
 
@@ -869,7 +886,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
         let far = (eye.length() + 40_000_000.0) as f32;
-        let near = self.cached_planet(source).map_or(0.05, |planet| {
+        let near = self.camera_planet(source).map_or(0.05, |planet| {
             (planet.air_clearance(eye) * 0.25).clamp(0.05, 50_000.0) as f32
         });
         Some((near, far))
@@ -1491,6 +1508,42 @@ mod tests {
         let high = planet.surface_point(DVec3::Y, 3000.0);
         let altitude = registry.altitude(&entries, high).unwrap();
         assert!((altitude - 3000.0).abs() < 1.0, "{altitude}");
+    }
+
+    #[test]
+    fn camera_ground_holds_on_frames_whose_edits_are_not_built_yet() {
+        let mut scene = World::new();
+        let owner = scene.spawn();
+        let entity = attach(&mut scene, owner, planet_terrain());
+        let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        let mut registry = VoxelBackendRegistry::new();
+        registry
+            .register(Box::new(PlanetVoxelBackend::new()))
+            .unwrap();
+        let planet = Planet::new(PlanetRecipe::default()).unwrap();
+        let eye = planet.surface_point(DVec3::Y, 800.0);
+        assert!(registry.publish_frame(&entries, view(eye)).is_empty());
+        let altitude = registry.altitude(&entries, eye).unwrap();
+        let clip = registry.camera_clip_range(&entries, eye).unwrap();
+
+        // The renderer asks before `prepare` builds the frame's new brush:
+        // the camera keeps the built ground instead of losing it.
+        {
+            let mut terrain = scene.get_mut::<VoxelTerrainComponent>(entity).unwrap();
+            terrain.edits.push(VoxelBrushEdit {
+                center: planet.surface_point(DVec3::X, 0.0).to_array(),
+                radius: 4.0,
+                shape: VoxelBrushShape::Sphere,
+                op: VoxelBrushOp::Remove,
+                material: 0,
+                height: Default::default(),
+            });
+            terrain.source_revision += 1;
+        }
+        let (grown, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert_eq!(registry.altitude(&grown, eye), Some(altitude));
+        assert_eq!(registry.camera_clip_range(&grown, eye), Some(clip));
+        assert!(clip.0 > 1.0, "the near plane follows the clearance: {clip:?}");
     }
 
     #[test]
