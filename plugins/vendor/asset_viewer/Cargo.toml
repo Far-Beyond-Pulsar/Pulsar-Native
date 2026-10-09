@@ -21,6 +21,7 @@ ui_common         = { workspace = true }
 helio_component   = { workspace = true }
 helio-mats        = { workspace = true }
 pollster          = "0.4"
+smol.workspace = true
 engine_state      = { workspace = true }
 
 rust-i18n.workspace = true

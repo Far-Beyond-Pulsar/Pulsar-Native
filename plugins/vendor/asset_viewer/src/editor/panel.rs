@@ -83,9 +83,18 @@ pub struct AssetViewerPanel {
     pub mesh_vertex_buffer: Option<wgpu::Buffer>,
     pub mesh_index_buffer: Option<wgpu::Buffer>,
     pub mesh_index_count: u32,
+    pub mesh_vertex_count: u32,
     pub mesh_props: Vec<MeshProps>,
     pub scene_stats: SceneStats,
     pub mesh_pipeline: Option<wgpu::RenderPipeline>,
+    pub density_pipeline: Option<wgpu::RenderPipeline>,
+    pub density_vertex_buffer: Option<wgpu::Buffer>,
+    pub density_values: Option<Vec<f32>>,
+    pub density_progress: Option<f32>,
+    pub density_error: Option<String>,
+    pub density_job_id: u64,
+    pub density_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub density_task: Option<Task<()>>,
     pub mesh_bind_group: Option<wgpu::BindGroup>,
     pub uv_grid_texture: Option<wgpu::Texture>,
     pub uv_grid_view: Option<wgpu::TextureView>,
@@ -147,6 +156,101 @@ pub struct AssetViewerPanel {
 }
 
 impl AssetViewerPanel {
+    pub fn set_render_mode(&mut self, mode: MeshRenderMode, cx: &mut Context<Self>) {
+        if self.render_mode == mode {
+            return;
+        }
+        if self.render_mode == MeshRenderMode::VertexDensity {
+            self.cancel_density_view();
+        }
+        self.render_mode = mode;
+        if mode == MeshRenderMode::VertexDensity {
+            self.begin_density_view(cx);
+        }
+        cx.notify();
+    }
+
+    fn cancel_density_view(&mut self) {
+        self.density_job_id = self.density_job_id.wrapping_add(1);
+        if let Some(cancelled) = self.density_cancel.take() {
+            cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.density_task.take();
+        self.density_progress = None;
+        self.density_error = None;
+        self.density_values = None;
+        self.density_vertex_buffer = None;
+        self.density_pipeline = None;
+    }
+
+    fn begin_density_view(&mut self, cx: &mut Context<Self>) {
+        use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        self.density_progress = Some(0.0);
+        self.density_error = None;
+        let Some(path) = self.current_path.clone() else {
+            self.density_progress = None;
+            self.density_error = Some("No mesh file is open".into());
+            return;
+        };
+        let job_id = self.density_job_id.wrapping_add(1);
+        self.density_job_id = job_id;
+        let progress = Arc::new(AtomicU32::new(0));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        self.density_cancel = Some(Arc::clone(&cancelled));
+        let worker_progress = Arc::clone(&progress);
+        let worker_cancelled = Arc::clone(&cancelled);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = super::panel_render::load_vertex_density(
+                &path,
+                &worker_progress,
+                &worker_cancelled,
+            );
+            let _ = tx.send(result);
+        });
+
+        self.density_task = Some(cx.spawn(async move |this, cx| loop {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(80))
+                .await;
+            let finished_result = rx.try_recv().ok();
+            let percent = progress.load(Ordering::Relaxed).min(1000) as f32 / 1000.0;
+            let update = this.update(cx, |panel, cx| {
+                if panel.density_job_id != job_id
+                    || panel.render_mode != MeshRenderMode::VertexDensity
+                {
+                    return true;
+                }
+                if let Some(result) = finished_result {
+                    panel.density_progress = None;
+                    panel.density_cancel = None;
+                    match result {
+                        Ok(values) => {
+                            panel.density_values = Some(values);
+                            panel.rebuild_density_resources();
+                        }
+                        Err(error) if error != "cancelled" => {
+                            panel.density_error = Some(error);
+                        }
+                        Err(_) => {}
+                    }
+                    cx.notify();
+                    true
+                } else {
+                    panel.density_progress = Some(percent);
+                    cx.notify();
+                    false
+                }
+            });
+            match update {
+                Ok(true) | Err(_) => break,
+                Ok(false) => {}
+            }
+        }));
+    }
+
     pub fn save_image(&self) -> Result<(), String> {
         let Some((w, h, ref pixels)) = self.image_data else {
             return Err("No image loaded".into());
@@ -421,9 +525,18 @@ impl AssetViewerPanel {
             mesh_vertex_buffer: None,
             mesh_index_buffer: None,
             mesh_index_count: 0,
+            mesh_vertex_count: 0,
             mesh_props: Vec::new(),
             scene_stats: SceneStats::default(),
             mesh_pipeline: None,
+            density_pipeline: None,
+            density_vertex_buffer: None,
+            density_values: None,
+            density_progress: None,
+            density_error: None,
+            density_job_id: 0,
+            density_cancel: None,
+            density_task: None,
             mesh_bind_group: None,
             uv_grid_texture: None,
             uv_grid_view: None,

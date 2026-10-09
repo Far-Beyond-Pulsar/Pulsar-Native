@@ -31,14 +31,14 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) uv0: vec2<f32>,
     @location(3) uv1: vec2<f32>,
-    @location(4) density: f32,
+    // DENSITY_VERTEX_INPUT
 };
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) world_normal: vec3<f32>,
     @location(1) uv0: vec2<f32>,
     @location(2) uv1: vec2<f32>,
-    @location(3) density: f32,
+    // DENSITY_VERTEX_OUTPUT
 };
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
@@ -47,7 +47,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     out.world_normal = input.normal;
     out.uv0 = input.uv0;
     out.uv1 = input.uv1;
-    out.density = input.density;
+    // DENSITY_VERTEX_TRANSFER
     return out;
 }
 
@@ -75,33 +75,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if uniforms.render_mode.x == 5u {
         return textureSample(uv_grid, uv_grid_sampler, input.uv1);
     }
-    if uniforms.render_mode.x == 6u {
-        // Full rainbow: violet marks sparse regions; red marks the densest
-        // vertex neighborhoods, with every visible-spectrum hue in between.
-        let t = clamp(input.density, 0.0, 1.0);
-        let violet = vec3<f32>(0.55, 0.08, 1.0);
-        let blue = vec3<f32>(0.05, 0.2, 1.0);
-        let cyan = vec3<f32>(0.0, 0.95, 1.0);
-        let green = vec3<f32>(0.05, 0.9, 0.12);
-        let yellow = vec3<f32>(1.0, 0.95, 0.0);
-        let orange = vec3<f32>(1.0, 0.38, 0.0);
-        let red = vec3<f32>(0.95, 0.03, 0.04);
-        var color = red;
-        if t < 1.0 / 6.0 {
-            color = mix(violet, blue, t * 6.0);
-        } else if t < 2.0 / 6.0 {
-            color = mix(blue, cyan, (t - 1.0 / 6.0) * 6.0);
-        } else if t < 3.0 / 6.0 {
-            color = mix(cyan, green, (t - 2.0 / 6.0) * 6.0);
-        } else if t < 4.0 / 6.0 {
-            color = mix(green, yellow, (t - 3.0 / 6.0) * 6.0);
-        } else if t < 5.0 / 6.0 {
-            color = mix(yellow, orange, (t - 4.0 / 6.0) * 6.0);
-        } else {
-            color = mix(orange, red, (t - 5.0 / 6.0) * 6.0);
-        }
-        return vec4(color, 1.0);
-    }
+    // DENSITY_FRAGMENT
     if uniforms.render_mode.x == 1u {
         return vec4(encode(uniforms.base_color.rgb), 1.0);
     }
@@ -169,10 +143,9 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 "#;
 
 /// Floats per vertex: position, normal, UV channel 0, UV channel 1.
-const SOURCE_VERTEX_FLOATS: usize = 10;
-pub(crate) const VERTEX_FLOATS: usize = 11;
+pub(crate) const VERTEX_FLOATS: usize = 10;
 
-const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 5] = [
+const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
     wgpu::VertexAttribute {
         format: wgpu::VertexFormat::Float32x3,
         offset: 0,
@@ -193,12 +166,12 @@ const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 5] = [
         offset: 32,
         shader_location: 3,
     },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32,
-        offset: 40,
-        shader_location: 4,
-    },
 ];
+const DENSITY_ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
+    format: wgpu::VertexFormat::Float32,
+    offset: 0,
+    shader_location: 4,
+}];
 
 pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
@@ -208,75 +181,270 @@ pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-/// Estimate local geometric vertex packing with a fine spatial hash and a
-/// distance-weighted radius. This gives a smooth value at every vertex while
-/// keeping dense hotspots tighter than a broad cell-count heat map.
-fn local_vertex_density(source_vertices: &[f32], vertex_count: usize) -> Vec<f32> {
+fn density_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: 4,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &DENSITY_ATTRIBUTES,
+    }
+}
+
+fn density_shader_source() -> String {
+    MESH_VERTEX_SRC
+        .replace("// DENSITY_VERTEX_INPUT", "@location(4) density: f32,")
+        .replace("// DENSITY_VERTEX_OUTPUT", "@location(3) density: f32,")
+        .replace(
+            "// DENSITY_VERTEX_TRANSFER",
+            "out.density = input.density;",
+        )
+        .replace(
+            "// DENSITY_FRAGMENT",
+            r#"
+    if uniforms.render_mode.x == 6u {
+        let t = clamp(input.density, 0.0, 1.0);
+        let violet = vec3<f32>(0.55, 0.08, 1.0);
+        let blue = vec3<f32>(0.05, 0.2, 1.0);
+        let cyan = vec3<f32>(0.0, 0.95, 1.0);
+        let green = vec3<f32>(0.05, 0.9, 0.12);
+        let yellow = vec3<f32>(1.0, 0.95, 0.0);
+        let orange = vec3<f32>(1.0, 0.38, 0.0);
+        let red = vec3<f32>(0.95, 0.03, 0.04);
+        var color = red;
+        if t < 1.0 / 6.0 { color = mix(violet, blue, t * 6.0); }
+        else if t < 2.0 / 6.0 { color = mix(blue, cyan, (t - 1.0 / 6.0) * 6.0); }
+        else if t < 3.0 / 6.0 { color = mix(cyan, green, (t - 2.0 / 6.0) * 6.0); }
+        else if t < 4.0 / 6.0 { color = mix(green, yellow, (t - 3.0 / 6.0) * 6.0); }
+        else if t < 5.0 / 6.0 { color = mix(yellow, orange, (t - 4.0 / 6.0) * 6.0); }
+        else { color = mix(orange, red, (t - 5.0 / 6.0) * 6.0); }
+        return vec4(color, 1.0);
+    }
+"#,
+        )
+}
+
+/// Measure local vertex density as vertices per surface area over each
+/// vertex's two-ring topological neighborhood. The triangle-area accumulation
+/// makes the metric follow the actual mesh surface instead of a 3D voxel grid.
+fn local_vertex_density(
+    positions: &[[f32; 3]],
+    indices: &[u32],
+    progress: &std::sync::atomic::AtomicU32,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Option<Vec<f32>> {
+    use std::sync::atomic::Ordering;
+
+    let vertex_count = positions.len();
     if vertex_count == 0 {
-        return Vec::new();
+        return Some(Vec::new());
     }
 
-    let cell_width = 1.0 / 64.0;
-    let radius = cell_width * 2.0;
-    let radius_squared = radius * radius;
-    let mut bounds_min = [f32::INFINITY; 3];
-    for vertex in source_vertices.chunks_exact(SOURCE_VERTEX_FLOATS) {
-        for axis in 0..3 {
-            bounds_min[axis] = bounds_min[axis].min(vertex[axis]);
+    let mut dual_area = vec![0.0f32; vertex_count];
+    let mut adjacency = vec![Vec::<usize>::new(); vertex_count];
+    let triangles = indices.chunks_exact(3);
+    let triangle_count = triangles.len().max(1);
+    for (triangle_index, triangle) in triangles.enumerate() {
+        if triangle_index % 4096 == 0 {
+            if cancelled.load(Ordering::Relaxed) {
+                return None;
+            }
+            progress.store(100 + (triangle_index as u32 * 350 / triangle_count as u32), Ordering::Relaxed);
         }
+        let [a, b, c] = [
+            triangle[0] as usize,
+            triangle[1] as usize,
+            triangle[2] as usize,
+        ];
+        if a >= vertex_count || b >= vertex_count || c >= vertex_count {
+            continue;
+        }
+        let pa = glam::Vec3::from_array(positions[a]);
+        let pb = glam::Vec3::from_array(positions[b]);
+        let pc = glam::Vec3::from_array(positions[c]);
+        let area = (pb - pa).cross(pc - pa).length() * (1.0 / 6.0);
+        if !area.is_finite() || area <= f32::EPSILON {
+            continue;
+        }
+        // Barycentric dual area: one third of each incident triangle belongs
+        // to each corner vertex.
+        dual_area[a] += area;
+        dual_area[b] += area;
+        dual_area[c] += area;
+        adjacency[a].extend([b, c]);
+        adjacency[b].extend([a, c]);
+        adjacency[c].extend([a, b]);
     }
 
-    let cells: Vec<[i32; 3]> = source_vertices
-        .chunks_exact(SOURCE_VERTEX_FLOATS)
-        .map(|vertex| {
-            std::array::from_fn(|axis| {
-                ((vertex[axis] - bounds_min[axis]) / cell_width).floor() as i32
-            })
-        })
-        .collect();
-    let mut buckets = std::collections::HashMap::<[i32; 3], Vec<usize>>::new();
-    for (index, cell) in cells.iter().copied().enumerate() {
-        buckets.entry(cell).or_default().push(index);
+    // Unique adjacency once, so shared mesh edges do not overweight vertices.
+    for (index, neighbors) in adjacency.iter_mut().enumerate() {
+        if index % 4096 == 0 && cancelled.load(Ordering::Relaxed) {
+            return None;
+        }
+        neighbors.sort_unstable();
+        neighbors.dedup();
     }
 
-    let mut counts = vec![0.0f32; vertex_count];
-    for (index, [x, y, z]) in cells.iter().copied().enumerate() {
-        let vertex = &source_vertices[index * SOURCE_VERTEX_FLOATS..];
-        let mut count = 0.0;
-        for dz in -2..=2 {
-            for dy in -2..=2 {
-                for dx in -2..=2 {
-                    if let Some(bucket) = buckets.get(&[x + dx, y + dy, z + dz]) {
-                        for &neighbor_index in bucket {
-                            let neighbor =
-                                &source_vertices[neighbor_index * SOURCE_VERTEX_FLOATS..];
-                            let distance_squared = (0..3)
-                                .map(|axis| {
-                                    let delta = vertex[axis] - neighbor[axis];
-                                    delta * delta
-                                })
-                                .sum::<f32>();
-                            if distance_squared < radius_squared {
-                                count += 1.0 - distance_squared.sqrt() / radius;
-                            }
-                        }
-                    }
+    let mut density = vec![0.0f32; vertex_count];
+    let mut marks = vec![usize::MAX; vertex_count];
+    let mut neighborhood = Vec::with_capacity(64);
+    for vertex in 0..vertex_count {
+        if vertex % 2048 == 0 {
+            if cancelled.load(Ordering::Relaxed) {
+                return None;
+            }
+            progress.store(500 + (vertex as u32 * 400 / vertex_count as u32), Ordering::Relaxed);
+        }
+        neighborhood.clear();
+        neighborhood.push(vertex);
+        marks[vertex] = vertex;
+        for &first_ring in &adjacency[vertex] {
+            if marks[first_ring] != vertex {
+                marks[first_ring] = vertex;
+                neighborhood.push(first_ring);
+            }
+            for &second_ring in &adjacency[first_ring] {
+                if marks[second_ring] != vertex {
+                    marks[second_ring] = vertex;
+                    neighborhood.push(second_ring);
                 }
             }
         }
-        counts[index] = count.max(1.0);
+        let area = neighborhood.iter().map(|&i| dual_area[i]).sum::<f32>();
+        density[vertex] = if area > f32::EPSILON {
+            neighborhood.len() as f32 / area
+        } else {
+            0.0
+        };
     }
 
-    let mut sorted_counts = counts.clone();
-    sorted_counts.sort_by(f32::total_cmp);
-    let low_reference = sorted_counts[((sorted_counts.len() - 1) * 10) / 100].max(1.0);
-    let high_reference = sorted_counts[((sorted_counts.len() - 1) * 95) / 100].max(1.0);
+    let mut sorted_density = density.clone();
+    sorted_density.sort_by(f32::total_cmp);
+    let low_reference = sorted_density[((sorted_density.len() - 1) * 10) / 100].max(1e-8);
+    let high_reference = sorted_density[((sorted_density.len() - 1) * 95) / 100].max(low_reference);
     let log_low = (1.0 + low_reference).ln();
     let log_span = ((1.0 + high_reference).ln() - log_low).max(1e-5);
-    counts
+    let normalized = density
         .into_iter()
-        .map(|count| (((1.0 + count).ln() - log_low) / log_span).clamp(0.0, 1.0))
-        .collect()
+        .map(|value| {
+            if value <= 0.0 {
+                0.0
+            } else {
+                (((1.0 + value).ln() - log_low) / log_span).clamp(0.0, 1.0)
+            }
+        })
+        .collect();
+    progress.store(1000, Ordering::Relaxed);
+    Some(normalized)
+}
+
+/// Read the source mesh only when density mode is requested, then compute its
+/// area-based vertex-density field off the UI thread.
+pub(crate) fn load_vertex_density(
+    path: &std::path::Path,
+    progress: &std::sync::atomic::AtomicU32,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<Vec<f32>, String> {
+    use std::sync::atomic::Ordering;
+
+    progress.store(25, Ordering::Relaxed);
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("cancelled".into());
+    }
+
+    let (positions, indices) = if path.extension().and_then(|ext| ext.to_str()) == Some("mesh") {
+        let asset = helio_component::subsystems::load_mesh_asset_upload(path)
+            .ok_or_else(|| format!("Could not load mesh {}", path.display()))?;
+        let positions = asset
+            .geometry
+            .vertices
+            .iter()
+            .map(|vertex| vertex.position)
+            .collect::<Vec<_>>();
+        (positions, asset.geometry.indices)
+    } else {
+        let mut registry = solid_rs::registry::Registry::new();
+        registry.register_loader(solid_fbx::FbxLoader);
+        let scene = registry
+            .load_file(path)
+            .map_err(|error| format!("Could not load mesh {}: {error}", path.display()))?;
+        progress.store(75, Ordering::Relaxed);
+
+        // Match the viewer's FBX path: transform mesh vertices by their node
+        // transform before measuring the combined scene geometry.
+        let mut mesh_world = Vec::<(usize, [f32; 16])>::new();
+        let mut stack: Vec<(solid_rs::scene::NodeId, [f32; 16])> = scene
+            .roots
+            .iter()
+            .map(|&id| (id, glam::Mat4::IDENTITY.to_cols_array()))
+            .collect();
+        while let Some((node_id, parent_cols)) = stack.pop() {
+            let Some(node) = scene.node(node_id) else { continue };
+            let node_mat = node.transform.to_matrix().to_cols_array();
+            let mut world = [0.0f32; 16];
+            for col in 0..4 {
+                for row in 0..4 {
+                    for k in 0..4 {
+                        world[row * 4 + col] += node_mat[k * 4 + col] * parent_cols[row * 4 + k];
+                    }
+                }
+            }
+            if let Some(mesh_index) = node.mesh {
+                mesh_world.push((mesh_index, world));
+            }
+            for &child in &node.children {
+                stack.push((child, world));
+            }
+        }
+
+        let mut positions = Vec::<[f32; 3]>::new();
+        let mut indices = Vec::<u32>::new();
+        for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("cancelled".into());
+            }
+            let world = mesh_world
+                .iter()
+                .find(|(index, _)| *index == mesh_index)
+                .map(|(_, matrix)| *matrix)
+                .unwrap_or(glam::Mat4::IDENTITY.to_cols_array());
+            let rot = [
+                [world[0], world[4], world[8]],
+                [world[1], world[5], world[9]],
+                [world[2], world[6], world[10]],
+            ];
+            let base = positions.len() as u32;
+            for vertex in &mesh.vertices {
+                positions.push([
+                    vertex.position.x * rot[0][0]
+                        + vertex.position.y * rot[0][1]
+                        + vertex.position.z * rot[0][2]
+                        + world[12],
+                    vertex.position.x * rot[1][0]
+                        + vertex.position.y * rot[1][1]
+                        + vertex.position.z * rot[1][2]
+                        + world[13],
+                    vertex.position.x * rot[2][0]
+                        + vertex.position.y * rot[2][1]
+                        + vertex.position.z * rot[2][2]
+                        + world[14],
+                ]);
+            }
+            for primitive in &mesh.primitives {
+                if primitive.topology == solid_rs::geometry::Topology::TriangleList {
+                    indices.extend(primitive.indices.iter().map(|&index| base + index));
+                }
+            }
+        }
+        (positions, indices)
+    };
+
+    if positions.is_empty() || indices.len() < 3 {
+        return Err("Mesh has no indexed triangles to measure".into());
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("cancelled".into());
+    }
+    local_vertex_density(&positions, &indices, progress, cancelled)
+        .ok_or_else(|| "cancelled".into())
 }
 
 pub(crate) fn create_mesh_pipeline(
@@ -288,6 +456,28 @@ pub(crate) fn create_mesh_pipeline(
     cull_mode: Option<wgpu::Face>,
     label: &'static str,
 ) -> wgpu::RenderPipeline {
+    create_mesh_pipeline_with_density_stream(
+        device, config, layout, shader, topology, cull_mode, label, false,
+    )
+}
+
+fn create_mesh_pipeline_with_density_stream(
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    topology: wgpu::PrimitiveTopology,
+    cull_mode: Option<wgpu::Face>,
+    label: &'static str,
+    with_density: bool,
+) -> wgpu::RenderPipeline {
+    let mesh_buffers = [Some(mesh_vertex_layout())];
+    let density_buffers = [Some(mesh_vertex_layout()), Some(density_vertex_layout())];
+    let buffers = if with_density {
+        &density_buffers[..]
+    } else {
+        &mesh_buffers[..]
+    };
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(label),
         layout: Some(layout),
@@ -295,7 +485,7 @@ pub(crate) fn create_mesh_pipeline(
             module: shader,
             entry_point: Some("vs_main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
-            buffers: &[Some(mesh_vertex_layout())],
+            buffers,
         },
         fragment: Some(wgpu::FragmentState {
             module: shader,
@@ -398,8 +588,61 @@ impl AssetViewerPanel {
             self.setup_mesh_pipeline(&device, &queue, &config);
             self.load_and_upload_mesh(&device, &queue);
             self.rebuild_graph_draws();
+            self.rebuild_density_resources();
         }
         self.needs_rebuild = false;
+    }
+
+    pub(crate) fn rebuild_density_resources(&mut self) {
+        let (Some(values), Some(device), Some(queue), Some(config), Some(mesh_bgl), Some(uv_bgl)) = (
+            self.density_values.as_ref(),
+            self.device.as_ref(),
+            self.queue.as_ref(),
+            self.surface_config.as_ref(),
+            self.mesh_bgl.as_ref(),
+            self.uv_grid_bgl.as_ref(),
+        ) else {
+            return;
+        };
+        if values.len() != self.mesh_vertex_count as usize {
+            self.density_error = Some(format!(
+                "Density data has {} vertices; the displayed mesh has {}",
+                values.len(),
+                self.mesh_vertex_count
+            ));
+            self.density_values = None;
+            return;
+        }
+
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh density vertex buffer"),
+            size: (values.len() * std::mem::size_of::<f32>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&buffer, 0, bytemuck::cast_slice(values));
+        let shader_source = density_shader_source();
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("mesh density shader"),
+            source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("mesh density pipeline layout"),
+            bind_group_layouts: &[Some(mesh_bgl), Some(uv_bgl)],
+            immediate_size: 0,
+        });
+        let pipeline = create_mesh_pipeline_with_density_stream(
+            device,
+            config,
+            &layout,
+            &shader,
+            wgpu::PrimitiveTopology::TriangleList,
+            Some(wgpu::Face::Back),
+            "mesh vertex density pipeline",
+            true,
+        );
+        self.density_vertex_buffer = Some(buffer);
+        self.density_pipeline = Some(pipeline);
     }
 
     fn setup_mesh_pipeline(
@@ -1145,13 +1388,7 @@ impl AssetViewerPanel {
         verts: &[f32],
         indices: &[u32],
     ) {
-        let vertex_count = verts.len() / SOURCE_VERTEX_FLOATS;
-        let density = local_vertex_density(verts, vertex_count);
-        let mut packed_verts = Vec::with_capacity(vertex_count * VERTEX_FLOATS);
-        for (index, vertex) in verts.chunks_exact(SOURCE_VERTEX_FLOATS).enumerate() {
-            packed_verts.extend_from_slice(vertex);
-            packed_verts.push(density[index]);
-        }
+        let vertex_count = verts.len() / VERTEX_FLOATS;
         let wire_indices: Vec<u32> = indices
             .chunks_exact(3)
             .flat_map(|triangle| {
@@ -1168,11 +1405,11 @@ impl AssetViewerPanel {
 
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh vertex buffer"),
-            size: (packed_verts.len() * 4) as u64,
+            size: (verts.len() * 4) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&vb, 0, bytemuck::cast_slice(&packed_verts));
+        queue.write_buffer(&vb, 0, bytemuck::cast_slice(verts));
 
         let ib = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh index buffer"),
@@ -1193,6 +1430,7 @@ impl AssetViewerPanel {
         self.mesh_vertex_buffer = Some(vb);
         self.mesh_index_buffer = Some(ib);
         self.mesh_index_count = indices.len() as u32;
+        self.mesh_vertex_count = vertex_count as u32;
         self.wire_index_buffer = Some(wire_ib);
         self.wire_index_count = wire_indices.len() as u32;
 
@@ -1460,11 +1698,19 @@ impl AssetViewerPanel {
         let Some(vb) = &self.mesh_vertex_buffer else {
             return;
         };
+        let density_ready = self.render_mode == MeshRenderMode::VertexDensity
+            && self.density_pipeline.is_some()
+            && self.density_vertex_buffer.is_some();
         let (ib, index_count, pipeline) = if self.render_mode == MeshRenderMode::Wireframe {
             let (Some(ib), Some(pipeline)) = (&self.wire_index_buffer, &self.wire_pipeline) else {
                 return;
             };
             (ib, self.wire_index_count, pipeline)
+        } else if density_ready {
+            let (Some(ib), Some(pipeline)) = (&self.mesh_index_buffer, &self.density_pipeline) else {
+                return;
+            };
+            (ib, self.mesh_index_count, pipeline)
         } else {
             let (Some(ib), Some(pipeline)) = (&self.mesh_index_buffer, &self.mesh_pipeline) else {
                 return;
@@ -1477,6 +1723,7 @@ impl AssetViewerPanel {
         let Some(bg) = &self.mesh_bind_group else {
             return;
         };
+        let density_buffer = self.density_vertex_buffer.as_ref();
 
         let view = match surface.back_buffer_view() {
             Some(v) => v,
@@ -1602,6 +1849,11 @@ impl AssetViewerPanel {
                 multiview_mask: None,
             });
             rpass.set_vertex_buffer(0, vb.slice(..));
+            if density_ready {
+                if let Some(density_buffer) = density_buffer {
+                    rpass.set_vertex_buffer(1, density_buffer.slice(..));
+                }
+            }
             rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
             for (draw, (range, _, slot)) in draws.iter().enumerate() {
                 let offset =
