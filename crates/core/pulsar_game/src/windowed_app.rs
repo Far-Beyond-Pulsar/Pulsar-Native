@@ -228,22 +228,7 @@ struct GpuContext {
 impl GpuContext {
     fn new(display: winit::event_loop::OwnedDisplayHandle) -> Self {
         let renderer_config = engine_state::settings::global_config();
-        let backend = renderer_config
-            .get(
-                engine_state::settings::NS_EDITOR,
-                "renderer",
-                "backend_preference",
-            )
-            .ok()
-            .and_then(|value| value.as_str().ok().map(str::to_owned))
-            .unwrap_or_else(|| "auto".to_owned());
-        let backends = match backend.as_str() {
-            "vulkan" => wgpu::Backends::VULKAN,
-            "dx12" => wgpu::Backends::DX12,
-            "metal" => wgpu::Backends::METAL,
-            "gl" => wgpu::Backends::GL,
-            _ => wgpu::Backends::all(),
-        };
+        let backends = engine_state::settings::renderer_backends();
         let power_preference = renderer_config
             .get(
                 engine_state::settings::NS_EDITOR,

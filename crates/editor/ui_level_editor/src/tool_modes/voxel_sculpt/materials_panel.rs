@@ -12,39 +12,20 @@ use ui::{
 };
 
 pub(super) fn material_label(id: u32) -> String {
-    let keys = [
-        "LevelEditor.VoxelPanel.Grass",
-        "LevelEditor.VoxelPanel.Dirt",
-        "LevelEditor.VoxelPanel.Stone",
-        "LevelEditor.VoxelPanel.Sand",
-        "LevelEditor.VoxelPanel.Snow",
-        "LevelEditor.VoxelPanel.Water",
-        "LevelEditor.VoxelPanel.Gravel",
-        "LevelEditor.VoxelPanel.Sandstone",
-        "LevelEditor.VoxelPanel.DarkStone",
-        "LevelEditor.VoxelPanel.Wood",
-        "LevelEditor.VoxelPanel.Leaves",
-        "LevelEditor.VoxelPanel.Clay",
-        "LevelEditor.VoxelPanel.Brick",
-        "LevelEditor.VoxelPanel.Planks",
-        "LevelEditor.VoxelPanel.Cobble",
-    ];
-    keys.get(id.saturating_sub(1) as usize)
-        .map(|key| t!(*key).to_string())
-        .unwrap_or_default()
+    let Some(name) = helio_component::voxel_world::material::NAMES.get(id.saturating_sub(1) as usize) else {
+        return String::new();
+    };
+    let key = format!("LevelEditor.VoxelPanel.{name}");
+    let label = t!(key.as_str()).to_string();
+    // Untranslated: the engine's own name.
+    if label == key { name.to_string() } else { label }
 }
 
-/// Base sRGB colors from helio-pass-voxel-planet/shaders/surface.wgsl::palette.
+/// The material's base colour in the engine's built-in appearance.
 /// Lighting and procedural texture variation are intentionally absent in these chips.
 pub(super) fn material_color(id: u32) -> Hsla {
-    let colors = [
-        0x689636, 0x846040, 0x8a8780, 0xd8c68e, 0xecf1f6, 0x1c485c, 0x706b65, 0xc89868, 0x5a5856,
-        0x705032, 0x3e7028, 0xa67658, 0x984838, 0xa47a4c, 0x7a7a78,
-    ];
-    rgb(*colors
-        .get(id.saturating_sub(1) as usize)
-        .unwrap_or(&0x808080))
-    .into()
+    let [r, g, b] = helio_component::voxel_world::material_colour(id).map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u32);
+    rgb((r << 16) | (g << 8) | b).into()
 }
 
 impl VoxelSculptPanel {

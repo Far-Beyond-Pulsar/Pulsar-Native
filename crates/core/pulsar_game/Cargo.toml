@@ -83,6 +83,10 @@ tempfile = { workspace = true }
 libloading = { workspace = true }
 # The end-to-end generated-project check exports a class through the real generator.
 pulsar_script_codegen = { workspace = true }
+# The random world example (tests/random_world_blueprint.rs): its saved
+# Blueprint graph compiles through the real compiler and runs on the VM.
+blueprint_compiler = { path = "../../../plugins/vendor/blueprint_editor/compiler" }
+blueprint_graph = { path = "../../../plugins/vendor/blueprint_editor/graph" }
 
 [build-dependencies]
 # `build.rs` generates the export probe actor (src/export_probe.rs).

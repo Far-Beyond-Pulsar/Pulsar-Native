@@ -28,7 +28,7 @@ residency, tracing) is documented in Helio's
 | Layer | Where | Owns |
 |---|---|---|
 | Components | Helio `helio-component` (`components/voxel_component.rs`) | `VoxelTerrainComponent`, generator settings components, `VoxelEditJournal` field, inspector metadata. |
-| World queries | Helio `helio-component` (`components/voxel_world.rs`) | The CPU world of a terrain entity (cached), recipe/brush mapping, block API, scripting world methods, editor framing. |
+| World queries | Helio `helio-component` (`components/voxel_world.rs`) | The CPU world of a terrain instance (cached), recipe/brush mapping, block API, scripting world methods, editor framing. |
 | Canonical world | Helio `helio-pass-voxel-planet` | Grid, terrain generators, edits, `Planet` queries and ray casts, the render pass. |
 | Scene projection | `engine_backend/src/scene/voxel_frame.rs` | Enabled SceneDB rows -> `VoxelSceneEntry` (configuration + shared capabilities, no payload copies). |
 | Backend registry | `engine_backend/.../helio_renderer/voxel_backend.rs` | `VoxelRenderBackend` trait, `VoxelBackendRegistry`, the built-in `PlanetVoxelBackend` (`helio.voxel-terrain`). |
@@ -43,16 +43,58 @@ radius or plane size, voxel size, generator (a `VoxelGeneratorRef` of id and
 version, serialized flat as `generator_id` / `generator_version`), seed,
 editable. The rest (renderer id, chunk layout, LOD, palette) stays serialized
 but hidden. Presets: `VoxelTerrainComponent::planet(radius)`, `::plane(size)`,
-`::infinite_plane()`; a default component is a 4 km plane of the landform
-generator. The world is centred on its entity, which must sit at the origin
-without rotation and with a uniform scale (scale multiplies all sizes).
+`::infinite_plane()`; a default component is a 4 km plane of the layered
+terrain generator (`helio.terrain`). The world is centred on its object,
+which must sit at the origin without rotation and with a uniform scale
+(scale multiplies all sizes).
 
-**Generator settings** live in a separate component on the same entity, named
-by the generator (`VoxelLandformComponent` for `helio.landform`,
-`VoxelFlatTerrainComponent` for `helio.flat`). The projection serializes it
-into the generator's parameters. Choosing a generator in the inspector
-attaches its settings component. Settings changes rebuild the world without
-recompiling shaders.
+`Terrain appearance (JSON)` changes shading without rebuilding the world:
+`palette` has 16 `[sRGB red, green, blue, roughness]` entries, `grass` has
+three `[sRGB red, green, blue, 0]` entries (dry, meadow, lush), and `detail`
+is `[patch contrast, pigment variation, edge shading, 0]`. Omitted fields
+inherit defaults; an empty value restores them. The viewport resets colour history on changes.
+
+**Generator settings** live in a separate component instance on the same
+object, named by the generator (`VoxelTerrainLayersComponent` for Helio's
+`helio.terrain`), found with `resolve_instance`. The projection serializes it
+into the generator's parameters. Choosing a
+generator in the inspector attaches its settings component. Settings changes
+rebuild the world without recompiling shaders.
+
+**Layer stacks.** `helio.terrain` builds every world from an ordered list of
+layers: Warp, Continents, Mountains, Hills, Roughness, Erosion, Craters,
+Basins and Plateau, each with a mask (everywhere, land, above deep sea), plus
+caves, overhangs and a material style (Earthlike, Lunar, Layered). Whether a
+sphere is a planet or a moon is the game's choice: the component's presets
+(`earth`, `moon`, `flat`) are just data, and a game can build or randomize
+its own stacks. Blueprints call `use_preset`, `add_layer`, `remove_layer`,
+`layer_count` and `set_layer_enabled` / `height` / `scale` / `coverage` on
+the component; the world rebuilds from the new settings.
+
+In the inspector the whole stack is one property with its own editor: a
+preset picker, the layers and material rules as ordered lists (move, remove,
+add), the caves, overhangs and materials, and the generator's validation
+inline ("Not generated: ..."), so a preset or a reorder is one undoable edit.
+A layer added, or switched to another kind, starts from that kind's
+defaults (the generator's `Layer::new`), keeping only whether it is on and
+its mask. While the stack is invalid the viewport keeps the last world that
+built (the error says what to fix); it is not rebuilt every frame.
+
+**The Earth example.** `assets/examples/voxel_planet.level` is the Earth
+preset with seed 75: the editor spawns 60 m over foothills at the north
+pole, facing a range 23 km away, under a sun 32 degrees high (an overhead
+sun lights terrain flat). An unbound `PostProcessVolumeComponent` gives it
+an outdoor look: ACES tone map, exposure 1.1, contrast 1.15, saturation
+0.85 and a light vignette. Without tone mapping, grass and sky clip flat.
+
+**Random worlds.** `assets/examples/random_world.blueprint.json` is a
+Blueprint that builds a planet, a moon or a desert world from its `seed`
+variable, No Man's Sky style: it rolls with the deterministic `Seeded
+Random` nodes (`seeded_random`, `seeded_random_range`, `seeded_random_int`:
+equal seed and index, equal number, on every run and machine), applies a
+preset, then adds a crater layer and hills of random size through the
+component's natives. `pulsar_game`'s `random_world_blueprint` test compiles
+the saved graph and runs it against a real terrain instance.
 
 **Composition.** Game-specific worlds are classes whose prefab combines these
 components with others (a planet with water and foliage components, say);
@@ -62,21 +104,41 @@ the voxel components know nothing about them.
 remove / add / paint, material, centre in world metres). It is the single
 source of truth for destruction and construction: the sculpt tool, scripts
 and the legacy sample methods all append to it, and saving the level saves
-it (as a plain list). Internally it is chunked and prefix-hashed, so copying
-it is nearly free and "equal" / "only grew" are O(1) checks. That matters
-because the projection copies it every frame.
+it (`{"terrain": .., "edits": [..]}`). Internally it is chunked and
+prefix-hashed, so copying it is nearly free and "equal" / "only grew" are
+O(1) checks. That matters because the projection copies it every frame.
+
+Edits belong to the ground they were made on: the journal records that
+terrain's fingerprint (`PlanetRecipe::fingerprint`: form, voxel size,
+generator, seed and settings). When any of these change, the projection
+shows none of the old edits and the scene step drops them from the journal
+(`EditJournalSync`: change cursors over the terrain and layer components, so
+frames that change neither cost nothing), so they are not saved either. A journal with no
+terrain yet adopts the first one.
+
+**Sculpting.** A brush sample asks the renderer for the terrain hit under
+the pointer (`request_pick`); when the answer arrives (a few frames later)
+the exact edit is found by walking the base grid only a few cells around it,
+wherever the terrain is. The walk used to start at the eye: aimed at a
+mountain 20 km away it took seconds per sample, near the horizon tens of
+seconds (the editor froze while sculpting). Without a renderer hit the walk
+reaches at most 500 m.
 
 ## Flow of a frame
 
-1. **Projection.** `project_voxel_entries(world)` maps enabled terrain rows
-   to `VoxelSceneEntry`: id, visibility, shape and size, voxel size,
+1. **Projection.** `project_voxel_entries(world)` maps enabled terrain
+   instances to `VoxelSceneEntry`: id, visibility, shape and size, voxel size,
    generator config (id, version, seed, settings JSON), the edit journal and
-   shared stores. Nothing large is copied.
+   shared stores. Nothing large is copied. The renderer reads it once per
+   world revision (`VoxelSceneRead`), with the sun and what keeps the scene
+   out of camera-relative frames.
 2. **Environment.** The registry reports whether any active backend renders
-   camera-relative and owns the outdoor sky, the ground's local vertical
-   (`ambient_up`), the camera's `altitude` and a certified clip range. The
-   renderer sets the frame's world origin, hemisphere ambient and fallback
-   sky from these.
+   camera-relative, the ground's local vertical (`local_up`), the camera's
+   `altitude` and a certified clip range. The renderer sets the frame's world
+   origin from these when the scene allows it (every authored component and
+   GPU source is reviewed for a moved origin; anything unknown keeps world
+   coordinates and logs `VOXEL_CAMERA_SPACE`). The sky and the light the air
+   casts come from an `AtmosphereComponent` through the environment join.
 3. **Publish.** `publish_frame(entries, VoxelView)` hands the backend the
    f64 eye, camera basis, projection and sun. `PlanetVoxelBackend` resolves
    the entry to a cached `Arc<Planet>`. Only appended edits extend the cached
@@ -97,8 +159,9 @@ via `supports`; ambiguity is an error). Methods and why they exist:
 |---|---|
 | `renderer_id`, `supports` | Selection. |
 | `pass_factory`, `publish_frame`, `needs_frame` | Graph pass, per-frame view, streaming keep-alive. |
-| `camera_relative` | The backend wants camera-local GPU coordinates (planetary precision). |
-| `outdoor_sky`, `ambient_up` | Sky ownership and the hemisphere-ambient axis (the planet's radial). |
+| `camera_relative_frames` | The backend wants camera-local GPU coordinates (planetary precision). |
+| `local_up` | The local vertical (the planet's radial): the camera frame's up. |
+| `configure_appearance` | Terrain appearance (palette, grass, detail) without rebuilding the world. |
 | `camera_clip_range` | Near/far from certified empty space (near up to 50 km in orbit, 5 cm on the ground). |
 | `altitude` | Height above the ground below the eye (camera speed). |
 | `lift_out_of_ground` | Where to put an eye that entered solid voxels (dug air is not solid). |
@@ -152,15 +215,18 @@ and gameplay agree on every block. On generated terrain the older
   `Renderer::set_world_origin` and on to passes as
   `PrepareContext::world_origin`).
 - **Planet-aware camera frame.** The camera keeps a reference frame whose up
-  follows the local vertical (`ambient_up`), carried along by the smallest
+  follows the local vertical (`local_up`), carried along by the smallest
   rotation as it moves. Yaw and pitch are relative to it, so the horizon stays
   level anywhere on a planet. W/S move level, Q/E move along the vertical.
   View, movement, pan, picking, gizmos and brush rays all use the same
   basis. Saved and focus poses keep world-space yaw/pitch.
 - **Speed** is the viewport speed x `clamp(altitude / 20 m, 1, 1e6)`: walking
   speed near the ground, orbit in seconds.
-- **Ground collision.** After moving, an eye inside solid voxels is lifted
-  0.5 m above the surface (dug tunnels are air and can be entered).
+- **Ground collision.** A move that would end inside solid voxels keeps
+  only the axes of the move that stay in air, so the camera slides along
+  cave walls, dug tunnels and the ground. Only an eye that is already buried
+  (spawned or teleported into rock) is lifted 0.5 m above the surface:
+  lifting on contact threw the camera out of caves.
 
 ## Decisions and pitfalls
 
@@ -182,16 +248,26 @@ and gameplay agree on every block. On generated terrain the older
   world is its recipe plus ordered brushes; that keeps saves small and CPU
   queries exact, and lets the GPU regenerate any column at any level.
 - **The editor's default Sun points straight down (world -Y),** so the sun
-  is overhead at the pole and lower elsewhere. Helio's fallback sky assumes
-  world +Y up; the sky is wrong away from the pole and from orbit until the
-  planetary atmosphere lands.
+  is overhead at the pole and lower elsewhere. A planet's air is an authored
+  `AtmosphereComponent` placed at its owner (the example level's planet):
+  the atmosphere pass rebases its centre by the frame's world origin, so the
+  horizon and aerial perspective follow the planet at any distance. Without
+  one there is no sky (space, a moon).
 
 ## Diagnostics and tests
 
 - `PULSAR_VOXEL_STATS=1` logs, twice a second to the engine log
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
-  camera altitude and speed scale and each backend's `diagnostics` line
-  (resident / pending columns, jobs, levels, residency CPU times). `finest`
+  camera altitude, speed scale, eye/forward/up, viewport and each backend's
+  `diagnostics` line
+  (resident / pending columns, jobs, levels, pool `free_units` and
+  `recycles`, and `lod_pressure`: above 1 the viewport wants more columns
+  than the record or pool capacity holds, or than admission keeps up with
+  while moving, so Helio draws slightly coarser levels instead of stalling).
+  `plan` is the residency worker's CPU time per plan, off the render
+  thread. `late_plans` counts frames whose plan was not ready (they upload
+  nothing), and `reranked` counts pending columns re-prioritised for the
+  moved eye. `finest`
   is the finest active level: from high up it is above 0 by design (fine
   levels switch on only where local terrain can come near). Pending that
   stays high while the camera is still, or `jobs=63` frames while moving,
@@ -210,9 +286,14 @@ and gameplay agree on every block. On generated terrain the older
   (a stroke is one undo step).
 - Renderer-side performance and correctness are measured in Helio
   (`voxel_flight`; `HELIO_VOXEL_FLIGHT_TRIP` replays an editor trip,
-  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the altitude timeline of
+  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the logged camera pose of
   a session logged with `PULSAR_VOXEL_STATS=1`, and
   `HELIO_VOXEL_FLIGHT_CRUISE=<m>` flies level at the editor's speed).
+
+- `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s ascent/orbit/descent/cruise/arrival
+  diagnostic after residency settles and cancels on camera input. Use a copied
+  project with `PULSAR_VOXEL_STATS=1`. Helio's `HELIO_VOXEL_FLIGHT_LONG=<s>`
+  is the sustained-travel equivalent; run it at the editor's resolution.
 
 ## Extending
 

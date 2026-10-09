@@ -4,6 +4,7 @@ pub mod core;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
+mod native_voxel_flight;
 pub mod renderer;
 pub mod voxel_backend;
 

@@ -49,6 +49,44 @@ pub const NS_EDITOR: &str = "editor";
 /// The namespace used for per-project settings.
 pub const NS_PROJECT: &str = "project";
 
+// ─── Renderer device ──────────────────────────────────────────────────────────
+
+/// The graphics backends the `editor.renderer.backend_preference` setting
+/// selects, for every window that creates a wgpu device (editor, game).
+///
+/// `auto` prefers Vulkan wherever an adapter exposes it: the renderer is
+/// developed and validated on it, and the same GPU through DX12 compiles
+/// every pipeline again through Direct3D's shader compiler. Without a Vulkan
+/// adapter every backend is available.
+pub fn renderer_backends() -> wgpu::Backends {
+    let preference = global_config()
+        .get(NS_EDITOR, "renderer", "backend_preference")
+        .ok()
+        .and_then(|value| value.as_str().ok().map(str::to_owned))
+        .unwrap_or_else(|| "auto".to_owned());
+    match preference.as_str() {
+        "vulkan" => wgpu::Backends::VULKAN,
+        "dx12" => wgpu::Backends::DX12,
+        "metal" => wgpu::Backends::METAL,
+        "gl" => wgpu::Backends::GL,
+        _ => {
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                backends: wgpu::Backends::VULKAN,
+                flags: wgpu::InstanceFlags::default(),
+                backend_options: wgpu::BackendOptions::default(),
+                memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+                display: None,
+            });
+            let vulkan = futures::executor::block_on(instance.enumerate_adapters(wgpu::Backends::VULKAN));
+            if vulkan.is_empty() {
+                wgpu::Backends::all()
+            } else {
+                wgpu::Backends::VULKAN
+            }
+        }
+    }
+}
+
 // ─── Disk persistence ─────────────────────────────────────────────────────────
 
 /// Engine-wide (editor) settings backed by PulsarConfig's [`ConfigStore`].

@@ -107,8 +107,8 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs",
-        3,
-        "voxel path (outside this plan, voxel-branch-porting.md): VoxelSceneRead runs when the world revision changes",
+        2,
+        "voxel path: VoxelSceneRead runs when the world revision changes (enabled meshes; lights, for the sun and the camera-relative gate)",
     ),
     (
         "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs",
