@@ -324,6 +324,11 @@ struct PendingBrush {
 /// How long a brush sample waits for the renderer's hit before it walks the
 /// exact terrain without one.
 const PICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
+/// After a stamp within this distance, brush samples stamp on the frame of
+/// their input: the exact walk from the eye to twice that distance
+/// costs under a millisecond (0.1 ms at 10 m), where a renderer pick takes
+/// frames.
+const INSTANT_STAMP_M: f64 = 40.0;
 
 /// Scripted sculpting through the editor's own brush queue: after 12 s to
 /// load, it looks down (`=1`) or keeps the view and strokes the distant
@@ -2164,10 +2169,28 @@ impl HelioRenderer {
             direction,
             request,
         };
+        // Near the last stamp (any stroke's: the walk is exact from the eye,
+        // the distance only bounds it), with no older sample still waiting
+        // (it must land first): stamp now, walking from the eye to twice that
+        // distance (`edit_ray` walks `cell * 3 + 1` either side of the hint,
+        // so a third of the distance starts at the eye). A surface beyond it
+        // takes the renderer's pick.
+        let near = self
+            .voxel_stroke_last
+            .as_ref()
+            .map(|(_, last)| last.distance)
+            .filter(|&d| d <= INSTANT_STAMP_M);
+        if let Some(distance) = near.filter(|_| self.voxel_brush_picks.is_empty()) {
+            if self.apply_voxel_brush(&brush, Some((distance, distance / 3.0))) {
+                return;
+            }
+        }
         match self.voxel_backends.request_pick([norm_x, norm_y]) {
             Some(pick) => self.voxel_brush_picks.push_back(PendingBrush { pick, ..brush }),
             // Nothing drawn to pick yet: a bounded exact walk.
-            None => self.apply_voxel_brush(&brush, None),
+            None => {
+                self.apply_voxel_brush(&brush, None);
+            }
         }
     }
 
@@ -2195,7 +2218,10 @@ impl HelioRenderer {
         }
     }
 
-    fn apply_voxel_brush(&mut self, brush: &PendingBrush, near: Option<(f64, f64)>) {
+    /// Apply a brush sample where its ray first hits the terrain; `near`
+    /// bounds the exact walk (around a renderer hit). Returns whether a
+    /// stamp was applied.
+    fn apply_voxel_brush(&mut self, brush: &PendingBrush, near: Option<(f64, f64)>) -> bool {
         let entries = {
             let scene = self.scene_store.read();
             crate::scene::voxel_frame::project_voxel_entries(&scene.world).0
@@ -2230,13 +2256,15 @@ impl HelioRenderer {
                 }
                 self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit.clone());
                 self.voxel_stroke_last = Some((brush.stroke, commit));
+                true
             }
-            Ok(_) => {}
+            Ok(_) => false,
             Err(error) => {
                 tracing::warn!("Voxel brush: {error}");
                 if let Ok(mut pending) = self.pending_errors.lock() {
                     pending.push(format!("Voxel brush: {error}"));
                 }
+                false
             }
         }
     }
