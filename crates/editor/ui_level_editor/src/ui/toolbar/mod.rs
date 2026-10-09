@@ -20,7 +20,6 @@ mod multiplayer_panel;
 mod playback_controls;
 mod snap_controls;
 mod time_scale_dropdown;
-mod tool_mode_dropdown;
 mod view;
 
 pub use actions::*;
@@ -30,7 +29,6 @@ use level_editor_menus::LevelEditorMenus;
 use mode_indicator::ModeIndicator;
 use snap_controls::SnapPanel;
 use snap_controls::TransformSnapControls;
-use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
 
 use crate::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
@@ -86,10 +84,6 @@ impl ToolbarPanel {
             .gap_2()
             .items_center()
             .bg(theme.background)
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
-                ToolModeDropdown::render(state, state_arc.clone(), cx)
-            })
             .child(LevelEditorMenus::render())
             .child(TransformSnapControls::render(snap_panels, state))
             .child(self.render_separator(cx))

@@ -311,22 +311,17 @@ impl Render for FoliageSetsPanel {
                 .into_any_element()
         };
 
-        let mut root = v_flex()
-            .size_full()
-            .bg(theme.sidebar)
+        // The terrain workspace owns the shared mode header and navigation;
+        // this view contributes only its scrollable foliage controls.
+        let root = v_flex().size_full().min_h_0().bg(theme.sidebar);
+
+        let mut content = v_flex()
+            .id("foliage-panel-scroll")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
             .p_3()
             .gap_2()
-            .overflow_y_scroll()
-            .child(panel_header(
-                &theme,
-                t!("LevelEditor.FoliagePanel.Title").to_string(),
-                t!(
-                    "LevelEditor.FoliagePanel.Summary",
-                    sets => library.sets.len(),
-                    active => library.paintable_members().count()
-                )
-                .to_string(),
-            ))
             // ── Tools ──
             .child(tool_grid(
                 &theme,
@@ -425,7 +420,7 @@ impl Render for FoliageSetsPanel {
 
         if !self.collapsed.contains("sets") {
             if library.sets.is_empty() {
-                root = root.child(
+                content = content.child(
                     div()
                         .text_xs()
                         .text_color(theme.muted_foreground)
@@ -433,12 +428,12 @@ impl Render for FoliageSetsPanel {
                 );
             }
             for set in library.sets.iter().filter(|s| visible(s)) {
-                root = root.child(self.render_set(set.id, library, &state, &theme));
+                content = content.child(self.render_set(set.id, library, &state, &theme));
             }
         }
 
         // ── Inspector ──
-        root = root
+        content = content
             .child(self.header(
                 &theme,
                 cx,
@@ -449,7 +444,7 @@ impl Render for FoliageSetsPanel {
             .when(!self.collapsed.contains("inspector"), |el| {
                 el.child(self.render_inspector(library, &state, &theme, cx))
             });
-        root
+        root.child(content)
     }
 }
 

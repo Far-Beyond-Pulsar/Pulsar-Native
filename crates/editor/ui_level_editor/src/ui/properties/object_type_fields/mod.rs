@@ -307,7 +307,11 @@ impl ObjectTypeFieldsSection {
     /// set (an instance added, removed, reordered or toggled) or to an
     /// unresolved payload rebinds; a class-variable change re-reads the
     /// class caches.
-    pub fn apply_update(&mut self, delta: &pulsar_world_registry::ObjectDelta, cx: &mut Context<Self>) {
+    pub fn apply_update(
+        &mut self,
+        delta: &pulsar_world_registry::ObjectDelta,
+        cx: &mut Context<Self>,
+    ) {
         use engine_backend::scene::attachments::{
             ComponentAttachments, ComponentMeta, ComponentOwner, UnresolvedComponent,
         };
@@ -337,7 +341,11 @@ impl ObjectTypeFieldsSection {
                 let Some(class) = pulsar_world_registry::value_engine_class(&card.0, value) else {
                     return;
                 };
-                let values = entry.properties.iter().map(|prop| (prop.getter)(class)).collect();
+                let values = entry
+                    .properties
+                    .iter()
+                    .map(|prop| (prop.getter)(class))
+                    .collect();
                 self.world_value_cache.insert(card.clone(), values);
                 self.dirty_classes.remove(&card);
                 cx.notify();
@@ -417,8 +425,7 @@ impl Render for ObjectTypeFieldsSection {
             crate::scene_edit::components::get_components_metadata(&world.world, &self.object_id)
         };
 
-        let component_hierarchy =
-            ComponentHierarchyPanel::new(self.object_id.clone());
+        let component_hierarchy = ComponentHierarchyPanel::new(self.object_id.clone());
         let state = self.state_arc.read();
         let component_panel = component_hierarchy
             .render(&attached, &state, self.state_arc.clone(), add_popover, cx)

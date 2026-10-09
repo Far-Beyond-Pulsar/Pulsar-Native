@@ -1100,7 +1100,6 @@ fn foliage_reaches_the_frame() {
     );
 }
 
-
 /// Phase 6 (Pulsar-Native#1035): every pass of the editor's render graph
 /// runs on a scene with a mesh and a light. The passes fed by authored
 /// components are checked for their visible effect by the tests above; this
@@ -1164,7 +1163,12 @@ fn brightness(frame: &Frame) -> u64 {
         .sum()
 }
 
-fn transform(state: &mut LevelEditorState, id: &str, rotation: Option<[f32; 3]>, scale: Option<[f32; 3]>) {
+fn transform(
+    state: &mut LevelEditorState,
+    id: &str,
+    rotation: Option<[f32; 3]>,
+    scale: Option<[f32; 3]>,
+) {
     let result = execute_command(
         state,
         SceneCommand::SetTransform {
@@ -1203,7 +1207,12 @@ fn add_light(
     id
 }
 
-fn set_light(state: &mut LevelEditorState, id: &str, property: &str, value: Box<dyn std::any::Any + Send>) {
+fn set_light(
+    state: &mut LevelEditorState,
+    id: &str,
+    property: &str,
+    value: Box<dyn std::any::Any + Send>,
+) {
     let result = execute_command(
         state,
         SceneCommand::SetComponentProperty {
@@ -1259,7 +1268,11 @@ fn mesh_and_light_variations_reach_the_frame() {
 
     // ── Light types, intensity and direction ──────────────────────────────
     let above = [0.0, radius * 1.5, radius * 2.0];
-    for (kind, intensity) in [(Kind::Point, BRIGHT), (Kind::Spot, BRIGHT), (Kind::Directional, 20.0)] {
+    for (kind, intensity) in [
+        (Kind::Point, BRIGHT),
+        (Kind::Spot, BRIGHT),
+        (Kind::Directional, 20.0),
+    ] {
         let mut state = LevelEditorState::new();
         drop_matte_mesh(&mut state);
         let mut renderer = harness.renderer(&state);
@@ -1269,12 +1282,16 @@ fn mesh_and_light_variations_reach_the_frame() {
         let lit = harness.frames(&mut renderer, || {});
         let change = lit.difference(&unlit);
         println!("PHASE7 {kind:?} light vs unlit: {change:?}");
-        assert!(change.color_pixels > 0, "{kind:?} light did not light the scene");
+        assert!(
+            change.color_pixels > 0,
+            "{kind:?} light did not light the scene"
+        );
 
         set_light(&mut state, &id, "intensity", Box::new(intensity * 4.0));
         let brighter = harness.frames(&mut renderer, || {});
         assert!(
-            brighter.difference(&lit).color_pixels > 0 && brighter.difference(&unlit).color_pixels >= change.color_pixels,
+            brighter.difference(&lit).color_pixels > 0
+                && brighter.difference(&unlit).color_pixels >= change.color_pixels,
             "{kind:?}: raising the intensity changed nothing"
         );
         if kind != Kind::Point {
@@ -1312,7 +1329,10 @@ fn mesh_and_light_variations_reach_the_frame() {
             brightness(&shadowed),
             brightness(&unshadowed)
         );
-        assert!(change.color_pixels > 0, "turning the light's shadows off changed nothing");
+        assert!(
+            change.color_pixels > 0,
+            "turning the light's shadows off changed nothing"
+        );
         assert!(
             brightness(&unshadowed) > brightness(&shadowed),
             "without shadows the floor under the blocker should be lit"
@@ -1393,20 +1413,42 @@ fn splines_reach_the_frame() {
     drawn.dump("spline_drawn");
     let change = drawn.difference(&reference);
     println!("PHASE7 spline: {change:?}");
-    assert!(change.color_pixels > 0, "the spline was not drawn ({change:?})");
+    assert!(
+        change.color_pixels > 0,
+        "the spline was not drawn ({change:?})"
+    );
 
     move_to(&mut state, &id, [0.0, radius * 0.6, 0.0]);
     let moved = harness.frames(&mut renderer, || {});
-    assert!(moved.difference(&drawn).color_pixels > 0, "the spline did not follow its owner");
+    assert!(
+        moved.difference(&drawn).color_pixels > 0,
+        "the spline did not follow its owner"
+    );
 
-    assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, false));
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &id,
+        0,
+        false
+    ));
     let disabled = harness.frames(&mut renderer, || {});
     assert!(
         disabled.difference(&reference).color_pixels < change.color_pixels / 4,
         "a disabled spline is still drawn"
     );
-    assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, true));
-    assert!(harness.frames(&mut renderer, || {}).difference(&reference).color_pixels > 0);
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &id,
+        0,
+        true
+    ));
+    assert!(
+        harness
+            .frames(&mut renderer, || {})
+            .difference(&reference)
+            .color_pixels
+            > 0
+    );
 
     components::remove_component(&mut state.scene.world_mut(), &id, 0);
     let removed = harness.frames(&mut renderer, || {});
@@ -1450,7 +1492,10 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
         let encoded = renderer
             .render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT)
             .is_some();
-        harness.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        harness
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
         encoded
     };
     // Settle whatever the forced frames left pending.
@@ -1465,8 +1510,15 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
 
     let revision = state.scene.world().revision();
     let idle: Vec<bool> = (0..20).map(|_| encode(&mut renderer)).collect();
-    assert!(idle.iter().all(|encoded| !encoded), "an idle scene encoded a frame: {idle:?}");
-    assert_eq!(state.scene.world().revision(), revision, "idle frames wrote to the world");
+    assert!(
+        idle.iter().all(|encoded| !encoded),
+        "an idle scene encoded a frame: {idle:?}"
+    );
+    assert_eq!(
+        state.scene.world().revision(),
+        revision,
+        "idle frames wrote to the world"
+    );
 
     set_light(&mut state, &light, "intensity", Box::new(BRIGHT * 2.0));
     assert!(encode(&mut renderer), "the edit did not wake the renderer");

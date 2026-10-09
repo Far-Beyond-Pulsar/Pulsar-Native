@@ -30,7 +30,7 @@ use ui::settings::EngineSettings;
 use ui::{notification::Notification, ContextModal as _};
 
 use super::actions::*;
-use super::{ToolbarView, ViewportPanel};
+use super::{ModeRailView, ToolbarView, ViewportPanel};
 use crate::ai_sessions;
 use crate::scene_edit::LevelEditorCameraState;
 use crate::{LevelEditorState, TransformTool};
@@ -51,6 +51,7 @@ pub struct LevelEditorPanel {
 
     // UI components are separate entities rendered with `AnyView::cached`.
     toolbar: Entity<ToolbarView>,
+    mode_rail: Entity<ModeRailView>,
 
     // Helio viewport rendered via WgpuSurfaceHandle
     viewport: Entity<HelioViewport>,
@@ -84,12 +85,11 @@ pub struct LevelEditorPanel {
     /// against, guarding it the same way `applied_pie_signature` guards
     /// `sync_game_tab` — this runs on every render, so a plain `!=` check on
     /// a `Copy` id is what keeps it from touching the dock area for nothing.
-    /// Because this only fires on an actual mode switch (a rare, deliberate
-    /// user action), `sync_mode_layout` is free to fully rebuild the left
-    /// dock's panel set each time rather than caching individual panel
-    /// entities — unlike `sync_game_tab`, there is no per-render cost to
-    /// avoid here.
+    /// Mode panel entities are cached by id so their local navigation,
+    /// search, collapse and scroll state survives mode switches.
     applied_mode_layout: Option<crate::tool_modes::ToolModeId>,
+    mode_panels:
+        std::collections::HashMap<crate::tool_modes::ToolModeId, Vec<Arc<dyn ui::dock::PanelView>>>,
 
     // Keeps the polling task alive for the lifetime of the panel.
     _root_input_poller: gpui::Task<()>,
@@ -386,11 +386,17 @@ impl Render for LevelEditorPanel {
             )
             .child(
                 // Workspace with draggable panels
-                if let Some(ref workspace) = self.workspace {
-                    workspace.clone().into_any_element()
-                } else {
-                    div().child("Loading workspace...").into_any_element()
-                },
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        AnyView::from(self.mode_rail.clone()).cached(ModeRailView::cache_style()),
+                    )
+                    .child(if let Some(ref workspace) = self.workspace {
+                        workspace.clone().into_any_element()
+                    } else {
+                        div().child("Loading workspace...").into_any_element()
+                    }),
             )
     }
 }

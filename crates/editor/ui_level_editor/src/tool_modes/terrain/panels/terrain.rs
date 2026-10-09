@@ -38,6 +38,7 @@ enum Tab {
     Manage,
     Sculpt,
     Paint,
+    Foliage,
 }
 
 /// One terrain actor as the Manage tab shows it.
@@ -126,6 +127,7 @@ fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
 
 pub struct TerrainPanel {
     state: SharedState,
+    foliage: Entity<super::FoliageSetsPanel>,
     focus_handle: FocusHandle,
     last_signature: Signature,
     pump_started: bool,
@@ -134,10 +136,16 @@ pub struct TerrainPanel {
 }
 
 impl TerrainPanel {
-    pub fn new(state: SharedState, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        state: SharedState,
+        foliage: Entity<super::FoliageSetsPanel>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let last_signature = Signature::of(&state);
         Self {
             state,
+            foliage,
             focus_handle: cx.focus_handle(),
             last_signature,
             pump_started: false,
@@ -222,40 +230,55 @@ impl Render for TerrainPanel {
             .unwrap_or_else(|| t!("LevelEditor.TerrainPalette.NoTarget").to_string());
 
         let body = match self.tab {
-            Tab::Manage => self
-                .render_manage(&signature, &theme, cx)
-                .into_any_element(),
-            Tab::Sculpt => self
-                .render_sculpt(&signature, &theme, cx)
-                .into_any_element(),
-            Tab::Paint => self.render_paint(&signature, &theme, cx).into_any_element(),
+            Tab::Manage => Some(
+                self.render_manage(&signature, &theme, cx)
+                    .into_any_element(),
+            ),
+            Tab::Sculpt => Some(
+                self.render_sculpt(&signature, &theme, cx)
+                    .into_any_element(),
+            ),
+            Tab::Paint => Some(self.render_paint(&signature, &theme, cx).into_any_element()),
+            Tab::Foliage => None,
         };
 
         v_flex()
             .size_full()
+            .min_h_0()
             .bg(theme.sidebar)
-            .p_3()
-            .gap_2()
-            .overflow_y_scroll()
-            .child(panel_header(
-                &theme,
-                t!("LevelEditor.TerrainPanel.Title").to_string(),
-                subtitle,
-            ))
-            .child(self.render_tab_bar(cx))
-            .child(body)
+            .child(
+                v_flex()
+                    .flex_shrink_0()
+                    .p_3()
+                    .gap_2()
+                    .border_b_1()
+                    .border_color(theme.border.opacity(0.55))
+                    .child(panel_header(
+                        &theme,
+                        t!("LevelEditor.TerrainPanel.Title").to_string(),
+                        subtitle,
+                    ))
+                    .child(self.render_tab_bar(cx)),
+            )
+            .child(if let Some(body) = body {
+                v_flex()
+                    .id("terrain-panel-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_3()
+                    .gap_2()
+                    .child(body)
+                    .into_any_element()
+            } else {
+                self.foliage.clone().into_any_element()
+            })
     }
 }
 
 impl TerrainPanel {
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut bar = h_flex()
-            .w_full()
-            .gap_1()
-            .p(px(2.0))
-            .rounded(px(6.0))
-            .bg(cx.theme().muted.opacity(0.1));
-        for (tab, icon, label_key) in [
+        let tabs = [
             (
                 Tab::Manage,
                 IconName::Globe,
@@ -271,22 +294,40 @@ impl TerrainPanel {
                 IconName::Palette,
                 "LevelEditor.TerrainPanel.Tab.Paint",
             ),
-        ] {
-            let button = Button::new(format!("terrain_tab_{label_key}"))
-                .icon(icon)
-                .label(t!(label_key))
-                .small()
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.tab = tab;
-                    cx.notify();
+            (
+                Tab::Foliage,
+                IconName::Leaf,
+                "LevelEditor.FoliagePanel.Title",
+            ),
+        ];
+        let make_row = |items: &[(Tab, IconName, &'static str)], cx: &mut Context<Self>| {
+            let mut row = h_flex().w_full().gap_1();
+            for (tab, icon, label_key) in items {
+                let tab = *tab;
+                let button = Button::new(format!("terrain_tab_{}", tab as u8))
+                    .icon(*icon)
+                    .label(t!(*label_key))
+                    .small()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.tab = tab;
+                        cx.notify();
+                    }));
+                row = row.child(div().flex_1().child(if self.tab == tab {
+                    button.primary().w_full()
+                } else {
+                    button.ghost().w_full()
                 }));
-            bar = bar.child(div().flex_1().child(if self.tab == tab {
-                button.primary().w_full()
-            } else {
-                button.ghost().w_full()
-            }));
-        }
-        bar
+            }
+            row
+        };
+        v_flex()
+            .w_full()
+            .gap_1()
+            .p(px(2.0))
+            .rounded(px(6.0))
+            .bg(cx.theme().muted.opacity(0.1))
+            .child(make_row(&tabs[..2], cx))
+            .child(make_row(&tabs[2..], cx))
     }
 
     // ── Manage ──────────────────────────────────────────────────────────

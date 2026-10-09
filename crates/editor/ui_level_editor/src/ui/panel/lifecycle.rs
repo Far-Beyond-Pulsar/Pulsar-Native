@@ -401,6 +401,7 @@ impl LevelEditorPanel {
                 helio_mailbox.clone(),
             )
         });
+        let mode_rail = cx.new(|cx| ModeRailView::new(shared_state.clone(), window, cx));
         let class_updates =
             crate::core::asset_updates::subscribe_class_updates(shared_state.clone());
         let mesh_updates = crate::core::asset_updates::subscribe_mesh_updates(shared_state.clone());
@@ -408,6 +409,7 @@ impl LevelEditorPanel {
         Self {
             focus_handle: cx.focus_handle(),
             toolbar,
+            mode_rail,
             viewport,
             gpu_engine: gpu_engine.clone(),
             helio_mailbox,
@@ -420,6 +422,7 @@ impl LevelEditorPanel {
             playback_host,
             applied_pie_signature: None,
             applied_mode_layout: None,
+            mode_panels: std::collections::HashMap::new(),
             _root_input_poller: poller,
             pending_static_drag_warning: None,
             warned_static_drags: Default::default(),

@@ -1,6 +1,7 @@
 mod actions;
 pub(crate) mod frame_pump;
 pub(crate) mod hierarchy;
+mod mode_rail;
 pub(crate) mod mode_widgets;
 pub(crate) mod panel;
 mod properties;
@@ -10,6 +11,7 @@ mod viewport;
 mod world_settings;
 
 pub use hierarchy::HierarchyPanel;
+pub(crate) use mode_rail::ModeRailView;
 pub use panel::LevelEditorPanel;
 pub use properties::{
     ComponentHierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel,

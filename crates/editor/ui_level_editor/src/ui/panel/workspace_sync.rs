@@ -206,17 +206,30 @@ impl LevelEditorPanel {
             (layout, state.editor.tool_mode_registry.selected_id(), mode)
         };
 
-        let mut panel_context = crate::tool_modes::ModePanelContext {
-            state: self.shared_state.clone(),
-            owner: cx.entity().downgrade(),
-            window,
-            cx,
+        let layout_panels = if let Some(panels) = self.mode_panels.get(&mode_id) {
+            panels.clone()
+        } else {
+            let mut panel_context = crate::tool_modes::ModePanelContext {
+                state: self.shared_state.clone(),
+                owner: cx.entity().downgrade(),
+                window,
+                cx,
+            };
+            let panels = mode.build_panels(&mut panel_context);
+            drop(panel_context);
+            self.mode_panels.insert(mode_id, panels.clone());
+            panels
         };
-        let layout_panels = mode.build_panels(&mut panel_context);
-        drop(panel_context);
 
         let Some(workspace) = self.workspace.clone() else {
             return;
+        };
+
+        let width = match current {
+            crate::tool_modes::ToolModeId::SPLINE => px(380.0),
+            crate::tool_modes::ToolModeId::TERRAIN => px(380.0),
+            crate::tool_modes::ToolModeId::VOXEL_SCULPT => px(360.0),
+            _ => px(320.0),
         };
 
         workspace.update(cx, |ws, cx| {
@@ -234,12 +247,8 @@ impl LevelEditorPanel {
             if !layout_panels.is_empty() {
                 let item = DockItem::tabs(layout_panels, Some(0), &dock_area_weak, window, cx);
                 dock_area.update(cx, |da, cx| {
-                    let width = if current == crate::tool_modes::ToolModeId::SPLINE {
-                        360.0
-                    } else {
-                        280.0
-                    };
-                    da.set_left_dock(item, Some(px(width)), true, window, cx);
+                    // Give dense tool layouts a generous starting width.
+                    da.set_left_dock(item, Some(width), true, window, cx);
                 });
             } else {
                 let left_open = dock_area.read(cx).is_dock_open(DockPlacement::Left, cx);
