@@ -10,5 +10,5 @@
 
 crates/third-party/pbgc 810876416 PBGC branch refactor/metadata-only; no upstream PR yet
 crates/third-party/psgc a05c2c4a2 PSGC branch codex/texture-src; no upstream PR yet
-plugins/vendor/blueprint_editor 1f7a9b6a3 Plugin_Blueprints branch feat/blueprint-graph-crate, also in Far-Beyond-Pulsar/Plugin_Blueprints#29 (claude/cool-hypatia-ict23g)
-plugins/vendor/code_editor d15d161fc Plugin_CodeEditor branch chore/drop-pbgc-patch; no upstream PR yet
+plugins/vendor/blueprint_editor 96ba506f4 Plugin_Blueprints branch feat/blueprint-graph-crate, also in Far-Beyond-Pulsar/Plugin_Blueprints#29 (claude/cool-hypatia-ict23g)
+plugins/vendor/code_editor 967cbb808 Plugin_CodeEditor branch chore/drop-pbgc-patch; no upstream PR yet
