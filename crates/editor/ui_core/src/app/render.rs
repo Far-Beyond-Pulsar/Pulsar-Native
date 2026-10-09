@@ -682,6 +682,8 @@ impl Render for PulsarApp {
             }
         }
 
+        self.sync_sidebar_mode(window, cx);
+
         // Update rust-analyzer progress if indexing
         self.state.rust_analyzer.update(cx, |analyzer, cx| {
             analyzer.update_progress_from_thread(cx);
@@ -715,6 +717,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_flamegraph))
             .on_action(cx.listener(Self::on_toggle_agent_chat))
             .on_action(cx.listener(Self::on_toggle_command_palette))
+            .on_action(cx.listener(Self::on_toggle_unified_sidebar))
             .on_action(cx.listener(Self::on_open_file))
             .on_action(cx.listener(Self::on_open_asset))
             .on_action(cx.listener(Self::on_activate_open_editor))
@@ -752,7 +755,7 @@ impl Render for PulsarApp {
                     });
                 }),
             )
-            .child(
+            .child(self.with_nav_sidebar(
                 div()
                     .flex_1()
                     .relative()
@@ -874,7 +877,9 @@ impl Render for PulsarApp {
                             )
                         })
                     }),
-            )
+                window,
+                cx,
+            ))
             .when(drawer_docked, |this| {
                 this.child(
                     div()

@@ -42,6 +42,7 @@ use ui::dock::{
 };
 
 use super::PulsarApp;
+use super::nav_sidebar::model::SavedSidebar;
 
 /// Bump when the format changes incompatibly; older files are then ignored.
 const LAYOUT_VERSION: u32 = 1;
@@ -56,6 +57,9 @@ struct SavedLayout {
     /// Window size, position and maximized / fullscreen state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     window: Option<SavedWindow>,
+    /// Pinned tabs, collapsed groups and expanded folders of the left sidebar.
+    #[serde(default, skip_serializing_if = "SavedSidebar::is_empty")]
+    sidebar: SavedSidebar,
 }
 
 /// How the window was shown. The bounds saved alongside are the *restore*
@@ -302,7 +306,7 @@ impl PulsarApp {
     }
 
     /// (Re)arm the debounce timer. Dropping the previous task cancels it.
-    fn schedule_layout_save(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn schedule_layout_save(&mut self, cx: &mut Context<Self>) {
         if !self.state.layout_persist || !self.state.layout_ready {
             return;
         }
@@ -332,6 +336,7 @@ impl PulsarApp {
                 .state
                 .window_bounds
                 .map(|b| SavedWindow::capture(b, self.state.window_restore_bounds)),
+            sidebar: self.state.nav_sidebar.model.save(&root),
         };
         transform_layout(&mut layout, |state| relativize(state, &root));
 
@@ -528,6 +533,8 @@ impl PulsarApp {
             return;
         };
         transform_layout(&mut layout, |state| absolutize(state, &root));
+        let sidebar = std::mem::take(&mut layout.sidebar);
+        self.state.nav_sidebar.model.restore(sidebar, &root);
 
         let dock_area = self.state.dock_area.clone();
         let weak_dock = dock_area.downgrade();
@@ -656,6 +663,7 @@ mod tests {
         let path = layout_path(&dir);
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
+            sidebar: SavedSidebar::default(),
             window: None,
             dock: DockAreaState {
                 center: tab_group(&["a.rs", "b.rs"]),
@@ -704,6 +712,7 @@ mod tests {
         let path = layout_path(&dir);
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
+            sidebar: SavedSidebar::default(),
             window: None,
             dock: DockAreaState {
                 center: tiles,
@@ -729,6 +738,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("pulsar-layout-w-{}", std::process::id()));
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
+            sidebar: SavedSidebar::default(),
             dock: DockAreaState::default(),
             window: Some(SavedWindow::capture(WindowBounds::Maximized(restore), None)),
         };
@@ -804,11 +814,43 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_state_survives_a_write_and_older_files_read_without_it() {
+        use super::super::nav_sidebar::model::TabKey;
+        let dir = std::env::temp_dir().join(format!("pulsar-layout-sidebar-{}", std::process::id()));
+        let path = layout_path(&dir);
+        let layout = SavedLayout {
+            version: LAYOUT_VERSION,
+            sidebar: SavedSidebar {
+                pinned: vec![TabKey::File("Content/Hero.class".into()), TabKey::Panel("Level Editor".into())],
+                groups: vec![super::super::nav_sidebar::model::SavedGroup {
+                    name: "Combat".into(),
+                    members: vec![TabKey::File("Content/Sword.class".into())],
+                    collapsed: false,
+                }],
+                collapsed_groups: vec!["Blueprint Editor".into()],
+                expanded_folders: vec!["Content/Maps".into()],
+            },
+            window: None,
+            dock: DockAreaState::default(),
+        };
+        write_layout(&path, &layout).unwrap();
+        assert_eq!(read_layout(&path).unwrap().sidebar, layout.sidebar);
+
+        // A file written before the sidebar existed has no `sidebar` key.
+        let mut older = serde_json::to_value(&layout).unwrap();
+        older.as_object_mut().unwrap().remove("sidebar");
+        std::fs::write(&path, older.to_string()).unwrap();
+        assert!(read_layout(&path).expect("older layout").sidebar.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_layout_of_another_version_is_ignored() {
         let dir = std::env::temp_dir().join(format!("pulsar-layout-v-{}", std::process::id()));
         let path = layout_path(&dir);
         let stale = SavedLayout {
             version: LAYOUT_VERSION + 1,
+            sidebar: SavedSidebar::default(),
             window: None,
             dock: DockAreaState::default(),
         };

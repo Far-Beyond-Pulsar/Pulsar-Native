@@ -10,6 +10,11 @@ use std::path::PathBuf;
 #[action(namespace = pulsar_app)]
 pub struct ToggleFileManager;
 
+/// Action to switch between the tab bar and the unified left sidebar
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleUnifiedSidebar;
+
 /// Action to toggle the problems drawer
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]

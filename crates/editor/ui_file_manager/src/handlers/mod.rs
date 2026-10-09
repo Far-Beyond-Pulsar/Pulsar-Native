@@ -710,4 +710,38 @@ impl FileManagerDrawer {
         self.mark_directory_cache_dirty();
         cx.notify();
     }
+
+    /// The project's folder tree, kept current as files change on disk.
+    pub fn folder_tree(&self) -> Option<&FolderNode> {
+        self.folder_tree.as_ref()
+    }
+
+    /// The folder whose contents are listed.
+    pub fn selected_folder(&self) -> Option<&std::path::Path> {
+        self.selected_folder.as_deref()
+    }
+
+    /// List `path`'s contents, clearing the selection. Unlike clicking a folder
+    /// in the drawer's own tree, this leaves the tree's expansion alone.
+    pub fn show_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.selected_folder.as_deref() != Some(path.as_path()) {
+            self.selected_items.clear();
+            self.selection_anchor = None;
+        }
+        self.selected_folder = Some(path);
+        cx.notify();
+    }
+
+    /// Whether the folder tree beside the folder's contents is hidden.
+    pub fn folder_tree_hidden(&self) -> bool {
+        self.folder_tree_hidden
+    }
+
+    /// Hide or show the folder tree beside the folder's contents.
+    pub fn set_folder_tree_hidden(&mut self, hidden: bool, cx: &mut Context<Self>) {
+        if self.folder_tree_hidden != hidden {
+            self.folder_tree_hidden = hidden;
+            cx.notify();
+        }
+    }
 }

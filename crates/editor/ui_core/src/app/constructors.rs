@@ -476,6 +476,7 @@ impl PulsarApp {
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
                 navigation: Default::default(),
+                nav_sidebar: Default::default(),
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
                 layout_persist: false,
@@ -578,6 +579,17 @@ impl PulsarApp {
                     "View",
                     |window, cx| {
                         window.dispatch_action(Box::new(ToggleFileManager), cx);
+                    },
+                    cx,
+                );
+
+                palette.add_item(
+                    "Toggle Unified Sidebar",
+                    "Switch between the tab bar and the left sidebar of editors and folders",
+                    IconName::PanelLeft,
+                    "View",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(crate::actions::ToggleUnifiedSidebar), cx);
                     },
                     cx,
                 );
