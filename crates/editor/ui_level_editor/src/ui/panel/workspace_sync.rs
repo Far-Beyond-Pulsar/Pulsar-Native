@@ -34,7 +34,7 @@ impl LevelEditorPanel {
             // Create right dock panels
             let hierarchy_panel = cx.new(|cx| {
                 use crate::HierarchyPanelWrapper;
-                HierarchyPanelWrapper::new(shared_state.clone(), window, cx)
+                HierarchyPanelWrapper::new(shared_state.clone(), gpu.clone(), window, cx)
             });
             let properties_panel = cx.new(|cx| {
                 use crate::PropertiesPanelWrapper;
