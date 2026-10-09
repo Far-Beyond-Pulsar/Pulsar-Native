@@ -90,6 +90,8 @@ pub struct AssetViewerPanel {
     pub density_pipeline: Option<wgpu::RenderPipeline>,
     pub density_vertex_buffer: Option<wgpu::Buffer>,
     pub density_values: Option<Vec<f32>>,
+    pub density_band_ranges: Option<[(f32, f32); 7]>,
+    pub density_hover_band: Option<u32>,
     pub density_progress: Option<f32>,
     pub density_error: Option<String>,
     pub density_job_id: u64,
@@ -187,6 +189,8 @@ impl AssetViewerPanel {
         self.density_progress = None;
         self.density_error = None;
         self.density_values = None;
+        self.density_band_ranges = None;
+        self.density_hover_band = None;
         self.density_vertex_buffer = None;
         self.density_pipeline = None;
     }
@@ -241,8 +245,9 @@ impl AssetViewerPanel {
                     panel.density_progress = None;
                     panel.density_cancel = None;
                     match result {
-                        Ok(values) => {
-                            panel.density_values = Some(values);
+                        Ok(result) => {
+                            panel.density_values = Some(result.values);
+                            panel.density_band_ranges = Some(result.band_ranges);
                             panel.rebuild_density_resources();
                         }
                         Err(error) if error != "cancelled" => {
@@ -546,6 +551,8 @@ impl AssetViewerPanel {
             density_pipeline: None,
             density_vertex_buffer: None,
             density_values: None,
+            density_band_ranges: None,
+            density_hover_band: None,
             density_progress: None,
             density_error: None,
             density_job_id: 0,

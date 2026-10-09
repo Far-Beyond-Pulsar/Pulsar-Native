@@ -5,6 +5,7 @@ use ui::button::{Button, ButtonVariants as _};
 use ui::dock::{DockChannel, DockItem, PanelEvent};
 use ui::workspace::Workspace;
 use ui::{h_flex, v_flex, ActiveTheme, Selectable};
+use ui::tooltip::Tooltip;
 
 use super::panel::{AssetViewerPanel, MeshRenderMode};
 use super::workspace_panels::AssetPropertiesPanel;
@@ -206,13 +207,36 @@ impl Render for ViewportPanel {
                                     v_flex()
                                         .w(px(14.0))
                                         .h(px(72.0))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xf2080a)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xff6100)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xfff200)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x0de61f)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x00edf5)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x0d33ff)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x8c14ff))),
+                                        .children([
+                                            (0xf2080a, "red"),
+                                            (0xff6100, "orange"),
+                                            (0xfff200, "yellow"),
+                                            (0x0de61f, "green"),
+                                            (0x00edf5, "cyan"),
+                                            (0x0d33ff, "blue"),
+                                            (0x8c14ff, "violet"),
+                                        ].into_iter().enumerate().map(|(index, (color, name))| {
+                                            let band = 6 - index as u32;
+                                            let tooltip = editor.density_band_ranges.map(|ranges| {
+                                                let (low, high) = ranges[band as usize];
+                                                format!("{name}: {:.3}–{:.3} vertices / unit²", low, high)
+                                            }).unwrap_or_else(|| format!("{name} density"));
+                                            let editor_entity = editor_entity.clone();
+                                            div()
+                                                .flex_1()
+                                                .w_full()
+                                                .bg(gpui::rgb(color))
+                                                .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+                                                .on_hover(cx.listener(move |_, hovered: &bool, _, cx| {
+                                                    let selected = if *hovered { Some(band) } else { None };
+                                                    let _ = editor_entity.update(cx, |panel, cx| {
+                                                        if selected.is_some() || panel.density_hover_band == Some(band) {
+                                                            panel.density_hover_band = selected;
+                                                            cx.notify();
+                                                        }
+                                                    });
+                                                }))
+                                        })),
                                 )
                                 .child("Good")
                                 .into_any_element()

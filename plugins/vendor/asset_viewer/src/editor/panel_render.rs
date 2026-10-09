@@ -199,6 +199,15 @@ fn density_shader_source() -> String {
             r#"
     if uniforms.render_mode.x == 6u {
         let t = clamp(input.density, 0.0, 1.0);
+        let hovered_band = uniforms.render_mode.z;
+        if hovered_band > 0u {
+            let band = hovered_band - 1u;
+            let lower = f32(band) / 7.0;
+            let upper = f32(band + 1u) / 7.0;
+            if t >= lower && (t < upper || band == 6u) {
+                return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+            }
+        }
         let violet = vec3<f32>(0.55, 0.08, 1.0);
         let blue = vec3<f32>(0.05, 0.2, 1.0);
         let cyan = vec3<f32>(0.0, 0.95, 1.0);
@@ -222,17 +231,23 @@ fn density_shader_source() -> String {
 /// Measure local vertex density as vertices per surface area over each
 /// vertex's two-ring topological neighborhood. The triangle-area accumulation
 /// makes the metric follow the actual mesh surface instead of a 3D voxel grid.
+pub(crate) struct VertexDensityResult {
+    pub values: Vec<f32>,
+    /// Density ranges indexed from the good (violet) end to the bad (red) end.
+    pub band_ranges: [(f32, f32); 7],
+}
+
 fn local_vertex_density(
     positions: &[[f32; 3]],
     indices: &[u32],
     progress: &std::sync::atomic::AtomicU32,
     cancelled: &std::sync::atomic::AtomicBool,
-) -> Option<Vec<f32>> {
+) -> Option<VertexDensityResult> {
     use std::sync::atomic::Ordering;
 
     let vertex_count = positions.len();
     if vertex_count == 0 {
-        return Some(Vec::new());
+        return Some(VertexDensityResult { values: Vec::new(), band_ranges: [(0.0, 0.0); 7] });
     }
 
     let mut dual_area = vec![0.0f32; vertex_count];
@@ -327,7 +342,7 @@ fn local_vertex_density(
         .unwrap_or(0.0);
     if positive_floor == 0.0 {
         progress.store(1000, Ordering::Relaxed);
-        return Some(vec![0.0; vertex_count]);
+        return Some(VertexDensityResult { values: vec![0.0; vertex_count], band_ranges: [(0.0, 0.0); 7] });
     }
     for value in &mut density {
         if *value <= 0.0 || !value.is_finite() {
@@ -354,8 +369,12 @@ fn local_vertex_density(
             }
         })
         .collect();
+    let band_ranges = std::array::from_fn(|band| {
+        let density_at = |t: f32| (log_low + log_span * t).exp();
+        (density_at(band as f32 / 7.0), density_at((band + 1) as f32 / 7.0))
+    });
     progress.store(1000, Ordering::Relaxed);
-    Some(normalized)
+    Some(VertexDensityResult { values: normalized, band_ranges })
 }
 
 /// Read the source mesh only when density mode is requested, then compute its
@@ -364,7 +383,7 @@ pub(crate) fn load_vertex_density(
     path: &std::path::Path,
     progress: &std::sync::atomic::AtomicU32,
     cancelled: &std::sync::atomic::AtomicBool,
-) -> Result<Vec<f32>, String> {
+) -> Result<VertexDensityResult, String> {
     use std::sync::atomic::Ordering;
 
     progress.store(25, Ordering::Relaxed);
@@ -1806,7 +1825,8 @@ impl AssetViewerPanel {
             for (draw, (_, color, _)) in draws.iter().enumerate() {
                 let offset = draw.min(MAX_DRAW_SLOTS as usize - 1) as u64 * UNIFORM_SLOT_STRIDE;
                 queue.write_buffer(buf, offset, bytemuck::bytes_of(&view_proj));
-                queue.write_buffer(buf, offset + 64, bytemuck::bytes_of(&[mode, linear, 0, 0]));
+                let hovered_band = self.density_hover_band.map_or(0, |band| band + 1);
+                queue.write_buffer(buf, offset + 64, bytemuck::bytes_of(&[mode, linear, hovered_band, 0]));
                 queue.write_buffer(buf, offset + 80, bytemuck::bytes_of(color));
             }
         }
