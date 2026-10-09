@@ -546,3 +546,76 @@ fn atmospheres_follow_their_owner_and_their_enabled_state() {
     let out = join.run(&mut scene);
     assert_eq!(join.row::<AtmosphereRow>(&out, "atmospheres", planet).enabled, 0);
 }
+
+/// Decals (#1058): an enabled decal of a visible owner becomes a decal pass
+/// row, packed into the leading rows, whose transform maps the owner-placed
+/// box onto -1..1; hiding the owner, disabling the instance or a zero
+/// opacity's row (kept, inert) follow.
+#[test]
+fn decals_are_placed_in_their_owners_box() {
+    use helio_component::components::DecalComponent;
+    type DecalRow = helio_pass_decal::DecalComponent;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let owner = place(
+        &mut scene,
+        "decal",
+        Transform {
+            position: [10.0, 2.0, -4.0],
+            rotation: [0.0, 90.0, 0.0],
+            scale: [2.0, 1.0, 1.0],
+        },
+    );
+    let decal = DecalComponent {
+        size: [4.0, 2.0, 6.0],
+        color: [0.0, 0.5, 1.0],
+        opacity: 0.75,
+        ..Default::default()
+    };
+    let instance = pulsar_world_registry::attach_value(&mut scene.world, owner, decal).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+
+    let out = join.run(&mut scene);
+    let rows: Vec<DecalRow> = join.read(&out, "decals");
+    assert_eq!(rows.len(), helio_pass_decal::MAX_DECALS as usize);
+    let row = rows[0];
+    assert_eq!(row.color, [0.0, 0.5, 1.0, 0.75]);
+    assert_eq!(row.fade_time, 0.0, "authored decals are permanent");
+    // The box: owner at (10, 2, -4), yawed 90 degrees (local X along world
+    // -Z, local Z along world +X), half extents (4, 1, 3) after the scale.
+    let m = glam::Mat4::from_cols_array(&row.transform);
+    let local = |world: [f32; 3]| m.transform_point3(glam::Vec3::from(world));
+    assert!(local([10.0, 2.0, -4.0]).abs_diff_eq(glam::Vec3::ZERO, 1e-4));
+    assert!(local([10.0, 2.0, -8.0]).abs_diff_eq(glam::Vec3::X, 1e-4));
+    assert!(local([10.0, 3.0, -4.0]).abs_diff_eq(glam::Vec3::Y, 1e-4));
+    assert!(local([13.0, 2.0, -4.0]).abs_diff_eq(glam::Vec3::Z, 1e-4));
+    assert!(
+        rows[1..].iter().all(|row| row.color[3] == 0.0),
+        "one row placed"
+    );
+
+    scene.world.get_mut::<Visibility>(owner).unwrap().visible = false;
+    let out = join.run(&mut scene);
+    assert_eq!(
+        join.read::<DecalRow>(&out, "decals")[0].color[3],
+        0.0,
+        "hidden owner"
+    );
+    scene.world.get_mut::<Visibility>(owner).unwrap().visible = true;
+    attachments::set_enabled(&mut scene.world, instance, false);
+    let out = join.run(&mut scene);
+    assert_eq!(
+        join.read::<DecalRow>(&out, "decals")[0].color[3],
+        0.0,
+        "disabled instance"
+    );
+}

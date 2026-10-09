@@ -13,6 +13,7 @@
 //! | [`level_io`] | `.level` file save/load |
 //! | [`history`] | undo/redo snapshots (editor-owned; SceneDB has no undo) |
 //! | [`classes`] | placed class instances: placement, rebuild, overrides, revert (#921) |
+//! | [`sky`] | the level's one sky (its `AtmosphereComponent`), for World Settings (#1057) |
 //!
 //! Every attached component is its own entity holding its typed value
 //! (Pulsar-Native#1035, D1). JSON is used only at boundaries: persistence,
@@ -29,6 +30,7 @@ pub mod components;
 pub mod history;
 pub mod level_io;
 pub mod objects;
+pub mod sky;
 
 #[cfg(test)]
 mod hlfs_cathedral;

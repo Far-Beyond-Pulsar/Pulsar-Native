@@ -15,6 +15,7 @@
 use std::any::Any;
 
 use engine_backend::scene::attachments as attach;
+use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
@@ -187,18 +188,31 @@ pub fn add_component_value(
     class_name: &str,
     value: Option<Box<dyn Any + Send + Sync>>,
 ) -> Option<usize> {
+    add_component_value_enabled(world, object_id, class_name, value, true)
+}
+
+/// [`add_component_value`], attaching the instance enabled or not.
+pub fn add_component_value_enabled(
+    world: &mut World,
+    object_id: &str,
+    class_name: &str,
+    value: Option<Box<dyn Any + Send + Sync>>,
+    enabled: bool,
+) -> Option<usize> {
     profiling::profile_scope!("scene_edit::add_component_value");
     let owner = world.entity_for(object_id)?;
+    let value_ref = value.as_deref().map(|value| value as &dyn Any);
+    if let Err(reason) = level_rules::check_new_component(world, class_name, value_ref, enabled) {
+        tracing::warn!("Could not attach {class_name} to '{object_id}': {reason}");
+        return None;
+    }
     let payload = match value {
         Some(value) => pulsar_world_registry::ComponentPayload::Value(value),
         None => pulsar_world_registry::ComponentPayload::Default,
     };
-    match pulsar_world_registry::attach_component(
-        world,
-        owner,
-        attach::NewInstance::new(class_name),
-        payload,
-    ) {
+    let mut spec = attach::NewInstance::new(class_name);
+    spec.enabled = enabled;
+    match pulsar_world_registry::attach_component(world, owner, spec, payload) {
         Ok(instance) => attach::instances(world, owner)
             .iter()
             .position(|entity| *entity == instance),
@@ -261,6 +275,16 @@ pub fn add_component_instance(
     let owner = world.entity_for(object_id)?;
     match pulsar_world_registry::attach_record(world, owner, &component, None) {
         Ok(instance) => {
+            // A record decodes its value as it attaches; a level rule is
+            // checked on the attached instance, and a refused one detached.
+            if let Err(reason) = level_rules::check_instance(world, instance) {
+                attach::detach(world, instance);
+                tracing::warn!(
+                    "Could not attach {} to '{object_id}': {reason}",
+                    component.class_name
+                );
+                return None;
+            }
             restore_parent(world, owner, instance, &component.data);
             attach::instances(world, owner)
                 .iter()
@@ -338,6 +362,12 @@ pub fn set_component_enabled(
     let Some(instance) = instance_at(world, object_id, component_index) else {
         return false;
     };
+    if enabled {
+        if let Err(reason) = level_rules::check_enable(world, instance) {
+            tracing::warn!("Component {component_index} of '{object_id}' not enabled: {reason}");
+            return false;
+        }
+    }
     if attach::is_enabled(world, instance) == enabled {
         return true;
     }
@@ -354,6 +384,10 @@ pub fn duplicate_component(
 ) -> Option<usize> {
     let owner = world.entity_for(object_id)?;
     let instance = instance_at(world, object_id, component_index)?;
+    if let Err(reason) = level_rules::check_copy(world, instance) {
+        tracing::warn!("Could not duplicate a component of '{object_id}': {reason}");
+        return None;
+    }
     let insert_index = component_index + 1;
     match pulsar_world_registry::duplicate_instance(world, instance, owner, Some(insert_index)) {
         Ok(_) => Some(insert_index),

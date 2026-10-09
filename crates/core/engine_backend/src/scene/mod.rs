@@ -20,6 +20,10 @@ pub mod render_resources;
 // Helio Scene writes.
 pub mod runtime_level;
 
+// What a level may hold only one of (one sky, #1057), checked by editors
+// before an edit and repaired on load.
+pub mod level_rules;
+
 // World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
 

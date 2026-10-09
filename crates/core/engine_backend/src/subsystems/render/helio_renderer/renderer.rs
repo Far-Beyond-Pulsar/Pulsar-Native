@@ -83,7 +83,6 @@ fn relative_camera_source_schema_compatible(
         "object_hidden" => pulsar_scene_model::ObjectHidden::packed_gpu_component_id(),
         "Transform::packed" => crate::scene::Transform::packed_gpu_component_id(),
         "light_sources" => c::LightSourceRow::packed_gpu_component_id(),
-        "decals" => helio_pass_decal::DecalComponent::packed_gpu_component_id(),
         "water_hitboxes" => helio_pass_water_sim::WaterHitboxComponent::packed_gpu_component_id(),
         "global_fog_sources" => c::GlobalFogSourceRow::packed_gpu_component_id(),
         "local_fog_sources" => c::LocalFogSourceRow::packed_gpu_component_id(),
@@ -92,6 +91,7 @@ fn relative_camera_source_schema_compatible(
         "water_volume_sources" => c::WaterVolumeSourceRow::packed_gpu_component_id(),
         "foliage_sources" => c::FoliageSourceRow::packed_gpu_component_id(),
         "atmosphere_sources" => c::AtmosphereSourceRow::packed_gpu_component_id(),
+        "decal_sources" => c::DecalSourceRow::packed_gpu_component_id(),
         "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
             return store.buffer_registry().element_type(key)
                 == Some(Some(std::any::TypeId::of::<pulsar_scenedb::gpu::VarLenHandle>()));
@@ -126,7 +126,7 @@ fn relative_camera_source_compatible(
     match key {
         "scenedb-instances" | "scenedb-instance-info" | "builtin_generation"
         | "builtin_slot_mirror" | "builtin_cell_metadata" | "component_owners"
-        | "object_hidden" | "Transform::packed" | "light_sources" | "decals"
+        | "object_hidden" | "Transform::packed" | "light_sources" | "decal_sources"
         | "water_hitboxes" | "global_fog_sources" | "local_fog_sources"
         | "post_process_volume_sources" | "camera_postprocess_sources"
         | "water_volume_sources" | "foliage_sources" | "atmosphere_sources"
