@@ -375,7 +375,7 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         "{package}\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n\
 {deps}\n[profile.dev]\nopt-level = {opt}\ndebug = {debug}\n{workspace_block}",
         package = package_lines.join("\n"),
-        deps = pin_windows_build_dependencies(splice_script_dependencies(
+        deps = pin_compatible_dependencies(splice_script_dependencies(
             GAME_MANIFEST_DEPS,
             &script_crates,
         )),
@@ -579,14 +579,19 @@ fn splice_script_dependencies(manifest_deps: &str, crates: &[ScriptCrate]) -> St
     out
 }
 
-/// Keep the generated Windows project on the compatible `cc` helper pair.
-/// `cc 1.2.67` with `find-msvc-tools 0.1.13` fails to compile on MSVC because
-/// a Windows constant is inferred as `i32` where `OpenOptionsExt` requires
-/// `u32`. The engine lockfile already uses 0.1.11.
-fn pin_windows_build_dependencies(manifest_deps: String) -> String {
+/// Keep a generated project, which starts without a lockfile, off releases
+/// that break crates the engine depends on. The engine lockfile already uses
+/// the pinned versions.
+///
+/// - `cc 1.2.67` with `find-msvc-tools 0.1.13` fails to compile on MSVC
+///   because a Windows constant is inferred as `i32` where `OpenOptionsExt`
+///   requires `u32`.
+/// - `libc 0.2.190` drops the deprecated Linux `ENOATTR`, which `xattr 0.2.3`
+///   (gpui's `gpui_http_client` -> `zed-async-tar`) still names.
+fn pin_compatible_dependencies(manifest_deps: String) -> String {
     manifest_deps.replacen(
         "[dependencies]\n",
-        "[dependencies]\nfind-msvc-tools = \"=0.1.11\"\n",
+        "[dependencies]\nfind-msvc-tools = \"=0.1.11\"\nlibc = \">=0.2, <0.2.190\"\n",
         1,
     )
 }

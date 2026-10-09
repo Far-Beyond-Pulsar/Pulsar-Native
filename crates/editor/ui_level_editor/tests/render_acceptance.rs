@@ -77,6 +77,9 @@ fn mesh_asset() -> String {
 struct Frame {
     color: Vec<u8>,
     depth: Vec<f32>,
+    /// Texels per row of `depth` (the scene depth is at the render
+    /// resolution, not necessarily the target's).
+    depth_width: u32,
 }
 
 /// How a frame differs from the empty-scene reference.
@@ -201,6 +204,7 @@ impl Harness {
         Frame {
             color: self.read_texture(&self.texture, wgpu::TextureAspect::All),
             depth: bytemuck_f32(&self.read_texture(depth, wgpu::TextureAspect::DepthOnly)),
+            depth_width: depth.width(),
         }
     }
 
@@ -542,6 +546,7 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let at_origin = Frame {
                 color: placed.color.clone(),
                 depth: placed.depth.clone(),
+                depth_width: placed.depth_width,
             };
             assert_drawn(
                 &format!("[{mode}] editor mesh, after the first frame"),
@@ -1462,6 +1467,145 @@ fn splines_reach_the_frame() {
 /// scene settles, an unchanged scene encodes no frame and writes nothing to
 /// the world, however often the viewport asks; one edit wakes the renderer,
 /// which settles back to idle.
+/// Depth texels that differ from `reference` in the left and right halves
+/// of the frame.
+fn depth_by_half(frame: &Frame, reference: &Frame) -> (usize, usize) {
+    let mut halves = (0, 0);
+    for (index, (a, b)) in reference.depth.iter().zip(&frame.depth).enumerate() {
+        if (a - b).abs() > 1e-6 {
+            if (index as u32 % frame.depth_width) < frame.depth_width / 2 {
+                halves.0 += 1;
+            } else {
+                halves.1 += 1;
+            }
+        }
+    }
+    halves
+}
+
+/// Which texels of one half of the frame differ in depth from `reference`
+/// (what the object on that side covers).
+fn coverage(frame: &Frame, reference: &Frame, left: bool) -> Vec<bool> {
+    reference
+        .depth
+        .iter()
+        .zip(&frame.depth)
+        .enumerate()
+        .filter(|(index, _)| ((*index as u32 % frame.depth_width) < frame.depth_width / 2) == left)
+        .map(|(_, (a, b))| (a - b).abs() > 1e-6)
+        .collect()
+}
+
+/// Intersection over union of two coverages: 1 when they are the same
+/// texels. Temporal jitter flips a few edge texels; a moved object shares
+/// few of its texels with where it was.
+fn overlap(a: &[bool], b: &[bool]) -> f32 {
+    let both = a.iter().zip(b).filter(|(a, b)| **a && **b).count();
+    let either = a.iter().zip(b).filter(|(a, b)| **a || **b).count();
+    if either == 0 {
+        1.0
+    } else {
+        both as f32 / either as f32
+    }
+}
+
+/// A duplicate is a wholesale copy: in the frame, moving, hiding or
+/// deleting either one leaves the other as it was. Both share their mesh
+/// geometry on the GPU (content-interned); that must not tie them.
+#[test]
+fn duplicates_are_independent_in_the_frame() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let reference = {
+        let state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {})
+    };
+    let left = [-0.9 * radius, 0.0, 0.0];
+    let duplicate = |state: &mut LevelEditorState, source: &str| {
+        execute_command(
+            state,
+            SceneCommand::DuplicateObject {
+                source_id: source.to_string(),
+                count: 1,
+                position_offset: Some([1.8 * radius, 0.0, 0.0]),
+            },
+        )
+        .affected_ids[0]
+            .clone()
+    };
+
+    for remove_source in [true, false] {
+        let mut state = LevelEditorState::new();
+        let source = drop_mesh(&mut state);
+        move_to(&mut state, &source, left);
+        let copy = duplicate(&mut state, &source);
+        let mut renderer = harness.renderer(&state);
+        let both = harness.frames(&mut renderer, || {});
+        let (l, r) = depth_by_half(&both, &reference);
+        println!("DUPLICATE both: left {l}, right {r}");
+        assert!(l > 0 && r > 0, "the source and the copy are drawn ({l}, {r})");
+
+        let source_texels = coverage(&both, &reference, true);
+        let stays = |frame: &Frame, what: &str| {
+            let same = overlap(&source_texels, &coverage(frame, &reference, true));
+            println!("DUPLICATE {what}: the source keeps {same:.3} of its texels");
+            assert!(same > 0.9, "{what} moved the source ({same:.3})");
+        };
+        // Moving the source leaves the copy where it was.
+        let copy_texels = coverage(&both, &reference, false);
+        move_to(&mut state, &source, [-0.9 * radius, 0.6 * radius, 0.0]);
+        let source_moved = harness.frames(&mut renderer, || {});
+        let same = overlap(&copy_texels, &coverage(&source_moved, &reference, false));
+        println!("DUPLICATE moving the source: the copy keeps {same:.3} of its texels");
+        assert!(same > 0.9, "moving the source moved the copy ({same:.3})");
+        assert!(
+            overlap(&source_texels, &coverage(&source_moved, &reference, true)) < 0.9,
+            "the source did not move"
+        );
+        move_to(&mut state, &source, left);
+
+        // Moving the copy up leaves the source where it was.
+        both.dump(&format!("duplicate_{remove_source}_both"));
+        move_to(&mut state, &copy, [0.9 * radius, 0.6 * radius, 0.0]);
+        let moved = harness.frames(&mut renderer, || {});
+        moved.dump(&format!("duplicate_{remove_source}_moved"));
+        stays(&moved, "moving the copy");
+        // Hiding the copy keeps the source.
+        set_visible(&mut state, &copy, false);
+        let hidden = harness.frames(&mut renderer, || {});
+        stays(&hidden, "hiding the copy");
+        assert_eq!(depth_by_half(&hidden, &reference).1, 0, "the hidden copy is drawn");
+        set_visible(&mut state, &copy, true);
+        move_to(&mut state, &copy, [0.9 * radius, 0.0, 0.0]);
+
+        // Deleting either one keeps the other drawn: the shared geometry
+        // stays while one of them holds it.
+        let (gone, kept) = if remove_source { (&source, &copy) } else { (&copy, &source) };
+        let result = execute_command(&mut state, SceneCommand::RemoveObject { id: gone.clone() });
+        assert!(result.changed, "remove {gone}");
+        let after = harness.frames(&mut renderer, || {});
+        let (l2, r2) = depth_by_half(&after, &reference);
+        println!("DUPLICATE removed {gone} (kept {kept}): left {l2}, right {r2}");
+        if remove_source {
+            assert_eq!((l2, r2 > 0), (0, true), "removing the source");
+        } else {
+            assert_eq!(r2, 0, "removing the copy");
+            stays(&after, "removing the copy");
+        }
+    }
+}
+
 #[test]
 fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
     let _ = tracing_subscriber::fmt()

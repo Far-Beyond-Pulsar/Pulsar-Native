@@ -1,5 +1,5 @@
 {
-  "format_version": 3,
+  "format_version": 5,
   "name": "bp_beacon",
   "constants": [
     {
@@ -837,6 +837,58 @@
               "file": "graph_save.json",
               "node": "ev"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 5,
+            "node": "lo_get",
+            "pin": "value"
+          },
+          {
+            "register": 7,
+            "node": "lo_append",
+            "pin": "result"
+          },
+          {
+            "register": 10,
+            "node": "la_get",
+            "pin": "value"
+          },
+          {
+            "register": 12,
+            "node": "la_append",
+            "pin": "result"
+          },
+          {
+            "register": 13,
+            "node": "lb_get",
+            "pin": "value"
+          },
+          {
+            "register": 15,
+            "node": "lb_append",
+            "pin": "result"
+          },
+          {
+            "register": 23,
+            "node": "ln_get",
+            "pin": "value"
+          },
+          {
+            "register": 25,
+            "node": "ln_append",
+            "pin": "result"
+          },
+          {
+            "register": 34,
+            "node": "ld_get",
+            "pin": "value"
+          },
+          {
+            "register": 36,
+            "node": "ld_append",
+            "pin": "result"
           }
         ]
       }
