@@ -278,6 +278,12 @@ LevelEditor.FoliagePanel.Tool.Paint: "Paint"
 LevelEditor.FoliagePanel.Tool.Erase: "Erase"
 LevelEditor.FoliagePanel.Section.BrushOptions: "Brush Options"
 LevelEditor.FoliagePanel.EraseDensity: "Erase Density"
+LevelEditor.FoliagePanel.Search: "Search sets and meshes…"
+LevelEditor.FoliagePanel.NoSearchResults: "No foliage sets or meshes match this search."
+LevelEditor.FoliagePanel.NoMembersMatch: "No meshes in this set match the search."
+LevelEditor.FoliagePanel.Section.Distribution: "Distribution"
+LevelEditor.FoliagePanel.Section.Scale: "Scale"
+LevelEditor.FoliagePanel.Section.Surface: "Surface Alignment"
 
 # Terrain voxel editor
 LevelEditor.ToolMode.Terrain: "Terrain"

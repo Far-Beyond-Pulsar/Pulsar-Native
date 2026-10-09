@@ -453,7 +453,7 @@ impl Render for FoliageSetsPanel {
                         .bg(theme.muted.opacity(0.08))
                         .text_sm()
                         .text_color(theme.muted_foreground)
-                        .child("No foliage sets or meshes match this search."),
+                        .child(t!("LevelEditor.FoliagePanel.NoSearchResults").to_string()),
                 );
             }
         }
@@ -559,7 +559,7 @@ impl FoliageSetsPanel {
         let remove = {
             let state = state.clone();
             Button::new(format!("set_remove_{}", set_id.0))
-                .icon(IconName::X)
+                .icon(IconName::Close)
                 .ghost()
                 .xsmall()
                 .tooltip("Remove set")
@@ -657,7 +657,7 @@ impl FoliageSetsPanel {
                         .py_1()
                         .text_xs()
                         .text_color(theme.muted_foreground)
-                        .child("No meshes in this set match the search."),
+                        .child(t!("LevelEditor.FoliagePanel.NoMembersMatch").to_string()),
                 );
             }
             for member in visible_members {
@@ -730,7 +730,7 @@ impl FoliageSetsPanel {
         let remove = {
             let state = state.clone();
             Button::new(format!("member_remove_{}", member_id.0))
-                .icon(IconName::X)
+                .icon(IconName::Close)
                 .ghost()
                 .xsmall()
                 .tooltip("Remove mesh")
@@ -764,24 +764,36 @@ impl FoliageSetsPanel {
             } else {
                 theme.background.opacity(0.18)
             })
-            .cursor_pointer()
-            .on_click(move |_, _, _| {
-                select_state.write().editor.terrain.foliage_sets.selection =
-                    Some(FoliageSelection::Member(set_id, member_id));
-            })
             .child(enabled)
-            .child(Icon::new(IconName::Cube).size_4().text_color(if selected {
-                theme.primary
-            } else {
-                theme.muted_foreground
-            }))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .text_sm()
-                    .text_ellipsis()
-                    .child(label),
+                    .cursor_pointer()
+                    .on_click(move |_, _, _| {
+                        select_state.write().editor.terrain.foliage_sets.selection =
+                            Some(FoliageSelection::Member(set_id, member_id));
+                    })
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .items_center()
+                            .gap_2()
+                            .child(Icon::new(IconName::Cube).size_4().text_color(if selected {
+                                theme.primary
+                            } else {
+                                theme.muted_foreground
+                            }))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_sm()
+                                    .text_ellipsis()
+                                    .child(label),
+                            ),
+                    ),
             )
             .child(
                 div()
