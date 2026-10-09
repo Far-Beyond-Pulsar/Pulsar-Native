@@ -76,13 +76,30 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         return textureSample(uv_grid, uv_grid_sampler, input.uv1);
     }
     if uniforms.render_mode.x == 6u {
-        // Green marks sparse regions; yellow and red identify increasingly
-        // packed vertex neighborhoods that may carry more geometry cost.
+        // Full rainbow: violet marks sparse regions; red marks the densest
+        // vertex neighborhoods, with every visible-spectrum hue in between.
         let t = clamp(input.density, 0.0, 1.0);
-        let green = vec3<f32>(0.08, 0.85, 0.2);
-        let yellow = vec3<f32>(1.0, 0.9, 0.05);
-        let red = vec3<f32>(0.95, 0.08, 0.04);
-        let color = select(mix(green, yellow, t * 2.0), mix(yellow, red, (t - 0.5) * 2.0), t > 0.5);
+        let violet = vec3<f32>(0.55, 0.08, 1.0);
+        let blue = vec3<f32>(0.05, 0.2, 1.0);
+        let cyan = vec3<f32>(0.0, 0.95, 1.0);
+        let green = vec3<f32>(0.05, 0.9, 0.12);
+        let yellow = vec3<f32>(1.0, 0.95, 0.0);
+        let orange = vec3<f32>(1.0, 0.38, 0.0);
+        let red = vec3<f32>(0.95, 0.03, 0.04);
+        var color = red;
+        if t < 1.0 / 6.0 {
+            color = mix(violet, blue, t * 6.0);
+        } else if t < 2.0 / 6.0 {
+            color = mix(blue, cyan, (t - 1.0 / 6.0) * 6.0);
+        } else if t < 3.0 / 6.0 {
+            color = mix(cyan, green, (t - 2.0 / 6.0) * 6.0);
+        } else if t < 4.0 / 6.0 {
+            color = mix(green, yellow, (t - 3.0 / 6.0) * 6.0);
+        } else if t < 5.0 / 6.0 {
+            color = mix(yellow, orange, (t - 4.0 / 6.0) * 6.0);
+        } else {
+            color = mix(orange, red, (t - 5.0 / 6.0) * 6.0);
+        }
         return vec4(color, 1.0);
     }
     if uniforms.render_mode.x == 1u {

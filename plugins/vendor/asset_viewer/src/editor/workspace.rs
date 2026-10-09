@@ -206,10 +206,13 @@ impl Render for ViewportPanel {
                                     v_flex()
                                         .w(px(14.0))
                                         .h(px(72.0))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xf21a0a)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xff9800)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xffe600)))
-                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x14d936))),
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xf2080a)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xff6100)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xfff200)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x0de61f)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x00edf5)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x0d33ff)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x8c14ff))),
                                 )
                                 .child("Good")
                                 .into_any_element()
