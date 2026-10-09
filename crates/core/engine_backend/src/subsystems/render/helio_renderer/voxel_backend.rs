@@ -923,13 +923,14 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         let pass = renderer.find_pass::<PlanetPass>()?;
         let s = pass.stats()?;
         let mut line = format!(
-            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} scratch_retries={} clipped={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={} late_plans={} reranked={}",
+            "planet ready={} resident={} pending={} jobs={} units={:.0} budget={:.0} us_per_unit={:.3} failed={} scratch_retries={} clipped={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={} late_plans={} reranked={}",
             s.ready,
             s.resident_columns,
             s.pending_columns,
             s.jobs,
-            s.job_budget,
-            s.us_per_job,
+            s.units,
+            s.unit_budget,
+            s.us_per_unit,
             s.failed_jobs,
             s.scratch_retries,
             s.clipped_columns,
