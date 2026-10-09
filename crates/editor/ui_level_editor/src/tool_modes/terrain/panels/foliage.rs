@@ -1,21 +1,6 @@
 //! Foliage dock panel — the set/member library and its brush.
 //!
-//! Hierarchy, top to bottom:
-//!
-//! ```text
-//! Foliage                       header
-//! ● Active tool                 activation switch
-//! BRUSH      radius · paint density
-//! SETS       [+ Add Set]
-//!   ▾ ☑ Meadow          3        set row (expand · enable · name · count · ✕)
-//!       ☑ oak.mesh               member row (enable · mesh · ✕)
-//!       ☑ bush.mesh
-//!       [+ Add Mesh]
-//!   ▸ ☐ Rocks           1
-//! INSPECTOR  (selected set or mesh)
-//!   set:    name
-//!   mesh:   mesh picker · density · scale range · ground offset · rotation
-//! ```
+//! Sets contain a wrapping grid of square mesh previews with enable checkboxes.
 //!
 //! All state lives in `TerrainDomain::foliage_sets`
 //! ([`crate::state::foliage_sets`]); this file is only the view.
@@ -42,6 +27,12 @@ use crate::state::foliage_sets::{
 use crate::state::terrain::{FoliageTool, TerrainDomain};
 use gpui::prelude::FluentBuilder as _;
 use std::sync::Arc;
+
+fn edit_library(state: &SharedState, edit: impl FnOnce(&mut FoliageSetLibrary)) {
+    state
+        .write()
+        .edit_terrain(|terrain| edit(&mut terrain.foliage_sets));
+}
 
 /// Everything the panel draws, for the frame pump's cheap diff.
 #[derive(Clone, Debug, PartialEq)]
@@ -145,15 +136,15 @@ impl FoliageSetsPanel {
     }
 
     fn apply_rename(&self, text: String) {
-        let mut st = self.state.write();
-        let library = &mut st.editor.terrain.foliage_sets;
-        if let Some(FoliageSelection::Set(id)) = library.selection {
-            if let Some(set) = library.set_mut(id) {
-                if set.name != text {
-                    set.name = text;
+        edit_library(&self.state, |library| {
+            if let Some(FoliageSelection::Set(id)) = library.selection {
+                if let Some(set) = library.set_mut(id) {
+                    if set.name != text {
+                        set.name = text;
+                    }
                 }
             }
-        }
+        });
     }
 
     fn ensure_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -170,17 +161,17 @@ impl FoliageSetsPanel {
         });
         cx.subscribe(&picker, |this, picker, _: &AssetPickedEvent, cx| {
             let path = picker.read(cx).selected_path().to_string();
-            let mut st = this.state.write();
-            let library = &mut st.editor.terrain.foliage_sets;
-            if let Some(FoliageSelection::Member(set, member)) = library.selection {
-                if let Some(target) = library.member_mut(set, member) {
-                    target.mesh = path;
+            edit_library(&this.state, |library| {
+                if let Some(FoliageSelection::Member(set, member)) = library.selection {
+                    if let Some(target) = library.member_mut(set, member) {
+                        target.mesh = path;
+                    }
                 }
-            }
-            drop(st);
+            });
             cx.notify();
         })
         .detach();
+        cx.observe(&picker, |_, _, cx| cx.notify()).detach();
         self.picker = Some(picker);
     }
 
@@ -207,7 +198,11 @@ impl FoliageSetsPanel {
             Some(FoliageSelection::Set(id)) => Some(id),
             _ => None,
         };
-        if selected_set != self.rename_for {
+        if selected_set != self.rename_for
+            || set_name
+                .as_ref()
+                .is_some_and(|name| self.rename_input.read(cx).text().to_string() != *name)
+        {
             self.rename_for = selected_set;
             if let Some(name) = set_name {
                 self.rename_input
@@ -216,7 +211,13 @@ impl FoliageSetsPanel {
         }
 
         let picker_for = member_mesh.as_ref().map(|(s, m, _)| (*s, *m));
-        if picker_for != self.picker_for {
+        if picker_for != self.picker_for
+            || member_mesh.as_ref().is_some_and(|(_, _, mesh)| {
+                self.picker
+                    .as_ref()
+                    .is_some_and(|picker| picker.read(cx).selected_path() != mesh)
+            })
+        {
             self.picker_for = picker_for;
             if let (Some(picker), Some((_, _, mesh))) = (&self.picker, member_mesh) {
                 picker.update(cx, |picker, _| picker.set_selected_path(mesh));
@@ -252,6 +253,19 @@ impl Render for FoliageSetsPanel {
             .trim()
             .to_lowercase();
 
+        if let Some(picker) = &self.picker {
+            picker.update(cx, |picker, cx| {
+                for set in library.sets.iter().filter(|set| set.expanded) {
+                    let show_all = search.is_empty() || set.name.to_lowercase().contains(&search);
+                    for member in &set.members {
+                        if show_all || member.mesh.to_lowercase().contains(&search) {
+                            picker.request_thumbnail(&member.mesh, cx);
+                        }
+                    }
+                }
+            });
+        }
+
         let tool = |id: &'static str,
                     icon: IconName,
                     label_key: &'static str,
@@ -275,7 +289,9 @@ impl Render for FoliageSetsPanel {
                 .primary()
                 .tooltip("Create a foliage set")
                 .on_click(move |_, _, _| {
-                    state.write().editor.terrain.foliage_sets.add_set();
+                    edit_library(&state, |library| {
+                        library.add_set();
+                    });
                 })
         };
 
@@ -440,8 +456,8 @@ impl Render for FoliageSetsPanel {
                     });
                 if set_matches {
                     visible_count += 1;
-                    content =
-                        content.child(self.render_set(set.id, library, &state, &theme, &search));
+                    content = content
+                        .child(self.render_set(set.id, library, &state, &theme, &search, cx));
                 }
             }
             if visible_count == 0 {
@@ -512,6 +528,7 @@ impl FoliageSetsPanel {
         state: &SharedState,
         theme: &ui::Theme,
         search: &str,
+        cx: &App,
     ) -> impl IntoElement {
         let set = library.set(set_id).expect("rendering an existing set");
         let selected = library.selection == Some(FoliageSelection::Set(set_id));
@@ -527,9 +544,11 @@ impl FoliageSetsPanel {
                 .ghost()
                 .xsmall()
                 .on_click(move |_, _, _| {
-                    if let Some(s) = state.write().editor.terrain.foliage_sets.set_mut(set_id) {
-                        s.expanded = !s.expanded;
-                    }
+                    edit_library(&state, |library| {
+                        if let Some(s) = library.set_mut(set_id) {
+                            s.expanded = !s.expanded;
+                        }
+                    });
                 })
         };
         let enabled = {
@@ -538,9 +557,11 @@ impl FoliageSetsPanel {
             Checkbox::new(SharedString::from(format!("set_enabled_{}", set_id.0)))
                 .checked(set.enabled)
                 .on_click(move |_, _, _| {
-                    if let Some(s) = state.write().editor.terrain.foliage_sets.set_mut(set_id) {
-                        s.enabled = !was;
-                    }
+                    edit_library(&state, |library| {
+                        if let Some(s) = library.set_mut(set_id) {
+                            s.enabled = !was;
+                        }
+                    });
                 })
         };
         let set_name = set.name.clone();
@@ -564,7 +585,7 @@ impl FoliageSetsPanel {
                 .xsmall()
                 .tooltip("Remove set")
                 .on_click(move |_, _, _| {
-                    state.write().editor.terrain.foliage_sets.remove_set(set_id);
+                    edit_library(&state, |library| library.remove_set(set_id));
                 })
         };
 
@@ -599,8 +620,9 @@ impl FoliageSetsPanel {
                             .min_w_0()
                             .cursor_pointer()
                             .on_click(move |_, _, _| {
-                                select_state.write().editor.terrain.foliage_sets.selection =
-                                    Some(FoliageSelection::Set(set_id));
+                                edit_library(&select_state, |library| {
+                                    library.selection = Some(FoliageSelection::Set(set_id))
+                                });
                             })
                             .child(
                                 v_flex()
@@ -634,13 +656,7 @@ impl FoliageSetsPanel {
                         || member.display_name().to_lowercase().contains(search)
                 })
                 .collect();
-            let mut members = v_flex()
-                .w_full()
-                .gap_1()
-                .ml_3()
-                .pl_2()
-                .border_l_1()
-                .border_color(theme.border.opacity(0.65));
+            let mut members = h_flex().w_full().min_w_0().flex_wrap().gap_2();
             if visible_members.is_empty() && set.members.is_empty() {
                 members = members.child(
                     div()
@@ -662,7 +678,7 @@ impl FoliageSetsPanel {
             }
             for member in visible_members {
                 members =
-                    members.child(self.render_member(set_id, member.id, library, state, theme));
+                    members.child(self.render_member(set_id, member.id, library, state, theme, cx));
             }
             let add_mesh = {
                 let state = state.clone();
@@ -674,15 +690,12 @@ impl FoliageSetsPanel {
                     .w_full()
                     .tooltip("Add a mesh to this set")
                     .on_click(move |_, _, _| {
-                        state
-                            .write()
-                            .editor
-                            .terrain
-                            .foliage_sets
-                            .add_member(set_id, String::new());
+                        edit_library(&state, |library| {
+                            library.add_member(set_id, String::new());
+                        });
                     })
             };
-            block = block.child(members.child(add_mesh));
+            block = block.child(members).child(add_mesh);
         }
         block
     }
@@ -694,13 +707,17 @@ impl FoliageSetsPanel {
         library: &FoliageSetLibrary,
         state: &SharedState,
         theme: &ui::Theme,
+        cx: &App,
     ) -> impl IntoElement {
         let member = library
             .set(set_id)
             .and_then(|s| s.members.iter().find(|m| m.id == member_id))
             .expect("rendering an existing member");
         let selected = library.selection == Some(FoliageSelection::Member(set_id, member_id));
-
+        let thumbnail = self
+            .picker
+            .as_ref()
+            .and_then(|picker| picker.read(cx).thumbnail_for_path(&member.mesh));
         let enabled = {
             let state = state.clone();
             let was = member.enabled;
@@ -708,17 +725,14 @@ impl FoliageSetsPanel {
                 "member_enabled_{}",
                 member_id.0
             )))
-            .checked(member.enabled)
-            .on_click(move |_, _, _| {
-                if let Some(m) = state
-                    .write()
-                    .editor
-                    .terrain
-                    .foliage_sets
-                    .member_mut(set_id, member_id)
-                {
-                    m.enabled = !was;
-                }
+            .checked(was)
+            .on_click(move |_, _, cx| {
+                cx.stop_propagation();
+                edit_library(&state, |library| {
+                    if let Some(member) = library.member_mut(set_id, member_id) {
+                        member.enabled = !was;
+                    }
+                });
             })
         };
         let label = if member.mesh.is_empty() {
@@ -727,84 +741,104 @@ impl FoliageSetsPanel {
             member.display_name()
         };
         let select_state = state.clone();
-        let remove = {
-            let state = state.clone();
-            Button::new(format!("member_remove_{}", member_id.0))
-                .icon(IconName::Close)
-                .ghost()
-                .xsmall()
-                .tooltip("Remove mesh")
-                .on_click(move |_, _, _| {
-                    state
-                        .write()
-                        .editor
-                        .terrain
-                        .foliage_sets
-                        .remove_member(set_id, member_id);
-                })
-        };
-
-        h_flex()
-            .id(format!("member_select_{}", member_id.0))
-            .w_full()
-            .min_w_0()
-            .items_center()
-            .gap_1()
-            .px_1()
-            .py_1()
-            .rounded(px(5.0))
+        let remove_state = state.clone();
+        let preview = div()
+            .relative()
+            .size(px(96.0))
+            .flex_shrink_0()
+            .overflow_hidden()
+            .rounded_md()
             .border_1()
             .border_color(if selected {
-                theme.primary.opacity(0.65)
+                theme.primary
             } else {
-                theme.border.opacity(0.4)
+                theme.border
             })
-            .bg(if selected {
-                theme.primary.opacity(0.12)
-            } else {
-                theme.background.opacity(0.18)
-            })
-            .child(enabled)
+            .bg(theme.background)
             .child(
                 div()
-                    .flex_1()
-                    .min_w_0()
-                    .cursor_pointer()
-                    .on_click(move |_, _, _| {
-                        select_state.write().editor.terrain.foliage_sets.selection =
-                            Some(FoliageSelection::Member(set_id, member_id));
-                    })
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(match thumbnail {
+                        Some(image) => img(image)
+                            .size_full()
+                            .object_fit(ObjectFit::Contain)
+                            .into_any_element(),
+                        None => Icon::new(IconName::Cube)
+                            .size_8()
+                            .text_color(theme.muted_foreground)
+                            .into_any_element(),
+                    }),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_1()
+                    .left_1()
+                    .p_1()
+                    .rounded_sm()
+                    .bg(theme.background.opacity(0.9))
+                    .child(enabled),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_1()
+                    .right_1()
+                    .rounded_sm()
+                    .bg(theme.background.opacity(0.9))
                     .child(
-                        h_flex()
-                            .w_full()
-                            .min_w_0()
-                            .items_center()
-                            .gap_2()
-                            .child(Icon::new(IconName::Cube).size_4().text_color(if selected {
-                                theme.primary
-                            } else {
-                                theme.muted_foreground
-                            }))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_sm()
-                                    .text_ellipsis()
-                                    .child(label),
-                            ),
+                        Button::new(format!("member_remove_{}", member_id.0))
+                            .icon(IconName::Close)
+                            .ghost()
+                            .xsmall()
+                            .tooltip("Remove mesh")
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                edit_library(&remove_state, |library| {
+                                    library.remove_member(set_id, member_id)
+                                });
+                            }),
                     ),
             )
             .child(
                 div()
-                    .text_xs()
+                    .absolute()
+                    .bottom_1()
+                    .right_1()
                     .px_1()
-                    .rounded(px(3.0))
-                    .bg(theme.muted.opacity(0.18))
+                    .rounded_sm()
+                    .bg(theme.background.opacity(0.9))
+                    .text_xs()
                     .text_color(theme.muted_foreground)
                     .child(format!("{:.0}", member.placement.density)),
+            );
+        v_flex()
+            .id(format!("member_select_{}", member_id.0))
+            .w(px(96.0))
+            .flex_shrink_0()
+            .gap_1()
+            .cursor_pointer()
+            .on_click(move |_, _, _| {
+                edit_library(&select_state, |library| {
+                    library.selection = Some(FoliageSelection::Member(set_id, member_id));
+                });
+            })
+            .child(preview)
+            .child(
+                div()
+                    .w_full()
+                    .text_xs()
+                    .text_ellipsis()
+                    .text_color(if selected {
+                        theme.primary
+                    } else {
+                        theme.foreground
+                    })
+                    .child(label),
             )
-            .child(remove)
     }
 
     fn render_inspector(

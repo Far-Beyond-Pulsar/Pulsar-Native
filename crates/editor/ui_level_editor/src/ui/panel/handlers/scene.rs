@@ -26,7 +26,7 @@ impl LevelEditorPanel {
                 // Load into the existing shared SceneDb (renderer keeps its Arc).
                 let result = {
                     let mut world = scene_db.write();
-                    crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
+                    crate::scene_edit::level_io::load_from_file_with_editor_state(
                         &mut world.world,
                         &path,
                     )
@@ -34,11 +34,12 @@ impl LevelEditorPanel {
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         match result {
-                            Ok((editor_camera, world_settings)) => {
-                                this.apply_editor_camera_state(editor_camera.as_ref());
+                            Ok((editor_state, world_settings)) => {
+                                this.apply_editor_camera_state(editor_state.camera.as_ref());
                                 let mut state = state_arc.write();
                                 state.scene.current_scene = Some(path);
                                 state.scene.world_settings = world_settings;
+                                state.editor.terrain.foliage_sets = editor_state.foliage_sets;
                                 state.scene.has_unsaved_changes = false;
                                 // Deselect so properties panel clears stale data.
                                 state.scene.select_object(None);
@@ -62,7 +63,7 @@ impl LevelEditorPanel {
         // Warn if unsaved changes (TODO: modal dialog)
         // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
         let scene_db = { self.shared_state.read().scene.shared_scene() };
-        let mut editor_camera = None;
+        let mut editor_state = crate::scene_edit::LevelEditorFileState::default();
         let mut world_settings = crate::world_settings_data::WorldSettingsData::default();
         {
             let mut world = scene_db.write();
@@ -77,14 +78,14 @@ impl LevelEditorPanel {
             if engine_fs::virtual_fs::write_file(&tmp, &bytes).is_ok() {
                 let load_result = {
                     let mut world = scene_db.write();
-                    crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
+                    crate::scene_edit::level_io::load_from_file_with_editor_state(
                         &mut world.world,
                         &tmp,
                     )
                 };
                 match load_result {
-                    Ok((loaded_camera, loaded_settings)) => {
-                        editor_camera = loaded_camera;
+                    Ok((loaded_editor, loaded_settings)) => {
+                        editor_state = loaded_editor;
                         world_settings = loaded_settings;
                     }
                     Err(e) => {
@@ -93,11 +94,12 @@ impl LevelEditorPanel {
                 }
             }
         }
-        self.apply_editor_camera_state(editor_camera.as_ref());
+        self.apply_editor_camera_state(editor_state.camera.as_ref());
         {
             let mut state = self.shared_state.write();
             state.scene.current_scene = None;
             state.scene.world_settings = world_settings;
+            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
             state.scene.has_unsaved_changes = false;
             // Deselect so properties panel clears stale data.
             state.scene.select_object(None);

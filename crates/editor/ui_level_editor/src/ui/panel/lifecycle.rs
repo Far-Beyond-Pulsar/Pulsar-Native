@@ -72,17 +72,18 @@ impl LevelEditorPanel {
             }
             let load_result = {
                 let mut world = scene_db.write();
-                crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
+                crate::scene_edit::level_io::load_from_file_with_editor_state(
                     &mut world.world,
                     &default_path,
                 )
             };
             match load_result {
-                Ok((editor_camera, world_settings)) => {
-                    self.apply_editor_camera_state(editor_camera.as_ref());
+                Ok((editor_state, world_settings)) => {
+                    self.apply_editor_camera_state(editor_state.camera.as_ref());
                     let mut w = self.shared_state.write();
                     w.scene.current_scene = Some(default_path);
                     w.scene.world_settings = world_settings;
+                    w.editor.terrain.foliage_sets = editor_state.foliage_sets;
                     w.scene.has_unsaved_changes = false;
                     w.scene.bump_revision(false);
                 }
@@ -128,15 +129,17 @@ impl LevelEditorPanel {
                     }
                     let load_result = {
                         let mut world = scene_db.write();
-                        crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
+                        crate::scene_edit::level_io::load_from_file_with_editor_state(
                             &mut world.world,
                             &default_path,
                         )
                     };
                     match load_result {
-                        Ok((editor_camera, world_settings)) => {
-                            self.apply_editor_camera_state(editor_camera.as_ref());
-                            self.shared_state.write().scene.world_settings = world_settings;
+                        Ok((editor_state, world_settings)) => {
+                            self.apply_editor_camera_state(editor_state.camera.as_ref());
+                            let mut state = self.shared_state.write();
+                            state.scene.world_settings = world_settings;
+                            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
                             tracing::info!("Default level seeded at {:?}", default_path)
                         }
                         Err(e) => tracing::warn!("Seeded default level but reload failed: {e}"),
@@ -171,19 +174,16 @@ impl LevelEditorPanel {
             let mut world = scene_db.write();
             crate::scene_edit::objects::clear(&mut world.world);
         }
-        let editor_camera = {
+        let (editor_state, world_settings) = {
             let mut world = scene_db.write();
-            crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
-                &mut world.world,
-                &path,
-            )?
+            crate::scene_edit::level_io::load_from_file_with_editor_state(&mut world.world, &path)?
         };
-        let (editor_camera, world_settings) = editor_camera;
-        panel.apply_editor_camera_state(editor_camera.as_ref());
+        panel.apply_editor_camera_state(editor_state.camera.as_ref());
         {
             let mut state = panel.shared_state.write();
             state.scene.current_scene = Some(path);
             state.scene.world_settings = world_settings;
+            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
             state.scene.has_unsaved_changes = false;
             state.scene.bump_revision(false);
         }

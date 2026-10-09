@@ -202,6 +202,25 @@ impl MeshAssetPicker {
             .and_then(|item| item.thumbnail.clone())
     }
 
+    /// Request a thumbnail for a palette tile without opening the picker.
+    /// Observe this entity to redraw when the shared thumbnail service completes.
+    pub fn request_thumbnail(&mut self, path: &str, cx: &mut Context<Self>) {
+        if path.is_empty() || self.thumbnail_requested.contains(path) {
+            return;
+        }
+        if !self.items.iter().any(|item| item.path == path) {
+            self.items.push(AssetItem {
+                display_name: Path::new(path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string()),
+                path: path.to_string(),
+                thumbnail: None,
+            });
+        }
+        self.ensure_thumbnail(path.to_string(), cx);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Thumbnail loading
     // ─────────────────────────────────────────────────────────────────────────

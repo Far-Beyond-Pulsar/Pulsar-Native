@@ -156,6 +156,8 @@ pub struct LevelSnapshot {
     class_names: HashMap<ObjectId, String>,
     editor_camera: Option<LevelEditorCameraState>,
     world_settings: WorldSettingsData,
+    /// None for world-only saves, which preserve the existing palette.
+    pub foliage_sets: Option<crate::state::foliage_sets::FoliageSetLibrary>,
 }
 
 /// Capture what [`write_level`] writes. `registry` should be the project's
@@ -186,6 +188,7 @@ pub fn snapshot_level(
         class_names,
         editor_camera,
         world_settings,
+        foliage_sets: None,
     }
 }
 
@@ -198,6 +201,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         class_names,
         editor_camera,
         world_settings,
+        foliage_sets,
     } = snapshot;
     if let Some(parent_dir) = path.parent() {
         virtual_fs::create_dir_all(parent_dir)
@@ -212,11 +216,13 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .and_then(|json: String| serde_json::from_str::<LevelFile>(&json).ok());
-    let preserved_editor = if editor_camera.is_none() {
-        existing_file.as_ref().and_then(|file| file.editor.clone())
-    } else {
-        None
-    };
+    let mut editor = existing_file.as_ref().and_then(|file| file.editor.clone());
+    if let Some(camera) = editor_camera {
+        editor.get_or_insert_with(Default::default).camera = Some(camera);
+    }
+    if let Some(foliage_sets) = foliage_sets {
+        editor.get_or_insert_with(Default::default).foliage_sets = foliage_sets;
+    }
     // Legacy `blueprint_bindings` are no longer written: loading migrates
     // them to `ClassInstance`. Only entries the migration could not express
     // (a second class bound to one object) are carried over, so a re-save
@@ -235,11 +241,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
             editor_version: env!("CARGO_PKG_VERSION").into(),
         },
         world_settings,
-        editor: editor_camera
-            .map(|camera| LevelEditorFileState {
-                camera: Some(camera),
-            })
-            .or(preserved_editor),
+        editor,
     };
     let json = serde_json::to_string_pretty(&level_file)
         .map_err(|e| format!("Failed to serialize: {e}"))?;
@@ -336,6 +338,14 @@ pub fn load_from_file_with_editor_camera_and_settings<P: AsRef<Path>>(
     load_with_classes_and_settings(world, path, &project_registry())
 }
 
+/// Load all per-level authoring state as well as the world.
+pub fn load_from_file_with_editor_state<P: AsRef<Path>>(
+    world: &mut World,
+    path: P,
+) -> Result<(LevelEditorFileState, WorldSettingsData), String> {
+    load_with_classes_and_editor_state(world, path, &project_registry())
+}
+
 /// [`load_from_file_with_editor_camera`] with an explicit class registry.
 ///
 /// Old class references are migrated first (`ScriptComponent` class paths
@@ -354,6 +364,15 @@ pub(crate) fn load_with_classes_and_settings<P: AsRef<Path>>(
     path: P,
     registry: &ClassRegistry,
 ) -> Result<(Option<LevelEditorCameraState>, WorldSettingsData), String> {
+    load_with_classes_and_editor_state(world, path, registry)
+        .map(|(editor, settings)| (editor.camera, settings))
+}
+
+fn load_with_classes_and_editor_state<P: AsRef<Path>>(
+    world: &mut World,
+    path: P,
+    registry: &ClassRegistry,
+) -> Result<(LevelEditorFileState, WorldSettingsData), String> {
     profiling::profile_scope!("scene_edit::load_from_file");
     let bytes =
         virtual_fs::read_file(path.as_ref()).map_err(|e| format!("Failed to read file: {e}"))?;
@@ -410,7 +429,7 @@ pub(crate) fn load_with_classes_and_settings<P: AsRef<Path>>(
         level_file.version
     );
     Ok((
-        level_file.editor.and_then(|editor| editor.camera),
+        level_file.editor.unwrap_or_default(),
         level_file.world_settings,
     ))
 }
