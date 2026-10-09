@@ -519,13 +519,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "asset_import"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "editor_task_queue",
+ "engine_fs",
+ "helio_component",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "twox-hash",
+]
+
+[[package]]
 name = "asset_viewer_plugin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "engine_state",
  "glam 0.33.5",
  "gpui-ce",
+ "helio_component",
  "image",
  "log",
  "parking_lot",
@@ -13886,12 +13904,14 @@ name = "ui_file_manager"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "asset_import",
  "chrono",
  "engine_fs",
  "engine_state",
  "gpui-ce",
  "helio_component",
  "image",
+ "parking_lot",
  "plugin_editor_api",
  "pulsar_reflection",
  "rust-i18n",

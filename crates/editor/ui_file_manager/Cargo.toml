@@ -21,6 +21,8 @@ engine_fs = { workspace = true, features = ["editor"] }
 pulsar_reflection = { workspace = true }
 engine_state.workspace = true
 helio_component.workspace = true
+asset_import.workspace = true
+parking_lot = { workspace = true }
 tracing.workspace = true
 
 # Plugin system

@@ -112,6 +112,15 @@ pub struct AssetViewerPanel {
 
     pub undo_stack: Vec<(u32, u32, Vec<u8>)>,
     pub redo_stack: Vec<(u32, u32, Vec<u8>)>,
+
+    /// Default-material pickers; set only for native `.mesh` files.
+    pub mesh_materials: Option<super::materials::MeshMaterials>,
+    /// `(first_index, index_count, material_slot)` per drawn section of a `.mesh`.
+    pub mesh_sections: Vec<(u32, u32, usize)>,
+    /// Imported surface of each `.mesh` slot (what an empty assignment draws).
+    pub slot_surfaces: Vec<helio_component::mesh_cache::ImportedSurfaceMaterial>,
+    /// Preview colour of each slot's current material.
+    pub slot_colors: Vec<[f32; 4]>,
 }
 
 impl AssetViewerPanel {
@@ -344,7 +353,7 @@ impl AssetViewerPanel {
             .unwrap_or("")
             .to_lowercase();
 
-        let is_3d = ext == "fbx";
+        let is_3d = ext == "fbx" || ext == "mesh";
 
         let image_data = if ext == "png" {
             match image::open(&file_path) {
@@ -367,7 +376,7 @@ impl AssetViewerPanel {
             .and_then(|n| n.to_str())
             .map(|s| s.to_string());
 
-        Self {
+        let mut panel = Self {
             focus_handle: cx.focus_handle(),
             current_path: Some(file_path.clone()),
             is_3d,
@@ -421,6 +430,12 @@ impl AssetViewerPanel {
             last_pan_pos: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-        }
+            mesh_materials: None,
+            mesh_sections: Vec::new(),
+            slot_surfaces: Vec::new(),
+            slot_colors: Vec::new(),
+        };
+        panel.init_mesh_materials(window, cx);
+        panel
     }
 }

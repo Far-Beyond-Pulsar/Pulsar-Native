@@ -101,10 +101,10 @@ impl FileManagerDrawer {
             }
         }
 
-        // For model files, show the import configurator modal; on confirm it
-        // converts each to a native `.mesh` asset with the chosen options (the
-        // source model is not brought into the project). Falls back to a default
-        // import if the format advertises no options schema.
+        // Source models are copied into the project as-is, then offered for
+        // import like any other importable file the project holds: the
+        // configurator (one per format) lets the user Link or Convert in
+        // place. Nothing is converted behind the user's back.
         //
         // NOTE: The modal MUST be opened asynchronously (on the next frame)
         // rather than synchronously during the drop handler. Opening a modal
@@ -112,30 +112,28 @@ impl FileManagerDrawer {
         // `performDragOperation` callback from returning and releasing the
         // `NSDraggingSession`. This would silently break all subsequent drops.
         if !models.is_empty() {
-            let ext = models
-                .first()
-                .and_then(|p| p.extension())
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_string();
-            if let Some(schema) = helio_component::mesh_cache::options_schema(&ext) {
-                use ui_common::PulsarWindowExt as _;
-                let params = crate::configurator::ImportConfiguratorParams {
-                    sources: models.clone(),
-                    target: t.clone(),
-                    schema,
-                };
-                crate::configurator::ImportConfigurator::open(params, cx);
-                any_ok = true;
-            } else {
-                for src in &models {
-                    match helio_component::mesh_cache::import_model_to_native_default(src, &t) {
-                        Ok(_) => any_ok = true,
-                        Err(e) => {
-                            tracing::error!("Model import failed for {}: {}", src.display(), e)
+            match FileOperations::copy_items(&models, &t) {
+                Ok(()) => {
+                    any_ok = true;
+                    if let Some(root) = self.project_path.clone() {
+                        let mut by_ext: std::collections::BTreeMap<String, Vec<PathBuf>> =
+                            Default::default();
+                        for src in &models {
+                            let (Some(name), Some(ext)) = (
+                                src.file_name(),
+                                src.extension().and_then(|e| e.to_str()),
+                            ) else {
+                                continue;
+                            };
+                            by_ext
+                                .entry(ext.to_ascii_lowercase())
+                                .or_default()
+                                .push(t.join(name));
                         }
+                        cx.defer(move |cx| crate::configurator::offer_import(root, by_ext, cx));
                     }
                 }
+                Err(e) => tracing::error!("Failed to copy models into the project: {}", e),
             }
         }
 

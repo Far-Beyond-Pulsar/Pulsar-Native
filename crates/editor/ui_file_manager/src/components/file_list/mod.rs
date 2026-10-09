@@ -255,6 +255,7 @@ impl FileManagerDrawer {
             }
         }));
 
+        this.scan_for_imports(window, cx);
         this
     }
 
