@@ -5304,6 +5304,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-mats",
+ "helio-pass-corona",
  "helio-pass-decal",
  "helio-pass-foliage-place",
  "helio-pass-postprocess",

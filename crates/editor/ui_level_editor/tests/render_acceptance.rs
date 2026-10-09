@@ -1869,3 +1869,167 @@ fn decals_reach_the_frame_and_scripts_set_their_opacity() {
         "half opacity is neither the full decal nor none"
     );
 }
+
+/// Changed pixels in one half of `frame` against `reference`, and their
+/// mean red and green.
+fn half_change(frame: &Frame, reference: &Frame, left: bool) -> (usize, f32, f32) {
+    let (mut count, mut red, mut green) = (0usize, 0.0f32, 0.0f32);
+    for (index, (a, b)) in reference
+        .color
+        .chunks_exact(4)
+        .zip(frame.color.chunks_exact(4))
+        .enumerate()
+    {
+        if ((index as u32 % SIZE) < SIZE / 2) != left {
+            continue;
+        }
+        if (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD {
+            count += 1;
+            red += b[0] as f32;
+            green += b[1] as f32;
+        }
+    }
+    let n = count.max(1) as f32;
+    (count, red / n, green / n)
+}
+
+/// Particle emitters (#1059): an authored emitter's particles reach the
+/// frame; two emitters with different `max_particles` take their own
+/// ranges of the shared particle pool and both draw; disabling one
+/// restores its side of the frame while the other keeps drawing.
+#[test]
+fn particle_emitters_reach_the_frame_from_one_pool() {
+    use helio_component::components::{ParticleEmitterComponent, ParticleEmitterShape};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    // No atmosphere: a black sky, so the particles alone change the frame.
+    let mut state = LevelEditorState::new();
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+
+    // Long-lived, still particles inside a sphere around their owner.
+    let add_emitter = |state: &mut LevelEditorState, x: f32, color: [f32; 4], max: u32| {
+        let emitter = ParticleEmitterComponent {
+            max_particles: max,
+            emit_rate: 20_000.0,
+            lifetime: 60.0,
+            lifetime_variation: 0.0,
+            shape: ParticleEmitterShape::Sphere,
+            spawn_radius: 0.7,
+            velocity: [0.0; 3],
+            velocity_variation: [0.0; 3],
+            start_size: 0.12,
+            end_size: 0.12,
+            start_color: color,
+            end_color: color,
+            ..Default::default()
+        };
+        let added = execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "Particles".to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform {
+                        position: [x, 0.5, 0.0],
+                        ..Transform::default()
+                    },
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![TypedComponent::new(emitter)],
+            },
+        );
+        added.affected_ids[0].clone()
+    };
+
+    // A small red emitter on the left.
+    let red = add_emitter(&mut state, -1.3, [1.0, 0.05, 0.05, 1.0], 300);
+    let one = harness.frames(&mut renderer, || {});
+    one.dump("particles_one");
+    let left = half_change(&one, &before, true);
+    let right = half_change(&one, &before, false);
+    println!("PARTICLES one emitter: left {left:?}, right {right:?}");
+    assert!(left.0 > 200, "the emitter drew no particles: {left:?}");
+    assert!(left.1 > left.2 * 2.0, "the particles are not red: {left:?}");
+    assert!(
+        right.0 < 20,
+        "particles drawn away from the emitter: {right:?}"
+    );
+    assert_eq!(
+        one.difference(&before).depth_texels,
+        0,
+        "particles wrote depth"
+    );
+
+    // A larger green one on the right: its own range of the pool, both draw.
+    let green = add_emitter(&mut state, 1.3, [0.05, 1.0, 0.05, 1.0], 3000);
+    let two = harness.frames(&mut renderer, || {});
+    two.dump("particles_two");
+    let left = half_change(&two, &before, true);
+    let right = half_change(&two, &before, false);
+    println!("PARTICLES two emitters: left {left:?}, right {right:?}");
+    assert!(
+        left.0 > 200 && left.1 > left.2 * 2.0,
+        "the red emitter stopped: {left:?}"
+    );
+    assert!(
+        right.0 > 200 && right.2 > right.1 * 2.0,
+        "the green emitter drew nothing: {right:?}"
+    );
+    assert!(
+        right.0 > left.0,
+        "ten times the particles cover no more of the frame: left {left:?}, right {right:?}"
+    );
+
+    // Disabling the red one restores its side; the green one now packs into
+    // the first row and its first range of the pool, and keeps drawing.
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &red,
+        0,
+        false
+    ));
+    let disabled = harness.frames(&mut renderer, || {});
+    disabled.dump("particles_disabled");
+    let left = half_change(&disabled, &before, true);
+    let right = half_change(&disabled, &before, false);
+    println!("PARTICLES red disabled: left {left:?}, right {right:?}");
+    assert!(left.0 < 20, "a disabled emitter still draws: {left:?}");
+    assert!(
+        right.0 > 200 && right.2 > right.1 * 2.0,
+        "the green emitter stopped: {right:?}"
+    );
+
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &green,
+        0,
+        false
+    ));
+    let none = harness.frames(&mut renderer, || {});
+    let change = none.difference(&before);
+    println!("PARTICLES both disabled: {change:?}");
+    assert!(
+        change.color_pixels < 20,
+        "particles outlive their emitters: {change:?}"
+    );
+}

@@ -92,6 +92,7 @@ fn relative_camera_source_schema_compatible(
         "foliage_sources" => c::FoliageSourceRow::packed_gpu_component_id(),
         "atmosphere_sources" => c::AtmosphereSourceRow::packed_gpu_component_id(),
         "decal_sources" => c::DecalSourceRow::packed_gpu_component_id(),
+        "corona_emitter_sources" => c::CoronaEmitterSourceRow::packed_gpu_component_id(),
         "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
             return store.buffer_registry().element_type(key)
                 == Some(Some(std::any::TypeId::of::<pulsar_scenedb::gpu::VarLenHandle>()));
@@ -130,7 +131,7 @@ fn relative_camera_source_compatible(
         | "water_hitboxes" | "global_fog_sources" | "local_fog_sources"
         | "post_process_volume_sources" | "camera_postprocess_sources"
         | "water_volume_sources" | "foliage_sources" | "atmosphere_sources"
-        | "static_mesh_draw_bounds" | "static_mesh_draw_flags"
+        | "corona_emitter_sources" | "static_mesh_draw_bounds" | "static_mesh_draw_flags"
         | "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles"
         | "static_mesh_draw_sections::handles" => {
             kind == "row" && mode == Some(MirrorMode::DirtyTracked)

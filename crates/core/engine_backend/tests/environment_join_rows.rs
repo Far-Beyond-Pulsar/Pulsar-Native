@@ -619,3 +619,128 @@ fn decals_are_placed_in_their_owners_box() {
         "disabled instance"
     );
 }
+
+/// Particle emitters (#1059): an enabled emitter of a visible owner becomes
+/// a Corona emitter row, packed into the leading rows, placed at its owner
+/// and given its own range of the shared particle pool, sized by its
+/// `max_particles`; the ranges are disjoint and aligned, a full pool clamps
+/// the last ones, and hidden owners or disabled instances give theirs up.
+#[test]
+fn particle_emitters_take_disjoint_ranges_of_the_particle_pool() {
+    use helio_component::components::{CoronaEmitterSourceRow, ParticleEmitterComponent};
+    use helio_default_graphs::environment_join::{
+        CORONA_POOL_PARTICLES, CORONA_RANGE_ALIGNMENT, MAX_CORONA_EMITTERS,
+    };
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let emitter = |scene: &mut SceneDb, name: &str, x: f32, max_particles: u32| {
+        let owner = place(scene, name, at([x, 2.0, -1.0]));
+        let emitter = ParticleEmitterComponent {
+            max_particles,
+            ..Default::default()
+        };
+        let instance =
+            pulsar_world_registry::attach_value(&mut scene.world, owner, emitter).unwrap();
+        (owner, instance)
+    };
+    let (a, _) = emitter(&mut scene, "a", 1.0, 300);
+    let (_, b) = emitter(&mut scene, "b", 2.0, 1000);
+    let (_, c) = emitter(&mut scene, "c", 3.0, 1);
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    // Placed rows by their owner's X: (offset, count).
+    let ranges = |join: &Join, out: &SceneBufferProjection| {
+        let rows: Vec<CoronaEmitterSourceRow> = join.read(out, "corona_emitters");
+        assert_eq!(rows.len(), MAX_CORONA_EMITTERS as usize);
+        let mut placed = Vec::new();
+        for (slot, row) in rows.iter().enumerate() {
+            if row.motion[11] == 0.0 {
+                assert!(
+                    rows[slot..].iter().all(|row| row.motion[11] == 0.0),
+                    "placed rows are packed into the leading rows"
+                );
+                break;
+            }
+            // Placed at the owner: its translation and scale.
+            assert_eq!(&row.transform[12..16], &[row.transform[12], 2.0, -1.0, 1.0]);
+            assert_eq!(row.transform[0], 1.0);
+            // The emitter's identity: its source row + 1.
+            assert_ne!(row.range[3], 0);
+            assert!(
+                rows[..slot]
+                    .iter()
+                    .all(|other| other.range[3] != row.range[3]),
+                "identities are distinct"
+            );
+            placed.push((row.transform[12], row.range[1], row.range[2]));
+        }
+        placed
+    };
+    let disjoint = |placed: &[(f32, u32, u32)]| {
+        for (i, &(_, offset, count)) in placed.iter().enumerate() {
+            assert_eq!(offset % CORONA_RANGE_ALIGNMENT, 0, "aligned: {placed:?}");
+            assert!(
+                offset + count <= CORONA_POOL_PARTICLES,
+                "in the pool: {placed:?}"
+            );
+            for &(_, other, other_count) in &placed[i + 1..] {
+                assert!(
+                    offset + count <= other || other + other_count <= offset,
+                    "overlapping ranges: {placed:?}"
+                );
+            }
+        }
+    };
+
+    let out = join.run(&mut scene);
+    let placed = ranges(&join, &out);
+    assert_eq!(
+        placed,
+        vec![(1.0, 0, 300), (2.0, 512, 1000), (3.0, 1536, 1)]
+    );
+    disjoint(&placed);
+
+    // A hidden owner and a disabled instance give their ranges up; the
+    // others pack down.
+    scene.world.get_mut::<Visibility>(a).unwrap().visible = false;
+    attachments::set_enabled(&mut scene.world, c, false);
+    let out = join.run(&mut scene);
+    assert_eq!(ranges(&join, &out), vec![(2.0, 0, 1000)]);
+    attachments::set_enabled(&mut scene.world, b, false);
+    let out = join.run(&mut scene);
+    assert_eq!(ranges(&join, &out), Vec::new());
+    scene.world.get_mut::<Visibility>(a).unwrap().visible = true;
+    attachments::set_enabled(&mut scene.world, b, true);
+    attachments::set_enabled(&mut scene.world, c, true);
+
+    // A full pool: the most one emitter may request, five times over
+    // (with the three above), clamps the last ranges to what is left.
+    let largest = 262_144; // helio_pass_corona::CORONA_MAX_PARTICLES_PER_EMITTER
+    for x in 4..9 {
+        emitter(&mut scene, "large", x as f32, largest);
+    }
+    let out = join.run(&mut scene);
+    let placed = ranges(&join, &out);
+    assert_eq!(placed.len(), 8);
+    disjoint(&placed);
+    let total: u32 = placed.iter().map(|range| range.2).sum();
+    assert!(total <= CORONA_POOL_PARTICLES);
+    assert_eq!(placed[3].2, largest);
+    let last = placed[7];
+    assert_eq!(
+        last.2, 0,
+        "nothing is left for the last emitter: {placed:?}"
+    );
+    assert!(
+        placed[6].2 < largest && placed[6].2 > 0,
+        "the one that reaches the end is clamped to it: {placed:?}"
+    );
+}

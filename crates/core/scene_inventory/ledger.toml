@@ -40,6 +40,17 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_f
 status = "verified"
 
 [[class]]
+name = "ParticleEmitterComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::particle_emitter_component"
+disposition = "render (#1059). Its derived CoronaEmitterSourceRow is written on every insert, write, removal and replay; the environment join gates it on the instance and its owner's visibility, places it at the owner and allocates its range of the Corona particle pool (sized by max_particles, clamped when the pool is full). Sprites are the Corona pass's built-in atlas cells"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
+
+[[class]]
 name = "DecalComponent"
 category = "Rendering"
 world_registered = true
@@ -540,12 +551,12 @@ buffers = ["corona_emitters"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "no production writer found"
+writer = "helio-default-graphs environment join from ParticleEmitterComponent's source rows (#1059)"
 owner = "helio_pass_corona::components"
-disposition = "unfinished (Phase 4; tracked in #1059): no authored emitter component (decision 4); the pass reads its fallback"
+disposition = "keep as the pass row layout of corona_emitters; produced by the join (transform from the owner, particle range from the pool, emitter identity), not registered as a column. The spawn cursor is the pass's own state"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1059"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
 
 [[schema]]
 type = "DecalComponent"
@@ -825,6 +836,34 @@ owner = "helio_component::components::decal_component"
 disposition = "keep: the authored type's GPU row is DecalSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
+
+[[schema]]
+type = "ParticleEmitterComponent"
+path = "helio_component::components::particle_emitter_component::ParticleEmitterComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived CoronaEmitterSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::particle_emitter_component"
+disposition = "keep: the authored type's GPU row is CoronaEmitterSourceRow, the environment join's input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
+
+[[schema]]
+type = "CoronaEmitterSourceRow"
+path = "helio_component::components::environment_rows::CoronaEmitterSourceRow"
+buffers = ["corona_emitter_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "ParticleEmitterComponent's derived GPU registration (the pass row in the owner's space with its requested particles; zero while disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's corona_emitters input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[schema]]
@@ -1598,12 +1637,22 @@ status = "verified"
 [[buffer]]
 key = "corona_emitters"
 producers = ["CoronaEmitterComponent"]
-consumers = ["helio-pass-corona"]
-owner = "no authored Pulsar component found"
-disposition = "unfinished (Phase 4; tracked in #1059): no authored emitter component (decision 4)"
+consumers = ["helio-default-graphs", "helio-pass-corona"]
+owner = "helio-default-graphs environment join (execution output, packed into MAX_CORONA_EMITTERS rows)"
+disposition = "keep: the join places each enabled ParticleEmitterComponent of a visible owner at the owner and gives it the next contiguous, aligned range of the Corona particle pool (a GPU prefix sum of max_particles, clamped to the pool) (#1059)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "tracked in #1059"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
+
+[[buffer]]
+key = "corona_emitter_sources"
+producers = ["CoronaEmitterSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: ParticleEmitterComponent in its owner's space, derived on every write; the environment join reads it into corona_emitters"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
 
 [[buffer]]
 key = "decals"
@@ -1984,10 +2033,10 @@ crate = "helio-pass-corona"
 in_default_graph = true
 reads = ["corona_emitters"]
 owner = "helio-default-graphs (mapping); helio-pass-corona (algorithm)"
-disposition = "runs in the editor graph, but nothing authored feeds it: corona emitters (Phase 4)"
+disposition = "runs in the editor graph: authored ParticleEmitterComponents reach it through the environment join (corona_emitters, #1059). Emitters draw from one shared particle pool by their join-allocated ranges; the particle-wide passes dispatch indirectly over the used range (no CPU readback); a row whose emitter or range changes restarts its particles. Depth sort is off (no CPU-built sort steps for GPU-allocated ranges)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1059; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-debug"
