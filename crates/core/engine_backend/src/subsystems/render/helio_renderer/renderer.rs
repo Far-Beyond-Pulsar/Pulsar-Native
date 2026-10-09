@@ -11,6 +11,7 @@ use crate::scene::{GizmoType, SceneWorldExt};
 
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
+use super::voxel_mesh_backend::MeshVoxelBackend;
 use super::voxel_backend::{
     PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRenderBackend, VoxelView,
 };
@@ -181,8 +182,8 @@ fn relative_camera_world_incompatibilities(
         component_id::<pulsar_scene_model::attachments::ComponentMeta>(),
         // Kept data of an unregistered class: nothing draws it.
         component_id::<pulsar_scene_model::attachments::UnresolvedComponent>(),
-        // The voxel world itself, traced camera-relative.
-        component_id::<helio_component::VoxelComponent>(),
+        // The voxel world itself, traced camera-relative. (A free-standing
+        // VoxelComponent draws as a world-space mesh, so it is not here.)
         component_id::<helio_component::VoxelTerrainComponent>(),
         component_id::<helio_component::VoxelTerrainLayersComponent>(),
         // Directional lights only (above); the scene join's editor light
@@ -792,6 +793,10 @@ impl HelioRenderer {
         let mut voxel_backends = VoxelBackendRegistry::new();
         voxel_backends
             .register(Box::new(PlanetVoxelBackend::new()))
+            .expect("built-in voxel renderer ID must be unique");
+        // Free-standing voxel objects: mesh rows in the shared scene.
+        voxel_backends
+            .register(Box::new(MeshVoxelBackend::new(Some(scene_store.clone()))))
             .expect("built-in voxel renderer ID must be unique");
         Self {
             camera_input: Arc::new(Mutex::new(CameraInput::new())),

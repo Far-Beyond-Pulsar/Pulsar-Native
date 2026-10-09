@@ -257,10 +257,10 @@ category = "Voxel"
 world_registered = true
 own_gpu_columns = false
 owner = "helio_component::components::voxel_component_runtime"
-disposition = "unfinished, Phase 4 (tracked in #1056): no voxel renderer draws a free-standing voxel component (its entry has no compatible renderer; live chunks on a terrain are rejected); its payload store and sessions stay real work. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
+disposition = "render, Phase 4 (#1056): the voxel mesh renderer (helio.voxel-mesh) greedy-meshes the payload store's 8³ chunks change-driven (a changed chunk and the neighbours whose border it changed; large batches on a worker thread, results of chunks changed meanwhile dropped by chunk revision) and writes the instance's mesh rows: a generated StaticMeshComponent's content-interned geometry and its StaticMeshDraw, one section per palette slot coloured from its material ID. The scene join draws them with the owner's whole transform (G-buffer, shadows, picking); removal or despawn clears them (a clear registration on VoxelComponent). An uninitialized store draws its initial cube. Live chunks on a terrain stay rejected by the planet renderer"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1056"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (voxel_objects_reach_the_frame_as_meshes); crates/core/engine_backend/src/subsystems/render/helio_renderer/voxel_mesh_backend.rs (a_default_object_meshes_its_cube_and_edits_remesh_only_touched_chunks, large_volumes_mesh_off_thread_and_drop_results_of_chunks_edited_meanwhile); crates/renderer/helio/crates/helio-component/src/components/voxel_mesh.rs (a_cube_is_six_quads, an_l_shape_is_ten_quads, an_empty_chunk_has_no_quads)"
+status = "verified"
 
 [[class]]
 name = "VoxelTerrainLayersComponent"

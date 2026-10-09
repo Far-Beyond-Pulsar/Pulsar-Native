@@ -2833,3 +2833,144 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Both halves' coverage: which texels differ in depth from `reference`.
+fn full_coverage(frame: &Frame, reference: &Frame) -> Vec<bool> {
+    let mut covered = coverage(frame, reference, true);
+    covered.extend(coverage(frame, reference, false));
+    covered
+}
+
+/// A free-standing voxel volume (#1056) is meshed and drawn as a mesh
+/// instance at its owner: rotating or scaling the owner changes its
+/// silhouette, an edit through a voxel source session changes the frame,
+/// removing the component restores the empty frame, and it casts shadows.
+#[test]
+fn voxel_objects_reach_the_frame_as_meshes() {
+    use engine_backend::scene::voxel_source::{VoxelSourceKind, VoxelSourceSession};
+    use helio_component::components::LightType as Kind;
+    use helio_voxel_data::{VoxelEditTicketState, VoxelInboxClose, VoxelSampleEdit, VoxelSourceId};
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    // The default volume: 16³ one-metre voxels, ~14 m in radius.
+    let harness = Harness::new(device, queue, 14.0);
+    // Lit from in front and above, so the volume's faces are not black.
+    let light = |state: &mut LevelEditorState| add_light(state, [0.0, 20.0, 40.0], Kind::Point, 5.0e4);
+    let add_volume = |state: &mut LevelEditorState| {
+        let id = add_object(state, "Voxels", ObjectType::Empty);
+        // The volume's corner is its object's origin: centre it.
+        move_to(state, &id, [-8.0, -8.0, -8.0]);
+        assert!(
+            execute_command(
+                state,
+                SceneCommand::AddComponent {
+                    id: id.clone(),
+                    class_name: "VoxelComponent".into(),
+                    value: None,
+                },
+            )
+            .changed
+        );
+        id
+    };
+
+    let mut state = LevelEditorState::new();
+    light(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let reference = harness.frames(&mut renderer, || {});
+    let id = add_volume(&mut state);
+    let cube = harness.frames(&mut renderer, || {});
+    cube.dump("voxel_cube");
+    assert_drawn("voxel object", cube.difference(&reference));
+    let again = harness.frames(&mut renderer, || {});
+    let noise = again.difference(&cube).depth_texels;
+    let cube_texels = full_coverage(&cube, &reference);
+
+    // Rotated about its object's origin (the volume's corner).
+    transform(&mut state, &id, Some([0.0, 45.0, 0.0]), None);
+    let rotated = harness.frames(&mut renderer, || {});
+    rotated.dump("voxel_rotated");
+    let same = overlap(&cube_texels, &full_coverage(&rotated, &reference));
+    println!("VOXEL rotated: keeps {same:.3} of the cube's texels");
+    assert_drawn("rotated voxel object", rotated.difference(&reference));
+    assert!(same < 0.9, "rotating the owner did not turn the volume ({same:.3})");
+    transform(&mut state, &id, Some([0.0, 0.0, 0.0]), None);
+
+    // Scaled on two axes: narrower.
+    transform(&mut state, &id, None, Some([0.5, 1.0, 0.5]));
+    let scaled = harness.frames(&mut renderer, || {});
+    scaled.dump("voxel_scaled");
+    let (full, narrow) = (
+        cube.difference(&reference).depth_texels,
+        scaled.difference(&reference).depth_texels,
+    );
+    println!("VOXEL scale: full {full}, scaled {narrow}");
+    assert!(narrow > 0 && narrow * 10 < full * 8, "scaling the owner did not shrink the volume");
+    transform(&mut state, &id, None, Some([1.0, 1.0, 1.0]));
+    let restored = harness.frames(&mut renderer, || {});
+    assert!(overlap(&cube_texels, &full_coverage(&restored, &reference)) > 0.9);
+
+    // An edit: clear a 4 x 4 x 2 notch in the middle of the front face.
+    let instance = first_instance(&state, &id);
+    let session = VoxelSourceSession::open(
+        state.scene.shared_scene(),
+        instance,
+        VoxelSourceKind::Object,
+        VoxelSourceId(7),
+        Default::default(),
+    )
+    .expect("open the volume's source");
+    let edits: Vec<_> = (6..10)
+        .flat_map(|x| (6..10).flat_map(move |y| (14..16).map(move |z| [x, y, z])))
+        .map(|xyz| VoxelSampleEdit {
+            xyz,
+            lod: 0,
+            material_slot: 0,
+        })
+        .collect();
+    let ticket = session.try_submit_edits(edits.into()).expect("edit admitted");
+    assert!(matches!(ticket.wait(), VoxelEditTicketState::Published(_)));
+    let edited = harness.frames(&mut renderer, || {});
+    edited.dump("voxel_edited");
+    let change = edited.difference(&restored).depth_texels;
+    println!("VOXEL edit: {change} depth texels changed (noise {noise})");
+    assert!(change > noise + 50, "the edit did not change the frame ({change}, noise {noise})");
+    let _ = session.finish(VoxelInboxClose::Drain);
+
+    // Removing the component restores the empty frame.
+    assert!(components::remove_component(&mut state.scene.world_mut(), &id, 0));
+    let removed = harness.frames(&mut renderer, || {});
+    assert_not_drawn("removed voxel object", removed.difference(&reference));
+
+    // A shadow on a floor below it.
+    let mut state = LevelEditorState::new();
+    let floor = drop_matte_mesh(&mut state);
+    let half = typed_mesh().bounds_local[3] / 3.0f32.sqrt();
+    move_to(&mut state, &floor, [0.0, -16.0, 0.0]);
+    transform(&mut state, &floor, None, Some([40.0 / half, 0.5 / half, 40.0 / half]));
+    add_volume(&mut state);
+    let lamp = add_light(&mut state, [0.0, 30.0, 0.0], Kind::Point, 5.0e4);
+    let mut renderer = harness.renderer(&state);
+    let shadowed = harness.frames(&mut renderer, || {});
+    shadowed.dump("voxel_shadowed");
+    set_light(&mut state, &lamp, "cast_shadows", Box::new(false));
+    let unshadowed = harness.frames(&mut renderer, || {});
+    unshadowed.dump("voxel_unshadowed");
+    println!(
+        "VOXEL shadow: brightness {} with, {} without",
+        brightness(&shadowed),
+        brightness(&unshadowed)
+    );
+    assert!(
+        brightness(&unshadowed) > brightness(&shadowed),
+        "the volume casts no shadow on the floor"
+    );
+}

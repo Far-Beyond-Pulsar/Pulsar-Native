@@ -8,6 +8,7 @@ mod interaction;
 mod native_voxel_flight;
 pub mod renderer;
 pub mod voxel_backend;
+pub mod voxel_mesh_backend;
 
 pub use core::{
     CameraInput, DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData, RenderMetrics,
