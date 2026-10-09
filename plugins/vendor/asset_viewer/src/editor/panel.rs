@@ -126,6 +126,11 @@ pub struct AssetViewerPanel {
     /// Layout of the per-draw uniforms, shared with graph pipelines.
     pub mesh_bgl: Option<wgpu::BindGroupLayout>,
     pub empty_bind_group: Option<wgpu::BindGroup>,
+    /// The template's `Globals` (frame + graph clock) for graph materials.
+    pub globals_buffer: Option<wgpu::Buffer>,
+    pub globals_layout: Option<wgpu::BindGroupLayout>,
+    pub globals_bind_group: Option<wgpu::BindGroup>,
+    pub frame_counter: u32,
 }
 
 impl AssetViewerPanel {
@@ -442,6 +447,10 @@ impl AssetViewerPanel {
             graph_draws: Vec::new(),
             mesh_bgl: None,
             empty_bind_group: None,
+            globals_buffer: None,
+            globals_layout: None,
+            globals_bind_group: None,
+            frame_counter: 0,
         };
         panel.init_mesh_materials(window, cx);
         panel

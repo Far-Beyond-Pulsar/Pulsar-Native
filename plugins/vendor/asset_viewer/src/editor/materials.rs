@@ -124,11 +124,12 @@ impl AssetViewerPanel {
     /// Needs the GPU device, so it is a no-op until the surface exists;
     /// `init_surface` calls it again once it does.
     pub(crate) fn rebuild_graph_draws(&mut self) {
-        let (Some(device), Some(queue), Some(config), Some(layout), Some(materials)) = (
+        let (Some(device), Some(queue), Some(config), Some(layout), Some(globals_layout), Some(materials)) = (
             self.device.clone(),
             self.queue.clone(),
             self.surface_config.clone(),
             self.mesh_bgl.clone(),
+            self.globals_layout.clone(),
             self.mesh_materials.as_ref(),
         ) else {
             return;
@@ -140,6 +141,7 @@ impl AssetViewerPanel {
             device: &device,
             queue: &queue,
             target_format: config.format,
+            globals_layout: &globals_layout,
             uniform_layout: &layout,
         };
         let vertex_layout = super::panel_render::mesh_vertex_layout();

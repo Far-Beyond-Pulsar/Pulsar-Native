@@ -81,6 +81,11 @@ impl Render for ViewportPanel {
         if let Some(editor_entity) = self.editor.upgrade() {
             editor_entity.update(cx, |editor, cx| {
                 editor.render_content(window, cx);
+                // A shader-graph material can animate: keep frames coming
+                // so its `time` node advances.
+                if editor.graph_draws.iter().any(Option::is_some) {
+                    window.request_animation_frame();
+                }
 
                 let surface_elem: gpui::AnyElement = if let Some(surface) = &editor.surface_handle {
                     gpui::wgpu_surface(surface.clone())

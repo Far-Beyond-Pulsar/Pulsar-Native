@@ -304,6 +304,26 @@ impl AssetViewerPanel {
         }));
         self.mesh_bgl = Some(bgl.clone());
 
+        // The template's `Globals`: graph materials read the frame counter
+        // and the shared clock from it.
+        let globals_layout = super::graph_material::globals_layout(device);
+        let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("graph material globals"),
+            size: super::graph_material::GLOBALS_SIZE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.globals_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("graph material globals bind group"),
+            layout: &globals_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 1,
+                resource: globals_buffer.as_entire_binding(),
+            }],
+        }));
+        self.globals_layout = Some(globals_layout);
+        self.globals_buffer = Some(globals_buffer);
+
         let uniform_buf = self.mesh_uniform_buffer.as_ref().unwrap();
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mesh bind group"),
@@ -1258,6 +1278,11 @@ impl AssetViewerPanel {
                     })
                     .collect()
             };
+        // Advance the graph clock every frame, so `time` nodes animate.
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+        if let Some(globals) = &self.globals_buffer {
+            super::graph_material::write_globals(queue, globals, self.frame_counter);
+        }
         if let Some(buf) = &self.mesh_uniform_buffer {
             for (draw, (_, color, _)) in draws.iter().enumerate() {
                 let offset = draw.min(MAX_DRAW_SLOTS as usize - 1) as u64 * UNIFORM_SLOT_STRIDE;
@@ -1338,12 +1363,14 @@ impl AssetViewerPanel {
                     .get(*slot)
                     .and_then(Option::as_ref)
                     .zip(self.empty_bind_group.as_ref())
+                    .zip(self.globals_bind_group.as_ref())
                     .filter(|_| mode != 2);
-                if let Some((graph, empty)) = graph {
+                if let Some(((graph, empty), globals)) = graph {
                     // Shader-graph material: its own pipeline; the template
-                    // owns groups 0-2, the viewer uniforms are group 3.
+                    // owns groups 0-2 (globals, textures), the viewer
+                    // uniforms are group 3.
                     rpass.set_pipeline(&graph.pipeline);
-                    rpass.set_bind_group(0, empty, &[]);
+                    rpass.set_bind_group(0, globals, &[]);
                     rpass.set_bind_group(1, &graph.textures, &[]);
                     rpass.set_bind_group(2, empty, &[]);
                     rpass.set_bind_group(3, bg, &[offset]);

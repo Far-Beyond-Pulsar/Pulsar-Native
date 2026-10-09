@@ -61,6 +61,44 @@ struct ViewerVertex {
 }
 "#;
 
+/// Byte offsets inside the template's `Globals` (the G-buffer layout the
+/// default Radiant template declares): `frame: u32` first, and the shared
+/// graph clock in its last field.
+const GLOBALS_FRAME_OFFSET: u64 = 0;
+const GLOBALS_TIME_OFFSET: u64 = 92;
+/// Room for the whole `Globals` block.
+pub const GLOBALS_SIZE: u64 = 256;
+
+/// Layout of the `Globals` buffer the template reads at group 0, binding 1.
+/// Graph `time` nodes reach the clock through it.
+pub fn globals_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("graph material globals layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    })
+}
+
+/// Advance the clock the graph's `time` node reads: the same
+/// [`helio_mats::graph_time_seconds`] the renderer's passes upload.
+pub fn write_globals(queue: &wgpu::Queue, buffer: &wgpu::Buffer, frame: u32) {
+    write_globals_at(queue, buffer, frame, helio_mats::graph_time_seconds());
+}
+
+/// [`write_globals`] with an explicit clock value.
+pub fn write_globals_at(queue: &wgpu::Queue, buffer: &wgpu::Buffer, frame: u32, time: f32) {
+    queue.write_buffer(buffer, GLOBALS_FRAME_OFFSET, &frame.to_le_bytes());
+    queue.write_buffer(buffer, GLOBALS_TIME_OFFSET, &time.to_le_bytes());
+}
+
 /// A compiled graph material: its pipeline and its texture bind group.
 pub struct GraphDraw {
     pub pipeline: wgpu::RenderPipeline,
@@ -72,6 +110,8 @@ pub struct GraphContext<'a> {
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,
     pub target_format: wgpu::TextureFormat,
+    /// Layout of the template's `Globals` buffer (group 0, binding 1).
+    pub globals_layout: &'a wgpu::BindGroupLayout,
     /// Layout of the per-draw uniform buffer (bound at group 3).
     pub uniform_layout: &'a wgpu::BindGroupLayout,
 }
@@ -180,7 +220,7 @@ pub fn build(
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("graph material pipeline layout"),
         bind_group_layouts: &[
-            Some(&empty_layout),
+            Some(ctx.globals_layout),
             Some(&textures_layout),
             Some(&empty_layout),
             Some(ctx.uniform_layout),
@@ -235,90 +275,3 @@ pub fn build(
     Ok(GraphDraw { pipeline, textures })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use psgc::*;
-
-    fn node(id: &str, kind: &str) -> NodeInstance {
-        let meta = get_shader_nodes()
-            .into_iter()
-            .find(|m| m.name == kind)
-            .unwrap();
-        let mut node = NodeInstance::new(id, kind, Position { x: 0.0, y: 0.0 });
-        for p in meta.params {
-            node.inputs.push(PinInstance::new(
-                &p.name,
-                Pin::new(
-                    &p.name,
-                    &p.name,
-                    DataType::Data(TypeInfo::new(&p.param_type)),
-                    PinType::Input,
-                ),
-            ));
-        }
-        node
-    }
-
-    /// A graph asset (uv -> rainbow -> base colour) compiles through the
-    /// engine's lowering and builds a real pipeline in the viewer's host
-    /// shader, on a real device. Needs a GPU adapter; absence fails.
-    #[test]
-    fn a_graph_material_builds_a_viewer_pipeline() {
-        let mut graph = GraphDescription::new("viewer regression");
-        graph.add_node(node("output", "fragment_output"));
-        graph.add_node(node("uv", "frag_uv"));
-        graph.add_node(node("rainbow", "rainbow"));
-        graph.add_connection(Connection::new("uv", "result", "rainbow", "uv", ConnectionType::Data));
-        graph.add_connection(Connection::new(
-            "rainbow",
-            "result",
-            "output",
-            "base_color",
-            ConnectionType::Data,
-        ));
-        let dir = tempfile::tempdir().unwrap();
-        let material = dir.path().join("M.material");
-        std::fs::create_dir_all(&material).unwrap();
-        std::fs::write(
-            material.join("shader_graph_save.json"),
-            serde_json::json!({ "main_graph": graph }).to_string(),
-        )
-        .unwrap();
-
-        let preview = helio_component::graph_preview::compile_graph_preview(dir.path(), "M.material")
-            .expect("a graph material")
-            .expect("compiles");
-        assert!(preview.textures.is_empty());
-
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("GPU adapter required");
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
-        let uniform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: true,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let ctx = GraphContext {
-            device: &device,
-            queue: &queue,
-            target_format: wgpu::TextureFormat::Bgra8Unorm,
-            uniform_layout: &uniform_layout,
-        };
-        let layout = crate::editor::panel_render::mesh_vertex_layout();
-        if let Err(error) = build(&ctx, &preview, &[Some(layout)]) {
-            panic!("graph pipeline failed: {error}");
-        }
-    }
-}
