@@ -272,7 +272,7 @@ fn main() {
                     _ => helio_voxel_data::VoxelBrushOp::Paint,
                 };
                 let (radius, frames, material) = (number(2, 1.0) as f32, number(3, 60.0) as usize, number(4, 3.0) as u32);
-                let request = VoxelBrushRequest { op, shape: helio_voxel_data::VoxelBrushShape::Sphere, radius, material, single_block: false };
+                let request = VoxelBrushRequest { op, shape: helio_voxel_data::VoxelBrushShape::Sphere, radius, material, single_block: false, level: Default::default(), tool: Default::default() };
                 let before = h.edits();
                 let queue = h.renderer.pending_pointer_events.clone();
                 let mut times = Vec::new();

@@ -50,6 +50,8 @@ impl ToolMode for VoxelSculptMode {
             Mode::Dig => "Dig",
             Mode::Build => "Build",
             Mode::Paint => "Paint",
+            Mode::Flatten => "Flatten",
+            Mode::Smooth => "Smooth",
         };
         let size = if sculpt.single_block {
             "one block".to_string()

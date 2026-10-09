@@ -16,7 +16,7 @@ pub use core::{
 };
 pub use renderer::{
     EditorCameraState, HelioEditorMailbox, HelioRenderer, PendingPointerEvent, RendererCommand,
-    StaticDragWarning, VoxelBrushRequest,
+    StaticDragWarning, VoxelBrushRequest, VoxelBrushTool,
 };
 
 pub const RENDER_WIDTH: u32 = 1600;

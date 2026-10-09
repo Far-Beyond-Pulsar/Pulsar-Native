@@ -395,6 +395,8 @@ mod tests {
             radius: 1.0,
             material: 0,
             single_block: false,
+            level: Default::default(),
+            tool: Default::default(),
         };
         let brush = |x: f32, start: bool| E::VoxelBrush { norm_x: x, norm_y: 0.5, request, start };
         let mut queue = Vec::new();

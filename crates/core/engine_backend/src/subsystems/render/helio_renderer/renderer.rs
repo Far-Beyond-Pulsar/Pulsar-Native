@@ -303,6 +303,7 @@ pub(super) fn apply_voxel_brush_commit(
         return false;
     }
     terrain.edits.push(commit.edit);
+    terrain.edits.extend(commit.then);
     terrain.source_revision = terrain.source_revision.wrapping_add(1);
     true
 }
@@ -390,6 +391,8 @@ impl NativeSculpt {
             radius,
             material,
             single_block: false,
+            level: Default::default(),
+            tool: Default::default(),
         };
         let (x, y) = if self.far {
             (0.5 + 0.3 * a.cos(), 0.5 + 0.02 * a.sin())
@@ -536,6 +539,24 @@ pub struct VoxelBrushRequest {
     pub material: u32,
     /// Edit exactly one block, whatever the radius.
     pub single_block: bool,
+    /// What a stamp does with the brush (see [`VoxelBrushTool`]).
+    pub tool: VoxelBrushTool,
+    /// Flatten: the ground height (radial, m) the stroke levels to, set by
+    /// the renderer from the stroke's first stamp.
+    pub level: Option<f64>,
+}
+
+/// What a sculpt stamp does.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VoxelBrushTool {
+    /// The brush itself, with its op (dig, build, paint).
+    #[default]
+    Stamp,
+    /// Level the ground under the brush to the height where the stroke
+    /// started: carve above it, fill below it.
+    Flatten,
+    /// Ease the ground under the brush to its local average height.
+    Smooth,
 }
 
 /// Cheap, `Clone`-able handle bundle for issuing editor commands
@@ -745,6 +766,8 @@ pub struct HelioRenderer {
     /// between, never joined to another stroke's.
     voxel_stroke: u64,
     voxel_stroke_last: Option<(u64, VoxelBrushCommit)>,
+    /// Flatten: the level each stroke started at.
+    voxel_stroke_level: Option<(u64, f64)>,
     /// Brush samples waiting for the renderer's hit under them, in order.
     voxel_brush_picks: std::collections::VecDeque<PendingBrush>,
     /// Camera height above the voxel ground below it, from the last frame.
@@ -893,6 +916,7 @@ impl HelioRenderer {
             voxel_backends,
             voxel_stroke: 0,
             voxel_stroke_last: None,
+            voxel_stroke_level: None,
             voxel_brush_picks: Default::default(),
             voxel_altitude: None,
             last_camera_relative: None,
@@ -2226,12 +2250,20 @@ impl HelioRenderer {
             let scene = self.scene_store.read();
             crate::scene::voxel_frame::project_voxel_entries(&scene.world).0
         };
+        // Flatten levels every stamp of a stroke to its first stamp's ground.
+        let mut request = brush.request;
+        if request.tool == VoxelBrushTool::Flatten {
+            request.level = self
+                .voxel_stroke_level
+                .filter(|(stroke, _)| *stroke == brush.stroke)
+                .map(|(_, level)| level);
+        }
         match self.voxel_backends.edit_ray(
             &entries,
             brush.origin,
             brush.direction,
             near,
-            brush.request,
+            request,
         ) {
             Ok(Some(commit)) => {
                 // Fill the gap from the stroke's previous stamp, so fast drags
@@ -2240,10 +2272,15 @@ impl HelioRenderer {
                     .iter()
                     .find(|e| e.id == commit.id)
                     .map_or(0.1, |e| e.voxel_size);
+                if request.tool == VoxelBrushTool::Flatten && request.level.is_none() {
+                    self.voxel_stroke_level = Some((brush.stroke, commit.level));
+                }
+                // Stamps fill the gap from the stroke's previous one; flatten
+                // and smooth stamps overlap by their footprint.
                 let fill = self
                     .voxel_stroke_last
                     .as_ref()
-                    .filter(|(stroke, last)| *stroke == brush.stroke && last.id == commit.id)
+                    .filter(|(stroke, last)| *stroke == brush.stroke && last.id == commit.id && request.tool == VoxelBrushTool::Stamp)
                     .map(|(_, last)| super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel))
                     .unwrap_or_default();
                 let mut scene = self.scene_store.write();

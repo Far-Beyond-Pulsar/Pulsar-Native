@@ -14,7 +14,7 @@ use helio_pass_voxel_planet::{
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
 
-use super::renderer::VoxelBrushRequest;
+use super::renderer::{VoxelBrushRequest, VoxelBrushTool};
 use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 
 pub use helio_voxel_data::{
@@ -44,6 +44,12 @@ pub struct VoxelBrushCommit {
     pub id: VoxelEntryId,
     pub distance: f64,
     pub edit: VoxelBrushEdit,
+    /// Edits of the same stamp after `edit` (flatten and smooth: the fill
+    /// below the level after the carve above it).
+    pub then: Vec<VoxelBrushEdit>,
+    /// The ground height (radial, m) the stamp leveled to or hit: a
+    /// flatten stroke keeps its first.
+    pub level: f64,
 }
 
 /// The renderer's answer to a pick request: the first terrain hit under
@@ -509,6 +515,68 @@ fn build_planet(
     helio_component::voxel_world::journal_planet(world_recipe(entry, generator), &entry.edits)
 }
 
+/// A flatten or smooth stamp at `hit`: the ground under the brush's square
+/// footprint levels to a layer boundary, carved above it and filled below,
+/// a box each as tall as the brush. Flatten levels to `request.level` (the
+/// stroke's first ground, this hit's ground for the first stamp); smooth to
+/// the average ground height around the hit, filling with the ground's own
+/// material.
+fn level_stamp(
+    planet: &Planet,
+    id: VoxelEntryId,
+    hit: &helio_pass_voxel_planet::RayHit,
+    request: VoxelBrushRequest,
+    material: u32,
+) -> Result<VoxelBrushCommit, String> {
+    let grid = planet.grid();
+    let voxel = grid.voxel_size();
+    let centre = grid.cell_center(hit.cell);
+    // The ground's height as a layer boundary (k: layers above the datum).
+    let layer_of = |radial: f64| ((radial - grid.layer_radius(0.0)) / voxel).round();
+    let hit_top = f64::from(hit.cell.k + 1);
+    let k = match request.tool {
+        VoxelBrushTool::Smooth => {
+            let up = grid.up(centre);
+            let side = up.any_orthonormal_vector();
+            let ahead = up.cross(side);
+            let r = f64::from(request.radius) * 0.7;
+            let mut sum = 0.0;
+            let mut n = 0.0;
+            for (a, b) in [(0.0, 0.0), (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (0.7, 0.7), (-0.7, 0.7), (0.7, -0.7), (-0.7, -0.7)] {
+                let ground = planet.surface_point(centre + (side * a + ahead * b) * r, 0.0);
+                sum += layer_of(grid.radial(ground));
+                n += 1.0;
+            }
+            (sum / n).round()
+        }
+        _ => request.level.map_or(hit_top, layer_of),
+    };
+    let level = grid.layer_radius(k);
+    // Whole cells tall, so the boxes meet exactly on the level.
+    let cells = (f64::from(request.radius) / voxel).round().max(1.0);
+    let half = cells * voxel / 2.0;
+    let fill_material = match request.tool {
+        VoxelBrushTool::Smooth => match planet.material(hit.cell) {
+            0 => material,
+            m => m,
+        },
+        _ => material,
+    };
+    let at = |radial: f64| grid.at_radial(centre, radial).to_array();
+    let carve = VoxelBrushEdit {
+        center: at(level + half),
+        radius: f64::from(request.radius).max(voxel * 0.5),
+        shape: VoxelBrushShape::Cube,
+        op: VoxelBrushOp::Remove,
+        material: 0,
+        height: half,
+    };
+    let fill = VoxelBrushEdit { center: at(level - half), op: VoxelBrushOp::Add, material: fill_material, ..carve };
+    planet_brush(&carve).resolve(grid)?;
+    planet_brush(&fill).resolve(grid)?;
+    Ok(VoxelBrushCommit { id, distance: hit.distance, edit: carve, then: vec![fill], level })
+}
+
 /// Built planet for one source revision.
 struct CachedPlanet {
     id: VoxelEntryId,
@@ -885,6 +953,9 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             hit.cell
         };
         let grid = planet.grid();
+        if request.tool != VoxelBrushTool::Stamp {
+            return Ok(Some(level_stamp(planet, source.id, &hit, request, material)?));
+        }
         let (radius, shape) = if request.single_block {
             (grid.voxel_size() * 0.5, VoxelBrushShape::Cube)
         } else {
@@ -903,12 +974,15 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             } else {
                 material
             },
+            height: Default::default(),
         };
         planet_brush(&edit).resolve(grid)?;
         Ok(Some(VoxelBrushCommit {
             id: source.id,
             distance: hit.distance,
             edit,
+            then: Vec::new(),
+            level: grid.layer_radius(f64::from(hit.cell.k + 1)),
         }))
     }
 
@@ -1112,6 +1186,8 @@ mod tests {
             radius,
             material: 0,
             single_block: false,
+            level: Default::default(),
+            tool: Default::default(),
         }
     }
 
@@ -1453,6 +1529,7 @@ mod tests {
             shape: VoxelBrushShape::Sphere,
             op: VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         scene
             .get_mut::<VoxelTerrainComponent>(entity)
@@ -1478,6 +1555,7 @@ mod tests {
             shape: VoxelBrushShape::Sphere,
             op: VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         // 3 m apart with 0.6 m spacing: stamps at 0.6 m steps between them.
         let fill = stroke_fill(&edit(0.0), &edit(3.0), 0.1);

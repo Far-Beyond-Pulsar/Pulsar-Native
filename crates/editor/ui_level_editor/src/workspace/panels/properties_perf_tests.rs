@@ -719,6 +719,7 @@ fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) 
                 shape: helio_voxel_data::VoxelBrushShape::Sphere,
                 op: helio_voxel_data::VoxelBrushOp::Remove,
                 material: 0,
+                height: Default::default(),
             });
             terrain.source_revision += 1;
         });

@@ -1,7 +1,7 @@
 //! Voxel sculpt tool settings. They persist across tool switches.
 
 use engine_backend::scene::SceneWorldExt;
-use engine_backend::subsystems::render::VoxelBrushRequest;
+use engine_backend::subsystems::render::{VoxelBrushRequest, VoxelBrushTool};
 use helio_voxel_data::{VoxelBrushOp, VoxelBrushShape};
 
 /// What a click does.
@@ -10,6 +10,10 @@ pub enum VoxelSculptMode {
     Dig,
     Build,
     Paint,
+    /// Level the ground to where the stroke started.
+    Flatten,
+    /// Ease the ground to its local average height.
+    Smooth,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -40,7 +44,10 @@ impl Default for VoxelSculptDomain {
 }
 
 pub const MIN_RADIUS_M: f32 = 0.1;
-pub const MAX_RADIUS_M: f32 = 32.0;
+/// Up to 2 km (a 4 km footprint): brushes larger than a few metres stay
+/// analytic shapes in the engine, so their cost is the columns they cover
+/// regenerating, which streaming spreads over frames.
+pub const MAX_RADIUS_M: f32 = 2_000.0;
 /// Solid terrain material ids (see `helio_component::voxel_world::material`):
 /// every built-in material, shared by all terrain programs.
 pub const MATERIALS: std::ops::RangeInclusive<u32> = 1..=helio_component::voxel_world::material::COUNT - 1;
@@ -66,13 +73,19 @@ impl VoxelSculptDomain {
         VoxelBrushRequest {
             op: match mode {
                 VoxelSculptMode::Dig => VoxelBrushOp::Remove,
-                VoxelSculptMode::Build => VoxelBrushOp::Add,
+                VoxelSculptMode::Build | VoxelSculptMode::Flatten | VoxelSculptMode::Smooth => VoxelBrushOp::Add,
                 VoxelSculptMode::Paint => VoxelBrushOp::Paint,
             },
             shape: self.shape,
             radius: self.radius_m,
             material: self.material,
             single_block: self.single_block,
+            tool: match mode {
+                VoxelSculptMode::Flatten => VoxelBrushTool::Flatten,
+                VoxelSculptMode::Smooth => VoxelBrushTool::Smooth,
+                _ => VoxelBrushTool::Stamp,
+            },
+            level: None,
         }
     }
 
@@ -224,7 +237,12 @@ mod tests {
         assert_eq!(sculpt.request(true).op, VoxelBrushOp::Add);
         sculpt.mode = VoxelSculptMode::Paint;
         assert_eq!(sculpt.request(true).op, VoxelBrushOp::Paint);
-        sculpt.set_radius(1000.0);
+        sculpt.mode = VoxelSculptMode::Flatten;
+        assert_eq!(sculpt.request(false).tool, VoxelBrushTool::Flatten);
+        sculpt.mode = VoxelSculptMode::Smooth;
+        assert_eq!(sculpt.request(true).tool, VoxelBrushTool::Smooth, "Shift swaps only dig and build");
+        sculpt.mode = VoxelSculptMode::Paint;
+        sculpt.set_radius(10_000.0);
         sculpt.set_material(0);
         assert_eq!((sculpt.radius_m, sculpt.material), (MAX_RADIUS_M, 1));
         assert_eq!(sculpt.material_name(), "Grass");
@@ -294,6 +312,7 @@ mod tests {
                 shape: VoxelBrushShape::Sphere,
                 op: VoxelBrushOp::Remove,
                 material: 0,
+                height: Default::default(),
             });
             terrain.source_revision += 1;
         }

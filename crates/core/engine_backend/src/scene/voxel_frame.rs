@@ -682,6 +682,7 @@ mod tests {
             shape: helio_voxel_data::VoxelBrushShape::Sphere,
             op: helio_voxel_data::VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         let edits = |world: &World| world.get::<VoxelTerrainComponent>(entity).unwrap().edits.len();
         let projected = |world: &World| project_voxel_entries(world).0[0].edits.len();
@@ -722,6 +723,7 @@ mod tests {
             shape: helio_voxel_data::VoxelBrushShape::Sphere,
             op: helio_voxel_data::VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
         assert_eq!(sync.poll(&mut world), 0, "the journal adopts its ground");
