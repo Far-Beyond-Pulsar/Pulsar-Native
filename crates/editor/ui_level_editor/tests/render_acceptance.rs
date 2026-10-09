@@ -2481,3 +2481,153 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
         "Realtime back on did not resume the water"
     );
 }
+
+/// Water interaction (#1080): a body on the `WaterSim` collision channel
+/// pushes the water it sits in, read back from the simulation: the water
+/// under it is displaced while the water under an identical body off the
+/// channel is not; a body at rest does not keep pushing (the water's mass
+/// stays put); moving it displaces the water where it goes.
+#[test]
+fn bodies_on_the_water_sim_channel_push_the_water() {
+    use helio_component::components::WaterVolumeComponent;
+    use pulsar_physics::{CollisionChannel, PhysicsComponent};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    let mut state = LevelEditorState::new();
+    // A calm pool at the origin, its surface at Y 0.
+    execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "pool".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(WaterVolumeComponent {
+                size: [40.0, 8.0, 40.0],
+                wind_strength: 0.0,
+                ..Default::default()
+            })],
+        },
+    );
+    // Two 1 m cubes (SM_Cube is 200 units across) half under the surface,
+    // 15 m apart: half of cascade 0's 30 m tile, so their texels are as far
+    // apart as the tile allows.
+    let body = |state: &mut LevelEditorState, position: [f32; 3], water: bool| {
+        let id = drop_matte_mesh(state);
+        let placed = execute_command(
+            state,
+            SceneCommand::SetTransform {
+                id: id.clone(),
+                position: Some(position),
+                rotation: None,
+                scale: Some([0.005; 3]),
+            },
+        );
+        assert!(placed.changed);
+        let mut physics = PhysicsComponent::default();
+        if water {
+            physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
+        }
+        components::add_component_value(
+            &mut state.scene.world_mut(),
+            &id,
+            "PhysicsComponent",
+            Some(Box::new(physics)),
+        )
+        .expect("physics attached");
+        id
+    };
+    let swimmer = body(&mut state, [-7.5, 0.0, 15.0], true);
+    body(&mut state, [7.5, 0.0, 15.0], false);
+
+    // Cascade 0 texel of world XZ: uv = fract(xz / 30).
+    let texel = |x: f32, z: f32| {
+        let u = (x / 30.0).rem_euclid(1.0);
+        let v = (z / 30.0).rem_euclid(1.0);
+        ((u * 256.0) as usize, (v * 256.0) as usize)
+    };
+    // Mean |height| within 6 texels of a point, and the layer's total.
+    let around = |heights: &[f32], (cx, cy): (usize, usize)| {
+        let mut sum = 0.0;
+        let mut n = 0;
+        for y in cy.saturating_sub(6)..(cy + 7).min(256) {
+            for x in cx.saturating_sub(6)..(cx + 7).min(256) {
+                sum += heights[y * 256 + x].abs();
+                n += 1;
+            }
+        }
+        sum / n as f32
+    };
+    let mass = |heights: &[f32]| heights.iter().sum::<f32>();
+
+    let mut renderer = harness.renderer(&state);
+    renderer.set_frame_delta_override(Some(1.0 / 60.0));
+    harness.frames(&mut renderer, || {});
+    let heights = water_heights(&harness, &renderer, 0);
+    let pushed = around(&heights, texel(-7.5, 15.0));
+    let untouched = around(&heights, texel(7.5, 15.0));
+    let displaced = mass(&heights);
+    println!("HITBOX pushed {pushed} untouched {untouched} mass {displaced}");
+    assert!(
+        pushed > 1e-3,
+        "the body on the WaterSim channel did not push the water: {pushed}"
+    );
+    assert_eq!(untouched, 0.0, "the body off the channel pushed the water");
+    assert!(
+        displaced < 0.0,
+        "the body did not displace water: {displaced}"
+    );
+
+    // At rest it pushes no further: the water's mass stays where it was.
+    harness.frames(&mut renderer, || {});
+    let resting = mass(&water_heights(&harness, &renderer, 0));
+    println!("HITBOX resting mass {resting}");
+    assert!(
+        (resting - displaced).abs() < displaced.abs() * 0.25,
+        "a body at rest kept displacing water: {displaced} then {resting}"
+    );
+
+    // Moving it pushes the water where it goes and lets it back where it was.
+    let before = water_heights(&harness, &renderer, 0);
+    move_to(&mut state, &swimmer, [-7.5, 0.0, 7.5]);
+    harness.frames(&mut renderer, || {});
+    let after = water_heights(&harness, &renderer, 0);
+    let at = |heights: &[f32], (x, y): (usize, usize)| heights[y * 256 + x];
+    let (new_spot, old_spot) = (texel(-7.5, 7.5), texel(-7.5, 15.0));
+    println!(
+        "HITBOX moved: new spot {} -> {}, old spot {} -> {}",
+        at(&before, new_spot),
+        at(&after, new_spot),
+        at(&before, old_spot),
+        at(&after, old_spot)
+    );
+    assert!(
+        at(&after, new_spot) < at(&before, new_spot) - 1e-3,
+        "the water did not fall where the body moved to"
+    );
+    assert!(
+        at(&after, old_spot) > at(&before, old_spot) + 1e-3,
+        "the water did not rise where the body left"
+    );
+}

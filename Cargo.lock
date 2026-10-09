@@ -3127,6 +3127,7 @@ dependencies = [
  "pulsar_class",
  "pulsar_events",
  "pulsar_lsp",
+ "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
@@ -9558,9 +9559,11 @@ dependencies = [
 name = "pulsar_physics"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "engine_class_derive",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
  "pulsar_world_registry",
  "serde",
  "serde_json",

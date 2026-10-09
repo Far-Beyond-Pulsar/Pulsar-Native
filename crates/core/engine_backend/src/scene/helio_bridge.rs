@@ -62,10 +62,11 @@ pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
 }
 
 /// Where this engine's environment rows live, for Helio's environment join:
-/// the same owner, visibility and transform rows as the scene join, and the
-/// rows fog volumes, post-process volumes, camera post-process, water,
-/// foliage, global wind, atmosphere, decal and particle emitter components
-/// derive (Pulsar-Native#1035, Phase 4).
+/// the same owner, visibility, transform and mesh bounds rows as the scene
+/// join, and the rows fog volumes, post-process volumes, camera
+/// post-process, water, foliage, global wind, atmosphere, decal and particle
+/// emitter components derive (Pulsar-Native#1035, Phase 4), and the water
+/// interaction rows physics bodies on the `WaterSim` channel derive (#1080).
 pub fn environment_join_keys() -> EnvironmentJoinKeys {
     let scene = scene_join_keys();
     EnvironmentJoinKeys {
@@ -83,6 +84,8 @@ pub fn environment_join_keys() -> EnvironmentJoinKeys {
         decals: BufferKey::of(DECAL_SOURCES_BUFFER),
         corona_emitters: BufferKey::of(CORONA_EMITTER_SOURCES_BUFFER),
         wind: BufferKey::of(WIND_SOURCES_BUFFER),
+        water_hitboxes: BufferKey::of(pulsar_physics::WATER_HITBOX_SOURCES_BUFFER),
+        mesh_bounds: scene.mesh_bounds,
     }
 }
 
@@ -137,15 +140,11 @@ pub fn ensure_gpu_mirror(
     LightSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     ComponentOwner::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    helio_pass_water_sim::WaterHitboxComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        256,
-        &device,
-    );
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The environment join's inputs (see `environment_join_keys`); the fog
     // media, post-process volume, camera, water volume, foliage, atmosphere,
-    // decal and Corona emitter rows the passes read are its outputs.
+    // decal, Corona emitter and water hitbox rows the passes read are its
+    // outputs.
     GlobalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
     LocalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     PostProcessVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
@@ -156,6 +155,13 @@ pub fn ensure_gpu_mirror(
     DecalSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     CoronaEmitterSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     GlobalWindSourceRow::register_gpu_columns_growable(&mut gpu_store, 2, &device);
+    // Bodies that push simulated water; the join bounds them by their
+    // owners' meshes into the water simulation's hitbox rows.
+    pulsar_physics::WaterHitboxSourceRow::register_gpu_columns_growable(
+        &mut gpu_store,
+        64,
+        &device,
+    );
 
     // SceneDB owns residency budgets and tier configuration. The bridge only
     // installs project settings while constructing the shared store.
@@ -273,6 +279,10 @@ mod tests {
         assert_eq!(
             size_of::<AtmosphereSourceRow>() as u64,
             env::ATMOSPHERE_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<pulsar_physics::WaterHitboxSourceRow>() as u64,
+            env::WATER_HITBOX_SOURCE_ROW_BYTES
         );
     }
 }

@@ -991,3 +991,112 @@ fn water_takes_the_scenes_sun_and_the_global_wind() {
     assert_eq!(rows[1].wind_params[2], 7.0);
     assert_eq!(rows[0].sun_direction, [0.0, 1.0, 0.0, 0.0]);
 }
+
+/// Water interaction (#1080): a body on the `WaterSim` collision channel
+/// becomes a water hitbox bounded by its owner's meshes at the owner's
+/// transform; a body off the channel, or one with no mesh, does not. Its
+/// old bounds are an empty box at its centre (the simulation tracks where
+/// it was) and its row carries its identity.
+#[test]
+fn bodies_on_the_water_sim_channel_become_water_hitboxes() {
+    use helio_component::components::StaticMeshComponent;
+    use pulsar_physics::{CollisionChannel, PhysicsComponent};
+    type HitboxRow = helio_pass_water_sim::GpuWaterHitbox;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mesh = StaticMeshComponent {
+        indices: vec![0, 1, 2],
+        bounds_local: [0.0, 0.5, 0.0, 1.0],
+        ..Default::default()
+    };
+    let body = |water: bool| {
+        let mut physics = PhysicsComponent::default();
+        if water {
+            physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
+        }
+        physics
+    };
+    let mut scene = SceneDb::new();
+    // Off the channel, with a mesh: no hitbox.
+    let crate_box = place(&mut scene, "crate", at([-10.0, 0.0, 0.0]));
+    pulsar_world_registry::attach_value(&mut scene.world, crate_box, mesh.clone()).unwrap();
+    pulsar_world_registry::attach_value(&mut scene.world, crate_box, body(false)).unwrap();
+    // On the channel, with no mesh: nothing to bound.
+    let ghost = place(&mut scene, "ghost", at([20.0, 0.0, 0.0]));
+    pulsar_world_registry::attach_value(&mut scene.world, ghost, body(true)).unwrap();
+    // On the channel, with a mesh, scaled 2x.
+    let boat = place(
+        &mut scene,
+        "boat",
+        Transform {
+            position: [4.0, 1.0, -2.0],
+            rotation: [0.0; 3],
+            scale: [2.0, 2.0, 2.0],
+        },
+    );
+    pulsar_world_registry::attach_value(&mut scene.world, boat, mesh.clone()).unwrap();
+    let hull = pulsar_world_registry::attach_value(&mut scene.world, boat, body(true)).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    let close3 = |a: [f32; 4], b: [f32; 3]| a[..3].iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-4);
+
+    let out = join.run(&mut scene);
+    let rows: Vec<HitboxRow> = join.read(&out, "water_hitboxes");
+    assert_eq!(
+        rows.len(),
+        helio_default_graphs::environment_join::MAX_WATER_HITBOXES as usize
+    );
+    // The mesh's sphere (centre 1 above the owner after scaling, radius 2).
+    assert!(
+        close3(rows[0].new_min, [2.0, 0.0, -4.0]) && close3(rows[0].new_max, [6.0, 4.0, 0.0]),
+        "the boat is bounded by its mesh at its owner: {:?} {:?}",
+        rows[0].new_min,
+        rows[0].new_max
+    );
+    assert!(close3(rows[0].old_min, [4.0, 2.0, -2.0]) && rows[0].old_min == rows[0].old_max);
+    assert_eq!(
+        rows[0].params,
+        [
+            pulsar_physics::WATER_HITBOX_EDGE_SOFTNESS,
+            pulsar_physics::WATER_HITBOX_STRENGTH,
+            (hull.index() + 1) as f32,
+            0.0
+        ]
+    );
+    assert!(
+        rows[1..].iter().all(|row| row.params == [0.0; 4]),
+        "no hitbox off the channel or without a mesh"
+    );
+
+    // The hitbox follows its owner; a hidden body still pushes water.
+    scene.world.get_mut::<Transform>(boat).unwrap().position = [4.0, -1.0, -2.0];
+    scene.world.get_mut::<Visibility>(boat).unwrap().visible = false;
+    let out = join.run(&mut scene);
+    let rows: Vec<HitboxRow> = join.read(&out, "water_hitboxes");
+    assert!(
+        close3(rows[0].new_min, [2.0, -2.0, -4.0]),
+        "{:?}",
+        rows[0].new_min
+    );
+
+    // Off the channel, it stops.
+    scene
+        .world
+        .get_mut::<PhysicsComponent>(hull)
+        .unwrap()
+        .collision
+        .collision_channel = 0;
+    let out = join.run(&mut scene);
+    let rows: Vec<HitboxRow> = join.read(&out, "water_hitboxes");
+    assert!(
+        rows.iter().all(|row| row.params == [0.0; 4]),
+        "off the channel"
+    );
+}

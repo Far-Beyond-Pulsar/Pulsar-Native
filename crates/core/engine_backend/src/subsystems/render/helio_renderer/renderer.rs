@@ -83,7 +83,7 @@ fn relative_camera_source_schema_compatible(
         "object_hidden" => pulsar_scene_model::ObjectHidden::packed_gpu_component_id(),
         "Transform::packed" => crate::scene::Transform::packed_gpu_component_id(),
         "light_sources" => c::LightSourceRow::packed_gpu_component_id(),
-        "water_hitboxes" => helio_pass_water_sim::WaterHitboxComponent::packed_gpu_component_id(),
+        "water_hitbox_sources" => pulsar_physics::WaterHitboxSourceRow::packed_gpu_component_id(),
         "global_fog_sources" => c::GlobalFogSourceRow::packed_gpu_component_id(),
         "local_fog_sources" => c::LocalFogSourceRow::packed_gpu_component_id(),
         "post_process_volume_sources" => c::PostProcessVolumeSourceRow::packed_gpu_component_id(),
@@ -129,7 +129,7 @@ fn relative_camera_source_compatible(
         "scenedb-instances" | "scenedb-instance-info" | "builtin_generation"
         | "builtin_slot_mirror" | "builtin_cell_metadata" | "component_owners"
         | "object_hidden" | "Transform::packed" | "light_sources" | "decal_sources"
-        | "water_hitboxes" | "global_fog_sources" | "local_fog_sources"
+        | "water_hitbox_sources" | "global_fog_sources" | "local_fog_sources"
         | "post_process_volume_sources" | "camera_postprocess_sources"
         | "water_volume_sources" | "foliage_sources" | "atmosphere_sources"
         | "corona_emitter_sources" | "wind_sources" | "static_mesh_draw_bounds" | "static_mesh_draw_flags"

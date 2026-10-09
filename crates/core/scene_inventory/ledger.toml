@@ -166,11 +166,11 @@ notes = "Attach, edit, save and undo are typed; nothing at runtime spawns the na
 name = "PhysicsComponent"
 category = "Physics"
 world_registered = true
-own_gpu_columns = false
+own_gpu_columns = true
 owner = "pulsar_physics::components::physics_component"
-disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
+disposition = "physics subsystem data; SceneDB is the physics world (nothing is synced to a separate one). A body on the WaterSim collision channel (#1080) derives a WaterHitboxSourceRow on every insert, write, removal and replay, which the environment join bounds by the owner's meshes into water_hitboxes; its generated GPU companion uploads nothing"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value; crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[class]]
@@ -1023,13 +1023,13 @@ path = "helio_pass_water_sim::components::WaterHitboxComponent"
 buffers = ["water_hitboxes"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "no production writer found (registered only)"
+registered = false
+writer = "helio-default-graphs environment join from the WaterHitboxSourceRows of PhysicsComponents on the WaterSim channel, bounded by their owners' meshes (#1080); no component is inserted"
 owner = "helio_pass_water_sim::components"
-disposition = "water-sim reads it; no authored producer"
+disposition = "keep as the pass row layout of water_hitboxes; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1080"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
 
 [[schema]]
 type = "WaterVolumeComponent"
@@ -1043,6 +1043,34 @@ owner = "helio_pass_water_sim::components"
 disposition = "keep as the pass row layout of water_volumes; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
+
+[[schema]]
+type = "PhysicsComponent"
+path = "pulsar_physics::components::physics_component::component::PhysicsComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived WaterHitboxSourceRow (pulsar_physics water), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "pulsar_physics::components::physics_component"
+disposition = "keep: the authored type's GPU row is WaterHitboxSourceRow, the environment join's water hitbox input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
+
+[[schema]]
+type = "WaterHitboxSourceRow"
+path = "pulsar_physics::components::physics_component::water::WaterHitboxSourceRow"
+buffers = ["water_hitbox_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "PhysicsComponent's derived GPU registration (edge softness, strength and the interaction flag; zero unless enabled, colliding and on the WaterSim channel), on every insert, write, removal and replay"
+owner = "pulsar_physics::components::physics_component::water"
+disposition = "keep: the environment join's water hitbox input (#1080)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[schema]]
@@ -1916,12 +1944,22 @@ status = "out-of-scope"
 [[buffer]]
 key = "water_hitboxes"
 producers = ["WaterHitboxComponent"]
-consumers = ["helio-pass-water-sim"]
-owner = "water-sim pass type; writer not identified"
-disposition = "water-sim reads it; no authored producer"
+consumers = ["helio-default-graphs", "helio-pass-water-sim"]
+owner = "helio-default-graphs environment join (execution output)"
+disposition = "keep: bodies on the WaterSim collision channel, joined on the GPU from water_hitbox_sources, the owner transform and its meshes' bounds and packed into the simulation's fixed rows; the simulation keeps each body's previous bounds itself (#1080)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "tracked in #1080"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
+
+[[buffer]]
+key = "water_hitbox_sources"
+producers = ["WaterHitboxSourceRow"]
+consumers = []
+owner = "pulsar_physics::components::physics_component::water"
+disposition = "keep: PhysicsComponent's water interaction, derived on every write; the environment join reads it into water_hitboxes"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
 
 [[buffer]]
 key = "water_volumes"
@@ -2503,7 +2541,7 @@ crate = "helio-pass-water-sim"
 in_default_graph = true
 reads = ["water_hitboxes", "water_volumes"]
 owner = "helio-default-graphs (mapping); helio-pass-water-sim (algorithm)"
-disposition = "keep: reads water_volumes (joined from WaterVolumeComponent, Phase 4); water_hitboxes has no authored producer (#1080)"
+disposition = "keep: reads water_volumes (joined from WaterVolumeComponent, Phase 4) and water_hitboxes (joined from PhysicsComponents on the WaterSim channel, #1080)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
