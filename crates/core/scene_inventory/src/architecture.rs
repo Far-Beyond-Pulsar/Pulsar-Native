@@ -106,6 +106,11 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "picking: runs on a pointer event, not per frame",
     ),
     (
+        "crates/core/engine_backend/src/subsystems/render/helio_renderer/animated_content.rs",
+        4,
+        "keep-awake: whether particles, foliage in a wind or time-reading graph materials are live, re-checked only when the world revision changes",
+    ),
+    (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs",
         2,
         "voxel path: VoxelSceneRead runs when the world revision changes (enabled meshes; lights, for the sun and the camera-relative gate)",

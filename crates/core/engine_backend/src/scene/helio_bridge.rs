@@ -20,7 +20,7 @@ use helio_component::components::{
     GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
     MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
     WATER_VOLUME_SOURCES_BUFFER, ATMOSPHERE_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER,
-    DECAL_SOURCES_BUFFER,
+    DECAL_SOURCES_BUFFER, GlobalWindSourceRow, WIND_SOURCES_BUFFER,
 };
 use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
@@ -64,8 +64,8 @@ pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
 /// Where this engine's environment rows live, for Helio's environment join:
 /// the same owner, visibility and transform rows as the scene join, and the
 /// rows fog volumes, post-process volumes, camera post-process, water,
-/// foliage, atmosphere, decal and particle emitter components derive
-/// (Pulsar-Native#1035, Phase 4).
+/// foliage, global wind, atmosphere, decal and particle emitter components
+/// derive (Pulsar-Native#1035, Phase 4).
 pub fn environment_join_keys() -> EnvironmentJoinKeys {
     let scene = scene_join_keys();
     EnvironmentJoinKeys {
@@ -82,6 +82,7 @@ pub fn environment_join_keys() -> EnvironmentJoinKeys {
         atmospheres: BufferKey::of(ATMOSPHERE_SOURCES_BUFFER),
         decals: BufferKey::of(DECAL_SOURCES_BUFFER),
         corona_emitters: BufferKey::of(CORONA_EMITTER_SOURCES_BUFFER),
+        wind: BufferKey::of(WIND_SOURCES_BUFFER),
     }
 }
 
@@ -154,6 +155,7 @@ pub fn ensure_gpu_mirror(
     AtmosphereSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
     DecalSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     CoronaEmitterSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    GlobalWindSourceRow::register_gpu_columns_growable(&mut gpu_store, 2, &device);
 
     // SceneDB owns residency budgets and tier configuration. The bridge only
     // installs project settings while constructing the shared store.

@@ -2033,3 +2033,251 @@ fn particle_emitters_reach_the_frame_from_one_pool() {
         "particles outlive their emitters: {change:?}"
     );
 }
+
+/// Edit the level's global wind in place, as its World Settings rows do.
+fn set_global_wind(
+    state: &mut LevelEditorState,
+    edit: impl FnOnce(&mut helio_component::components::WindComponent),
+) {
+    let mut world = state.scene.world_mut();
+    let (instance, _) =
+        engine_backend::scene::level_rules::level_wind(&world).expect("the level has a wind");
+    edit(
+        &mut world
+            .get_mut::<helio_component::components::WindComponent>(instance)
+            .unwrap(),
+    );
+}
+
+/// Wind (#1123, #1109): foliage sways in the level's global wind, on the
+/// renderer's frame clock. In a realtime viewport two observations with no
+/// scene write differ while the wind blows; they are identical in a calm or
+/// with Realtime off (the clock frozen). Changing the global wind changes
+/// the foliage's pose: the meadow's own wind is calm, so all its motion is
+/// the global wind's. The frame delta and the projection jitter are fixed,
+/// and observations are compared 64 frames apart (the period of the
+/// foliage LOD cross-fade dither), so an unchanged frame is identical.
+#[test]
+fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
+    use helio_component::components::FoliageComponent;
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+
+    let mut state = LevelEditorState::new();
+    let mut foliage = FoliageComponent::default();
+    foliage.general.enabled = true;
+    foliage.placement.layer_extent = 20.0;
+    // Calm on its own: only the global wind moves it.
+    foliage.wind.wind_speed = 0.0;
+    foliage.wind.trunk_sway = 1.0;
+    execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "meadow".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(foliage)],
+        },
+    );
+    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    set_global_wind(&mut state, |wind| wind.speed = 8.0);
+
+    let mut renderer = harness.renderer(&state);
+    renderer.set_frame_delta_override(Some(1.0 / 30.0));
+    renderer.set_camera_jitter_override(Some([0.0, 0.0]));
+    // Placement fills the camera's ring over several frames.
+    let settle = |renderer: &mut HelioRenderer| {
+        for _ in 0..5 {
+            harness.frames(renderer, || {});
+        }
+    };
+    // Two observations 64 frames apart with no scene write in between: the
+    // depth texels that moved.
+    let per_observation = settle_frames().max(2) & !1;
+    assert_eq!(
+        64 % per_observation,
+        0,
+        "observations must tile the dither period"
+    );
+    let motion = |renderer: &mut HelioRenderer, label: &str| {
+        let first = harness.frames(renderer, || {});
+        for _ in 1..64 / per_observation {
+            harness.frames(renderer, || {});
+        }
+        let second = harness.frames(renderer, || {});
+        second.dump(&format!("wind_{label}"));
+        let moved = second.difference(&first);
+        println!("WIND {label}: {moved:?}");
+        (moved.depth_texels, second)
+    };
+
+    settle(&mut renderer);
+    let (blowing, _) = motion(&mut renderer, "blowing");
+    assert!(
+        blowing > (SIZE * SIZE / 100) as usize,
+        "foliage did not sway in the global wind: {blowing} texels moved"
+    );
+
+    set_global_wind(&mut state, |wind| wind.speed = 0.0);
+    settle(&mut renderer);
+    let (calm, _) = motion(&mut renderer, "calm");
+    assert_eq!(calm, 0, "foliage moved in a calm");
+
+    set_global_wind(&mut state, |wind| wind.speed = 8.0);
+    renderer.set_viewport_realtime(false);
+    settle(&mut renderer);
+    let (frozen, pose) = motion(&mut renderer, "frozen");
+    assert_eq!(frozen, 0, "foliage moved with Realtime off");
+
+    // The clock is frozen, so the pose changes only with the wind.
+    set_global_wind(&mut state, |wind| {
+        wind.direction = [-1.0, 0.0, -0.2];
+        wind.speed = 16.0;
+    });
+    let changed = harness.frames(&mut renderer, || {});
+    let difference = changed.difference(&pose);
+    println!("WIND global wind changed: {difference:?}");
+    assert!(
+        difference.depth_texels > (SIZE * SIZE / 100) as usize,
+        "changing the global wind did not change the foliage: {difference:?}"
+    );
+}
+
+/// Realtime (#1123, #1109): content that animates on its own (particles,
+/// foliage in a wind) keeps a realtime viewport rendering with no scene
+/// write; with Realtime off, in a calm, or once the content is disabled,
+/// the viewport goes idle again.
+#[test]
+fn a_realtime_viewport_keeps_rendering_animated_content() {
+    use helio_component::components::{FoliageComponent, ParticleEmitterComponent};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    let mut state = LevelEditorState::new();
+    let mut renderer = harness.renderer(&state);
+    harness.frames(&mut renderer, || {});
+
+    let view = harness.texture.create_view(&Default::default());
+    let mut encode = |renderer: &mut HelioRenderer| {
+        let encoded = renderer
+            .render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT)
+            .is_some();
+        harness
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        encoded
+    };
+    // Whether the renderer settles to idle within a few frames and then
+    // stays idle.
+    let mut goes_idle = |renderer: &mut HelioRenderer| {
+        let settled = (0..16).any(|_| !encode(renderer));
+        settled && (0..20).all(|_| !encode(renderer))
+    };
+    let mut keeps_rendering = |renderer: &mut HelioRenderer| (0..20).all(|_| encode(renderer));
+    let add = |state: &mut LevelEditorState, name: &str, component: TypedComponent| {
+        let added = execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![component],
+            },
+        );
+        added.affected_ids[0].clone()
+    };
+    assert!(goes_idle(&mut renderer), "an empty scene did not go idle");
+
+    // Particles.
+    let emitter = add(
+        &mut state,
+        "Particles",
+        TypedComponent::new(ParticleEmitterComponent::default()),
+    );
+    assert!(keeps_rendering(&mut renderer), "live particles went idle");
+    renderer.set_viewport_realtime(false);
+    assert!(goes_idle(&mut renderer), "frozen particles kept rendering");
+    renderer.set_viewport_realtime(true);
+    assert!(
+        keeps_rendering(&mut renderer),
+        "Realtime back on did not resume"
+    );
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &emitter,
+        0,
+        false
+    ));
+    assert!(
+        goes_idle(&mut renderer),
+        "a disabled emitter kept rendering"
+    );
+
+    // Foliage in the global wind.
+    let mut foliage = FoliageComponent::default();
+    foliage.general.enabled = true;
+    foliage.wind.wind_speed = 0.0;
+    add(&mut state, "meadow", TypedComponent::new(foliage));
+    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    assert!(
+        keeps_rendering(&mut renderer),
+        "foliage in a wind went idle"
+    );
+    set_global_wind(&mut state, |wind| wind.speed = 0.0);
+    assert!(goes_idle(&mut renderer), "foliage in a calm kept rendering");
+    let revision = state.scene.world().revision();
+    set_global_wind(&mut state, |wind| wind.speed = 3.0);
+    assert!(
+        keeps_rendering(&mut renderer),
+        "the wind rising did not wake it"
+    );
+    assert_eq!(
+        state.scene.world().revision(),
+        revision + 1,
+        "animated frames wrote to the world"
+    );
+}

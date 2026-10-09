@@ -93,6 +93,7 @@ fn relative_camera_source_schema_compatible(
         "atmosphere_sources" => c::AtmosphereSourceRow::packed_gpu_component_id(),
         "decal_sources" => c::DecalSourceRow::packed_gpu_component_id(),
         "corona_emitter_sources" => c::CoronaEmitterSourceRow::packed_gpu_component_id(),
+        "wind_sources" => c::GlobalWindSourceRow::packed_gpu_component_id(),
         "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
             return store.buffer_registry().element_type(key)
                 == Some(Some(std::any::TypeId::of::<pulsar_scenedb::gpu::VarLenHandle>()));
@@ -131,7 +132,7 @@ fn relative_camera_source_compatible(
         | "water_hitboxes" | "global_fog_sources" | "local_fog_sources"
         | "post_process_volume_sources" | "camera_postprocess_sources"
         | "water_volume_sources" | "foliage_sources" | "atmosphere_sources"
-        | "corona_emitter_sources" | "static_mesh_draw_bounds" | "static_mesh_draw_flags"
+        | "corona_emitter_sources" | "wind_sources" | "static_mesh_draw_bounds" | "static_mesh_draw_flags"
         | "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles"
         | "static_mesh_draw_sections::handles" => {
             kind == "row" && mode == Some(MirrorMode::DirtyTracked)
@@ -192,6 +193,8 @@ fn relative_camera_world_incompatibilities(
         component_id::<helio_component::AtmosphereComponent>(),
         component_id::<helio_component::PostProcessVolumeComponent>(),
         component_id::<helio_component::CameraPostProcessComponent>(),
+        // The global wind: a direction and speed, no position.
+        component_id::<helio_component::components::WindComponent>(),
     ];
     for archetype in world
         .archetypes
@@ -503,6 +506,7 @@ pub struct HelioEditorMailbox {
     pending_camera_state: Arc<Mutex<Option<EditorCameraState>>>,
     pending_deselect: Arc<AtomicBool>,
     viewport_bloom: Arc<AtomicBool>,
+    viewport_realtime: Arc<AtomicBool>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
 }
 
@@ -554,6 +558,13 @@ impl HelioEditorMailbox {
     /// so the viewport follows the toolbar even if an update is superseded.
     pub fn set_viewport_bloom(&self, enabled: bool) {
         self.viewport_bloom.store(enabled, Ordering::Release);
+    }
+
+    /// The toolbar's Realtime toggle: whether the viewport's animation
+    /// (foliage wind, particles, shader-graph `time`) runs on wall time, or
+    /// is frozen. See [`HelioRenderer::set_viewport_realtime`].
+    pub fn set_viewport_realtime(&self, realtime: bool) {
+        self.viewport_realtime.store(realtime, Ordering::Release);
     }
 }
 
@@ -607,6 +618,17 @@ pub struct HelioRenderer {
     pub pending_pointer_events: Arc<Mutex<Vec<PendingPointerEvent>>>,
     /// The toolbar's Bloom toggle; see [`HelioEditorMailbox::set_viewport_bloom`].
     pub viewport_bloom: Arc<AtomicBool>,
+    /// The toolbar's Realtime toggle; see [`Self::set_viewport_realtime`].
+    viewport_realtime: Arc<AtomicBool>,
+    /// A fixed frame delta for deterministic captures; see
+    /// [`Self::set_frame_delta_override`].
+    frame_delta_override: Option<f32>,
+    /// A fixed projection jitter for deterministic captures; see
+    /// [`Self::set_camera_jitter_override`].
+    camera_jitter_override: Option<[f32; 2]>,
+    /// Whether the scene holds content that animates on its own, per world
+    /// revision (it keeps a realtime viewport rendering).
+    animated_content: super::animated_content::AnimatedContent,
     /// Written by the render thread when a gizmo drag starts on a fixed-
     /// movability object; taken by the UI (`HelioEditorMailbox`).
     pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
@@ -779,6 +801,10 @@ impl HelioRenderer {
             pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
             // Matches the toolbar's default until the UI reports its state.
             viewport_bloom: Arc::new(AtomicBool::new(true)),
+            viewport_realtime: Arc::new(AtomicBool::new(true)),
+            frame_delta_override: None,
+            camera_jitter_override: None,
+            animated_content: Default::default(),
             static_drag_warning: Arc::new(Mutex::new(None)),
             reset_taa_next_frame: false,
             inner: None,
@@ -1247,9 +1273,13 @@ impl HelioRenderer {
         // background loop to skip present/publish — the compositor holds the last
         // frame on screen.
         let viewport_resized = needs_resize || self.viewport_size != (width, height);
-        let scene_revision = {
+        let realtime = self.viewport_realtime.load(Ordering::Acquire);
+        let (scene_revision, animated) = {
             profiling::profile_scope!("helio_scene_store_read (revision)");
-            self.scene_store.read().world.revision()
+            let store = self.scene_store.read();
+            // Re-checked only when the revision changed.
+            let animated = realtime && self.animated_content.live(&store.world);
+            (store.world.revision(), animated)
         };
         // A newly-created/loaded SceneDB can have revision 0. The first
         // renderer frame still steps the database so its GPU mirror is current
@@ -1278,6 +1308,8 @@ impl HelioRenderer {
             || self.gizmo_dirty
             || viewport_resized
             || postprocess_changed
+            // Realtime animation: wind, particles, shader-graph `time`.
+            || animated
             || self.reset_taa_next_frame;
         if self.activity_log
             && temporal_activity
@@ -1296,6 +1328,7 @@ impl HelioRenderer {
                 gizmo = self.gizmo_dirty,
                 resized = viewport_resized,
                 postprocess = postprocess_changed,
+                animated,
                 reset_taa = self.reset_taa_next_frame,
                 "VOXEL_ACTIVITY"
             );
@@ -1687,6 +1720,17 @@ impl HelioRenderer {
             phases.mark("flush");
             {
                 profiling::profile_scope!("helio_renderer_render");
+                // The editor's animation clock: wall time while realtime,
+                // frozen otherwise.
+                inner
+                    .renderer
+                    .set_frame_delta_override(self.frame_delta_override);
+                inner
+                    .renderer
+                    .set_camera_jitter_override(self.camera_jitter_override);
+                inner
+                    .renderer
+                    .set_frame_clock_delta(if realtime { None } else { Some(0.0) });
                 match inner.renderer.render(&camera, &view) {
                     Ok(()) => render_succeeded = true,
                     Err(e) => tracing::error!("Helio render error: {:?}", e),
@@ -2138,8 +2182,37 @@ impl HelioRenderer {
             pending_camera_state: self.pending_camera_state.clone(),
             pending_deselect: self.pending_deselect.clone(),
             viewport_bloom: self.viewport_bloom.clone(),
+            viewport_realtime: self.viewport_realtime.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
         }
+    }
+
+    /// Whether the viewport is realtime (the toolbar's Realtime toggle,
+    /// on by default): its animation (foliage wind, particles, shader-graph
+    /// `time`) runs on wall time, and it keeps rendering while the scene
+    /// holds such content. Off, the animation is frozen and the viewport
+    /// renders only when something changes. Play-in-Editor's game renders
+    /// on the game clock instead (`pulsar_game`).
+    pub fn set_viewport_realtime(&self, realtime: bool) {
+        self.viewport_realtime.store(realtime, Ordering::Release);
+    }
+
+    /// Advance every frame by exactly `seconds` instead of the measured
+    /// frame time (Helio's `Renderer::set_frame_delta_override`): the
+    /// temporal filters and, while realtime, the animation clock. For
+    /// deterministic captures and tests; `None` restores measured time.
+    pub fn set_frame_delta_override(&mut self, seconds: Option<f32>) {
+        assert!(seconds.is_none_or(|v| v.is_finite() && v > 0.0));
+        self.frame_delta_override = seconds;
+    }
+
+    /// Fix the projection's sub-pixel jitter (Helio's
+    /// `Renderer::set_camera_jitter_override`, in render pixels), so two
+    /// frames of an unchanged scene rasterize alike. For deterministic
+    /// captures and tests; `None` restores the temporal sequence.
+    pub fn set_camera_jitter_override(&mut self, jitter: Option<[f32; 2]>) {
+        assert!(jitter.is_none_or(|v| v.iter().all(|x| x.is_finite())));
+        self.camera_jitter_override = jitter;
     }
 
     pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {

@@ -40,6 +40,17 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_f
 status = "verified"
 
 [[class]]
+name = "WindComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::wind_component"
+disposition = "render (#1123). The level's global wind, one per level (engine_backend::scene::level_rules), edited in World Settings. Its derived GlobalWindSourceRow is written on every insert, write, removal and replay; the environment join places it as the foliage passes' wind row over the foliage components' own wind (visibility does not apply). Its motion is the renderer's frame clock"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+status = "verified"
+
+[[class]]
 name = "ParticleEmitterComponent"
 category = "Rendering"
 world_registered = true
@@ -89,9 +100,9 @@ category = "Rendering"
 world_registered = true
 own_gpu_columns = true
 owner = "helio_component::components::foliage_component"
-disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Grass grows on flat ground at Y 0, no terrain capture in the editor (#1064). Limits, each tracked: types share layers and the first component's wind applies to all (#1062), wind does not animate (#1061), and the interactor and material colour fields have no consumer (#1063)"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Blades sway in the level's global wind (WindComponent) by their per-band response, on the renderer's frame clock (#1123, #1109); a component may opt out for its own wind (use_global_wind), and a level without a global wind uses the components' own. Grass grows on flat ground at Y 0, no terrain capture in the editor (#1064). Limits, each tracked: types share layers and one wind applies to all foliage (#1123), and the interactor and material colour fields have no consumer (#1063)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame, foliage_sways_in_the_global_wind_on_the_frame_clock)"
 status = "verified"
 
 [[class]]
@@ -836,6 +847,34 @@ owner = "helio_component::components::decal_component"
 disposition = "keep: the authored type's GPU row is DecalSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
+
+[[schema]]
+type = "WindComponent"
+path = "helio_component::components::wind_component::WindComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived GlobalWindSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::wind_component"
+disposition = "keep: the authored type's GPU row is GlobalWindSourceRow, the environment join's input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+status = "verified"
+
+[[schema]]
+type = "GlobalWindSourceRow"
+path = "helio_component::components::environment_rows::GlobalWindSourceRow"
+buffers = ["wind_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "WindComponent's derived GPU registration (the foliage wind row marked global; zero while disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's global wind input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
 status = "verified"
 
 [[schema]]
@@ -1645,6 +1684,16 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitt
 status = "verified"
 
 [[buffer]]
+key = "wind_sources"
+producers = ["GlobalWindSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the level's WindComponent, derived on every write; the environment join reads it into foliage_wind"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+status = "verified"
+
+[[buffer]]
 key = "corona_emitter_sources"
 producers = ["CoronaEmitterSourceRow"]
 consumers = []
@@ -1709,9 +1758,9 @@ key = "foliage_wind"
 producers = ["FoliageWindComponent"]
 consumers = ["helio-default-graphs", "helio-pass-foliage-gbuffer"]
 owner = "helio-default-graphs environment join (execution output, placed foliage packed into the leading rows in instance order)"
-disposition = "keep: the first placed component's wind; the wind clock is not advanced (no frame time reaches the row), so blades do not sway (#1061); per-component wind is #1062"
+disposition = "keep: one wind row for all foliage: the first placed foliage component that opts out of the global wind, else the level's global wind (WindComponent), else the first placed component's own wind (#1123). Its clock words are unused: the foliage passes read the renderer's frame clock (#1109)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (foliage_types_layers_and_wind_are_packed, foliage_sways_in_the_global_wind_unless_it_opts_out); crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock)"
 status = "verified"
 
 [[buffer]]
@@ -2113,9 +2162,9 @@ crate = "helio-pass-foliage-gbuffer"
 in_default_graph = true
 reads = ["foliage_types", "foliage_wind"]
 owner = "helio-default-graphs (mapping); helio-pass-foliage-gbuffer (algorithm)"
-disposition = "keep: reads the environment join's foliage outputs, derived from FoliageComponent (Phase 4); limitations #1061-#1064"
+disposition = "keep: reads the environment join's foliage outputs, derived from FoliageComponent and the level's WindComponent (Phase 4); the wind's clock is the renderer's frame clock (#1109, #1123); limitations #1063, #1064 and one wind for all foliage (#1123)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame, foliage_sways_in_the_global_wind_on_the_frame_clock); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[pass]]
