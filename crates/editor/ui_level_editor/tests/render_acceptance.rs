@@ -1748,3 +1748,124 @@ fn the_sky_is_the_levels_atmosphere() {
 
 /// Illuminance of the acceptance tests' sun (lux).
 const SUN: f32 = 20.0;
+
+/// Decals (#1058): an authored decal recolours the surfaces in its box and
+/// stays (it is permanent); scripts set how it disappears through its
+/// opacity: `DecalComponent::set_opacity` (its property accessor) and
+/// `DecalComponent::fade_by` (its method), called as a script calls them.
+#[test]
+fn decals_reach_the_frame_and_scripts_set_their_opacity() {
+    use helio_component::components::{DecalComponent, DecalLayers};
+    use pulsar_script_vm::{Host, NativeRegistry, Value};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // A matte white mesh under a light: the decal recolours its surface.
+    let mut state = LevelEditorState::new();
+    drop_matte_mesh(&mut state);
+    add_light(
+        &mut state,
+        [0.0, radius * 1.5, radius * 2.0],
+        helio_component::components::LightType::Point,
+        BRIGHT,
+    );
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+
+    // A blue decal whose box holds the whole mesh.
+    let decal = DecalComponent {
+        size: [radius * 3.0; 3],
+        color: [0.0, 0.2, 1.0],
+        layers: DecalLayers::Albedo,
+        ..Default::default()
+    };
+    let added = execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "Decal".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(decal)],
+        },
+    );
+    let id = added.affected_ids[0].clone();
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("decal");
+    let change = with.difference(&before);
+    println!("DECAL vs without: {change:?}");
+    assert!(
+        change.color_pixels > (SIZE * SIZE / 50) as usize,
+        "the decal did not change the frame: {change:?}"
+    );
+    assert_eq!(change.depth_texels, 0, "a decal moved geometry");
+    // Permanent: still there frames later.
+    let later = harness.frames(&mut renderer, || {});
+    assert!(later.difference(&with).color_pixels < (SIZE * SIZE / 200) as usize);
+
+    // Scripts address the decal as a component reference.
+    let natives = NativeRegistry::with_engine_natives();
+    let call = |state: &LevelEditorState, native: &str, argument: f64| -> Value {
+        let mut world = state.scene.world_mut();
+        let instance = components::instance_at(&world, &id, 0).expect("the decal");
+        let owner = engine_backend::scene::SceneWorldExt::entity_for(&*world, &id).unwrap();
+        let reference =
+            Value::Component(pulsar_scenedb::ComponentRef::of::<DecalComponent>(instance));
+        let mut host = Host::new(&mut world, owner);
+        natives
+            .get(native)
+            .unwrap_or_else(|| panic!("{native} is a script native"))
+            .call(&mut host, &mut [reference, Value::Float(argument)])
+            .unwrap_or_else(|error| panic!("{native}: {error:?}"))
+    };
+    let opacity = |state: &LevelEditorState| {
+        let world = state.scene.world();
+        let instance = components::instance_at(&world, &id, 0).unwrap();
+        world.get::<DecalComponent>(instance).unwrap().opacity
+    };
+
+    call(&state, "DecalComponent::set_opacity", 0.0);
+    assert_eq!(opacity(&state), 0.0);
+    let hidden = harness.frames(&mut renderer, || {});
+    let change = hidden.difference(&before);
+    println!("DECAL opacity 0 vs without: {change:?}");
+    assert!(
+        change.color_pixels < (SIZE * SIZE / 100) as usize,
+        "a decal at opacity 0 still shows: {change:?}"
+    );
+
+    call(&state, "DecalComponent::set_opacity", 1.0);
+    let left = call(&state, "DecalComponent::fade_by", 0.5);
+    assert!(matches!(left, Value::Float(left) if (left - 0.5).abs() < 1e-6));
+    assert_eq!(opacity(&state), 0.5);
+    let half = harness.frames(&mut renderer, || {});
+    let from_full = half.difference(&with);
+    let from_none = half.difference(&before);
+    println!("DECAL opacity 0.5 vs full {from_full:?}, vs without {from_none:?}");
+    assert!(
+        from_full.color_pixels > 0 && from_none.color_pixels > 0,
+        "half opacity is neither the full decal nor none"
+    );
+}

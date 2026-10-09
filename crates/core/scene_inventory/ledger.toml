@@ -40,6 +40,17 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_f
 status = "verified"
 
 [[class]]
+name = "DecalComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::decal_component"
+disposition = "render (#1058). Its derived DecalSourceRow is written on every insert, write, removal and replay (its image registered in the scene texture store); the environment join gates it on the instance and its owner's visibility and places it into decals with the owner's box as its transform. Permanent (fade time 0); scripts set its opacity (set_opacity, fade_by)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
+
+[[class]]
 name = "CameraPostProcessComponent"
 category = "Rendering"
 world_registered = true
@@ -542,13 +553,13 @@ path = "helio_pass_decal::components::DecalComponent"
 buffers = ["decals"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "no production writer found (registered only)"
+registered = false
+writer = "helio-default-graphs environment join from DecalComponent's source rows (#1058)"
 owner = "helio_pass_decal::components"
-disposition = "unfinished (Phase 4; tracked in #1058): no authored decal component (decision 4); the column is registered so the pass binds an empty table"
+disposition = "keep as the pass row layout of decals; produced by the join (the world-to-decal transform from the owner), not registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1058"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
 
 [[schema]]
 type = "ReflectionCaptureComponent"
@@ -800,6 +811,34 @@ owner = "helio_pass_postprocess::components"
 disposition = "keep as the pass row layout of post_process_volumes; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
+
+[[schema]]
+type = "DecalComponent"
+path = "helio_component::components::decal_component::DecalComponent"
+buffers = ["decals"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived DecalSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::decal_component"
+disposition = "keep: the authored type's GPU row is DecalSourceRow, the environment join's input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
+
+[[schema]]
+type = "DecalSourceRow"
+path = "helio_component::components::environment_rows::DecalSourceRow"
+buffers = ["decal_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "DecalComponent's derived GPU registration (the pass row in the owner's space with its box size; zero while disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's decals input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[schema]]
@@ -1569,12 +1608,12 @@ status = "unfinished"
 [[buffer]]
 key = "decals"
 producers = ["DecalComponent"]
-consumers = ["helio-pass-decal"]
-owner = "no authored Pulsar component found"
-disposition = "unfinished (Phase 4; tracked in #1058): no authored decal component (decision 4)"
+consumers = ["helio-default-graphs", "helio-pass-decal"]
+owner = "helio-default-graphs environment join (execution output, packed into MAX_DECALS rows)"
+disposition = "keep: the join places each enabled DecalComponent of a visible owner with a non-zero box and writes its world-to-decal transform from the owner's transform (#1058)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "tracked in #1058"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
 
 [[buffer]]
 key = "fog_components"
@@ -1831,6 +1870,16 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs"
 status = "verified"
 
 [[buffer]]
+key = "decal_sources"
+producers = ["DecalSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: DecalComponent in its owner's space, derived on every write; the environment join reads it into decals"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
+
+[[buffer]]
 key = "atmosphere_sources"
 producers = ["AtmosphereSourceRow"]
 consumers = []
@@ -1965,10 +2014,10 @@ crate = "helio-pass-decal"
 in_default_graph = true
 reads = ["decals"]
 owner = "helio-default-graphs (mapping); helio-pass-decal (algorithm)"
-disposition = "runs in the editor graph, but nothing authored feeds it: decals (Phase 4)"
+disposition = "runs in the editor graph: authored DecalComponents reach it through the environment join (decals, #1058); authored decals are permanent (fade time 0) and scripts set their opacity"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1058; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-deferred-light"

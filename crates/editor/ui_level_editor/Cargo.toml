@@ -94,6 +94,8 @@ gpui-ce = { workspace = true, features = ["test-support"] }
 pollster = "=0.4.0"
 # Surfaces renderer and asset warnings in that test's output.
 tracing-subscriber = { workspace = true }
+# Calls a component's script natives in render acceptance (decal opacity).
+pulsar_script_vm = { workspace = true }
 
 [lints]
 workspace = true
