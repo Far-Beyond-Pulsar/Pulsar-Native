@@ -20,15 +20,17 @@
 //!   (`view_<n>.png`).
 //! - `fly:<metres>:<seconds>`: fly forward that far at the camera's height,
 //!   capturing every second (`fly_<n>_<t>.png`), then settle and capture.
-//! - `drag:<op>:<radius m>:<frames>[:<material>]`: a left-button drag
-//!   stroke across the view through the editor's pointer queue (op: dig,
-//!   build, paint), then release, settle and capture; logs per-frame
-//!   times and the edits the journal gained.
+//! - `drag:<op>:<radius m>:<frames>[:<material>[:<tool>]]`: a left-button
+//!   drag stroke across the view through the editor's pointer queue (op:
+//!   dig, build, paint; tool: stamp, flatten, smooth), then release, settle
+//!   and capture; logs per-frame times and the edits the journal gained.
+//! - `down:<metres>`: move the camera that far down the local vertical (into
+//!   a pit just dug: no lift to the generated ground), settled, captured.
 //!
 //! Every frame's wall time (CPU and GPU, the queue drained) is written to
 //! `frames.csv`, and a summary per step to stdout.
 
-use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest};
+use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest, VoxelBrushTool};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -272,7 +274,12 @@ fn main() {
                     _ => helio_voxel_data::VoxelBrushOp::Paint,
                 };
                 let (radius, frames, material) = (number(2, 1.0) as f32, number(3, 60.0) as usize, number(4, 3.0) as u32);
-                let request = VoxelBrushRequest { op, shape: helio_voxel_data::VoxelBrushShape::Sphere, radius, material, single_block: false, level: Default::default(), tool: Default::default() };
+                let tool = match parts.get(5).copied() {
+                    Some("flatten") => VoxelBrushTool::Flatten,
+                    Some("smooth") => VoxelBrushTool::Smooth,
+                    _ => VoxelBrushTool::Stamp,
+                };
+                let request = VoxelBrushRequest { op, shape: helio_voxel_data::VoxelBrushShape::Sphere, radius, material, single_block: false, level: Default::default(), tool };
                 let before = h.edits();
                 let queue = h.renderer.pending_pointer_events.clone();
                 let mut times = Vec::new();
@@ -290,11 +297,20 @@ fn main() {
                     }
                 }
                 queue.lock().expect("pointer queue").push(PendingPointerEvent::LeftRelease);
-                h.report(&format!("drag {:?} r {radius} m", op), &times);
+                h.report(&format!("drag {:?} {:?} r {radius} m", op, tool), &times);
                 let times = h.settle(20_000);
                 h.report("drag settle", &times);
                 println!("HARNESS drag: journal {} -> {} edits", before, h.edits());
                 h.capture(&format!("drag_{n}"));
+            }
+            "down" => {
+                let camera = h.camera();
+                let position = glam::DVec3::from_array(camera.position);
+                let position = position - position.normalize() * number(1, 5.0);
+                h.renderer.editor_mailbox().queue_camera(EditorCameraState { position: position.to_array(), ..camera });
+                let times = h.settle(20_000);
+                h.report(&format!("down {} m, altitude {:?}", number(1, 5.0), h.renderer.voxel_altitude()), &times);
+                h.capture(&format!("down_{n}"));
             }
             other => panic!("unknown step {other}"),
         }

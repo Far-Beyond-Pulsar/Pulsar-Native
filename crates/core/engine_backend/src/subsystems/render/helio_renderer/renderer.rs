@@ -802,7 +802,7 @@ struct HelioInner {
     spline_lines: Option<helio_component::components::SplineLines>,
     /// Drops voxel edits made on ground a terrain no longer has; created
     /// with the first sync.
-    edit_journals: Option<crate::scene::voxel_frame::EditJournalSync>,
+    voxel_world_sync: Option<crate::scene::voxel_frame::VoxelWorldSync>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1209,7 +1209,7 @@ impl HelioRenderer {
                 has_rendered_frame: false,
                 applied_postprocess: None,
                 spline_lines: None,
-                edit_journals: None,
+                voxel_world_sync: None,
             };
             self.inner = Some(inner);
             self.applied_graph_settings = Some(graph_settings.clone());
@@ -1499,13 +1499,13 @@ impl HelioRenderer {
                 }
             }
             {
-                // Edits belong to the ground they were made on; re-checked
-                // only when a terrain or its layer settings changed.
-                profiling::profile_scope!("helio_sync_edit_journals");
-                let journals = inner.edit_journals.get_or_insert_with(|| {
-                    crate::scene::voxel_frame::EditJournalSync::new(&scene_store.world)
+                // Edits belong to the ground they were made on and skies to
+                // their terrain; re-checked only when one of them changed.
+                profiling::profile_scope!("helio_sync_voxel_worlds");
+                let sync = inner.voxel_world_sync.get_or_insert_with(|| {
+                    crate::scene::voxel_frame::VoxelWorldSync::new(&scene_store.world)
                 });
-                journals.poll(&mut scene_store.world);
+                sync.poll(&mut scene_store.world);
             }
             {
                 profiling::profile_scope!("helio_scene_store_step");
@@ -2226,6 +2226,7 @@ impl HelioRenderer {
         if self.voxel_brush_picks.is_empty() {
             return;
         }
+        profiling::profile_scope!("voxel_resolve_brushes");
         for pick in self.voxel_backends.take_picks() {
             if let Some(brush) = self.voxel_brush_picks.iter_mut().find(|b| b.pick == pick.id) {
                 brush.answer = Some(pick.hit);
@@ -2246,6 +2247,8 @@ impl HelioRenderer {
     /// bounds the exact walk (around a renderer hit). Returns whether a
     /// stamp was applied.
     fn apply_voxel_brush(&mut self, brush: &PendingBrush, near: Option<(f64, f64)>) -> bool {
+        profiling::profile_scope!("voxel_apply_brush");
+        let started = Instant::now();
         let entries = {
             let scene = self.scene_store.read();
             crate::scene::voxel_frame::project_voxel_entries(&scene.world).0
@@ -2258,13 +2261,25 @@ impl HelioRenderer {
                 .filter(|(stroke, _)| *stroke == brush.stroke)
                 .map(|(_, level)| level);
         }
-        match self.voxel_backends.edit_ray(
-            &entries,
-            brush.origin,
-            brush.direction,
-            near,
-            request,
-        ) {
+        let projected = started.elapsed();
+        let ray = {
+            profiling::profile_scope!("voxel_edit_ray");
+            self.voxel_backends.edit_ray(&entries, brush.origin, brush.direction, near, request)
+        };
+        let walked = started.elapsed();
+        let slow = |hit: Option<f64>| {
+            let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
+            if started.elapsed().as_millis() >= 20 {
+                tracing::warn!(
+                    "VOXEL_BRUSH slow: {:.1} ms (entries {:.1}, ray {:.1}, commit {:.1}) near={near:?} hit={hit:?}",
+                    ms(started.elapsed()),
+                    ms(projected),
+                    ms(walked - projected),
+                    ms(started.elapsed() - walked)
+                );
+            }
+        };
+        match ray {
             Ok(Some(commit)) => {
                 // Fill the gap from the stroke's previous stamp, so fast drags
                 // stay continuous at any frame rate.
@@ -2292,10 +2307,15 @@ impl HelioRenderer {
                     self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, stamp);
                 }
                 self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit.clone());
+                drop(scene);
+                slow(Some(commit.distance));
                 self.voxel_stroke_last = Some((brush.stroke, commit));
                 true
             }
-            Ok(_) => false,
+            Ok(_) => {
+                slow(None);
+                false
+            }
             Err(error) => {
                 tracing::warn!("Voxel brush: {error}");
                 if let Ok(mut pending) = self.pending_errors.lock() {

@@ -939,15 +939,12 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         // a bounded reach without one: walking 0.1 m cells to a distant
         // mountain or the horizon took seconds to tens of seconds.
         let hit = match near {
+            // Searched coarse to fine from the level that drew the hit: from
+            // orbit the window spans kilometres of 0.1 m cells.
             Some((distance, cell)) => {
                 let margin = cell * 3.0 + 1.0;
-                let start = (distance - margin).max(0.0);
-                planet
-                    .raycast(origin + d * start, d, margin * 2.0)
-                    .map(|mut hit| {
-                        hit.distance += start;
-                        hit
-                    })
+                let level = (cell / planet.grid().voxel_size()).max(1.0).log2().round() as u32;
+                planet.raycast_near(origin, d, distance - margin, distance + margin, level)
             }
             None => planet.raycast(origin, d, UNPICKED_REACH_M),
         };
@@ -1418,7 +1415,7 @@ mod tests {
                     dig(0.05),
                 )
                 .unwrap()
-                .expect("remote terrain remains editable");
+                .unwrap_or_else(|| panic!("remote terrain remains editable from {distance} m"));
             assert_eq!(
                 replay(&[remote.edit].into_iter().collect()).material(target),
                 0
