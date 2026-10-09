@@ -111,6 +111,7 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
 
     let expected = BTreeMap::from([
         ("agent_chat_tools".to_owned(), features(&["editor"])),
+        ("asset_import".to_owned(), features(&[])),
         ("engine_backend".to_owned(), features(&[])),
         ("engine_state".to_owned(), features(&["editor"])),
         ("pulsar_class".to_owned(), features(&[])),
