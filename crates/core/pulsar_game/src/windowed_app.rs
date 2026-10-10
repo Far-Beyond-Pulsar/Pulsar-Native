@@ -19,7 +19,9 @@ use winit::{
 };
 
 use engine_backend::scene::RuntimeLevel;
-use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer};
+use helio::{
+    required_wgpu_features, required_wgpu_limits, usable_adapter_features, Camera, Renderer,
+};
 
 use crate::camera_selection::select_world_camera;
 use crate::freecam::FreeCam;
@@ -283,7 +285,10 @@ impl GpuContext {
             }))
             .expect("No suitable GPU adapter found");
 
-        let mut requested_features = required_wgpu_features(adapter.features());
+        // `usable_adapter_features` drops ray queries on software adapters
+        // (llvmpipe/lavapipe), whose shader compiler loses the device on
+        // Helio's ray-query pipelines (#840), whatever the preference says.
+        let mut requested_features = required_wgpu_features(usable_adapter_features(&adapter));
         if !self.hardware_ray_queries {
             requested_features.remove(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
         }
