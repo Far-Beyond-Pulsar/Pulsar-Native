@@ -43,7 +43,7 @@ pub fn folder_context_menu(
                     let mut top_level_items: Vec<plugin_editor_api::FileTypeDefinition> =
                         Vec::new();
 
-                    for file_type in file_types_clone.iter() {
+                    for file_type in file_types_clone.iter().filter(|t| t.is_creatable()) {
                         if file_type.categories.is_empty() {
                             top_level_items.push(file_type.clone());
                         } else if file_type.categories.len() == 1 {

@@ -1,0 +1,170 @@
+# Build - ru
+
+# Build button
+Build.Button.Cancel: "Отменить сборку"
+Build.Button.CancelTooltip: "Остановить сборку"
+Build.Button.NoConfiguration: "Нет конфигурации"
+Build.Button.NoConfigurationTooltip: "Выберите конфигурацию сборки"
+Build.Button.ChooseTooltip: "Выбрать конфигурацию сборки"
+Build.Button.StopGame: "Остановить"
+Build.Button.StopGameTooltip: "Остановить запущенную игру"
+
+# Picker
+Build.Picker.Empty: "Конфигураций сборки пока нет."
+Build.Picker.Edit: "Изменить конфигурации…"
+
+# Search
+Build.Search.Configurations: "Поиск конфигураций…"
+Build.Search.Platforms: "Поиск платформ…"
+Build.Search.NoConfigurationsMatch: "Нет конфигураций, соответствующих «%{query}»."
+Build.Search.NoPlatformsMatch: "Нет платформ, соответствующих запросу."
+
+# Configurator window
+Build.Configurator.Title: "Конфигурации сборки"
+Build.Configurator.Configurations: "Конфигурации"
+Build.Configurator.New: "Создать"
+Build.Configurator.NewTooltip: "Создать конфигурацию сборки"
+Build.Configurator.Empty: "Конфигураций пока нет."
+Build.Configurator.CountOne: "Конфигураций: %{count}"
+Build.Configurator.CountMany: "Конфигураций: %{count}"
+Build.Configurator.Filtered: "%{shown} из %{total}"
+Build.Configurator.NoneTitle: "Нет конфигураций сборки"
+Build.Configurator.NoneDescription: "Конфигурация описывает, как собирать: режим Rust, платформы и шаги."
+Build.Configurator.Create: "Создать конфигурацию"
+Build.Configurator.SetActive: "Сделать активной"
+Build.Configurator.SetActiveTooltip: "Использовать эту конфигурацию для кнопки «Сборка»"
+Build.Configurator.Active: "Активна"
+Build.Configurator.Duplicate: "Дублировать"
+Build.Configurator.Delete: "Удалить"
+Build.Configurator.ConfirmDelete: "Нажмите ещё раз, чтобы удалить"
+
+# General section
+Build.General.Title: "Общие"
+Build.General.Description: "Как эта конфигурация выглядит в меню «Сборка»."
+Build.General.Name: "Название"
+Build.General.NamePlaceholder: "Название конфигурации"
+Build.General.NameRequired: "У конфигурации должно быть название."
+Build.General.NameTaken: "Это название уже используется другой конфигурацией."
+Build.General.ConfigDescription: "Описание"
+Build.General.DescriptionPlaceholder: "Для чего эта конфигурация"
+
+# Rust build mode section
+Build.Profile.Title: "Режим сборки Rust"
+Build.Profile.Description: "Профиль cargo, который использует каждый шаг компиляции."
+Build.Profile.Debug.Summary: "Быстро компилируется, медленно работает. Отладочные проверки включены."
+Build.Profile.Release.Summary: "Оптимизированная сборка для проверки реальной производительности."
+Build.Profile.Shipping.Summary: "Release с полным LTO, одной единицей codegen и удалёнными символами."
+
+# Platforms section
+Build.Platforms.Title: "Платформы"
+Build.Platforms.Description: "Каждая выбранная платформа собирается по очереди. Оставьте пустым, чтобы собрать для этого компьютера."
+Build.Platforms.ThisMachine: "Этот компьютер"
+Build.Platforms.ThisMachineDefault: "Этот компьютер (по умолчанию)"
+Build.Platforms.ThisMachineTooltip: "Собрать для платформы, на которой работает редактор"
+Build.Platforms.Desktop: "Настольные"
+Build.Platforms.DesktopTooltip: "Windows x64, Linux x64 и macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} из %{total}"
+Build.Platforms.NeedsSdk: "Нужен SDK консоли; cargo не может её собрать"
+
+# Platform families
+Build.Family.Unix: "Solaris и illumos"
+Build.Family.Other: "Другие"
+Build.Family.Console: "Консоли"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7 (аппаратная плавающая точка)"
+Build.Target.LinuxArmGnueabi: "Linux ARM (программная плавающая точка)"
+Build.Target.LinuxArmGnueabihf: "Linux ARM (аппаратная плавающая точка)"
+Build.Target.IosAarch64: "Устройство iOS"
+Build.Target.IosX86_64: "Симулятор iOS (Intel)"
+Build.Target.IosAarch64Sim: "Симулятор iOS (Apple Silicon)"
+
+# Build steps section
+Build.Steps.Title: "Шаги сборки"
+Build.Steps.Description: "Они всегда выполняются в этом порядке. Неиспользуемые шаги пропускаются."
+Build.Steps.Update.Title: "Обновить зависимости"
+Build.Steps.Update.Description: "cargo update: сначала получить новейшие совместимые версии."
+Build.Steps.Clean.Title: "Сначала очистить"
+Build.Steps.Clean.Description: "cargo clean: удалить старые результаты сборки и начать с нуля."
+Build.Steps.Check.Title: "Проверка"
+Build.Steps.Check.Description: "cargo check: быстро проверить типы без создания бинарных файлов."
+Build.Steps.Build.Title: "Сборка"
+Build.Steps.Build.Description: "cargo build: скомпилировать для каждой выбранной платформы."
+Build.Steps.Run.Title: "Запуск"
+Build.Steps.Run.Description: "Запустить игру после завершения сборки (включает «Сборку»)."
+Build.Steps.Preset.QuickCheck: "Быстрая проверка"
+Build.Steps.Preset.Build: "Сборка"
+Build.Steps.Preset.CleanBuild: "Чистая сборка"
+Build.Steps.Preset.BuildAndRun: "Сборка и запуск"
+Build.Steps.Preset.FullRefresh: "Полное обновление"
+Build.Steps.Summary.Update: "Обновление"
+Build.Steps.Summary.Clean: "Очистка"
+Build.Steps.Summary.Check: "Проверка"
+Build.Steps.Summary.Build: "Сборка"
+Build.Steps.Summary.Run: "Запуск"
+Build.Steps.Summary.None: "Нет шагов"
+
+# Pipeline preview
+Build.Preview.Title: "ПРЕДПРОСМОТР КОНВЕЙЕРА"
+Build.Preview.Bootstrap: "создать или обновить файлы проекта"
+Build.Preview.Environment: "окружение: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "Дополнительно"
+Build.Advanced.Description: "Передаётся каждому cargo check, build и run."
+Build.Advanced.Features: "Features cargo (через запятую или пробел)"
+Build.Advanced.ExtraArgs: "Дополнительные аргументы cargo"
+Build.Advanced.QuoteHint: "Заключите в кавычки аргумент с пробелами: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "Подготовка проекта"
+Build.Step.Update: "Обновление зависимостей"
+Build.Step.Clean: "Очистка артефактов сборки"
+Build.Step.Check: "Проверка"
+Build.Step.CheckFor: "Проверка для %{platform}"
+Build.Step.Build: "Сборка"
+Build.Step.BuildFor: "Сборка для %{platform}"
+Build.Step.Run: "Запуск"
+Build.Step.RunFor: "Запуск для %{platform}"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "В этой конфигурации не включён ни один шаг."
+Build.Plan.UnbuildablePlatform: "%{platform} нельзя собрать с помощью cargo; нужен SDK платформы."
+Build.Plan.RunSkipped: "Запуск пропущен: ни одна из выбранных платформ не может работать на этом компьютере."
+
+# Progress
+Build.Progress.Starting: "Запуск"
+Build.Progress.Resolving: "Разрешение зависимостей"
+Build.Progress.Compiling: "Компиляция %{name}"
+Build.Progress.Updating: "Обновление %{what}"
+Build.Task.Title: "Сборка: %{name}"
+Build.Task.Starting: "Запуск сборки"
+
+# Notifications
+Build.Notification.NoProject: "Откройте проект перед сборкой."
+Build.Notification.AlreadyRunning: "Сборка уже выполняется."
+Build.Notification.Starting: "Запуск…"
+Build.Notification.Succeeded: "Сборка успешна"
+Build.Notification.Failed: "Сборка не удалась"
+Build.Notification.Cancelled: "Сборка отменена"
+Build.Notification.StoppedUnexpectedly: "Сборка неожиданно остановилась."
+
+# Cargo errors
+Build.Error.CouldNotStart: "Не удалось запустить cargo %{subcommand}: %{error}"
+Build.Error.CouldNotWait: "Не удалось дождаться cargo: %{error}"
+Build.Error.CommandFailed: "Ошибка cargo %{subcommand}:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "Ошибка %{number}"
+Build.Failure.Copy: "Копировать"
+Build.Failure.CountOne: "Ошибок компилятора от Cargo: %{count}."
+Build.Failure.CountMany: "Ошибок компилятора от Cargo: %{count}."
+Build.Failure.CopyAll: "Копировать все ошибки"
+Build.Failure.Close: "Закрыть"
+
+# Running the game
+Build.Game.Title: "Запуск"
+Build.Game.LaunchFailed: "Не удалось запустить игру: %{error}"
+Build.Game.NonZeroExit: "Игра завершилась с кодом ошибки."
+Build.Game.Crashed: "Игра аварийно завершилась:\n%{output}"
+Build.Game.CrashedWithReport: "Игра аварийно завершилась.\nОтчёт сохранён в %{path}\n\n%{output}"

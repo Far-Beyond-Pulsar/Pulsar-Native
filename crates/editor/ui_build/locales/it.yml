@@ -1,0 +1,170 @@
+# Build - it
+
+# Build button
+Build.Button.Cancel: "Annulla build"
+Build.Button.CancelTooltip: "Ferma la build"
+Build.Button.NoConfiguration: "Nessuna configurazione"
+Build.Button.NoConfigurationTooltip: "Scegli una configurazione di build"
+Build.Button.ChooseTooltip: "Scegli la configurazione di build"
+Build.Button.StopGame: "Ferma"
+Build.Button.StopGameTooltip: "Ferma il gioco in esecuzione"
+
+# Picker
+Build.Picker.Empty: "Ancora nessuna configurazione di build."
+Build.Picker.Edit: "Modifica configurazioni…"
+
+# Search
+Build.Search.Configurations: "Cerca configurazioni…"
+Build.Search.Platforms: "Cerca piattaforme…"
+Build.Search.NoConfigurationsMatch: "Nessuna configurazione corrisponde a “%{query}”."
+Build.Search.NoPlatformsMatch: "Nessuna piattaforma corrisponde alla ricerca."
+
+# Configurator window
+Build.Configurator.Title: "Configurazioni di build"
+Build.Configurator.Configurations: "Configurazioni"
+Build.Configurator.New: "Nuova"
+Build.Configurator.NewTooltip: "Crea una configurazione di build"
+Build.Configurator.Empty: "Ancora nessuna configurazione."
+Build.Configurator.CountOne: "%{count} configurazione"
+Build.Configurator.CountMany: "%{count} configurazioni"
+Build.Configurator.Filtered: "%{shown} di %{total}"
+Build.Configurator.NoneTitle: "Nessuna configurazione di build"
+Build.Configurator.NoneDescription: "Una configurazione dice come compilare: la modalità Rust, le piattaforme e i passaggi."
+Build.Configurator.Create: "Crea una configurazione"
+Build.Configurator.SetActive: "Imposta come attiva"
+Build.Configurator.SetActiveTooltip: "Usa questa configurazione per il pulsante Build"
+Build.Configurator.Active: "Attiva"
+Build.Configurator.Duplicate: "Duplica"
+Build.Configurator.Delete: "Elimina"
+Build.Configurator.ConfirmDelete: "Fai di nuovo clic per eliminare"
+
+# General section
+Build.General.Title: "Generale"
+Build.General.Description: "Come appare questa configurazione nel menu Build."
+Build.General.Name: "Nome"
+Build.General.NamePlaceholder: "Nome della configurazione"
+Build.General.NameRequired: "Una configurazione deve avere un nome."
+Build.General.NameTaken: "Un'altra configurazione usa già questo nome."
+Build.General.ConfigDescription: "Descrizione"
+Build.General.DescriptionPlaceholder: "A cosa serve questa configurazione"
+
+# Rust build mode section
+Build.Profile.Title: "Modalità di build Rust"
+Build.Profile.Description: "Il profilo cargo usato da ogni passaggio di compilazione."
+Build.Profile.Debug.Summary: "Veloce da compilare, lento da eseguire. Asserzioni di debug attive."
+Build.Profile.Release.Summary: "Build ottimizzata per testare le prestazioni reali."
+Build.Profile.Shipping.Summary: "Release con LTO completo, una sola unità di codegen e simboli rimossi."
+
+# Platforms section
+Build.Platforms.Title: "Piattaforme"
+Build.Platforms.Description: "Ogni piattaforma selezionata viene compilata a turno. Lascia vuoto per compilare per questa macchina."
+Build.Platforms.ThisMachine: "Questa macchina"
+Build.Platforms.ThisMachineDefault: "Questa macchina (predefinita)"
+Build.Platforms.ThisMachineTooltip: "Compila per la piattaforma su cui gira questo editor"
+Build.Platforms.Desktop: "Desktop"
+Build.Platforms.DesktopTooltip: "Windows x64, Linux x64 e macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} di %{total}"
+Build.Platforms.NeedsSdk: "Richiede l'SDK della console; cargo non può compilarla"
+
+# Platform families
+Build.Family.Unix: "Solaris e illumos"
+Build.Family.Other: "Altre"
+Build.Family.Console: "Console"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7 (virgola mobile hardware)"
+Build.Target.LinuxArmGnueabi: "Linux ARM (virgola mobile software)"
+Build.Target.LinuxArmGnueabihf: "Linux ARM (virgola mobile hardware)"
+Build.Target.IosAarch64: "Dispositivo iOS"
+Build.Target.IosX86_64: "Simulatore iOS (Intel)"
+Build.Target.IosAarch64Sim: "Simulatore iOS (Apple Silicon)"
+
+# Build steps section
+Build.Steps.Title: "Passaggi di build"
+Build.Steps.Description: "Vengono sempre eseguiti in quest'ordine. I passaggi non usati vengono saltati."
+Build.Steps.Update.Title: "Aggiorna dipendenze"
+Build.Steps.Update.Description: "cargo update: scarica prima le versioni compatibili più recenti."
+Build.Steps.Clean.Title: "Pulisci prima"
+Build.Steps.Clean.Description: "cargo clean: elimina il vecchio output di build e riparti da zero."
+Build.Steps.Check.Title: "Controlla"
+Build.Steps.Check.Description: "cargo check: controllo rapido dei tipi senza produrre binari."
+Build.Steps.Build.Title: "Compila"
+Build.Steps.Build.Description: "cargo build: compila per ogni piattaforma selezionata."
+Build.Steps.Run.Title: "Esegui"
+Build.Steps.Run.Description: "Avvia il gioco al termine della build (attiva Compila)."
+Build.Steps.Preset.QuickCheck: "Controllo rapido"
+Build.Steps.Preset.Build: "Compila"
+Build.Steps.Preset.CleanBuild: "Build pulita"
+Build.Steps.Preset.BuildAndRun: "Compila ed esegui"
+Build.Steps.Preset.FullRefresh: "Aggiornamento completo"
+Build.Steps.Summary.Update: "Aggiorna"
+Build.Steps.Summary.Clean: "Pulisci"
+Build.Steps.Summary.Check: "Controlla"
+Build.Steps.Summary.Build: "Compila"
+Build.Steps.Summary.Run: "Esegui"
+Build.Steps.Summary.None: "Nessun passaggio"
+
+# Pipeline preview
+Build.Preview.Title: "ANTEPRIMA PIPELINE"
+Build.Preview.Bootstrap: "genera o aggiorna i file del progetto"
+Build.Preview.Environment: "ambiente: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "Avanzate"
+Build.Advanced.Description: "Passato a ogni cargo check, build e run."
+Build.Advanced.Features: "Feature di cargo (separate da virgole o spazi)"
+Build.Advanced.ExtraArgs: "Argomenti cargo aggiuntivi"
+Build.Advanced.QuoteHint: "Racchiudi tra virgolette un argomento che contiene spazi: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "Preparazione del progetto"
+Build.Step.Update: "Aggiornamento delle dipendenze"
+Build.Step.Clean: "Pulizia degli artefatti di build"
+Build.Step.Check: "Controllo"
+Build.Step.CheckFor: "Controllo per %{platform}"
+Build.Step.Build: "Compilazione"
+Build.Step.BuildFor: "Compilazione per %{platform}"
+Build.Step.Run: "Avvio"
+Build.Step.RunFor: "Avvio per %{platform}"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "Questa configurazione non ha passaggi attivi."
+Build.Plan.UnbuildablePlatform: "%{platform} non può essere compilata con cargo; richiede l'SDK della piattaforma."
+Build.Plan.RunSkipped: "Esecuzione saltata: nessuna delle piattaforme selezionate può girare su questa macchina."
+
+# Progress
+Build.Progress.Starting: "Avvio"
+Build.Progress.Resolving: "Risoluzione delle dipendenze"
+Build.Progress.Compiling: "Compilazione di %{name}"
+Build.Progress.Updating: "Aggiornamento di %{what}"
+Build.Task.Title: "Build: %{name}"
+Build.Task.Starting: "Avvio della build"
+
+# Notifications
+Build.Notification.NoProject: "Apri un progetto prima di compilare."
+Build.Notification.AlreadyRunning: "Una build è già in corso."
+Build.Notification.Starting: "Avvio…"
+Build.Notification.Succeeded: "Build riuscita"
+Build.Notification.Failed: "Build non riuscita"
+Build.Notification.Cancelled: "Build annullata"
+Build.Notification.StoppedUnexpectedly: "La build si è interrotta inaspettatamente."
+
+# Cargo errors
+Build.Error.CouldNotStart: "Impossibile avviare cargo %{subcommand}: %{error}"
+Build.Error.CouldNotWait: "Impossibile attendere cargo: %{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} non riuscito:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "Errore %{number}"
+Build.Failure.Copy: "Copia"
+Build.Failure.CountOne: "%{count} errore del compilatore rilevato da Cargo."
+Build.Failure.CountMany: "%{count} errori del compilatore rilevati da Cargo."
+Build.Failure.CopyAll: "Copia tutti gli errori"
+Build.Failure.Close: "Chiudi"
+
+# Running the game
+Build.Game.Title: "Esegui"
+Build.Game.LaunchFailed: "Impossibile avviare il gioco: %{error}"
+Build.Game.NonZeroExit: "Il gioco è terminato con un codice di errore."
+Build.Game.Crashed: "Il gioco si è bloccato:\n%{output}"
+Build.Game.CrashedWithReport: "Il gioco si è bloccato.\nReport salvato in %{path}\n\n%{output}"

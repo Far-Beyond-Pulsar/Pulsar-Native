@@ -1,0 +1,161 @@
+# Build - lol (LOLCAT)
+
+# Build button
+Build.Button.Cancel: "STAHP Buildin"
+Build.Button.CancelTooltip: "Stahp teh build"
+Build.Button.NoConfiguration: "No config, srsly"
+Build.Button.NoConfigurationTooltip: "Pik a build config plz"
+Build.Button.ChooseTooltip: "Pik build config"
+Build.Button.StopGame: "STAHP"
+Build.Button.StopGameTooltip: "Stahp teh runnin gaem"
+
+# Picker
+Build.Picker.Empty: "No build configz yet."
+Build.Picker.Edit: "Edit Configz…"
+
+# Search
+Build.Search.Configurations: "Luk 4 configz…"
+Build.Search.Platforms: "Luk 4 platformz…"
+Build.Search.NoConfigurationsMatch: "No configz match “%{query}”."
+Build.Search.NoPlatformsMatch: "No platformz match ur serch."
+
+# Configurator window
+Build.Configurator.Title: "Build Configz"
+Build.Configurator.Configurations: "Configz"
+Build.Configurator.New: "Noo"
+Build.Configurator.NewTooltip: "Maek a build config"
+Build.Configurator.Empty: "No configz yet."
+Build.Configurator.CountOne: "%{count} config"
+Build.Configurator.CountMany: "%{count} configz"
+Build.Configurator.Filtered: "%{shown} of %{total}"
+Build.Configurator.NoneTitle: "No build configz"
+Build.Configurator.NoneDescription: "A config sez how 2 build: teh Rust moed, teh platformz an teh stepz."
+Build.Configurator.Create: "Maek a config"
+Build.Configurator.SetActive: "Maek it teh active 1"
+Build.Configurator.SetActiveTooltip: "Use dis config 4 teh Build buttun"
+Build.Configurator.Active: "Active"
+Build.Configurator.Duplicate: "Copeh"
+Build.Configurator.Delete: "Deleet"
+Build.Configurator.ConfirmDelete: "Clik again 2 deleet"
+
+# General section
+Build.General.Title: "Generul"
+Build.General.Description: "How dis config lookz in teh Build menu."
+Build.General.Name: "Naem"
+Build.General.NamePlaceholder: "Config naem"
+Build.General.NameRequired: "A config needz a naem."
+Build.General.NameTaken: "Anothr config haz dis naem alredy."
+Build.General.ConfigDescription: "Descripshun"
+Build.General.DescriptionPlaceholder: "Wut dis config iz 4"
+
+# Rust build mode section
+Build.Profile.Title: "Rust build moed"
+Build.Profile.Description: "Teh cargo profile evry compile step usez."
+Build.Profile.Debug.Label: "Debugz"
+Build.Profile.Debug.Summary: "Fast 2 compile, slo 2 run. Debug assershunz on."
+Build.Profile.Release.Label: "Releez"
+Build.Profile.Release.Summary: "Optimized build 4 testin reel speedz."
+Build.Profile.Shipping.Label: "Shippin"
+Build.Profile.Shipping.Summary: "Releez wif fat LTO, 1 codegen unit an no symbolz."
+
+# Platforms section
+Build.Platforms.Title: "Platformz"
+Build.Platforms.Description: "Evry pikd platform gets built in turn. Leev empty 2 build 4 dis machine."
+Build.Platforms.ThisMachine: "Dis machine"
+Build.Platforms.ThisMachineDefault: "Dis machine (default)"
+Build.Platforms.ThisMachineTooltip: "Build 4 teh platform dis editr runz on"
+Build.Platforms.Desktop: "Desktop"
+Build.Platforms.DesktopTooltip: "Windows x64, Linux x64 an macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} of %{total}"
+Build.Platforms.NeedsSdk: "Needz teh consol SDK; cargo cant build it"
+
+# Platform families
+Build.Family.Other: "Uthr"
+Build.Family.Console: "Consolz"
+
+# Build steps section
+Build.Steps.Title: "Build stepz"
+Build.Steps.Description: "Dey always run in dis ordr. Unused stepz get skipd."
+Build.Steps.Update.Title: "Updaet dependenciez"
+Build.Steps.Update.Description: "cargo update: get teh newest compatibl vershunz first."
+Build.Steps.Clean.Title: "Cleen first"
+Build.Steps.Clean.Description: "cargo clean: thro away old build stuffz an start frum scratch."
+Build.Steps.Check.Title: "Chek"
+Build.Steps.Check.Description: "cargo check: type-chek quik wifout makin binareez."
+Build.Steps.Build.Title: "Build"
+Build.Steps.Build.Description: "cargo build: compile 4 evry pikd platform."
+Build.Steps.Run.Title: "Run"
+Build.Steps.Run.Description: "Launch teh gaem wen teh build iz dun (turnz Build on)."
+Build.Steps.Preset.QuickCheck: "Quik chek"
+Build.Steps.Preset.CleanBuild: "Cleen build"
+Build.Steps.Preset.BuildAndRun: "Build an run"
+Build.Steps.Preset.FullRefresh: "Ful refreshz"
+Build.Steps.Summary.Update: "Updaet"
+Build.Steps.Summary.Clean: "Cleen"
+Build.Steps.Summary.Check: "Chek"
+Build.Steps.Summary.None: "No stepz"
+
+# Pipeline preview
+Build.Preview.Title: "PIPELINE PEEK"
+Build.Preview.Bootstrap: "maek or refreshz projekt filez"
+Build.Preview.Environment: "environmint: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "Advanzd"
+Build.Advanced.Description: "Givn 2 evry cargo check, build an run."
+Build.Advanced.Features: "Cargo featurez (comma or space separatd)"
+Build.Advanced.ExtraArgs: "Moar cargo argumintz"
+Build.Advanced.QuoteHint: "Put quotez round an argumint wif spacez: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "Preparin projekt"
+Build.Step.Update: "Updaetin dependenciez"
+Build.Step.Clean: "Cleenin build stuffz"
+Build.Step.Check: "Chekin"
+Build.Step.CheckFor: "Chekin 4 %{platform}"
+Build.Step.Build: "Buildin"
+Build.Step.BuildFor: "Buildin 4 %{platform}"
+Build.Step.Run: "Launchin"
+Build.Step.RunFor: "Launchin 4 %{platform}"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "Dis config haz no stepz turnd on."
+Build.Plan.UnbuildablePlatform: "%{platform} cant b built wif cargo; it needz itz platform SDK."
+Build.Plan.RunSkipped: "Run got skipd: none of teh pikd platformz can run on dis machine."
+
+# Progress
+Build.Progress.Starting: "Startin"
+Build.Progress.Resolving: "Figurin out dependenciez"
+Build.Progress.Compiling: "Compilin %{name}"
+Build.Progress.Updating: "Updaetin %{what}"
+Build.Task.Title: "Build: %{name}"
+Build.Task.Starting: "Startin build"
+
+# Notifications
+Build.Notification.NoProject: "Opn a projekt b4 buildin."
+Build.Notification.AlreadyRunning: "A build iz alredy runnin."
+Build.Notification.Starting: "Startin…"
+Build.Notification.Succeeded: "Build werkd!"
+Build.Notification.Failed: "Build iz broked"
+Build.Notification.Cancelled: "Build cancelld"
+Build.Notification.StoppedUnexpectedly: "Teh build stahpd outta nowhere."
+
+# Cargo errors
+Build.Error.CouldNotStart: "Cud not start cargo %{subcommand}: %{error}"
+Build.Error.CouldNotWait: "Cud not wait 4 cargo: %{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} iz broked:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "Errur %{number}"
+Build.Failure.Copy: "Copeh"
+Build.Failure.CountOne: "%{count} compilr errur caught frum Cargo."
+Build.Failure.CountMany: "%{count} compilr errurz caught frum Cargo."
+Build.Failure.CopyAll: "Copeh All Errurz"
+Build.Failure.Close: "Cloez"
+
+# Running the game
+Build.Game.Title: "Run"
+Build.Game.LaunchFailed: "Cud not launch teh gaem: %{error}"
+Build.Game.NonZeroExit: "Teh gaem exitd wif a non-zero status code."
+Build.Game.Crashed: "Teh gaem crashd:\n%{output}"
+Build.Game.CrashedWithReport: "Teh gaem crashd.\nReport savd 2 %{path}\n\n%{output}"

@@ -44,8 +44,10 @@ benchmark.
    changes from SceneDB's change journal (its own cursor) and warns once per
    entity when a `Static`/`Stationary` object is written. The play-mode loop owns
    one and calls `poll(&world)` each frame; the editor loop does not (it may move
-   anything). The scripting side already errors instead of warning. **Not yet
-   wired into the play loop** (it has no Helio dependency today).
+   anything). The scripting side already errors instead of warning.
+   `pulsar_game::TickLoop` (standalone, embedded and Play-In-Editor) opens it
+   at its first tick and polls it at the end of every tick, before the change
+   window closes.
 
 "Each pass documents what it does per movability" is best done as a table in each
 pass crate's module doc, filled in as each item lands.

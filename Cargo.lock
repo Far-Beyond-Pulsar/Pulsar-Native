@@ -539,6 +539,7 @@ name = "asset_viewer_plugin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "asset_import",
  "bytemuck",
  "engine_state",
  "glam 0.33.5",
@@ -13817,6 +13818,7 @@ dependencies = [
  "parking_lot",
  "profiling 0.1.0",
  "rodio",
+ "rust-i18n",
  "serde_json",
  "smol",
  "tracing",
@@ -13971,6 +13973,7 @@ dependencies = [
  "gpui-ce",
  "helio_component",
  "image",
+ "notify 8.2.0",
  "parking_lot",
  "plugin_editor_api",
  "pulsar_reflection",

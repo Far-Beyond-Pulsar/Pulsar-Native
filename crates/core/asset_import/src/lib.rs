@@ -20,5 +20,7 @@ pub mod service;
 
 pub use db::{ImportDb, ImportRecord, LinkStatus};
 pub use importer::{importer_for, Importer, OptionValues};
-pub use scan::{scan_project, ScanReport};
-pub use service::{ignore_sources, submit_import, submit_reimport, ImportMode};
+pub use scan::{affects_scan, scan_project, OfferedOnce, ScanReport};
+pub use service::{
+    ignore_sources, submit_import, submit_reimport, submit_scan, ImportMode, TRASH_DIR,
+};

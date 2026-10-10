@@ -67,6 +67,9 @@ pub struct LevelEditorPanel {
     // Workspace for draggable panels
     workspace: Option<Entity<Workspace>>,
 
+    /// The viewport tab, whose options bar shows the transform tool.
+    viewport_panel: Option<WeakEntity<crate::ViewportPanelWrapper>>,
+
     // Play In Editor (issue #243): the Game tab is opened when the game starts
     // and removed on stop. `game_panel` is the live tab entity, if open.
     game_panel: Option<Entity<crate::ui::viewport::game_viewport::GameViewport>>,

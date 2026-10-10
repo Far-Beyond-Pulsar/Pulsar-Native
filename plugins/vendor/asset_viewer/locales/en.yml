@@ -64,3 +64,10 @@ AssetViewer.DefaultMaterials: Default Materials
 AssetViewer.ApplyToAllSlots: Apply to all slots
 AssetViewer.MaterialsHint: Placed meshes use these unless a component overrides a slot.
 AssetViewer.NoMaterial: Imported material
+AssetViewer.Mode.Lit: "Lit"
+AssetViewer.Mode.Unlit: "Unlit"
+AssetViewer.Mode.Wireframe: "Wireframe"
+AssetViewer.Mode.Normals: "Normals"
+AssetViewer.Mode.Uv1: "UV 1"
+AssetViewer.Mode.Uv2: "UV 2"
+AssetViewer.Mode.Density: "Density"

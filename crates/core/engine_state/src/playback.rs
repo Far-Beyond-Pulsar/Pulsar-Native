@@ -9,8 +9,14 @@
 //! Intent flows the other way, as events: the toolbar publishes
 //! `pulsar_events::PlaybackCommand`s on the host bus and the editor that hosts
 //! play sessions acts on them and reports back by updating this resource.
+//!
+//! Several editors can host play sessions at once (one per open level). Only
+//! one of them, the *playback host*, reports into [`PlaybackState`]; the
+//! others would overwrite its status with their own (#1009). See
+//! [`claim_playback_host`].
 
 use std::process::Child;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::Mutex;
 
@@ -168,5 +174,67 @@ pub fn update_playback_if_changed(f: impl FnOnce(&mut PlaybackState)) {
     f(&mut next);
     if next != handle.get() {
         handle.set(next);
+    }
+}
+
+// ── Playback host ──────────────────────────────────────────────────────────
+
+/// The editor that reports into [`PlaybackState`]; 0 when none does.
+static PLAYBACK_HOST: AtomicU64 = AtomicU64::new(0);
+static NEXT_PLAYBACK_HOST: AtomicU64 = AtomicU64::new(1);
+
+/// A new id for an editor that can host play sessions. Never 0.
+pub fn new_playback_host_id() -> u64 {
+    NEXT_PLAYBACK_HOST.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Make `id` the playback host, e.g. because the user pressed Play in it.
+pub fn claim_playback_host(id: u64) {
+    PLAYBACK_HOST.store(id, Ordering::Relaxed);
+}
+
+/// Make `id` the playback host if no editor is. Returns whether `id` is the
+/// host afterwards.
+pub fn claim_playback_host_if_free(id: u64) -> bool {
+    match PLAYBACK_HOST.compare_exchange(0, id, Ordering::Relaxed, Ordering::Relaxed) {
+        Ok(_) => true,
+        Err(current) => current == id,
+    }
+}
+
+/// Whether `id` is the playback host.
+pub fn is_playback_host(id: u64) -> bool {
+    PLAYBACK_HOST.load(Ordering::Relaxed) == id
+}
+
+/// Stop `id` being the playback host. Returns whether it was.
+pub fn release_playback_host(id: u64) -> bool {
+    PLAYBACK_HOST
+        .compare_exchange(id, 0, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_playback_host_at_a_time() {
+        let (a, b) = (new_playback_host_id(), new_playback_host_id());
+        // Other tests in this binary don't touch the host; start from none.
+        PLAYBACK_HOST.store(0, Ordering::Relaxed);
+
+        assert!(claim_playback_host_if_free(a));
+        assert!(!claim_playback_host_if_free(b), "a already hosts");
+        assert!(claim_playback_host_if_free(a), "a stays host");
+
+        claim_playback_host(b);
+        assert!(is_playback_host(b) && !is_playback_host(a));
+        assert!(!release_playback_host(a), "a no longer hosts");
+        assert!(is_playback_host(b));
+
+        assert!(release_playback_host(b));
+        assert!(claim_playback_host_if_free(a), "free again");
+        assert!(release_playback_host(a));
     }
 }

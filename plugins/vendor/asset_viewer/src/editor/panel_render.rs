@@ -173,6 +173,32 @@ const DENSITY_ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
     shader_location: 4,
 }];
 
+/// Bind group 1 of the mesh pipeline: the texture the UV modes sample and its
+/// sampler.
+pub(crate) fn uv_grid_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("mesh UV grid bind group layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
 pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
         array_stride: (VERTEX_FLOATS * 4) as u64,
@@ -380,6 +406,25 @@ fn local_vertex_density(
     Some(VertexDensityResult { values: normalized, band_ranges })
 }
 
+/// The native `.mesh` a project source (an FBX, OBJ, …) is linked to by an
+/// import, if that asset exists. The viewer previews it instead of reading
+/// the source, so the source shows with its imported UVs and materials.
+pub(crate) fn linked_native_asset(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(engine_state::get_project_path()?);
+    let key = asset_import::db::relative_key(&root, path);
+    let asset = root.join(&asset_import::ImportDb::load(&root).find_source(&key)?.asset);
+    asset.is_file().then_some(asset)
+}
+
+/// Why `path` did not decode as a native mesh.
+fn native_mesh_error(path: &std::path::Path) -> String {
+    match std::fs::metadata(path) {
+        Err(error) => format!("Could not read {}: {error}", path.display()),
+        Ok(meta) if meta.len() == 0 => format!("{} is empty", path.display()),
+        Ok(_) => format!("{} is not a valid Pulsar mesh", path.display()),
+    }
+}
+
 /// Read the source mesh only when density mode is requested, then compute its
 /// area-based vertex-density field off the UI thread.
 pub(crate) fn load_vertex_density(
@@ -394,9 +439,11 @@ pub(crate) fn load_vertex_density(
         return Err("cancelled".into());
     }
 
+    let linked = linked_native_asset(path);
+    let path = linked.as_deref().unwrap_or(path);
     let (positions, indices) = if path.extension().and_then(|ext| ext.to_str()) == Some("mesh") {
         let asset = helio_component::subsystems::load_mesh_asset_upload(path)
-            .ok_or_else(|| format!("Could not load mesh {}", path.display()))?;
+            .ok_or_else(|| native_mesh_error(path))?;
         let positions = asset
             .geometry
             .vertices
@@ -771,27 +818,7 @@ impl AssetViewerPanel {
                 count: None,
             }],
         });
-        let uv_grid_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("mesh UV grid bind group layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+        let uv_grid_bgl = uv_grid_layout(device);
         self.uv_grid_bgl = Some(uv_grid_bgl.clone());
         self.uv_grid_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mesh UV grid bind group"),
@@ -1108,12 +1135,16 @@ impl AssetViewerPanel {
         path: &std::path::Path,
     ) {
         let Some(asset) = helio_component::subsystems::load_mesh_asset_upload(path) else {
-            log::error!("Failed to load native mesh {:?}", path);
+            let error = native_mesh_error(path);
+            log::error!("{error}");
+            self.mesh_error = Some(error);
             return;
         };
         let source = &asset.geometry.vertices;
         if source.is_empty() || asset.geometry.indices.is_empty() {
-            log::error!("Native mesh {:?} has no renderable triangles", path);
+            let error = format!("{} has no renderable triangles", path.display());
+            log::error!("{error}");
+            self.mesh_error = Some(error);
             return;
         }
         let mut bbox_min = [f32::MAX; 3];
@@ -1192,8 +1223,18 @@ impl AssetViewerPanel {
             return;
         };
         let path = &path;
+        self.mesh_error = None;
         if path.extension().and_then(|e| e.to_str()) == Some("mesh") {
             self.load_native_mesh(device, queue, path);
+            return;
+        }
+        // A linked source previews its imported asset (#1108).
+        if let Some(asset) = linked_native_asset(path) {
+            self.load_native_mesh(device, queue, &asset);
+            self.scene_stats.generator = format!(
+                "Pulsar native mesh, imported from {}",
+                path.file_name().and_then(|n| n.to_str()).unwrap_or_default()
+            );
             return;
         }
 
@@ -1204,6 +1245,7 @@ impl AssetViewerPanel {
             Ok(s) => s,
             Err(e) => {
                 log::error!("Failed to load FBX {:?}: {}", path, e);
+                self.mesh_error = Some(format!("Could not load {}: {e}", path.display()));
                 return;
             }
         };
@@ -1419,6 +1461,7 @@ impl AssetViewerPanel {
 
         if verts.is_empty() || indices.is_empty() {
             log::error!("FBX {:?} has no renderable triangles", path);
+            self.mesh_error = Some(format!("{} has no renderable triangles", path.display()));
             return;
         }
 

@@ -723,6 +723,20 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_activate_open_editor))
             .on_action(cx.listener(Self::on_go_back))
             .on_action(cx.listener(Self::on_go_forward))
+            // The mouse's back and forward side buttons (#24). Anything under
+            // the pointer that uses them itself stops them first.
+            .on_mouse_down(
+                MouseButton::Navigate(gpui::NavigationDirection::Back),
+                cx.listener(|this, _: &MouseDownEvent, window, cx| {
+                    this.on_go_back(&ui_common::menu::GoBack {}, window, cx);
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(gpui::NavigationDirection::Forward),
+                cx.listener(|this, _: &MouseDownEvent, window, cx| {
+                    this.on_go_forward(&ui_common::menu::GoForward {}, window, cx);
+                }),
+            )
             .on_action(cx.listener(|_, _: &ui::OpenSettings, _, cx| {
                 use gpui::UpdateGlobal as _;
                 window_manager::WindowRegistry::update_global(cx, |reg, cx| {

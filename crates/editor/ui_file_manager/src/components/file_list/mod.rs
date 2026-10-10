@@ -60,6 +60,8 @@ pub struct FileManagerDrawer {
     pub(crate) directory_cache: Option<(PathBuf, Vec<FileItem>)>,
     pub(crate) directory_cache_dirty: bool,
     pub(crate) fs_event_listener: Option<gpui::Task<()>>,
+    /// Rescans for imports when importable files change (#1101).
+    pub(crate) import_watch: Option<crate::utils::import_scan::ImportWatch>,
     pub(crate) clipboard: Option<(Vec<PathBuf>, bool)>,
     pub(crate) grid_scroll_handle: VirtualListScrollHandle,
     pub(crate) list_scroll_handle: VirtualListScrollHandle,
@@ -216,6 +218,7 @@ impl FileManagerDrawer {
             directory_cache: None,
             directory_cache_dirty: true,
             fs_event_listener: None,
+            import_watch: None,
             show_hidden_files,
             clipboard: None,
             registered_file_types: Vec::new(),
@@ -260,6 +263,7 @@ impl FileManagerDrawer {
         }));
 
         this.scan_for_imports(window, cx);
+        this.import_watch = this.watch_for_imports(window, cx);
         this
     }
 

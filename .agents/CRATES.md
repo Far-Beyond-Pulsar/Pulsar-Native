@@ -21,6 +21,8 @@ The heart of the engine. 26 crates with no UI dependencies.
 
 | Crate | Responsibility |
 |---|---|
+| `asset_import` | Source-asset import (FBX, OBJ, …): import database, project scan, per-format importers, conversions as editor tasks (see below) |
+| `editor_task_queue` | Background task queue behind the Tasks window: progress, errors, cancellation |
 | `engine` | Binary entry point, startup graph, GPUI `App` creation |
 | `engine_backend` | Window, input, and rendering backend; subsystem lifecycle |
 | `engine_class_derive` | `#[derive(EngineClass)]` proc macro |
@@ -59,6 +61,39 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `ui_gen_macros` | Proc macros for UI boilerplate |
 | `window_manager` | Multi-window management, window definitions |
 
+### Asset import
+
+A project can hold raw source files next to the native assets built from
+them. `asset_import` handles them:
+
+- `scan`: importable sources with no record, linked sources whose file changed,
+  and records whose source is gone. The file manager runs it as a task when a
+  drawer opens and again (debounced) when an importable file changes. Each
+  source is offered to the user once per session.
+- `db`: the import database, `.pulsar/import_db.json`. One record per *linked*
+  source: its project-relative path, content hash and size, the native asset
+  it produced and the importer id. Sources the user declined are listed as
+  ignored.
+- `importer`: the per-format conversion, chosen by extension.
+- `service`: every conversion runs as an `editor_task_queue` task. In
+  `ImportMode::Link` the source stays and gets a record, so later edits are
+  detected and reimported with the same options. In
+  `ImportMode::ConvertInPlace` the native asset replaces the source, which
+  moves to `.pulsar/trash/<timestamp>/`, and no record is kept.
+
+Import options are still stored separately, in `.pulsar/import_options.json`
+(`engine_fs::import_options`), keyed by native asset.
+
+**Mesh default materials.** A native `.mesh` carries one `MeshMaterialSlot`
+per material slot (`helio_component::mesh_cache`). `material_asset` is the
+slot's default material, authored in the mesh viewer with
+`mesh_cache::set_default_materials`; a reimport keeps it, matching slots by
+source material index, then by name. A placed `StaticMeshComponent` slot
+inherits the default unless it assigns its own material
+(`StaticMeshMaterialSlot::effective_material_asset`). The component resolves
+this before anything reaches Helio. Helio's passes only ever see the
+effective material, never whether it was a default or an assignment.
+
 ## editor/ — Editor panels
 
 20 crates, one per editor panel or subsystem. Previously `ui-crates/`. Each
@@ -87,6 +122,25 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_settings` | Settings editor |
 | `ui_type_debugger` | Runtime type inspector |
 | `ui_types_common` | Shared type definitions |
+
+### Asset thumbnails
+
+`engine_fs::thumbnails` renders and caches file-browser thumbnails, with one
+renderer per extension. `ui_common::asset_thumbnails::register_mesh_thumbnail_renderer`
+installs Helio's model renderer, plus every `ThumbnailRendererRegistration`
+linked into the binary. A crate that knows a format `ui_common` cannot depend
+on contributes its renderer at link time:
+
+```rust
+pulsar_reflection::inventory::submit! {
+    ui_common::asset_thumbnails::ThumbnailRendererRegistration {
+        extension: "mesh", // lower-case, no dot
+        render: render_thumbnail, // fn(&Path) -> Option<image::RgbaImage>
+    }
+}
+```
+
+`helio_component::mesh_thumbnail` is the reference implementation (`.mesh`).
 
 ## subsystems/ — Integration crates
 

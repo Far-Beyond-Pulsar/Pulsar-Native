@@ -1,0 +1,170 @@
+# Build - ar
+
+# Build button
+Build.Button.Cancel: "إلغاء البناء"
+Build.Button.CancelTooltip: "إيقاف البناء"
+Build.Button.NoConfiguration: "لا توجد تهيئة"
+Build.Button.NoConfigurationTooltip: "اختر تهيئة بناء"
+Build.Button.ChooseTooltip: "اختيار تهيئة البناء"
+Build.Button.StopGame: "إيقاف"
+Build.Button.StopGameTooltip: "إيقاف اللعبة قيد التشغيل"
+
+# Picker
+Build.Picker.Empty: "لا توجد تهيئات بناء بعد."
+Build.Picker.Edit: "تحرير التهيئات…"
+
+# Search
+Build.Search.Configurations: "البحث في التهيئات…"
+Build.Search.Platforms: "البحث في المنصات…"
+Build.Search.NoConfigurationsMatch: "لا توجد تهيئات تطابق «%{query}»."
+Build.Search.NoPlatformsMatch: "لا توجد منصات تطابق بحثك."
+
+# Configurator window
+Build.Configurator.Title: "تهيئات البناء"
+Build.Configurator.Configurations: "التهيئات"
+Build.Configurator.New: "جديد"
+Build.Configurator.NewTooltip: "إنشاء تهيئة بناء"
+Build.Configurator.Empty: "لا توجد تهيئات بعد."
+Build.Configurator.CountOne: "تهيئة واحدة"
+Build.Configurator.CountMany: "عدد التهيئات: %{count}"
+Build.Configurator.Filtered: "%{shown} من %{total}"
+Build.Configurator.NoneTitle: "لا توجد تهيئات بناء"
+Build.Configurator.NoneDescription: "تحدد التهيئة طريقة البناء: وضع Rust والمنصات والخطوات."
+Build.Configurator.Create: "إنشاء تهيئة"
+Build.Configurator.SetActive: "تعيين كنشطة"
+Build.Configurator.SetActiveTooltip: "استخدام هذه التهيئة لزر البناء"
+Build.Configurator.Active: "نشطة"
+Build.Configurator.Duplicate: "تكرار"
+Build.Configurator.Delete: "حذف"
+Build.Configurator.ConfirmDelete: "انقر مرة أخرى للحذف"
+
+# General section
+Build.General.Title: "عام"
+Build.General.Description: "كيف تظهر هذه التهيئة في قائمة البناء."
+Build.General.Name: "الاسم"
+Build.General.NamePlaceholder: "اسم التهيئة"
+Build.General.NameRequired: "تحتاج التهيئة إلى اسم."
+Build.General.NameTaken: "تستخدم تهيئة أخرى هذا الاسم بالفعل."
+Build.General.ConfigDescription: "الوصف"
+Build.General.DescriptionPlaceholder: "الغرض من هذه التهيئة"
+
+# Rust build mode section
+Build.Profile.Title: "وضع بناء Rust"
+Build.Profile.Description: "ملف تعريف cargo الذي تستخدمه كل خطوة ترجمة."
+Build.Profile.Debug.Summary: "ترجمة سريعة وتشغيل بطيء. تأكيدات التصحيح مفعلة."
+Build.Profile.Release.Summary: "بناء محسَّن لاختبار الأداء الحقيقي."
+Build.Profile.Shipping.Summary: "Release مع LTO كامل ووحدة codegen واحدة ورموز محذوفة."
+
+# Platforms section
+Build.Platforms.Title: "المنصات"
+Build.Platforms.Description: "تُبنى كل منصة محددة بالتناوب. اتركها فارغة للبناء لهذا الجهاز."
+Build.Platforms.ThisMachine: "هذا الجهاز"
+Build.Platforms.ThisMachineDefault: "هذا الجهاز (افتراضي)"
+Build.Platforms.ThisMachineTooltip: "البناء للمنصة التي يعمل عليها هذا المحرر"
+Build.Platforms.Desktop: "سطح المكتب"
+Build.Platforms.DesktopTooltip: "Windows x64 وLinux x64 وmacOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} من %{total}"
+Build.Platforms.NeedsSdk: "تحتاج إلى SDK الجهاز؛ لا يستطيع cargo بناءها"
+
+# Platform families
+Build.Family.Unix: "Solaris وillumos"
+Build.Family.Other: "أخرى"
+Build.Family.Console: "أجهزة الألعاب"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7 (فاصلة عائمة عتادية)"
+Build.Target.LinuxArmGnueabi: "Linux ARM (فاصلة عائمة برمجية)"
+Build.Target.LinuxArmGnueabihf: "Linux ARM (فاصلة عائمة عتادية)"
+Build.Target.IosAarch64: "جهاز iOS"
+Build.Target.IosX86_64: "محاكي iOS (Intel)"
+Build.Target.IosAarch64Sim: "محاكي iOS (Apple Silicon)"
+
+# Build steps section
+Build.Steps.Title: "خطوات البناء"
+Build.Steps.Description: "تعمل دائمًا بهذا الترتيب. تُتخطى الخطوات غير المستخدمة."
+Build.Steps.Update.Title: "تحديث التبعيات"
+Build.Steps.Update.Description: "cargo update: جلب أحدث الإصدارات المتوافقة أولًا."
+Build.Steps.Clean.Title: "التنظيف أولًا"
+Build.Steps.Clean.Description: "cargo clean: التخلص من مخرجات البناء القديمة والبدء من الصفر."
+Build.Steps.Check.Title: "فحص"
+Build.Steps.Check.Description: "cargo check: فحص الأنواع بسرعة دون إنتاج ملفات ثنائية."
+Build.Steps.Build.Title: "بناء"
+Build.Steps.Build.Description: "cargo build: الترجمة لكل منصة محددة."
+Build.Steps.Run.Title: "تشغيل"
+Build.Steps.Run.Description: "تشغيل اللعبة عند انتهاء البناء (يفعّل البناء)."
+Build.Steps.Preset.QuickCheck: "فحص سريع"
+Build.Steps.Preset.Build: "بناء"
+Build.Steps.Preset.CleanBuild: "بناء نظيف"
+Build.Steps.Preset.BuildAndRun: "بناء وتشغيل"
+Build.Steps.Preset.FullRefresh: "تحديث كامل"
+Build.Steps.Summary.Update: "تحديث"
+Build.Steps.Summary.Clean: "تنظيف"
+Build.Steps.Summary.Check: "فحص"
+Build.Steps.Summary.Build: "بناء"
+Build.Steps.Summary.Run: "تشغيل"
+Build.Steps.Summary.None: "لا توجد خطوات"
+
+# Pipeline preview
+Build.Preview.Title: "معاينة خط المعالجة"
+Build.Preview.Bootstrap: "إنشاء ملفات المشروع أو تحديثها"
+Build.Preview.Environment: "البيئة: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "متقدم"
+Build.Advanced.Description: "يُمرَّر إلى كل cargo check وbuild وrun."
+Build.Advanced.Features: "ميزات Cargo (مفصولة بفواصل أو مسافات)"
+Build.Advanced.ExtraArgs: "وسائط cargo إضافية"
+Build.Advanced.QuoteHint: "ضع الوسيط الذي يحتوي على مسافات بين علامتي اقتباس: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "جارٍ تجهيز المشروع"
+Build.Step.Update: "جارٍ تحديث التبعيات"
+Build.Step.Clean: "جارٍ تنظيف مخرجات البناء"
+Build.Step.Check: "جارٍ الفحص"
+Build.Step.CheckFor: "جارٍ الفحص لـ %{platform}"
+Build.Step.Build: "جارٍ البناء"
+Build.Step.BuildFor: "جارٍ البناء لـ %{platform}"
+Build.Step.Run: "جارٍ التشغيل"
+Build.Step.RunFor: "جارٍ التشغيل لـ %{platform}"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "لا توجد خطوات مفعلة في هذه التهيئة."
+Build.Plan.UnbuildablePlatform: "لا يمكن بناء %{platform} باستخدام cargo؛ فهي تحتاج إلى SDK المنصة."
+Build.Plan.RunSkipped: "تم تخطي التشغيل: لا يمكن لأي من المنصات المحددة العمل على هذا الجهاز."
+
+# Progress
+Build.Progress.Starting: "جارٍ البدء"
+Build.Progress.Resolving: "جارٍ حل التبعيات"
+Build.Progress.Compiling: "جارٍ ترجمة %{name}"
+Build.Progress.Updating: "جارٍ تحديث %{what}"
+Build.Task.Title: "البناء: %{name}"
+Build.Task.Starting: "جارٍ بدء البناء"
+
+# Notifications
+Build.Notification.NoProject: "افتح مشروعًا قبل البناء."
+Build.Notification.AlreadyRunning: "هناك عملية بناء قيد التشغيل بالفعل."
+Build.Notification.Starting: "جارٍ البدء…"
+Build.Notification.Succeeded: "نجح البناء"
+Build.Notification.Failed: "فشل البناء"
+Build.Notification.Cancelled: "أُلغي البناء"
+Build.Notification.StoppedUnexpectedly: "توقف البناء بشكل غير متوقع."
+
+# Cargo errors
+Build.Error.CouldNotStart: "تعذر بدء cargo %{subcommand}: %{error}"
+Build.Error.CouldNotWait: "تعذر انتظار cargo: %{error}"
+Build.Error.CommandFailed: "فشل cargo %{subcommand}:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "الخطأ %{number}"
+Build.Failure.Copy: "نسخ"
+Build.Failure.CountOne: "تم التقاط %{count} خطأ ترجمة من Cargo."
+Build.Failure.CountMany: "تم التقاط %{count} من أخطاء الترجمة من Cargo."
+Build.Failure.CopyAll: "نسخ كل الأخطاء"
+Build.Failure.Close: "إغلاق"
+
+# Running the game
+Build.Game.Title: "تشغيل"
+Build.Game.LaunchFailed: "تعذر تشغيل اللعبة: %{error}"
+Build.Game.NonZeroExit: "خرجت اللعبة برمز حالة غير صفري."
+Build.Game.Crashed: "تعطلت اللعبة:\n%{output}"
+Build.Game.CrashedWithReport: "تعطلت اللعبة.\nحُفظ التقرير في %{path}\n\n%{output}"

@@ -4,7 +4,13 @@
 //! pipeline and checks the centre pixel, so the modes show the data they
 //! claim to. They need a GPU adapter; absence fails rather than skipping.
 
-use super::panel_render::{create_mesh_pipeline, mesh_vertex_layout, MESH_VERTEX_SRC};
+use super::panel_render::{
+    create_mesh_pipeline, mesh_vertex_layout, uv_grid_layout, MESH_VERTEX_SRC,
+};
+
+/// The UV modes' test texture, row by row (RGBA): red, green / blue, white.
+/// UV (0.25, 0.25) falls in the red texel, (0.75, 0.25) in the green one.
+const GRID: [[u8; 4]; 4] = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255; 4]];
 
 const NORMALS: u32 = 3;
 const UV0: u32 = 4;
@@ -34,9 +40,10 @@ fn render_mode(mode: u32) -> [u8; 4] {
             count: None,
         }],
     });
+    let grid_layout = uv_grid_layout(&device);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
-        bind_group_layouts: &[Some(&layout)],
+        bind_group_layouts: &[Some(&layout), Some(&grid_layout)],
         immediate_size: 0,
     });
     let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -93,6 +100,49 @@ fn render_mode(mode: u32) -> [u8; 4] {
                 size: wgpu::BufferSize::new(96),
             }),
         }],
+    });
+
+    // The UV modes sample a 2x2 grid, one colour per quadrant (see `GRID`),
+    // without filtering: the colour tells which UV the mode used.
+    let grid = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width: 2,
+            height: 2,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        grid.as_image_copy(),
+        bytemuck::cast_slice(&GRID),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(8),
+            rows_per_image: Some(2),
+        },
+        grid.size(),
+    );
+    let grid_view = grid.create_view(&Default::default());
+    let grid_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+    let grid_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &grid_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&grid_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&grid_sampler),
+            },
+        ],
     });
 
     // position, normal, uv0, uv1; one clockwise triangle covering the target.
@@ -173,6 +223,7 @@ fn render_mode(mode: u32) -> [u8; 4] {
         });
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, &group, &[0]);
+        pass.set_bind_group(1, &grid_group, &[]);
         pass.set_vertex_buffer(0, vertex_buffer.slice(..));
         pass.draw(0..3, 0..1);
     }
@@ -208,18 +259,17 @@ fn normals_mode_shows_the_vertex_normal() {
     assert!(near(b, 255) && near(g, 128) && near(r, 128) && a == 255, "{b} {g} {r} {a}");
 }
 
-/// UV channel 1 is (0.25, 0.25): gradient (0.25, 0.25, 0.25) in an even
-/// checker cell, 0.7 brightness, so every channel is about 45.
+/// UV channel 1 is (0.25, 0.25): the grid's red texel.
 #[test]
 fn uv_one_mode_shows_the_first_channel() {
     let [b, g, r, _] = render_mode(UV0);
-    assert!(near(b, 45) && near(g, 45) && near(r, 45), "{b} {g} {r}");
+    assert!(near(r, 255) && near(g, 0) && near(b, 0), "{b} {g} {r}");
 }
 
-/// UV channel 2 is (0.75, 0.25): red about 134, green and blue about 45.
-/// Different from channel 1, so the two modes cannot be showing the same data.
+/// UV channel 2 is (0.75, 0.25): the green texel. Different from channel 1,
+/// so the two modes cannot be showing the same data.
 #[test]
 fn uv_two_mode_shows_the_second_channel() {
     let [b, g, r, _] = render_mode(UV1);
-    assert!(near(r, 134) && near(g, 45) && near(b, 45), "{b} {g} {r}");
+    assert!(near(r, 0) && near(g, 255) && near(b, 0), "{b} {g} {r}");
 }
