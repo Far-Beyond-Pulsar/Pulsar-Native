@@ -1,0 +1,170 @@
+# Build - es
+
+# Build button
+Build.Button.Cancel: "Cancelar compilación"
+Build.Button.CancelTooltip: "Detener la compilación"
+Build.Button.NoConfiguration: "Sin configuración"
+Build.Button.NoConfigurationTooltip: "Elige una configuración de compilación"
+Build.Button.ChooseTooltip: "Elegir configuración de compilación"
+Build.Button.StopGame: "Detener"
+Build.Button.StopGameTooltip: "Detener el juego en ejecución"
+
+# Picker
+Build.Picker.Empty: "Aún no hay configuraciones de compilación."
+Build.Picker.Edit: "Editar configuraciones…"
+
+# Search
+Build.Search.Configurations: "Buscar configuraciones…"
+Build.Search.Platforms: "Buscar plataformas…"
+Build.Search.NoConfigurationsMatch: "Ninguna configuración coincide con «%{query}»."
+Build.Search.NoPlatformsMatch: "Ninguna plataforma coincide con tu búsqueda."
+
+# Configurator window
+Build.Configurator.Title: "Configuraciones de compilación"
+Build.Configurator.Configurations: "Configuraciones"
+Build.Configurator.New: "Nueva"
+Build.Configurator.NewTooltip: "Crear una configuración de compilación"
+Build.Configurator.Empty: "Aún no hay configuraciones."
+Build.Configurator.CountOne: "%{count} configuración"
+Build.Configurator.CountMany: "%{count} configuraciones"
+Build.Configurator.Filtered: "%{shown} de %{total}"
+Build.Configurator.NoneTitle: "No hay configuraciones de compilación"
+Build.Configurator.NoneDescription: "Una configuración indica cómo compilar: el modo de Rust, las plataformas y los pasos."
+Build.Configurator.Create: "Crear una configuración"
+Build.Configurator.SetActive: "Establecer como activa"
+Build.Configurator.SetActiveTooltip: "Usar esta configuración para el botón Compilar"
+Build.Configurator.Active: "Activa"
+Build.Configurator.Duplicate: "Duplicar"
+Build.Configurator.Delete: "Eliminar"
+Build.Configurator.ConfirmDelete: "Haz clic de nuevo para eliminar"
+
+# General section
+Build.General.Title: "General"
+Build.General.Description: "Cómo aparece esta configuración en el menú Compilar."
+Build.General.Name: "Nombre"
+Build.General.NamePlaceholder: "Nombre de la configuración"
+Build.General.NameRequired: "Una configuración necesita un nombre."
+Build.General.NameTaken: "Otra configuración ya usa este nombre."
+Build.General.ConfigDescription: "Descripción"
+Build.General.DescriptionPlaceholder: "Para qué sirve esta configuración"
+
+# Rust build mode section
+Build.Profile.Title: "Modo de compilación de Rust"
+Build.Profile.Description: "El perfil de cargo que usa cada paso de compilación."
+Build.Profile.Debug.Summary: "Rápido de compilar, lento de ejecutar. Aserciones de depuración activadas."
+Build.Profile.Release.Summary: "Compilación optimizada para probar el rendimiento real."
+Build.Profile.Shipping.Summary: "Release con LTO completo, una unidad de codegen y símbolos eliminados."
+
+# Platforms section
+Build.Platforms.Title: "Plataformas"
+Build.Platforms.Description: "Cada plataforma seleccionada se compila por turnos. Déjalo vacío para compilar para esta máquina."
+Build.Platforms.ThisMachine: "Esta máquina"
+Build.Platforms.ThisMachineDefault: "Esta máquina (predeterminado)"
+Build.Platforms.ThisMachineTooltip: "Compilar para la plataforma en la que se ejecuta este editor"
+Build.Platforms.Desktop: "Escritorio"
+Build.Platforms.DesktopTooltip: "Windows x64, Linux x64 y macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} de %{total}"
+Build.Platforms.NeedsSdk: "Necesita el SDK de la consola; cargo no puede compilarla"
+
+# Platform families
+Build.Family.Unix: "Solaris e illumos"
+Build.Family.Other: "Otras"
+Build.Family.Console: "Consolas"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7 (coma flotante por hardware)"
+Build.Target.LinuxArmGnueabi: "Linux ARM (coma flotante por software)"
+Build.Target.LinuxArmGnueabihf: "Linux ARM (coma flotante por hardware)"
+Build.Target.IosAarch64: "Dispositivo iOS"
+Build.Target.IosX86_64: "Simulador de iOS (Intel)"
+Build.Target.IosAarch64Sim: "Simulador de iOS (Apple Silicon)"
+
+# Build steps section
+Build.Steps.Title: "Pasos de compilación"
+Build.Steps.Description: "Siempre se ejecutan en este orden. Los pasos no usados se omiten."
+Build.Steps.Update.Title: "Actualizar dependencias"
+Build.Steps.Update.Description: "cargo update: obtener primero las versiones compatibles más recientes."
+Build.Steps.Clean.Title: "Limpiar primero"
+Build.Steps.Clean.Description: "cargo clean: descartar la salida de compilación anterior y empezar de cero."
+Build.Steps.Check.Title: "Comprobar"
+Build.Steps.Check.Description: "cargo check: comprobar tipos rápidamente sin generar binarios."
+Build.Steps.Build.Title: "Compilar"
+Build.Steps.Build.Description: "cargo build: compilar para cada plataforma seleccionada."
+Build.Steps.Run.Title: "Ejecutar"
+Build.Steps.Run.Description: "Iniciar el juego al terminar la compilación (activa Compilar)."
+Build.Steps.Preset.QuickCheck: "Comprobación rápida"
+Build.Steps.Preset.Build: "Compilar"
+Build.Steps.Preset.CleanBuild: "Compilación limpia"
+Build.Steps.Preset.BuildAndRun: "Compilar y ejecutar"
+Build.Steps.Preset.FullRefresh: "Actualización completa"
+Build.Steps.Summary.Update: "Actualizar"
+Build.Steps.Summary.Clean: "Limpiar"
+Build.Steps.Summary.Check: "Comprobar"
+Build.Steps.Summary.Build: "Compilar"
+Build.Steps.Summary.Run: "Ejecutar"
+Build.Steps.Summary.None: "Sin pasos"
+
+# Pipeline preview
+Build.Preview.Title: "VISTA PREVIA DEL PIPELINE"
+Build.Preview.Bootstrap: "generar o actualizar los archivos del proyecto"
+Build.Preview.Environment: "entorno: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "Avanzado"
+Build.Advanced.Description: "Se pasa a cada cargo check, build y run."
+Build.Advanced.Features: "Features de cargo (separadas por comas o espacios)"
+Build.Advanced.ExtraArgs: "Argumentos adicionales de cargo"
+Build.Advanced.QuoteHint: "Pon entre comillas un argumento que contenga espacios: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "Preparando el proyecto"
+Build.Step.Update: "Actualizando dependencias"
+Build.Step.Clean: "Limpiando artefactos de compilación"
+Build.Step.Check: "Comprobando"
+Build.Step.CheckFor: "Comprobando para %{platform}"
+Build.Step.Build: "Compilando"
+Build.Step.BuildFor: "Compilando para %{platform}"
+Build.Step.Run: "Iniciando"
+Build.Step.RunFor: "Iniciando para %{platform}"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "Esta configuración no tiene ningún paso activado."
+Build.Plan.UnbuildablePlatform: "%{platform} no se puede compilar con cargo; necesita el SDK de su plataforma."
+Build.Plan.RunSkipped: "Se omitió la ejecución: ninguna de las plataformas seleccionadas puede ejecutarse en esta máquina."
+
+# Progress
+Build.Progress.Starting: "Iniciando"
+Build.Progress.Resolving: "Resolviendo dependencias"
+Build.Progress.Compiling: "Compilando %{name}"
+Build.Progress.Updating: "Actualizando %{what}"
+Build.Task.Title: "Compilación: %{name}"
+Build.Task.Starting: "Iniciando la compilación"
+
+# Notifications
+Build.Notification.NoProject: "Abre un proyecto antes de compilar."
+Build.Notification.AlreadyRunning: "Ya hay una compilación en curso."
+Build.Notification.Starting: "Iniciando…"
+Build.Notification.Succeeded: "Compilación correcta"
+Build.Notification.Failed: "La compilación falló"
+Build.Notification.Cancelled: "Compilación cancelada"
+Build.Notification.StoppedUnexpectedly: "La compilación se detuvo inesperadamente."
+
+# Cargo errors
+Build.Error.CouldNotStart: "No se pudo iniciar cargo %{subcommand}: %{error}"
+Build.Error.CouldNotWait: "No se pudo esperar a cargo: %{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} falló:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "Error %{number}"
+Build.Failure.Copy: "Copiar"
+Build.Failure.CountOne: "%{count} error de compilación capturado de Cargo."
+Build.Failure.CountMany: "%{count} errores de compilación capturados de Cargo."
+Build.Failure.CopyAll: "Copiar todos los errores"
+Build.Failure.Close: "Cerrar"
+
+# Running the game
+Build.Game.Title: "Ejecutar"
+Build.Game.LaunchFailed: "No se pudo iniciar el juego: %{error}"
+Build.Game.NonZeroExit: "El juego terminó con un código de error."
+Build.Game.Crashed: "El juego se bloqueó:\n%{output}"
+Build.Game.CrashedWithReport: "El juego se bloqueó.\nInforme guardado en %{path}\n\n%{output}"

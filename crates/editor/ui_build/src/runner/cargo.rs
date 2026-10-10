@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use editor_task_queue::TaskContext;
 use parking_lot::Mutex;
+use rust_i18n::t;
 
 use super::plan::Invocation;
 
@@ -107,10 +108,13 @@ fn registry_activity(line: &str) -> Option<String> {
         .strip_prefix("Updating ")
         .or_else(|| line.strip_prefix("Locking "))?
         .replace('`', "");
-    Some(format!(
-        "Updating {}",
-        what.rsplit('/').next().unwrap_or(&what)
-    ))
+    Some(
+        t!(
+            "Build.Progress.Updating",
+            what = what.rsplit('/').next().unwrap_or(&what)
+        )
+        .to_string(),
+    )
 }
 
 /// How many `compiler-artifact` messages a build of `invocation` emits, from
@@ -216,7 +220,7 @@ pub fn run_compiling(
     progress: &Progress,
     cancel: &Arc<AtomicBool>,
 ) -> Result<(), StepError> {
-    progress.status("Resolving dependencies");
+    progress.status(t!("Build.Progress.Resolving"));
     let total = expected_artifacts(invocation, project_root);
 
     let mut cmd = command(invocation, project_root);
@@ -226,10 +230,14 @@ pub fn run_compiling(
     tracing::info!("[build] {}", invocation.display());
 
     let mut child = cmd.spawn().map_err(|e| {
-        StepError::Failed(format!(
-            "Could not start cargo {}: {e}",
-            invocation.subcommand
-        ))
+        StepError::Failed(
+            t!(
+                "Build.Error.CouldNotStart",
+                subcommand = invocation.subcommand,
+                error = e
+            )
+            .to_string(),
+        )
     })?;
     let stdout = BufReader::new(child.stdout.take().expect("piped"));
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
@@ -284,7 +292,7 @@ pub fn run_compiling(
                 progress.set(10 + ((seen as f32 / expected).min(1.0) * 84.0) as u32);
                 if !message["fresh"].as_bool().unwrap_or(false) {
                     let name = message["target"]["name"].as_str().unwrap_or("?");
-                    progress.status(format!("Compiling {name}"));
+                    progress.status(t!("Build.Progress.Compiling", name = name));
                 }
             }
             _ => {}
@@ -309,12 +317,18 @@ pub fn run_compiling(
             } else {
                 errors.join(&format!("\n\n{ERROR_SEPARATOR}\n\n"))
             };
-            Err(StepError::Failed(format!(
-                "cargo {} failed:\n\n{detail}",
-                invocation.subcommand
-            )))
+            Err(StepError::Failed(
+                t!(
+                    "Build.Error.CommandFailed",
+                    subcommand = invocation.subcommand,
+                    detail = detail
+                )
+                .to_string(),
+            ))
         }
-        Err(e) => Err(StepError::Failed(format!("Could not wait for cargo: {e}"))),
+        Err(e) => Err(StepError::Failed(
+            t!("Build.Error.CouldNotWait", error = e).to_string(),
+        )),
     }
 }
 
@@ -331,10 +345,14 @@ pub fn run_plain(
     tracing::info!("[build] {}", invocation.display());
 
     let mut child = cmd.spawn().map_err(|e| {
-        StepError::Failed(format!(
-            "Could not start cargo {}: {e}",
-            invocation.subcommand
-        ))
+        StepError::Failed(
+            t!(
+                "Build.Error.CouldNotStart",
+                subcommand = invocation.subcommand,
+                error = e
+            )
+            .to_string(),
+        )
     })?;
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
     let child = Arc::new(Mutex::new(child));
@@ -364,12 +382,17 @@ pub fn run_plain(
             progress.set(100);
             Ok(())
         }
-        Ok(_) => Err(StepError::Failed(format!(
-            "cargo {} failed:\n\n{}",
-            invocation.subcommand,
-            output.trim()
-        ))),
-        Err(e) => Err(StepError::Failed(format!("Could not wait for cargo: {e}"))),
+        Ok(_) => Err(StepError::Failed(
+            t!(
+                "Build.Error.CommandFailed",
+                subcommand = invocation.subcommand,
+                detail = output.trim()
+            )
+            .to_string(),
+        )),
+        Err(e) => Err(StepError::Failed(
+            t!("Build.Error.CouldNotWait", error = e).to_string(),
+        )),
     }
 }
 

@@ -5,6 +5,7 @@ use engine_state::build_config::{BuildConfiguration, BuildSteps, TargetPlatform}
 use gpui::{
     AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
 };
+use rust_i18n::t;
 use ui::button::Button;
 use ui::switch::Switch;
 use ui::{Icon, IconName, Selectable as _, Sizable as _, h_flex, v_flex};
@@ -13,6 +14,7 @@ use super::form::section;
 use super::{BuildConfiguratorWindow, Palette};
 use crate::runner::plan::{self, Step};
 
+/// `title` and `description` are locale keys.
 struct StepRow {
     title: &'static str,
     description: &'static str,
@@ -23,26 +25,26 @@ struct StepRow {
 /// In the order they run.
 const STEPS: [StepRow; 5] = [
     StepRow {
-        title: "Update dependencies",
-        description: "cargo update: pull the newest compatible versions first.",
+        title: "Build.Steps.Update.Title",
+        description: "Build.Steps.Update.Description",
         get: |s| s.update,
         set: |s, v| s.update = v,
     },
     StepRow {
-        title: "Clean first",
-        description: "cargo clean: throw away old build output and start from scratch.",
+        title: "Build.Steps.Clean.Title",
+        description: "Build.Steps.Clean.Description",
         get: |s| s.clean,
         set: |s, v| s.clean = v,
     },
     StepRow {
-        title: "Check",
-        description: "cargo check: type-check quickly without producing binaries.",
+        title: "Build.Steps.Check.Title",
+        description: "Build.Steps.Check.Description",
         get: |s| s.check,
         set: |s, v| s.check = v,
     },
     StepRow {
-        title: "Build",
-        description: "cargo build: compile for every selected platform.",
+        title: "Build.Steps.Build.Title",
+        description: "Build.Steps.Build.Description",
         get: |s| s.build,
         // No build, nothing to run.
         set: |s, v| {
@@ -53,16 +55,17 @@ const STEPS: [StepRow; 5] = [
         },
     },
     StepRow {
-        title: "Run",
-        description: "Launch the game when the build finishes (turns Build on).",
+        title: "Build.Steps.Run.Title",
+        description: "Build.Steps.Run.Description",
         get: |s| s.run,
         set: |s, v| s.run = v,
     },
 ];
 
+/// Locale key and steps.
 const PRESETS: [(&str, BuildSteps); 5] = [
     (
-        "Quick check",
+        "Build.Steps.Preset.QuickCheck",
         BuildSteps {
             update: false,
             clean: false,
@@ -71,9 +74,9 @@ const PRESETS: [(&str, BuildSteps); 5] = [
             run: false,
         },
     ),
-    ("Build", BuildSteps::just_build()),
+    ("Build.Steps.Preset.Build", BuildSteps::just_build()),
     (
-        "Clean build",
+        "Build.Steps.Preset.CleanBuild",
         BuildSteps {
             update: false,
             clean: true,
@@ -83,7 +86,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
         },
     ),
     (
-        "Build & run",
+        "Build.Steps.Preset.BuildAndRun",
         BuildSteps {
             update: false,
             clean: false,
@@ -93,7 +96,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
         },
     ),
     (
-        "Full refresh",
+        "Build.Steps.Preset.FullRefresh",
         BuildSteps {
             update: true,
             clean: true,
@@ -113,20 +116,19 @@ impl BuildConfiguratorWindow {
     ) -> AnyElement {
         let steps = config.steps;
 
-        let presets =
-            h_flex()
-                .gap_2()
-                .flex_wrap()
-                .children(PRESETS.iter().map(|(label, preset)| {
-                    let preset = *preset;
-                    Button::new(SharedString::from(format!("bc-preset-{label}")))
-                        .small()
-                        .label(*label)
-                        .selected(steps == preset)
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| this.edit(cx, |c| c.steps = preset)),
-                        )
-                }));
+        let presets = h_flex()
+            .gap_2()
+            .flex_wrap()
+            .children(PRESETS.iter().map(|(key, preset)| {
+                let preset = *preset;
+                Button::new(SharedString::from(format!("bc-preset-{key}")))
+                    .small()
+                    .label(t!(*key).to_string())
+                    .selected(steps == preset)
+                    .on_click(
+                        cx.listener(move |this, _, _, cx| this.edit(cx, |c| c.steps = preset)),
+                    )
+            }));
 
         let rows = STEPS.iter().enumerate().map(|(ix, row)| {
             let on = (row.get)(&steps);
@@ -158,9 +160,14 @@ impl BuildConfiguratorWindow {
                             div()
                                 .text_sm()
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child(row.title),
+                                .child(t!(row.title).to_string()),
                         )
-                        .child(div().text_xs().text_color(p.muted).child(row.description)),
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(p.muted)
+                                .child(t!(row.description).to_string()),
+                        ),
                 )
                 .child(
                     Switch::new(SharedString::from(format!("bc-step-{ix}")))
@@ -173,8 +180,8 @@ impl BuildConfiguratorWindow {
         });
 
         section(
-            "Build steps",
-            "They always run in this order. Unused steps are skipped.",
+            t!("Build.Steps.Title").to_string(),
+            t!("Build.Steps.Description").to_string(),
             p,
             v_flex()
                 .gap_3()
@@ -222,7 +229,7 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
                     let command = step
                         .invocation()
                         .map(|i| i.display())
-                        .unwrap_or_else(|| "generate or refresh project files".to_owned());
+                        .unwrap_or_else(|| t!("Build.Preview.Bootstrap").to_string());
                     h_flex()
                         .gap_3()
                         .items_baseline()
@@ -250,7 +257,7 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
                         .font_family("monospace")
                         .text_xs()
                         .text_color(p.muted)
-                        .child(format!("environment: {env}"))
+                        .child(t!("Build.Preview.Environment", env = env).to_string())
                 }))
                 .children(plan.warnings.iter().map(|warning| {
                     h_flex()
@@ -279,7 +286,7 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
             div()
                 .text_xs()
                 .text_color(p.muted)
-                .child("PIPELINE PREVIEW"),
+                .child(t!("Build.Preview.Title").to_string()),
         )
         .child(body)
         .into_any_element()

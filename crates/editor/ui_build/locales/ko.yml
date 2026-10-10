@@ -1,0 +1,173 @@
+# Build - ko
+
+# Build button
+Build.Button.Cancel: "빌드 취소"
+Build.Button.CancelTooltip: "빌드 중지"
+Build.Button.NoConfiguration: "구성 없음"
+Build.Button.NoConfigurationTooltip: "빌드 구성을 선택하세요"
+Build.Button.ChooseTooltip: "빌드 구성 선택"
+Build.Button.StopGame: "중지"
+Build.Button.StopGameTooltip: "실행 중인 게임 중지"
+
+# Picker
+Build.Picker.Empty: "아직 빌드 구성이 없습니다."
+Build.Picker.Edit: "구성 편집…"
+
+# Search
+Build.Search.Configurations: "구성 검색…"
+Build.Search.Platforms: "플랫폼 검색…"
+Build.Search.NoConfigurationsMatch: "“%{query}”와 일치하는 구성이 없습니다."
+Build.Search.NoPlatformsMatch: "검색과 일치하는 플랫폼이 없습니다."
+
+# Configurator window
+Build.Configurator.Title: "빌드 구성"
+Build.Configurator.Configurations: "구성"
+Build.Configurator.New: "새로 만들기"
+Build.Configurator.NewTooltip: "빌드 구성 만들기"
+Build.Configurator.Empty: "아직 구성이 없습니다."
+Build.Configurator.CountOne: "구성 %{count}개"
+Build.Configurator.CountMany: "구성 %{count}개"
+Build.Configurator.Filtered: "%{shown} / %{total}"
+Build.Configurator.NoneTitle: "빌드 구성 없음"
+Build.Configurator.NoneDescription: "구성은 빌드 방법을 정합니다: Rust 모드, 플랫폼, 단계."
+Build.Configurator.Create: "구성 만들기"
+Build.Configurator.SetActive: "활성으로 설정"
+Build.Configurator.SetActiveTooltip: "빌드 버튼에 이 구성을 사용"
+Build.Configurator.Active: "활성"
+Build.Configurator.Duplicate: "복제"
+Build.Configurator.Delete: "삭제"
+Build.Configurator.ConfirmDelete: "삭제하려면 다시 클릭"
+
+# General section
+Build.General.Title: "일반"
+Build.General.Description: "이 구성이 빌드 메뉴에 표시되는 방식."
+Build.General.Name: "이름"
+Build.General.NamePlaceholder: "구성 이름"
+Build.General.NameRequired: "구성에는 이름이 필요합니다."
+Build.General.NameTaken: "다른 구성이 이미 이 이름을 사용하고 있습니다."
+Build.General.ConfigDescription: "설명"
+Build.General.DescriptionPlaceholder: "이 구성의 용도"
+
+# Rust build mode section
+Build.Profile.Title: "Rust 빌드 모드"
+Build.Profile.Description: "모든 컴파일 단계에서 사용하는 cargo 프로필."
+Build.Profile.Debug.Label: "디버그"
+Build.Profile.Debug.Summary: "컴파일은 빠르고 실행은 느립니다. 디버그 어설션 켜짐."
+Build.Profile.Release.Label: "릴리스"
+Build.Profile.Release.Summary: "실제 성능을 테스트하기 위한 최적화 빌드."
+Build.Profile.Shipping.Label: "배포"
+Build.Profile.Shipping.Summary: "fat LTO, 코드 생성 단위 1개, 심볼 제거가 적용된 릴리스."
+
+# Platforms section
+Build.Platforms.Title: "플랫폼"
+Build.Platforms.Description: "선택한 각 플랫폼을 차례로 빌드합니다. 비워 두면 이 컴퓨터용으로 빌드합니다."
+Build.Platforms.ThisMachine: "이 컴퓨터"
+Build.Platforms.ThisMachineDefault: "이 컴퓨터 (기본값)"
+Build.Platforms.ThisMachineTooltip: "이 에디터가 실행 중인 플랫폼용으로 빌드"
+Build.Platforms.Desktop: "데스크톱"
+Build.Platforms.DesktopTooltip: "Windows x64, Linux x64, macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} / %{total}"
+Build.Platforms.NeedsSdk: "콘솔 SDK가 필요합니다. cargo로는 빌드할 수 없습니다"
+
+# Platform families
+Build.Family.Unix: "Solaris 및 illumos"
+Build.Family.Other: "기타"
+Build.Family.Console: "콘솔"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7 (하드웨어 부동소수점)"
+Build.Target.LinuxArmGnueabi: "Linux ARM (소프트웨어 부동소수점)"
+Build.Target.LinuxArmGnueabihf: "Linux ARM (하드웨어 부동소수점)"
+Build.Target.IosAarch64: "iOS 기기"
+Build.Target.IosX86_64: "iOS 시뮬레이터 (Intel)"
+Build.Target.IosAarch64Sim: "iOS 시뮬레이터 (Apple Silicon)"
+
+# Build steps section
+Build.Steps.Title: "빌드 단계"
+Build.Steps.Description: "항상 이 순서로 실행됩니다. 사용하지 않는 단계는 건너뜁니다."
+Build.Steps.Update.Title: "종속성 업데이트"
+Build.Steps.Update.Description: "cargo update: 먼저 호환되는 최신 버전을 가져옵니다."
+Build.Steps.Clean.Title: "먼저 정리"
+Build.Steps.Clean.Description: "cargo clean: 이전 빌드 출력을 버리고 처음부터 시작합니다."
+Build.Steps.Check.Title: "검사"
+Build.Steps.Check.Description: "cargo check: 바이너리를 만들지 않고 빠르게 타입을 검사합니다."
+Build.Steps.Build.Title: "빌드"
+Build.Steps.Build.Description: "cargo build: 선택한 모든 플랫폼용으로 컴파일합니다."
+Build.Steps.Run.Title: "실행"
+Build.Steps.Run.Description: "빌드가 끝나면 게임을 실행합니다 (빌드가 켜집니다)."
+Build.Steps.Preset.QuickCheck: "빠른 검사"
+Build.Steps.Preset.Build: "빌드"
+Build.Steps.Preset.CleanBuild: "클린 빌드"
+Build.Steps.Preset.BuildAndRun: "빌드 후 실행"
+Build.Steps.Preset.FullRefresh: "전체 새로 고침"
+Build.Steps.Summary.Update: "업데이트"
+Build.Steps.Summary.Clean: "정리"
+Build.Steps.Summary.Check: "검사"
+Build.Steps.Summary.Build: "빌드"
+Build.Steps.Summary.Run: "실행"
+Build.Steps.Summary.None: "단계 없음"
+
+# Pipeline preview
+Build.Preview.Title: "파이프라인 미리 보기"
+Build.Preview.Bootstrap: "프로젝트 파일 생성 또는 새로 고침"
+Build.Preview.Environment: "환경: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "고급"
+Build.Advanced.Description: "모든 cargo check, build, run에 전달됩니다."
+Build.Advanced.Features: "Cargo 기능 (쉼표 또는 공백으로 구분)"
+Build.Advanced.ExtraArgs: "추가 cargo 인수"
+Build.Advanced.QuoteHint: "공백이 있는 인수는 따옴표로 묶으세요: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "프로젝트 준비 중"
+Build.Step.Update: "종속성 업데이트 중"
+Build.Step.Clean: "빌드 산출물 정리 중"
+Build.Step.Check: "검사 중"
+Build.Step.CheckFor: "%{platform}용 검사 중"
+Build.Step.Build: "빌드 중"
+Build.Step.BuildFor: "%{platform}용 빌드 중"
+Build.Step.Run: "실행 중"
+Build.Step.RunFor: "%{platform}용 실행 중"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "이 구성에는 켜진 단계가 없습니다."
+Build.Plan.UnbuildablePlatform: "%{platform}은(는) cargo로 빌드할 수 없습니다. 플랫폼 SDK가 필요합니다."
+Build.Plan.RunSkipped: "실행을 건너뛰었습니다: 선택한 플랫폼 중 이 컴퓨터에서 실행할 수 있는 것이 없습니다."
+
+# Progress
+Build.Progress.Starting: "시작 중"
+Build.Progress.Resolving: "종속성 확인 중"
+Build.Progress.Compiling: "%{name} 컴파일 중"
+Build.Progress.Updating: "%{what} 업데이트 중"
+Build.Task.Title: "빌드: %{name}"
+Build.Task.Starting: "빌드 시작 중"
+
+# Notifications
+Build.Notification.NoProject: "빌드하기 전에 프로젝트를 여세요."
+Build.Notification.AlreadyRunning: "이미 빌드가 실행 중입니다."
+Build.Notification.Starting: "시작 중…"
+Build.Notification.Succeeded: "빌드 성공"
+Build.Notification.Failed: "빌드 실패"
+Build.Notification.Cancelled: "빌드 취소됨"
+Build.Notification.StoppedUnexpectedly: "빌드가 예기치 않게 중지되었습니다."
+
+# Cargo errors
+Build.Error.CouldNotStart: "cargo %{subcommand}을(를) 시작할 수 없습니다: %{error}"
+Build.Error.CouldNotWait: "cargo를 기다릴 수 없습니다: %{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} 실패:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "오류 %{number}"
+Build.Failure.Copy: "복사"
+Build.Failure.CountOne: "Cargo에서 컴파일러 오류 %{count}개를 수집했습니다."
+Build.Failure.CountMany: "Cargo에서 컴파일러 오류 %{count}개를 수집했습니다."
+Build.Failure.CopyAll: "모든 오류 복사"
+Build.Failure.Close: "닫기"
+
+# Running the game
+Build.Game.Title: "실행"
+Build.Game.LaunchFailed: "게임을 실행할 수 없습니다: %{error}"
+Build.Game.NonZeroExit: "게임이 0이 아닌 상태 코드로 종료되었습니다."
+Build.Game.Crashed: "게임이 충돌했습니다:\n%{output}"
+Build.Game.CrashedWithReport: "게임이 충돌했습니다.\n보고서 저장 위치: %{path}\n\n%{output}"

@@ -26,6 +26,7 @@ use gpui::{
     Styled as _, Window, radians,
 };
 use parking_lot::Mutex;
+use rust_i18n::t;
 use ui::ContextModal as _;
 use ui::notification::Notification;
 use ui::{Icon, IconName, Sizable as _, h_flex};
@@ -57,7 +58,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
 
     let Some(project_root) = engine_state::get_project_path().map(PathBuf::from) else {
         window.push_notification(
-            Notification::warning("Open a project before building.").title(name),
+            Notification::warning(t!("Build.Notification.NoProject").to_string()).title(name),
             cx,
         );
         return;
@@ -73,7 +74,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
     let state = playback();
     if state.read().build_running {
         window.push_notification(
-            Notification::info("A build is already running.").title(name),
+            Notification::info(t!("Build.Notification.AlreadyRunning").to_string()).title(name),
             cx,
         );
         return;
@@ -83,7 +84,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
 
     let pct = Arc::new(AtomicU32::new(0));
     let detail = Arc::new(Mutex::new(String::new()));
-    let step_title = Arc::new(Mutex::new(String::from("Starting")));
+    let step_title = Arc::new(Mutex::new(t!("Build.Progress.Starting").to_string()));
     let progress = Progress::new(Arc::clone(&pct), Arc::clone(&detail));
 
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), StepError>>(1);
@@ -95,12 +96,12 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
         let task_title = name.clone();
         editor_task_queue::global().submit(
             editor_task_queue::TaskDescription::new(
-                format!("Build: {}", task_title),
+                t!("Build.Task.Title", name = task_title).to_string(),
                 "Build",
                 editor_task_queue::TaskDuration::Long,
             ),
             move |task| {
-                task.report_progress(0.0, "Starting build");
+                task.report_progress(0.0, t!("Build.Task.Starting"));
                 let result = execute(
                     &plan,
                     &root,
@@ -119,7 +120,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
                     Err(StepError::Cancelled) => {
                         task.mark_cancelled();
                         let _ = result_tx.send_blocking(Err(StepError::Cancelled));
-                        Err("Build cancelled".into())
+                        Err(t!("Build.Notification.Cancelled").to_string())
                     }
                 }
             },
@@ -127,7 +128,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
     }
 
     window.push_notification(
-        Notification::info("Starting…")
+        Notification::info(t!("Build.Notification.Starting").to_string())
             .id::<BuildNotification>()
             .title(name.clone())
             .progress(0.0)
@@ -191,7 +192,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
                 audio::play_build_success();
                 let _ = async_app.update_window(window_handle, |_, window, cx| {
                     window.push_notification(
-                        Notification::success("Build succeeded")
+                        Notification::success(t!("Build.Notification.Succeeded").to_string())
                             .id::<BuildNotification>()
                             .title(name.clone())
                             .progress(1.0)
@@ -218,7 +219,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
                 audio::play_build_error();
                 let _ = async_app.update_window(window_handle, |_, window, cx| {
                     window.push_notification(
-                        Notification::error("Build failed")
+                        Notification::error(t!("Build.Notification.Failed").to_string())
                             .id::<BuildNotification>()
                             .title(name.clone()),
                         cx,
@@ -229,15 +230,15 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
             Some(Err(StepError::Cancelled)) | None => {
                 let cancelled = result.is_some();
                 let _ = async_app.update_window(window_handle, |_, window, cx| {
-                    let (note, title) = if cancelled {
-                        ("Build cancelled", name.clone())
+                    let note = if cancelled {
+                        t!("Build.Notification.Cancelled")
                     } else {
-                        ("The build stopped unexpectedly.", name.clone())
+                        t!("Build.Notification.StoppedUnexpectedly")
                     };
                     window.push_notification(
-                        Notification::info(note)
+                        Notification::info(note.to_string())
                             .id::<BuildNotification>()
-                            .title(title)
+                            .title(name.clone())
                             .autohide_delay(Duration::from_secs(3)),
                         cx,
                     );

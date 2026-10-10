@@ -932,21 +932,28 @@ impl ScriptRuntime {
     }
 
     /// Like [`spawn`](Self::spawn), with overrides as JSON (level files).
-    /// Overrides naming variables the class no longer has are ignored with
-    /// a warning; a value of the wrong type is an error.
+    /// Entities in them are StableId strings, which `entity_for` resolves
+    /// (see [`value_from_json_with`]).
+    ///
+    /// Each override stands alone: one naming a variable the class no longer
+    /// has is ignored with a warning, and one that does not convert keeps the
+    /// class default and comes back in the returned list. Only a problem
+    /// with the instance itself (unknown class, duplicate id) is an `Err`.
     pub fn spawn_with_json(
         &mut self,
         object_id: impl Into<String>,
         class: &str,
         entity: Option<Entity>,
         overrides: &HashMap<String, serde_json::Value>,
-    ) -> Result<(), RuntimeError> {
+        entity_for: &dyn Fn(&str) -> Option<Entity>,
+    ) -> Result<Vec<RuntimeError>, RuntimeError> {
         let program = &self
             .classes
             .get(class)
             .ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?
             .program;
         let mut converted = Vec::with_capacity(overrides.len());
+        let mut rejected = Vec::new();
         for (name, json) in overrides {
             // Level files outlive graph edits: a variable that no longer
             // exists is skipped, not fatal.
@@ -959,24 +966,27 @@ impl ScriptRuntime {
                         .any(|v| v.id.as_deref() == Some(name) || &v.name == name) =>
                 {
                     // Known but ambiguous: refuse instead of guessing.
-                    return Err(RuntimeError::BadVariable {
+                    rejected.push(RuntimeError::BadVariable {
                         name: name.clone(),
                         reason,
                     });
+                    continue;
                 }
                 Err(_) => {
                     tracing::warn!("`{class}` has no variable `{name}`; ignoring its override");
                     continue;
                 }
             };
-            let value =
-                value_from_json(json, &var.ty).map_err(|reason| RuntimeError::BadVariable {
+            match value_from_json_with(json, &var.ty, entity_for) {
+                Ok(value) => converted.push((name.clone(), value)),
+                Err(reason) => rejected.push(RuntimeError::BadVariable {
                     name: name.clone(),
                     reason,
-                })?;
-            converted.push((name.clone(), value));
+                }),
+            }
         }
-        self.spawn(object_id, class, entity, &converted)
+        self.spawn(object_id, class, entity, &converted)?;
+        Ok(rejected)
     }
 
     /// Run `end_play` (if the instance has begun) and remove the instance.
@@ -1521,10 +1531,60 @@ fn declare_events(events: &dyn EventHost, module: &Module) -> Result<(), Runtime
     Ok(())
 }
 
-/// Convert a JSON value (from a level file) to a script value of type `ty`.
+/// Convert a JSON value to a script value of type `ty`, where no entity
+/// can be named (an entity or component reference is an error unless it is
+/// `null`).
 pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, String> {
+    value_from_json_with(json, ty, &|_| None)
+}
+
+/// Convert a JSON value (from a level file) to a script value of type `ty`.
+///
+/// An entity is its StableId string, resolved with `entity_for`, or `null`
+/// for none. A component reference is
+/// `{ "entity": "<stable id>", "component": "Health" }`; the component must
+/// be the variable's component type, and whether the entity has it is
+/// checked when the reference is used, like any other reference.
+pub fn value_from_json_with(
+    json: &serde_json::Value,
+    ty: &Type,
+    entity_for: &dyn Fn(&str) -> Option<Entity>,
+) -> Result<Value, String> {
     use serde_json::Value as J;
+    let entity = |json: &J| match json {
+        J::Null => Ok(Entity::DANGLING),
+        J::String(stable_id) => {
+            entity_for(stable_id).ok_or_else(|| format!("no object has the stable id `{stable_id}`"))
+        }
+        other => Err(format!("an entity is its stable id string or null, got {other}")),
+    };
     match (ty, json) {
+        (Type::Entity, json) => entity(json).map(Value::Entity),
+        (Type::Component(name), json) => {
+            let binding = TypeRegistry::global()
+                .component(name)
+                .ok_or_else(|| format!("`{name}` is not a registered component"))?;
+            let target = match json {
+                J::Null => Entity::DANGLING,
+                J::Object(fields) => {
+                    if let Some(component) = fields.get("component") {
+                        if component.as_str() != Some(name.as_str()) {
+                            return Err(format!("expected a `{name}` reference, got {component}"));
+                        }
+                    }
+                    entity(fields.get("entity").unwrap_or(&J::Null))?
+                }
+                other => {
+                    return Err(format!(
+                        "a component reference is {{\"entity\": \"<stable id>\", \"component\": \"{name}\"}} or null, got {other}"
+                    ))
+                }
+            };
+            Ok(Value::Component(pulsar_scenedb::ComponentRef::new(
+                target,
+                binding.component_id(),
+            )))
+        }
         (Type::Bool, J::Bool(b)) => Ok(Value::Bool(*b)),
         (Type::Int, J::Number(n)) => n
             .as_i64()
@@ -1539,13 +1599,13 @@ pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, Str
         (Type::Object(name), json) => TypeRegistry::global().decode_value(name, &json.to_string()),
         (Type::List(element), J::Array(items)) => items
             .iter()
-            .map(|item| value_from_json(item, element))
+            .map(|item| value_from_json_with(item, element, entity_for))
             .collect::<Result<_, _>>()
             .map(Value::list),
         (Type::Tuple(types), J::Array(items)) if items.len() == types.len() => items
             .iter()
             .zip(types)
-            .map(|(item, ty)| value_from_json(item, ty))
+            .map(|(item, ty)| value_from_json_with(item, ty, entity_for))
             .collect::<Result<_, _>>()
             .map(Value::tuple),
         (Type::Map(key, value), J::Array(entries)) => {
@@ -1554,10 +1614,10 @@ pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, Str
                 let [k, v] = entry.as_array().map(Vec::as_slice).unwrap_or_default() else {
                     return Err(format!("a map entry is `[key, value]`, got {entry}"));
                 };
-                let k = value_from_json(k, key)?;
+                let k = value_from_json_with(k, key, entity_for)?;
                 let k = pulsar_script_vm::MapKey::from_value(&k)
                     .ok_or_else(|| format!("{k:?} cannot be a map key"))?;
-                map.insert(k, value_from_json(v, value)?);
+                map.insert(k, value_from_json_with(v, value, entity_for)?);
             }
             Ok(Value::Map(std::sync::Arc::new(map)))
         }

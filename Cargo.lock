@@ -13818,6 +13818,7 @@ dependencies = [
  "parking_lot",
  "profiling 0.1.0",
  "rodio",
+ "rust-i18n",
  "serde_json",
  "smol",
  "tracing",

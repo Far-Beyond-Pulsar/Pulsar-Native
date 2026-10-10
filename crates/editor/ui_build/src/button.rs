@@ -10,6 +10,7 @@ use engine_state::playback::{PlayPhase, PlaybackState, game_process, playback};
 use gpui::{
     App, Corner, Entity, IntoElement, ParentElement as _, Styled as _, prelude::FluentBuilder as _,
 };
+use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _};
 use ui::popover::Popover;
 use ui::{Disableable as _, IconName, h_flex};
@@ -41,8 +42,8 @@ pub fn build_button(
             .child(
                 Button::new("build-cancel")
                     .icon(IconName::Square)
-                    .label("Cancel Build")
-                    .tooltip("Stop the build")
+                    .label(t!("Build.Button.Cancel").to_string())
+                    .tooltip(t!("Build.Button.CancelTooltip").to_string())
                     .on_click(|_, _, _| cancel_build()),
             )
             .into_any_element();
@@ -55,12 +56,12 @@ pub fn build_button(
         Some(config) => (
             config_icon(config),
             shorten(&config.name),
-            config.subtitle(),
+            crate::text::subtitle(config),
         ),
         None => (
             IconName::Hammer,
-            "No configuration".to_owned(),
-            "Choose a build configuration".to_owned(),
+            t!("Build.Button.NoConfiguration").to_string(),
+            t!("Build.Button.NoConfigurationTooltip").to_string(),
         ),
     };
 
@@ -83,7 +84,7 @@ pub fn build_button(
             Button::new("build-choose")
                 .ghost()
                 .icon(IconName::ChevronDown)
-                .tooltip("Choose build configuration")
+                .tooltip(t!("Build.Button.ChooseTooltip").to_string())
                 .disabled(busy),
         )
         .content(move |_, _| picker.clone());
@@ -96,8 +97,8 @@ pub fn build_button(
             el.child(
                 Button::new("build-stop-game")
                     .icon(IconName::Square)
-                    .label("Stop")
-                    .tooltip("Stop the running game")
+                    .label(t!("Build.Button.StopGame").to_string())
+                    .tooltip(t!("Build.Button.StopGameTooltip").to_string())
                     .on_click(|_, _, _| {
                         let game = game_process();
                         if let Some(mut child) = game.read().0.lock().take() {

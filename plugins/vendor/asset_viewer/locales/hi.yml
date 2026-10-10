@@ -58,3 +58,10 @@ AssetViewer.ColC: C
 AssetViewer.ColMat: मटीरियल
 AssetViewer.Loading: लोड हो रहा है...
 AssetViewer.Unknown: अज्ञात
+AssetViewer.Mode.Lit: "प्रकाशित"
+AssetViewer.Mode.Unlit: "अप्रकाशित"
+AssetViewer.Mode.Wireframe: "वायरफ़्रेम"
+AssetViewer.Mode.Normals: "नॉर्मल्स"
+AssetViewer.Mode.Uv1: "UV 1"
+AssetViewer.Mode.Uv2: "UV 2"
+AssetViewer.Mode.Density: "घनत्व"

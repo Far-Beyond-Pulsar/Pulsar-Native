@@ -13,6 +13,7 @@ use gpui::{
     ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task,
     UpdateGlobal as _, Window, div, prelude::FluentBuilder as _, px,
 };
+use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::scroll::{Scrollbar, ScrollbarState};
@@ -56,7 +57,9 @@ impl Focusable for BuildPicker {
 impl BuildPicker {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         ensure_loaded();
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search configurations…"));
+        let search = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t!("Build.Search.Configurations").to_string())
+        });
 
         let subscription = cx.subscribe_in(
             &search,
@@ -204,9 +207,10 @@ impl Render for BuildPicker {
                             .py_1()
                             .when(filtered.is_empty(), |el| {
                                 let message = if total == 0 {
-                                    "No build configurations yet.".to_string()
+                                    t!("Build.Picker.Empty").to_string()
                                 } else {
-                                    format!("No configurations match “{query}”.")
+                                    t!("Build.Search.NoConfigurationsMatch", query = query)
+                                        .to_string()
                                 };
                                 el.child(
                                     div()
@@ -266,7 +270,7 @@ impl Render for BuildPicker {
                                                     .overflow_hidden()
                                                     .text_ellipsis()
                                                     .whitespace_nowrap()
-                                                    .child(config.subtitle()),
+                                                    .child(crate::text::subtitle(config)),
                                             ),
                                     )
                                     .when(is_selected, |el| {
@@ -286,7 +290,7 @@ impl Render for BuildPicker {
                         .ghost()
                         .small()
                         .icon(IconName::Settings)
-                        .label("Edit Configurations…")
+                        .label(t!("Build.Picker.Edit").to_string())
                         .on_click(cx.listener(|this, _, _, cx| this.open_configurator(cx))),
                 ),
             )

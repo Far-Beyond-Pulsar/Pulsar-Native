@@ -62,6 +62,9 @@ pub struct TickLoop {
     /// Contains identities only; component data remains authoritative in
     /// `scene_store` and is borrowed in place for each callback.
     component_runtime: pulsar_world_registry::ComponentRuntimeState,
+    /// Warns when a `Static`/`Stationary` object moves during play (#836).
+    /// Opened at the first tick, so level setup before it is not reported.
+    static_moves: Option<helio_component::StaticMoveWatch>,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
     pub window_manager: Option<Arc<WindowManager>>,
@@ -197,6 +200,7 @@ impl TickLoop {
             scripts: None,
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
+            static_moves: None,
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -241,6 +245,7 @@ impl TickLoop {
             scripts: None,
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
+            static_moves: None,
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -363,6 +368,10 @@ impl TickLoop {
         self.last_time = time;
         profiling::profile_scope!("TickLoop::tick");
         let scenedb_time = to_scenedb_time(time);
+        if self.static_moves.is_none() {
+            let store = self.scene_store.read();
+            self.static_moves = Some(helio_component::StaticMoveWatch::new(&store.world));
+        }
 
         // Flush 1 (after input): input published since the last tick
         // (`publish_input`, PIE input forwarding) and anything else queued
@@ -480,8 +489,16 @@ impl TickLoop {
         self.events.flush(pulsar_events::FlushPoint::AfterScripts);
         self.events.flush(pulsar_events::FlushPoint::EndOfFrame);
 
-        // The world's change history only covers the current frame.
-        engine_backend::scene::end_change_window(&self.scene_store.read().world);
+        // The world's change history only covers the current frame, so the
+        // frame's moves are checked before it closes. Anything this tick
+        // moved that is authored fixed is a bug (it is logged once).
+        {
+            let store = self.scene_store.read();
+            if let Some(watch) = &mut self.static_moves {
+                watch.poll(&store.world);
+            }
+            engine_backend::scene::end_change_window(&store.world);
+        }
 
         time
     }

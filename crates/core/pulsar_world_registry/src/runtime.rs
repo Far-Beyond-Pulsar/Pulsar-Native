@@ -220,6 +220,22 @@ pub unsafe fn attach(owner: *const WorldRuntimes) -> Result<(), WorldAttachError
             found: owner.abi,
         }));
     }
+    // Check every runtime before attaching any: a refusal after the first
+    // attach would leave this copy half on its own state and half on the
+    // host's (#1083). Each crate's `shared()` is still this copy's own
+    // runtime here, or the host's if it is already attached, which then
+    // matches.
+    let checks = [
+        ("pulsar_reflection", pulsar_reflection::runtime::shared().abi, owner.reflection.abi),
+        ("pulsar_scenedb", pulsar_scenedb::runtime::shared().abi, owner.scenedb.abi),
+        ("pulsar_scene_model", pulsar_scene_model::runtime::shared().abi, owner.scene_model.abi),
+        ("pulsar_world_registry", OWN.abi, owner.registry.abi),
+    ];
+    for (runtime, expected, found) in checks {
+        if expected != found {
+            return Err(refused(runtime)(AttachError::Abi { expected, found }));
+        }
+    }
     // Reflection first: SceneDB's method table is built from its registries.
     // SAFETY: the caller's contract covers the runtimes `owner` names.
     unsafe { pulsar_reflection::runtime::attach(owner.reflection) }
@@ -240,12 +256,6 @@ pub unsafe fn attach(owner: *const WorldRuntimes) -> Result<(), WorldAttachError
     unsafe { pulsar_scene_model::runtime::attach(owner.scene_model) }
         .map_err(refused("pulsar_scene_model"))?;
     let registry = owner.registry;
-    if registry.abi != OWN.abi {
-        return Err(refused("pulsar_world_registry")(AttachError::Abi {
-            expected: OWN.abi,
-            found: registry.abi,
-        }));
-    }
     if std::ptr::eq(registry, &OWN) {
         return Ok(());
     }
@@ -315,4 +325,27 @@ macro_rules! export_world_runtime_attach {
             unsafe { $crate::runtime::attach_exported(host) }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_mismatched_runtime_is_refused_before_anything_attaches() {
+        let mut scene_model = *pulsar_scene_model::runtime::shared();
+        scene_model.abi ^= 1;
+        let owner = WorldRuntimes {
+            scene_model: Box::leak(Box::new(scene_model)),
+            ..*host()
+        };
+        // SAFETY: `owner` and everything it names live for the process.
+        let error = unsafe { attach(&owner) }.unwrap_err();
+        assert_eq!(error.runtime, "pulsar_scene_model");
+        assert!(matches!(error.error, AttachError::Abi { .. }));
+
+        // The host's own table attaches (to itself) as before.
+        // SAFETY: as above.
+        unsafe { attach(host()) }.unwrap();
+    }
 }

@@ -2135,3 +2135,35 @@ fn a_shared_frame_reports_its_lock_times_and_releases_the_scene() {
     assert!(scene.try_write().is_some(), "the write lock is released");
     assert!(scene.try_read().is_some(), "and the read lock");
 }
+
+/// Level JSON names a component reference by the object's stable id and the
+/// component type (#866).
+#[test]
+fn json_component_references_resolve_by_stable_id() {
+    use pulsar_script_runtime::value_from_json_with;
+    let object = Entity::from_bits(7);
+    let entity_for = |stable_id: &str| (stable_id == "lamp").then_some(object);
+    let ty = Type::Component("LightComponent".into());
+    let id = pulsar_script_vm::TypeRegistry::global()
+        .component("LightComponent")
+        .expect("LightComponent is a script component")
+        .component_id();
+
+    let value = value_from_json_with(
+        &json!({ "entity": "lamp", "component": "LightComponent" }),
+        &ty,
+        &entity_for,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Component(pulsar_scenedb::ComponentRef::new(object, id)));
+    let none = value_from_json_with(&serde_json::Value::Null, &ty, &entity_for).unwrap();
+    assert_eq!(none, Value::Component(pulsar_scenedb::ComponentRef::new(Entity::DANGLING, id)));
+
+    for bad in [
+        json!({ "entity": "lamp", "component": "Transform" }),
+        json!({ "entity": "nobody" }),
+        json!("lamp"),
+    ] {
+        assert!(value_from_json_with(&bad, &ty, &entity_for).is_err(), "{bad}");
+    }
+}

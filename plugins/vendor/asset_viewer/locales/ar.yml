@@ -58,3 +58,10 @@ AssetViewer.ColC: C
 AssetViewer.ColMat: خامة
 AssetViewer.Loading: جارٍ التحميل...
 AssetViewer.Unknown: غير معروف
+AssetViewer.Mode.Lit: "مضاء"
+AssetViewer.Mode.Unlit: "غير مضاء"
+AssetViewer.Mode.Wireframe: "إطار سلكي"
+AssetViewer.Mode.Normals: "المتجهات العمودية"
+AssetViewer.Mode.Uv1: "UV 1"
+AssetViewer.Mode.Uv2: "UV 2"
+AssetViewer.Mode.Density: "الكثافة"

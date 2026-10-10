@@ -123,49 +123,49 @@ impl Render for ViewportPanel {
                         .border_color(cx.theme().border)
                         .child(render_mode_button(
                             "asset_view_lit",
-                            "Lit",
+                            t!("AssetViewer.Mode.Lit"),
                             mode == MeshRenderMode::Lit,
                             editor_entity.clone(),
                             MeshRenderMode::Lit,
                         ))
                         .child(render_mode_button(
                             "asset_view_unlit",
-                            "Unlit",
+                            t!("AssetViewer.Mode.Unlit"),
                             mode == MeshRenderMode::Unlit,
                             editor_entity.clone(),
                             MeshRenderMode::Unlit,
                         ))
                         .child(render_mode_button(
                             "asset_view_wireframe",
-                            "Wireframe",
+                            t!("AssetViewer.Mode.Wireframe"),
                             mode == MeshRenderMode::Wireframe,
                             editor_entity.clone(),
                             MeshRenderMode::Wireframe,
                         ))
                         .child(render_mode_button(
                             "asset_view_normals",
-                            "Normals",
+                            t!("AssetViewer.Mode.Normals"),
                             mode == MeshRenderMode::Normals,
                             editor_entity.clone(),
                             MeshRenderMode::Normals,
                         ))
                         .child(render_mode_button(
                             "asset_view_uv0",
-                            "UV 1",
+                            t!("AssetViewer.Mode.Uv1"),
                             mode == MeshRenderMode::Uv0,
                             editor_entity.clone(),
                             MeshRenderMode::Uv0,
                         ))
                         .child(render_mode_button(
                             "asset_view_uv1",
-                            "UV 2",
+                            t!("AssetViewer.Mode.Uv2"),
                             mode == MeshRenderMode::Uv1,
                             editor_entity.clone(),
                             MeshRenderMode::Uv1,
                         ))
                         .child(render_mode_button(
                             "asset_view_vertex_density",
-                            "Density",
+                            t!("AssetViewer.Mode.Density"),
                             mode == MeshRenderMode::VertexDensity,
                             editor_entity.clone(),
                             MeshRenderMode::VertexDensity,
@@ -367,7 +367,7 @@ impl Render for ViewportPanel {
 
 fn render_mode_button(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<SharedString>,
     selected: bool,
     editor: Entity<AssetViewerPanel>,
     mode: MeshRenderMode,

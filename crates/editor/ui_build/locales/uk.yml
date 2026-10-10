@@ -1,0 +1,170 @@
+# Build - uk
+
+# Build button
+Build.Button.Cancel: "Скасувати збірку"
+Build.Button.CancelTooltip: "Зупинити збірку"
+Build.Button.NoConfiguration: "Немає конфігурації"
+Build.Button.NoConfigurationTooltip: "Виберіть конфігурацію збірки"
+Build.Button.ChooseTooltip: "Вибрати конфігурацію збірки"
+Build.Button.StopGame: "Зупинити"
+Build.Button.StopGameTooltip: "Зупинити запущену гру"
+
+# Picker
+Build.Picker.Empty: "Конфігурацій збірки поки немає."
+Build.Picker.Edit: "Змінити конфігурації…"
+
+# Search
+Build.Search.Configurations: "Пошук конфігурацій…"
+Build.Search.Platforms: "Пошук платформ…"
+Build.Search.NoConfigurationsMatch: "Немає конфігурацій, що відповідають «%{query}»."
+Build.Search.NoPlatformsMatch: "Немає платформ, що відповідають запиту."
+
+# Configurator window
+Build.Configurator.Title: "Конфігурації збірки"
+Build.Configurator.Configurations: "Конфігурації"
+Build.Configurator.New: "Створити"
+Build.Configurator.NewTooltip: "Створити конфігурацію збірки"
+Build.Configurator.Empty: "Конфігурацій поки немає."
+Build.Configurator.CountOne: "Конфігурацій: %{count}"
+Build.Configurator.CountMany: "Конфігурацій: %{count}"
+Build.Configurator.Filtered: "%{shown} з %{total}"
+Build.Configurator.NoneTitle: "Немає конфігурацій збірки"
+Build.Configurator.NoneDescription: "Конфігурація описує, як збирати: режим Rust, платформи та кроки."
+Build.Configurator.Create: "Створити конфігурацію"
+Build.Configurator.SetActive: "Зробити активною"
+Build.Configurator.SetActiveTooltip: "Використовувати цю конфігурацію для кнопки «Збірка»"
+Build.Configurator.Active: "Активна"
+Build.Configurator.Duplicate: "Дублювати"
+Build.Configurator.Delete: "Видалити"
+Build.Configurator.ConfirmDelete: "Натисніть ще раз, щоб видалити"
+
+# General section
+Build.General.Title: "Загальні"
+Build.General.Description: "Як ця конфігурація виглядає в меню «Збірка»."
+Build.General.Name: "Назва"
+Build.General.NamePlaceholder: "Назва конфігурації"
+Build.General.NameRequired: "Конфігурація повинна мати назву."
+Build.General.NameTaken: "Ця назва вже використовується іншою конфігурацією."
+Build.General.ConfigDescription: "Опис"
+Build.General.DescriptionPlaceholder: "Для чого ця конфігурація"
+
+# Rust build mode section
+Build.Profile.Title: "Режим збірки Rust"
+Build.Profile.Description: "Профіль cargo, який використовує кожен крок компіляції."
+Build.Profile.Debug.Summary: "Швидко компілюється, повільно працює. Налагоджувальні перевірки ввімкнено."
+Build.Profile.Release.Summary: "Оптимізована збірка для перевірки реальної продуктивності."
+Build.Profile.Shipping.Summary: "Release з повним LTO, однією одиницею codegen і видаленими символами."
+
+# Platforms section
+Build.Platforms.Title: "Платформи"
+Build.Platforms.Description: "Кожна вибрана платформа збирається по черзі. Залиште порожнім, щоб зібрати для цього комп'ютера."
+Build.Platforms.ThisMachine: "Цей комп'ютер"
+Build.Platforms.ThisMachineDefault: "Цей комп'ютер (за замовчуванням)"
+Build.Platforms.ThisMachineTooltip: "Зібрати для платформи, на якій працює редактор"
+Build.Platforms.Desktop: "Настільні"
+Build.Platforms.DesktopTooltip: "Windows x64, Linux x64 і macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} з %{total}"
+Build.Platforms.NeedsSdk: "Потрібен SDK консолі; cargo не може її зібрати"
+
+# Platform families
+Build.Family.Unix: "Solaris та illumos"
+Build.Family.Other: "Інші"
+Build.Family.Console: "Консолі"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7 (апаратна рухома кома)"
+Build.Target.LinuxArmGnueabi: "Linux ARM (програмна рухома кома)"
+Build.Target.LinuxArmGnueabihf: "Linux ARM (апаратна рухома кома)"
+Build.Target.IosAarch64: "Пристрій iOS"
+Build.Target.IosX86_64: "Симулятор iOS (Intel)"
+Build.Target.IosAarch64Sim: "Симулятор iOS (Apple Silicon)"
+
+# Build steps section
+Build.Steps.Title: "Кроки збірки"
+Build.Steps.Description: "Вони завжди виконуються в цьому порядку. Невикористані кроки пропускаються."
+Build.Steps.Update.Title: "Оновити залежності"
+Build.Steps.Update.Description: "cargo update: спочатку отримати найновіші сумісні версії."
+Build.Steps.Clean.Title: "Спочатку очистити"
+Build.Steps.Clean.Description: "cargo clean: видалити старі результати збірки й почати з нуля."
+Build.Steps.Check.Title: "Перевірка"
+Build.Steps.Check.Description: "cargo check: швидко перевірити типи без створення бінарних файлів."
+Build.Steps.Build.Title: "Збірка"
+Build.Steps.Build.Description: "cargo build: скомпілювати для кожної вибраної платформи."
+Build.Steps.Run.Title: "Запуск"
+Build.Steps.Run.Description: "Запустити гру після завершення збірки (вмикає «Збірку»)."
+Build.Steps.Preset.QuickCheck: "Швидка перевірка"
+Build.Steps.Preset.Build: "Збірка"
+Build.Steps.Preset.CleanBuild: "Чиста збірка"
+Build.Steps.Preset.BuildAndRun: "Збірка й запуск"
+Build.Steps.Preset.FullRefresh: "Повне оновлення"
+Build.Steps.Summary.Update: "Оновлення"
+Build.Steps.Summary.Clean: "Очищення"
+Build.Steps.Summary.Check: "Перевірка"
+Build.Steps.Summary.Build: "Збірка"
+Build.Steps.Summary.Run: "Запуск"
+Build.Steps.Summary.None: "Немає кроків"
+
+# Pipeline preview
+Build.Preview.Title: "ПОПЕРЕДНІЙ ПЕРЕГЛЯД КОНВЕЄРА"
+Build.Preview.Bootstrap: "створити або оновити файли проєкту"
+Build.Preview.Environment: "середовище: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "Додатково"
+Build.Advanced.Description: "Передається кожному cargo check, build і run."
+Build.Advanced.Features: "Features cargo (через кому або пробіл)"
+Build.Advanced.ExtraArgs: "Додаткові аргументи cargo"
+Build.Advanced.QuoteHint: "Візьміть у лапки аргумент із пробілами: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "Підготовка проєкту"
+Build.Step.Update: "Оновлення залежностей"
+Build.Step.Clean: "Очищення артефактів збірки"
+Build.Step.Check: "Перевірка"
+Build.Step.CheckFor: "Перевірка для %{platform}"
+Build.Step.Build: "Збірка"
+Build.Step.BuildFor: "Збірка для %{platform}"
+Build.Step.Run: "Запуск"
+Build.Step.RunFor: "Запуск для %{platform}"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "У цій конфігурації не ввімкнено жодного кроку."
+Build.Plan.UnbuildablePlatform: "%{platform} не можна зібрати за допомогою cargo; потрібен SDK платформи."
+Build.Plan.RunSkipped: "Запуск пропущено: жодна з вибраних платформ не може працювати на цьому комп'ютері."
+
+# Progress
+Build.Progress.Starting: "Запуск"
+Build.Progress.Resolving: "Розв'язання залежностей"
+Build.Progress.Compiling: "Компіляція %{name}"
+Build.Progress.Updating: "Оновлення %{what}"
+Build.Task.Title: "Збірка: %{name}"
+Build.Task.Starting: "Запуск збірки"
+
+# Notifications
+Build.Notification.NoProject: "Відкрийте проєкт перед збіркою."
+Build.Notification.AlreadyRunning: "Збірка вже виконується."
+Build.Notification.Starting: "Запуск…"
+Build.Notification.Succeeded: "Збірка успішна"
+Build.Notification.Failed: "Збірка не вдалася"
+Build.Notification.Cancelled: "Збірку скасовано"
+Build.Notification.StoppedUnexpectedly: "Збірка несподівано зупинилася."
+
+# Cargo errors
+Build.Error.CouldNotStart: "Не вдалося запустити cargo %{subcommand}: %{error}"
+Build.Error.CouldNotWait: "Не вдалося дочекатися cargo: %{error}"
+Build.Error.CommandFailed: "Помилка cargo %{subcommand}:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "Помилка %{number}"
+Build.Failure.Copy: "Копіювати"
+Build.Failure.CountOne: "Помилок компілятора від Cargo: %{count}."
+Build.Failure.CountMany: "Помилок компілятора від Cargo: %{count}."
+Build.Failure.CopyAll: "Копіювати всі помилки"
+Build.Failure.Close: "Закрити"
+
+# Running the game
+Build.Game.Title: "Запуск"
+Build.Game.LaunchFailed: "Не вдалося запустити гру: %{error}"
+Build.Game.NonZeroExit: "Гра завершилася з кодом помилки."
+Build.Game.Crashed: "Гра аварійно завершилася:\n%{output}"
+Build.Game.CrashedWithReport: "Гра аварійно завершилася.\nЗвіт збережено в %{path}\n\n%{output}"
