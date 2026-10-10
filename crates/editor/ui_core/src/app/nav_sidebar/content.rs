@@ -9,16 +9,18 @@
 use std::path::{Path, PathBuf};
 
 use gpui::{
-    div, prelude::*, px, AnyElement, Context, ElementId, IntoElement, SharedString, Window,
+    div, prelude::*, px, uniform_list, AnyElement, Context, ElementId, IntoElement, SharedString,
+    Window,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::TextInput;
 use ui::menu::context_menu::ContextMenuExt as _;
 use ui::popup_menu::PopupMenu;
-use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
-use ui_file_manager::utils::get_icon_for_file_type;
+use ui::{h_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
 
+use super::content_list::ContentList;
 use super::model::{content_root, ContentFile, ContentRow, FolderRow};
+use super::panes::PaneKind;
 use super::render::hold_while_open;
 use super::NavSidebar;
 
@@ -36,57 +38,90 @@ enum Entry {
 }
 
 impl NavSidebar {
-    pub(super) fn render_content_tree(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
+    /// Rebuild the content tree's rows when a folder was expanded or
+    /// collapsed, or the project's files changed. Otherwise the rows built
+    /// last time are kept, so drawing the tree costs nothing per change of
+    /// hover or selection.
+    fn refresh_content_list(&mut self, cx: &mut Context<Self>) {
         let drawer = self.drawer.read(cx);
+        let key = (self.model.folder_revision(), drawer.content_revision());
+        if self.content_key == Some(key) {
+            return;
+        }
         let tree = drawer.folder_tree().map(content_root);
-        let files = |folder: &Path| -> Vec<ContentFile> {
-            drawer
-                .files_in(folder)
-                .into_iter()
-                .map(|item| ContentFile {
-                    icon: get_icon_for_file_type(&item),
-                    color: item.file_type_def.as_ref().map(|def| def.color),
-                    path: item.path,
-                    name: item.name,
-                })
-                .collect()
+        self.content_root_row = tree.map(|root| FolderRow {
+            path: root.path.clone(),
+            name: root.name.clone(),
+            depth: 0,
+            has_children: false,
+            expanded: true,
+            asset: None,
+        });
+        self.content_list = std::rc::Rc::new(match tree {
+            Some(root) => ContentList::build(&self.model, root, &|folder| {
+                drawer.files_in_shared(folder)
+            }),
+            None => ContentList::default(),
+        });
+        self.content_key = Some(key);
+    }
+
+    /// The project's content as a windowed list: the root folder, then every
+    /// shown folder and file. Only the rows in view are built.
+    pub(super) fn render_content_tree(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.refresh_content_list(cx);
+        let root = usize::from(self.content_root_row.is_some());
+        // An empty tree gets one row saying so.
+        let count = root + self.content_list.len().max(1);
+        uniform_list(
+            "nav-content-list",
+            count,
+            cx.processor(|sidebar, range: std::ops::Range<usize>, _window, cx| {
+                range
+                    .map(|ix| sidebar.render_content_index(ix, cx))
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .track_scroll(&self.pane_view(PaneKind::Content).scroll)
+        .size_full()
+        .into_any_element()
+    }
+
+    /// Row `ix` of the content pane, in a cell of the list's fixed row height.
+    fn render_content_index(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
+        let cell = || div().w_full().h(px(ROW_HEIGHT)).px_1();
+        let list = self.content_list.clone();
+        let ix = match &self.content_root_row {
+            Some(root) if ix == 0 => {
+                return cell()
+                    .child(self.render_folder_row(root, true, cx))
+                    .into_any_element()
+            }
+            Some(_) => ix - 1,
+            None => ix,
         };
-        let rows = tree
-            .map(|root| self.model.content_rows(root, &files))
-            .unwrap_or_default();
-        let root = tree.map(|root| (root.path.clone(), root.name.clone()));
-
-        let mut column = v_flex().px_1();
-
-        if let Some((path, name)) = root {
-            let row = FolderRow {
-                path,
-                name,
-                depth: 0,
-                has_children: false,
-                expanded: true,
-                asset: None,
-            };
-            column = column.child(self.render_folder_row(&row, true, cx));
-        }
-        for row in &rows {
-            column = column.child(match row {
-                ContentRow::Folder(folder) => self.render_folder_row(folder, false, cx),
-                ContentRow::File { file, depth } => self.render_file_row(file, *depth, cx),
-            });
-        }
-        if rows.is_empty() {
-            column = column.child(
-                div()
+        match list.row(ix) {
+            Some(ContentRow::Folder(folder)) => cell()
+                .child(self.render_folder_row(&folder, false, cx))
+                .into_any_element(),
+            Some(ContentRow::File { file, depth }) => cell()
+                .child(self.render_file_row(&file, depth, cx))
+                .into_any_element(),
+            None => {
+                cell()
+                    .flex()
+                    .items_center()
                     .px_3()
-                    .py_1()
                     .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child("No files yet"),
-            );
+                    .text_color(cx.theme().muted_foreground)
+                    .child("No files yet")
+                    .into_any_element()
+            }
         }
-        column.into_any_element()
     }
 
     /// The icon at a row's end that shows it in the bottom file drawer: a

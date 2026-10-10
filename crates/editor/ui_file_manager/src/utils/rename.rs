@@ -39,7 +39,7 @@ impl FileManagerDrawer {
 
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         if let Some(ref p) = self.project_path {
-            self.folder_tree = FolderNode::from_path(p);
+            self.set_folder_tree(FolderNode::from_path(p));
         }
         self.mark_directory_cache_dirty();
         cx.notify();
