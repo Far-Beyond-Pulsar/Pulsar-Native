@@ -12,6 +12,7 @@ pub mod cargo;
 pub mod failure;
 pub mod game;
 pub mod plan;
+pub mod process_tree;
 
 use std::path::PathBuf;
 use std::sync::Arc;

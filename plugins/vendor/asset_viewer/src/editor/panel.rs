@@ -94,6 +94,8 @@ pub struct AssetViewerPanel {
     pub density_hover_band: Option<u32>,
     pub density_progress: Option<f32>,
     pub density_error: Option<String>,
+    /// Why the open mesh could not be shown, if it couldn't.
+    pub mesh_error: Option<String>,
     pub density_job_id: u64,
     pub density_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub density_task: Option<Task<()>>,
@@ -555,6 +557,7 @@ impl AssetViewerPanel {
             density_hover_band: None,
             density_progress: None,
             density_error: None,
+            mesh_error: None,
             density_job_id: 0,
             density_cancel: None,
             density_task: None,

@@ -313,7 +313,9 @@ impl Render for ViewportPanel {
                                         .child(format!("{}%", (progress * 100.0) as u32)),
                                 )
                                 .into_any_element()
-                        } else if let Some(error) = &editor.density_error {
+                        } else if let Some(error) =
+                            editor.mesh_error.as_ref().or(editor.density_error.as_ref())
+                        {
                             div()
                                 .absolute()
                                 .bottom(px(12.0))

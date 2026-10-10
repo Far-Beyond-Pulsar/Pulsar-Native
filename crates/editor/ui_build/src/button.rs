@@ -101,7 +101,8 @@ pub fn build_button(
                     .on_click(|_, _, _| {
                         let game = game_process();
                         if let Some(mut child) = game.read().0.lock().take() {
-                            let _ = child.kill();
+                            // `cargo run`'s child is the game itself.
+                            crate::runner::process_tree::kill_tree(&mut child);
                             let _ = child.wait();
                         }
                         playback().update(|s| s.game_running = false);
