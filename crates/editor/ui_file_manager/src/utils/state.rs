@@ -126,6 +126,7 @@ impl FileManagerDrawer {
     pub fn mark_directory_cache_dirty(&mut self) {
         self.directory_cache_dirty = true;
         self.tree_files.get_mut().clear();
+        self.content_revision = self.content_revision.wrapping_add(1);
     }
 
     pub(crate) fn cached_items_for_folder(&mut self, f: &Path) -> Vec<FileItem> {

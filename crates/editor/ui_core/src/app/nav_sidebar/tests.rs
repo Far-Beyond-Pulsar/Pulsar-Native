@@ -292,7 +292,7 @@ fn the_panes_scroll_on_their_own_and_share_the_height(cx: &mut TestAppContext) {
     // A scroll over the content pane moves it alone.
     let offset = |ed: &mut Editor, kind| {
         ed.nav
-            .read_with(&ed.cx, |nav, _| nav.pane_view(kind).scroll.offset().y)
+            .read_with(&ed.cx, |nav, _| nav.pane_view(kind).scroll.0.borrow().base_handle.offset().y)
     };
     ed.cx.simulate_event(gpui::ScrollWheelEvent {
         position: content.center(),
@@ -769,6 +769,9 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
     let scrolled = ed.nav.read_with(&ed.cx, |nav, _| {
         nav.pane_view(super::panes::PaneKind::Content)
             .scroll
+            .0
+            .borrow()
+            .base_handle
             .offset()
             .y
     });

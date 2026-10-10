@@ -60,6 +60,12 @@ impl FileManagerDrawer {
     /// files. A folder-based asset counts as a file. Read once and kept until
     /// something in the project changes on disk.
     pub fn files_in(&self, folder: &Path) -> Vec<FileItem> {
+        self.files_in_shared(folder).as_ref().clone()
+    }
+
+    /// [`Self::files_in`] without copying the listing: views that only read
+    /// a window of a very large folder share the cached one.
+    pub fn files_in_shared(&self, folder: &Path) -> std::rc::Rc<Vec<FileItem>> {
         if let Some(items) = self.tree_files.borrow().get(folder) {
             return items.clone();
         }
@@ -68,11 +74,23 @@ impl FileManagerDrawer {
             .into_iter()
             .filter(|item| !item.is_folder && !item.name.starts_with('.'))
             .collect();
-        items.sort_by_key(|item| item.name.to_lowercase());
+        items.sort_by_cached_key(|item| item.name.to_lowercase());
+        let items = std::rc::Rc::new(items);
         self.tree_files
             .borrow_mut()
             .insert(folder.to_path_buf(), items.clone());
         items
+    }
+
+    /// Changes whenever the folder tree or a cached listing is replaced.
+    pub fn content_revision(&self) -> u64 {
+        self.content_revision
+    }
+
+    /// Replace the folder tree, which invalidates views built from it.
+    pub(crate) fn set_folder_tree(&mut self, tree: Option<FolderNode>) {
+        self.folder_tree = tree;
+        self.content_revision = self.content_revision.wrapping_add(1);
     }
 
     /// List the folder holding `path` with `path` selected and scrolled into
@@ -217,7 +235,7 @@ impl FileManagerDrawer {
     /// Re-read the tree and listings after this drawer changed files.
     pub(crate) fn files_changed(&mut self, cx: &mut Context<Self>) {
         if let Some(root) = &self.project_path {
-            self.folder_tree = FolderNode::from_path(root);
+            self.set_folder_tree(FolderNode::from_path(root));
         }
         self.mark_directory_cache_dirty();
         cx.notify();

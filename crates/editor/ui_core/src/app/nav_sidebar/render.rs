@@ -5,7 +5,7 @@
 
 use gpui::{
     div, prelude::*, px, AnyElement, Context, ElementId, Hsla, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, Pixels, SharedString, Window,
+    MouseDownEvent, MouseMoveEvent, Pixels, SharedString, Window, uniform_list,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::dock::DragPanel;
@@ -55,7 +55,7 @@ impl Render for NavSidebar {
         };
         let sections = self.model.sections(&view.tabs);
         if pinned_open() {
-            self.render_sidebar_drawer(&sections, &view, false, window, cx)
+            self.render_sidebar_drawer(sections, &view, false, window, cx)
         } else {
             self.render_sidebar_rail(&sections, &view, cx)
                 .into_any_element()
@@ -87,7 +87,7 @@ impl Render for NavSidebarOverlay {
             }
             let view = sidebar.editor_view(cx)?;
             let sections = sidebar.model.sections(&view.tabs);
-            let drawer = sidebar.render_sidebar_drawer(&sections, &view, true, window, cx);
+            let drawer = sidebar.render_sidebar_drawer(sections, &view, true, window, cx);
             Some((drawer, view.overlay_bottom))
         });
         match drawer {
@@ -149,7 +149,7 @@ impl NavSidebar {
                 icons = icons.child(div().w(px(20.)).h(px(1.)).my_1().bg(theme.sidebar_border));
             }
             for tab in &section.tabs {
-                icons = icons.child(self.render_rail_tab(tab, drag_of(view, tab), cx));
+                icons = icons.child(self.render_rail_tab(tab, drag_of(&view.drags, tab), cx));
             }
         }
 
@@ -246,8 +246,8 @@ impl NavSidebar {
     }
 
     fn render_sidebar_drawer(
-        &self,
-        sections: &[TabSection],
+        &mut self,
+        sections: Vec<TabSection>,
         view: &EditorView,
         overlay: bool,
         window: &mut Window,
@@ -285,11 +285,12 @@ impl NavSidebar {
 
         // The panes, VS Code style: each scrolls on its own, and the border
         // between two open ones drags.
+        self.editor_list = std::rc::Rc::new(EditorList::new(sections, view.drags.clone()));
         let stack = self.model.panes.clone();
         let mut panes = v_flex().flex_1().min_h_0();
         for (index, pane) in stack.panes().iter().enumerate() {
             let body = (!pane.collapsed).then(|| match pane.kind {
-                PaneKind::Editors => self.render_editors_pane(sections, view, cx),
+                PaneKind::Editors => self.render_editors_pane(cx),
                 PaneKind::Content => self.render_content_tree(window, cx),
             });
             panes = panes.child(self.render_pane(index, *pane, body, cx));
@@ -403,16 +404,15 @@ impl NavSidebar {
                 .min_h_0()
                 .on_frame(move |geometry, _, _| height.set(f32::from(geometry.bounds.size.height)))
                 .child(
-                    v_flex()
+                    // The body is a windowed list that scrolls itself and
+                    // draws only the rows in view.
+                    div()
                         .id(ElementId::NamedInteger(
                             "nav-pane-body".into(),
                             index as u64,
                         ))
                         .debug_selector(move || format!("nav-pane-body-{title}"))
                         .size_full()
-                        .overflow_y_scroll()
-                        .track_scroll(&pane_view.scroll)
-                        .py_1()
                         .child(body),
                 )
                 .child(
@@ -466,36 +466,66 @@ impl NavSidebar {
             .into_any_element()
     }
 
-    /// The open editors, grouped.
-    fn render_editors_pane(
-        &self,
-        sections: &[TabSection],
-        view: &EditorView,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let mut column = v_flex();
-        for section in sections {
-            column = column.child(self.render_section(section, view, cx));
-        }
-        if sections.is_empty() {
-            column = column.child(
-                div()
-                    .px_3()
-                    .py_1()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("No open editors"),
-            );
-        }
-        column.into_any_element()
+    /// The open editors, grouped, as a windowed list: only the rows in view
+    /// are built.
+    fn render_editors_pane(&self, cx: &mut Context<Self>) -> AnyElement {
+        let count = self.editor_list.rows.len();
+        uniform_list(
+            "nav-editors-list",
+            count,
+            cx.processor(|sidebar, range: std::ops::Range<usize>, _window, cx| {
+                let list = sidebar.editor_list.clone();
+                range
+                    .filter_map(|ix| list.rows.get(ix).copied())
+                    .map(|row| sidebar.render_editor_row(&list, row, cx))
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .track_scroll(&self.pane_view(PaneKind::Editors).scroll)
+        .size_full()
+        .into_any_element()
     }
 
-    fn render_section(
+    /// One row of the editors pane, in a cell of the list's fixed row height.
+    fn render_editor_row(
         &self,
-        section: &TabSection,
-        view: &EditorView,
+        list: &EditorList,
+        row: EditorRow,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let theme = cx.theme().clone();
+        let cell = || div().w_full().h(px(ROW_HEIGHT)).px_1();
+        match row {
+            EditorRow::Header(section) => cell()
+                .pt_1()
+                .child(self.render_section_header(&list.sections[section], cx))
+                .into_any_element(),
+            EditorRow::Tab(section, tab) => {
+                let tab = &list.sections[section].tabs[tab];
+                cell()
+                    .child(self.render_tab_row(tab, drag_of(&list.drags, tab), cx))
+                    .into_any_element()
+            }
+            EditorRow::Hint(_) => cell()
+                .flex()
+                .items_center()
+                .pl(px(22.))
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child("Drag editors here")
+                .into_any_element(),
+            EditorRow::Empty => cell()
+                .flex()
+                .items_center()
+                .px_3()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child("No open editors")
+                .into_any_element(),
+        }
+    }
+
+    fn render_section_header(&self, section: &TabSection, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let id = section.id.clone();
         let drop_id = section.id.clone();
@@ -523,7 +553,6 @@ impl NavSidebar {
             .id(ElementId::Name(header_group.clone()))
             .group(header_group.clone())
             .h(px(24.))
-            .mt_1()
             .px_2()
             .gap_1()
             .rounded(theme.radius)
@@ -593,23 +622,7 @@ impl NavSidebar {
                 }),
             );
 
-        let mut column = v_flex().px_1().child(header);
-        if !section.collapsed {
-            if section.tabs.is_empty() && custom.is_some() {
-                column = column.child(
-                    div()
-                        .pl(px(22.))
-                        .py_1()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child("Drag editors here"),
-                );
-            }
-            for tab in &section.tabs {
-                column = column.child(self.render_tab_row(tab, drag_of(view, tab), cx));
-            }
-        }
-        column.into_any_element()
+        header.into_any_element()
     }
 
     fn render_tab_row(
@@ -765,9 +778,56 @@ impl NavSidebar {
 }
 
 /// The tab drag for `tab`, when it is open.
-fn drag_of(view: &EditorView, tab: &SidebarTab) -> Option<DragPanel> {
+fn drag_of(drags: &[Option<DragPanel>], tab: &SidebarTab) -> Option<DragPanel> {
     tab.index
-        .and_then(|index| view.drags.get(index).cloned().flatten())
+        .and_then(|index| drags.get(index).cloned().flatten())
+}
+
+/// One row of the editors pane. Rows are a fixed height so the pane can
+/// window them.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum EditorRow {
+    /// Section `0`'s header.
+    Header(usize),
+    /// Tab `1` of section `0`.
+    Tab(usize, usize),
+    /// The hint in an empty group of the user's.
+    Hint(usize),
+    /// No editors are open.
+    Empty,
+}
+
+/// What the editors pane draws, flattened: the sections, a drag for each open
+/// tab, and one entry per visible row.
+#[derive(Default)]
+pub(super) struct EditorList {
+    sections: Vec<TabSection>,
+    drags: Vec<Option<DragPanel>>,
+    rows: Vec<EditorRow>,
+}
+
+impl EditorList {
+    pub(super) fn new(sections: Vec<TabSection>, drags: Vec<Option<DragPanel>>) -> Self {
+        let mut rows = Vec::new();
+        for (ix, section) in sections.iter().enumerate() {
+            rows.push(EditorRow::Header(ix));
+            if section.collapsed {
+                continue;
+            }
+            if section.tabs.is_empty() && matches!(section.id, SectionId::Custom(_)) {
+                rows.push(EditorRow::Hint(ix));
+            }
+            rows.extend((0..section.tabs.len()).map(|tab| EditorRow::Tab(ix, tab)));
+        }
+        if sections.is_empty() {
+            rows.push(EditorRow::Empty);
+        }
+        Self {
+            sections,
+            drags,
+            rows,
+        }
+    }
 }
 
 /// A menu item's click handler that runs `f` on the sidebar.

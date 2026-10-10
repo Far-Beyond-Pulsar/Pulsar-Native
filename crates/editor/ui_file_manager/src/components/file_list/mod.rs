@@ -31,6 +31,9 @@ use crate::utils::{
 pub struct FileManagerDrawer {
     pub project_path: Option<PathBuf>,
     pub(crate) folder_tree: Option<FolderNode>,
+    /// Bumped whenever the folder tree or the cached file listings change, so
+    /// views built from them (the sidebar's content tree) know to rebuild.
+    pub(crate) content_revision: u64,
     pub(crate) selected_folder: Option<PathBuf>,
     pub(crate) selected_items: HashSet<PathBuf>,
     /// Anchor item for Shift-click range selection.
@@ -61,7 +64,7 @@ pub struct FileManagerDrawer {
     pub(crate) directory_cache_dirty: bool,
     /// [`Self::files_in`] listings, by folder; cleared with the directory cache.
     pub(crate) tree_files:
-        std::cell::RefCell<std::collections::HashMap<PathBuf, Vec<FileItem>>>,
+        std::cell::RefCell<std::collections::HashMap<PathBuf, std::rc::Rc<Vec<FileItem>>>>,
     /// An item [`Self::reveal`] asked to scroll into view on the next render.
     pub(crate) pending_reveal: Option<PathBuf>,
     pub(crate) fs_event_listener: Option<gpui::Task<()>>,
@@ -223,6 +226,7 @@ impl FileManagerDrawer {
             directory_cache: None,
             directory_cache_dirty: true,
             tree_files: Default::default(),
+            content_revision: 0,
             pending_reveal: None,
             fs_event_listener: None,
             import_watch: None,
@@ -261,7 +265,7 @@ impl FileManagerDrawer {
                         }
                         drawer.mark_directory_cache_dirty();
                         if !matches!(event.kind, engine_fs::FsChangeKind::Modified) {
-                            drawer.folder_tree = FolderNode::from_path(&project_root);
+                            drawer.set_folder_tree(FolderNode::from_path(&project_root));
                         }
                         cx.notify();
                     })
@@ -324,7 +328,7 @@ impl Render for FileManagerDrawer {
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .on_action(cx.listener(|this, _: &RefreshFileManager, _w, cx| {
                 if let Some(ref p) = this.project_path {
-                    this.folder_tree = FolderNode::from_path(p);
+                    this.set_folder_tree(FolderNode::from_path(p));
                 }
                 this.mark_directory_cache_dirty();
                 cx.notify();

@@ -207,7 +207,11 @@ impl PulsarApp {
         let nav_sidebar = {
             let app = cx.weak_entity();
             let drawer = file_manager_drawer.clone();
-            cx.new(|_| super::nav_sidebar::NavSidebar::new(app, drawer))
+            cx.new(|cx| {
+                let mut sidebar = super::nav_sidebar::NavSidebar::new(app, drawer);
+                sidebar.observe_drawer(cx);
+                sidebar
+            })
         };
         let nav_overlay = {
             let sidebar = nav_sidebar.clone();

@@ -27,7 +27,7 @@ impl FileManagerDrawer {
             Ok(_) => {
                 self.selected_items.clear();
                 if let Some(ref p) = self.project_path {
-                    self.folder_tree = FolderNode::from_path(p);
+                    self.set_folder_tree(FolderNode::from_path(p));
                 }
                 self.mark_directory_cache_dirty();
                 self.selected_folder = Some(t);
@@ -140,7 +140,7 @@ impl FileManagerDrawer {
         if any_ok {
             self.selected_items.clear();
             if let Some(ref p) = self.project_path {
-                self.folder_tree = FolderNode::from_path(p);
+                self.set_folder_tree(FolderNode::from_path(p));
             }
             self.mark_directory_cache_dirty();
             self.selected_folder = Some(t);

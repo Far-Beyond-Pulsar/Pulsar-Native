@@ -43,6 +43,7 @@
 //! draws the editors and [`content`] the content tree.
 
 mod content;
+mod content_list;
 pub(crate) mod model;
 pub(crate) mod panes;
 mod render;
@@ -116,6 +117,14 @@ pub struct NavSidebar {
     pane_views: std::collections::HashMap<PaneKind, PaneView>,
     /// The pane border being dragged.
     border_drag: Option<BorderDrag>,
+    /// The content tree's rows, rebuilt when `content_key` changes.
+    content_list: std::rc::Rc<content_list::ContentList>,
+    /// The top row of the content tree, which is not part of the list.
+    content_root_row: Option<model::FolderRow>,
+    /// `(expanded folders, drawer content)` revisions `content_list` was built at.
+    content_key: Option<(u64, u64)>,
+    /// The editors pane's rows, set each time the drawer is drawn.
+    editor_list: std::rc::Rc<render::EditorList>,
     /// How many times it has rendered, for tests that check it replays.
     #[cfg(test)]
     pub(crate) renders: usize,
@@ -123,7 +132,7 @@ pub struct NavSidebar {
 
 /// What a pane keeps between renders.
 pub(crate) struct PaneView {
-    pub scroll: gpui::ScrollHandle,
+    pub scroll: gpui::UniformListScrollHandle,
     pub scrollbar: ui::scroll::ScrollbarState,
     /// The body's height when it was last drawn, for dragging a border.
     pub height: std::rc::Rc<std::cell::Cell<f32>>,
@@ -155,7 +164,7 @@ impl NavSidebar {
                 .into_iter()
                 .map(|kind| {
                     let view = PaneView {
-                        scroll: gpui::ScrollHandle::new(),
+                        scroll: gpui::UniformListScrollHandle::new(),
                         scrollbar: Default::default(),
                         height: Default::default(),
                     };
@@ -163,9 +172,26 @@ impl NavSidebar {
                 })
                 .collect(),
             border_drag: None,
+            content_list: Default::default(),
+            content_root_row: None,
+            content_key: None,
+            editor_list: Default::default(),
             #[cfg(test)]
             renders: 0,
         }
+    }
+
+    /// Redraw when the project's folders or files change on disk, so the
+    /// content tree stays current without anything else notifying the sidebar.
+    pub(crate) fn observe_drawer(&mut self, cx: &mut Context<Self>) {
+        let drawer = self.drawer.clone();
+        cx.observe(&drawer, |sidebar, drawer, cx| {
+            let revision = drawer.read(cx).content_revision();
+            if sidebar.content_key.map(|(_, drawer)| drawer) != Some(revision) {
+                cx.notify();
+            }
+        })
+        .detach();
     }
 
     /// The text field of the group being renamed, when it is `id`.

@@ -152,7 +152,7 @@ impl SavedSidebar {
 }
 
 /// Folders the tree never lists: build output, not content.
-const SKIPPED_FOLDERS: &[&str] = &["target"];
+pub(super) const SKIPPED_FOLDERS: &[&str] = &["target"];
 
 #[derive(Debug, Default)]
 pub struct SidebarModel {
@@ -164,6 +164,8 @@ pub struct SidebarModel {
     /// Collapsed sections other than the user's groups: "__pinned__" or a panel name.
     collapsed: BTreeSet<String>,
     expanded_folders: BTreeSet<PathBuf>,
+    /// Bumped whenever which folders are expanded changes.
+    folder_revision: u64,
     /// The panes the drawer stacks.
     pub panes: PaneStack,
 }
@@ -327,70 +329,26 @@ impl SidebarModel {
         }
     }
 
+    /// Changes whenever the set of expanded folders does.
+    pub fn folder_revision(&self) -> u64 {
+        self.folder_revision
+    }
+
     pub fn folder_expanded(&self, path: &Path) -> bool {
         self.expanded_folders.contains(path)
     }
 
     pub fn toggle_folder(&mut self, path: &Path) {
+        self.folder_revision = self.folder_revision.wrapping_add(1);
         if !self.expanded_folders.remove(path) {
             self.expanded_folders.insert(path.to_path_buf());
         }
     }
 
-    /// The visible rows under `root` (the root itself not included). `files`
-    /// lists the files directly in a folder; it is asked only about folders
-    /// that are shown.
-    pub fn content_rows(
-        &self,
-        root: &FolderNode,
-        files: &dyn Fn(&Path) -> Vec<ContentFile>,
-    ) -> Vec<ContentRow> {
-        fn visit(
-            model: &SidebarModel,
-            node: &FolderNode,
-            depth: usize,
-            files: &dyn Fn(&Path) -> Vec<ContentFile>,
-            out: &mut Vec<ContentRow>,
-        ) {
-            // A folder-based asset shows up both as a folder and as a file;
-            // the tree lists it once, as the folder, which opens as the asset.
-            let (mut assets, listed): (Vec<_>, Vec<_>) = files(&node.path)
-                .into_iter()
-                .partition(|file| node.children.iter().any(|child| child.path == file.path));
-            for child in &node.children {
-                if depth == 0 && SKIPPED_FOLDERS.contains(&child.name.as_str()) {
-                    continue;
-                }
-                let expanded = model.folder_expanded(&child.path);
-                let has_files = !files(&child.path).is_empty();
-                let asset = assets
-                    .iter()
-                    .position(|file| file.path == child.path)
-                    .map(|ix| assets.swap_remove(ix));
-                out.push(ContentRow::Folder(FolderRow {
-                    path: child.path.clone(),
-                    name: child.name.clone(),
-                    depth,
-                    has_children: !child.children.is_empty() || has_files,
-                    expanded,
-                    asset,
-                }));
-                if expanded {
-                    visit(model, child, depth + 1, files, out);
-                }
-            }
-            for file in listed {
-                out.push(ContentRow::File { file, depth });
-            }
-        }
-        let mut rows = Vec::new();
-        visit(self, root, 0, files, &mut rows);
-        rows
-    }
-
     /// Keep the folders under `old` expanded after it was renamed or moved to
     /// `new`.
     pub fn folder_moved(&mut self, old: &Path, new: &Path) {
+        self.folder_revision = self.folder_revision.wrapping_add(1);
         let moved: Vec<PathBuf> = self
             .expanded_folders
             .iter()
@@ -444,6 +402,7 @@ impl SidebarModel {
             group.collapsed = saved_group.collapsed;
         }
         self.collapsed = saved.collapsed_groups.into_iter().collect();
+        self.folder_revision = self.folder_revision.wrapping_add(1);
         self.expanded_folders = saved
             .expanded_folders
             .into_iter()
@@ -727,142 +686,6 @@ mod tests {
         assert_eq!(content_root(&tree).path, Path::new("/p/Content"));
         let flat = folder("/q", vec![folder("/q/src", vec![])]);
         assert_eq!(content_root(&flat).path, Path::new("/q"));
-    }
-
-    fn no_files(_: &Path) -> Vec<ContentFile> {
-        Vec::new()
-    }
-
-    fn file(path: &str) -> ContentFile {
-        ContentFile {
-            path: path.into(),
-            name: Path::new(path)
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .into_owned(),
-            icon: IconName::Page,
-            color: None,
-        }
-    }
-
-    /// (name, depth, is a folder) for each row.
-    fn rows_of(
-        model: &SidebarModel,
-        root: &FolderNode,
-        files: &dyn Fn(&Path) -> Vec<ContentFile>,
-    ) -> Vec<(String, usize, bool)> {
-        model
-            .content_rows(root, files)
-            .into_iter()
-            .map(|row| match row {
-                ContentRow::Folder(folder) => (folder.name, folder.depth, true),
-                ContentRow::File { file, depth } => (file.name, depth, false),
-            })
-            .collect()
-    }
-
-    #[test]
-    fn folder_rows_follow_expansion_and_skip_build_output() {
-        let mut model = SidebarModel::default();
-        let tree = project();
-        let names = |model: &SidebarModel, root: &FolderNode| {
-            rows_of(model, root, &no_files)
-                .into_iter()
-                .map(|(name, depth, _)| (name, depth))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(
-            names(&model, &tree),
-            [("Content".into(), 0), ("src".into(), 0)]
-        );
-
-        let content = content_root(&tree);
-        assert_eq!(
-            names(&model, content),
-            [("Maps".into(), 0), ("Characters".into(), 0)]
-        );
-        model.toggle_folder(Path::new("/p/Content/Characters"));
-        assert_eq!(
-            names(&model, content),
-            [
-                ("Maps".into(), 0),
-                ("Characters".into(), 0),
-                ("Hero".into(), 1)
-            ]
-        );
-        let rows = model.content_rows(content, &no_files);
-        let ContentRow::Folder(characters) = &rows[1] else {
-            panic!("a folder row")
-        };
-        assert!(characters.has_children && characters.expanded);
-        let ContentRow::Folder(maps) = &rows[0] else {
-            panic!("a folder row")
-        };
-        assert!(!maps.has_children);
-    }
-
-    #[test]
-    fn files_follow_each_shown_folders_subfolders() {
-        let mut model = SidebarModel::default();
-        let tree = project();
-        let content = content_root(&tree);
-        let files = |folder: &Path| match folder.to_str().unwrap() {
-            "/p/Content" => vec![file("/p/Content/Door.class")],
-            "/p/Content/Maps" => vec![file("/p/Content/Maps/Arena.level")],
-            "/p/Content/Characters/Hero" => vec![file("/p/Content/Characters/Hero/Hero.png")],
-            // A folder-based asset the folder tree also lists.
-            "/p/Content/Characters" => vec![file("/p/Content/Characters/Hero")],
-            _ => vec![],
-        };
-
-        assert_eq!(
-            rows_of(&model, content, &files),
-            [
-                ("Maps".into(), 0, true),
-                ("Characters".into(), 0, true),
-                ("Door.class".into(), 0, false),
-            ]
-        );
-        let rows = model.content_rows(content, &files);
-        let ContentRow::Folder(maps) = &rows[0] else {
-            panic!("a folder row")
-        };
-        assert!(maps.has_children, "files alone make a folder expandable");
-
-        model.toggle_folder(Path::new("/p/Content/Maps"));
-        model.toggle_folder(Path::new("/p/Content/Characters"));
-        model.toggle_folder(Path::new("/p/Content/Characters/Hero"));
-        assert_eq!(
-            rows_of(&model, content, &files),
-            [
-                ("Maps".into(), 0, true),
-                ("Arena.level".into(), 1, false),
-                ("Characters".into(), 0, true),
-                ("Hero".into(), 1, true),
-                ("Hero.png".into(), 2, false),
-                ("Door.class".into(), 0, false),
-            ],
-            "the folder-based Hero is listed once, as its folder"
-        );
-        let asset_of = |name: &str| {
-            model
-                .content_rows(content, &files)
-                .into_iter()
-                .find_map(|row| match row {
-                    ContentRow::Folder(folder) if folder.name == name => Some(folder.asset),
-                    _ => None,
-                })
-        };
-        assert_eq!(
-            asset_of("Hero").flatten().map(|asset| asset.path),
-            Some(PathBuf::from("/p/Content/Characters/Hero")),
-            "a folder-based asset's row opens as the asset"
-        );
-        assert!(
-            asset_of("Maps").expect("Maps row").is_none(),
-            "a plain folder"
-        );
     }
 
     #[test]
