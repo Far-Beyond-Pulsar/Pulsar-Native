@@ -89,13 +89,15 @@ pub fn on_analyzer_event(
                     app.state.analyzer_progress = 0.0;
                 }
             };
-            cx.notify();
+            // Only the footer shows the analyzer status.
+            app.notify_status_bar(cx);
         }
         AnalyzerEvent::IndexingProgress { progress, message } => {
             app.state.analyzer_status_text = "Indexing".to_string();
             app.state.analyzer_detail_message = message.clone();
             app.state.analyzer_progress = *progress;
-            cx.notify();
+            // Only the footer shows the analyzer status.
+            app.notify_status_bar(cx);
         }
         AnalyzerEvent::Ready => {
             app.state.analyzer_status_text = "Ready".to_string();
@@ -108,7 +110,8 @@ pub fn on_analyzer_event(
                 .message(t!("Notification.Message.RustAnalyzerIndexingComplete").to_string()),
                 cx,
             );
-            cx.notify();
+            // Only the footer shows the analyzer status.
+            app.notify_status_bar(cx);
         }
         AnalyzerEvent::Error(e) => {
             app.state.analyzer_status_text = "Error".to_string();
@@ -121,7 +124,8 @@ pub fn on_analyzer_event(
                 .message(e.to_string()),
                 cx,
             );
-            cx.notify();
+            // Only the footer shows the analyzer status.
+            app.notify_status_bar(cx);
         }
         AnalyzerEvent::Diagnostics(diagnostics) => {
             // Convert and forward diagnostics to the problems drawer

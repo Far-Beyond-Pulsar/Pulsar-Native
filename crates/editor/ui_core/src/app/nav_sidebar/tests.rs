@@ -218,6 +218,44 @@ fn sidebar_screenshots() {
     walk(&mut cx, Some(dir));
 }
 
+/// The footer's background updates (the task count, rust-analyzer's
+/// progress, the multiuser session) repaint the footer. The sidebar reads the
+/// app's state, so these used to rebuild it on every update, by notifying the
+/// app; now it replays.
+#[gpui::test]
+fn footer_updates_do_not_rebuild_the_sidebar(cx: &mut TestAppContext) {
+    let _settings = SETTINGS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let dir = project();
+    set("unified_sidebar", true);
+    set("sidebar_pinned", false);
+    let mut ed = open(cx, dir.path());
+    ed.draw();
+    let renders = |ed: &mut Editor| ed.nav.read_with(&ed.cx, |nav, _| nav.renders);
+
+    let before = renders(&mut ed);
+    for _ in 0..3 {
+        ed.app
+            .update(&mut ed.cx, |app, cx| app.notify_status_bar(cx));
+        ed.cx.run_until_parked();
+    }
+    assert_eq!(
+        renders(&mut ed),
+        before,
+        "a footer update rebuilt the sidebar"
+    );
+
+    // A change to the app itself still reaches it.
+    ed.app.update(&mut ed.cx, |_, cx| cx.notify());
+    ed.cx.run_until_parked();
+    assert!(
+        renders(&mut ed) > before,
+        "an app change did not reach the sidebar"
+    );
+    set("unified_sidebar", false);
+}
+
 /// The navigation settings are process-wide; one walk at a time.
 static SETTINGS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
