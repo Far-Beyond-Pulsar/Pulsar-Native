@@ -10,4 +10,3 @@
 
 crates/third-party/pbgc 810876416 PBGC branch refactor/metadata-only; no upstream PR yet
 crates/third-party/psgc a05c2c4a2 PSGC branch codex/texture-src; no upstream PR yet
-plugins/vendor/code_editor cdee3424e Plugin_CodeEditor branch chore/drop-pbgc-patch; no upstream PR yet
