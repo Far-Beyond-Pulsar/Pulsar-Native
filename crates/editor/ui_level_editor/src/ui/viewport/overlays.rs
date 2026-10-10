@@ -143,15 +143,23 @@ impl ViewportPanel {
         // Bottom-right: editor and renderer diagnostics. Its timer refreshes
         // the isolated overlay in place without invalidating the viewport.
         if state.overlays.state.show_nerds_overlay {
-            overlays = overlays.child(div().absolute().bottom_2().right_2().child(
-                render_nerds_overlay(
-                    state_arc,
-                    gpu_engine,
-                    self.input_state.clone(),
-                    &self.nerds_overlay,
-                    cx,
-                ),
-            ));
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .bottom_2()
+                    .right_2()
+                    // The cached Nerds view is width-full. Give its absolute
+                    // positioning wrapper a concrete width so that width-full
+                    // resolves to the panel width instead of the whole editor.
+                    .w(px(230.0))
+                    .child(render_nerds_overlay(
+                        state_arc,
+                        gpu_engine,
+                        self.input_state.clone(),
+                        &self.nerds_overlay,
+                        cx,
+                    )),
+            );
         } else {
             self.nerds_overlay.borrow_mut().take();
         }
