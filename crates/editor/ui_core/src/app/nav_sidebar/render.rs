@@ -4,18 +4,20 @@
 //! groups and closes. The content tree is drawn by [`super::content`].
 
 use gpui::{
-    div, prelude::*, px, AnyElement, Context, ElementId, Hsla, IntoElement,
-    MouseButton, Pixels, SharedString, Window,
+    div, prelude::*, px, AnyElement, Context, ElementId, Hsla, IntoElement, MouseButton,
+    MouseDownEvent, MouseMoveEvent, Pixels, SharedString, Window,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::dock::DragPanel;
 use ui::input::TextInput;
 use ui::menu::context_menu::ContextMenuExt as _;
 use ui::menu::PopupMenuItem;
+use ui::scroll::Scrollbar;
 use ui::tooltip::Tooltip;
 use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
 
 use super::model::{SectionId, SidebarTab, TabSection};
+use super::panes::{Pane, PaneKind};
 use super::{pinned_open, NavSidebar};
 
 /// Width of the collapsed icon rail.
@@ -261,50 +263,42 @@ impl NavSidebar {
             .justify_between()
             .border_b_1()
             .border_color(theme.sidebar_border)
-            .child(section_caption("Editors", cx))
+            .child(section_caption("Navigation", cx))
             .child(
-                h_flex()
-                    .gap_0p5()
-                    .child(
-                        Button::new("nav-drawer-new-group")
-                            .ghost()
-                            .xsmall()
-                            .icon(IconName::FolderPlus)
-                            .tooltip("New group")
-                            .on_click(cx.listener(|sidebar, _, window, cx| {
-                                sidebar.new_group(None, window, cx)
-                            })),
-                    )
-                    .child(
-                        Button::new("nav-drawer-keep-open")
-                            .ghost()
-                            .xsmall()
-                            .icon(if keep_open {
-                                IconName::PinSlash
-                            } else {
-                                IconName::Pin
-                            })
-                            .tooltip(if keep_open {
-                                "Open the sidebar on hover instead"
-                            } else {
-                                "Keep the sidebar open"
-                            })
-                            .on_click(cx.listener(move |sidebar, _, _, cx| {
-                                sidebar.set_pinned_open(!keep_open, cx)
-                            })),
-                    ),
+                Button::new("nav-drawer-keep-open")
+                    .ghost()
+                    .xsmall()
+                    .icon(if keep_open {
+                        IconName::PinSlash
+                    } else {
+                        IconName::Pin
+                    })
+                    .tooltip(if keep_open {
+                        "Open the sidebar on hover instead"
+                    } else {
+                        "Keep the sidebar open"
+                    })
+                    .on_click(cx.listener(move |sidebar, _, _, cx| {
+                        sidebar.set_pinned_open(!keep_open, cx)
+                    })),
             );
 
-        let mut body = v_flex()
-            .id("nav-drawer-body")
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll()
-            .py_1();
-        for section in sections {
-            body = body.child(self.render_section(section, view, cx));
+        // The panes, VS Code style: each scrolls on its own, and the border
+        // between two open ones drags.
+        let stack = self.model.panes.clone();
+        let mut panes = v_flex().flex_1().min_h_0();
+        for (index, pane) in stack.panes().iter().enumerate() {
+            let body = (!pane.collapsed).then(|| match pane.kind {
+                PaneKind::Editors => self.render_editors_pane(sections, view, cx),
+                PaneKind::Content => self.render_content_tree(window, cx),
+            });
+            panes = panes.child(self.render_pane(index, *pane, body, cx));
+            if index + 1 < stack.panes().len() {
+                if let Some(pair) = stack.border_panes(index) {
+                    panes = panes.child(self.render_pane_border(index, pair, cx));
+                }
+            }
         }
-        body = body.child(self.render_content_tree(window, cx));
 
         v_flex()
             .id("nav-drawer")
@@ -324,9 +318,176 @@ impl NavSidebar {
             .on_hover(cx.listener(|sidebar, hovered: &bool, _, cx| {
                 sidebar.hover_drawer(*hovered, cx)
             }))
+            .when(self.border_drag.is_some(), |el| {
+                el.on_mouse_move(cx.listener(|sidebar, event: &MouseMoveEvent, _, cx| {
+                    sidebar.drag_border(event.position.y, cx)
+                }))
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(|sidebar, _, _, cx| sidebar.end_border_drag(cx)),
+                )
+                .on_mouse_up_out(
+                    MouseButton::Left,
+                    cx.listener(|sidebar, _, _, cx| sidebar.end_border_drag(cx)),
+                )
+            })
             .child(header)
-            .child(body)
+            .child(panes)
             .into_any_element()
+    }
+
+    /// A pane: its header, and its body when open, which scrolls with a
+    /// scrollbar and takes its share of the height.
+    fn render_pane(
+        &self,
+        index: usize,
+        pane: Pane,
+        body: Option<AnyElement>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme().clone();
+        let kind = pane.kind;
+        let title = kind.title();
+
+        let actions = match kind {
+            PaneKind::Editors if !pane.collapsed => Some(
+                Button::new("nav-drawer-new-group")
+                    .ghost()
+                    .xsmall()
+                    .icon(IconName::FolderPlus)
+                    .tooltip("New group")
+                    .on_click(cx.listener(|sidebar, _, window, cx| {
+                        cx.stop_propagation();
+                        sidebar.new_group(None, window, cx)
+                    })),
+            ),
+            _ => None,
+        };
+        let header = h_flex()
+            .id(ElementId::NamedInteger(
+                "nav-pane-header".into(),
+                index as u64,
+            ))
+            .debug_selector(move || format!("nav-pane-{title}"))
+            .h(px(26.))
+            .flex_none()
+            .px_1()
+            .gap_1()
+            .cursor_pointer()
+            .when(index > 0, |el| {
+                el.border_t_1().border_color(theme.sidebar_border)
+            })
+            .hover(|el| el.bg(theme.list_hover))
+            .child(
+                Icon::new(if pane.collapsed {
+                    IconName::ChevronRight
+                } else {
+                    IconName::ChevronDown
+                })
+                .size(px(12.))
+                .text_color(theme.muted_foreground),
+            )
+            .child(div().flex_1().child(section_caption(title, cx)))
+            .children(actions)
+            .on_click(cx.listener(move |sidebar, _, _, cx| sidebar.toggle_pane(kind, cx)));
+
+        let Some(body) = body else {
+            return v_flex().flex_none().child(header).into_any_element();
+        };
+        let pane_view = self.pane_view(kind);
+        let height = pane_view.height.clone();
+        let mut column = v_flex().min_h_0().child(header).child(
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .on_frame(move |geometry, _, _| height.set(f32::from(geometry.bounds.size.height)))
+                .child(
+                    v_flex()
+                        .id(ElementId::NamedInteger(
+                            "nav-pane-body".into(),
+                            index as u64,
+                        ))
+                        .debug_selector(move || format!("nav-pane-body-{title}"))
+                        .size_full()
+                        .overflow_y_scroll()
+                        .track_scroll(&pane_view.scroll)
+                        .py_1()
+                        .child(body),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .child(Scrollbar::vertical(&pane_view.scrollbar, &pane_view.scroll)),
+                ),
+        );
+        // Open panes share the height by weight.
+        let style = column.style();
+        style.flex_grow = Some(pane.weight);
+        style.flex_shrink = Some(1.);
+        style.flex_basis = Some(px(0.).into());
+        column.into_any_element()
+    }
+
+    /// The draggable border under pane `index`, between open panes `pair`.
+    fn render_pane_border(
+        &self,
+        index: usize,
+        pair: (usize, usize),
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme().clone();
+        let active = self.is_dragging_border(index);
+        div()
+            .id(ElementId::NamedInteger(
+                "nav-pane-border".into(),
+                index as u64,
+            ))
+            .debug_selector(move || format!("nav-pane-border-{index}"))
+            .h(px(4.))
+            .w_full()
+            .flex_none()
+            .cursor_ns_resize()
+            .when(active, |el| el.bg(theme.primary))
+            .when(!active, |el| {
+                el.hover(|el| el.bg(theme.primary.opacity(0.5)))
+            })
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |sidebar, event: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    sidebar.start_border_drag(pair, event.position.y, cx);
+                }),
+            )
+            .into_any_element()
+    }
+
+    /// The open editors, grouped.
+    fn render_editors_pane(
+        &self,
+        sections: &[TabSection],
+        view: &EditorView,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut column = v_flex();
+        for section in sections {
+            column = column.child(self.render_section(section, view, cx));
+        }
+        if sections.is_empty() {
+            column = column.child(
+                div()
+                    .px_3()
+                    .py_1()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("No open editors"),
+            );
+        }
+        column.into_any_element()
     }
 
     fn render_section(

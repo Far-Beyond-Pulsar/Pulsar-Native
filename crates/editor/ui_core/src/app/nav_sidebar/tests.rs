@@ -256,6 +256,104 @@ fn footer_updates_do_not_rebuild_the_sidebar(cx: &mut TestAppContext) {
     set("unified_sidebar", false);
 }
 
+/// The drawer stacks its panes like VS Code's side bar: each scrolls on its
+/// own with a scrollbar, the border between them drags, and a collapsed pane
+/// gives its height to the others.
+#[gpui::test]
+fn the_panes_scroll_on_their_own_and_share_the_height(cx: &mut TestAppContext) {
+    use super::panes::PaneKind;
+    let _settings = SETTINGS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let dir = project();
+    // Enough files that the content pane overflows.
+    let maps = dir.path().join("Content/Maps");
+    for n in 0..60 {
+        std::fs::write(maps.join(format!("Level{n:02}.level")), b"").unwrap();
+    }
+    set("unified_sidebar", true);
+    set("sidebar_pinned", true);
+    let mut ed = open(cx, dir.path());
+    ed.draw();
+    ed.nav
+        .update(&mut ed.cx, |nav, cx| nav.toggle_folder(&maps, cx));
+    ed.draw();
+
+    let editors = ed.bounds("nav-pane-body-Editors").expect("editors pane");
+    let content = ed.bounds("nav-pane-body-Content").expect("content pane");
+    assert!(editors.bottom() <= content.top(), "the panes stack");
+    let share =
+        f32::from(editors.size.height) / f32::from(editors.size.height + content.size.height);
+    assert!(
+        (share - 0.4).abs() < 0.02,
+        "a new project splits 2:3 ({share})"
+    );
+
+    // A scroll over the content pane moves it alone.
+    let offset = |ed: &mut Editor, kind| {
+        ed.nav
+            .read_with(&ed.cx, |nav, _| nav.pane_view(kind).scroll.offset().y)
+    };
+    ed.cx.simulate_event(gpui::ScrollWheelEvent {
+        position: content.center(),
+        delta: gpui::ScrollDelta::Pixels(point(px(0.), px(-120.))),
+        ..Default::default()
+    });
+    ed.draw();
+    assert!(
+        offset(&mut ed, PaneKind::Content) < px(0.),
+        "the content pane scrolled"
+    );
+    assert_eq!(
+        offset(&mut ed, PaneKind::Editors),
+        px(0.),
+        "the editors pane did not"
+    );
+
+    // Dragging the border moves height from one pane to the other.
+    let border = ed.bounds("nav-pane-border-0").expect("border");
+    ed.cx
+        .simulate_mouse_down(border.center(), gpui::MouseButton::Left, Modifiers::none());
+    let to = border.center() + point(px(0.), px(60.));
+    ed.cx
+        .simulate_mouse_move(to, Some(gpui::MouseButton::Left), Modifiers::none());
+    ed.cx
+        .simulate_mouse_up(to, gpui::MouseButton::Left, Modifiers::none());
+    ed.draw();
+    let editors_after = ed.bounds("nav-pane-body-Editors").unwrap();
+    let content_after = ed.bounds("nav-pane-body-Content").unwrap();
+    let grew = f32::from(editors_after.size.height - editors.size.height);
+    let shrank = f32::from(content.size.height - content_after.size.height);
+    assert!(
+        (grew - 60.).abs() < 2. && (shrank - 60.).abs() < 2.,
+        "{grew} / {shrank}"
+    );
+    assert!(ed.nav.read_with(&ed.cx, |nav, _| nav.border_drag.is_none()));
+    let saved = ed
+        .nav
+        .read_with(&ed.cx, |nav, _| nav.model.save(dir.path()).panes);
+    assert_eq!(
+        saved,
+        ed.nav.read_with(&ed.cx, |nav, _| nav.model.panes.clone())
+    );
+
+    // Collapsing the editors pane gives its height to the content pane.
+    let header = ed.bounds("nav-pane-Editors").expect("editors header");
+    ed.cx.simulate_click(header.center(), Modifiers::none());
+    ed.draw();
+    let collapsed = ed.nav.read_with(&ed.cx, |nav, _| {
+        nav.model.panes.is_collapsed(PaneKind::Editors)
+    });
+    assert!(collapsed);
+    let content_alone = ed.bounds("nav-pane-body-Content").unwrap();
+    assert!(
+        content_alone.size.height > content_after.size.height + editors_after.size.height - px(1.),
+        "the content pane took the height"
+    );
+    set("unified_sidebar", false);
+    set("sidebar_pinned", false);
+}
+
 /// The navigation settings are process-wide; one walk at a time.
 static SETTINGS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -470,6 +568,9 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
         "a collapsed folder lists no files"
     );
     let maps_row = ed.bounds("nav-entry-Maps").expect("Maps row");
+    // The pointer reaches the row before it clicks, as a hand's does.
+    ed.cx
+        .simulate_mouse_move(maps_row.center(), None, Modifiers::none());
     ed.cx.simulate_click(maps_row.center(), Modifiers::none());
     ed.draw();
     let arena_row = ed
@@ -519,9 +620,20 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
     ed.cx.run_until_parked();
     assert!(!ed.hover_open(), "closes once the menu is dismissed");
 
-    // "Reveal in file drawer" lists the file's folder with the file selected.
-    ed.nav
-        .update(&mut ed.cx, |nav, cx| nav.reveal_in_drawer(arena.clone(), cx));
+    // The icon at a hovered row's end reveals the file in the file drawer:
+    // its folder listed, the file selected.
+    ed.cx
+        .simulate_mouse_move(rail.center(), None, Modifiers::none());
+    ed.draw();
+    let arena_row = ed.bounds("nav-entry-Arena.level").expect("Arena row");
+    ed.cx
+        .simulate_mouse_move(arena_row.center(), None, Modifiers::none());
+    ed.draw();
+    let reveal = ed.bounds("nav-reveal-Arena.level").expect("reveal icon");
+    assert!(arena_row.contains(&reveal.center()), "at the row's end");
+    ed.cx
+        .simulate_mouse_move(reveal.center(), None, Modifiers::none());
+    ed.cx.simulate_click(reveal.center(), Modifiers::none());
     ed.draw();
     assert!(drawer_open(ed));
     ed.app.read_with(&ed.cx, |app, cx| {
@@ -529,6 +641,46 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
         assert_eq!(drawer.selected_folder(), Some(maps.as_path()));
         assert!(drawer.is_item_selected(&arena));
     });
+
+    // Double-clicking a folder lists it in the file drawer; its first click
+    // expanded it. (Showing the file drawer closed the hover sidebar.)
+    ed.app.update(&mut ed.cx, |app, cx| {
+        app.state.drawer_open = false;
+        cx.notify();
+    });
+    ed.cx
+        .simulate_mouse_move(rail.center(), None, Modifiers::none());
+    ed.draw();
+    assert!(ed.hover_open());
+    let materials = root.join("Content/Materials");
+    let materials_row = ed.bounds("nav-entry-Materials").expect("Materials row");
+    ed.cx
+        .simulate_mouse_move(materials_row.center(), None, Modifiers::none());
+    for click_count in [1, 2] {
+        ed.cx.simulate_event(gpui::MouseDownEvent {
+            button: gpui::MouseButton::Left,
+            position: materials_row.center(),
+            modifiers: Modifiers::none(),
+            click_count,
+            first_mouse: false,
+        });
+        ed.cx.simulate_event(gpui::MouseUpEvent {
+            button: gpui::MouseButton::Left,
+            position: materials_row.center(),
+            modifiers: Modifiers::none(),
+            click_count,
+        });
+    }
+    ed.draw();
+    ed.app.read_with(&ed.cx, |app, cx| {
+        let drawer = app.state.file_manager_drawer.read(cx);
+        assert_eq!(drawer.selected_folder(), Some(materials.as_path()));
+    });
+    assert!(ed
+        .nav
+        .read_with(&ed.cx, |nav, _| nav.model.folder_expanded(&materials)));
+    ed.nav
+        .update(&mut ed.cx, |nav, cx| nav.toggle_folder(&materials, cx));
     ed.app.update(&mut ed.cx, |app, cx| {
         app.state.drawer_open = false;
         cx.notify();
@@ -594,6 +746,43 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
     });
     assert!(!materials.join("Duel.level").exists());
     ed.draw();
+
+    // A pane whose rows overflow it scrolls on its own, with a scrollbar.
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        for _ in 0..30 {
+            nav.put_on_clipboard(maps.join("Canyon.level"), false, cx);
+            nav.paste_into(maps.clone(), cx);
+        }
+        nav.hover.set_rail(true);
+        cx.notify();
+    });
+    ed.draw();
+    let content = ed.bounds("nav-pane-body-Content").expect("content pane");
+    ed.cx
+        .simulate_mouse_move(content.center(), None, Modifiers::none());
+    ed.cx.simulate_event(gpui::ScrollWheelEvent {
+        position: content.center(),
+        delta: gpui::ScrollDelta::Pixels(point(px(0.), px(-200.))),
+        ..Default::default()
+    });
+    ed.draw();
+    let scrolled = ed.nav.read_with(&ed.cx, |nav, _| {
+        nav.pane_view(super::panes::PaneKind::Content)
+            .scroll
+            .offset()
+            .y
+    });
+    assert!(scrolled < px(0.), "the content pane scrolls");
+    // By default the scrollbar shows while scrolling and fades after; a
+    // still image needs it always shown.
+    let set_scrollbar = |ed: &mut Editor, show| {
+        ed.cx
+            .update(|_, cx| ui::Theme::global_mut(cx).scrollbar_show = show);
+        ed.draw();
+    };
+    set_scrollbar(ed, ui::scroll::ScrollbarShow::Always);
+    shots.save(cx, "8-content-pane-scrolled");
+    set_scrollbar(ed, ui::scroll::ScrollbarShow::default());
 }
 
 /// PNGs of the window into `dir`, when there is one and a GPU adapter is

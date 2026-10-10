@@ -21,11 +21,15 @@ Sidebar**, or with **Toggle Unified Sidebar** in the command palette.
 - **Files.** The **Content** tree lists each expanded folder's files below
   its subfolders (#1139), so the bottom file drawer is only needed when you
   ask for it. Clicking a folder expands or collapses it; clicking a file
-  selects it and double-clicking opens it.
+  selects it. Double-clicking a file, or a folder-based asset such as a
+  blueprint class, opens it in its editor; double-clicking any other folder
+  lists it in the file drawer. Hovering a row shows a small icon at its end
+  that reveals the file in the file drawer (its folder listed, the file
+  selected), or lists the folder there.
 - **Right-click menu.** On a file: Open, Reveal in file drawer (lists its
   folder in the drawer with the file selected), Cut, Copy, Paste (beside it),
-  Rename, Delete. On a folder: Open in file drawer, Cut, Copy, Paste (into
-  it), Rename, Delete. The top folder offers Open in file drawer and Paste.
+  Rename, Delete. On a folder: Open (a folder-based asset only), Open in
+  file drawer, Cut, Copy, Paste (into it), Rename, Delete. The top folder offers Open in file drawer and Paste.
   Rename edits the name in place; Enter or clicking away applies it. These
   use the file drawer's operations and share its clipboard, so a copy in one
   pastes in the other. A pasted name already taken gets a "copy" suffix
@@ -37,7 +41,19 @@ Sidebar**, or with **Toggle Unified Sidebar** in the command palette.
 - **Kept open.** The pin at the top, or **Keep Sidebar Open** in settings,
   puts the sidebar in its own column beside the editor.
 
-The sidebar has two sections:
+The sidebar stacks its sections as panes, like VS Code's side bar:
+
+- **Each pane scrolls on its own**, with a scrollbar that follows Settings →
+  Appearance → Scrollbar (by default it shows while you scroll and fades
+  after).
+- **Click a pane's header** to collapse it to its header; the open panes
+  share the height.
+- **Drag the border** between two open panes to give one more height. It
+  moves only the two panes beside it, and neither shrinks below 48 px.
+- New projects split the height 2:3 between Editors and Content. The panes'
+  sizes and collapsed state are saved with the layout.
+
+The panes are:
 
 - **Editors.** Pinned tabs come first, then your own groups, then the rest
   grouped by the kind of editor (every blueprint together, every material
@@ -59,8 +75,8 @@ The sidebar has two sections:
   The tree updates as files change on disk, because it is the file drawer's
   own tree and listings. A folder-based asset is listed once, as a folder.
 
-Pins, your groups (names, tabs, collapsed or not), collapsed groups and
-expanded folders are saved per project in `.pulsar/layout.json`, next to the
+Pins, your groups (names, tabs, collapsed or not), collapsed groups,
+expanded folders and the panes are saved per project in `.pulsar/layout.json`, next to the
 dock layout.
 
 While the sidebar is over the editor and the file drawer is open, the
@@ -79,7 +95,11 @@ sidebar stops at the drawer's top edge, so it never covers the assets.
   - `render.rs`: the rail, the sidebar, the editor rows and their menus, and
     `NavSidebarOverlay`, the small view that draws the hover sidebar over the
     editor.
-  - `content.rs`: the content tree and its right-click menu.
+  - `panes.rs`: the stack of panes: their order, collapsed state and share of
+    the height, and dragging the border between two. Plain data with unit
+    tests.
+  - `content.rs`: the content tree, its reveal icons and its right-click
+    menu.
   - `tests.rs`: an editor window test (see below).
 - From the dock (Far-Beyond-Pulsar/WGPUI-Component#24):
   `TabPanel::set_tab_bar_hidden` hides the tab strip, and
@@ -109,9 +129,14 @@ checks each state above:
   editor-kind group. A row's drag carries the right tab.
 - The content tree: a click on a folder lists its files without opening the
   file drawer; a click selects a file; a right-click menu keeps the hover
-  sidebar open until it closes; Reveal selects the file in the drawer; rename,
-  copy and paste (with the copy suffix), cut and delete change the files on
-  disk and the tree.
+  sidebar open until it closes; a row's reveal icon selects the file in the
+  drawer; double-clicking a folder lists it there; rename, copy and paste
+  (with the copy suffix), cut and delete change the files on disk and the
+  tree; a content pane full of files scrolls.
+- The panes (`the_panes_scroll_on_their_own_and_share_the_height`): they
+  stack and split 2:3, a scroll over one moves only that one, dragging the
+  border moves height from one to the other, and collapsing one gives its
+  height to the rest.
 - Keeping the sidebar open moves the editor over by the sidebar's width.
 - Turning the sidebar off brings the strip back.
 
