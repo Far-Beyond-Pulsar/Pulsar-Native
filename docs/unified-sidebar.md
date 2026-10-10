@@ -134,6 +134,7 @@ come out blank, because a test context has no asset source.
   the file drawer, not in the sidebar.
 - **Delete is immediate**, as in the file drawer: there is no confirmation
   and no trash.
-- **The sidebar is not a cached view yet**, so anything that redraws the
-  editor redraws it too. Two WGPUI problems block caching it (see the module
-  docs in `nav_sidebar/mod.rs`).
+- **The sidebar rebuilds whenever the app does.** It is a cached view, but
+  it reads the app's state (the open tabs, the drawer), so a change there
+  rebuilds it. The footer's background updates notify the footer only, so
+  they leave it alone (`footer_updates_do_not_rebuild_the_sidebar`).

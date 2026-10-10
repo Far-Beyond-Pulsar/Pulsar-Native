@@ -45,12 +45,17 @@ pub struct GameViewport {
     /// The game's last event hub snapshot, and when it was taken.
     events: Option<pulsar_events::EventsSnapshot>,
     events_polled: Instant,
+    /// While no game runs, watches the shared play state for a reason to
+    /// draw again (see [`Self::watch_while_idle`]).
+    idle_watch: Option<Task<()>>,
 }
 
 /// How often the events overlay re-reads the game's event tap.
 const EVENTS_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 /// Rows the events overlay shows.
 const EVENTS_ROWS: usize = 24;
+/// How often an idle tab checks for a start or stop request.
+const IDLE_POLL: std::time::Duration = std::time::Duration::from_millis(100);
 
 impl GameViewport {
     pub fn new(
@@ -69,7 +74,35 @@ impl GameViewport {
             events_open: false,
             events: None,
             events_polled: Instant::now(),
+            idle_watch: None,
         }
+    }
+
+    /// While no game runs, nothing redraws this tab every frame. A start or
+    /// stop request, and the build starting or ending, come from other
+    /// threads through the shared play state, so check it a few times a
+    /// second and redraw once it changed. Redrawing every frame instead
+    /// re-rendered every view above the tab, 60 times a second.
+    fn watch_while_idle(&self, cx: &mut Context<Self>) -> Task<()> {
+        let shared = self.shared_state.clone();
+        let signature = move || {
+            let state = shared.read();
+            let pie = &state.play.pie;
+            (
+                pie.pending_start.is_some(),
+                pie.stop_requested,
+                pie.building,
+                pie.active,
+            )
+        };
+        let seen = signature();
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(IDLE_POLL).await;
+            if signature() != seen {
+                _ = this.update(cx, |_, cx| cx.notify());
+                return;
+            }
+        })
     }
 
     /// Refresh the events snapshot (on the thread that ticks the game).
@@ -484,8 +517,6 @@ impl ui::dock::Panel for GameViewport {
 
 impl Render for GameViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Keep the game ticking every frame while active.
-        window.request_animation_frame();
         self.poll_status(window, cx);
 
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -507,6 +538,13 @@ impl Render for GameViewport {
 
         self.poll_events();
         let running = self.pie_host.is_some();
+        if running {
+            // Keep the game ticking every frame while it runs.
+            self.idle_watch = None;
+            window.request_animation_frame();
+        } else {
+            self.idle_watch = Some(self.watch_while_idle(cx));
+        }
         let building = self.shared_state.read().play.pie.building;
         let status: SharedString = if running {
             if self.captured {

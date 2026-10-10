@@ -111,6 +111,9 @@ pub struct AppState {
     pub nav_sidebar: gpui::Entity<super::nav_sidebar::NavSidebar>,
     /// The sidebar's drawer while it is open over the editor on hover.
     pub nav_overlay: gpui::Entity<super::nav_sidebar::NavSidebarOverlay>,
+    /// The footer, drawn as its own cached view. Background status updates
+    /// notify it, not the app.
+    pub status_bar: gpui::Entity<super::status_bar::StatusBar>,
 }
 
 impl AppState {

@@ -3,9 +3,9 @@
 use engine_backend::services::AnalyzerStatus;
 use gpui::UpdateGlobal as _;
 use gpui::{
-    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
-    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Render,
-    Window,
+    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, AnyView, App,
+    Context, FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseDownEvent,
+    MouseMoveEvent, Render, StyleRefinement, Window,
 };
 use plugin_editor_api::{StatusbarAction, StatusbarPosition};
 use rust_i18n::t;
@@ -22,6 +22,11 @@ use ui_multiuser_status::render_status_bar_indicator;
 use super::PulsarApp;
 
 impl PulsarApp {
+    /// Repaint the footer after something only it shows changed.
+    pub(crate) fn notify_status_bar(&self, cx: &mut Context<Self>) {
+        self.state.status_bar.update(cx, |_, cx| cx.notify());
+    }
+
     pub(super) fn render_footer(
         &self,
         drawer_open: bool,
@@ -773,7 +778,13 @@ impl Render for PulsarApp {
                 div()
                     .flex_1()
                     .relative()
-                    .child(self.state.dock_area.clone())
+                    // Cached, like the file drawer below: the footer and
+                    // the app's own state change far more often than the
+                    // editors do.
+                    .child(
+                        AnyView::from(self.state.dock_area.clone())
+                            .cached(StyleRefinement::default().size_full()),
+                    )
                     .when(drawer_open && !drawer_docked, |this| {
                         this.child(
                             div()
@@ -858,7 +869,14 @@ impl Render for PulsarApp {
                                             div()
                                                 .flex_1()
                                                 .min_h_0()
-                                                .child(self.state.file_manager_drawer.clone()),
+                                                .child(
+                                                    AnyView::from(
+                                                        self.state.file_manager_drawer.clone(),
+                                                    )
+                                                    .cached(
+                                                        StyleRefinement::default().size_full(),
+                                                    ),
+                                                ),
                                         ),
                                 )
                                 .with_animation(
@@ -955,7 +973,14 @@ impl Render for PulsarApp {
                                     div()
                                         .flex_1()
                                         .min_h_0()
-                                        .child(self.state.file_manager_drawer.clone()),
+                                        .child(
+                                                    AnyView::from(
+                                                        self.state.file_manager_drawer.clone(),
+                                                    )
+                                                    .cached(
+                                                        StyleRefinement::default().size_full(),
+                                                    ),
+                                                ),
                                 ),
                         )
                         .when(self.state.drawer_resizing, |this| {
@@ -978,7 +1003,14 @@ impl Render for PulsarApp {
                         }),
                 )
             })
-            .child(self.render_footer(drawer_open || drawer_docked, cx))
+            .child(
+                AnyView::from(self.state.status_bar.clone()).cached(
+                    StyleRefinement::default()
+                        .w_full()
+                        .h(px(super::status_bar::STATUS_BAR_HEIGHT))
+                        .flex_shrink_0(),
+                ),
+            )
             .children(command_palette)
             .children(project_switcher)
             .child(self.render_radial_menu(window, cx))

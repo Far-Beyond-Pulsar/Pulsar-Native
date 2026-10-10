@@ -27,12 +27,8 @@
 //! showing the file drawer) goes through [`PulsarApp`]. The hover drawer is a
 //! second, small view ([`NavSidebarOverlay`]) drawn over the editor.
 //!
-//! The sidebar is not drawn as a `.cached()` view yet. Two WGPUI problems stop
-//! it: a cached view's retained layer can be batched out of draw order with
-//! the quads around it (the headless renderer's `assert_draw_order` catches it
-//! in `sidebar_screenshots`), and replaying a cached deferred draw that opened
-//! deferred draws of its own (a right-click menu in the hover drawer) replays
-//! the wrong ones.
+//! The sidebar is drawn as a `.cached()` view, so redrawing the editor replays
+//! it rather than rebuilding it.
 //!
 //! Pins, the user's groups, collapsed groups and expanded folders are saved
 //! with the project's layout. [`model`] holds that state and the ordering
@@ -107,6 +103,9 @@ pub struct NavSidebar {
     /// The content-tree file or folder being renamed, and its text field.
     renaming_path: Option<(PathBuf, Entity<InputState>)>,
     _path_rename_events: Option<Subscription>,
+    /// How many times it has rendered, for tests that check it replays.
+    #[cfg(test)]
+    pub(crate) renders: usize,
 }
 
 impl NavSidebar {
@@ -122,6 +121,8 @@ impl NavSidebar {
             selected: None,
             renaming_path: None,
             _path_rename_events: None,
+            #[cfg(test)]
+            renders: 0,
         }
     }
 
@@ -541,12 +542,26 @@ impl PulsarApp {
         if !enabled() {
             return editor_area.into_any_element();
         }
+        let width = if pinned_open() {
+            render::DRAWER_WIDTH
+        } else {
+            render::RAIL_WIDTH
+        };
         ui::h_flex()
             .flex_1()
             .min_h_0()
             .w_full()
             .items_stretch()
-            .child(self.state.nav_sidebar.clone())
+            // Cached, so redrawing the editor replays the sidebar instead of
+            // rebuilding it.
+            .child(
+                gpui::AnyView::from(self.state.nav_sidebar.clone()).cached(
+                    gpui::StyleRefinement::default()
+                        .w(gpui::px(width))
+                        .h_full()
+                        .flex_none(),
+                ),
+            )
             .child(
                 editor_area
                     .h_full()

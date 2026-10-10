@@ -44,6 +44,10 @@ pub(super) struct EditorView {
 
 impl Render for NavSidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(test)]
+        {
+            self.renders += 1;
+        }
         let Some(view) = self.editor_view(cx) else {
             return div().into_any_element();
         };
