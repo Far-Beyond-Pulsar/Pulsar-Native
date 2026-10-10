@@ -13,7 +13,7 @@ use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 use super::voxel_mesh_backend::MeshVoxelBackend;
 use super::voxel_backend::{
-    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRenderBackend, VoxelView,
+    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelRenderBackend, VoxelView, UNPICKED_REACH_M,
 };
 type GizmoMode = GizmoType;
 
@@ -312,9 +312,9 @@ pub(super) fn apply_voxel_brush_commit(
 /// asked the renderer for the terrain hit under it.
 struct PendingBrush {
     pick: u64,
-    /// The renderer's answer once it arrived: the hit (distance, cell size)
-    /// or none (sky, or a column regenerating under the stroke).
-    answer: Option<Option<(f64, f64)>>,
+    /// The renderer's answer once it arrived: the hit drawn under the
+    /// sample, or none (sky).
+    answer: Option<Option<helio_pass_voxel_planet::engine::PickHit>>,
     requested: Instant,
     stroke: u64,
     origin: DVec3,
@@ -326,9 +326,8 @@ struct PendingBrush {
 /// exact terrain without one.
 const PICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
 /// After a stamp within this distance, brush samples stamp on the frame of
-/// their input: the exact walk from the eye to twice that distance
-/// costs under a millisecond (0.1 ms at 10 m), where a renderer pick takes
-/// frames.
+/// their input: the exact walk from the eye to twice that distance costs
+/// under a millisecond, where a renderer pick takes frames.
 const INSTANT_STAMP_M: f64 = 40.0;
 
 /// Scripted sculpting through the editor's own brush queue: after 12 s to
@@ -2181,19 +2180,17 @@ impl HelioRenderer {
             direction,
             request,
         };
-        // Near the last stamp (any stroke's: the walk is exact from the eye,
-        // the distance only bounds it), with no older sample still waiting
-        // (it must land first): stamp now, walking from the eye to twice that
-        // distance (`edit_ray` walks `cell * 3 + 1` either side of the hint,
-        // so a third of the distance starts at the eye). A surface beyond it
-        // takes the renderer's pick.
+        // Near the last stamp (any stroke's), with no older sample still
+        // waiting (it must land first): stamp now, walking the exact terrain
+        // from the eye to twice that distance. A surface beyond it takes the
+        // renderer's pick.
         let near = self
             .voxel_stroke_last
             .as_ref()
             .map(|(_, last)| last.distance)
             .filter(|&d| d <= INSTANT_STAMP_M);
         if let Some(distance) = near.filter(|_| self.voxel_brush_picks.is_empty()) {
-            if self.apply_voxel_brush(&brush, Some((distance, distance / 3.0))) {
+            if self.apply_voxel_brush(&brush, VoxelRayHint::Reach(distance * 2.0)) {
                 return;
             }
         }
@@ -2201,15 +2198,15 @@ impl HelioRenderer {
             Some(pick) => self.voxel_brush_picks.push_back(PendingBrush { pick, ..brush }),
             // Nothing drawn to pick yet: a bounded exact walk.
             None => {
-                self.apply_voxel_brush(&brush, None);
+                self.apply_voxel_brush(&brush, VoxelRayHint::Reach(UNPICKED_REACH_M));
             }
         }
     }
 
-    /// Apply brush samples in order as their renderer hits arrive. A sample
-    /// is never dropped: one whose pick missed (sky, or the column under the
-    /// previous stamp still regenerating) or got no answer in time walks the
-    /// exact terrain within a bounded reach instead.
+    /// Apply brush samples in order as their renderer hits arrive: where the
+    /// renderer drew the surface under them (what the user aimed at). A
+    /// sample over the sky stamps nothing; one with no answer in time walks
+    /// the exact terrain within a bounded reach.
     fn resolve_voxel_brushes(&mut self) {
         if self.voxel_brush_picks.is_empty() {
             return;
@@ -2221,20 +2218,22 @@ impl HelioRenderer {
             }
         }
         while let Some(front) = self.voxel_brush_picks.front() {
-            let near = match front.answer {
-                Some(hit) => hit,
-                None if front.requested.elapsed() >= PICK_TIMEOUT => None,
+            let hint = match front.answer {
+                Some(Some(hit)) => Some(VoxelRayHint::Drawn(hit)),
+                Some(None) => None,
+                None if front.requested.elapsed() >= PICK_TIMEOUT => Some(VoxelRayHint::Reach(UNPICKED_REACH_M)),
                 None => break,
             };
             let brush = self.voxel_brush_picks.pop_front().expect("front checked above");
-            self.apply_voxel_brush(&brush, near);
+            if let Some(hint) = hint {
+                self.apply_voxel_brush(&brush, hint);
+            }
         }
     }
 
-    /// Apply a brush sample where its ray first hits the terrain; `near`
-    /// bounds the exact walk (around a renderer hit). Returns whether a
-    /// stamp was applied.
-    fn apply_voxel_brush(&mut self, brush: &PendingBrush, near: Option<(f64, f64)>) -> bool {
+    /// Apply a brush sample where its ray hits the terrain ([`VoxelRayHint`]).
+    /// Returns whether a stamp was applied.
+    fn apply_voxel_brush(&mut self, brush: &PendingBrush, hint: VoxelRayHint) -> bool {
         profiling::profile_scope!("voxel_apply_brush");
         let started = Instant::now();
         let entries = {
@@ -2252,14 +2251,14 @@ impl HelioRenderer {
         let projected = started.elapsed();
         let ray = {
             profiling::profile_scope!("voxel_edit_ray");
-            self.voxel_backends.edit_ray(&entries, brush.origin, brush.direction, near, request)
+            self.voxel_backends.edit_ray(&entries, brush.origin, brush.direction, hint, request)
         };
         let walked = started.elapsed();
         let slow = |hit: Option<f64>| {
             let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
             if started.elapsed().as_millis() >= 20 {
                 tracing::warn!(
-                    "VOXEL_BRUSH slow: {:.1} ms (entries {:.1}, ray {:.1}, commit {:.1}) near={near:?} hit={hit:?}",
+                    "VOXEL_BRUSH slow: {:.1} ms (entries {:.1}, ray {:.1}, commit {:.1}) hint={hint:?} hit={hit:?}",
                     ms(started.elapsed()),
                     ms(projected),
                     ms(walked - projected),

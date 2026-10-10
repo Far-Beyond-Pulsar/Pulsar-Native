@@ -24,6 +24,8 @@
 //!   drag stroke across the view through the editor's pointer queue (op:
 //!   dig, build, paint; tool: stamp, flatten, smooth), then release, settle
 //!   and capture; logs per-frame times and the edits the journal gained.
+//! - `at:<x>:<y>:<z>`: later views are placed over this direction from the
+//!   planet's centre (an editor session's `eye` from its logs).
 //! - `down:<metres>`: move the camera that far down the local vertical (into
 //!   a pit just dug: no lift to the generated ground), settled, captured.
 //!
@@ -116,9 +118,16 @@ impl Harness {
     }
 
     /// Place the camera `height` above the ground below `direction` (from
-    /// the planet centre), looking at `pitch` / `yaw` in the editor's local
-    /// frame. The renderer reports the camera's altitude over the ground.
+    /// the planet centre), looking at `pitch` / `yaw` in the local frame
+    /// there (up the local vertical, as the editor's camera frame). The
+    /// renderer reports the camera's altitude over the ground.
     fn place(&mut self, direction: glam::DVec3, height: f64, pitch: f32, yaw: f32) {
+        // The camera state's yaw and pitch are world angles.
+        let (sy, cy) = yaw.sin_cos();
+        let (sp, cp) = pitch.sin_cos();
+        let local = glam::Vec3::new(sy * cp, sp, -cy * cp);
+        let forward = glam::Quat::from_rotation_arc(glam::Vec3::Y, direction.as_vec3().normalize()) * local;
+        let (yaw, pitch) = (forward.x.atan2(-forward.z), forward.y.clamp(-1.0, 1.0).asin());
         let mailbox = self.renderer.editor_mailbox();
         let mut radius = self.camera().position.into_iter().map(|v| v * v).sum::<f64>().sqrt();
         for _ in 0..4 {
@@ -226,7 +235,7 @@ fn main() {
     h.report(&format!("start ({:.1} s)", started.elapsed().as_secs_f64()), &times);
     h.capture("start");
     let home = h.camera();
-    let direction = glam::DVec3::from_array(home.position).normalize();
+    let mut direction = glam::DVec3::from_array(home.position).normalize();
 
     for (n, step) in steps.iter().enumerate() {
         let parts: Vec<&str> = step.split(':').collect();
@@ -302,6 +311,10 @@ fn main() {
                 h.report("drag settle", &times);
                 println!("HARNESS drag: journal {} -> {} edits", before, h.edits());
                 h.capture(&format!("drag_{n}"));
+            }
+            "at" => {
+                direction = glam::DVec3::new(number(1, 0.0), number(2, 1.0), number(3, 0.0)).normalize();
+                println!("HARNESS at {direction:?}");
             }
             "down" => {
                 let camera = h.camera();
