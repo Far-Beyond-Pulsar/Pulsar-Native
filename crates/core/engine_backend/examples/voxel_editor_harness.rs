@@ -164,7 +164,8 @@ impl Harness {
 fn device() -> (wgpu::Device, wgpu::Queue) {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).expect("a GPU adapter");
-    let features = adapter.features();
+    // No ray queries on software adapters (#840): lavapipe loses the device on them.
+    let features = helio::usable_adapter_features(&adapter);
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: helio::required_wgpu_features(features),
         required_limits: helio::required_wgpu_limits(adapter.limits()),
