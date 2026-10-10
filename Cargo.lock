@@ -6838,12 +6838,12 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
 
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
 dependencies = [
  "mockaco-core",
  "similar 3.2.0",
@@ -6852,7 +6852,7 @@ dependencies = [
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
 dependencies = [
  "gpui-ce",
  "mockaco-core",
@@ -6864,7 +6864,7 @@ dependencies = [
 [[package]]
 name = "mockaco-language"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
 dependencies = [
  "mockaco-core",
  "streaming-iterator",
@@ -6875,7 +6875,7 @@ dependencies = [
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
 dependencies = [
  "mockaco-core",
 ]
