@@ -8,18 +8,25 @@
 //! - **Drawer.** Hovering the rail opens the full sidebar *over* the editor
 //!   (the viewport does not move). `editor.navigation.sidebar_pinned` keeps it
 //!   open beside the editor instead.
+//! - **Panes.** The drawer stacks its sections as panes, like VS Code's side
+//!   bar ([`panes`]): each has a header that collapses it and a body that
+//!   scrolls on its own with a scrollbar, and the border between two open
+//!   panes drags to share the height. Another section is one more
+//!   [`panes::PaneKind`].
 //! - **Editors.** Tabs the user pinned come first, then groups the user made
 //!   and named, then the rest grouped by editor kind. Groups collapse. A
 //!   pinned or grouped file stays listed after its tab closes and reopens in
 //!   one click. Rows drag like tabs: onto the editor to split it, or onto a
 //!   group's header to move the tab there.
 //! - **Content.** The project's `Content` folder tree (or the project folder),
-//!   with the files in each expanded folder (#1139). Double-clicking a file
-//!   opens it. The bottom file drawer opens only when asked to, from a
-//!   right-click: "Open in file drawer" on a folder, or "Reveal in file
-//!   drawer" on a file, which lists its folder with the file selected. The
-//!   same menu renames, deletes, cuts, copies and pastes, through the file
-//!   drawer's operations and clipboard.
+//!   with the files in each expanded folder (#1139). Double-clicking a file,
+//!   or a folder-based asset such as a blueprint class, opens it in its
+//!   editor; double-clicking any other folder lists it in the bottom file
+//!   drawer. The icon at a hovered row's end does the same for one click:
+//!   "Reveal in file drawer" lists a file's folder with the file selected,
+//!   "Open in file drawer" lists a folder. The right-click menu has both, and
+//!   renames, deletes, cuts, copies and pastes, through the file drawer's
+//!   operations and clipboard.
 //!
 //! The sidebar is its own entity, [`NavSidebar`]: hovering, expanding a
 //! folder, selecting a row or renaming notify the sidebar, not [`PulsarApp`].
@@ -30,13 +37,14 @@
 //! The sidebar is drawn as a `.cached()` view, so redrawing the editor replays
 //! it rather than rebuilding it.
 //!
-//! Pins, the user's groups, collapsed groups and expanded folders are saved
-//! with the project's layout. [`model`] holds that state and the ordering
+//! Pins, the user's groups, collapsed groups, expanded folders and the panes'
+//! sizes and collapsed state are saved with the project's layout. [`model`] holds that state and the ordering
 //! rules; this module connects it to the dock and the file drawer, [`render`]
 //! draws the editors and [`content`] the content tree.
 
 mod content;
 pub(crate) mod model;
+pub(crate) mod panes;
 mod render;
 #[cfg(test)]
 mod tests;
@@ -51,6 +59,7 @@ use ui::input::{InputEvent, InputState};
 use ui_file_manager::FileManagerDrawer;
 
 use self::model::{HoverAction, HoverState, SidebarModel, SidebarTab, TabKey, HOVER_CLOSE_DELAY};
+use self::panes::PaneKind;
 use super::PulsarApp;
 
 pub(crate) use self::render::NavSidebarOverlay;
@@ -103,9 +112,30 @@ pub struct NavSidebar {
     /// The content-tree file or folder being renamed, and its text field.
     renaming_path: Option<(PathBuf, Entity<InputState>)>,
     _path_rename_events: Option<Subscription>,
+    /// Each pane's scrolling and the height its body last had.
+    pane_views: std::collections::HashMap<PaneKind, PaneView>,
+    /// The pane border being dragged.
+    border_drag: Option<BorderDrag>,
     /// How many times it has rendered, for tests that check it replays.
     #[cfg(test)]
     pub(crate) renders: usize,
+}
+
+/// What a pane keeps between renders.
+pub(crate) struct PaneView {
+    pub scroll: gpui::ScrollHandle,
+    pub scrollbar: ui::scroll::ScrollbarState,
+    /// The body's height when it was last drawn, for dragging a border.
+    pub height: std::rc::Rc<std::cell::Cell<f32>>,
+}
+
+/// A pane border being dragged: the two open panes it moves between, and
+/// what they were when the drag started.
+struct BorderDrag {
+    panes: (usize, usize),
+    start_y: gpui::Pixels,
+    heights: (f32, f32),
+    weights: (f32, f32),
 }
 
 impl NavSidebar {
@@ -121,6 +151,18 @@ impl NavSidebar {
             selected: None,
             renaming_path: None,
             _path_rename_events: None,
+            pane_views: PaneKind::ALL
+                .into_iter()
+                .map(|kind| {
+                    let view = PaneView {
+                        scroll: gpui::ScrollHandle::new(),
+                        scrollbar: Default::default(),
+                        height: Default::default(),
+                    };
+                    (kind, view)
+                })
+                .collect(),
+            border_drag: None,
             #[cfg(test)]
             renders: 0,
         }
@@ -167,6 +209,62 @@ impl NavSidebar {
     pub(crate) fn hover_drawer(&mut self, hovered: bool, cx: &mut Context<Self>) {
         let action = self.hover.set_drawer(hovered);
         self.apply_hover(action, cx);
+    }
+
+    pub(crate) fn pane_view(&self, kind: PaneKind) -> &PaneView {
+        &self.pane_views[&kind]
+    }
+
+    /// Collapse or expand a pane.
+    pub(crate) fn toggle_pane(&mut self, kind: PaneKind, cx: &mut Context<Self>) {
+        self.model.panes.toggle(kind);
+        self.save_layout(cx);
+        cx.notify();
+    }
+
+    /// Start dragging the border between open panes `above` and `below`.
+    pub(crate) fn start_border_drag(
+        &mut self,
+        (above, below): (usize, usize),
+        y: gpui::Pixels,
+        cx: &mut Context<Self>,
+    ) {
+        let panes = self.model.panes.panes();
+        let height = |index: usize| self.pane_views[&panes[index].kind].height.get();
+        self.border_drag = Some(BorderDrag {
+            panes: (above, below),
+            start_y: y,
+            heights: (height(above), height(below)),
+            weights: (panes[above].weight, panes[below].weight),
+        });
+        // The pointer may leave the hover drawer while dragging.
+        self.hold_open(true, cx);
+        cx.notify();
+    }
+
+    pub(crate) fn drag_border(&mut self, y: gpui::Pixels, cx: &mut Context<Self>) {
+        let Some(drag) = &self.border_drag else {
+            return;
+        };
+        let delta = f32::from(y - drag.start_y);
+        self.model
+            .panes
+            .resize(drag.panes, drag.heights, drag.weights, delta);
+        cx.notify();
+    }
+
+    pub(crate) fn end_border_drag(&mut self, cx: &mut Context<Self>) {
+        if self.border_drag.take().is_some() {
+            self.hold_open(false, cx);
+            self.save_layout(cx);
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn is_dragging_border(&self, index: usize) -> bool {
+        self.border_drag
+            .as_ref()
+            .is_some_and(|drag| drag.panes.0 <= index && index < drag.panes.1)
     }
 
     /// Keep the hover drawer open while a menu opened from it is up.

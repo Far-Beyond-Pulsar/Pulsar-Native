@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use ui::IconName;
+
+use super::panes::PaneStack;
 use ui_file_manager::FolderNode;
 
 /// Identifies a tab across sessions: the file it edits, or for a panel with no
@@ -82,13 +84,16 @@ pub struct TabSection {
 }
 
 /// A folder row of the content tree, in display order.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct FolderRow {
     pub path: PathBuf,
     pub name: String,
     pub depth: usize,
     pub has_children: bool,
     pub expanded: bool,
+    /// When the folder is a folder-based asset (a blueprint class), the asset
+    /// it is: double-clicking opens it in its editor.
+    pub asset: Option<ContentFile>,
 }
 
 /// A file as the content tree lists it.
@@ -121,6 +126,9 @@ pub struct SavedSidebar {
     pub collapsed_groups: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expanded_folders: Vec<PathBuf>,
+    /// The panes' order, sizes and collapsed state.
+    #[serde(default, skip_serializing_if = "PaneStack::is_default")]
+    pub panes: PaneStack,
 }
 
 /// A [`CustomGroup`] as saved; ids are given out again on restore.
@@ -139,6 +147,7 @@ impl SavedSidebar {
             && self.groups.is_empty()
             && self.collapsed_groups.is_empty()
             && self.expanded_folders.is_empty()
+            && self.panes.is_default()
     }
 }
 
@@ -155,6 +164,8 @@ pub struct SidebarModel {
     /// Collapsed sections other than the user's groups: "__pinned__" or a panel name.
     collapsed: BTreeSet<String>,
     expanded_folders: BTreeSet<PathBuf>,
+    /// The panes the drawer stacks.
+    pub panes: PaneStack,
 }
 
 impl SidebarModel {
@@ -341,36 +352,36 @@ impl SidebarModel {
             files: &dyn Fn(&Path) -> Vec<ContentFile>,
             out: &mut Vec<ContentRow>,
         ) {
+            // A folder-based asset shows up both as a folder and as a file;
+            // the tree lists it once, as the folder, which opens as the asset.
+            let (mut assets, listed): (Vec<_>, Vec<_>) = files(&node.path)
+                .into_iter()
+                .partition(|file| node.children.iter().any(|child| child.path == file.path));
             for child in &node.children {
                 if depth == 0 && SKIPPED_FOLDERS.contains(&child.name.as_str()) {
                     continue;
                 }
                 let expanded = model.folder_expanded(&child.path);
-                let child_files = files_of(child, files);
+                let has_files = !files(&child.path).is_empty();
+                let asset = assets
+                    .iter()
+                    .position(|file| file.path == child.path)
+                    .map(|ix| assets.swap_remove(ix));
                 out.push(ContentRow::Folder(FolderRow {
                     path: child.path.clone(),
                     name: child.name.clone(),
                     depth,
-                    has_children: !child.children.is_empty() || !child_files.is_empty(),
+                    has_children: !child.children.is_empty() || has_files,
                     expanded,
+                    asset,
                 }));
                 if expanded {
                     visit(model, child, depth + 1, files, out);
                 }
             }
-            for file in files_of(node, files) {
+            for file in listed {
                 out.push(ContentRow::File { file, depth });
             }
-        }
-        /// A folder-based asset can show up both as a folder and as a file;
-        /// the tree lists it once, as the folder.
-        fn files_of(
-            node: &FolderNode,
-            files: &dyn Fn(&Path) -> Vec<ContentFile>,
-        ) -> Vec<ContentFile> {
-            let mut listed = files(&node.path);
-            listed.retain(|file| node.children.iter().all(|child| child.path != file.path));
-            listed
         }
         let mut rows = Vec::new();
         visit(self, root, 0, files, &mut rows);
@@ -415,6 +426,7 @@ impl SidebarModel {
                 .iter()
                 .map(|path| relative_to(path, project_root))
                 .collect(),
+            panes: self.panes.clone(),
         }
     }
 
@@ -437,6 +449,7 @@ impl SidebarModel {
             .into_iter()
             .map(|path| project_root.join(path))
             .collect();
+        self.panes = PaneStack::restored(saved.panes);
     }
 }
 
@@ -831,6 +844,24 @@ mod tests {
                 ("Door.class".into(), 0, false),
             ],
             "the folder-based Hero is listed once, as its folder"
+        );
+        let asset_of = |name: &str| {
+            model
+                .content_rows(content, &files)
+                .into_iter()
+                .find_map(|row| match row {
+                    ContentRow::Folder(folder) if folder.name == name => Some(folder.asset),
+                    _ => None,
+                })
+        };
+        assert_eq!(
+            asset_of("Hero").flatten().map(|asset| asset.path),
+            Some(PathBuf::from("/p/Content/Characters/Hero")),
+            "a folder-based asset's row opens as the asset"
+        );
+        assert!(
+            asset_of("Maps").expect("Maps row").is_none(),
+            "a plain folder"
         );
     }
 

@@ -832,6 +832,12 @@ mod tests {
                 }],
                 collapsed_groups: vec!["Blueprint Editor".into()],
                 expanded_folders: vec!["Content/Maps".into()],
+                panes: {
+                    use super::super::nav_sidebar::panes::{PaneKind, PaneStack};
+                    let mut panes = PaneStack::default();
+                    panes.toggle(PaneKind::Content);
+                    panes
+                },
             },
             window: None,
             dock: DockAreaState::default(),

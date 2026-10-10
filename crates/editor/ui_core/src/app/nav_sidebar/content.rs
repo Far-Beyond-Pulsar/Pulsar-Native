@@ -8,7 +8,10 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui::{div, prelude::*, px, AnyElement, Context, ElementId, IntoElement, Window};
+use gpui::{
+    div, prelude::*, px, AnyElement, Context, ElementId, IntoElement, SharedString, Window,
+};
+use ui::button::{Button, ButtonVariants as _};
 use ui::input::TextInput;
 use ui::menu::context_menu::ContextMenuExt as _;
 use ui::popup_menu::PopupMenu;
@@ -16,7 +19,7 @@ use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
 use ui_file_manager::utils::get_icon_for_file_type;
 
 use super::model::{content_root, ContentFile, ContentRow, FolderRow};
-use super::render::{hold_while_open, section_caption};
+use super::render::hold_while_open;
 use super::NavSidebar;
 
 const ROW_HEIGHT: f32 = 26.;
@@ -54,18 +57,7 @@ impl NavSidebar {
             .unwrap_or_default();
         let root = tree.map(|root| (root.path.clone(), root.name.clone()));
 
-        let mut column = v_flex()
-            .px_1()
-            .mt_2()
-            .pt_1()
-            .border_t_1()
-            .border_color(theme.sidebar_border)
-            .child(
-                h_flex()
-                    .h(px(24.))
-                    .px_2()
-                    .child(section_caption("Content", cx)),
-            );
+        let mut column = v_flex().px_1();
 
         if let Some((path, name)) = root {
             let row = FolderRow {
@@ -74,6 +66,7 @@ impl NavSidebar {
                 depth: 0,
                 has_children: false,
                 expanded: true,
+                asset: None,
             };
             column = column.child(self.render_folder_row(&row, true, cx));
         }
@@ -96,7 +89,52 @@ impl NavSidebar {
         column.into_any_element()
     }
 
-    /// A folder. Clicking it expands or collapses it.
+    /// The icon at a row's end that shows it in the bottom file drawer: a
+    /// file revealed in its folder, a folder's own assets. It shows while the
+    /// row is hovered or selected.
+    fn reveal_button(
+        &self,
+        path: &Path,
+        name: &str,
+        entry: Entry,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let path = path.to_path_buf();
+        let selector = format!("nav-reveal-{name}");
+        let (icon, tooltip) = match entry {
+            Entry::File => (IconName::FolderOpen, "Reveal in file drawer"),
+            Entry::Root | Entry::Folder => (IconName::FolderOpen, "Open in file drawer"),
+        };
+        div()
+            .flex_none()
+            .debug_selector(move || selector)
+            .when(!selected, |el| {
+                el.invisible()
+                    .group_hover(row_group(&path), |el| el.visible())
+            })
+            .child(
+                Button::new(ElementId::Name(
+                    format!("nav-reveal-{}", path.display()).into(),
+                ))
+                .ghost()
+                .xsmall()
+                .icon(Icon::new(icon).size(px(12.)))
+                .tooltip(tooltip)
+                .on_click(cx.listener(move |sidebar, _, _, cx| {
+                    cx.stop_propagation();
+                    match entry {
+                        Entry::File => sidebar.reveal_in_drawer(path.clone(), cx),
+                        Entry::Root | Entry::Folder => sidebar.open_in_drawer(path.clone(), cx),
+                    }
+                })),
+            )
+            .into_any_element()
+    }
+
+    /// A folder. Clicking it expands or collapses it. Double-clicking opens a
+    /// folder-based asset (a blueprint class) in its editor, and lists any
+    /// other folder's assets in the file drawer.
     fn render_folder_row(
         &self,
         row: &FolderRow,
@@ -115,9 +153,11 @@ impl NavSidebar {
         };
         let open = selected || (row.expanded && row.has_children);
         let entry = if is_root { Entry::Root } else { Entry::Folder };
+        let is_asset = row.asset.is_some();
 
         tree_row(
             ElementId::Name(format!("nav-folder-{}", row.path.display()).into()),
+            &row.path,
             &row.name,
             indent,
             selected,
@@ -148,8 +188,11 @@ impl NavSidebar {
                     }))
                 }),
         )
-        .child(
-            Icon::new(if open {
+        .child(match &row.asset {
+            Some(asset) => Icon::new(asset.icon.clone())
+                .size(px(14.))
+                .text_color(asset.color.unwrap_or(theme.muted_foreground)),
+            None => Icon::new(if open {
                 IconName::FolderOpen
             } else {
                 IconName::Folder
@@ -160,16 +203,26 @@ impl NavSidebar {
             } else {
                 theme.muted_foreground
             }),
-        )
+        })
         .child(self.render_name(&row.path, &row.name))
-        .on_click(cx.listener(move |sidebar, _, _, cx| {
-            if is_root {
-                sidebar.select(path.clone(), cx);
-            } else {
-                sidebar.click_folder(path.clone(), cx);
-            }
-        }))
-        .context_menu(self.entry_menu(row.path.clone(), entry, cx))
+        .child(self.reveal_button(&row.path, &row.name, entry, selected, cx))
+        .on_click(
+            cx.listener(move |sidebar, event: &gpui::ClickEvent, window, cx| {
+                if event.click_count() >= 2 {
+                    // The first click already expanded or collapsed it.
+                    if is_asset {
+                        sidebar.open_file(path.clone(), window, cx);
+                    } else {
+                        sidebar.open_in_drawer(path.clone(), cx);
+                    }
+                } else if is_root {
+                    sidebar.select(path.clone(), cx);
+                } else {
+                    sidebar.click_folder(path.clone(), cx);
+                }
+            }),
+        )
+        .context_menu(self.entry_menu(row.path.clone(), entry, is_asset, cx))
         .into_any_element()
     }
 
@@ -186,6 +239,7 @@ impl NavSidebar {
 
         tree_row(
             ElementId::Name(format!("nav-file-{}", file.path.display()).into()),
+            &file.path,
             &file.name,
             INDENT * (depth as f32 + 1.),
             selected,
@@ -199,6 +253,7 @@ impl NavSidebar {
                 .text_color(file.color.unwrap_or(theme.muted_foreground)),
         )
         .child(self.render_name(&file.path, &file.name))
+        .child(self.reveal_button(&file.path, &file.name, Entry::File, selected, cx))
         .on_click(cx.listener(move |sidebar, event: &gpui::ClickEvent, window, cx| {
             if event.click_count() >= 2 {
                 sidebar.open_file(path.clone(), window, cx);
@@ -206,7 +261,7 @@ impl NavSidebar {
                 sidebar.select(path.clone(), cx);
             }
         }))
-        .context_menu(self.entry_menu(file.path.clone(), Entry::File, cx))
+        .context_menu(self.entry_menu(file.path.clone(), Entry::File, false, cx))
         .into_any_element()
     }
 
@@ -232,6 +287,7 @@ impl NavSidebar {
         &self,
         path: PathBuf,
         entry: Entry,
+        asset: bool,
         cx: &mut Context<Self>,
     ) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
         let sidebar = cx.entity().downgrade();
@@ -268,6 +324,13 @@ impl NavSidebar {
                         );
                 }
                 Entry::Root | Entry::Folder => {
+                    if asset {
+                        menu = menu.menu_handler_with_icon(
+                            "Open",
+                            Icon::new(IconName::BookOpen),
+                            act(|s, p, w, cx| s.open_file(p, w, cx), path.clone()),
+                        );
+                    }
                     menu = menu.menu_handler_with_icon(
                         "Open in file drawer",
                         Icon::new(IconName::FolderOpen),
@@ -317,8 +380,14 @@ impl NavSidebar {
 
 /// A row of the tree, indented by `indent`. Tests find it as
 /// `nav-entry-<name>`.
+/// The hover group of a tree row, which its reveal button follows.
+fn row_group(path: &Path) -> SharedString {
+    format!("nav-row-{}", path.display()).into()
+}
+
 fn tree_row(
     id: ElementId,
+    path: &Path,
     name: &str,
     indent: f32,
     selected: bool,
@@ -328,6 +397,7 @@ fn tree_row(
     let selector = format!("nav-entry-{name}");
     h_flex()
         .id(id)
+        .group(row_group(path))
         .debug_selector(move || selector)
         .h(px(ROW_HEIGHT))
         .pl(px(8. + indent))
