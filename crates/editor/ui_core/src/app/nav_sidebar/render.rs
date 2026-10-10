@@ -1,11 +1,11 @@
 //! Drawing the unified sidebar: the icon rail, and the drawer that opens over
 //! the editor on hover (or sits beside it when kept open). Rows and rail icons
 //! drag like tabs; group headers take dropped tabs; a row's context menu pins,
-//! groups and closes.
+//! groups and closes. The content tree is drawn by [`super::content`].
 
 use gpui::{
-    div, prelude::*, px, AnyElement, Context, ElementId, Hsla, IntoElement, MouseButton,
-    SharedString, Window,
+    div, prelude::*, px, AnyElement, Context, ElementId, Hsla, IntoElement,
+    MouseButton, Pixels, SharedString, Window,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::dock::DragPanel;
@@ -15,9 +15,8 @@ use ui::menu::PopupMenuItem;
 use ui::tooltip::Tooltip;
 use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
 
-use super::model::{content_root, FolderRow, SectionId, SidebarTab, TabSection};
-use super::{enabled, pinned_open};
-use crate::app::PulsarApp;
+use super::model::{SectionId, SidebarTab, TabSection};
+use super::{pinned_open, NavSidebar};
 
 /// Width of the collapsed icon rail.
 pub(crate) const RAIL_WIDTH: f32 = 48.;
@@ -32,48 +31,105 @@ fn tab_icon(tab: &SidebarTab) -> IconName {
     })
 }
 
-impl PulsarApp {
-    /// `editor_area` (the dock and its overlays) with the sidebar beside it, or
-    /// unchanged while the sidebar is off.
-    pub(crate) fn with_nav_sidebar(
-        &mut self,
-        editor_area: gpui::Div,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        if !enabled() {
-            return editor_area.into_any_element();
+/// What the sidebar shows of the editor, read once per render.
+pub(super) struct EditorView {
+    pub tabs: Vec<SidebarTab>,
+    /// A tab drag for each entry of `tabs`, when it is open.
+    pub drags: Vec<Option<DragPanel>>,
+    pub drawer_open: bool,
+    /// How far above the bottom the hover drawer stops: the floating file
+    /// drawer's height, so it does not cover the assets.
+    pub overlay_bottom: Pixels,
+}
+
+impl Render for NavSidebar {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(view) = self.editor_view(cx) else {
+            return div().into_any_element();
+        };
+        let sections = self.model.sections(&view.tabs);
+        if pinned_open() {
+            self.render_sidebar_drawer(&sections, &view, false, window, cx)
+        } else {
+            self.render_sidebar_rail(&sections, &view, cx)
+                .into_any_element()
         }
-        let tabs = self.sidebar_tabs(cx);
-        let sections = self.state.nav_sidebar.model.sections(&tabs);
-        let keep_open = pinned_open();
-        let overlay_open = !keep_open && self.state.nav_sidebar.hover.is_open();
-
-        h_flex()
-            .flex_1()
-            .min_h_0()
-            .w_full()
-            .items_stretch()
-            .child(if keep_open {
-                self.render_sidebar_drawer(&sections, false, window, cx)
-            } else {
-                self.render_sidebar_rail(&sections, cx)
-            })
-            .child(
-                editor_area
-                    .h_full()
-                    .min_w_0()
-                    .debug_selector(|| "nav-sidebar-editor-area".into())
-                    .when(overlay_open, |area| {
-                        area.child(self.render_sidebar_drawer(&sections, true, window, cx))
-                    }),
-            )
-            .into_any_element()
     }
+}
 
-    fn render_sidebar_rail(&self, sections: &[TabSection], cx: &mut Context<Self>) -> AnyElement {
+/// The drawer that opens over the editor while the rail is hovered.
+///
+/// A view of its own, drawn in the editor area after the editor so it lies on
+/// top, rather than a `deferred` overlay inside the sidebar: a cached view
+/// replaying a deferred draw that itself opened deferred draws (a right-click
+/// menu) replays the wrong ones, and this keeps the sidebar cacheable.
+pub struct NavSidebarOverlay {
+    sidebar: gpui::Entity<NavSidebar>,
+}
+
+impl NavSidebarOverlay {
+    pub fn new(sidebar: gpui::Entity<NavSidebar>) -> Self {
+        Self { sidebar }
+    }
+}
+
+impl Render for NavSidebarOverlay {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let drawer = self.sidebar.update(cx, |sidebar, cx| {
+            if pinned_open() || !sidebar.hover.is_open() {
+                return None;
+            }
+            let view = sidebar.editor_view(cx)?;
+            let sections = sidebar.model.sections(&view.tabs);
+            let drawer = sidebar.render_sidebar_drawer(&sections, &view, true, window, cx);
+            Some((drawer, view.overlay_bottom))
+        });
+        match drawer {
+            Some((drawer, bottom)) => div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .bottom(bottom)
+                .child(drawer)
+                .into_any_element(),
+            None => div().into_any_element(),
+        }
+    }
+}
+
+impl NavSidebar {
+    /// What the sidebar shows of the editor, or `None` once it is gone.
+    fn editor_view(&self, cx: &gpui::App) -> Option<EditorView> {
+        let app = self.app.upgrade()?;
+        let app = app.read(cx);
+        let open = app.center_tab_list(cx);
+        let drags = open
+            .iter()
+            .map(|open| ui::dock::TabPanel::tab_drag(&open.tabs, open.local_ix, cx))
+            .collect();
+        let state = &app.state;
+        Some(EditorView {
+            tabs: app.sidebar_tabs(cx),
+            drags,
+            drawer_open: state.drawer_open,
+            overlay_bottom: if state.drawer_open && !state.drawer_docked {
+                px(state.drawer_height)
+            } else {
+                px(0.)
+            },
+        })
+    }
+}
+
+impl NavSidebar {
+    fn render_sidebar_rail(
+        &self,
+        sections: &[TabSection],
+        view: &EditorView,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
         let theme = cx.theme().clone();
-        let drawer_open = self.state.drawer_open;
+        let drawer_open = view.drawer_open;
         let mut icons = v_flex()
             .id("nav-rail-tabs")
             .flex_1()
@@ -87,7 +143,7 @@ impl PulsarApp {
                 icons = icons.child(div().w(px(20.)).h(px(1.)).my_1().bg(theme.sidebar_border));
             }
             for tab in &section.tabs {
-                icons = icons.child(self.render_rail_tab(tab, cx));
+                icons = icons.child(self.render_rail_tab(tab, drag_of(view, tab), cx));
             }
         }
 
@@ -101,9 +157,8 @@ impl PulsarApp {
             .bg(theme.sidebar)
             .border_r_1()
             .border_color(theme.sidebar_border)
-            .on_hover(cx.listener(|app, hovered: &bool, _, cx| {
-                let action = app.state.nav_sidebar.hover.set_rail(*hovered);
-                app.sidebar_hover(action, cx);
+            .on_hover(cx.listener(|sidebar, hovered: &bool, _, cx| {
+                sidebar.hover_rail(*hovered, cx)
             }))
             .child(
                 div().py_2().child(
@@ -113,7 +168,7 @@ impl PulsarApp {
                         .icon(IconName::PanelLeftOpen)
                         .tooltip("Keep the sidebar open")
                         .on_click(
-                            cx.listener(|app, _, _, cx| app.set_sidebar_pinned_open(true, cx)),
+                            cx.listener(|sidebar, _, _, cx| sidebar.set_pinned_open(true, cx)),
                         ),
                 ),
             )
@@ -129,17 +184,22 @@ impl PulsarApp {
                             theme.muted_foreground
                         }))
                         .tooltip("Assets of the selected folder (Ctrl+Space)")
-                        .on_click(cx.listener(|app, _, window, cx| app.toggle_drawer(window, cx))),
+                        .on_click(cx.listener(|sidebar, _, window, cx| {
+                            sidebar.toggle_file_drawer(window, cx)
+                        })),
                 ),
             )
-            .into_any_element()
     }
 
-    fn render_rail_tab(&self, tab: &SidebarTab, cx: &mut Context<Self>) -> AnyElement {
+    fn render_rail_tab(
+        &self,
+        tab: &SidebarTab,
+        drag: Option<DragPanel>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme().clone();
         let title: SharedString = tab.title.clone().into();
         let row = tab.clone();
-        let drag = tab.index.and_then(|ix| self.sidebar_tab_drag(ix, cx));
         div()
             .id(ElementId::Name(
                 format!("nav-rail-tab-{:?}", tab.key).into(),
@@ -174,7 +234,7 @@ impl PulsarApp {
             .tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
             .when_some(drag, |el, drag| el.on_drag(drag, drag_preview))
             .on_click(
-                cx.listener(move |app, _, window, cx| app.activate_sidebar_tab(&row, window, cx)),
+                cx.listener(move |sidebar, _, window, cx| sidebar.activate_tab(&row, window, cx)),
             )
             .into_any_element()
     }
@@ -182,19 +242,13 @@ impl PulsarApp {
     fn render_sidebar_drawer(
         &self,
         sections: &[TabSection],
+        view: &EditorView,
         overlay: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme().clone();
         let keep_open = !overlay;
-        // Over the editor, stop above the floating file drawer rather than
-        // cover the left of its assets.
-        let bottom = if overlay && self.state.drawer_open && !self.state.drawer_docked {
-            px(self.state.drawer_height)
-        } else {
-            px(0.)
-        };
 
         let header = h_flex()
             .h(px(36.))
@@ -213,8 +267,8 @@ impl PulsarApp {
                             .xsmall()
                             .icon(IconName::FolderPlus)
                             .tooltip("New group")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.new_sidebar_group(None, window, cx)
+                            .on_click(cx.listener(|sidebar, _, window, cx| {
+                                sidebar.new_group(None, window, cx)
                             })),
                     )
                     .child(
@@ -231,8 +285,8 @@ impl PulsarApp {
                             } else {
                                 "Keep the sidebar open"
                             })
-                            .on_click(cx.listener(move |app, _, _, cx| {
-                                app.set_sidebar_pinned_open(!keep_open, cx)
+                            .on_click(cx.listener(move |sidebar, _, _, cx| {
+                                sidebar.set_pinned_open(!keep_open, cx)
                             })),
                     ),
             );
@@ -244,7 +298,7 @@ impl PulsarApp {
             .overflow_y_scroll()
             .py_1();
         for section in sections {
-            body = body.child(self.render_section(section, cx));
+            body = body.child(self.render_section(section, view, cx));
         }
         body = body.child(self.render_content_tree(window, cx));
 
@@ -256,27 +310,27 @@ impl PulsarApp {
             .bg(theme.sidebar)
             .border_r_1()
             .border_color(theme.sidebar_border)
-            .when(!overlay, |el| el.h_full())
+            .h_full()
             .when(overlay, |el| {
-                el.absolute()
-                    .top_0()
-                    .left_0()
-                    .bottom(bottom)
-                    .border_b_1()
+                el.border_b_1()
                     .shadow_xl()
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             })
-            .on_hover(cx.listener(|app, hovered: &bool, _, cx| {
-                let action = app.state.nav_sidebar.hover.set_drawer(*hovered);
-                app.sidebar_hover(action, cx);
+            .on_hover(cx.listener(|sidebar, hovered: &bool, _, cx| {
+                sidebar.hover_drawer(*hovered, cx)
             }))
             .child(header)
             .child(body)
             .into_any_element()
     }
 
-    fn render_section(&self, section: &TabSection, cx: &mut Context<Self>) -> AnyElement {
+    fn render_section(
+        &self,
+        section: &TabSection,
+        view: &EditorView,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme().clone();
         let id = section.id.clone();
         let drop_id = section.id.clone();
@@ -287,7 +341,7 @@ impl PulsarApp {
             SectionId::Custom(id) => Some(id),
             _ => None,
         };
-        let rename_field = custom.and_then(|id| self.state.nav_sidebar.rename_field(id).cloned());
+        let rename_field = custom.and_then(|id| self.rename_field(id).cloned());
         let header_group: SharedString = format!("nav-section-{:?}", section.id).into();
 
         let title = match &rename_field {
@@ -317,8 +371,8 @@ impl PulsarApp {
                 let (bg, fg) = (theme.drop_target, theme.sidebar_foreground);
                 move |style, _, _, _| style.bg(bg).text_color(fg)
             })
-            .on_drop(cx.listener(move |app, drag: &DragPanel, _, cx| {
-                app.drop_on_sidebar_section(&drop_id, drag, cx)
+            .on_drop(cx.listener(move |sidebar, drag: &DragPanel, _, cx| {
+                sidebar.drop_on_section(&drop_id, drag, cx)
             }))
             .child(
                 Icon::new(if section.collapsed {
@@ -346,9 +400,9 @@ impl PulsarApp {
                                 .xsmall()
                                 .icon(IconName::Edit)
                                 .tooltip("Rename group")
-                                .on_click(cx.listener(move |app, _, window, cx| {
+                                .on_click(cx.listener(move |sidebar, _, window, cx| {
                                     cx.stop_propagation();
-                                    app.start_sidebar_group_rename(group, window, cx);
+                                    sidebar.start_group_rename(group, window, cx);
                                 })),
                         )
                         .child(
@@ -357,19 +411,19 @@ impl PulsarApp {
                                 .xsmall()
                                 .icon(IconName::Trash)
                                 .tooltip("Remove group (its tabs stay open)")
-                                .on_click(cx.listener(move |app, _, _, cx| {
+                                .on_click(cx.listener(move |sidebar, _, _, cx| {
                                     cx.stop_propagation();
-                                    app.delete_sidebar_group(group, cx);
+                                    sidebar.delete_group(group, cx);
                                 })),
                         ),
                 )
             })
             .child(div().px_1().child(count.to_string()))
             .on_click(
-                cx.listener(move |app, event: &gpui::ClickEvent, window, cx| {
+                cx.listener(move |sidebar, event: &gpui::ClickEvent, window, cx| {
                     match (custom, event.click_count()) {
-                        (Some(group), 2) => app.start_sidebar_group_rename(group, window, cx),
-                        _ => app.toggle_sidebar_section(&id, cx),
+                        (Some(group), 2) => sidebar.start_group_rename(group, window, cx),
+                        _ => sidebar.toggle_section(&id, cx),
                     }
                 }),
             );
@@ -387,20 +441,24 @@ impl PulsarApp {
                 );
             }
             for tab in &section.tabs {
-                column = column.child(self.render_tab_row(tab, cx));
+                column = column.child(self.render_tab_row(tab, drag_of(view, tab), cx));
             }
         }
         column.into_any_element()
     }
 
-    fn render_tab_row(&self, tab: &SidebarTab, cx: &mut Context<Self>) -> AnyElement {
+    fn render_tab_row(
+        &self,
+        tab: &SidebarTab,
+        drag: Option<DragPanel>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme().clone();
-        let pinned = self.state.nav_sidebar.model.is_pinned(&tab.key);
+        let pinned = self.model.is_pinned(&tab.key);
         let group: SharedString = format!("nav-tab-{:?}", tab.key).into();
         let activate = tab.clone();
         let pin_key = tab.key.clone();
         let close_index = tab.index;
-        let drag = tab.index.and_then(|ix| self.sidebar_tab_drag(ix, cx));
         let menu = self.tab_row_menu(tab, cx);
 
         h_flex()
@@ -446,9 +504,9 @@ impl PulsarApp {
                                 IconName::Pin
                             })
                             .tooltip(if pinned { "Unpin" } else { "Pin" })
-                            .on_click(cx.listener(move |app, _, _, cx| {
+                            .on_click(cx.listener(move |sidebar, _, _, cx| {
                                 cx.stop_propagation();
-                                app.toggle_sidebar_pin(&pin_key, cx);
+                                sidebar.toggle_pin(&pin_key, cx);
                             })),
                     )
                     .when_some(close_index, |el, index| {
@@ -458,16 +516,16 @@ impl PulsarApp {
                                 .xsmall()
                                 .icon(IconName::Close)
                                 .tooltip("Close")
-                                .on_click(cx.listener(move |app, _, window, cx| {
+                                .on_click(cx.listener(move |sidebar, _, window, cx| {
                                     cx.stop_propagation();
-                                    app.close_sidebar_tab(index, window, cx);
+                                    sidebar.close_tab(index, window, cx);
                                 })),
                         )
                     }),
             )
             .when_some(drag, |el, drag| el.on_drag(drag, drag_preview))
-            .on_click(cx.listener(move |app, _, window, cx| {
-                app.activate_sidebar_tab(&activate, window, cx)
+            .on_click(cx.listener(move |sidebar, _, window, cx| {
+                sidebar.activate_tab(&activate, window, cx)
             }))
             .context_menu(menu)
             .into_any_element()
@@ -484,8 +542,8 @@ impl PulsarApp {
         &mut Context<ui::popup_menu::PopupMenu>,
     ) -> ui::popup_menu::PopupMenu
            + 'static {
-        let app = cx.entity().downgrade();
-        let model = &self.state.nav_sidebar.model;
+        let sidebar = cx.entity().downgrade();
+        let model = &self.model;
         let key = tab.key.clone();
         let pinned = model.is_pinned(&key);
         let current = model.group_of(&key);
@@ -497,206 +555,82 @@ impl PulsarApp {
             .collect();
         let close_index = tab.index;
 
-        move |mut menu, _, _| {
-            let on = |app: &gpui::WeakEntity<PulsarApp>,
-                      f: std::rc::Rc<
-                dyn Fn(&mut PulsarApp, &mut Window, &mut Context<PulsarApp>),
-            >| {
-                let app = app.clone();
-                move |_: &gpui::ClickEvent, window: &mut Window, cx: &mut gpui::App| {
-                    let f = f.clone();
-                    _ = app.update(cx, |app, cx| f(app, window, cx));
-                }
-            };
+        move |mut menu, _, cx| {
+            hold_while_open(&sidebar, cx);
             let k = key.clone();
             menu = menu.item(
-                PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" }).on_click(on(
-                    &app,
-                    std::rc::Rc::new(move |app, _, cx| app.toggle_sidebar_pin(&k, cx)),
-                )),
+                PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
+                    .on_click(on(&sidebar, move |sidebar, _, cx| sidebar.toggle_pin(&k, cx))),
             );
             menu = menu.separator();
             let k = key.clone();
             menu = menu.item(
                 PopupMenuItem::new("New group with this editor").on_click(on(
-                    &app,
-                    std::rc::Rc::new(move |app, window, cx| {
-                        app.new_sidebar_group(Some(k.clone()), window, cx)
-                    }),
+                    &sidebar,
+                    move |sidebar, window, cx| sidebar.new_group(Some(k.clone()), window, cx),
                 )),
             );
             for (id, name) in &groups {
                 let k = key.clone();
                 let id = *id;
-                menu = menu.item(PopupMenuItem::new(format!("Move to {name}")).on_click(on(
-                    &app,
-                    std::rc::Rc::new(move |app, _, cx| app.move_sidebar_tab(&k, Some(id), cx)),
-                )));
+                menu = menu.item(
+                    PopupMenuItem::new(format!("Move to {name}"))
+                        .on_click(on(&sidebar, move |sidebar, _, cx| {
+                            sidebar.move_tab(&k, Some(id), cx)
+                        })),
+                );
             }
             if current.is_some() {
                 let k = key.clone();
-                menu = menu.item(PopupMenuItem::new("Remove from group").on_click(on(
-                    &app,
-                    std::rc::Rc::new(move |app, _, cx| app.move_sidebar_tab(&k, None, cx)),
-                )));
+                menu = menu.item(
+                    PopupMenuItem::new("Remove from group")
+                        .on_click(on(&sidebar, move |sidebar, _, cx| sidebar.move_tab(&k, None, cx))),
+                );
             }
             if let Some(index) = close_index {
-                menu = menu
-                    .separator()
-                    .item(PopupMenuItem::new("Close").on_click(on(
-                        &app,
-                        std::rc::Rc::new(move |app, window, cx| {
-                            app.close_sidebar_tab(index, window, cx)
-                        }),
-                    )));
+                menu = menu.separator().item(
+                    PopupMenuItem::new("Close").on_click(on(&sidebar, move |sidebar, window, cx| {
+                        sidebar.close_tab(index, window, cx)
+                    })),
+                );
             }
             menu
         }
     }
+}
 
-    fn render_content_tree(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        let drawer = self.state.file_manager_drawer.read(cx);
-        let selected = drawer.selected_folder().map(|p| p.to_path_buf());
-        let rows: Vec<FolderRow> = drawer
-            .folder_tree()
-            .map(|tree| {
-                let root = content_root(tree);
-                self.state.nav_sidebar.model.folder_rows(root)
-            })
-            .unwrap_or_default();
-        let root = drawer.folder_tree().map(|tree| {
-            (
-                content_root(tree).path.clone(),
-                content_root(tree).name.clone(),
-            )
-        });
+/// The tab drag for `tab`, when it is open.
+fn drag_of(view: &EditorView, tab: &SidebarTab) -> Option<DragPanel> {
+    tab.index
+        .and_then(|index| view.drags.get(index).cloned().flatten())
+}
 
-        let mut column = v_flex()
-            .px_1()
-            .mt_2()
-            .pt_1()
-            .border_t_1()
-            .border_color(theme.sidebar_border)
-            .child(
-                h_flex()
-                    .h(px(24.))
-                    .px_2()
-                    .child(section_caption("Content", cx)),
-            );
-
-        if let Some((root_path, root_name)) = root {
-            let is_selected = selected.as_deref() == Some(root_path.as_path());
-            column = column.child(folder_row(
-                &FolderRow {
-                    path: root_path,
-                    name: root_name,
-                    depth: 0,
-                    has_children: false,
-                    expanded: true,
-                },
-                is_selected,
-                true,
-                cx,
-            ));
-        }
-        for row in &rows {
-            let is_selected = selected.as_deref() == Some(row.path.as_path());
-            column = column.child(folder_row(row, is_selected, false, cx));
-        }
-        if rows.is_empty() {
-            column = column.child(
-                div()
-                    .px_3()
-                    .py_1()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child("No folders yet"),
-            );
-        }
-        column.into_any_element()
+/// A menu item's click handler that runs `f` on the sidebar.
+pub(super) fn on(
+    sidebar: &gpui::WeakEntity<NavSidebar>,
+    f: impl Fn(&mut NavSidebar, &mut Window, &mut Context<NavSidebar>) + 'static,
+) -> impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static {
+    let sidebar = sidebar.clone();
+    move |_, window, cx| {
+        _ = sidebar.update(cx, |sidebar, cx| f(sidebar, window, cx));
     }
 }
 
-/// A folder in the content tree. Clicking lists its assets; the chevron
-/// expands it.
-fn folder_row(
-    row: &FolderRow,
-    selected: bool,
-    is_root: bool,
-    cx: &mut Context<PulsarApp>,
-) -> AnyElement {
-    let theme = cx.theme().clone();
-    let path = row.path.clone();
-    let toggle_path = row.path.clone();
-    // The root row sits level with the top-level folders' chevrons.
-    let indent = if is_root {
-        0.
-    } else {
-        12. * (row.depth as f32 + 1.)
-    };
-
-    h_flex()
-        .id(ElementId::Name(
-            format!("nav-folder-{}", row.path.display()).into(),
-        ))
-        .h(px(ROW_HEIGHT - 2.))
-        .pl(px(8. + indent))
-        .pr_2()
-        .gap_1()
-        .rounded(theme.radius)
-        .cursor_pointer()
-        .text_sm()
-        .text_color(theme.sidebar_foreground)
-        .when(selected, |el| {
-            el.bg(theme.sidebar_accent)
-                .text_color(theme.sidebar_accent_foreground)
-        })
-        .when(!selected, |el| el.hover(|el| el.bg(theme.list_hover)))
-        .child(
-            div()
-                .id(ElementId::Name(
-                    format!("nav-folder-toggle-{}", row.path.display()).into(),
-                ))
-                .size(px(14.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .when(row.has_children, |el| {
-                    el.child(
-                        Icon::new(if row.expanded {
-                            IconName::ChevronDown
-                        } else {
-                            IconName::ChevronRight
-                        })
-                        .size(px(12.))
-                        .text_color(theme.muted_foreground),
-                    )
-                    .on_click(cx.listener(move |app, _, _, cx| {
-                        cx.stop_propagation();
-                        app.toggle_sidebar_folder(&toggle_path, cx);
-                    }))
-                }),
-        )
-        .child(
-            Icon::new(if selected || (row.expanded && row.has_children) {
-                IconName::FolderOpen
-            } else {
-                IconName::Folder
-            })
-            .size(px(14.))
-            .text_color(if selected {
-                theme.primary
-            } else {
-                theme.muted_foreground
-            }),
-        )
-        .child(div().flex_1().min_w_0().truncate().child(row.name.clone()))
-        .on_click(cx.listener(move |app, _, _, cx| app.show_sidebar_folder(path.clone(), cx)))
-        .into_any_element()
+/// Keep the hover drawer open while the menu being built is up: the pointer
+/// leaves the drawer for the menu.
+pub(super) fn hold_while_open(
+    sidebar: &gpui::WeakEntity<NavSidebar>,
+    cx: &mut Context<ui::popup_menu::PopupMenu>,
+) {
+    _ = sidebar.update(cx, |sidebar, cx| sidebar.hold_open(true, cx));
+    let sidebar = sidebar.clone();
+    cx.subscribe_self(move |_, _: &gpui::DismissEvent, cx| {
+        _ = sidebar.update(cx, |sidebar, cx| sidebar.hold_open(false, cx));
+    })
+    .detach();
 }
 
-fn section_caption(text: &'static str, cx: &Context<PulsarApp>) -> impl IntoElement {
+pub(super) fn section_caption(text: &'static str, cx: &Context<NavSidebar>) -> impl IntoElement {
     div()
         .text_xs()
         .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -706,7 +640,7 @@ fn section_caption(text: &'static str, cx: &Context<PulsarApp>) -> impl IntoElem
 
 /// What follows the pointer while a row or rail icon is dragged: the dock's
 /// own tab preview, so the drop targets treat it as a dragged tab.
-fn drag_preview(
+pub(super) fn drag_preview(
     drag: &DragPanel,
     position: gpui::Point<gpui::Pixels>,
     _: &mut Window,
@@ -716,6 +650,6 @@ fn drag_preview(
     cx.new(|_| drag)
 }
 
-fn unsaved_dot(color: Hsla) -> gpui::Div {
+pub(super) fn unsaved_dot(color: Hsla) -> gpui::Div {
     div().size(px(6.)).flex_none().rounded_full().bg(color)
 }

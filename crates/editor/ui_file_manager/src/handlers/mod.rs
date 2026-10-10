@@ -325,23 +325,8 @@ pub fn handle_new_folder(
 }
 
 pub fn handle_delete_item(d: &mut FileManagerDrawer, cx: &mut Context<FileManagerDrawer>) {
-    for item in d.selected_items.iter().cloned().collect::<Vec<PathBuf>>() {
-        if let Err(e) = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&item) {
-            engine_fs::virtual_fs::delete_path(&item)
-        } else if item.is_dir() {
-            std::fs::remove_dir_all(&item).map_err(Into::into)
-        } else {
-            std::fs::remove_file(&item).map_err(Into::into)
-        } {
-            tracing::error!("delete: {}", e);
-        }
-    }
-    d.selected_items.clear();
-    if let Some(ref p) = d.project_path {
-        d.folder_tree = FolderNode::from_path(p);
-    }
-    d.mark_directory_cache_dirty();
-    cx.notify();
+    let items: Vec<PathBuf> = d.selected_items.iter().cloned().collect();
+    d.delete_paths(&items, cx);
 }
 
 pub fn handle_rename_item(
@@ -398,43 +383,10 @@ pub fn handle_cut(d: &mut FileManagerDrawer, _cx: &mut Context<FileManagerDrawer
 }
 
 pub fn handle_paste(d: &mut FileManagerDrawer, cx: &mut Context<FileManagerDrawer>) {
-    let Some((items, is_cut)) = d.clipboard.clone() else {
+    let Some(target) = d.selected_folder.clone() else {
         return;
     };
-    let Some(ref target) = d.selected_folder else {
-        return;
-    };
-    for item in &items {
-        if let Some(name) = item.file_name() {
-            let tp = crate::utils::cloud_join(target, &name.to_string_lossy());
-            if let Err(e) = if is_cut {
-                if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(item) {
-                    engine_fs::virtual_fs::rename(item, &tp)
-                } else {
-                    std::fs::rename(item, &tp).map_err(Into::into)
-                }
-            } else {
-                if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(item) {
-                    engine_fs::virtual_fs::read_file(item)
-                        .and_then(|d| engine_fs::virtual_fs::write_file(&tp, &d))
-                } else if item.is_dir() {
-                    FileManagerDrawer::copy_dir_recursive(item, &tp).map_err(Into::into)
-                } else {
-                    std::fs::copy(item, &tp).map(|_| ()).map_err(Into::into)
-                }
-            } {
-                tracing::error!("paste: {}", e);
-            }
-        }
-    }
-    if is_cut {
-        d.clipboard = None;
-    }
-    if let Some(ref p) = d.project_path {
-        d.folder_tree = FolderNode::from_path(p);
-    }
-    d.mark_directory_cache_dirty();
-    cx.notify();
+    d.paste_into(&target, cx);
 }
 
 pub fn handle_open_in_file_manager(

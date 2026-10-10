@@ -107,8 +107,10 @@ pub struct AppState {
     // Navigation history
     pub navigation: super::navigation::NavigationHistory,
 
-    /// Unified left sidebar (Pulsar-Native#1000).
-    pub nav_sidebar: super::nav_sidebar::NavSidebarState,
+    /// Unified left sidebar (Pulsar-Native#1000), drawn as its own cached view.
+    pub nav_sidebar: gpui::Entity<super::nav_sidebar::NavSidebar>,
+    /// The sidebar's drawer while it is open over the editor on hover.
+    pub nav_overlay: gpui::Entity<super::nav_sidebar::NavSidebarOverlay>,
 }
 
 impl AppState {

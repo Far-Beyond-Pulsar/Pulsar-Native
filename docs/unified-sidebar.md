@@ -18,9 +18,21 @@ Sidebar**, or with **Toggle Unified Sidebar** in the command palette.
   viewport does not move or resize. Moving the pointer off the rail and the
   sidebar closes it after 220 ms, so crossing from one to the other never
   flickers. Choosing an editor closes it too.
-- **Folder assets.** Choose a folder under **Content** to list its assets in
-  the bottom file drawer. In this mode the drawer leaves out its own folder
-  tree, since the sidebar has one. Opening an asset opens its editor tab, as
+- **Files.** The **Content** tree lists each expanded folder's files below
+  its subfolders (#1139), so the bottom file drawer is only needed when you
+  ask for it. Clicking a folder expands or collapses it; clicking a file
+  selects it and double-clicking opens it.
+- **Right-click menu.** On a file: Open, Reveal in file drawer (lists its
+  folder in the drawer with the file selected), Cut, Copy, Paste (beside it),
+  Rename, Delete. On a folder: Open in file drawer, Cut, Copy, Paste (into
+  it), Rename, Delete. The top folder offers Open in file drawer and Paste.
+  Rename edits the name in place; Enter or clicking away applies it. These
+  use the file drawer's operations and share its clipboard, so a copy in one
+  pastes in the other. A pasted name already taken gets a "copy" suffix
+  before its extension, so nothing is overwritten. While the menu is open,
+  the hover sidebar stays open.
+- **File drawer.** In this mode the drawer leaves out its own folder tree,
+  since the sidebar has one. Opening an asset opens its editor tab, as
   before.
 - **Kept open.** The pin at the top, or **Keep Sidebar Open** in settings,
   puts the sidebar in its own column beside the editor.
@@ -43,8 +55,9 @@ The sidebar has two sections:
     header to move it there: one of your groups, an editor-kind group (which
     takes it out of your group), or Pinned.
 - **Content.** The project's `Content` folder, or the project folder when it
-  has none. `target/` is not listed. The tree updates as files change on
-  disk, because it is the file drawer's own tree.
+  has none, with the files in each expanded folder. `target/` is not listed.
+  The tree updates as files change on disk, because it is the file drawer's
+  own tree and listings. A folder-based asset is listed once, as a folder.
 
 Pins, your groups (names, tabs, collapsed or not), collapsed groups and
 expanded folders are saved per project in `.pulsar/layout.json`, next to the
@@ -56,20 +69,27 @@ sidebar stops at the drawer's top edge, so it never covers the assets.
 ## How it is built
 
 - `crates/editor/ui_core/src/app/nav_sidebar/`
-  - `model.rs`: the ordering, pinning and grouping rules, the folder rows,
-    the saved form, and the hover state machine. It is plain data with unit
-    tests.
-  - `mod.rs`: the connection to the dock. It lists the centre tabs across
-    splits, activates, closes and drags tabs, edits groups, applies the
-    setting, and lists a folder in the drawer.
-  - `render.rs`: the rail, the sidebar, the rows, the menus and the tree.
+  - `model.rs`: the ordering, pinning and grouping rules, the content rows
+    (folders and files), the saved form, and the hover state machine. It is
+    plain data with unit tests.
+  - `mod.rs`: `NavSidebar`, the sidebar's own entity, and its connection to
+    the dock and the file drawer. Hover, expansion, selection and renames
+    notify only the sidebar; activating, closing and opening go through
+    `PulsarApp`.
+  - `render.rs`: the rail, the sidebar, the editor rows and their menus, and
+    `NavSidebarOverlay`, the small view that draws the hover sidebar over the
+    editor.
+  - `content.rs`: the content tree and its right-click menu.
   - `tests.rs`: an editor window test (see below).
 - From the dock (Far-Beyond-Pulsar/WGPUI-Component#24):
   `TabPanel::set_tab_bar_hidden` hides the tab strip, and
   `TabPanel::tab_drag` starts the same drag a tab in the strip starts, which
   is what makes rows draggable into splits.
 - The file drawer gained `show_folder`, `set_folder_tree_hidden`,
-  `folder_tree` and `selected_folder`.
+  `folder_tree` and `selected_folder`, and for the content tree
+  (`ui_file_manager/src/utils/project_files.rs`) `files_in`, `reveal`,
+  `set_clipboard`, `paste_into`, `delete_paths` and `rename_path`. The
+  drawer's own delete, paste and rename now go through the same functions.
 - The settings are `editor.navigation.unified_sidebar` and
   `editor.navigation.sidebar_pinned`, in `pulsar_settings`.
 
@@ -87,6 +107,11 @@ checks each state above:
 - A group made from a row starts with its name being edited, keeps the new
   name, and takes a second tab dropped on its header; both leave their
   editor-kind group. A row's drag carries the right tab.
+- The content tree: a click on a folder lists its files without opening the
+  file drawer; a click selects a file; a right-click menu keeps the hover
+  sidebar open until it closes; Reveal selects the file in the drawer; rename,
+  copy and paste (with the copy suffix), cut and delete change the files on
+  disk and the tree.
 - Keeping the sidebar open moves the editor over by the sidebar's width.
 - Turning the sidebar off brings the strip back.
 
@@ -105,3 +130,10 @@ come out blank, because a test context has no asset source.
   generic page icon, and the level editor gets a globe.
 - **Within a group, tabs keep the order they were added in.** Dragging onto a
   header moves a tab between groups but doesn't reorder it inside one.
+- **No keyboard shortcuts in the tree yet.** F2, Delete and Ctrl+C/X/V work in
+  the file drawer, not in the sidebar.
+- **Delete is immediate**, as in the file drawer: there is no confirmation
+  and no trash.
+- **The sidebar is not a cached view yet**, so anything that redraws the
+  editor redraws it too. Two WGPUI problems block caching it (see the module
+  docs in `nav_sidebar/mod.rs`).

@@ -336,7 +336,7 @@ impl PulsarApp {
                 .state
                 .window_bounds
                 .map(|b| SavedWindow::capture(b, self.state.window_restore_bounds)),
-            sidebar: self.state.nav_sidebar.model.save(&root),
+            sidebar: self.state.nav_sidebar.read(cx).model.save(&root),
         };
         transform_layout(&mut layout, |state| relativize(state, &root));
 
@@ -534,7 +534,10 @@ impl PulsarApp {
         };
         transform_layout(&mut layout, |state| absolutize(state, &root));
         let sidebar = std::mem::take(&mut layout.sidebar);
-        self.state.nav_sidebar.model.restore(sidebar, &root);
+        self.state.nav_sidebar.update(cx, |nav, cx| {
+            nav.model.restore(sidebar, &root);
+            cx.notify();
+        });
 
         let dock_area = self.state.dock_area.clone();
         let weak_dock = dock_area.downgrade();
