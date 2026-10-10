@@ -22,37 +22,10 @@ impl FileManagerDrawer {
             cx.notify();
             return;
         }
-        let on = old.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name == on {
-            self.renaming_item = None;
-            cx.notify();
-            return;
-        }
-        if name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
-            tracing::error!("Invalid filename");
-            self.renaming_item = Some(old);
-            cx.notify();
-            return;
-        }
-        match self.operations.rename_item(&old, &name) {
-            Ok(new) => {
-                self.renaming_item = None;
-                if let Err(e) = self.fs_metadata.rename_file(&old, &new) {
-                    tracing::error!("rename_file: {}", e);
-                }
-                if self.selected_folder.as_ref() == Some(&old) {
-                    self.selected_folder = Some(new.clone());
-                }
-                if self.selected_items.remove(&old) {
-                    self.selected_items.insert(new);
-                }
-                if let Some(ref p) = self.project_path {
-                    self.folder_tree = FolderNode::from_path(p);
-                }
-                self.mark_directory_cache_dirty();
-            }
-            Err(e) => {
-                tracing::error!("Rename failed: {}", e);
+        match self.rename_path(&old, &name, cx) {
+            Ok(_) => self.renaming_item = None,
+            Err(error) => {
+                tracing::error!("Rename failed: {}", error);
                 self.renaming_item = Some(old);
             }
         }

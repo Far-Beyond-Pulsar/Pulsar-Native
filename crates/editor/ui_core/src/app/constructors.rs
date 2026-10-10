@@ -204,6 +204,15 @@ impl PulsarApp {
         let t = std::time::Instant::now();
         let file_manager_drawer =
             cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
+        let nav_sidebar = {
+            let app = cx.weak_entity();
+            let drawer = file_manager_drawer.clone();
+            cx.new(|_| super::nav_sidebar::NavSidebar::new(app, drawer))
+        };
+        let nav_overlay = {
+            let sidebar = nav_sidebar.clone();
+            cx.new(|_| super::nav_sidebar::NavSidebarOverlay::new(sidebar))
+        };
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(MissionControlPanel::new);
@@ -476,7 +485,8 @@ impl PulsarApp {
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
                 navigation: Default::default(),
-                nav_sidebar: Default::default(),
+                nav_sidebar,
+                nav_overlay,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
                 layout_persist: false,

@@ -1,7 +1,7 @@
 //! The sidebar in a real editor window (no level editor, so no GPU needed for
 //! the layout checks): it replaces the tab strip, opens over the editor on
-//! hover without moving it, makes room when kept open, switches tabs, and lists
-//! a folder's assets in the bottom drawer.
+//! hover without moving it, makes room when kept open, switches tabs, lists
+//! files in its content tree, and opens the bottom drawer only when asked to.
 //!
 //! `sidebar_screenshots` walks the same steps with real fonts and saves a PNG
 //! of each state, when `PULSAR_SIDEBAR_SHOTS` names a folder and a
@@ -20,6 +20,7 @@ use ui::dock::{Panel, PanelEvent, PanelView};
 
 use super::model::SectionId;
 use super::render::{DRAWER_WIDTH, RAIL_WIDTH};
+use super::NavSidebar;
 use crate::app::PulsarApp;
 
 /// A stand-in editor tab.
@@ -93,6 +94,7 @@ fn project() -> tempfile::TempDir {
 
 struct Editor {
     app: Entity<PulsarApp>,
+    nav: Entity<NavSidebar>,
     pages: Vec<Entity<Page>>,
     cx: VisualTestContext,
     window: gpui::AnyWindowHandle,
@@ -163,8 +165,11 @@ fn open(cx: &mut TestAppContext, root: &Path) -> Editor {
     });
     cx.run_until_parked();
     let handle: gpui::AnyWindowHandle = window.into();
+    let app = app.unwrap();
+    let nav = cx.read(|cx| app.read(cx).state.nav_sidebar.clone());
     Editor {
-        app: app.unwrap(),
+        app,
+        nav,
         pages,
         cx: VisualTestContext::from_window(handle, cx),
         window: handle,
@@ -180,6 +185,7 @@ impl Editor {
                 page.update(&mut self.cx, |_, cx| cx.notify());
             }
             self.app.update(&mut self.cx, |_, cx| cx.notify());
+            self.nav.update(&mut self.cx, |_, cx| cx.notify());
             self.cx.update(|window, cx| window.draw(cx).clear());
             self.cx.run_until_parked();
         }
@@ -192,8 +198,8 @@ impl Editor {
     /// Whether the hover drawer is open. (Debug bounds outlive the frame that
     /// drew them, so they can't tell that something is gone.)
     fn hover_open(&mut self) -> bool {
-        self.app
-            .read_with(&self.cx, |app, _| app.state.nav_sidebar.hover.is_open())
+        self.nav
+            .read_with(&self.cx, |nav, _| nav.hover.is_open())
     }
 }
 
@@ -272,10 +278,14 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     );
     shots.save(cx, "2-hover-drawer");
 
-    // Choosing a folder lists its assets in the bottom drawer.
+    // Choosing "Open in file drawer" lists a folder's assets there.
     let maps = dir.path().join("Content/Maps");
-    ed.app.update(&mut ed.cx, |app, cx| {
-        app.show_sidebar_folder(maps.clone(), cx)
+    ed.nav
+        .update(&mut ed.cx, |nav, cx| nav.open_in_drawer(maps.clone(), cx));
+    // Keep the hover drawer open to measure it; the click would close it.
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.hover.set_rail(true);
+        cx.notify();
     });
     ed.draw();
     ed.app.read_with(&ed.cx, |app, cx| {
@@ -294,8 +304,8 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     );
     shots.save(cx, "3-hover-above-drawer");
     // The pointer moves on to the assets, so the hover drawer closes.
-    ed.app.update(&mut ed.cx, |app, cx| {
-        app.state.nav_sidebar.hover.close();
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.hover.close();
         cx.notify();
     });
     ed.draw();
@@ -311,8 +321,12 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
         .find(|t| t.title == "Hero.class")
         .unwrap()
         .clone();
-    ed.app.update_in(&mut ed.cx, |app, window, cx| {
-        app.activate_sidebar_tab(&hero, window, cx)
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.hover.set_rail(true);
+        cx.notify();
+    });
+    ed.nav.update_in(&mut ed.cx, |nav, window, cx| {
+        nav.activate_tab(&hero, window, cx)
     });
     ed.draw();
     assert!(ed.app.read_with(&ed.cx, |app, cx| {
@@ -325,12 +339,12 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
 
     // The user's groups: one made from a row, another tab dropped on it.
     let hero_key = hero.key.clone();
-    ed.app.update_in(&mut ed.cx, |app, window, cx| {
-        app.new_sidebar_group(Some(hero_key.clone()), window, cx)
+    ed.nav.update_in(&mut ed.cx, |nav, window, cx| {
+        nav.new_group(Some(hero_key.clone()), window, cx)
     });
-    let (group, field) = ed.app.read_with(&ed.cx, |app, _| {
-        let group = app.state.nav_sidebar.model.groups()[0].id;
-        let field = app.state.nav_sidebar.rename_field(group).cloned();
+    let (group, field) = ed.nav.read_with(&ed.cx, |nav, _| {
+        let group = nav.model.groups()[0].id;
+        let field = nav.rename_field(group).cloned();
         (
             group,
             field.expect("a new group starts with its name being edited"),
@@ -339,8 +353,7 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     field.update_in(&mut ed.cx, |field, window, cx| {
         field.set_value("Combat", window, cx)
     });
-    ed.app
-        .update(&mut ed.cx, |app, cx| app.finish_sidebar_group_rename(cx));
+    ed.nav.update(&mut ed.cx, |nav, cx| nav.finish_group_rename(cx));
 
     let door = tabs.iter().position(|t| t.title == "Door.class").unwrap();
     let drag = ed
@@ -350,13 +363,14 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     ed.app.read_with(&ed.cx, |_, cx| {
         assert_eq!(drag.panel().tab_name(cx).as_deref(), Some("Door.class"));
     });
-    ed.app.update(&mut ed.cx, |app, cx| {
-        app.drop_on_sidebar_section(&SectionId::Custom(group), &drag, cx)
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.drop_on_section(&SectionId::Custom(group), &drag, cx)
     });
     ed.draw();
-    let sections = ed.app.read_with(&ed.cx, |app, cx| {
-        app.state.nav_sidebar.model.sections(&app.sidebar_tabs(cx))
-    });
+    let tabs_now = ed.app.read_with(&ed.cx, |app, cx| app.sidebar_tabs(cx));
+    let sections = ed
+        .nav
+        .read_with(&ed.cx, |nav, _| nav.model.sections(&tabs_now));
     let combat = sections
         .iter()
         .find(|s| s.id == SectionId::Custom(group))
@@ -368,6 +382,8 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
         sections.iter().all(|s| s.label != "Blueprint Editor"),
         "both blueprints left their editor-kind group"
     );
+
+    content_tree(&mut ed, dir.path(), &shots, cx);
 
     // Kept open: the drawer takes its own column and the editor moves over.
     set("sidebar_pinned", true);
@@ -389,6 +405,157 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
 
     ed.cx.update(|window, _| window.remove_window());
     ed.cx.run_until_parked();
+}
+
+/// The content tree (#1139): files under expanded folders, a click that
+/// expands without opening the file drawer, the right-click menu, and the
+/// file operations it offers.
+fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut TestAppContext) {
+    let maps = root.join("Content/Maps");
+    let arena = maps.join("Arena.level");
+    ed.app.update(&mut ed.cx, |app, cx| {
+        app.state.drawer_open = false;
+        cx.notify();
+    });
+    let drawer_open = |ed: &mut Editor| ed.app.read_with(&ed.cx, |app, _| app.state.drawer_open);
+
+    // Open the hover drawer and expand Maps with a click on its row.
+    let rail = ed.bounds("nav-sidebar-rail").expect("rail");
+    let away = point(px(1000.), px(400.));
+    ed.cx.simulate_mouse_move(away, None, Modifiers::none());
+    ed.cx
+        .simulate_mouse_move(rail.center(), None, Modifiers::none());
+    ed.draw();
+    assert!(ed.hover_open());
+    assert!(
+        ed.bounds("nav-entry-Arena.level").is_none(),
+        "a collapsed folder lists no files"
+    );
+    let maps_row = ed.bounds("nav-entry-Maps").expect("Maps row");
+    ed.cx.simulate_click(maps_row.center(), Modifiers::none());
+    ed.draw();
+    let arena_row = ed
+        .bounds("nav-entry-Arena.level")
+        .expect("the expanded folder lists its files");
+    assert!(ed.bounds("nav-entry-Canyon.level").is_some());
+    assert!(arena_row.origin.y > maps_row.origin.y, "below their folder");
+    assert!(!drawer_open(ed), "expanding a folder leaves the file drawer closed");
+    shots.save(cx, "6-content-files");
+
+    // One click selects a file, still without the file drawer.
+    ed.cx.simulate_click(arena_row.center(), Modifiers::none());
+    ed.draw();
+    assert_eq!(
+        ed.nav.read_with(&ed.cx, |nav, _| nav.selected_path().map(Path::to_path_buf)),
+        Some(arena.clone())
+    );
+    assert!(!drawer_open(ed));
+
+    // A right-click menu keeps the hover drawer open while the pointer is on
+    // the menu, and lets it close once the menu goes.
+    ed.cx.simulate_event(gpui::MouseDownEvent {
+        button: gpui::MouseButton::Right,
+        position: arena_row.center(),
+        modifiers: Modifiers::none(),
+        click_count: 1,
+        first_mouse: false,
+    });
+    ed.cx.simulate_event(gpui::MouseUpEvent {
+        button: gpui::MouseButton::Right,
+        position: arena_row.center(),
+        modifiers: Modifiers::none(),
+        click_count: 1,
+    });
+    ed.draw();
+    shots.save(cx, "7-content-menu");
+    ed.cx.simulate_mouse_move(away, None, Modifiers::none());
+    ed.cx
+        .executor()
+        .advance_clock(super::model::HOVER_CLOSE_DELAY * 2);
+    ed.cx.run_until_parked();
+    assert!(ed.hover_open(), "held open while its menu is up");
+    ed.cx.simulate_click(away, Modifiers::none());
+    ed.cx
+        .executor()
+        .advance_clock(super::model::HOVER_CLOSE_DELAY * 2);
+    ed.cx.run_until_parked();
+    assert!(!ed.hover_open(), "closes once the menu is dismissed");
+
+    // "Reveal in file drawer" lists the file's folder with the file selected.
+    ed.nav
+        .update(&mut ed.cx, |nav, cx| nav.reveal_in_drawer(arena.clone(), cx));
+    ed.draw();
+    assert!(drawer_open(ed));
+    ed.app.read_with(&ed.cx, |app, cx| {
+        let drawer = app.state.file_manager_drawer.read(cx);
+        assert_eq!(drawer.selected_folder(), Some(maps.as_path()));
+        assert!(drawer.is_item_selected(&arena));
+    });
+    ed.app.update(&mut ed.cx, |app, cx| {
+        app.state.drawer_open = false;
+        cx.notify();
+    });
+
+    // Rename in place.
+    ed.nav.update_in(&mut ed.cx, |nav, window, cx| {
+        nav.start_path_rename(arena.clone(), window, cx)
+    });
+    let field = ed
+        .nav
+        .read_with(&ed.cx, |nav, _| nav.path_rename_field(&arena).cloned())
+        .expect("renaming shows a text field");
+    field.update_in(&mut ed.cx, |field, window, cx| {
+        field.set_value("Duel.level", window, cx)
+    });
+    ed.nav.update(&mut ed.cx, |nav, cx| nav.finish_path_rename(cx));
+    let duel = maps.join("Duel.level");
+    assert!(duel.exists() && !arena.exists());
+    assert_eq!(
+        ed.nav.read_with(&ed.cx, |nav, _| nav.selected_path().map(Path::to_path_buf)),
+        Some(duel.clone()),
+        "the selection follows the rename"
+    );
+
+    // Copy, then paste into another folder and beside itself.
+    let characters = root.join("Content/Characters");
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.put_on_clipboard(duel.clone(), false, cx);
+        nav.paste_into(characters.clone(), cx);
+        nav.paste_into(maps.clone(), cx);
+    });
+    assert!(characters.join("Duel.level").exists());
+    assert!(
+        maps.join("Duel copy.level").exists(),
+        "pasting where the name is taken adds a copy suffix"
+    );
+    assert!(duel.exists(), "copying leaves the original");
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.hover.set_rail(true);
+        cx.notify();
+    });
+    ed.draw();
+    assert!(
+        ed.bounds("nav-entry-Duel copy.level").is_some(),
+        "the tree lists the pasted file"
+    );
+
+    // Cut moves; delete removes.
+    let materials = root.join("Content/Materials");
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.put_on_clipboard(characters.join("Duel.level"), true, cx);
+        nav.paste_into(materials.clone(), cx);
+    });
+    assert!(materials.join("Duel.level").exists());
+    assert!(!characters.join("Duel.level").exists());
+    assert!(
+        !ed.nav.read_with(&ed.cx, |nav, cx| nav.can_paste(cx)),
+        "a cut is pasted once"
+    );
+    ed.nav.update(&mut ed.cx, |nav, cx| {
+        nav.delete_path(materials.join("Duel.level"), cx)
+    });
+    assert!(!materials.join("Duel.level").exists());
+    ed.draw();
 }
 
 /// PNGs of the window into `dir`, when there is one and a GPU adapter is

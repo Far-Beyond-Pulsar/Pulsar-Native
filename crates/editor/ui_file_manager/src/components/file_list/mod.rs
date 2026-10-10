@@ -59,6 +59,11 @@ pub struct FileManagerDrawer {
     pub(crate) file_filter_state: Entity<InputState>,
     pub(crate) directory_cache: Option<(PathBuf, Vec<FileItem>)>,
     pub(crate) directory_cache_dirty: bool,
+    /// [`Self::files_in`] listings, by folder; cleared with the directory cache.
+    pub(crate) tree_files:
+        std::cell::RefCell<std::collections::HashMap<PathBuf, Vec<FileItem>>>,
+    /// An item [`Self::reveal`] asked to scroll into view on the next render.
+    pub(crate) pending_reveal: Option<PathBuf>,
     pub(crate) fs_event_listener: Option<gpui::Task<()>>,
     /// Rescans for imports when importable files change (#1101).
     pub(crate) import_watch: Option<crate::utils::import_scan::ImportWatch>,
@@ -217,6 +222,8 @@ impl FileManagerDrawer {
             file_filter_state,
             directory_cache: None,
             directory_cache_dirty: true,
+            tree_files: Default::default(),
+            pending_reveal: None,
             fs_event_listener: None,
             import_watch: None,
             show_hidden_files,
@@ -641,6 +648,9 @@ pub fn render_grid_view(
     let sizes = Rc::new(vec![size(px(0.0), px(CH + G)); rows]);
     let view = cx.entity().clone();
     let handle = d.grid_scroll_handle.clone();
+    if let Some(index) = d.take_pending_reveal(&items) {
+        handle.scroll_to_item(index / cols, gpui::ScrollStrategy::Center);
+    }
     let scrollbar_state = d.grid_scrollbar_state.clone();
     div()
         .relative()
@@ -968,6 +978,9 @@ pub fn render_list_view(
     let sizes = Rc::new(vec![size(px(0.0), px(40.0)); n]);
     let view = cx.entity().clone();
     let handle = d.list_scroll_handle.clone();
+    if let Some(index) = d.take_pending_reveal(&items) {
+        handle.scroll_to_item(index, gpui::ScrollStrategy::Center);
+    }
     let scrollbar_state = d.list_scrollbar_state.clone();
     div()
         .relative()

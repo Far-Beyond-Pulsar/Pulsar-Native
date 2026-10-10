@@ -4,7 +4,7 @@
 //! groups the user made, then the rest grouped by the kind of editor (every
 //! blueprint together, and so on). A pinned or grouped file stays listed after
 //! its tab closes, so it reopens in one click. Below them is the project's
-//! folder tree.
+//! content tree: its folders, and the files in each expanded folder.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -89,6 +89,24 @@ pub struct FolderRow {
     pub depth: usize,
     pub has_children: bool,
     pub expanded: bool,
+}
+
+/// A file as the content tree lists it.
+#[derive(Clone, Debug)]
+pub struct ContentFile {
+    pub path: PathBuf,
+    pub name: String,
+    pub icon: IconName,
+    /// The file type's colour, when it has one.
+    pub color: Option<gpui::Hsla>,
+}
+
+/// A row of the content tree, in display order: each folder's subfolders
+/// first, then its files.
+#[derive(Clone, Debug)]
+pub enum ContentRow {
+    Folder(FolderRow),
+    File { file: ContentFile, depth: usize },
 }
 
 /// What a project saves about its sidebar, in `.pulsar/layout.json`. Paths
@@ -308,29 +326,71 @@ impl SidebarModel {
         }
     }
 
-    /// The visible folder rows under `root` (the root itself not included).
-    pub fn folder_rows(&self, root: &FolderNode) -> Vec<FolderRow> {
-        fn visit(model: &SidebarModel, node: &FolderNode, depth: usize, out: &mut Vec<FolderRow>) {
+    /// The visible rows under `root` (the root itself not included). `files`
+    /// lists the files directly in a folder; it is asked only about folders
+    /// that are shown.
+    pub fn content_rows(
+        &self,
+        root: &FolderNode,
+        files: &dyn Fn(&Path) -> Vec<ContentFile>,
+    ) -> Vec<ContentRow> {
+        fn visit(
+            model: &SidebarModel,
+            node: &FolderNode,
+            depth: usize,
+            files: &dyn Fn(&Path) -> Vec<ContentFile>,
+            out: &mut Vec<ContentRow>,
+        ) {
             for child in &node.children {
                 if depth == 0 && SKIPPED_FOLDERS.contains(&child.name.as_str()) {
                     continue;
                 }
                 let expanded = model.folder_expanded(&child.path);
-                out.push(FolderRow {
+                let child_files = files_of(child, files);
+                out.push(ContentRow::Folder(FolderRow {
                     path: child.path.clone(),
                     name: child.name.clone(),
                     depth,
-                    has_children: !child.children.is_empty(),
+                    has_children: !child.children.is_empty() || !child_files.is_empty(),
                     expanded,
-                });
+                }));
                 if expanded {
-                    visit(model, child, depth + 1, out);
+                    visit(model, child, depth + 1, files, out);
                 }
             }
+            for file in files_of(node, files) {
+                out.push(ContentRow::File { file, depth });
+            }
+        }
+        /// A folder-based asset can show up both as a folder and as a file;
+        /// the tree lists it once, as the folder.
+        fn files_of(
+            node: &FolderNode,
+            files: &dyn Fn(&Path) -> Vec<ContentFile>,
+        ) -> Vec<ContentFile> {
+            let mut listed = files(&node.path);
+            listed.retain(|file| node.children.iter().all(|child| child.path != file.path));
+            listed
         }
         let mut rows = Vec::new();
-        visit(self, root, 0, &mut rows);
+        visit(self, root, 0, files, &mut rows);
         rows
+    }
+
+    /// Keep the folders under `old` expanded after it was renamed or moved to
+    /// `new`.
+    pub fn folder_moved(&mut self, old: &Path, new: &Path) {
+        let moved: Vec<PathBuf> = self
+            .expanded_folders
+            .iter()
+            .filter(|path| path.starts_with(old))
+            .cloned()
+            .collect();
+        for path in moved {
+            self.expanded_folders.remove(&path);
+            let rest = path.strip_prefix(old).expect("filtered on the prefix");
+            self.expanded_folders.insert(new.join(rest));
+        }
     }
 
     pub fn save(&self, project_root: &Path) -> SavedSidebar {
@@ -455,6 +515,8 @@ pub fn content_root(tree: &FolderNode) -> &FolderNode {
 pub struct HoverState {
     rail: bool,
     drawer: bool,
+    /// Something opened from the drawer (a context menu) keeps it open.
+    held: bool,
     open: bool,
 }
 
@@ -485,8 +547,15 @@ impl HoverState {
         self.update()
     }
 
+    /// Keep the drawer open while a menu opened from it is up, though the
+    /// pointer is over the menu rather than the drawer.
+    pub fn set_held(&mut self, held: bool) -> HoverAction {
+        self.held = held && self.open;
+        self.update()
+    }
+
     fn update(&mut self) -> HoverAction {
-        if self.rail || self.drawer {
+        if self.rail || self.drawer || self.held {
             self.open = true;
             HoverAction::KeepOpen
         } else if self.open {
@@ -498,7 +567,7 @@ impl HoverState {
 
     /// The close delay ran out; returns whether the drawer closed.
     pub fn close_if_unhovered(&mut self) -> bool {
-        if self.open && !self.rail && !self.drawer {
+        if self.open && !self.rail && !self.drawer && !self.held {
             self.open = false;
             true
         } else {
@@ -511,6 +580,7 @@ impl HoverState {
         self.open = false;
         self.rail = false;
         self.drawer = false;
+        self.held = false;
     }
 }
 
@@ -646,15 +716,47 @@ mod tests {
         assert_eq!(content_root(&flat).path, Path::new("/q"));
     }
 
+    fn no_files(_: &Path) -> Vec<ContentFile> {
+        Vec::new()
+    }
+
+    fn file(path: &str) -> ContentFile {
+        ContentFile {
+            path: path.into(),
+            name: Path::new(path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            icon: IconName::Page,
+            color: None,
+        }
+    }
+
+    /// (name, depth, is a folder) for each row.
+    fn rows_of(
+        model: &SidebarModel,
+        root: &FolderNode,
+        files: &dyn Fn(&Path) -> Vec<ContentFile>,
+    ) -> Vec<(String, usize, bool)> {
+        model
+            .content_rows(root, files)
+            .into_iter()
+            .map(|row| match row {
+                ContentRow::Folder(folder) => (folder.name, folder.depth, true),
+                ContentRow::File { file, depth } => (file.name, depth, false),
+            })
+            .collect()
+    }
+
     #[test]
     fn folder_rows_follow_expansion_and_skip_build_output() {
         let mut model = SidebarModel::default();
         let tree = project();
         let names = |model: &SidebarModel, root: &FolderNode| {
-            model
-                .folder_rows(root)
+            rows_of(model, root, &no_files)
                 .into_iter()
-                .map(|r| (r.name, r.depth))
+                .map(|(name, depth, _)| (name, depth))
                 .collect::<Vec<_>>()
         };
         assert_eq!(
@@ -676,9 +778,73 @@ mod tests {
                 ("Hero".into(), 1)
             ]
         );
-        let rows = model.folder_rows(content);
-        assert!(rows[1].has_children && rows[1].expanded);
-        assert!(!rows[0].has_children);
+        let rows = model.content_rows(content, &no_files);
+        let ContentRow::Folder(characters) = &rows[1] else {
+            panic!("a folder row")
+        };
+        assert!(characters.has_children && characters.expanded);
+        let ContentRow::Folder(maps) = &rows[0] else {
+            panic!("a folder row")
+        };
+        assert!(!maps.has_children);
+    }
+
+    #[test]
+    fn files_follow_each_shown_folders_subfolders() {
+        let mut model = SidebarModel::default();
+        let tree = project();
+        let content = content_root(&tree);
+        let files = |folder: &Path| match folder.to_str().unwrap() {
+            "/p/Content" => vec![file("/p/Content/Door.class")],
+            "/p/Content/Maps" => vec![file("/p/Content/Maps/Arena.level")],
+            "/p/Content/Characters/Hero" => vec![file("/p/Content/Characters/Hero/Hero.png")],
+            // A folder-based asset the folder tree also lists.
+            "/p/Content/Characters" => vec![file("/p/Content/Characters/Hero")],
+            _ => vec![],
+        };
+
+        assert_eq!(
+            rows_of(&model, content, &files),
+            [
+                ("Maps".into(), 0, true),
+                ("Characters".into(), 0, true),
+                ("Door.class".into(), 0, false),
+            ]
+        );
+        let rows = model.content_rows(content, &files);
+        let ContentRow::Folder(maps) = &rows[0] else {
+            panic!("a folder row")
+        };
+        assert!(maps.has_children, "files alone make a folder expandable");
+
+        model.toggle_folder(Path::new("/p/Content/Maps"));
+        model.toggle_folder(Path::new("/p/Content/Characters"));
+        model.toggle_folder(Path::new("/p/Content/Characters/Hero"));
+        assert_eq!(
+            rows_of(&model, content, &files),
+            [
+                ("Maps".into(), 0, true),
+                ("Arena.level".into(), 1, false),
+                ("Characters".into(), 0, true),
+                ("Hero".into(), 1, true),
+                ("Hero.png".into(), 2, false),
+                ("Door.class".into(), 0, false),
+            ],
+            "the folder-based Hero is listed once, as its folder"
+        );
+    }
+
+    #[test]
+    fn a_moved_folder_keeps_its_expanded_subfolders() {
+        let mut model = SidebarModel::default();
+        model.toggle_folder(Path::new("/p/Content/Characters"));
+        model.toggle_folder(Path::new("/p/Content/Characters/Hero"));
+        model.toggle_folder(Path::new("/p/Content/Maps"));
+        model.folder_moved(Path::new("/p/Content/Characters"), Path::new("/p/Content/Cast"));
+        assert!(model.folder_expanded(Path::new("/p/Content/Cast")));
+        assert!(model.folder_expanded(Path::new("/p/Content/Cast/Hero")));
+        assert!(!model.folder_expanded(Path::new("/p/Content/Characters")));
+        assert!(model.folder_expanded(Path::new("/p/Content/Maps")));
     }
 
     #[test]
@@ -846,5 +1012,20 @@ mod tests {
         assert_eq!(hover.set_drawer(false), HoverAction::CloseLater);
         assert!(hover.close_if_unhovered());
         assert!(!hover.is_open());
+    }
+
+    #[test]
+    fn a_menu_from_the_drawer_keeps_it_open_until_it_closes() {
+        let mut hover = HoverState::default();
+        assert_eq!(hover.set_held(true), HoverAction::None, "nothing to hold");
+        assert!(!hover.is_open());
+
+        hover.set_drawer(true);
+        hover.set_held(true);
+        // The pointer moves onto the menu, off the drawer.
+        assert_eq!(hover.set_drawer(false), HoverAction::KeepOpen);
+        assert!(!hover.close_if_unhovered());
+        assert_eq!(hover.set_held(false), HoverAction::CloseLater);
+        assert!(hover.close_if_unhovered());
     }
 }

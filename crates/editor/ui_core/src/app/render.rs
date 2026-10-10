@@ -891,8 +891,6 @@ impl Render for PulsarApp {
                             )
                         })
                     }),
-                window,
-                cx,
             ))
             .when(drawer_docked, |this| {
                 this.child(

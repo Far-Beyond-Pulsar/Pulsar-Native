@@ -13983,6 +13983,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "smol",
+ "tempfile",
  "tracing",
  "ui",
  "ui_common",
