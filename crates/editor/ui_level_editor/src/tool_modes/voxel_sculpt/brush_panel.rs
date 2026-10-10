@@ -44,6 +44,18 @@ impl VoxelSculptPanel {
                 IconName::Palette,
                 Mode::Paint,
             ),
+            (
+                "voxel_flatten",
+                "LevelEditor.Voxel.Flatten",
+                IconName::Ruler,
+                Mode::Flatten,
+            ),
+            (
+                "voxel_smooth",
+                "LevelEditor.Voxel.Smooth",
+                IconName::Sparks,
+                Mode::Smooth,
+            ),
         ] {
             let active = brush.mode == mode;
             tools = tools.child(
@@ -76,6 +88,8 @@ impl VoxelSculptPanel {
             Mode::Dig => "LevelEditor.VoxelPanel.DigHint",
             Mode::Build => "LevelEditor.VoxelPanel.BuildHint",
             Mode::Paint => "LevelEditor.VoxelPanel.PaintHint",
+            Mode::Flatten => "LevelEditor.VoxelPanel.FlattenHint",
+            Mode::Smooth => "LevelEditor.VoxelPanel.SmoothHint",
         };
         let tools = v_flex()
             .gap_2()
@@ -129,7 +143,8 @@ impl VoxelSculptPanel {
             self.radius
                 .update(cx, |input, cx| input.set_value(value, window, cx));
         }
-        let step = if brush.radius_m < 2. { 0.1 } else { 0.5 };
+        // A twentieth of each decade (0.1 m below 2 m, then 0.5, 5, 50, 500).
+        let step = if brush.radius_m < 2. { 0.1 } else { 10f32.powi(brush.radius_m.log10().floor() as i32) / 2. };
         let decrease = self
             .button("voxel_radius_decrease", "−".into(), cx, move |v| {
                 v.set_radius(v.radius_m - step)
@@ -176,7 +191,14 @@ impl VoxelSculptPanel {
                 div()
                     .text_xs()
                     .text_color(theme.danger)
-                    .child(t!("LevelEditor.VoxelPanel.InvalidRadius").to_string()),
+                    .child(
+                        t!(
+                            "LevelEditor.VoxelPanel.InvalidRadius",
+                            min => format!("{MIN_RADIUS_M:.2}"),
+                            max => format!("{MAX_RADIUS_M:.2}")
+                        )
+                        .to_string(),
+                    ),
             );
         }
         let footprint = if brush.single_block {

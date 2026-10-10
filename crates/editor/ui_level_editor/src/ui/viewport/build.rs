@@ -307,17 +307,13 @@ impl ViewportPanel {
                                 if let Some(queue) = &queue {
                                     if let Ok(mut events) = queue.lock() {
                                         use engine_backend::subsystems::render::PendingPointerEvent;
-                                        let next = PendingPointerEvent::MouseMove {
-                                            norm_x: x / w.max(1.0),
-                                            norm_y: y / h.max(1.0),
-                                        };
-                                        if let Some(last @ PendingPointerEvent::MouseMove { .. }) =
-                                            events.last_mut()
-                                        {
-                                            *last = next;
-                                        } else {
-                                            events.push(next);
-                                        }
+                                        PendingPointerEvent::queue(
+                                            &mut events,
+                                            PendingPointerEvent::MouseMove {
+                                                norm_x: x / w.max(1.0),
+                                                norm_y: y / h.max(1.0),
+                                            },
+                                        );
                                     }
                                 }
                             },

@@ -14,7 +14,7 @@ use helio_pass_voxel_planet::{
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
 
-use super::renderer::VoxelBrushRequest;
+use super::renderer::{VoxelBrushRequest, VoxelBrushTool};
 use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 
 pub use helio_voxel_data::{
@@ -44,6 +44,12 @@ pub struct VoxelBrushCommit {
     pub id: VoxelEntryId,
     pub distance: f64,
     pub edit: VoxelBrushEdit,
+    /// Edits of the same stamp after `edit` (flatten and smooth: the fill
+    /// below the level after the carve above it).
+    pub then: Vec<VoxelBrushEdit>,
+    /// The ground height (radial, m) the stamp leveled to or hit: a
+    /// flatten stroke keeps its first.
+    pub level: f64,
 }
 
 /// The renderer's answer to a pick request: the first terrain hit under
@@ -506,11 +512,69 @@ fn build_planet(
     entry: &VoxelSceneEntry,
     generator: &VoxelGeneratorConfig,
 ) -> Result<Planet, String> {
-    let mut planet = Planet::new(world_recipe(entry, generator))?;
-    for edit in entry.edits.iter() {
-        planet.apply(planet_brush(edit))?;
-    }
-    Ok(planet)
+    helio_component::voxel_world::journal_planet(world_recipe(entry, generator), &entry.edits)
+}
+
+/// A flatten or smooth stamp at `hit`: the ground under the brush's square
+/// footprint levels to a layer boundary, carved above it and filled below,
+/// a box each as tall as the brush. Flatten levels to `request.level` (the
+/// stroke's first ground, this hit's ground for the first stamp); smooth to
+/// the average ground height around the hit, filling with the ground's own
+/// material.
+fn level_stamp(
+    planet: &Planet,
+    id: VoxelEntryId,
+    hit: &helio_pass_voxel_planet::RayHit,
+    request: VoxelBrushRequest,
+    material: u32,
+) -> Result<VoxelBrushCommit, String> {
+    let grid = planet.grid();
+    let voxel = grid.voxel_size();
+    let centre = grid.cell_center(hit.cell);
+    // The ground's height as a layer boundary (k: layers above the datum).
+    let layer_of = |radial: f64| ((radial - grid.layer_radius(0.0)) / voxel).round();
+    let hit_top = f64::from(hit.cell.k + 1);
+    let k = match request.tool {
+        VoxelBrushTool::Smooth => {
+            let up = grid.up(centre);
+            let side = up.any_orthonormal_vector();
+            let ahead = up.cross(side);
+            let r = f64::from(request.radius) * 0.7;
+            let mut sum = 0.0;
+            let mut n = 0.0;
+            for (a, b) in [(0.0, 0.0), (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (0.7, 0.7), (-0.7, 0.7), (0.7, -0.7), (-0.7, -0.7)] {
+                let ground = planet.surface_point(centre + (side * a + ahead * b) * r, 0.0);
+                sum += layer_of(grid.radial(ground));
+                n += 1.0;
+            }
+            (sum / n).round()
+        }
+        _ => request.level.map_or(hit_top, layer_of),
+    };
+    let level = grid.layer_radius(k);
+    // Whole cells tall, so the boxes meet exactly on the level.
+    let cells = (f64::from(request.radius) / voxel).round().max(1.0);
+    let half = cells * voxel / 2.0;
+    let fill_material = match request.tool {
+        VoxelBrushTool::Smooth => match planet.material(hit.cell) {
+            0 => material,
+            m => m,
+        },
+        _ => material,
+    };
+    let at = |radial: f64| grid.at_radial(centre, radial).to_array();
+    let carve = VoxelBrushEdit {
+        center: at(level + half),
+        radius: f64::from(request.radius).max(voxel * 0.5),
+        shape: VoxelBrushShape::Cube,
+        op: VoxelBrushOp::Remove,
+        material: 0,
+        height: half,
+    };
+    let fill = VoxelBrushEdit { center: at(level - half), op: VoxelBrushOp::Add, material: fill_material, ..carve };
+    planet_brush(&carve).resolve(grid)?;
+    planet_brush(&fill).resolve(grid)?;
+    Ok(VoxelBrushCommit { id, distance: hit.distance, edit: carve, then: vec![fill], level })
 }
 
 /// Built planet for one source revision.
@@ -610,25 +674,38 @@ impl PlanetVoxelBackend {
         }
         profiling::profile_scope!("voxel_world_update");
         let started = std::time::Instant::now();
+        let same_world = |c: &CachedPlanet| {
+            c.id == entry.id
+                && c.voxel_size == entry.voxel_size
+                && c.world == entry.world
+                && c.generator == generator
+        };
         let extended = self
             .cached
             .as_ref()
             .is_some_and(|c| c.id == entry.id && entry.edits.starts_with(&c.edits));
         let built = match &self.cached {
             // A sculpt stroke appends brushes to an otherwise equal source.
-            Some(cached)
-                if cached.id == entry.id
-                    && cached.voxel_size == entry.voxel_size
-                    && cached.world == entry.world
-                    && cached.generator == generator
-                    && entry.edits.starts_with(&cached.edits) =>
-            {
+            Some(cached) if same_world(cached) && entry.edits.starts_with(&cached.edits) => {
                 let mut planet = (*cached.planet).clone();
                 entry
                     .edits
                     .iter_from(cached.edits.len())
                     .try_for_each(|edit| planet.apply(planet_brush(edit)).map(|_| ()))
                     .map(|_| planet)
+            }
+            // An undo removes the latest brushes: undone in the world when
+            // it still can (`Edits::undoable`), not rebuilt from every edit.
+            Some(cached)
+                if same_world(cached)
+                    && cached.edits.starts_with(&entry.edits)
+                    && cached.edits.len() - entry.edits.len() <= cached.planet.edits().undoable() =>
+            {
+                let mut planet = (*cached.planet).clone();
+                for _ in entry.edits.len()..cached.edits.len() {
+                    planet.undo().expect("within the undoable brushes");
+                }
+                Ok(planet)
             }
             _ => build_planet(entry, &generator),
         };
@@ -671,6 +748,23 @@ impl PlanetVoxelBackend {
                     && c.world == entry.world
                     && entry.generator.as_ref() == Some(&c.generator)
                     && entry.edits.starts_with(&c.edits)
+            })
+            .map(|c| &c.planet)
+            .or_else(|| self.cached_planet(entry))
+    }
+
+    /// The world the camera measures against for `entry`: its built world
+    /// whatever brushes this frame adds or undoes. The renderer asks before
+    /// `prepare` applies them; without this every edit frame had no ground,
+    /// so the near plane jumped from the clearance to 5 cm and the fly
+    /// speed to its default, and back the next frame.
+    fn camera_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
+        self.cached
+            .as_ref()
+            .filter(|c| {
+                c.id == entry.id
+                    && c.world == entry.world
+                    && entry.generator.as_ref() == Some(&c.generator)
             })
             .map(|c| &c.planet)
             .or_else(|| self.cached_planet(entry))
@@ -762,7 +856,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
     }
 
     fn altitude(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<f64> {
-        self.cached_planet(source)
+        self.camera_planet(source)
             .map(|planet| planet.ground_height(eye))
     }
 
@@ -779,7 +873,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         {
             return None;
         }
-        self.cached_planet(source)
+        self.camera_planet(source)
             .map(|planet| planet.surface_point(direction, clearance))
     }
 
@@ -792,7 +886,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
         let far = (eye.length() + 40_000_000.0) as f32;
-        let near = self.cached_planet(source).map_or(0.05, |planet| {
+        let near = self.camera_planet(source).map_or(0.05, |planet| {
             (planet.air_clearance(eye) * 0.25).clamp(0.05, 50_000.0) as f32
         });
         Some((near, far))
@@ -840,20 +934,17 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             return Ok(None);
         };
         let d = direction.normalize();
-        // The exact walk covers a few cells around the renderer's hit (the
-        // cell it drew there can be about a cell off the exact surface), or
-        // a bounded reach without one: walking 0.1 m cells to a distant
-        // mountain or the horizon took seconds to tens of seconds.
+        // The search covers a few cells around the renderer's hit (the cell
+        // it drew there can be about a cell off the exact surface), coarse
+        // to fine from the level that drew it: from orbit the window spans
+        // kilometres of 0.1 m cells. Without a hit, the exact walk has a
+        // bounded reach: walking 0.1 m cells to a distant mountain or the
+        // horizon took seconds to tens of seconds.
         let hit = match near {
             Some((distance, cell)) => {
                 let margin = cell * 3.0 + 1.0;
-                let start = (distance - margin).max(0.0);
-                planet
-                    .raycast(origin + d * start, d, margin * 2.0)
-                    .map(|mut hit| {
-                        hit.distance += start;
-                        hit
-                    })
+                let level = (cell / planet.grid().voxel_size()).max(1.0).log2().round() as u32;
+                planet.raycast_near(origin, d, distance - margin, distance + margin, level)
             }
             None => planet.raycast(origin, d, UNPICKED_REACH_M),
         };
@@ -876,6 +967,9 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             hit.cell
         };
         let grid = planet.grid();
+        if request.tool != VoxelBrushTool::Stamp {
+            return Ok(Some(level_stamp(planet, source.id, &hit, request, material)?));
+        }
         let (radius, shape) = if request.single_block {
             (grid.voxel_size() * 0.5, VoxelBrushShape::Cube)
         } else {
@@ -894,12 +988,15 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             } else {
                 material
             },
+            height: Default::default(),
         };
         planet_brush(&edit).resolve(grid)?;
         Ok(Some(VoxelBrushCommit {
             id: source.id,
             distance: hit.distance,
             edit,
+            then: Vec::new(),
+            level: grid.layer_radius(f64::from(hit.cell.k + 1)),
         }))
     }
 
@@ -1103,6 +1200,8 @@ mod tests {
             radius,
             material: 0,
             single_block: false,
+            level: Default::default(),
+            tool: Default::default(),
         }
     }
 
@@ -1290,7 +1389,7 @@ mod tests {
         assert_eq!(commit.id, entries[0].id);
         let replay = |edits: &VoxelEditJournal| {
             let mut planet = Planet::new(PlanetRecipe::default()).unwrap();
-            for edit in edits.iter() {
+            for edit in edits.listed() {
                 planet.apply(planet_brush(edit)).unwrap();
             }
             planet
@@ -1316,7 +1415,7 @@ mod tests {
                     dig(0.05),
                 )
                 .unwrap()
-                .expect("remote terrain remains editable");
+                .unwrap_or_else(|| panic!("remote terrain remains editable from {distance} m"));
             assert_eq!(
                 replay(&[remote.edit].into_iter().collect()).material(target),
                 0
@@ -1409,6 +1508,42 @@ mod tests {
     }
 
     #[test]
+    fn camera_ground_holds_on_frames_whose_edits_are_not_built_yet() {
+        let mut scene = World::new();
+        let owner = scene.spawn();
+        let entity = attach(&mut scene, owner, planet_terrain());
+        let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        let mut registry = VoxelBackendRegistry::new();
+        registry
+            .register(Box::new(PlanetVoxelBackend::new()))
+            .unwrap();
+        let planet = Planet::new(PlanetRecipe::default()).unwrap();
+        let eye = planet.surface_point(DVec3::Y, 800.0);
+        assert!(registry.publish_frame(&entries, view(eye)).is_empty());
+        let altitude = registry.altitude(&entries, eye).unwrap();
+        let clip = registry.camera_clip_range(&entries, eye).unwrap();
+
+        // The renderer asks before `prepare` builds the frame's new brush:
+        // the camera keeps the built ground instead of losing it.
+        {
+            let mut terrain = scene.get_mut::<VoxelTerrainComponent>(entity).unwrap();
+            terrain.edits.push(VoxelBrushEdit {
+                center: planet.surface_point(DVec3::X, 0.0).to_array(),
+                radius: 4.0,
+                shape: VoxelBrushShape::Sphere,
+                op: VoxelBrushOp::Remove,
+                material: 0,
+                height: Default::default(),
+            });
+            terrain.source_revision += 1;
+        }
+        let (grown, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert_eq!(registry.altitude(&grown, eye), Some(altitude));
+        assert_eq!(registry.camera_clip_range(&grown, eye), Some(clip));
+        assert!(clip.0 > 1.0, "the near plane follows the clearance: {clip:?}");
+    }
+
+    #[test]
     fn an_eye_inside_the_ground_is_lifted_but_dug_air_is_kept() {
         let mut scene = World::new();
         let owner = scene.spawn();
@@ -1444,6 +1579,7 @@ mod tests {
             shape: VoxelBrushShape::Sphere,
             op: VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         scene
             .get_mut::<VoxelTerrainComponent>(entity)
@@ -1469,6 +1605,7 @@ mod tests {
             shape: VoxelBrushShape::Sphere,
             op: VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         // 3 m apart with 0.6 m spacing: stamps at 0.6 m steps between them.
         let fill = stroke_fill(&edit(0.0), &edit(3.0), 0.1);

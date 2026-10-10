@@ -255,10 +255,57 @@ pub fn sync_edit_journals(world: &mut World) -> usize {
     dropped
 }
 
-/// Runs [`sync_edit_journals`] when a terrain or its layer settings changed:
-/// change cursors over both, so frames that change neither cost nothing.
-pub struct EditJournalSync {
-    cursors: [pulsar_scenedb::ChangeCursor; 2],
+/// A voxel world's sky is its air: an atmosphere on the entity of a voxel
+/// terrain sits on that terrain's ground, so resizing the planet or turning
+/// it into a plane takes the sky along. A sphere's atmosphere is centred on
+/// it at its radius; a plane's is flat ground at the origin, at the Earth's
+/// radius unless it was already flat (its curvature is the author's).
+/// Returns how many atmospheres moved.
+pub fn sync_skies_to_terrains(world: &mut World) -> usize {
+    use helio_component::{AtmosphereComponent, AtmospherePlacement};
+    let world_ref: &World = world;
+    let moved: Vec<(Entity, AtmospherePlacement, f32)> =
+        attachments::enabled_components::<VoxelTerrainComponent>(world_ref)
+            .filter_map(|(instance, owner, component)| {
+                Some((owner, terrain_entry(world_ref, instance, component).ok()?.world))
+            })
+            .flat_map(|(owner, form)| {
+                attachments::enabled_components_of::<AtmosphereComponent>(world_ref, owner)
+                    .into_iter()
+                    .filter_map(move |(sky, atmosphere)| {
+                        let (placement, radius_km) = match form.shape {
+                            VoxelWorldShape::Sphere => {
+                                (AtmospherePlacement::PlanetAtOwner, (form.planet_radius / 1000.0) as f32)
+                            }
+                            _ if atmosphere.placement == AtmospherePlacement::GroundAtOrigin => {
+                                (AtmospherePlacement::GroundAtOrigin, atmosphere.planet_radius_km)
+                            }
+                            _ => (
+                                AtmospherePlacement::GroundAtOrigin,
+                                AtmosphereComponent::default().planet_radius_km,
+                            ),
+                        };
+                        (atmosphere.placement != placement || atmosphere.planet_radius_km != radius_km)
+                            .then_some((sky, placement, radius_km))
+                    })
+            })
+            .collect();
+    for &(sky, placement, radius_km) in &moved {
+        if let Some(mut atmosphere) = world.get_mut::<AtmosphereComponent>(sky) {
+            atmosphere.placement = placement;
+            atmosphere.planet_radius_km = radius_km;
+        }
+    }
+    moved.len()
+}
+
+/// Keeps voxel worlds' dependents in step with them when a terrain, its
+/// layer settings or an atmosphere changed (change cursors, so frames that
+/// change none cost nothing): edits made on ground a terrain no longer has
+/// are dropped ([`sync_edit_journals`]) and skies follow their terrain
+/// ([`sync_skies_to_terrains`]).
+pub struct VoxelWorldSync {
+    cursors: [pulsar_scenedb::ChangeCursor; 3],
     /// The world revision at the last poll; a smaller one means the world
     /// was replaced, and the cursors with it.
     revision: u64,
@@ -266,12 +313,13 @@ pub struct EditJournalSync {
     scratch: Vec<pulsar_scenedb::ComponentChange>,
 }
 
-impl EditJournalSync {
+impl VoxelWorldSync {
     pub fn new(world: &World) -> Self {
         Self {
             cursors: [
                 world.open_change_cursor::<VoxelTerrainComponent>(),
                 world.open_change_cursor::<helio_component::VoxelTerrainLayersComponent>(),
+                world.open_change_cursor::<helio_component::AtmosphereComponent>(),
             ],
             revision: world.revision(),
             synced: false,
@@ -279,9 +327,9 @@ impl EditJournalSync {
         }
     }
 
-    /// Drops edits made on ground a terrain no longer has, when anything
-    /// that shapes the ground changed since the last poll. Returns how many
-    /// edits were dropped.
+    /// Drops edits made on ground a terrain no longer has and moves skies
+    /// onto their terrain, when anything they depend on changed since the
+    /// last poll. Returns how many edits were dropped.
     pub fn poll(&mut self, world: &mut World) -> usize {
         if world.revision() < self.revision {
             *self = Self::new(world);
@@ -298,7 +346,14 @@ impl EditJournalSync {
             return 0;
         }
         self.synced = true;
-        sync_edit_journals(world)
+        let dropped = sync_edit_journals(world);
+        sync_skies_to_terrains(world);
+        // Its own writes are not changes to answer next poll.
+        for cursor in &mut self.cursors {
+            self.scratch.clear();
+            world.read_changes(cursor, &mut self.scratch);
+        }
+        dropped
     }
 }
 
@@ -682,6 +737,7 @@ mod tests {
             shape: helio_voxel_data::VoxelBrushShape::Sphere,
             op: helio_voxel_data::VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         let edits = |world: &World| world.get::<VoxelTerrainComponent>(entity).unwrap().edits.len();
         let projected = |world: &World| project_voxel_entries(world).0[0].edits.len();
@@ -705,6 +761,39 @@ mod tests {
     }
 
     #[test]
+    fn a_terrains_sky_follows_its_size_and_shape() {
+        use helio_component::{AtmosphereComponent, AtmospherePlacement};
+        let mut world = World::new();
+        let object = world.spawn();
+        let terrain =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(250_000.0))
+                .unwrap();
+        let sky = pulsar_world_registry::attach_value(&mut world, object, AtmosphereComponent::default()).unwrap();
+        let mut sync = VoxelWorldSync::new(&world);
+        let air = |world: &World| {
+            let a = world.get::<AtmosphereComponent>(sky).unwrap();
+            (a.placement, a.planet_radius_km)
+        };
+        sync.poll(&mut world);
+        assert_eq!(air(&world), (AtmospherePlacement::PlanetAtOwner, 250.0));
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().planet_radius = 40_000.0;
+        sync.poll(&mut world);
+        assert_eq!(air(&world), (AtmospherePlacement::PlanetAtOwner, 40.0));
+        // A plane's sky is flat ground: the Earth's curvature, not the old planet's.
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().shape = VoxelWorldShape::Plane;
+        sync.poll(&mut world);
+        let earth = AtmosphereComponent::default().planet_radius_km;
+        assert_eq!(air(&world), (AtmospherePlacement::GroundAtOrigin, earth));
+        // A sky edited by hand on a planet goes back onto it.
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().shape = VoxelWorldShape::Sphere;
+        sync.poll(&mut world);
+        world.get_mut::<AtmosphereComponent>(sky).unwrap().planet_radius_km = 9.0;
+        sync.poll(&mut world);
+        assert_eq!(air(&world), (AtmospherePlacement::PlanetAtOwner, 40.0));
+        assert_eq!(sync_skies_to_terrains(&mut world), 0);
+    }
+
+    #[test]
     fn journals_are_checked_only_when_a_terrain_or_its_layers_change() {
         use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
         let mut world = World::new();
@@ -715,13 +804,14 @@ mod tests {
         let layers =
             pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default())
                 .unwrap();
-        let mut sync = EditJournalSync::new(&world);
+        let mut sync = VoxelWorldSync::new(&world);
         let edit = helio_voxel_data::VoxelBrushEdit {
             center: [0.0, 1_000.0, 0.0],
             radius: 1.0,
             shape: helio_voxel_data::VoxelBrushShape::Sphere,
             op: helio_voxel_data::VoxelBrushOp::Remove,
             material: 0,
+            height: Default::default(),
         };
         world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
         assert_eq!(sync.poll(&mut world), 0, "the journal adopts its ground");
