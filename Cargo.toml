@@ -385,6 +385,22 @@ files.extend-exclude = ["**/fixtures/*"]
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
 gpui-ce = { path = "crates/ui/wgpui" }
 
+# Helio resubmits recorded command buffers (Helio#334), which needs the
+# reusable command buffers in our wgpu fork: upstream v30.0.1 plus one commit.
+# Patches only apply from the root manifest, so this mirrors Helio's own
+# `[patch.crates-io]`; patching the whole wgpu workspace keeps naga and
+# wgpu-types a single version. Change it together with Helio's.
+[patch.crates-io]
+naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu-core-deps-emscripten = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu-naga-bridge = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1-reusable-command-buffers" }
+
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # The plugins pin Pulsar-Native by git rev, and those revs carry their own
 # `pulsar_reflection`; resolve them to the one Pulsar-Reflection rev (#844).
