@@ -6838,12 +6838,12 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=3395ddb0e6f1114cd76d6f33b4947877f9e18a92#3395ddb0e6f1114cd76d6f33b4947877f9e18a92"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
 
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=3395ddb0e6f1114cd76d6f33b4947877f9e18a92#3395ddb0e6f1114cd76d6f33b4947877f9e18a92"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
 dependencies = [
  "mockaco-core",
  "similar 3.2.0",
@@ -6852,8 +6852,9 @@ dependencies = [
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=3395ddb0e6f1114cd76d6f33b4947877f9e18a92#3395ddb0e6f1114cd76d6f33b4947877f9e18a92"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
 dependencies = [
+ "gpui-ce",
  "mockaco-core",
  "mockaco-diff",
  "mockaco-language",
@@ -6863,7 +6864,7 @@ dependencies = [
 [[package]]
 name = "mockaco-language"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=3395ddb0e6f1114cd76d6f33b4947877f9e18a92#3395ddb0e6f1114cd76d6f33b4947877f9e18a92"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
 dependencies = [
  "mockaco-core",
  "streaming-iterator",
@@ -6874,7 +6875,7 @@ dependencies = [
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=3395ddb0e6f1114cd76d6f33b4947877f9e18a92#3395ddb0e6f1114cd76d6f33b4947877f9e18a92"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=f4405753da771910092b84107337dfd83a123278#f4405753da771910092b84107337dfd83a123278"
 dependencies = [
  "mockaco-core",
 ]
@@ -11086,6 +11087,7 @@ dependencies = [
  "mockaco-core",
  "mockaco-diff",
  "mockaco-gpui",
+ "mockaco-language",
  "parking_lot",
  "plugin_editor_api",
  "rust-i18n",
