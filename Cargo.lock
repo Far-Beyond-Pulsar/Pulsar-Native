@@ -4826,6 +4826,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-pass-gbuffer",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
