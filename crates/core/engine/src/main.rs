@@ -320,6 +320,9 @@ fn main() {
 
     let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
         additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
+        // Nothing beyond the required set yet; this keeps device creation as
+        // it was before optional features existed.
+        optional_features: wgpu::Features::empty(),
         desired_maximum_frame_latency: max_frame_latency,
         backends: renderer_backends,
         power_preference,

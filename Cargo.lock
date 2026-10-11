@@ -3138,7 +3138,7 @@ dependencies = [
  "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "rust-embed",
  "scenedb-inspector-agent",
  "serde",
@@ -6839,12 +6839,15 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e95d9bb96af92327e16143fc161f1ad7144a9b20#e95d9bb96af92327e16143fc161f1ad7144a9b20"
+dependencies = [
+ "ropey 1.6.1",
+]
 
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e95d9bb96af92327e16143fc161f1ad7144a9b20#e95d9bb96af92327e16143fc161f1ad7144a9b20"
 dependencies = [
  "mockaco-core",
  "similar 3.2.0",
@@ -6853,7 +6856,7 @@ dependencies = [
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e95d9bb96af92327e16143fc161f1ad7144a9b20#e95d9bb96af92327e16143fc161f1ad7144a9b20"
 dependencies = [
  "gpui-ce",
  "mockaco-core",
@@ -6865,7 +6868,7 @@ dependencies = [
 [[package]]
 name = "mockaco-language"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e95d9bb96af92327e16143fc161f1ad7144a9b20#e95d9bb96af92327e16143fc161f1ad7144a9b20"
 dependencies = [
  "mockaco-core",
  "streaming-iterator",
@@ -6876,7 +6879,7 @@ dependencies = [
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=c45fb0e7cdd21ecc7c97bf51572c7fc57e789241#c45fb0e7cdd21ecc7c97bf51572c7fc57e789241"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e95d9bb96af92327e16143fc161f1ad7144a9b20#e95d9bb96af92327e16143fc161f1ad7144a9b20"
 dependencies = [
  "mockaco-core",
 ]
@@ -9545,7 +9548,7 @@ dependencies = [
  "flume",
  "gpui-ce",
  "lsp-types",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "serde",
  "serde_json",
  "tracing",
@@ -10559,6 +10562,16 @@ dependencies = [
  "serde_derive",
  "typeid",
  "unicode-ident",
+]
+
+[[package]]
+name = "ropey"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93411e420bcd1a75ddd1dc3caf18c23155eda2c090631a85af21ba19e97093b5"
+dependencies = [
+ "smallvec",
+ "str_indices",
 ]
 
 [[package]]
@@ -13734,7 +13747,7 @@ dependencies = [
  "quote",
  "regex",
  "resvg",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "rust-embed",
  "rust-i18n",
  "rust_decimal",
@@ -15085,7 +15098,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "raw-window-handle",
  "regex",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "schemars",
  "serde",
  "serde_json",
