@@ -320,6 +320,8 @@ fn main() {
 
     let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
         additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
+        // hardware wide multiplies for the voxel planet's fixed-point math
+        optional_features: wgpu::Features::SHADER_INT64,
         desired_maximum_frame_latency: max_frame_latency,
         backends: renderer_backends,
         power_preference,
