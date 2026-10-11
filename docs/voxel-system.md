@@ -5,7 +5,7 @@ Pulsar's voxel terrain: destructible planets and planes of real voxels
 from scripts, and rendered by a registered Helio backend. This document maps
 the Pulsar side end to end: data, flow, editor, scripting, rendering
 integration, decisions and pitfalls. The renderer itself (grid, generators,
-residency, tracing) is documented in Helio's
+chunk trees: residency, drawing, lighting) is documented in Helio's
 `crates/passes/3d/helio-pass-voxel-planet/README.md`
 (`crates/renderer/helio/...` in this repository).
 
@@ -283,7 +283,7 @@ and gameplay agree on every block. On generated terrain the older
   planes but it made the camera crawl at 10 m/s kilometres above lowland.
 - **Edits are a journal, not voxel data.** The terrain is procedural, so a
   world is its recipe plus ordered brushes; that keeps saves small and CPU
-  queries exact, and lets the GPU regenerate any column at any level.
+  queries exact, and lets the GPU regenerate any chunk at any level.
 - **The editor's default Sun points straight down (world -Y),** so the sun
   is overhead at the pole and lower elsewhere. A planet's air is an authored
   `AtmosphereComponent` placed at its owner (the example level's planet):
@@ -296,19 +296,15 @@ and gameplay agree on every block. On generated terrain the older
 - `PULSAR_VOXEL_STATS=1` logs, twice a second to the engine log
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
   camera altitude, speed scale, eye/forward/up, viewport and each backend's
-  `diagnostics` line
-  (resident / pending columns, jobs, levels, pool `free_units` and
-  `recycles`, and `lod_pressure`: above 1 the viewport wants more columns
-  than the record or pool capacity holds, or than admission keeps up with
-  while moving, so Helio draws slightly coarser levels instead of stalling).
-  `plan` is the residency worker's CPU time per plan, off the render
-  thread. `late_plans` counts frames whose plan was not ready (they upload
-  nothing), and `reranked` counts pending columns re-prioritised for the
-  moved eye. `finest`
-  is the finest active level: from high up it is above 0 by design (fine
-  levels switch on only where local terrain can come near). Pending that
-  stays high while the camera is still, or `jobs=63` frames while moving,
-  point at residency starvation.
+  `diagnostics` line. The chunk pass reports whether residency `settled`,
+  drawn tiles and chunks, resident chunks, `fading` level switches,
+  `waiting` tiles the plan wants, tiles `generated`, `regenerated` (more
+  layers needed) and `deep` (rays reached under them), the frame's tile
+  `budget`, `coarse` (the share of drawn tiles coarser than wanted),
+  `out_of_slots` / `out_of_leaves`, CPU milliseconds per update phase and
+  the last GPU draw, shadow and generation times. `waiting` that stays above
+  0 while the camera is still, or `coarse` near 1 while moving, point at
+  generation not keeping up.
 - Slow frames log `[HELIO FRAME SPIKE]` with CPU/GPU splits.
 - The Flamegraph profiler (status bar) records scopes including
   `voxel_brush`, `voxel_altitude`, `voxel_project_entries`; stop recordings
@@ -326,15 +322,16 @@ and gameplay agree on every block. On generated terrain the older
   `voxel_objects_reach_the_frame_as_meshes` draws a voxel object at its
   owner, rotated, scaled, edited, casting a shadow and removed.
 - Renderer-side performance and correctness are measured in Helio
-  (`voxel_flight`; `HELIO_VOXEL_FLIGHT_TRIP` replays an editor trip,
-  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the logged camera pose of
-  a session logged with `PULSAR_VOXEL_STATS=1`, and
-  `HELIO_VOXEL_FLIGHT_CRUISE=<m>` flies level at the editor's speed).
+  (`voxel_flight`: `HELIO_VOXEL_FLIGHT_HOLD=<view>` holds a view and times
+  it, `HELIO_VOXEL_CHUNKS_ENGINE=1` through the chunk pass as the editor
+  draws it, `HELIO_VOXEL_CHUNKS_FLY=descent|cruise` streams along a path),
+  and `tests/chunks.rs` checks drawn hits against CPU ray casts.
 
 - `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s ascent/orbit/descent/cruise/arrival
   diagnostic after residency settles and cancels on camera input. Use a copied
-  project with `PULSAR_VOXEL_STATS=1`. Helio's `HELIO_VOXEL_FLIGHT_LONG=<s>`
-  is the sustained-travel equivalent; run it at the editor's resolution.
+  project with `PULSAR_VOXEL_STATS=1`. `PULSAR_VOXEL_NATIVE_SCULPT=1` (or
+  `far`) strokes a dig r1, a dig r4 and a build r1 through the editor's
+  brush queue and picks.
 
 ## Extending
 
