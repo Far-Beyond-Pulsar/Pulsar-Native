@@ -406,9 +406,9 @@ wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "heli
 # `pulsar_reflection`; resolve them to the one Pulsar-Reflection rev (#844).
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
-gpui-ce          = { path = "crates/ui/wgpui" }
-ui               = { path = "crates/ui/wgpui-component/crates/ui" }
-ui-macros        = { path = "crates/ui/wgpui-component/crates/ui-macros" }
+gpui-ce           = { path = "crates/ui/wgpui" }
+ui                = { path = "crates/ui/wgpui-component/crates/ui" }
+ui-macros         = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 pulsar_std        = { path = "crates/core/pulsar_std" }
 plugin_editor_api = { path = "crates/core/plugin_editor_api" }
 ui_common         = { path = "crates/editor/ui_common" }

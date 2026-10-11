@@ -19,11 +19,21 @@ use ui::dock::PanelView;
 pub struct EditorContext {
     /// The current project root path, if any.
     pub project_root: Option<PathBuf>,
+    /// Engine services (the shared language server) for the editor.
+    pub services: EditorServices,
 }
 
 impl EditorContext {
     pub fn new(project_root: Option<PathBuf>) -> Self {
-        Self { project_root }
+        Self {
+            project_root,
+            services: EditorServices::default(),
+        }
+    }
+
+    pub fn with_services(mut self, services: EditorServices) -> Self {
+        self.services = services;
+        self
     }
 }
 

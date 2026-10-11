@@ -295,8 +295,6 @@ impl PulsarApp {
             analyzer
         };
 
-        crate::builtin_editors::set_shared_script_editor_analyzer(cx, rust_analyzer.clone());
-
         // Subscribe to analyzer events
         cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event)
             .detach();
@@ -317,6 +315,11 @@ impl PulsarApp {
         let t_plugins = std::time::Instant::now();
         tracing::info!("[PulsarApp] plugin init start");
         let mut plugin_manager = PluginManager::new();
+        // Every editor -- built-in or a plugin library -- is created with a handle
+        // to the engine's one language server.
+        plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
+            language_server: Some(rust_analyzer.clone()),
+        });
 
         // Register built-in editors
         crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());

@@ -18,18 +18,42 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementArenaScope, ElementId, GlobalElementId,
+    AnyElement, App, Bounds, Element, ElementArenaScope, ElementId, Entity, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, Window,
 };
+use pulsar_lsp::RustAnalyzerManager;
 use ui::dock::PanelView;
 
 use crate::error::PluginError;
 use crate::identifiers::EditorId;
 
 /// Typed, host-owned preference values supplied when a plugin editor opens.
+/// Engine services the host hands every editor it opens.
+///
+/// This is the plugin API's context: an editor must not reach for process
+/// globals (a plugin library has its own copy of them), it receives what it
+/// needs here. Both ways editors are created carry it -- a dynamic plugin's
+/// factory gets it through [`EditorSettingsSnapshot::services`], a built-in
+/// provider through the editor context.
+#[derive(Clone, Default)]
+pub struct EditorServices {
+    /// The one rust-analyzer the engine runs for the project. Editors attach
+    /// to it; they never start, restart or replace it.
+    pub language_server: Option<Entity<RustAnalyzerManager>>,
+}
+
+impl std::fmt::Debug for EditorServices {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EditorServices")
+            .field("language_server", &self.language_server.is_some())
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct EditorSettingsSnapshot {
     values: HashMap<String, EditorSettingValue>,
+    services: EditorServices,
 }
 
 #[derive(Clone, Debug)]
@@ -42,7 +66,21 @@ pub enum EditorSettingValue {
 
 impl EditorSettingsSnapshot {
     pub fn new(values: HashMap<String, EditorSettingValue>) -> Self {
-        Self { values }
+        Self {
+            values,
+            services: EditorServices::default(),
+        }
+    }
+
+    /// The same settings with the host's services attached.
+    pub fn with_services(mut self, services: EditorServices) -> Self {
+        self.services = services;
+        self
+    }
+
+    /// Engine services for the editor being created.
+    pub fn services(&self) -> &EditorServices {
+        &self.services
     }
 
     pub fn boolean(&self, key: &str, fallback: bool) -> bool {

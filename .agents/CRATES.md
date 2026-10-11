@@ -40,7 +40,7 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_events` | Event bus |
 | `pulsar_game` | Game mode abstractions |
 | `pulsar_graph` | Blueprint graph data model |
-| `pulsar_lsp` | LSP client integration |
+| `pulsar_lsp` | LSP client integration. One engine-owned rust-analyzer; editors attach with `ensure_started` (never `start`), share documents by refcount, sync incrementally (`did_change_file_incremental`), and receive per-file `AnalyzerEvent::FileDiagnostics` |
 | `pulsar_macros` | Various derive macros |
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
 | `pulsar_reflection_derive` | `#[derive(Reflectable)]` proc macro |
@@ -193,7 +193,7 @@ These are the built-in editor plugins, loaded as DLLs at runtime. Each is a
 git submodule compiled as `cdylib`:
 
 - `blueprint_editor` — Blueprint visual scripting editor
-- `code_editor` — Script/code editor
+- `code_editor` — Script/code editor, a host for Mockaco (`WgpuiEditorView`). Mockaco owns the hover/completion/diagnostic UI and emits requests; `text_editor/lsp.rs` answers them through the shared analyzer
 - `shader_editor` — Shader graph editor
 - `table_editor` — Database table editor
 - `matter_editor` — Material editor

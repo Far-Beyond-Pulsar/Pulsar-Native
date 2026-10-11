@@ -37,6 +37,7 @@ pub fn on_analyzer_event(
             AnalyzerEvent::Ready => "Ready",
             AnalyzerEvent::Error(_) => "Error",
             AnalyzerEvent::Diagnostics(_) => "Diagnostics",
+            AnalyzerEvent::FileDiagnostics { .. } => "FileDiagnostics",
             AnalyzerEvent::IndexingProgress { .. } => "IndexingProgress",
         }
     );
@@ -127,6 +128,9 @@ pub fn on_analyzer_event(
             // Only the footer shows the analyzer status.
             app.notify_status_bar(cx);
         }
+        // Per-file sets drive the open code editors directly; the problems
+        // drawer keeps working from the aggregate `Diagnostics` event.
+        AnalyzerEvent::FileDiagnostics { .. } => {}
         AnalyzerEvent::Diagnostics(diagnostics) => {
             // Convert and forward diagnostics to the problems drawer
             // Then asynchronously request code actions for each diagnostic
