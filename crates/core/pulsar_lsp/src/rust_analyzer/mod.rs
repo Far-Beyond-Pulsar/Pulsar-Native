@@ -112,6 +112,9 @@ pub struct RustAnalyzerManager {
     /// Latest diagnostics per file key, so an editor opened later shows them
     /// without waiting for the next analysis.
     file_diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// The workspace folders the running server knows: the project root it was
+    /// started with plus every Cargo workspace an open file needed.
+    workspace_folders: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl EventEmitter<AnalyzerEvent> for RustAnalyzerManager {}
@@ -141,6 +144,7 @@ impl RustAnalyzerManager {
             last_emitted_progress: None,
             open_documents: Arc::new(Mutex::new(HashMap::new())),
             file_diagnostics: HashMap::new(),
+            workspace_folders: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -644,6 +648,9 @@ impl RustAnalyzerManager {
         tracing::debug!("🚀 Starting rust-analyzer for: {:?}", workspace_root);
 
         self.workspace_root = Some(workspace_root.clone());
+        if let Ok(mut folders) = self.workspace_folders.lock() {
+            *folders = vec![workspace_root.clone()];
+        }
         self.status = AnalyzerStatus::Starting;
         self.install_attempted = false;
         self.first_diagnostics_time = None;
@@ -1500,6 +1507,9 @@ impl RustAnalyzerManager {
             open.clear();
         }
         self.file_diagnostics.clear();
+        if let Ok(mut folders) = self.workspace_folders.lock() {
+            folders.clear();
+        }
     }
 
     /// Restart rust-analyzer
@@ -1630,6 +1640,53 @@ impl RustAnalyzerManager {
         });
 
         self.send_notification(notification)
+    }
+
+    /// Makes sure the server has the Cargo workspace `file` belongs to, as a
+    /// workspace folder, so the file is analysed as part of a project rather
+    /// than as an unattached file with no crate graph. Never restarts the
+    /// server: it is told with `workspace/didChangeWorkspaceFolders`. Returns
+    /// the folder that was added, if any.
+    pub fn ensure_workspace_for(&self, file: &PathBuf) -> Result<Option<PathBuf>> {
+        if !self.is_running() {
+            return Ok(None);
+        }
+        let folder = {
+            let mut folders = self
+                .workspace_folders
+                .lock()
+                .map_err(|e| anyhow!("Lock error: {}", e))?;
+            let Some(folder) = path_utils::workspace_folder_for(file, &folders) else {
+                return Ok(None);
+            };
+            // A folder nested inside a known one is covered by it.
+            folders.push(folder.clone());
+            folder
+        };
+        let name = folder
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        tracing::info!("adding workspace folder {:?} for {:?}", folder, file);
+        self.send_notification(json!({
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWorkspaceFolders",
+            "params": {
+                "event": {
+                    "added": [{ "uri": self.path_to_uri(&folder), "name": name }],
+                    "removed": []
+                }
+            }
+        }))?;
+        Ok(Some(folder))
+    }
+
+    /// The workspace folders the server currently has.
+    pub fn workspace_folders(&self) -> Vec<PathBuf> {
+        self.workspace_folders
+            .lock()
+            .map(|folders| folders.clone())
+            .unwrap_or_default()
     }
 
     /// Send an incremental didChange: `changes` are LSP content-change
