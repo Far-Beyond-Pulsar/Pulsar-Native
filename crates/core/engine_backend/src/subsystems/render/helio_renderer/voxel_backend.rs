@@ -3,13 +3,14 @@
 //! Source rows carry opaque renderer IDs and recipes. Each backend owns its
 //! pass and translates only the rows it understands into a frame snapshot.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use glam::{DVec3, Vec3};
 use helio_component::{voxel_world::planet_brush, VoxelWorldShape};
 use helio_default_graphs::VoxelPassFactory;
 use helio_pass_voxel_planet::{
-    engine::{PlanetFrame, PlanetPass, SharedPlanetFrame},
+    chunks::pass::ChunkPass,
+    engine::{PlanetFrame, SharedPlanetFrame},
     terrain, Planet, PlanetRecipe, TerrainSource,
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
@@ -901,7 +902,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             )
         };
         let changed = renderer
-            .find_pass_mut::<PlanetPass>()
+            .find_pass_mut::<ChunkPass>()
             .is_some_and(|pass| pass.set_appearance(appearance));
         if changed {
             // The editor can go idle immediately after this frame. Old colour
@@ -1081,79 +1082,19 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
     fn pass_factory(&self) -> Option<VoxelPassFactory> {
         let frame = Arc::clone(&self.frame);
         Some(Arc::new(move |_, _, _, _| {
-            Box::new(PlanetPass::new(Arc::clone(&frame)))
+            Box::new(ChunkPass::new(Arc::clone(&frame)))
         }))
     }
 
     fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
         self.builder.building.is_some()
             || renderer
-                .find_pass::<PlanetPass>()
-                .is_some_and(PlanetPass::needs_frame)
+                .find_pass::<ChunkPass>()
+                .is_some_and(ChunkPass::needs_frame)
     }
 
     fn diagnostics(&self, renderer: &helio::Renderer) -> Option<String> {
-        let pass = renderer.find_pass::<PlanetPass>()?;
-        let s = pass.stats()?;
-        let mut line = format!(
-            "planet ready={} resident={} pending={} jobs={} units={:.0} budget={:.0} us_per_unit={:.3} failed={} scratch_retries={} clipped={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={} late_plans={} reranked={}",
-            s.ready,
-            s.resident_columns,
-            s.pending_columns,
-            s.jobs,
-            s.units,
-            s.unit_budget,
-            s.us_per_unit,
-            s.failed_jobs,
-            s.scratch_retries,
-            s.clipped_columns,
-            s.active_levels,
-            s.finest_level,
-            s.plan_cpu_ms,
-            s.upload_cpu_ms,
-            s.encode_cpu_ms,
-            s.window_rebuild_ms,
-            pass.needs_frame(),
-            s.evictions,
-            s.free_pages,
-            s.pool_pages,
-            s.free_units,
-            s.recycles,
-            s.lod_pressure,
-            s.table_refused,
-            s.late_plans,
-            s.reranked,
-        );
-        static GPU_STAGES: OnceLock<bool> = OnceLock::new();
-        if *GPU_STAGES.get_or_init(|| std::env::var_os("PULSAR_VOXEL_GPU_STAGES").is_some()) {
-            if let Some(active) = pass.renderer() {
-                use std::fmt::Write;
-                // Encode already consumes deferred timestamps for budgeting.
-                // Read that cache; these stages belong to gpu_frame, not this eye.
-                let profiler = active.profiler();
-                let gpu_frame = profiler.and_then(|p| p.last_completed_frame());
-                let encoded_frame = active.frame_number();
-                let lag = gpu_frame.and_then(|frame| encoded_frame.checked_sub(frame));
-                let stage_ms = |name: &str| {
-                    profiler
-                        .and_then(|p| p.get_last_timings().iter().find(|t| t.name == name))
-                        .map(|t| t.duration_ns as f64 / 1.0e6)
-                };
-                let _ = write!(line,
-                    " planet_gpu_frame={gpu_frame:?} planet_encoded_frame={encoded_frame} planet_gpu_lag={lag:?} planet_primary_ms={:?} planet_shade_ms={:?} planet_sunlight_ms={:?} planet_horizon_ms={:?} planet_residency_ms={:?} planet_gbuffer_ms={:?} planet_timestamps_supported={} planet_timestamp_drops={:?} planet_query_overflows={:?}",
-                    stage_ms("planet_primary"),
-                    stage_ms("planet_shade"),
-                    stage_ms("planet_sunlight"),
-                    stage_ms("planet_horizon"),
-                    stage_ms("planet_residency"),
-                    stage_ms("planet_gbuffer"),
-                    profiler.is_some_and(|p| p.supported()),
-                    profiler.map(|p| p.dropped_readbacks()),
-                    profiler.map(|p| p.query_overflows()),
-                );
-            }
-        }
-        Some(line)
+        Some(renderer.find_pass::<ChunkPass>()?.diagnostics())
     }
 
     fn publish_frame(
