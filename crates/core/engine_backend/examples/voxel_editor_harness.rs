@@ -28,6 +28,9 @@
 //!   planet's centre (an editor session's `eye` from its logs).
 //! - `down:<metres>`: move the camera that far down the local vertical (into
 //!   a pit just dug: no lift to the generated ground), settled, captured.
+//! - `profile:<seconds>`: the view held (the camera nudged a millimetre
+//!   every other frame, so the editor keeps rendering): the graph's GPU
+//!   time, and by pass.
 //! - `stress:<ascent|descent|cruise|orbit>:<seconds>`: a flight in real
 //!   time (the path follows the wall clock, as the editor's camera does:
 //!   a slow frame moves it further) from the camera's ground: from 2 m to
@@ -345,6 +348,38 @@ fn main() {
                 direction = glam::DVec3::new(number(1, 0.0), number(2, 1.0), number(3, 0.0)).normalize();
                 println!("HARNESS at {direction:?}");
             }
+            "profile" => {
+                let seconds = number(1, 5.0);
+                let camera = h.camera();
+                let mailbox = h.renderer.editor_mailbox();
+                let mut passes: std::collections::BTreeMap<&'static str, (f64, u32)> = Default::default();
+                let mut totals = Vec::new();
+                let started = Instant::now();
+                let mut k = 0u32;
+                while started.elapsed().as_secs_f64() < seconds {
+                    let mut nudged = camera;
+                    nudged.position[1] += f64::from(k % 2) * 1e-3;
+                    k += 1;
+                    mailbox.queue_camera(nudged);
+                    h.frame();
+                    if let Some((total, by)) = h.renderer.gpu_timings() {
+                        totals.push(f64::from(total));
+                        for (name, ms) in by {
+                            let entry = passes.entry(name).or_default();
+                            entry.0 += f64::from(ms);
+                            entry.1 += 1;
+                        }
+                    }
+                }
+                totals.sort_by(f64::total_cmp);
+                let mut by_pass: Vec<(&str, f64)> = passes.iter().map(|(name, (sum, n))| (*name, sum / f64::from((*n).max(1)))).collect();
+                by_pass.sort_by(|a, b| b.1.total_cmp(&a.1));
+                println!(
+                    "HARNESS profile: graph gpu p50 {:.2} ms; by pass: {}",
+                    totals.get(totals.len() / 2).copied().unwrap_or(f64::NAN),
+                    by_pass.iter().filter(|p| p.1 >= 0.05).map(|(n, ms)| format!("{n} {ms:.2}")).collect::<Vec<_>>().join(", ")
+                );
+            }
             "stress" => {
                 let mode = parts.get(1).copied().unwrap_or("descent").to_string();
                 let seconds = number(2, 20.0);
@@ -373,6 +408,8 @@ fn main() {
                 let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px\n");
                 let (mut times, mut coarse, mut worst, mut switches) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
                 let mut samples = Vec::new();
+                // The render thread's milliseconds by phase, over the flight.
+                let mut phases: std::collections::BTreeMap<&'static str, Vec<f64>> = Default::default();
                 let started = Instant::now();
                 let mut captured = false;
                 loop {
@@ -383,6 +420,9 @@ fn main() {
                     let (position, look) = path(t);
                     h.look(position, look);
                     let Some(ms) = h.frame() else { continue };
+                    for &(name, phase_ms) in h.renderer.last_frame_phases() {
+                        phases.entry(name).or_default().push(f64::from(phase_ms));
+                    }
                     let (c, w, sw) = (h.voxel_stat("coarse"), h.voxel_stat("worst_px"), h.voxel_stat("switch_px"));
                     csv += &format!("{t:.4},{:.1},{ms:.2},{c:.4},{w:.3},{sw:.3}\n", position.length() - ground);
                     // A frame after a capture waited for its readback.
@@ -421,6 +461,18 @@ fn main() {
                     at(&sw, 1.0),
                     sw.iter().filter(|&&x| x > 1.5).count(),
                     sw.iter().filter(|&&x| x > 3.0).count()
+                );
+                let mut by_phase: Vec<(&str, f64, f64)> = phases
+                    .iter_mut()
+                    .map(|(name, v)| {
+                        v.sort_by(f64::total_cmp);
+                        (*name, v.iter().sum::<f64>() / v.len().max(1) as f64, v[((v.len().max(1) - 1) as f64 * 0.95) as usize])
+                    })
+                    .collect();
+                by_phase.sort_by(|a, b| b.1.total_cmp(&a.1));
+                println!(
+                    "HARNESS stress {mode} phases (mean/p95 ms): {}",
+                    by_phase.iter().filter(|p| p.1 >= 0.1).map(|(n, mean, p95)| format!("{n} {mean:.2}/{p95:.2}")).collect::<Vec<_>>().join(", ")
                 );
                 for (k, (position, look)) in samples.iter().enumerate() {
                     h.look(*position, *look);

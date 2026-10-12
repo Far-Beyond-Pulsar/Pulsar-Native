@@ -93,9 +93,6 @@ impl Default for SceneInteraction {
     }
 }
 impl SceneInteraction {
-    pub fn mode(&self) -> GizmoType {
-        self.mode
-    }
     pub fn set_mode(&mut self, mode: GizmoType) {
         if self.mode != mode {
             self.cancel_drag();

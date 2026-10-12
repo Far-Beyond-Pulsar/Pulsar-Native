@@ -166,14 +166,4 @@ impl EditorDomain {
         self.show_lighting = !self.show_lighting;
     }
 
-    pub fn adjust_camera_move_speed(&mut self, delta: f32) {
-        self.camera_move_speed = (self.camera_move_speed + delta).clamp(1.0, 100.0);
-        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
-            "viewport",
-            "camera_move_speed",
-            engine_state::ConfigValue::Float(self.camera_move_speed as f64),
-        ) {
-            tracing::warn!(%error, "Could not persist viewport camera speed");
-        }
-    }
 }

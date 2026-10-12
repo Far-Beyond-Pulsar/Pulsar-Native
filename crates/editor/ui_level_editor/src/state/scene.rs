@@ -10,7 +10,6 @@
 use crate::scene_edit::history::VoxelEditJournal;
 use crate::scene_edit::{self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData};
 use crate::world_settings_data::WorldSettingsData;
-use engine_backend::scene::SceneWorldExt;
 use engine_backend::scene::SharedScene;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
@@ -186,10 +185,6 @@ impl SceneDomain {
     }
 
     // ── Scene traversal ───────────────────────────────────────────────────
-
-    pub fn scene_objects(&self) -> Vec<SceneObjectData> {
-        scene_edit::objects::get_root_objects(&self.world())
-    }
 
     // ── Editor mode helpers ──────────────────────────────────────────────
 

@@ -348,10 +348,11 @@ impl VoxelWorldSync {
         self.synced = true;
         let dropped = sync_edit_journals(world);
         sync_skies_to_terrains(world);
-        // Its own writes are not changes to answer next poll.
+        // Its own writes are not changes to answer next poll (an overflow
+        // leaves the cursor at the newest entry all the same).
         for cursor in &mut self.cursors {
             self.scratch.clear();
-            world.read_changes(cursor, &mut self.scratch);
+            let _ = world.read_changes(cursor, &mut self.scratch);
         }
         dropped
     }

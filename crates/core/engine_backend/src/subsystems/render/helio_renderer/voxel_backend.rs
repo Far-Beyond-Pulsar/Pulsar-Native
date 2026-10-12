@@ -690,9 +690,9 @@ fn build_world(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig, base: 
 }
 
 /// Streamed destructible voxel terrain (`helio-pass-voxel-planet`): planets,
-/// planes and infinite planes of any registered terrain generator, as a
-/// GPU-driven clipmap of exact voxels from 0.1 m to 1 m rendered
-/// camera-relative with traced sunlight.
+/// planes and infinite planes of any registered terrain generator, drawn
+/// from chunk trees (64^3 voxels a chunk, a screen-space cut of levels from
+/// 0.1 m voxels up) camera-relative, with traced sunlight.
 pub struct PlanetVoxelBackend {
     frame: SharedPlanetFrame,
     cached: Option<CachedPlanet>,

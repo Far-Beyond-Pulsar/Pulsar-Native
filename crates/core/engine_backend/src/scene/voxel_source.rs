@@ -6,7 +6,7 @@ use helio_component::{VoxelComponent, VoxelTerrainComponent};
 use helio_voxel_data::{
     VoxelChunkBatch, VoxelChunkOp, VoxelEditClose, VoxelEditJob, VoxelEditTicket, VoxelEditWorker,
     VoxelEditWorkerStatus, VoxelFormatRegistry, VoxelInboxBatch, VoxelInboxClose, VoxelInboxLimits,
-    VoxelPublicationOutcome, VoxelPublicationStatus, VoxelPublicationTicket,
+    VoxelPublicationOutcome, VoxelPublicationTicket,
     VoxelPublicationWorker, VoxelSampleEdit, VoxelSourceId, VoxelSourceWriter, VoxelTerrainId,
     VOXEL_CHUNK_ENCODING_RAW,
 };
@@ -218,14 +218,6 @@ impl VoxelSourceSession {
             .map_err(|error| format!("voxel edit admission: {error:?}"))
     }
 
-    pub fn publication_status(&self) -> Result<VoxelPublicationStatus, String> {
-        self.publication
-            .try_status()
-            .map_err(|error| format!("voxel publication status: {error:?}"))
-    }
-    pub fn edit_status(&self) -> VoxelEditWorkerStatus {
-        self.edits.status()
-    }
     /// Caller-owned in-memory export; run off the frame thread for large maps.
     pub fn snapshot(
         &self,

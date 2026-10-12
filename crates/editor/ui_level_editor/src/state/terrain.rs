@@ -20,12 +20,8 @@ pub enum SculptMode {
 
 // ── Brush Shape ────────────────────────────────────────────────────────────
 
-/// Which `pulsar_terrain::EditShape` a sculpt stamp is built from.
-///
-/// Both variants exist in the canonical edit format already (`EditShape::
-/// Sphere`/`Box`, added for Milestone 3's flat volumes) — this just makes the
-/// choice a brush setting instead of always defaulting to `Sphere`, which is
-/// all Milestones 2-4 ever stamped with.
+/// The shape a sculpt stamp is built from (the voxel planet's ball or
+/// flat-topped box brush).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum BrushShape {
     #[default]
@@ -206,9 +202,6 @@ pub enum FoliageTool {
 }
 
 impl TerrainDomain {
-    pub fn set_sculpt_mode(&mut self, mode: SculptMode) {
-        self.sculpt.mode = mode;
-    }
 
     pub fn set_brush_radius(&mut self, radius: f32) {
         self.sculpt.radius_m = radius.clamp(1.0, 64.0);
@@ -254,82 +247,8 @@ impl TerrainDomain {
         self.paint_foliage = true;
     }
 
-    pub fn set_foliage_density(&mut self, density: f32) {
-        self.foliage.density = density.clamp(0.0, 2048.0);
-    }
-
     pub fn set_foliage_radius(&mut self, radius: f32) {
         self.foliage.radius_m = radius.clamp(1.0, 64.0);
-    }
-
-    /// Clamped against the current max so the min slider can never cross it
-    /// (the max slider clamps symmetrically against the min below).
-    pub fn set_foliage_slope_min(&mut self, degrees: f32) {
-        self.foliage.slope_limit.0 = degrees.clamp(0.0, 90.0).min(self.foliage.slope_limit.1);
-    }
-
-    pub fn set_foliage_slope_max(&mut self, degrees: f32) {
-        self.foliage.slope_limit.1 = degrees.clamp(0.0, 90.0).max(self.foliage.slope_limit.0);
-    }
-
-    pub fn set_foliage_height_min(&mut self, meters: f32) {
-        self.foliage.height_range.0 = meters.clamp(0.01, 10.0).min(self.foliage.height_range.1);
-    }
-
-    pub fn set_foliage_height_max(&mut self, meters: f32) {
-        self.foliage.height_range.1 = meters.clamp(0.01, 10.0).max(self.foliage.height_range.0);
-    }
-
-    pub fn set_foliage_width_min(&mut self, meters: f32) {
-        self.foliage.width_range.0 = meters.clamp(0.001, 5.0).min(self.foliage.width_range.1);
-    }
-
-    pub fn set_foliage_width_max(&mut self, meters: f32) {
-        self.foliage.width_range.1 = meters.clamp(0.001, 5.0).max(self.foliage.width_range.0);
-    }
-
-    pub fn set_foliage_two_sided(&mut self, on: bool) {
-        self.foliage.two_sided = on;
-    }
-
-    pub fn set_foliage_casts_shadow(&mut self, on: bool) {
-        self.foliage.casts_shadow = on;
-    }
-
-    pub fn set_foliage_roughness(&mut self, value: f32) {
-        self.foliage.roughness = value.clamp(0.0, 1.0);
-    }
-
-    pub fn set_foliage_metallic(&mut self, value: f32) {
-        self.foliage.metallic = value.clamp(0.0, 1.0);
-    }
-
-    pub fn set_foliage_lod_distance(&mut self, meters: f32) {
-        self.foliage.lod_distance = meters.clamp(1.0, 500.0);
-    }
-
-    pub fn set_foliage_wind_enabled(&mut self, on: bool) {
-        self.foliage.wind_enabled = on;
-    }
-
-    pub fn set_foliage_trunk_sway(&mut self, value: f32) {
-        self.foliage.trunk_sway = value.clamp(0.0, 5.0);
-    }
-
-    pub fn set_foliage_branch_flutter(&mut self, value: f32) {
-        self.foliage.branch_flutter = value.clamp(0.0, 5.0);
-    }
-
-    pub fn set_foliage_leaf_jitter(&mut self, value: f32) {
-        self.foliage.leaf_jitter = value.clamp(0.0, 5.0);
-    }
-
-    pub fn set_foliage_wind_speed(&mut self, value: f32) {
-        self.foliage.wind_speed = value.clamp(0.0, 20.0);
-    }
-
-    pub fn set_foliage_interactor_radius(&mut self, meters: f32) {
-        self.foliage.interactor_radius = meters.clamp(0.0, 10.0);
     }
 
     pub fn set_target(&mut self, target: TerrainTarget) {

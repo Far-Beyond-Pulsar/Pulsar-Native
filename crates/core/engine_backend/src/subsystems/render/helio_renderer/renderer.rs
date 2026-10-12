@@ -1,6 +1,6 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
-use glam::{DVec3, Mat4, Vec3};
+use glam::{DVec3, Vec3};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
@@ -13,7 +13,7 @@ use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 use super::voxel_mesh_backend::MeshVoxelBackend;
 use super::voxel_backend::{
-    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelRenderBackend, VoxelView, UNPICKED_REACH_M,
+    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelView, UNPICKED_REACH_M,
 };
 type GizmoMode = GizmoType;
 
@@ -818,6 +818,8 @@ pub struct HelioRenderer {
     voxel_scene: Option<(u64, VoxelSceneRead)>,
     /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
     voxel_stats_log: bool,
+    /// The last rendered frame's phases (`FramePhases`), for harnesses.
+    last_phases: Vec<(&'static str, f32)>,
     last_voxel_stats_log: Instant,
     native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight,
     /// `PULSAR_VOXEL_NATIVE_SCULPT=1`: scripted sculpt strokes (diagnostic).
@@ -961,6 +963,7 @@ impl HelioRenderer {
             last_voxel_errors: Vec::new(),
             voxel_scene: None,
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
+            last_phases: Vec::new(),
             last_voxel_stats_log: Instant::now(),
             native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight::new(),
             native_sculpt: std::env::var("PULSAR_VOXEL_NATIVE_SCULPT")
@@ -968,17 +971,6 @@ impl HelioRenderer {
                 .filter(|v| v == "1" || v == "far")
                 .map(|v| NativeSculpt::new(v == "far")),
         }
-    }
-
-    /// Register a voxel renderer before the first viewport frame.
-    pub fn register_voxel_backend(
-        &mut self,
-        backend: Box<dyn VoxelRenderBackend>,
-    ) -> Result<(), String> {
-        if self.inner.is_some() {
-            return Err("voxel renderers must be registered before graph construction".into());
-        }
-        self.voxel_backends.register(backend)
     }
 
     /// Camera pose with yaw and pitch of the world-space view direction
@@ -1014,6 +1006,19 @@ impl HelioRenderer {
     /// terrain is shown (what the camera's speed scales with).
     pub fn voxel_altitude(&self) -> Option<f64> {
         self.voxel_altitude
+    }
+
+    /// The last measured frame's GPU milliseconds in all and by pass, for
+    /// harnesses.
+    pub fn gpu_timings(&self) -> Option<(f32, Vec<(&'static str, f32)>)> {
+        let snapshot = self.inner.as_ref()?.renderer.timing_snapshot();
+        Some((snapshot.total_gpu_ms?, snapshot.passes.iter().filter_map(|p| Some((p.name, p.gpu_ms?))).collect()))
+    }
+
+    /// The last rendered frame's milliseconds by phase (pointer, scene,
+    /// publish, render, ...), for harnesses.
+    pub fn last_frame_phases(&self) -> &[(&'static str, f32)] {
+        &self.last_phases
     }
 
     /// The voxel backends' diagnostics lines (`PULSAR_VOXEL_STATS`), for
@@ -1903,6 +1908,7 @@ impl HelioRenderer {
         // must not inspect the renderer registry or GPU mutex from a second
         // thread just to obtain this value.
         profiling::record_frame_time(frame_ms);
+        self.last_phases = phases.list;
 
         // ── GPU profiler ───────────────────────────────────────────────────────
         // Continuous flamegraph capture needs every completed asynchronous
@@ -2456,23 +2462,17 @@ impl HelioRenderer {
         exists
     }
 
-    /// Build a world-space ray from normalized viewport coordinates using only
-    /// the renderer camera pose and local projection math.
+    /// A world-space ray from normalized viewport coordinates: from the
+    /// camera, along its basis through the pixel (a 45 degree view). No
+    /// matrix holds the camera's position: on a planet an f32 one is off by
+    /// metres.
     fn build_pick_ray(&self, norm_x: f32, norm_y: f32) -> (Vec3, Vec3) {
         let (width, height) = self.viewport_size;
-        let width = width.max(1) as f32;
-        let height = height.max(1) as f32;
-        let x = norm_x * 2.0 - 1.0;
-        let y = 1.0 - norm_y * 2.0;
-        let (forward, _, up) = self.camera_basis();
-        let projection =
-            Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, width / height, 0.1, 10_000.0);
-        let camera_position = self.cam_pos.as_vec3();
-        let view = Mat4::look_at_rh(camera_position, camera_position + forward, up);
-        let inverse = (projection * view).inverse();
-        let near = inverse.project_point3(Vec3::new(x, y, 0.0));
-        let far = inverse.project_point3(Vec3::new(x, y, 1.0));
-        (near, (far - near).normalize_or_zero())
+        let aspect = width.max(1) as f32 / height.max(1) as f32;
+        let tan = std::f32::consts::FRAC_PI_8.tan();
+        let (forward, right, up) = self.camera_basis();
+        let direction = forward + right * ((norm_x * 2.0 - 1.0) * tan * aspect) + up * ((1.0 - norm_y * 2.0) * tan);
+        (self.cam_pos.as_vec3(), direction.normalize_or_zero())
     }
 
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
@@ -2558,14 +2558,14 @@ impl HelioRenderer {
             .map(|input| glam::Vec2::new(input.viewport_width, input.viewport_height))
             .filter(|size| size.x > 1.0 && size.y > 1.0)
             .unwrap_or(glam::Vec2::new(w.max(1) as f32, h.max(1) as f32));
-        let projection = Mat4::perspective_rh(
+        let projection = glam::camera::rh::proj::directx::perspective(
             std::f32::consts::FRAC_PI_4,
             w.max(1) as f32 / h.max(1) as f32,
             0.1,
             10_000.0,
         );
         let camera_position = self.cam_pos.as_vec3();
-        let view = Mat4::look_at_rh(camera_position, camera_position + forward, up);
+        let view = glam::camera::rh::view::look_at_mat4(camera_position, camera_position + forward, up);
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
@@ -2805,6 +2805,7 @@ mod temporal_settling_tests {
 mod native_relative_camera_tests {
     use super::*;
     use crate::scene::{SceneWorldExt, SpawnObject};
+    use glam::Mat4;
     use helio_component::components::{LightComponent, LightType};
 
     /// The example planet's objects: a terrain with its layers and air, a
