@@ -484,10 +484,11 @@ fn packaged_game_runs_from_a_clean_directory() {
         .filter(|l| l.contains("StaticMeshComponent: loaded"))
         .collect();
     assert!(!loaded.is_empty(), "the mesh loaded:\n{text}");
+    // The logged source is the canonical path (`\\?\C:\...` on Windows).
     assert!(
-        loaded
-            .iter()
-            .all(|l| l.contains("assets/meshes/glass_red.mesh") && l.contains("asset-cache")),
+        loaded.iter().map(|l| l.replace('\\', "/")).all(|l| {
+            l.contains("assets/meshes/glass_red.mesh") && l.contains("asset-cache")
+        }),
         "{loaded:?}"
     );
     assert!(!text.contains("failed to load mesh"), "{text}");
