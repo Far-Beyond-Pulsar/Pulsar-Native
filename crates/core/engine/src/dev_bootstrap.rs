@@ -5,7 +5,7 @@
 //! then starts the newly built executable with the original arguments.
 
 use std::ffi::OsString;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -23,14 +23,17 @@ pub fn run_if_requested() -> bool {
     }
 
     let sidecar = std::env::current_exe().ok();
-    if let Err(error) = run_sidecar(&args) {
+    if let Err(error) = run_sidecar(&args, sidecar.as_deref()) {
         append_log(&format!("Bootstrap failed: {error}\n"));
     }
     schedule_sidecar_cleanup(sidecar);
     true
 }
 
-fn run_sidecar(args: &[OsString]) -> Result<(), String> {
+fn run_sidecar(
+    args: &[OsString],
+    stable_executable: Option<&std::path::Path>,
+) -> Result<(), String> {
     let parent_pid = arg(args, 2)?
         .to_string_lossy()
         .parse::<u32>()
@@ -72,12 +75,32 @@ fn run_sidecar(args: &[OsString]) -> Result<(), String> {
         cargo.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
 
-    let status = cargo
-        .status()
-        .map_err(|error| format!("Could not run cargo build: {error}"))?;
+    let status = match cargo.status() {
+        Ok(status) => status,
+        Err(error) => {
+            let message = format!("Could not run cargo build: {error}");
+            append_log(&format!("\n{message}\n"));
+            offer_stable_relaunch(
+                stable_executable,
+                &executable,
+                &working_directory,
+                &restart_args,
+                &message,
+            );
+            return Ok(());
+        }
+    };
     if !status.success() {
-        append_log(&format!("\nCargo build failed with {status}.\n"));
-        return Err(format!("Cargo build failed with {status}"));
+        let message = format!("Cargo build failed with {status}");
+        append_log(&format!("\n{message}.\n"));
+        offer_stable_relaunch(
+            stable_executable,
+            &executable,
+            &working_directory,
+            &restart_args,
+            &message,
+        );
+        return Ok(());
     }
 
     let mut restart = Command::new(&executable);
@@ -96,6 +119,59 @@ fn run_sidecar(args: &[OsString]) -> Result<(), String> {
         executable.display()
     ));
     Ok(())
+}
+
+fn offer_stable_relaunch(
+    stable_executable: Option<&std::path::Path>,
+    executable: &std::path::Path,
+    working_directory: &std::path::Path,
+    restart_args: &[OsString],
+    failure: &str,
+) {
+    let log_path = bootstrap_log_path();
+    let choice = rfd::MessageDialog::new()
+        .set_title("Engine Bootstrap Failed")
+        .set_description(format!(
+            "The engine source could not be rebuilt. {failure}.\n\nBootstrap log: {}\n\nRelaunch the last stable engine version?",
+            log_path.display()
+        ))
+        .set_level(rfd::MessageLevel::Error)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show();
+
+    if !matches!(choice, rfd::MessageDialogResult::Yes) {
+        return;
+    }
+
+    let Some(stable_executable) = stable_executable else {
+        append_log("Could not locate the saved stable executable for relaunch.\n");
+        return;
+    };
+    if let Err(error) = fs::copy(stable_executable, executable) {
+        append_log(&format!(
+            "Could not restore the last stable executable: {error}\n"
+        ));
+        let _ = rfd::MessageDialog::new()
+            .set_title("Could Not Restore Engine")
+            .set_description(format!(
+                "The last stable executable could not be restored.\n\n{error}\n\nBootstrap log: {}",
+                log_path.display()
+            ))
+            .set_level(rfd::MessageLevel::Error)
+            .show();
+        return;
+    }
+
+    let mut restart = Command::new(executable);
+    restart.current_dir(working_directory).args(restart_args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        restart.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    if let Err(error) = restart.spawn() {
+        append_log(&format!("Could not relaunch last stable engine: {error}\n"));
+    }
 }
 
 fn arg(args: &[OsString], index: usize) -> Result<&OsString, String> {
