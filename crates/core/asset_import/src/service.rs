@@ -20,7 +20,9 @@ fn with_db(project_root: &Path, edit: impl FnOnce(&mut ImportDb)) -> Result<(), 
     let _guard = DB_LOCK.lock();
     let mut db = ImportDb::load(project_root);
     edit(&mut db);
-    db.save(project_root).map_err(|error| format!("{error:#}"))
+    let saved = db.save(project_root).map_err(|error| format!("{error:#}"));
+    crate::state::bump_db_revision();
+    saved
 }
 
 /// What happens to the source file once its native asset is built.
@@ -207,6 +209,23 @@ pub fn ignore_sources(project_root: &Path, sources: &[PathBuf]) -> Result<(), St
     })
 }
 
+/// Drop the link between the source `source` (a record key) and its native
+/// asset. Both files stay; the source is no longer checked for changes, and
+/// scans offer it for import again.
+pub fn unlink_source(project_root: &Path, source: &str) -> Result<(), String> {
+    with_db(project_root, |db| db.remove_source(source))
+}
+
+/// Forget that the user declined to import `sources`, so scans and the
+/// content drawer offer them again.
+pub fn unignore_sources(project_root: &Path, sources: &[PathBuf]) -> Result<(), String> {
+    with_db(project_root, |db| {
+        for source in sources {
+            db.unignore(&relative_key(project_root, source));
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,5 +322,28 @@ mod tests {
             .collect();
         assert_eq!(trashed.len(), 1);
         assert_eq!(std::fs::read(&trashed[0]).unwrap(), std::fs::read(cube()).unwrap());
+    }
+    #[test]
+    fn unlink_keeps_both_files_and_unignore_offers_the_source_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let source = root.join("cube.fbx");
+        std::fs::copy(cube(), &source).unwrap();
+        let options = Arc::new(Mutex::new(OptionValues::new()));
+        let ids = submit_import(root.clone(), vec![source.clone()], ImportMode::Link, options);
+        assert_eq!(wait(ids[0]).0, TaskStatus::Succeeded);
+
+        let before = crate::db_revision();
+        unlink_source(&root, "cube.fbx").unwrap();
+        assert!(crate::db_revision() > before, "a database write bumps the revision");
+        assert!(source.exists() && root.join("cube.mesh").exists());
+        let states = crate::import_states(&root, &[source.clone(), root.join("cube.mesh")]);
+        assert_eq!(states[&source], crate::FileImportState::Unlinked);
+        assert!(!states.contains_key(&root.join("cube.mesh")), "the asset is no longer linked");
+
+        ignore_sources(&root, &[source.clone()]).unwrap();
+        assert_eq!(crate::import_states(&root, &[source.clone()])[&source], crate::FileImportState::Ignored);
+        unignore_sources(&root, &[source.clone()]).unwrap();
+        assert_eq!(crate::import_states(&root, &[source.clone()])[&source], crate::FileImportState::Unlinked);
     }
 }
