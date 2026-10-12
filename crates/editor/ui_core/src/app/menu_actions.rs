@@ -143,7 +143,8 @@ impl PulsarApp {
 
 fn source_build_root() -> Option<PathBuf> {
     engine_state::EngineContext::global().and_then(|ctx| {
-        let dev = ctx.store.get_or_init::<engine_state::DevContext>().read();
+        let dev_context = ctx.store.get_or_init::<engine_state::DevContext>();
+        let dev = dev_context.read();
         dev.is_source_build
             .then(|| dev.source_path.clone())
             .flatten()
