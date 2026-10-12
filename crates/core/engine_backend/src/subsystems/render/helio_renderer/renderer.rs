@@ -979,6 +979,12 @@ impl HelioRenderer {
         self.voxel_altitude
     }
 
+    /// The voxel backends' diagnostics lines (`PULSAR_VOXEL_STATS`), for
+    /// harnesses.
+    pub fn voxel_diagnostics(&self) -> Vec<String> {
+        self.inner.as_ref().map_or_else(Vec::new, |inner| self.voxel_backends.diagnostics(&inner.renderer))
+    }
+
     /// The camera's view direction in world space.
     pub fn camera_forward(&self) -> Vec3 {
         self.camera_basis().0

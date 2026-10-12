@@ -28,6 +28,14 @@
 //!   planet's centre (an editor session's `eye` from its logs).
 //! - `down:<metres>`: move the camera that far down the local vertical (into
 //!   a pit just dug: no lift to the generated ground), settled, captured.
+//! - `stress:<ascent|descent|cruise|orbit>:<seconds>`: a flight in real
+//!   time (the path follows the wall clock, as the editor's camera does:
+//!   a slow frame moves it further) from the camera's ground: from 2 m to
+//!   400 km or back, at 300 m/s 40 m over the ground, or in orbit at 400 km
+//!   and 7.7 km/s. Every frame's time and the chunk pass's coarse share,
+//!   largest cell and level switches go to `stress_<n>.csv`; a frame a
+//!   second is captured (`stress_<n>_<s>.png`), then each view again once
+//!   settled (`stress_<n>_<s>_ref.png`).
 //!
 //! Every frame's wall time (CPU and GPU, the queue drained) is written to
 //! `frames.csv`, and a summary per step to stdout.
@@ -160,6 +168,26 @@ impl Harness {
             at(0.95),
             at(1.0)
         );
+    }
+
+    /// The chunk pass's `name=value` from its diagnostics (NaN: none).
+    fn voxel_stat(&self, name: &str) -> f64 {
+        let key = format!(" {name}=");
+        self.renderer
+            .voxel_diagnostics()
+            .iter()
+            .find_map(|line| {
+                let at = line.find(&key)? + key.len();
+                line[at..].split(' ').next()?.parse().ok()
+            })
+            .unwrap_or(f64::NAN)
+    }
+
+    /// The editor camera at `position` looking along `forward` (world).
+    fn look(&mut self, position: glam::DVec3, forward: glam::DVec3) {
+        let f = forward.normalize().as_vec3();
+        let (yaw, pitch) = (f.x.atan2(-f.z), f.y.clamp(-1.0, 1.0).asin());
+        self.renderer.editor_mailbox().queue_camera(EditorCameraState { position: position.to_array(), yaw, pitch });
     }
 
     fn edits(&self) -> usize {
@@ -315,6 +343,89 @@ fn main() {
             "at" => {
                 direction = glam::DVec3::new(number(1, 0.0), number(2, 1.0), number(3, 0.0)).normalize();
                 println!("HARNESS at {direction:?}");
+            }
+            "stress" => {
+                let mode = parts.get(1).copied().unwrap_or("descent").to_string();
+                let seconds = number(2, 20.0);
+                let camera = h.camera();
+                let start = glam::DVec3::from_array(camera.position);
+                let up = start.normalize();
+                let forward = h.renderer.camera_forward().as_dvec3();
+                let ahead = (forward - up * forward.dot(up)).normalize();
+                let ground = start.length() - h.renderer.voxel_altitude().unwrap_or(2.0);
+                let path = |t: f64| -> (glam::DVec3, glam::DVec3) {
+                    let u = (t / seconds).clamp(0.0, 1.0);
+                    let (altitude, along, pitch_down) = match mode.as_str() {
+                        "cruise" => (40.0, 300.0 * t, 0.15),
+                        "orbit" => (400_000.0, 7_700.0 * t, 0.8),
+                        m => {
+                            let altitude = 2.0 * 200_000.0f64.powf(if m == "ascent" { u } else { 1.0 - u });
+                            (altitude, altitude * 0.3, 0.6)
+                        }
+                    };
+                    // Along a great circle through the start.
+                    let angle = along / ground;
+                    let local_up = up * angle.cos() + ahead * angle.sin();
+                    let local_ahead = ahead * angle.cos() - up * angle.sin();
+                    (local_up * (ground + altitude), local_ahead - local_up * pitch_down)
+                };
+                let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px\n");
+                let (mut times, mut coarse, mut worst, mut switches) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+                let mut samples = Vec::new();
+                let started = Instant::now();
+                let mut captured = false;
+                loop {
+                    let t = started.elapsed().as_secs_f64();
+                    if t > seconds {
+                        break;
+                    }
+                    let (position, look) = path(t);
+                    h.look(position, look);
+                    let Some(ms) = h.frame() else { continue };
+                    let (c, w, sw) = (h.voxel_stat("coarse"), h.voxel_stat("worst_px"), h.voxel_stat("switch_px"));
+                    csv += &format!("{t:.4},{:.1},{ms:.2},{c:.4},{w:.3},{sw:.3}\n", position.length() - ground);
+                    // A frame after a capture waited for its readback.
+                    if !captured {
+                        times.push(ms);
+                    }
+                    coarse.push(c);
+                    worst.push(w);
+                    if sw > 0.0 {
+                        switches.push(sw);
+                    }
+                    captured = t >= samples.len() as f64;
+                    if captured {
+                        h.capture(&format!("stress_{n}_{:02}", samples.len()));
+                        samples.push((position, look));
+                    }
+                }
+                std::fs::write(h.out.join(format!("stress_{n}.csv")), csv).expect("stress csv");
+                h.report(&format!("stress {mode} {seconds} s"), &times);
+                let sorted = |v: &[f64]| {
+                    let mut v: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
+                    v.sort_by(f64::total_cmp);
+                    v
+                };
+                let (w, sw) = (sorted(&worst), sorted(&switches));
+                let at = |v: &[f64], q: f64| v.get(((v.len().max(1) - 1) as f64 * q).round() as usize).copied().unwrap_or(f64::NAN);
+                println!(
+                    "HARNESS stress {mode}: frames over 33 ms {} | coarse mean {:.4} | worst px p50 {:.2} p95 {:.2} max {:.2} | switches {}, px p95 {:.2} max {:.2}, over 1.5 px {}, over 3 px {}",
+                    times.iter().filter(|&&ms| ms > 33.3).count(),
+                    coarse.iter().filter(|c| c.is_finite()).sum::<f64>() / coarse.len().max(1) as f64,
+                    at(&w, 0.5),
+                    at(&w, 0.95),
+                    at(&w, 1.0),
+                    sw.len(),
+                    at(&sw, 0.95),
+                    at(&sw, 1.0),
+                    sw.iter().filter(|&&x| x > 1.5).count(),
+                    sw.iter().filter(|&&x| x > 3.0).count()
+                );
+                for (k, (position, look)) in samples.iter().enumerate() {
+                    h.look(*position, *look);
+                    h.settle(20_000);
+                    h.capture(&format!("stress_{n}_{k:02}_ref"));
+                }
             }
             "down" => {
                 let camera = h.camera();
