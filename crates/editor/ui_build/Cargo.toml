@@ -19,5 +19,11 @@ smol = { workspace = true }
 tracing = { workspace = true }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "mp3"] }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+image = { workspace = true }
+# Headless windows for the configurator's layout test.
+gpui-ce = { workspace = true, features = ["test-support"] }
+
 [lints]
 workspace = true

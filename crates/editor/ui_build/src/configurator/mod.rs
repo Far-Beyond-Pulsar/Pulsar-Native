@@ -783,3 +783,76 @@ impl Render for BuildConfiguratorWindow {
 pub fn link_anchor() -> &'static str {
     <BuildConfiguratorWindow as window_manager::PulsarWindow>::window_name()
 }
+
+#[cfg(test)]
+mod tests {
+    use gpui::{
+        AppContext as _, Bounds, TestAppContext, VisualTestContext, WindowBounds, WindowOptions,
+        point, px, size,
+    };
+
+    use super::BuildConfiguratorWindow;
+
+    /// Saves PNGs of the window, scrollbars always shown, as laid out and
+    /// with the form and list scrolled, when `PULSAR_BUILD_SHOTS` names a
+    /// folder and a GPU adapter is available. The scrollbars inside the
+    /// scrolling form (the description's, the platform list's) must sit on
+    /// their own boxes' right edges (Pulsar-Native#1001).
+    #[test]
+    fn configurator_screenshots() {
+        let Some(dir) = std::env::var_os("PULSAR_BUILD_SHOTS").map(std::path::PathBuf::from) else {
+            return;
+        };
+        engine_state::EngineContext::new().set_global();
+        let project = tempfile::tempdir().unwrap();
+        engine_state::set_project_path(project.path().to_string_lossy().into_owned());
+        let mut cx = TestAppContext::with_real_text_system();
+        cx.update(|cx| {
+            ui::init(cx);
+            ui::themes::init(cx);
+            ui::Theme::global_mut(cx).scrollbar_show = ui::scroll::ScrollbarShow::Always;
+        });
+        let mut view = None;
+        let window = cx.update(|cx| {
+            let options = WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                    point(px(0.), px(0.)),
+                    size(px(1120.), px(1300.)),
+                ))),
+                ..Default::default()
+            };
+            cx.open_window(options, |window, cx| {
+                let configurator = cx.new(|cx| BuildConfiguratorWindow::new(window, cx));
+                view = Some(configurator.clone());
+                cx.new(|cx| ui::Root::new(configurator.into(), window, cx))
+            })
+            .expect("window")
+        });
+        let handle: gpui::AnyWindowHandle = window.into();
+        let headless = gpui::headless::HeadlessWindow::attach(handle, &mut cx).expect("GPU");
+        let view = view.unwrap();
+        let mut vcx = VisualTestContext::from_window(handle, &mut cx);
+        vcx.run_until_parked();
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut save = |cx: &mut TestAppContext, name: &str| {
+            for _ in 0..3 {
+                headless.draw(cx, true);
+            }
+            let _ = headless.settle(cx);
+            let (width, height) = headless.size();
+            image::RgbaImage::from_raw(width, height, headless.presented())
+                .expect("frame size")
+                .save(dir.join(format!("{name}.png")))
+                .unwrap();
+        };
+        save(&mut cx, "configurator");
+        let mut vcx = VisualTestContext::from_window(handle, &mut cx);
+        view.update(&mut vcx, |view, cx| {
+            view.form_scroll.set_offset(point(px(0.), px(-200.)));
+            view.list_scroll.set_offset(point(px(0.), px(-60.)));
+            cx.notify();
+        });
+        vcx.run_until_parked();
+        save(&mut cx, "configurator-scrolled");
+    }
+}
