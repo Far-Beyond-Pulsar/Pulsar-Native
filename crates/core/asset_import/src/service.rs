@@ -48,7 +48,10 @@ fn move_to_trash(project_root: &Path, source: &Path, key: &str) -> anyhow::Resul
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_millis());
-    let destination = project_root.join(TRASH_DIR).join(stamp.to_string()).join(key);
+    let destination = project_root
+        .join(TRASH_DIR)
+        .join(stamp.to_string())
+        .join(key);
     if let Some(parent) = destination.parent() {
         virtual_fs::create_dir_all(parent)?;
     }
@@ -109,10 +112,17 @@ fn convert(
             // either way, so a failed move is a warning, not a failed task.
             match move_to_trash(project_root, source, &key) {
                 Ok(trashed) => {
-                    tracing::info!("converted {}; source moved to {}", source.display(), trashed.display());
+                    tracing::info!(
+                        "converted {}; source moved to {}",
+                        source.display(),
+                        trashed.display()
+                    );
                 }
                 Err(error) => {
-                    tracing::warn!("converted {}, but could not move it to the trash: {error:#}", source.display());
+                    tracing::warn!(
+                        "converted {}, but could not move it to the trash: {error:#}",
+                        source.display()
+                    );
                     task.report_progress(0.95, "Converted; source left in place");
                 }
             }
@@ -172,31 +182,33 @@ pub fn submit_reimport(project_root: PathBuf, source: &str) -> Option<TaskId> {
         TASK_CATEGORY,
         TaskDuration::Long,
     );
-    Some(editor_task_queue::global().submit(description, move |task| {
-        let importer = importer_by_id(&record.importer)
-            .ok_or_else(|| format!("unknown importer '{}'", record.importer))?;
-        let source = project_root.join(&record.source);
-        let asset = project_root.join(&record.asset);
-        let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("");
+    Some(
+        editor_task_queue::global().submit(description, move |task| {
+            let importer = importer_by_id(&record.importer)
+                .ok_or_else(|| format!("unknown importer '{}'", record.importer))?;
+            let source = project_root.join(&record.source);
+            let asset = project_root.join(&record.asset);
+            let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-        task.report_progress(0.1, "Reading source");
-        let (source_hash, source_size) =
-            hash_file(&source).map_err(|error| format!("{error:#}"))?;
-        if task.is_cancelled() {
-            return Err("cancelled".into());
-        }
-        task.report_progress(0.3, "Converting");
-        let options = importer.stored_options(&asset, ext);
-        importer.import(&source, &asset, &options)?;
-        task.report_progress(0.9, "Recording");
-        with_db(&project_root, |db| {
-            db.upsert(ImportRecord {
-                source_hash,
-                source_size,
-                ..record
+            task.report_progress(0.1, "Reading source");
+            let (source_hash, source_size) =
+                hash_file(&source).map_err(|error| format!("{error:#}"))?;
+            if task.is_cancelled() {
+                return Err("cancelled".into());
+            }
+            task.report_progress(0.3, "Converting");
+            let options = importer.stored_options(&asset, ext);
+            importer.import(&source, &asset, &options)?;
+            task.report_progress(0.9, "Recording");
+            with_db(&project_root, |db| {
+                db.upsert(ImportRecord {
+                    source_hash,
+                    source_size,
+                    ..record
+                })
             })
-        })
-    }))
+        }),
+    )
 }
 
 /// Remember that the user declined to import `sources`, so scans stop
@@ -259,7 +271,12 @@ mod tests {
         std::fs::copy(cube(), &source).unwrap();
         let options = Arc::new(Mutex::new(OptionValues::new()));
 
-        let ids = submit_import(root.clone(), vec![source.clone()], ImportMode::Link, options);
+        let ids = submit_import(
+            root.clone(),
+            vec![source.clone()],
+            ImportMode::Link,
+            options,
+        );
         assert_eq!(wait(ids[0]), (TaskStatus::Succeeded, None));
         assert!(source.exists() && root.join("cube.mesh").exists());
         let db = ImportDb::load(&root);
@@ -280,7 +297,12 @@ mod tests {
         let source = root.join("cube.fbx");
         std::fs::copy(cube(), &source).unwrap();
         let options = Arc::new(Mutex::new(OptionValues::new()));
-        let ids = submit_import(root.clone(), vec![source.clone()], ImportMode::Link, options);
+        let ids = submit_import(
+            root.clone(),
+            vec![source.clone()],
+            ImportMode::Link,
+            options,
+        );
         assert_eq!(wait(ids[0]).0, TaskStatus::Succeeded);
 
         let asset = root.join("cube.mesh");
@@ -294,7 +316,10 @@ mod tests {
         assert_eq!(wait(id), (TaskStatus::Succeeded, None));
         let (decoded, _) =
             helio_component::mesh_cache::decode_asset(&std::fs::read(&asset).unwrap()).unwrap();
-        assert_eq!(decoded.material_slots[0].material_asset, "materials/Keep.mat");
+        assert_eq!(
+            decoded.material_slots[0].material_asset,
+            "materials/Keep.mat"
+        );
         let db = ImportDb::load(&root);
         assert_eq!(
             db.status(&root, db.find_source("cube.fbx").unwrap()),
@@ -310,7 +335,12 @@ mod tests {
         std::fs::copy(cube(), &source).unwrap();
         let options = Arc::new(Mutex::new(OptionValues::new()));
 
-        let ids = submit_import(root.clone(), vec![source.clone()], ImportMode::ConvertInPlace, options);
+        let ids = submit_import(
+            root.clone(),
+            vec![source.clone()],
+            ImportMode::ConvertInPlace,
+            options,
+        );
         assert_eq!(wait(ids[0]), (TaskStatus::Succeeded, None));
         assert!(!source.exists() && root.join("cube.mesh").exists());
         assert!(ImportDb::load(&root).records.is_empty());
@@ -321,7 +351,10 @@ mod tests {
             .map(|entry| entry.unwrap().path().join("cube.fbx"))
             .collect();
         assert_eq!(trashed.len(), 1);
-        assert_eq!(std::fs::read(&trashed[0]).unwrap(), std::fs::read(cube()).unwrap());
+        assert_eq!(
+            std::fs::read(&trashed[0]).unwrap(),
+            std::fs::read(cube()).unwrap()
+        );
     }
     #[test]
     fn unlink_keeps_both_files_and_unignore_offers_the_source_again() {
@@ -330,20 +363,37 @@ mod tests {
         let source = root.join("cube.fbx");
         std::fs::copy(cube(), &source).unwrap();
         let options = Arc::new(Mutex::new(OptionValues::new()));
-        let ids = submit_import(root.clone(), vec![source.clone()], ImportMode::Link, options);
+        let ids = submit_import(
+            root.clone(),
+            vec![source.clone()],
+            ImportMode::Link,
+            options,
+        );
         assert_eq!(wait(ids[0]).0, TaskStatus::Succeeded);
 
         let before = crate::db_revision();
         unlink_source(&root, "cube.fbx").unwrap();
-        assert!(crate::db_revision() > before, "a database write bumps the revision");
+        assert!(
+            crate::db_revision() > before,
+            "a database write bumps the revision"
+        );
         assert!(source.exists() && root.join("cube.mesh").exists());
         let states = crate::import_states(&root, &[source.clone(), root.join("cube.mesh")]);
         assert_eq!(states[&source], crate::FileImportState::Unlinked);
-        assert!(!states.contains_key(&root.join("cube.mesh")), "the asset is no longer linked");
+        assert!(
+            !states.contains_key(&root.join("cube.mesh")),
+            "the asset is no longer linked"
+        );
 
         ignore_sources(&root, &[source.clone()]).unwrap();
-        assert_eq!(crate::import_states(&root, &[source.clone()])[&source], crate::FileImportState::Ignored);
+        assert_eq!(
+            crate::import_states(&root, &[source.clone()])[&source],
+            crate::FileImportState::Ignored
+        );
         unignore_sources(&root, &[source.clone()]).unwrap();
-        assert_eq!(crate::import_states(&root, &[source.clone()])[&source], crate::FileImportState::Unlinked);
+        assert_eq!(
+            crate::import_states(&root, &[source.clone()])[&source],
+            crate::FileImportState::Unlinked
+        );
     }
 }

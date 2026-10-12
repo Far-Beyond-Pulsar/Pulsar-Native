@@ -160,7 +160,10 @@ fn instances_are_isolated_and_take_overrides() {
         .unwrap();
     let json: HashMap<String, serde_json::Value> =
         [("step".to_string(), serde_json::json!(100))].into();
-    assert!(rt.spawn_with_json("c", "Counter", None, &json, &|_| None).unwrap().is_empty());
+    assert!(rt
+        .spawn_with_json("c", "Counter", None, &json, &|_| None)
+        .unwrap()
+        .is_empty());
     rt.dispatch_pending_begin_play(&mut world);
     rt.tick_all(&mut world, 1.0);
     assert_eq!(rt.variable("a", "ticks"), Some(&Value::Int(1)));
@@ -174,7 +177,10 @@ fn instances_are_isolated_and_take_overrides() {
     // JSON overrides (level files) skip variables that no longer exist.
     let stale: HashMap<String, serde_json::Value> =
         [("gone".to_string(), serde_json::json!(1))].into();
-    assert!(rt.spawn_with_json("e", "Counter", None, &stale, &|_| None).unwrap().is_empty());
+    assert!(rt
+        .spawn_with_json("e", "Counter", None, &stale, &|_| None)
+        .unwrap()
+        .is_empty());
     assert!(matches!(
         rt.spawn("a", "Counter", None, &[]),
         Err(RuntimeError::DuplicateInstance(_))
@@ -211,7 +217,11 @@ fn json_overrides_name_entities_by_stable_id_and_fail_one_by_one() {
     // The bad override is reported on its own; the good one applies.
     assert!(matches!(&rejected[..], [RuntimeError::BadVariable { name, .. }] if name == "step"));
     assert_eq!(rt.variable("a", "target"), Some(&Value::Entity(target)));
-    assert_eq!(rt.variable("a", "step"), Some(&Value::Int(1)), "the class default");
+    assert_eq!(
+        rt.variable("a", "step"),
+        Some(&Value::Int(1)),
+        "the class default"
+    );
 
     let missing: HashMap<String, serde_json::Value> =
         [("target".to_string(), serde_json::json!("gone"))].into();

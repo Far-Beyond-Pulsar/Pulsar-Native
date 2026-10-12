@@ -63,7 +63,11 @@ fn loaded_vertices(path: &str) -> usize {
     let entity = world.spawn();
     world.insert(entity, StaticMeshComponent::for_mesh_asset(path));
     assert!(world.resolve_assets_blocking(std::time::Duration::from_secs(30)));
-    world.get::<StaticMeshComponent>(entity).unwrap().vertices.len()
+    world
+        .get::<StaticMeshComponent>(entity)
+        .unwrap()
+        .vertices
+        .len()
 }
 
 fn vertices(state: &LevelEditorState, id: &str) -> usize {

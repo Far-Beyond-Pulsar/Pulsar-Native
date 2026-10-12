@@ -118,5 +118,4 @@ impl ForcesRigidbodyProps {
             self.disable_all_forces = v;
         }
     }
-
 }

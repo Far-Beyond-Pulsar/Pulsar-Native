@@ -119,10 +119,9 @@ impl FileManagerDrawer {
                         let mut by_ext: std::collections::BTreeMap<String, Vec<PathBuf>> =
                             Default::default();
                         for src in &models {
-                            let (Some(name), Some(ext)) = (
-                                src.file_name(),
-                                src.extension().and_then(|e| e.to_str()),
-                            ) else {
+                            let (Some(name), Some(ext)) =
+                                (src.file_name(), src.extension().and_then(|e| e.to_str()))
+                            else {
                                 continue;
                             };
                             by_ext

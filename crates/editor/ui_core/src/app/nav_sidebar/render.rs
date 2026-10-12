@@ -4,8 +4,8 @@
 //! groups and closes. The content tree is drawn by [`super::content`].
 
 use gpui::{
-    div, prelude::*, px, AnyElement, Context, ElementId, Hsla, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, Pixels, SharedString, Window, uniform_list,
+    div, prelude::*, px, uniform_list, AnyElement, Context, ElementId, Hsla, IntoElement,
+    MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, SharedString, Window,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::dock::DragPanel;
@@ -163,9 +163,9 @@ impl NavSidebar {
             .bg(theme.sidebar)
             .border_r_1()
             .border_color(theme.sidebar_border)
-            .on_hover(cx.listener(|sidebar, hovered: &bool, _, cx| {
-                sidebar.hover_rail(*hovered, cx)
-            }))
+            .on_hover(
+                cx.listener(|sidebar, hovered: &bool, _, cx| sidebar.hover_rail(*hovered, cx)),
+            )
             .child(
                 div().py_2().child(
                     Button::new("nav-rail-expand")
@@ -316,9 +316,9 @@ impl NavSidebar {
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             })
-            .on_hover(cx.listener(|sidebar, hovered: &bool, _, cx| {
-                sidebar.hover_drawer(*hovered, cx)
-            }))
+            .on_hover(
+                cx.listener(|sidebar, hovered: &bool, _, cx| sidebar.hover_drawer(*hovered, cx)),
+            )
             .when(self.border_drag.is_some(), |el| {
                 el.on_mouse_move(cx.listener(|sidebar, event: &MouseMoveEvent, _, cx| {
                     sidebar.drag_border(event.position.y, cx)
@@ -738,15 +738,17 @@ impl NavSidebar {
             let k = key.clone();
             menu = menu.item(
                 PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
-                    .on_click(on(&sidebar, move |sidebar, _, cx| sidebar.toggle_pin(&k, cx))),
+                    .on_click(on(&sidebar, move |sidebar, _, cx| {
+                        sidebar.toggle_pin(&k, cx)
+                    })),
             );
             menu = menu.separator();
             let k = key.clone();
             menu = menu.item(
-                PopupMenuItem::new("New group with this editor").on_click(on(
-                    &sidebar,
-                    move |sidebar, window, cx| sidebar.new_group(Some(k.clone()), window, cx),
-                )),
+                PopupMenuItem::new("New group with this editor")
+                    .on_click(on(&sidebar, move |sidebar, window, cx| {
+                        sidebar.new_group(Some(k.clone()), window, cx)
+                    })),
             );
             for (id, name) in &groups {
                 let k = key.clone();
@@ -762,14 +764,17 @@ impl NavSidebar {
                 let k = key.clone();
                 menu = menu.item(
                     PopupMenuItem::new("Remove from group")
-                        .on_click(on(&sidebar, move |sidebar, _, cx| sidebar.move_tab(&k, None, cx))),
+                        .on_click(on(&sidebar, move |sidebar, _, cx| {
+                            sidebar.move_tab(&k, None, cx)
+                        })),
                 );
             }
             if let Some(index) = close_index {
                 menu = menu.separator().item(
-                    PopupMenuItem::new("Close").on_click(on(&sidebar, move |sidebar, window, cx| {
-                        sidebar.close_tab(index, window, cx)
-                    })),
+                    PopupMenuItem::new("Close")
+                        .on_click(on(&sidebar, move |sidebar, window, cx| {
+                            sidebar.close_tab(index, window, cx)
+                        })),
                 );
             }
             menu

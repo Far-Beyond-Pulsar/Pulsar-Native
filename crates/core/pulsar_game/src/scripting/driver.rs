@@ -993,7 +993,9 @@ impl ScriptDriver {
                         )
                     }
                     _ => {
-                        tracing::info!("A ClassInstance or ComponentOwner journal overflowed; rescanning");
+                        tracing::info!(
+                            "A ClassInstance or ComponentOwner journal overflowed; rescanning"
+                        );
                         None
                     }
                 }
@@ -1162,14 +1164,18 @@ impl ScriptDriver {
         }
         let overrides: HashMap<String, Value> = overrides.clone().into_iter().collect();
         let entity_for = |stable_id: &str| world.entity_for(stable_id);
-        match self
-            .runtime
-            .spawn_with_json(id.clone(), &class, Some(entity), &overrides, &entity_for)
-        {
+        match self.runtime.spawn_with_json(
+            id.clone(),
+            &class,
+            Some(entity),
+            &overrides,
+            &entity_for,
+        ) {
             Ok(rejected) => {
                 // A bad override keeps the class default; the instance runs.
                 for error in rejected {
-                    let message = format!("script instance '{id}': {error}; using the class default");
+                    let message =
+                        format!("script instance '{id}': {error}; using the class default");
                     tracing::warn!("{message}");
                     report.failures.push(message);
                 }
@@ -1596,7 +1602,8 @@ impl ScriptDriver {
             match entry.load_definition() {
                 Ok(def) => {
                     let template = pulsar_class::template(&def);
-                    self.templates.insert(entry.id.clone(), Arc::clone(&template));
+                    self.templates
+                        .insert(entry.id.clone(), Arc::clone(&template));
                     Some(template)
                 }
                 Err(error) => {

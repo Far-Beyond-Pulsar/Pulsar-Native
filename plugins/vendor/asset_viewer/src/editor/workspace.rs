@@ -211,10 +211,8 @@ impl Render for ViewportPanel {
                                 .text_xs()
                                 .child("Bad")
                                 .child(
-                                    v_flex()
-                                        .w(px(28.0))
-                                        .h(px(168.0))
-                                        .children([
+                                    v_flex().w(px(28.0)).h(px(168.0)).children(
+                                        [
                                             (0xf2080a, "red"),
                                             (0xff6100, "orange"),
                                             (0xfff200, "yellow"),
@@ -222,26 +220,43 @@ impl Render for ViewportPanel {
                                             (0x00edf5, "cyan"),
                                             (0x0d33ff, "blue"),
                                             (0x8c14ff, "violet"),
-                                        ].into_iter().enumerate().map(|(index, (color, _name))| {
-                                            let band = 6 - index as u32;
-                                            let viewport_entity = viewport_entity.clone();
-                                            div()
-                                                // GPUI registers hover handlers only for elements with persistent state.
-                                                .id(("density-legend-swatch", index))
-                                                .h(px(24.0))
-                                                .w_full()
-                                                .cursor_pointer()
-                                                .bg(gpui::rgb(color))
-                                                .on_hover(move |hovered: &bool, _, app| {
-                                                    let selected = if *hovered { Some(band) } else { None };
-                                                    let _ = viewport_entity.update(app, |viewport, cx| {
-                                                        if selected.is_some() || viewport.density_hover_band == Some(band) {
-                                                            viewport.density_hover_band = selected;
-                                                            cx.notify();
-                                                        }
-                                                    });
-                                                })
-                                        })),
+                                        ]
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(
+                                            |(index, (color, _name))| {
+                                                let band = 6 - index as u32;
+                                                let viewport_entity = viewport_entity.clone();
+                                                div()
+                                                    // GPUI registers hover handlers only for elements with persistent state.
+                                                    .id(("density-legend-swatch", index))
+                                                    .h(px(24.0))
+                                                    .w_full()
+                                                    .cursor_pointer()
+                                                    .bg(gpui::rgb(color))
+                                                    .on_hover(move |hovered: &bool, _, app| {
+                                                        let selected = if *hovered {
+                                                            Some(band)
+                                                        } else {
+                                                            None
+                                                        };
+                                                        let _ = viewport_entity.update(
+                                                            app,
+                                                            |viewport, cx| {
+                                                                if selected.is_some()
+                                                                    || viewport.density_hover_band
+                                                                        == Some(band)
+                                                                {
+                                                                    viewport.density_hover_band =
+                                                                        selected;
+                                                                    cx.notify();
+                                                                }
+                                                            },
+                                                        );
+                                                    })
+                                            },
+                                        ),
+                                    ),
                                 )
                                 .child("Good")
                                 .into_any_element()
@@ -252,8 +267,10 @@ impl Render for ViewportPanel {
                             density_hover_band.map_or_else(
                                 || div().into_any_element(),
                                 |band| {
-                                    let name = ["violet", "blue", "cyan", "green", "yellow", "orange", "red"]
-                                        [band as usize];
+                                    let name = [
+                                        "violet", "blue", "cyan", "green", "yellow", "orange",
+                                        "red",
+                                    ][band as usize];
                                     let range_text = editor.density_band_ranges.map_or_else(
                                         || format!("{name} density"),
                                         |ranges| {

@@ -226,9 +226,21 @@ pub unsafe fn attach(owner: *const WorldRuntimes) -> Result<(), WorldAttachError
     // runtime here, or the host's if it is already attached, which then
     // matches.
     let checks = [
-        ("pulsar_reflection", pulsar_reflection::runtime::shared().abi, owner.reflection.abi),
-        ("pulsar_scenedb", pulsar_scenedb::runtime::shared().abi, owner.scenedb.abi),
-        ("pulsar_scene_model", pulsar_scene_model::runtime::shared().abi, owner.scene_model.abi),
+        (
+            "pulsar_reflection",
+            pulsar_reflection::runtime::shared().abi,
+            owner.reflection.abi,
+        ),
+        (
+            "pulsar_scenedb",
+            pulsar_scenedb::runtime::shared().abi,
+            owner.scenedb.abi,
+        ),
+        (
+            "pulsar_scene_model",
+            pulsar_scene_model::runtime::shared().abi,
+            owner.scene_model.abi,
+        ),
         ("pulsar_world_registry", OWN.abi, owner.registry.abi),
     ];
     for (runtime, expected, found) in checks {

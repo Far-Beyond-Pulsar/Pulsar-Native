@@ -14,14 +14,14 @@
 use std::sync::Arc;
 
 use helio_component::components::{
-    AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow, FoliageSourceRow, GlobalFogSourceRow, LightSourceRow,
-    LocalFogSourceRow, PostProcessVolumeSourceRow, StaticMeshComponent, StaticMeshDraw,
-    WaterVolumeSourceRow, CAMERA_POST_PROCESS_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER,
+    AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow,
+    FoliageSourceRow, GlobalFogSourceRow, GlobalWindSourceRow, LightSourceRow, LocalFogSourceRow,
+    PostProcessVolumeSourceRow, SpriteSourceRow, StaticMeshComponent, StaticMeshDraw,
+    WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER, CAMERA_POST_PROCESS_SOURCES_BUFFER,
+    CORONA_EMITTER_SOURCES_BUFFER, DECAL_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER,
     GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
     MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
-    WATER_VOLUME_SOURCES_BUFFER, ATMOSPHERE_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER,
-    DECAL_SOURCES_BUFFER, GlobalWindSourceRow, WIND_SOURCES_BUFFER, SpriteSourceRow,
-    SPRITE_SOURCES_BUFFER,
+    SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER, WIND_SOURCES_BUFFER,
 };
 use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};

@@ -107,7 +107,10 @@ mod tests {
     #[test]
     fn only_import_only_types_are_hidden_from_the_create_menu() {
         assert!(!with_content(serde_json::json!("")).is_creatable());
-        assert!(with_content(serde_json::Value::Null).is_creatable(), "an empty file");
+        assert!(
+            with_content(serde_json::Value::Null).is_creatable(),
+            "an empty file"
+        );
         assert!(with_content(serde_json::json!("# notes\n")).is_creatable());
         assert!(with_content(serde_json::json!({ "nodes": [] })).is_creatable());
     }

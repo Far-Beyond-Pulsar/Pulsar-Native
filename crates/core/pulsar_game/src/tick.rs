@@ -237,7 +237,7 @@ impl TickLoop {
             TickMode::Fixed { dt } => dt * 5,
             TickMode::Variable { max_delta } => max_delta,
         };
-        
+
         let running = Arc::new(AtomicBool::new(false));
         Self {
             scene_store,

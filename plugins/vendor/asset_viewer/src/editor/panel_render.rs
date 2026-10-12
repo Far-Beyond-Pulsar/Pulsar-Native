@@ -276,7 +276,10 @@ fn local_vertex_density(
 
     let vertex_count = positions.len();
     if vertex_count == 0 {
-        return Some(VertexDensityResult { values: Vec::new(), band_ranges: [(0.0, 0.0); 7] });
+        return Some(VertexDensityResult {
+            values: Vec::new(),
+            band_ranges: [(0.0, 0.0); 7],
+        });
     }
 
     let mut dual_area = vec![0.0f32; vertex_count];
@@ -371,7 +374,10 @@ fn local_vertex_density(
         .unwrap_or(0.0);
     if positive_floor == 0.0 {
         progress.store(1000, Ordering::Relaxed);
-        return Some(VertexDensityResult { values: vec![0.0; vertex_count], band_ranges: [(0.0, 0.0); 7] });
+        return Some(VertexDensityResult {
+            values: vec![0.0; vertex_count],
+            band_ranges: [(0.0, 0.0); 7],
+        });
     }
     for value in &mut density {
         if *value <= 0.0 || !value.is_finite() {
@@ -400,10 +406,16 @@ fn local_vertex_density(
         .collect();
     let band_ranges = std::array::from_fn(|band| {
         let density_at = |t: f32| (log_low + log_span * t).exp();
-        (density_at(band as f32 / 7.0), density_at((band + 1) as f32 / 7.0))
+        (
+            density_at(band as f32 / 7.0),
+            density_at((band + 1) as f32 / 7.0),
+        )
     });
     progress.store(1000, Ordering::Relaxed);
-    Some(VertexDensityResult { values: normalized, band_ranges })
+    Some(VertexDensityResult {
+        values: normalized,
+        band_ranges,
+    })
 }
 
 /// The native `.mesh` a project source (an FBX, OBJ, …) is linked to by an
@@ -1233,7 +1245,9 @@ impl AssetViewerPanel {
             self.load_native_mesh(device, queue, &asset);
             self.scene_stats.generator = format!(
                 "Pulsar native mesh, imported from {}",
-                path.file_name().and_then(|n| n.to_str()).unwrap_or_default()
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
             );
             return;
         }
@@ -1872,7 +1886,11 @@ impl AssetViewerPanel {
                 let offset = draw.min(MAX_DRAW_SLOTS as usize - 1) as u64 * UNIFORM_SLOT_STRIDE;
                 queue.write_buffer(buf, offset, bytemuck::bytes_of(&view_proj));
                 let hovered_band = self.density_hover_band.map_or(0, |band| band + 1);
-                queue.write_buffer(buf, offset + 64, bytemuck::bytes_of(&[mode, linear, hovered_band, 0]));
+                queue.write_buffer(
+                    buf,
+                    offset + 64,
+                    bytemuck::bytes_of(&[mode, linear, hovered_band, 0]),
+                );
                 queue.write_buffer(buf, offset + 80, bytemuck::bytes_of(color));
             }
         }

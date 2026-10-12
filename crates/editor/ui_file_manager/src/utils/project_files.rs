@@ -259,9 +259,15 @@ mod tests {
     fn a_taken_name_gets_a_copy_suffix_before_its_extension() {
         let dir = tempfile::tempdir().unwrap();
         let folder = dir.path();
-        assert_eq!(free_name_in(folder, "Hero.class"), folder.join("Hero.class"));
+        assert_eq!(
+            free_name_in(folder, "Hero.class"),
+            folder.join("Hero.class")
+        );
         std::fs::write(folder.join("Hero.class"), "").unwrap();
-        assert_eq!(free_name_in(folder, "Hero.class"), folder.join("Hero copy.class"));
+        assert_eq!(
+            free_name_in(folder, "Hero.class"),
+            folder.join("Hero copy.class")
+        );
         std::fs::write(folder.join("Hero copy.class"), "").unwrap();
         assert_eq!(
             free_name_in(folder, "Hero.class"),

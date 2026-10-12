@@ -43,7 +43,9 @@ inventory::submit! {
 }
 
 fn world_components() -> Vec<ProvidedComponent> {
-    crate::runtime::world_components().iter().copied()
+    crate::runtime::world_components()
+        .iter()
+        .copied()
         .into_iter()
         .map(|r| ProvidedComponent {
             name: r.class_name,

@@ -172,9 +172,9 @@ impl EditorFactory {
     pub fn new(
         editor_id: EditorId,
         create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+            + 'static
+            + Send
+            + Sync,
     ) -> Self {
         Self {
             editor_id,
@@ -185,14 +185,14 @@ impl EditorFactory {
     pub fn new_with_settings(
         editor_id: EditorId,
         create: impl Fn(
-            PathBuf,
-            &EditorSettingsSnapshot,
-            &mut Window,
-            &mut App,
-        ) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+                PathBuf,
+                &EditorSettingsSnapshot,
+                &mut Window,
+                &mut App,
+            ) -> Result<Arc<dyn PanelView>, PluginError>
+            + 'static
+            + Send
+            + Sync,
     ) -> Self {
         Self {
             editor_id,
@@ -226,9 +226,9 @@ impl EditorFactoryRegistry {
         &mut self,
         editor_id: EditorId,
         create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+            + 'static
+            + Send
+            + Sync,
     ) {
         self.factories.push(EditorFactory::new(editor_id, create));
     }
@@ -237,14 +237,14 @@ impl EditorFactoryRegistry {
         &mut self,
         editor_id: EditorId,
         create: impl Fn(
-            PathBuf,
-            &EditorSettingsSnapshot,
-            &mut Window,
-            &mut App,
-        ) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+                PathBuf,
+                &EditorSettingsSnapshot,
+                &mut Window,
+                &mut App,
+            ) -> Result<Arc<dyn PanelView>, PluginError>
+            + 'static
+            + Send
+            + Sync,
     ) {
         self.factories
             .push(EditorFactory::new_with_settings(editor_id, create));

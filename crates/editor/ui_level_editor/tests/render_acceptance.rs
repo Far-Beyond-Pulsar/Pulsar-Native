@@ -1556,7 +1556,10 @@ fn duplicates_are_independent_in_the_frame() {
         let both = harness.frames(&mut renderer, || {});
         let (l, r) = depth_by_half(&both, &reference);
         println!("DUPLICATE both: left {l}, right {r}");
-        assert!(l > 0 && r > 0, "the source and the copy are drawn ({l}, {r})");
+        assert!(
+            l > 0 && r > 0,
+            "the source and the copy are drawn ({l}, {r})"
+        );
 
         let source_texels = coverage(&both, &reference, true);
         let stays = |frame: &Frame, what: &str| {
@@ -1587,13 +1590,21 @@ fn duplicates_are_independent_in_the_frame() {
         set_visible(&mut state, &copy, false);
         let hidden = harness.frames(&mut renderer, || {});
         stays(&hidden, "hiding the copy");
-        assert_eq!(depth_by_half(&hidden, &reference).1, 0, "the hidden copy is drawn");
+        assert_eq!(
+            depth_by_half(&hidden, &reference).1,
+            0,
+            "the hidden copy is drawn"
+        );
         set_visible(&mut state, &copy, true);
         move_to(&mut state, &copy, [0.9 * radius, 0.0, 0.0]);
 
         // Deleting either one keeps the other drawn: the shared geometry
         // stays while one of them holds it.
-        let (gone, kept) = if remove_source { (&source, &copy) } else { (&copy, &source) };
+        let (gone, kept) = if remove_source {
+            (&source, &copy)
+        } else {
+            (&copy, &source)
+        };
         let result = execute_command(&mut state, SceneCommand::RemoveObject { id: gone.clone() });
         assert!(result.changed, "remove {gone}");
         let after = harness.frames(&mut renderer, || {});
@@ -2865,7 +2876,8 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     // The default volume: 16³ one-metre voxels, ~14 m in radius.
     let harness = Harness::new(device, queue, 14.0);
     // Lit from in front and above, so the volume's faces are not black.
-    let light = |state: &mut LevelEditorState| add_light(state, [0.0, 20.0, 40.0], Kind::Point, 5.0e4);
+    let light =
+        |state: &mut LevelEditorState| add_light(state, [0.0, 20.0, 40.0], Kind::Point, 5.0e4);
     let add_volume = |state: &mut LevelEditorState| {
         let id = add_object(state, "Voxels", ObjectType::Empty);
         // The volume's corner is its object's origin: centre it.
@@ -2903,7 +2915,10 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     let same = overlap(&cube_texels, &full_coverage(&rotated, &reference));
     println!("VOXEL rotated: keeps {same:.3} of the cube's texels");
     assert_drawn("rotated voxel object", rotated.difference(&reference));
-    assert!(same < 0.9, "rotating the owner did not turn the volume ({same:.3})");
+    assert!(
+        same < 0.9,
+        "rotating the owner did not turn the volume ({same:.3})"
+    );
     transform(&mut state, &id, Some([0.0, 0.0, 0.0]), None);
 
     // Scaled on two axes: narrower.
@@ -2915,7 +2930,10 @@ fn voxel_objects_reach_the_frame_as_meshes() {
         scaled.difference(&reference).depth_texels,
     );
     println!("VOXEL scale: full {full}, scaled {narrow}");
-    assert!(narrow > 0 && narrow * 10 < full * 8, "scaling the owner did not shrink the volume");
+    assert!(
+        narrow > 0 && narrow * 10 < full * 8,
+        "scaling the owner did not shrink the volume"
+    );
     transform(&mut state, &id, None, Some([1.0, 1.0, 1.0]));
     let restored = harness.frames(&mut renderer, || {});
     assert!(overlap(&cube_texels, &full_coverage(&restored, &reference)) > 0.9);
@@ -2938,17 +2956,26 @@ fn voxel_objects_reach_the_frame_as_meshes() {
             material_slot: 0,
         })
         .collect();
-    let ticket = session.try_submit_edits(edits.into()).expect("edit admitted");
+    let ticket = session
+        .try_submit_edits(edits.into())
+        .expect("edit admitted");
     assert!(matches!(ticket.wait(), VoxelEditTicketState::Published(_)));
     let edited = harness.frames(&mut renderer, || {});
     edited.dump("voxel_edited");
     let change = edited.difference(&restored).depth_texels;
     println!("VOXEL edit: {change} depth texels changed (noise {noise})");
-    assert!(change > noise + 50, "the edit did not change the frame ({change}, noise {noise})");
+    assert!(
+        change > noise + 50,
+        "the edit did not change the frame ({change}, noise {noise})"
+    );
     let _ = session.finish(VoxelInboxClose::Drain);
 
     // Removing the component restores the empty frame.
-    assert!(components::remove_component(&mut state.scene.world_mut(), &id, 0));
+    assert!(components::remove_component(
+        &mut state.scene.world_mut(),
+        &id,
+        0
+    ));
     let removed = harness.frames(&mut renderer, || {});
     assert_not_drawn("removed voxel object", removed.difference(&reference));
 
@@ -2957,7 +2984,12 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     let floor = drop_matte_mesh(&mut state);
     let half = typed_mesh().bounds_local[3] / 3.0f32.sqrt();
     move_to(&mut state, &floor, [0.0, -16.0, 0.0]);
-    transform(&mut state, &floor, None, Some([40.0 / half, 0.5 / half, 40.0 / half]));
+    transform(
+        &mut state,
+        &floor,
+        None,
+        Some([40.0 / half, 0.5 / half, 40.0 / half]),
+    );
     add_volume(&mut state);
     let lamp = add_light(&mut state, [0.0, 30.0, 0.0], Kind::Point, 5.0e4);
     let mut renderer = harness.renderer(&state);

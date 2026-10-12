@@ -204,9 +204,7 @@ impl NavSidebar {
 
     /// Ask the editor to save its layout soon, which includes this sidebar.
     fn save_layout(&self, cx: &mut Context<Self>) {
-        _ = self
-            .app
-            .update(cx, |app, cx| app.schedule_layout_save(cx));
+        _ = self.app.update(cx, |app, cx| app.schedule_layout_save(cx));
     }
 
     fn apply_hover(&mut self, action: HoverAction, cx: &mut Context<Self>) {
@@ -444,9 +442,7 @@ impl NavSidebar {
     }
 
     pub(crate) fn toggle_file_drawer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        _ = self
-            .app
-            .update(cx, |app, cx| app.toggle_drawer(window, cx));
+        _ = self.app.update(cx, |app, cx| app.toggle_drawer(window, cx));
     }
 
     // ---- Content tree --------------------------------------------------
@@ -535,8 +531,9 @@ impl NavSidebar {
     }
 
     pub(crate) fn delete_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        self.drawer
-            .update(cx, |drawer, cx| drawer.delete_paths(std::slice::from_ref(&path), cx));
+        self.drawer.update(cx, |drawer, cx| {
+            drawer.delete_paths(std::slice::from_ref(&path), cx)
+        });
         if self
             .selected
             .as_ref()

@@ -35,7 +35,10 @@ pub enum AnalyzerStatus {
 #[derive(Clone, Debug)]
 pub enum AnalyzerEvent {
     StatusChanged(AnalyzerStatus),
-    IndexingProgress { progress: f32, message: String },
+    IndexingProgress {
+        progress: f32,
+        message: String,
+    },
     Ready,
     Error(String),
     Diagnostics(Vec<Diagnostic>),
@@ -51,7 +54,10 @@ pub enum AnalyzerEvent {
 
 #[derive(Debug)]
 enum ProgressUpdate {
-    Progress { progress: f32, message: String },
+    Progress {
+        progress: f32,
+        message: String,
+    },
     Ready,
     Error(String),
     ProcessExited(ExitStatus),
@@ -1971,7 +1977,8 @@ impl RustAnalyzerManager {
                 if diagnostics.is_empty() {
                     self.file_diagnostics.remove(&key);
                 } else {
-                    self.file_diagnostics.insert(key.clone(), diagnostics.clone());
+                    self.file_diagnostics
+                        .insert(key.clone(), diagnostics.clone());
                 }
                 cx.emit(AnalyzerEvent::FileDiagnostics { key, diagnostics });
             }

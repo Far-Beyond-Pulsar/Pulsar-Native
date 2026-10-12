@@ -198,8 +198,7 @@ impl Editor {
     /// Whether the hover drawer is open. (Debug bounds outlive the frame that
     /// drew them, so they can't tell that something is gone.)
     fn hover_open(&mut self) -> bool {
-        self.nav
-            .read_with(&self.cx, |nav, _| nav.hover.is_open())
+        self.nav.read_with(&self.cx, |nav, _| nav.hover.is_open())
     }
 }
 
@@ -291,8 +290,9 @@ fn the_panes_scroll_on_their_own_and_share_the_height(cx: &mut TestAppContext) {
 
     // A scroll over the content pane moves it alone.
     let offset = |ed: &mut Editor, kind| {
-        ed.nav
-            .read_with(&ed.cx, |nav, _| nav.pane_view(kind).scroll.0.borrow().base_handle.offset().y)
+        ed.nav.read_with(&ed.cx, |nav, _| {
+            nav.pane_view(kind).scroll.0.borrow().base_handle.offset().y
+        })
     };
     ed.cx.simulate_event(gpui::ScrollWheelEvent {
         position: content.center(),
@@ -489,7 +489,8 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     field.update_in(&mut ed.cx, |field, window, cx| {
         field.set_value("Combat", window, cx)
     });
-    ed.nav.update(&mut ed.cx, |nav, cx| nav.finish_group_rename(cx));
+    ed.nav
+        .update(&mut ed.cx, |nav, cx| nav.finish_group_rename(cx));
 
     let door = tabs.iter().position(|t| t.title == "Door.class").unwrap();
     let drag = ed
@@ -578,14 +579,18 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
         .expect("the expanded folder lists its files");
     assert!(ed.bounds("nav-entry-Canyon.level").is_some());
     assert!(arena_row.origin.y > maps_row.origin.y, "below their folder");
-    assert!(!drawer_open(ed), "expanding a folder leaves the file drawer closed");
+    assert!(
+        !drawer_open(ed),
+        "expanding a folder leaves the file drawer closed"
+    );
     shots.save(cx, "6-content-files");
 
     // One click selects a file, still without the file drawer.
     ed.cx.simulate_click(arena_row.center(), Modifiers::none());
     ed.draw();
     assert_eq!(
-        ed.nav.read_with(&ed.cx, |nav, _| nav.selected_path().map(Path::to_path_buf)),
+        ed.nav
+            .read_with(&ed.cx, |nav, _| nav.selected_path().map(Path::to_path_buf)),
         Some(arena.clone())
     );
     assert!(!drawer_open(ed));
@@ -697,11 +702,13 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
     field.update_in(&mut ed.cx, |field, window, cx| {
         field.set_value("Duel.level", window, cx)
     });
-    ed.nav.update(&mut ed.cx, |nav, cx| nav.finish_path_rename(cx));
+    ed.nav
+        .update(&mut ed.cx, |nav, cx| nav.finish_path_rename(cx));
     let duel = maps.join("Duel.level");
     assert!(duel.exists() && !arena.exists());
     assert_eq!(
-        ed.nav.read_with(&ed.cx, |nav, _| nav.selected_path().map(Path::to_path_buf)),
+        ed.nav
+            .read_with(&ed.cx, |nav, _| nav.selected_path().map(Path::to_path_buf)),
         Some(duel.clone()),
         "the selection follows the rename"
     );

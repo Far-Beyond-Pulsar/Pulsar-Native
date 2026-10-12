@@ -118,7 +118,11 @@ fn plugin_libraries_receive_the_same_handle_through_the_settings_snapshot(cx: &m
     let analyzer = cx.update(|window, app| app.new(|cx| RustAnalyzerManager::new(window, cx)));
 
     let mut manager = PluginManager::new();
-    assert!(manager.snapshot_for_editor().services().language_server.is_none());
+    assert!(manager
+        .snapshot_for_editor()
+        .services()
+        .language_server
+        .is_none());
 
     manager.set_editor_services(EditorServices {
         language_server: Some(analyzer.clone()),
@@ -128,7 +132,11 @@ fn plugin_libraries_receive_the_same_handle_through_the_settings_snapshot(cx: &m
     manager.set_editor_settings_snapshot(EditorSettingsSnapshot::default());
     let snapshot = manager.snapshot_for_editor();
     assert_eq!(
-        snapshot.services().language_server.as_ref().map(|a| a.entity_id()),
+        snapshot
+            .services()
+            .language_server
+            .as_ref()
+            .map(|a| a.entity_id()),
         Some(analyzer.entity_id())
     );
 }
@@ -150,5 +158,9 @@ fn the_manager_does_not_keep_the_language_server_alive(cx: &mut TestAppContext) 
     drop(analyzer);
     cx.run_until_parked();
     assert!(manager.editor_services().language_server.is_none());
-    assert!(manager.snapshot_for_editor().services().language_server.is_none());
+    assert!(manager
+        .snapshot_for_editor()
+        .services()
+        .language_server
+        .is_none());
 }

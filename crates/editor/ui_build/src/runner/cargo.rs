@@ -3,8 +3,8 @@
 use std::io::{BufRead as _, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 use editor_task_queue::TaskContext;
@@ -132,7 +132,13 @@ fn expected_artifacts(invocation: &Invocation, project_root: &Path) -> Option<u3
         .and_then(|i| invocation.args.get(i + 1).cloned())
         .or_else(host_triple)?;
     let output = Command::new("cargo")
-        .args(["metadata", "--format-version", "1", "--filter-platform", &target])
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--filter-platform",
+            &target,
+        ])
         .envs(invocation.envs.iter().map(|(k, v)| (k, v)))
         .current_dir(project_root)
         .stderr(Stdio::null())
@@ -181,7 +187,9 @@ fn count_artifacts(metadata: &serde_json::Value) -> Option<u32> {
         let Some(node) = nodes.get(id) else { continue };
         for dep in node["deps"].as_array().into_iter().flatten() {
             let built = dep["dep_kinds"].as_array().is_some_and(|kinds| {
-                kinds.iter().any(|kind| kind["kind"].as_str() != Some("dev"))
+                kinds
+                    .iter()
+                    .any(|kind| kind["kind"].as_str() != Some("dev"))
             });
             if let (true, Some(dep_id)) = (built, dep["pkg"].as_str()) {
                 queue.push(dep_id);

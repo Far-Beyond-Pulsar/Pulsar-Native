@@ -37,7 +37,9 @@ macro_rules! declare_unfinished_component {
 
 /// `class_name`'s declaration, if it is unfinished.
 pub fn unfinished_component(class_name: &str) -> Option<&'static UnfinishedComponentRegistration> {
-    crate::runtime::unfinished().iter().copied()
+    crate::runtime::unfinished()
+        .iter()
+        .copied()
         .into_iter()
         .find(|registration| registration.class_name == class_name)
 }

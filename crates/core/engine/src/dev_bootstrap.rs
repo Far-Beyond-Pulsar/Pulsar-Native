@@ -86,23 +86,25 @@ struct BootstrapView {
 
 impl BootstrapView {
     fn new(shared: SharedState, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let poll_task = cx.spawn(async move |this, cx| loop {
-            smol::Timer::after(Duration::from_millis(150)).await;
-            let finished = shared
-                .0
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .finished;
-            let _ = cx.update(|cx| {
-                if let Some(this) = this.upgrade() {
-                    this.update(cx, |_, cx| cx.notify());
-                }
+        let poll_task = cx.spawn(async move |this, cx| {
+            loop {
+                smol::Timer::after(Duration::from_millis(150)).await;
+                let finished = shared
+                    .0
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .finished;
+                let _ = cx.update(|cx| {
+                    if let Some(this) = this.upgrade() {
+                        this.update(cx, |_, cx| cx.notify());
+                    }
+                    if finished {
+                        cx.quit();
+                    }
+                });
                 if finished {
-                    cx.quit();
+                    break;
                 }
-            });
-            if finished {
-                break;
             }
         });
         Self {
@@ -141,11 +143,16 @@ impl Render for BootstrapView {
             .py_5()
             .bg(rgb(0x202124))
             .text_color(rgb(0xf1f3f4))
-            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if is_failure {
-                "Engine rebuild failed"
-            } else {
-                "Rebuilding engine"
-            }))
+            .child(
+                div()
+                    .text_lg()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(if is_failure {
+                        "Engine rebuild failed"
+                    } else {
+                        "Rebuilding engine"
+                    }),
+            )
             .child(div().text_sm().text_color(rgb(0xb8c0cc)).child(stage))
             .when(!is_failure, |el| {
                 el.child(
@@ -169,12 +176,10 @@ impl Render for BootstrapView {
                 )
             })
             .when_some(failure, |el, message| {
-                el.child(
-                    div()
-                        .text_sm()
-                        .text_color(rgb(0xffb4ab))
-                        .child(format!("{message}\n\nBootstrap log: {}", bootstrap_log_path().display())),
-                )
+                el.child(div().text_sm().text_color(rgb(0xffb4ab)).child(format!(
+                    "{message}\n\nBootstrap log: {}",
+                    bootstrap_log_path().display()
+                )))
             })
             .when_some(restore_error, |el, error| {
                 el.child(
@@ -192,7 +197,9 @@ impl Render for BootstrapView {
                         .child(action_button("Relaunch last stable", move || {
                             choose(&shared_for_relaunch, true)
                         }))
-                        .child(action_button("Quit", move || choose(&shared_for_close, false))),
+                        .child(action_button("Quit", move || {
+                            choose(&shared_for_close, false)
+                        })),
                 )
             })
     }
@@ -308,15 +315,19 @@ fn show_failure_and_wait(
             return;
         }
 
-        let (Some(stable_executable), Some(executable), Some(working_directory)) =
-            (stable_executable, executable.as_deref(), working_directory.as_deref())
-        else {
+        let (Some(stable_executable), Some(executable), Some(working_directory)) = (
+            stable_executable,
+            executable.as_deref(),
+            working_directory.as_deref(),
+        ) else {
             set_restore_error(shared, "The saved executable path is unavailable".into());
             continue;
         };
 
         if let Err(error) = fs::copy(stable_executable, executable) {
-            append_log(&format!("Could not restore the last stable executable: {error}\n"));
+            append_log(&format!(
+                "Could not restore the last stable executable: {error}\n"
+            ));
             set_restore_error(shared, error.to_string());
             continue;
         }
@@ -335,7 +346,10 @@ fn show_failure_and_wait(
     }
 }
 
-fn run_cargo_build(workspace: &Path, shared: &SharedState) -> Result<std::process::ExitStatus, String> {
+fn run_cargo_build(
+    workspace: &Path,
+    shared: &SharedState,
+) -> Result<std::process::ExitStatus, String> {
     let log_path = bootstrap_log_path();
     let log = OpenOptions::new()
         .append(true)
@@ -375,7 +389,13 @@ fn run_cargo_build(workspace: &Path, shared: &SharedState) -> Result<std::proces
 fn release_executable_path(workspace: &Path) -> PathBuf {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
-        .map(|path| if path.is_absolute() { path } else { workspace.join(path) })
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                workspace.join(path)
+            }
+        })
         .unwrap_or_else(|| workspace.join("target"));
     #[cfg(windows)]
     let binary_name = "pulsar_engine.exe";

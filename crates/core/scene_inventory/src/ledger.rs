@@ -191,7 +191,11 @@ pub fn check_dispositions(ledger: &Ledger) -> Vec<String> {
 /// Class rows against the linked reflection and World registries.
 pub fn check_classes(ledger: &Ledger, linked: &Linked) -> Vec<String> {
     let mut problems = Vec::new();
-    let rows: BTreeMap<&str, &ClassRow> = ledger.classes.iter().map(|r| (r.name.as_str(), r)).collect();
+    let rows: BTreeMap<&str, &ClassRow> = ledger
+        .classes
+        .iter()
+        .map(|r| (r.name.as_str(), r))
+        .collect();
     for class in &linked.classes {
         let category = class.category.clone().unwrap_or_default();
         match rows.get(class.name.as_str()) {
@@ -215,11 +219,16 @@ pub fn check_classes(ledger: &Ledger, linked: &Linked) -> Vec<String> {
     }
     for row in &ledger.classes {
         if !linked.classes.iter().any(|c| c.name == row.name) {
-            problems.push(format!("class row `{}` is not a linked reflection class", row.name));
+            problems.push(format!(
+                "class row `{}` is not a linked reflection class",
+                row.name
+            ));
         }
     }
     for name in &linked.world_only {
-        problems.push(format!("World registration `{name}` has no reflection class"));
+        problems.push(format!(
+            "World registration `{name}` has no reflection class"
+        ));
     }
     problems
 }
@@ -253,11 +262,21 @@ pub fn check_unfinished(ledger: &Ledger, linked: &Linked) -> Vec<String> {
 
 /// Every `#[register_world_component]` in source must be linked; otherwise a
 /// class exists in code but is invisible to this binary's registry.
-pub fn check_declared_world_components(declared: &BTreeMap<String, String>, linked: &Linked) -> Vec<String> {
+pub fn check_declared_world_components(
+    declared: &BTreeMap<String, String>,
+    linked: &Linked,
+) -> Vec<String> {
     declared
         .iter()
-        .filter(|(name, _)| !linked.classes.iter().any(|c| &c.name == *name && c.world_registered))
-        .map(|(name, file)| format!("`{name}` is declared in {file} but not registered in the linked binary"))
+        .filter(|(name, _)| {
+            !linked
+                .classes
+                .iter()
+                .any(|c| &c.name == *name && c.world_registered)
+        })
+        .map(|(name, file)| {
+            format!("`{name}` is declared in {file} but not registered in the linked binary")
+        })
         .collect()
 }
 
@@ -269,9 +288,17 @@ pub fn check_schemas(
     registered: &BTreeSet<String>,
 ) -> Vec<String> {
     let mut problems = Vec::new();
-    let rows: BTreeMap<&str, &SchemaRow> = ledger.schemas.iter().map(|r| (r.path.as_str(), r)).collect();
+    let rows: BTreeMap<&str, &SchemaRow> = ledger
+        .schemas
+        .iter()
+        .map(|r| (r.path.as_str(), r))
+        .collect();
     for schema in &linked.schemas {
-        let buffers = graph.buffers_of_type.get(&schema.short).cloned().unwrap_or_default();
+        let buffers = graph
+            .buffers_of_type
+            .get(&schema.short)
+            .cloned()
+            .unwrap_or_default();
         let is_registered = crate::source::is_registered(registered, &schema.path);
         match rows.get(schema.path.as_str()) {
             None => problems.push(format!(
@@ -305,7 +332,10 @@ pub fn check_schemas(
     }
     for row in &ledger.schemas {
         if !linked.schemas.iter().any(|s| s.path == row.path) {
-            problems.push(format!("schema row `{}` is not a linked GPU schema", row.path));
+            problems.push(format!(
+                "schema row `{}` is not a linked GPU schema",
+                row.path
+            ));
         }
     }
     problems
@@ -314,8 +344,13 @@ pub fn check_schemas(
 /// Buffer rows against the source buffer graph.
 pub fn check_buffers(ledger: &Ledger, graph: &BufferGraph) -> Vec<String> {
     let mut problems = Vec::new();
-    let keys: BTreeSet<&String> = graph.producers.keys().chain(graph.consumers.keys()).collect();
-    let rows: BTreeMap<&str, &BufferRow> = ledger.buffers.iter().map(|r| (r.key.as_str(), r)).collect();
+    let keys: BTreeSet<&String> = graph
+        .producers
+        .keys()
+        .chain(graph.consumers.keys())
+        .collect();
+    let rows: BTreeMap<&str, &BufferRow> =
+        ledger.buffers.iter().map(|r| (r.key.as_str(), r)).collect();
     for key in keys {
         let producers = graph.producers.get(key).cloned().unwrap_or_default();
         let consumers = graph.consumers.get(key).cloned().unwrap_or_default();
@@ -337,7 +372,10 @@ pub fn check_buffers(ledger: &Ledger, graph: &BufferGraph) -> Vec<String> {
     }
     for row in &ledger.buffers {
         if !graph.producers.contains_key(&row.key) && !graph.consumers.contains_key(&row.key) {
-            problems.push(format!("buffer row `{}` is neither produced nor consumed in source", row.key));
+            problems.push(format!(
+                "buffer row `{}` is neither produced nor consumed in source",
+                row.key
+            ));
         }
     }
     problems
@@ -346,7 +384,11 @@ pub fn check_buffers(ledger: &Ledger, graph: &BufferGraph) -> Vec<String> {
 /// Pass rows against the pass crates on disk.
 pub fn check_passes(ledger: &Ledger, passes: &[PassCrate], graph: &BufferGraph) -> Vec<String> {
     let mut problems = Vec::new();
-    let rows: BTreeMap<&str, &PassRow> = ledger.passes.iter().map(|r| (r.package.as_str(), r)).collect();
+    let rows: BTreeMap<&str, &PassRow> = ledger
+        .passes
+        .iter()
+        .map(|r| (r.package.as_str(), r))
+        .collect();
     for pass in passes {
         let reads: BTreeSet<String> = graph
             .consumers

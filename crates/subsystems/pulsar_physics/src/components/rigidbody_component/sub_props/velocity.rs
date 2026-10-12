@@ -67,5 +67,4 @@ impl VelocityRigidbodyProps {
             self.compute_velocity_from_displacement = v;
         }
     }
-
 }

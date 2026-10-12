@@ -6,9 +6,7 @@
 use helio_component::graph_preview::GraphPreview;
 use psgc::*;
 
-use super::graph_material::{
-    build, globals_layout, write_globals_at, GraphContext, GLOBALS_SIZE,
-};
+use super::graph_material::{build, globals_layout, write_globals_at, GraphContext, GLOBALS_SIZE};
 
 fn node(id: &str, kind: &str) -> NodeInstance {
     let meta = get_shader_nodes()
@@ -31,7 +29,13 @@ fn node(id: &str, kind: &str) -> NodeInstance {
 }
 
 fn link(graph: &mut GraphDescription, from: &str, to: &str, pin: &str) {
-    graph.add_connection(Connection::new(from, "result", to, pin, ConnectionType::Data));
+    graph.add_connection(Connection::new(
+        from,
+        "result",
+        to,
+        pin,
+        ConnectionType::Data,
+    ));
 }
 
 /// Write `graph` as a material asset in a temp project and compile it.
@@ -274,7 +278,12 @@ fn render_at(preview: &GraphPreview, time: f32) -> [u8; 4] {
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     let data = slice.get_mapped_range().expect("mapped");
     let offset = 4 * 256 + 4 * 4;
-    [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]
+    [
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ]
 }
 
 /// A `time` node drives the rainbow's shift: the picture must change with the
@@ -296,5 +305,8 @@ fn a_graph_material_animates_with_the_clock() {
     );
 
     let (at_zero, at_later) = (render_at(&preview, 0.0), render_at(&preview, 1.5));
-    assert_ne!(at_zero, at_later, "a time-driven graph must change with the clock");
+    assert_ne!(
+        at_zero, at_later,
+        "a time-driven graph must change with the clock"
+    );
 }

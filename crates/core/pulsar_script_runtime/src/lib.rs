@@ -1553,10 +1553,11 @@ pub fn value_from_json_with(
     use serde_json::Value as J;
     let entity = |json: &J| match json {
         J::Null => Ok(Entity::DANGLING),
-        J::String(stable_id) => {
-            entity_for(stable_id).ok_or_else(|| format!("no object has the stable id `{stable_id}`"))
-        }
-        other => Err(format!("an entity is its stable id string or null, got {other}")),
+        J::String(stable_id) => entity_for(stable_id)
+            .ok_or_else(|| format!("no object has the stable id `{stable_id}`")),
+        other => Err(format!(
+            "an entity is its stable id string or null, got {other}"
+        )),
     };
     match (ty, json) {
         (Type::Entity, json) => entity(json).map(Value::Entity),

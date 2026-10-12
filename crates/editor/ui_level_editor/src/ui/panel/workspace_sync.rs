@@ -20,91 +20,97 @@ impl LevelEditorPanel {
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
 
-        let viewport_panel = workspace.update(cx, |workspace, cx| {
-            let dock_area = workspace.dock_area().downgrade();
+        let viewport_panel =
+            workspace.update(cx, |workspace, cx| {
+                let dock_area = workspace.dock_area().downgrade();
 
-            // Create viewport in center
-            let viewport_panel_inner =
-                ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
-            let viewport_panel = cx.new(|cx| {
-                use crate::ViewportPanelWrapper;
-                ViewportPanelWrapper::new(viewport_panel_inner, shared_state.clone(), gpu.clone(), cx)
+                // Create viewport in center
+                let viewport_panel_inner =
+                    ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
+                let viewport_panel = cx.new(|cx| {
+                    use crate::ViewportPanelWrapper;
+                    ViewportPanelWrapper::new(
+                        viewport_panel_inner,
+                        shared_state.clone(),
+                        gpu.clone(),
+                        cx,
+                    )
+                });
+
+                // Create right dock panels
+                let hierarchy_panel = cx.new(|cx| {
+                    use crate::HierarchyPanelWrapper;
+                    HierarchyPanelWrapper::new(shared_state.clone(), gpu.clone(), window, cx)
+                });
+                let properties_panel = cx.new(|cx| {
+                    use crate::PropertiesPanelWrapper;
+                    PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
+                });
+                let world_settings_panel = cx.new(|cx| {
+                    use crate::WorldSettingsPanel;
+                    WorldSettingsPanel::new(shared_state.clone(), window, cx)
+                });
+
+                // NOTE: Panels are self-invalidating — each owns a frame pump
+                // that watches the state it renders (`frame_pump`, signatures in
+                // `workspace::panels` / `toolbar::view`).
+                // There is deliberately no observe/notify wiring between panels
+                // or from this panel to them; forwarding notifications here used
+                // to turn every scene edit into a whole-tree invalidation.
+
+                // Bottom right: tabs for Properties and World Settings
+                let bottom_tabs = DockItem::tabs(
+                    vec![
+                        std::sync::Arc::new(properties_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                        std::sync::Arc::new(world_settings_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                    ],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
+
+                // Top right: hierarchy panel (as a single-tab TabPanel)
+                let top_hierarchy = DockItem::tabs(
+                    vec![std::sync::Arc::new(hierarchy_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
+
+                // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
+                // Hierarchy gets smaller fixed size, Properties/World gets larger
+                let right = ui::dock::DockItem::split_with_sizes(
+                    gpui::Axis::Vertical,
+                    vec![top_hierarchy, bottom_tabs],
+                    vec![Some(px(150.0)), Some(px(550.0))], // 150px hierarchy, 550px for Properties/World
+                    &dock_area,
+                    window,
+                    cx,
+                );
+
+                // Set center and right dock only (no left dock, matching DAW approach).
+                // The Game tab (Play In Editor, issue #243) is added dynamically
+                // when the game starts and removed on stop — see `sync_game_tab`.
+                let viewport_handle = viewport_panel.downgrade();
+                let center_tabs = DockItem::tabs(
+                    vec![std::sync::Arc::new(viewport_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
+                let _ = dock_area.update(cx, |dock_area, cx| {
+                    dock_area.set_center(center_tabs, window, cx);
+                    dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                });
+                viewport_handle
             });
-
-            // Create right dock panels
-            let hierarchy_panel = cx.new(|cx| {
-                use crate::HierarchyPanelWrapper;
-                HierarchyPanelWrapper::new(shared_state.clone(), gpu.clone(), window, cx)
-            });
-            let properties_panel = cx.new(|cx| {
-                use crate::PropertiesPanelWrapper;
-                PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
-            });
-            let world_settings_panel = cx.new(|cx| {
-                use crate::WorldSettingsPanel;
-                WorldSettingsPanel::new(shared_state.clone(), window, cx)
-            });
-
-            // NOTE: Panels are self-invalidating — each owns a frame pump
-            // that watches the state it renders (`frame_pump`, signatures in
-            // `workspace::panels` / `toolbar::view`).
-            // There is deliberately no observe/notify wiring between panels
-            // or from this panel to them; forwarding notifications here used
-            // to turn every scene edit into a whole-tree invalidation.
-
-            // Bottom right: tabs for Properties and World Settings
-            let bottom_tabs = DockItem::tabs(
-                vec![
-                    std::sync::Arc::new(properties_panel)
-                        as std::sync::Arc<dyn ui::dock::PanelView>,
-                    std::sync::Arc::new(world_settings_panel)
-                        as std::sync::Arc<dyn ui::dock::PanelView>,
-                ],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
-
-            // Top right: hierarchy panel (as a single-tab TabPanel)
-            let top_hierarchy = DockItem::tabs(
-                vec![std::sync::Arc::new(hierarchy_panel)
-                    as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
-
-            // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
-            // Hierarchy gets smaller fixed size, Properties/World gets larger
-            let right = ui::dock::DockItem::split_with_sizes(
-                gpui::Axis::Vertical,
-                vec![top_hierarchy, bottom_tabs],
-                vec![Some(px(150.0)), Some(px(550.0))], // 150px hierarchy, 550px for Properties/World
-                &dock_area,
-                window,
-                cx,
-            );
-
-            // Set center and right dock only (no left dock, matching DAW approach).
-            // The Game tab (Play In Editor, issue #243) is added dynamically
-            // when the game starts and removed on stop — see `sync_game_tab`.
-            let viewport_handle = viewport_panel.downgrade();
-            let center_tabs = DockItem::tabs(
-                vec![std::sync::Arc::new(viewport_panel)
-                    as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
-            let _ = dock_area.update(cx, |dock_area, cx| {
-                dock_area.set_center(center_tabs, window, cx);
-                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
-            });
-            viewport_handle
-        });
 
         self.viewport_panel = Some(viewport_panel);
         self.workspace = Some(workspace);

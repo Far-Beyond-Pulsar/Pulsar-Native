@@ -111,26 +111,29 @@ impl FileManagerDrawer {
         }
         let (tx, rx) = smol::channel::unbounded::<()>();
         let filter_root = root.clone();
-        let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            let Ok(event) = event else {
-                return;
-            };
-            let relevant = matches!(
-                event.kind,
-                notify::EventKind::Create(_) | notify::EventKind::Modify(_)
-            ) && event
-                .paths
-                .iter()
-                .any(|path| asset_import::affects_scan(&filter_root, path));
-            if relevant {
-                let _ = tx.try_send(());
-            }
-        })
-        .inspect_err(|error| tracing::warn!("import watcher unavailable: {error}"))
-        .ok()?;
+        let mut watcher =
+            notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+                let Ok(event) = event else {
+                    return;
+                };
+                let relevant = matches!(
+                    event.kind,
+                    notify::EventKind::Create(_) | notify::EventKind::Modify(_)
+                ) && event
+                    .paths
+                    .iter()
+                    .any(|path| asset_import::affects_scan(&filter_root, path));
+                if relevant {
+                    let _ = tx.try_send(());
+                }
+            })
+            .inspect_err(|error| tracing::warn!("import watcher unavailable: {error}"))
+            .ok()?;
         watcher
             .watch(&root, notify::RecursiveMode::Recursive)
-            .inspect_err(|error| tracing::warn!("cannot watch {} for imports: {error}", root.display()))
+            .inspect_err(|error| {
+                tracing::warn!("cannot watch {} for imports: {error}", root.display())
+            })
             .ok()?;
 
         let rescans = cx.spawn_in(window, async move |this, cx| {

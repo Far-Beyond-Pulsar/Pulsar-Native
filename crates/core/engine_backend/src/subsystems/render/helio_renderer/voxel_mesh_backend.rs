@@ -38,7 +38,9 @@ use helio_voxel_data::{
 use pulsar_scenedb::Entity;
 
 use super::voxel_backend::{VoxelRenderBackend, VoxelView};
-use crate::scene::voxel_frame::{initial_cube_chunks, VoxelCubeInit, VoxelEntryId, VoxelSceneEntry};
+use crate::scene::voxel_frame::{
+    initial_cube_chunks, VoxelCubeInit, VoxelEntryId, VoxelSceneEntry,
+};
 use crate::scene::SharedScene;
 
 /// Chunks re-meshed in one frame on the render thread; a larger batch
@@ -614,7 +616,10 @@ impl VoxelRenderBackend for MeshVoxelBackend {
             format!(
                 "voxel-mesh objects={} pending={} meshed={} discarded={} uploads={}",
                 self.objects.len(),
-                self.objects.values().filter(|object| object.pending()).count(),
+                self.objects
+                    .values()
+                    .filter(|object| object.pending())
+                    .count(),
                 self.stats.meshed_chunks,
                 self.stats.discarded_results,
                 self.stats.uploads,
@@ -686,7 +691,10 @@ mod tests {
             if !backend.wants_frame() {
                 return;
             }
-            assert!(std::time::Instant::now() < deadline, "meshing did not finish");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "meshing did not finish"
+            );
             std::thread::yield_now();
         }
     }
@@ -703,11 +711,21 @@ mod tests {
         assert_eq!((entry.origin, entry.voxel_size), ([1.0, 2.0, 3.0], 1.0));
         let mut registry = super::super::voxel_backend::VoxelBackendRegistry::new();
         registry
-            .register(Box::new(super::super::voxel_backend::PlanetVoxelBackend::new()))
+            .register(Box::new(
+                super::super::voxel_backend::PlanetVoxelBackend::new(),
+            ))
             .unwrap();
-        registry.register(Box::new(MeshVoxelBackend::new(None))).unwrap();
-        assert!(registry.pass_factories().len() == 1, "the mesh renderer has no pass");
-        assert_eq!(registry.publish_frame(&[entry], view()), Vec::<String>::new());
+        registry
+            .register(Box::new(MeshVoxelBackend::new(None)))
+            .unwrap();
+        assert!(
+            registry.pass_factories().len() == 1,
+            "the mesh renderer has no pass"
+        );
+        assert_eq!(
+            registry.publish_frame(&[entry], view()),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -766,7 +784,10 @@ mod tests {
         settle(&mut backend, &entry);
         let virtual_cube = backend.geometry(entry.id).unwrap();
         assert_eq!(virtual_cube.quad_count(), 24);
-        assert!(entry.store.read().unwrap().1.is_empty(), "drawing writes nothing");
+        assert!(
+            entry.store.read().unwrap().1.is_empty(),
+            "drawing writes nothing"
+        );
         // Initializing the store publishes the same cube: same geometry.
         crate::scene::voxel_frame::initialize_empty_cube(&entry).unwrap();
         settle(&mut backend, &entry);
@@ -781,7 +802,10 @@ mod tests {
         // 512 chunks: more than the render thread meshes in a frame.
         backend.publish_frame(&[&entry], view()).unwrap();
         assert!(backend.worker.is_some());
-        assert!(backend.geometry(entry.id).is_none(), "nothing until complete");
+        assert!(
+            backend.geometry(entry.id).is_none(),
+            "nothing until complete"
+        );
         // Edited before its result was applied: that result is stale.
         set(&entry, [3, 3, 3], 0);
         settle(&mut backend, &entry);
@@ -796,7 +820,14 @@ mod tests {
         let snapshot = entry.store.read().unwrap().1[&[0, 0, 0, 0]].bytes.clone();
         let samples = *VoxelMaterialChunk::decode(&snapshot).unwrap().samples();
         // The drawn chunk is the edited one.
-        let neighbours = [Some(&samples), None, Some(&samples), None, Some(&samples), None];
+        let neighbours = [
+            Some(&samples),
+            None,
+            Some(&samples),
+            None,
+            Some(&samples),
+            None,
+        ];
         assert_eq!(ids[&origin], greedy_mesh_chunk(&samples, neighbours).id);
     }
 

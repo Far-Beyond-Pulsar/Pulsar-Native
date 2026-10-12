@@ -5,10 +5,10 @@ use std::collections::BTreeSet;
 
 use pulsar_reflection::inventory;
 use pulsar_reflection::REGISTRY;
+use pulsar_scenedb::component::type_name;
 use pulsar_scenedb::gpu::world_mirror::{
     GpuClearRegistration, GpuMirrorRegistration, VarLenReleaseRegistration,
 };
-use pulsar_scenedb::component::type_name;
 use pulsar_scenedb::ComponentId;
 
 /// One reflection class, as the editor's "Add component" menu lists it
@@ -77,7 +77,11 @@ pub fn collect() -> Linked {
             let category = REGISTRY
                 .get_categories()
                 .into_iter()
-                .find(|category| REGISTRY.get_class_names_by_category(category).contains(name))
+                .find(|category| {
+                    REGISTRY
+                        .get_class_names_by_category(category)
+                        .contains(name)
+                })
                 .map(str::to_string);
             let own_gpu_columns = pulsar_world_registry::component_id_for_class(name)
                 .is_some_and(|id| mirrored.contains(&id));

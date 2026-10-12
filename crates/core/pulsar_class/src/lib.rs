@@ -47,12 +47,12 @@ pub use plan::{
 pub use prefab::{
     is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE,
 };
-pub use template::{template, ClassTemplate};
 pub use registry::{
     class_name_of_dir, find_class_dirs, project_root_of_class_dir, strip_class_ext,
     ClassDefinition, ClassEntry, ClassIndex, ClassIndexEntry, ClassRegistry, ClassVariable,
     VariableKind, CLASS_DIR_EXTENSION, CLASS_INDEX_FILE,
 };
+pub use template::{template, ClassTemplate};
 pub use world::{ClassPlacement, SlotHandle};
 
 /// Component class name of [`ClassInstance`].

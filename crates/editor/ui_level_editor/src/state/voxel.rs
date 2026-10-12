@@ -43,7 +43,8 @@ pub const MIN_RADIUS_M: f32 = 0.1;
 pub const MAX_RADIUS_M: f32 = 32.0;
 /// Solid terrain material ids (see `helio_component::voxel_world::material`):
 /// every built-in material, shared by all terrain programs.
-pub const MATERIALS: std::ops::RangeInclusive<u32> = 1..=helio_component::voxel_world::material::COUNT - 1;
+pub const MATERIALS: std::ops::RangeInclusive<u32> =
+    1..=helio_component::voxel_world::material::COUNT - 1;
 
 impl VoxelSculptDomain {
     pub fn is_favorite(&self, material: u32) -> bool {

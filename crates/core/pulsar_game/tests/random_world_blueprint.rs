@@ -9,7 +9,10 @@ use std::sync::Arc;
 use blueprint_compiler::{authored::expand_graph, compile, ClassSource, VariableSource};
 use blueprint_graph::codec::deserialize_blueprint;
 use helio_component::voxel_world::terrain_world;
-use helio_component::{VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent, VoxelTerrainLayersComponent, VoxelTerrainStack};
+use helio_component::{
+    VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent, VoxelTerrainLayersComponent,
+    VoxelTerrainStack,
+};
 use pulsar_scenedb::World;
 use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Value, Vm};
 
@@ -19,11 +22,31 @@ fn program() -> Program {
     // Linking pulsar_std is what registers its nodes as natives.
     assert!(!pulsar_std::get_all_nodes().is_empty());
     let asset = deserialize_blueprint(EXAMPLE).expect("the example parses");
-    let graph = expand_graph(&asset.main_graph, asset.subgraphs.iter().map(|m| (m.id.clone(), m.graph.clone()))).expect("the example lowers");
+    let graph = expand_graph(
+        &asset.main_graph,
+        asset
+            .subgraphs
+            .iter()
+            .map(|m| (m.id.clone(), m.graph.clone())),
+    )
+    .expect("the example lowers");
     let natives = NativeRegistry::with_engine_natives();
-    let variables = [VariableSource { id: Some("var_seed".into()), name: "seed".into(), type_name: "i64".into(), default: Some(serde_json::json!(7)) }];
-    let source = ClassSource { name: "RandomWorld", graph: &graph, variables: &variables, events: &[], known_events: &[], version: 0 };
-    let module = compile(&source, &natives).unwrap_or_else(|d| panic!("the example compiles: {d:?}"));
+    let variables = [VariableSource {
+        id: Some("var_seed".into()),
+        name: "seed".into(),
+        type_name: "i64".into(),
+        default: Some(serde_json::json!(7)),
+    }];
+    let source = ClassSource {
+        name: "RandomWorld",
+        graph: &graph,
+        variables: &variables,
+        events: &[],
+        known_events: &[],
+        version: 0,
+    };
+    let module =
+        compile(&source, &natives).unwrap_or_else(|d| panic!("the example compiles: {d:?}"));
     Program::link(Arc::new(module), &natives).expect("the example links")
 }
 
@@ -32,18 +55,43 @@ fn program() -> Program {
 fn build(program: &Program, seed: i64) -> VoxelTerrainStack {
     let mut world = World::new();
     let object = world.spawn();
-    let terrain =
-        pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000_000.0)).unwrap();
-    let layers =
-        pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default()).unwrap();
+    let terrain = pulsar_world_registry::attach_value(
+        &mut world,
+        object,
+        VoxelTerrainComponent::planet(1_000_000.0),
+    )
+    .unwrap();
+    let layers = pulsar_world_registry::attach_value(
+        &mut world,
+        object,
+        VoxelTerrainLayersComponent::default(),
+    )
+    .unwrap();
     let mut instance = program.instantiate();
-    program.set_var(&mut instance, program.variable("seed").unwrap(), Value::Int(seed)).unwrap();
+    program
+        .set_var(
+            &mut instance,
+            program.variable("seed").unwrap(),
+            Value::Int(seed),
+        )
+        .unwrap();
     Vm::new()
-        .call(program, &mut instance, program.entry("begin_play").unwrap(), &[], &mut Host::new(&mut world, object), &mut Budget::new(100_000))
+        .call(
+            program,
+            &mut instance,
+            program.entry("begin_play").unwrap(),
+            &[],
+            &mut Host::new(&mut world, object),
+            &mut Budget::new(100_000),
+        )
         .unwrap_or_else(|e| panic!("seed {seed}: begin_play failed: {e}"));
     // The generator accepts it: the planet builds.
     terrain_world(&world, terrain).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
-    world.get::<VoxelTerrainLayersComponent>(layers).unwrap().stack.clone()
+    world
+        .get::<VoxelTerrainLayersComponent>(layers)
+        .unwrap()
+        .stack
+        .clone()
 }
 
 #[test]
@@ -55,18 +103,39 @@ fn the_random_world_example_builds_varied_reproducible_worlds() {
         let stack = build(&program, seed);
         styles.insert(format!("{:?}", stack.materials));
         let n = stack.layers.len();
-        assert_eq!(stack.layers[n - 2].kind, VoxelLayerKind::Craters, "seed {seed}");
-        assert_eq!(stack.layers[n - 1].kind, VoxelLayerKind::Hills, "seed {seed}");
+        assert_eq!(
+            stack.layers[n - 2].kind,
+            VoxelLayerKind::Craters,
+            "seed {seed}"
+        );
+        assert_eq!(
+            stack.layers[n - 1].kind,
+            VoxelLayerKind::Hills,
+            "seed {seed}"
+        );
         let craters = &stack.layers[n - 2];
-        assert!((5.0..60.0).contains(&craters.scale_km) && (0.05..0.5).contains(&craters.coverage), "seed {seed}: {craters:?}");
+        assert!(
+            (5.0..60.0).contains(&craters.scale_km) && (0.05..0.5).contains(&craters.coverage),
+            "seed {seed}: {craters:?}"
+        );
         let hills = &stack.layers[n - 1];
-        assert!((50.0..800.0).contains(&hills.height_m) && (2.0..40.0).contains(&hills.scale_km), "seed {seed}: {hills:?}");
+        assert!(
+            (50.0..800.0).contains(&hills.height_m) && (2.0..40.0).contains(&hills.scale_km),
+            "seed {seed}: {hills:?}"
+        );
         crater_sizes.push(craters.scale_km);
     }
     eprintln!("styles {styles:?}, crater sizes {crater_sizes:?}");
     // Moons, deserts and Earth-like planets all occur.
-    for style in [VoxelMaterialStyle::Lunar, VoxelMaterialStyle::Rules, VoxelMaterialStyle::Earthlike] {
-        assert!(styles.contains(&format!("{style:?}")), "{style:?} never rolled: {styles:?}");
+    for style in [
+        VoxelMaterialStyle::Lunar,
+        VoxelMaterialStyle::Rules,
+        VoxelMaterialStyle::Earthlike,
+    ] {
+        assert!(
+            styles.contains(&format!("{style:?}")),
+            "{style:?} never rolled: {styles:?}"
+        );
     }
     crater_sizes.sort_by(f64::total_cmp);
     crater_sizes.dedup();

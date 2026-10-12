@@ -303,10 +303,7 @@ impl LevelEditorPanel {
                     .timer(std::time::Duration::from_millis(50))
                     .await;
                 // Report Play-In-Editor status to the engine-global playback state.
-                super::playback_host::publish_playback_status(
-                    playback_host_id,
-                    &poll_state.read(),
-                );
+                super::playback_host::publish_playback_status(playback_host_id, &poll_state.read());
                 // A released sculpt stroke becomes one undo step once the
                 // render thread applied its last samples.
                 if poll_state.read().editor.voxel_stroke.is_some() {

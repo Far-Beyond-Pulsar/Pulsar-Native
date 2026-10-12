@@ -3,7 +3,7 @@
 use std::io::Cursor;
 use std::sync::OnceLock;
 
-use rodio::{mixer::Mixer, Decoder, OutputStreamBuilder, Sink};
+use rodio::{Decoder, OutputStreamBuilder, Sink, mixer::Mixer};
 
 const BUILD_SUCCESS_SOUND: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),

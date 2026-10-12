@@ -41,8 +41,8 @@ use ui::dock::{
     TabPanel,
 };
 
-use super::PulsarApp;
 use super::nav_sidebar::model::SavedSidebar;
+use super::PulsarApp;
 
 /// Bump when the format changes incompatibly; older files are then ignored.
 const LAYOUT_VERSION: u32 = 1;
@@ -687,7 +687,7 @@ mod tests {
 
     #[test]
     fn tile_bounds_and_stacking_survive_a_write_and_read() {
-        use gpui::{Bounds, point, px, size};
+        use gpui::{point, px, size, Bounds};
         use ui::dock::TileMeta;
 
         let metas = vec![
@@ -800,31 +800,31 @@ mod tests {
             origin: point(px(0.), px(0.)),
             size: size(px(10.), px(10.)),
         };
-        assert!(
-            SavedWindow::capture(WindowBounds::Windowed(tiny), None)
-                .to_window_bounds()
-                .is_none()
-        );
+        assert!(SavedWindow::capture(WindowBounds::Windowed(tiny), None)
+            .to_window_bounds()
+            .is_none());
         let nan = Bounds {
             origin: point(px(0.), px(0.)),
             size: size(px(f32::NAN), px(900.)),
         };
-        assert!(
-            SavedWindow::capture(WindowBounds::Windowed(nan), None)
-                .to_window_bounds()
-                .is_none()
-        );
+        assert!(SavedWindow::capture(WindowBounds::Windowed(nan), None)
+            .to_window_bounds()
+            .is_none());
     }
 
     #[test]
     fn sidebar_state_survives_a_write_and_older_files_read_without_it() {
         use super::super::nav_sidebar::model::TabKey;
-        let dir = std::env::temp_dir().join(format!("pulsar-layout-sidebar-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pulsar-layout-sidebar-{}", std::process::id()));
         let path = layout_path(&dir);
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
             sidebar: SavedSidebar {
-                pinned: vec![TabKey::File("Content/Hero.class".into()), TabKey::Panel("Level Editor".into())],
+                pinned: vec![
+                    TabKey::File("Content/Hero.class".into()),
+                    TabKey::Panel("Level Editor".into()),
+                ],
                 groups: vec![super::super::nav_sidebar::model::SavedGroup {
                     name: "Combat".into(),
                     members: vec![TabKey::File("Content/Sword.class".into())],

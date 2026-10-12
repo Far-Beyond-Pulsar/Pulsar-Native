@@ -5,7 +5,6 @@
 //! source of truth to keep in step with the world (and nothing to rebuild when a
 //! world is swapped, undone or reloaded).
 
-
 use pulsar_scenedb::{Entity, World};
 
 use crate::components::{

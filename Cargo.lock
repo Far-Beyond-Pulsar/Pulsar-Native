@@ -9454,6 +9454,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "smol",
  "sysuri",
  "tempfile",
  "thiserror 2.0.20",

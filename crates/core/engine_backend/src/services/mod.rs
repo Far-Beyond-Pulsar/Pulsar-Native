@@ -19,8 +19,8 @@ pub mod pie_blit;
 pub mod pie_host;
 #[cfg(feature = "editor-ui")]
 pub mod rust_analyzer_manager {
-    pub use pulsar_lsp::rust_analyzer::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
     pub use pulsar_lsp::rust_analyzer::{path_key, path_to_uri, uri_to_path};
+    pub use pulsar_lsp::rust_analyzer::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 }
 
 pub use core_project_builder::{ensure_core_bootstrap, ensure_engine_primitives};
