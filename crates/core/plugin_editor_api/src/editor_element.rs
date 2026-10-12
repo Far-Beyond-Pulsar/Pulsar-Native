@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use gpui::{
     AnyElement, App, Bounds, Element, ElementArenaScope, ElementId, Entity, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Window,
+    InspectorElementId, IntoElement, LayoutId, Pixels, WeakEntity, Window,
 };
 use pulsar_lsp::RustAnalyzerManager;
 use ui::dock::PanelView;
@@ -40,6 +40,38 @@ pub struct EditorServices {
     /// The one rust-analyzer the engine runs for the project. Editors attach
     /// to it; they never start, restart or replace it.
     pub language_server: Option<Entity<RustAnalyzerManager>>,
+}
+
+impl EditorServices {
+    /// These services without keeping them alive.
+    pub fn downgrade(&self) -> WeakEditorServices {
+        WeakEditorServices {
+            language_server: self.language_server.as_ref().map(Entity::downgrade),
+        }
+    }
+}
+
+/// [`EditorServices`] held weakly: what a holder that outlives the app (the
+/// process-wide plugin manager) keeps, so the services still end with the app
+/// that owns them.
+#[derive(Clone, Default)]
+pub struct WeakEditorServices {
+    language_server: Option<WeakEntity<RustAnalyzerManager>>,
+}
+
+impl WeakEditorServices {
+    /// The services that are still alive.
+    pub fn upgrade(&self) -> EditorServices {
+        EditorServices {
+            language_server: self.language_server.as_ref().and_then(WeakEntity::upgrade),
+        }
+    }
+}
+
+impl std::fmt::Debug for WeakEditorServices {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.upgrade().fmt(f)
+    }
 }
 
 impl std::fmt::Debug for EditorServices {
