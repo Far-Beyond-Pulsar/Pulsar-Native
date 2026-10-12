@@ -86,9 +86,10 @@ struct BootstrapView {
 
 impl BootstrapView {
     fn new(shared: SharedState, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let poll_shared = shared.clone();
         let poll_task = cx.spawn(async move |this, cx| loop {
             smol::Timer::after(Duration::from_millis(150)).await;
-            let finished = shared
+            let finished = poll_shared
                 .0
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -109,6 +110,12 @@ impl BootstrapView {
             shared,
             _poll_task: poll_task,
         }
+    }
+}
+
+impl Drop for BootstrapView {
+    fn drop(&mut self) {
+        choose(&self.shared, false);
     }
 }
 
@@ -231,7 +238,7 @@ fn run_bootstrap(args: &[OsString], stable_executable: Option<&Path>, shared: &S
             .map_err(|error| format!("Invalid parent process id: {error}"))?;
         let workspace = PathBuf::from(arg(args, 3)?);
         let working_directory = PathBuf::from(arg(args, 5)?);
-        let restart_args = args[6..].to_vec();
+        let restart_args = args.get(6..).unwrap_or_default().to_vec();
         let release_executable = release_executable_path(&workspace);
 
         wait_for_process_exit(parent_pid)?;
@@ -242,15 +249,28 @@ fn run_bootstrap(args: &[OsString], stable_executable: Option<&Path>, shared: &S
             .write(true)
             .open(&log_path)
             .map_err(|error| format!("Could not create {}: {error}", log_path.display()))?;
-        append_log("Building the release engine binary...\n");
-        set_progress(shared, "Building release engine", 0.12);
-
-        match run_cargo_build(&workspace, shared) {
-            Ok(status) if status.success() => {}
-            Ok(status) => {
-                return Err(format!("The release engine build failed with {status}"));
+        append_log("Building debug and release engine binaries...\n");
+        let mut build_errors = Vec::new();
+        for (profile_name, release, progress_base, progress_span) in
+            [("debug", false, 0.12, 0.37), ("release", true, 0.50, 0.42)]
+        {
+            set_progress(
+                shared,
+                &format!("Building {profile_name} engine"),
+                progress_base,
+            );
+            match run_cargo_build(&workspace, release, shared, progress_base, progress_span) {
+                Ok(status) if status.success() => {}
+                Ok(status) => build_errors.push(format!(
+                    "The {profile_name} engine build failed with {status}"
+                )),
+                Err(error) => {
+                    build_errors.push(format!("Could not run the {profile_name} build: {error}"))
+                }
             }
-            Err(error) => return Err(format!("Could not run the release build: {error}")),
+        }
+        if !build_errors.is_empty() {
+            return Err(build_errors.join("\n"));
         }
 
         set_progress(shared, "Launching the rebuilt release engine", 0.96);
@@ -346,7 +366,10 @@ fn show_failure_and_wait(
 
 fn run_cargo_build(
     workspace: &Path,
+    release: bool,
     shared: &SharedState,
+    progress_base: f32,
+    progress_span: f32,
 ) -> Result<std::process::ExitStatus, String> {
     let log_path = bootstrap_log_path();
     let log = OpenOptions::new()
@@ -361,8 +384,12 @@ fn run_cargo_build(
     let mut cargo = Command::new("cargo");
     cargo
         .current_dir(workspace)
-        .args(["build", "-p", "pulsar_engine", "--release", "-j"])
-        .arg(worker_arg)
+        .args(["build", "-p", "pulsar_engine"]);
+    if release {
+        cargo.arg("--release");
+    }
+    cargo
+        .args(["-j", worker_arg.as_str()])
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(stderr));
     hide_console(&mut cargo);
@@ -378,8 +405,17 @@ fn run_cargo_build(
         {
             return Ok(status);
         }
-        let progress = 0.15 + 0.77 * (1.0 - (-(started.elapsed().as_secs_f32() / 100.0)).exp());
-        set_progress(shared, "Building release engine", progress.min(0.91));
+        let progress = progress_base
+            + progress_span * (1.0 - (-(started.elapsed().as_secs_f32() / 100.0)).exp());
+        set_progress(
+            shared,
+            if release {
+                "Building release engine"
+            } else {
+                "Building debug engine"
+            },
+            progress.min(progress_base + progress_span * 0.96),
+        );
         thread::sleep(Duration::from_millis(350));
     }
 }
