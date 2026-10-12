@@ -151,7 +151,20 @@ impl PulsarApp {
     ///
     /// This is the ONLY method needed for file opening - the plugin system handles everything.
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_path_with_history(path, true, window, cx);
+        self.open_path_with_history_and_root(path, true, None, window, cx);
+    }
+
+    /// Open a path while assigning a specific file-tree root to the editor.
+    /// Developer source browsing uses this to keep the engine tree separate
+    /// from the currently open game project.
+    pub(crate) fn open_path_with_project_root(
+        &mut self,
+        path: PathBuf,
+        project_root: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_path_with_history_and_root(path, true, Some(project_root), window, cx);
     }
 
     /// [`Self::open_path`], optionally without recording the visit. Back and
@@ -160,6 +173,17 @@ impl PulsarApp {
         &mut self,
         path: PathBuf,
         record_history: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_path_with_history_and_root(path, record_history, None, window, cx);
+    }
+
+    fn open_path_with_history_and_root(
+        &mut self,
+        path: PathBuf,
+        record_history: bool,
+        editor_project_root: Option<PathBuf>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -182,7 +206,17 @@ impl PulsarApp {
             super::refresh_plugin_editor_settings(&mut pm);
 
             // Let the plugin system handle everything - no match statements needed!
-            match pm.create_editor_for_file(&path, window, cx) {
+            let result = if let Some(project_root) = editor_project_root {
+                pm.create_editor_for_file_with_project_root(
+                    &path,
+                    Some(project_root),
+                    window,
+                    cx,
+                )
+            } else {
+                pm.create_editor_for_file(&path, window, cx)
+            };
+            match result {
                 Ok(panel) => {
                     tracing::debug!("Successfully created editor for: {:?}", path);
                     self.state.center_tabs.update(cx, |tabs, cx| {

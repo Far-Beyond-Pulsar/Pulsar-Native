@@ -120,7 +120,7 @@ owo-colors = "4"
 
 # ---------- GPUI (vendored) ----------
 gpui-ce      = { path = "crates/ui/wgpui", features = ["inspector", "flamegraph"] }
-wgpui-base    = { path = "crates/ui/wgpui-base" }
+wgpui-base   = { path = "crates/ui/wgpui-base" }
 ui           = { path = "crates/ui/wgpui-component/crates/ui", features = ["inspector", "flamegraph", "tree-sitter-languages", "chat-components"] }
 ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 

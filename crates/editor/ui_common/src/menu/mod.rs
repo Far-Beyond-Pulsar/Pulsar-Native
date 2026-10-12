@@ -102,6 +102,8 @@ actions!(
         DevInspectEngineState,
         DevShowBuildInfo,
         DevOpenWorkspaceRoot,
+        DevOpenEngineSource,
+        DevBootstrapEngine,
     ]
 );
 
@@ -111,12 +113,12 @@ actions!(
 /// built twice — once for the platform native menu bar (macOS) and once
 /// converted to [`gpui::OwnedMenu`] for the custom in-window menu bar on
 /// Windows / Linux where `cx.get_menus()` always returns `None`.
-fn build_app_menus(title: SharedString) -> Vec<Menu> {
+fn build_app_menus(title: SharedString, is_source_build: bool) -> Vec<Menu> {
     // Only engine-global menus live here. Editors (level editor, blueprint
     // editor, ...) provide their own menus in their own top bar, so nothing
     // editor-specific (edit, selection, view, build, run, assets, ...) belongs
     // in this list. Build / Run live on the global toolbar.
-    vec![
+    let mut menus = vec![
         // Pulsar (logo) menu
         Menu {
             name: title,
@@ -239,6 +241,25 @@ fn build_app_menus(title: SharedString) -> Vec<Menu> {
                 ),
             ],
         },
+    ];
+
+    if is_source_build {
+        menus.push(Menu {
+            name: t!("Menu.Dev").into(),
+            items: vec![
+                MenuItem::action(
+                    t!("Menu.Dev.OpenEngineSource").to_string(),
+                    DevOpenEngineSource,
+                ),
+                MenuItem::action(
+                    t!("Menu.Dev.BootstrapEngine").to_string(),
+                    DevBootstrapEngine,
+                ),
+            ],
+        });
+    }
+
+    menus.push(
         // Help
         Menu {
             name: t!("Menu.Help").into(),
@@ -252,7 +273,8 @@ fn build_app_menus(title: SharedString) -> Vec<Menu> {
                 MenuItem::action(t!("Menu.Help.ReleaseNotes").to_string(), ReleaseNotes),
             ],
         },
-    ]
+    );
+    menus
 }
 
 /// Initialize the app menus.
@@ -262,12 +284,20 @@ fn build_app_menus(title: SharedString) -> Vec<Menu> {
 /// in-window menu bar on Windows / Linux where `cx.get_menus()` returns `None`.
 pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
     let title_str: SharedString = title.into();
+    let is_source_build = engine_state::EngineContext::global()
+        .map(|ctx| {
+            ctx.store
+                .get_or_init::<engine_state::DevContext>()
+                .read()
+                .is_source_build
+        })
+        .unwrap_or(false);
 
     // macOS: platform-level native menu bar
-    cx.set_menus(build_app_menus(title_str.clone()));
+    cx.set_menus(build_app_menus(title_str.clone(), is_source_build));
 
     // Windows / Linux: cache as OwnedMenu for the custom in-window AppMenuBar
-    let owned: Vec<gpui::OwnedMenu> = build_app_menus(title_str)
+    let owned: Vec<gpui::OwnedMenu> = build_app_menus(title_str, is_source_build)
         .into_iter()
         .map(|m| m.owned())
         .collect();

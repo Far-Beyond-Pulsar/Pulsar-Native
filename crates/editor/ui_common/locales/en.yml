@@ -103,6 +103,10 @@ Menu.Window.Minimize: Minimize
 Menu.Window.Zoom: Zoom
 Menu.Window.BringAllToFront: Bring All to Front
 
+Menu.Dev: Dev
+Menu.Dev.OpenEngineSource: Open Engine Source
+Menu.Dev.BootstrapEngine: Bootstrap Engine
+
 Menu.Help: Help
 Menu.Help.Documentation: Documentation
 Menu.Help.Shortcuts: Keyboard Shortcuts

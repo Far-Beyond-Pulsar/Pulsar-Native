@@ -7,6 +7,10 @@
 //! implementation.
 
 use gpui::{Context, InteractiveElement, Window, px};
+use std::path::PathBuf;
+use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
 use ui::{ActiveTheme as _, Theme};
 use ui_common::menu;
 
@@ -96,6 +100,27 @@ impl PulsarApp {
             .on_action(cx.listener(|this, _: &menu::ToggleNetwork, window, cx| {
                 this.toggle_multiplayer(window, cx)
             }))
+            .on_action(cx.listener(|this, _: &menu::DevOpenEngineSource, window, cx| {
+                let Some(source_root) = source_build_root() else {
+                    return;
+                };
+                let manifest = source_root.join("Cargo.toml");
+                if manifest.is_file() {
+                    this.open_path_with_project_root(manifest, source_root, window, cx);
+                } else {
+                    tracing::error!(?source_root, "Source build workspace has no Cargo.toml");
+                }
+            }))
+            .on_action(cx.listener(|_, _: &menu::DevBootstrapEngine, _, cx| {
+                let Some(source_root) = source_build_root() else {
+                    return;
+                };
+                if let Err(error) = start_engine_bootstrap_sidecar(&source_root) {
+                    tracing::error!(%error, "Could not start engine bootstrap sidecar");
+                    return;
+                }
+                cx.quit();
+            }))
     }
 
     /// Change the UI font size by `delta` px, within sensible limits.
@@ -112,4 +137,42 @@ impl PulsarApp {
         }
         window.refresh();
     }
+}
+
+fn source_build_root() -> Option<PathBuf> {
+    engine_state::EngineContext::global().and_then(|ctx| {
+        let dev = ctx
+            .store
+            .get_or_init::<engine_state::DevContext>()
+            .read();
+        dev.is_source_build.then(|| dev.source_path.clone()).flatten()
+    })
+}
+
+fn start_engine_bootstrap_sidecar(workspace: &std::path::Path) -> std::io::Result<()> {
+    const SIDECAR_ARG: &str = "--pulsar-bootstrap-sidecar-run";
+
+    let executable = std::env::current_exe()?;
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let sidecar = std::env::temp_dir().join(format!(
+        "pulsar-bootstrap-{}-{timestamp}{}",
+        std::process::id(),
+        std::env::consts::EXE_SUFFIX
+    ));
+    std::fs::copy(&executable, &sidecar)?;
+    let working_directory = std::env::current_dir().unwrap_or_else(|_| workspace.to_path_buf());
+    let mut command = Command::new(&sidecar);
+    command
+        .arg(SIDECAR_ARG)
+        .arg(std::process::id().to_string())
+        .arg(workspace)
+        .arg(&executable)
+        .arg(working_directory);
+    command.args(std::env::args_os().skip(1));
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    command.spawn().map(|_| ())
 }

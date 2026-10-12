@@ -85,6 +85,7 @@ pub mod macos_permissions;
 pub mod runtime; // Async runtime setup and management
 pub mod settings; // Engine settings loading and saving
 mod steps;
+mod dev_bootstrap;
 pub mod uri; // URI scheme handling // Project file association management
 
 // --- Engine context re-exports ---
@@ -135,6 +136,10 @@ fn check_debugger_attached() {
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
 fn main() {
+    if dev_bootstrap::run_if_requested() {
+        return;
+    }
+
     // Held for the entire function body so it dumps `dhat-heap.json` (via
     // Drop) on clean process exit — e.g. quitting the editor normally after
     // reproducing a leak. Only active with `--features dhat-heap`.

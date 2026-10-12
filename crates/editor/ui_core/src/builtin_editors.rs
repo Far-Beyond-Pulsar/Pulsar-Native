@@ -260,6 +260,7 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
         // The language server comes from the editor's context, exactly as it does
         // for a plugin library; there is no process-wide handle to fall back on.
         let services = editor_context.services.clone();
+        let project_root = editor_context.project_root.clone();
         if services.language_server.is_none() {
             tracing::warn!("No language server in the editor context; Script Editor LSP is off");
         }
@@ -268,6 +269,9 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
             script_editor_plugin::ScriptEditorPanel::new_with_settings(window, cx, settings)
         });
         panel.update(cx, |editor, ecx| {
+            if let Some(project_root) = project_root {
+                editor.set_project_path(project_root, window, ecx);
+            }
             editor.open_file(file_path.clone(), window, ecx);
         });
 

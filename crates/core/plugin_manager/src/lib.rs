@@ -1123,6 +1123,24 @@ impl PluginManager {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
+        self.create_editor_for_file_with_project_root(
+            file_path,
+            self.project_root.clone(),
+            window,
+            cx,
+        )
+    }
+
+    /// Create an editor for a file while giving it an explicit tree root.
+    /// This is used by engine source browsing, where the editor must browse the
+    /// engine workspace even when a game project is currently open.
+    pub fn create_editor_for_file_with_project_root(
+        &mut self,
+        file_path: &Path,
+        project_root: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
         // Determine file type
         let file_type_id = self
             .file_type_registry
@@ -1151,7 +1169,7 @@ impl PluginManager {
         // Check if this is a built-in editor
         if plugin_id.as_str() == "builtin" {
             // Create editor context with project root
-            let editor_context = EditorContext::new(self.project_root.clone())
+            let editor_context = EditorContext::new(project_root)
                 .with_services(self.editor_services());
 
             // Create the editor directly using the provider
