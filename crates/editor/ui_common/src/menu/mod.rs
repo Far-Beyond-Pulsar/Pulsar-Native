@@ -95,6 +95,11 @@ actions!(
         ViewLogs,
         ReleaseNotes,
         // Developer menu (source builds only)
+        DevSaveAsDefaultLevel,
+        DevReloadAssets,
+        DevInspectEngineState,
+        DevShowBuildInfo,
+        DevOpenWorkspaceRoot,
         DevOpenEngineSource,
         DevBootstrapEngine,
     ]
