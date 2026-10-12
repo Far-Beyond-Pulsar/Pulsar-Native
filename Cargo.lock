@@ -4751,6 +4751,7 @@ name = "helio-default-graphs"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio",
  "helio-core",
  "helio-mats",
