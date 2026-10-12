@@ -60,6 +60,8 @@ enum ProgressUpdate {
         key: String,
         diagnostics: Vec<Diagnostic>,
     },
+    /// The server's own `completionProvider.triggerCharacters`.
+    CompletionTriggers(Vec<char>),
 }
 
 /// Minimum wall time between emitted `IndexingProgress` events. Raw updates
@@ -71,6 +73,20 @@ const PROGRESS_EMIT_MIN_INTERVAL: Duration = Duration::from_millis(100);
 /// of this percentage, so the reported value stays within one visible step of
 /// reality even during slow indexing.
 const PROGRESS_EMIT_MILESTONE_STEP: f32 = 5.0;
+
+/// The completion trigger characters in an `initialize` reply.
+fn trigger_characters_in(reply: &Value) -> Vec<char> {
+    reply
+        .pointer("/result/capabilities/completionProvider/triggerCharacters")
+        .and_then(|value| value.as_array())
+        .map(|chars| {
+            chars
+                .iter()
+                .filter_map(|c| c.as_str()?.chars().next())
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
 pub struct RustAnalyzerManager {
     /// Path to rust-analyzer executable
@@ -112,9 +128,9 @@ pub struct RustAnalyzerManager {
     /// Latest diagnostics per file key, so an editor opened later shows them
     /// without waiting for the next analysis.
     file_diagnostics: HashMap<String, Vec<Diagnostic>>,
-    /// The workspace folders the running server knows: the project root it was
-    /// started with plus every Cargo workspace an open file needed.
-    workspace_folders: Arc<Mutex<Vec<PathBuf>>>,
+    /// Characters the server asked to be offered completion on (from its
+    /// initialize reply). Empty until that reply arrives.
+    completion_triggers: Vec<char>,
 }
 
 impl EventEmitter<AnalyzerEvent> for RustAnalyzerManager {}
@@ -144,7 +160,7 @@ impl RustAnalyzerManager {
             last_emitted_progress: None,
             open_documents: Arc::new(Mutex::new(HashMap::new())),
             file_diagnostics: HashMap::new(),
-            workspace_folders: Arc::new(Mutex::new(Vec::new())),
+            completion_triggers: Vec::new(),
         }
     }
 
@@ -648,9 +664,6 @@ impl RustAnalyzerManager {
         tracing::debug!("🚀 Starting rust-analyzer for: {:?}", workspace_root);
 
         self.workspace_root = Some(workspace_root.clone());
-        if let Ok(mut folders) = self.workspace_folders.lock() {
-            *folders = vec![workspace_root.clone()];
-        }
         self.status = AnalyzerStatus::Starting;
         self.install_attempted = false;
         self.first_diagnostics_time = None;
@@ -885,6 +898,9 @@ impl RustAnalyzerManager {
                                             ));
                                         } else if msg.get("result").is_some() {
                                             tracing::debug!("[LSP ANALYZER] Initialize succeeded, server is ready");
+                                            let triggers = trigger_characters_in(&msg);
+                                            let _ = progress_tx_stdout
+                                                .send(ProgressUpdate::CompletionTriggers(triggers));
                                             // Initialization complete - server is ready for document operations
                                         }
                                     }
@@ -1457,23 +1473,6 @@ impl RustAnalyzerManager {
         }
     }
 
-    /// Starts rust-analyzer for `workspace_root` unless it is already running
-    /// (or starting). Editors call this instead of [`Self::start`]: the engine
-    /// owns one analyzer for the project, and opening another editor must
-    /// neither restart it nor discard its index. Returns whether it started.
-    pub fn ensure_started(
-        &mut self,
-        workspace_root: PathBuf,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        if self.is_running() {
-            return false;
-        }
-        self.start(workspace_root, window, cx);
-        true
-    }
-
     /// Stop rust-analyzer
     pub fn stop(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         tracing::debug!("🛑 Stopping rust-analyzer");
@@ -1507,9 +1506,7 @@ impl RustAnalyzerManager {
             open.clear();
         }
         self.file_diagnostics.clear();
-        if let Ok(mut folders) = self.workspace_folders.lock() {
-            folders.clear();
-        }
+        self.completion_triggers.clear();
     }
 
     /// Restart rust-analyzer
@@ -1642,53 +1639,6 @@ impl RustAnalyzerManager {
         self.send_notification(notification)
     }
 
-    /// Makes sure the server has the Cargo workspace `file` belongs to, as a
-    /// workspace folder, so the file is analysed as part of a project rather
-    /// than as an unattached file with no crate graph. Never restarts the
-    /// server: it is told with `workspace/didChangeWorkspaceFolders`. Returns
-    /// the folder that was added, if any.
-    pub fn ensure_workspace_for(&self, file: &PathBuf) -> Result<Option<PathBuf>> {
-        if !self.is_running() {
-            return Ok(None);
-        }
-        let folder = {
-            let mut folders = self
-                .workspace_folders
-                .lock()
-                .map_err(|e| anyhow!("Lock error: {}", e))?;
-            let Some(folder) = path_utils::workspace_folder_for(file, &folders) else {
-                return Ok(None);
-            };
-            // A folder nested inside a known one is covered by it.
-            folders.push(folder.clone());
-            folder
-        };
-        let name = folder
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        tracing::info!("adding workspace folder {:?} for {:?}", folder, file);
-        self.send_notification(json!({
-            "jsonrpc": "2.0",
-            "method": "workspace/didChangeWorkspaceFolders",
-            "params": {
-                "event": {
-                    "added": [{ "uri": self.path_to_uri(&folder), "name": name }],
-                    "removed": []
-                }
-            }
-        }))?;
-        Ok(Some(folder))
-    }
-
-    /// The workspace folders the server currently has.
-    pub fn workspace_folders(&self) -> Vec<PathBuf> {
-        self.workspace_folders
-            .lock()
-            .map(|folders| folders.clone())
-            .unwrap_or_default()
-    }
-
     /// Send an incremental didChange: `changes` are LSP content-change
     /// objects (`range` + `text`) applied in order. Costs only the edit, not
     /// the document.
@@ -1723,6 +1673,12 @@ impl RustAnalyzerManager {
             .lock()
             .map(|open| open.contains_key(&key))
             .unwrap_or(false)
+    }
+
+    /// The characters the server registered to open completion (empty until it
+    /// has answered `initialize`).
+    pub fn completion_trigger_characters(&self) -> Vec<char> {
+        self.completion_triggers.clone()
     }
 
     /// The latest diagnostics the server published for `file_path`.
@@ -2007,6 +1963,9 @@ impl RustAnalyzerManager {
                 self.initialized = false;
                 cx.emit(AnalyzerEvent::Error(error_msg));
                 cx.notify();
+            }
+            ProgressUpdate::CompletionTriggers(triggers) => {
+                self.completion_triggers = triggers;
             }
             ProgressUpdate::FileDiagnostics { key, diagnostics } => {
                 if diagnostics.is_empty() {
@@ -2303,5 +2262,20 @@ impl RustAnalyzerManager {
 impl Drop for RustAnalyzerManager {
     fn drop(&mut self) {
         self.stop_internal();
+    }
+}
+
+#[cfg(test)]
+mod trigger_tests {
+    use super::*;
+
+    #[test]
+    fn the_servers_registered_trigger_characters_are_read_from_initialize() {
+        let reply = json!({ "id": 17, "result": { "capabilities": { "completionProvider": {
+            "triggerCharacters": [":", ".", "'", "("]
+        } } } });
+        assert_eq!(trigger_characters_in(&reply), vec![':', '.', '\x27', '(']);
+        assert!(trigger_characters_in(&json!({ "result": { "capabilities": {} } })).is_empty());
+        assert!(trigger_characters_in(&json!({ "error": {} })).is_empty());
     }
 }
