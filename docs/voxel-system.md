@@ -283,7 +283,13 @@ and gameplay agree on every block. On generated terrain the older
   planes but it made the camera crawl at 10 m/s kilometres above lowland.
 - **Edits are a journal, not voxel data.** The terrain is procedural, so a
   world is its recipe plus ordered brushes; that keeps saves small and CPU
-  queries exact, and lets the GPU regenerate any chunk at any level.
+  queries exact, and lets the GPU regenerate any chunk at any level. An
+  edit's tiles regenerate drawn first and nearest first within the frame's
+  generation budget (milliseconds against the measured cost of a tile and
+  of a chunk): a dig shows the frame it is made, a 500 m blast settles over
+  a few seconds without a frame over ~5 ms. Rock and hollows between a
+  tile's chunks take no chunk slots, so deep halls and hollowed cores
+  render exactly.
 - **The editor's default Sun points straight down (world -Y),** so the sun
   is overhead at the pole and lower elsewhere. A planet's air is an authored
   `AtmosphereComponent` placed at its owner (the example level's planet):
