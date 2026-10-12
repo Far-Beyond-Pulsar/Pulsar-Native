@@ -146,23 +146,15 @@ fn relative_camera_source_compatible(
     }
 }
 
-/// What keeps the scene out of camera-relative frames: a positional light
-/// (`positional_light`), and every component type not reviewed for a moved
-/// origin. Empty when the scene is compatible.
-fn relative_camera_world_incompatibilities(
-    world: &pulsar_scenedb::World,
-    positional_light: bool,
-) -> Vec<String> {
+/// What keeps the scene out of camera-relative frames: every component type
+/// not reviewed for a moved origin. Empty when the scene is compatible.
+fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec<String> {
     use crate::scene::{
         ComponentAttachments, Name, ObjectType, Parent, RenderProps, Selected, SiblingIndex,
         StableId, Transform, Visibility,
     };
     use pulsar_scenedb::component_id;
     let mut found = Vec::new();
-    // Positional lights' world-space culling and shadows are not rebased.
-    if positional_light {
-        found.push("positional light".to_string());
-    }
     let allowed = [
         // Objects and their component instances.
         component_id::<StableId>(),
@@ -186,9 +178,14 @@ fn relative_camera_world_incompatibilities(
         // VoxelComponent draws as a world-space mesh, so it is not here.)
         component_id::<helio_component::VoxelTerrainComponent>(),
         component_id::<helio_component::VoxelTerrainLayersComponent>(),
-        // Directional lights only (above); the scene join's editor light
-        // icons are billboards, which subtract the origin.
+        // Lights of every type: the scene join writes their positions
+        // relative to the world origin, so culling and shadow matrices are
+        // in the frame's space; their editor icons are billboards, which
+        // subtract the origin themselves.
         component_id::<helio_component::components::LightComponent>(),
+        // Meshes: the scene join writes their model matrices and bounds
+        // relative to the world origin (Pulsar-Native#1127).
+        component_id::<helio_component::components::StaticMeshComponent>(),
         // The atmosphere pass subtracts the world origin from the planet's
         // centre; volume blending rebases volume bounds by it; a camera's
         // post-process baseline has no position.
@@ -217,10 +214,11 @@ fn relative_camera_world_incompatibilities(
     found
 }
 
-/// The frame camera: at the origin, looking along `forward`, for a
-/// camera-relative frame; at `eye` otherwise. Orientation is built before
-/// translation: adding a unit direction to a large f32 world position can
-/// round away the look direction.
+/// The frame camera at `eye`, looking along `forward`, in coordinates
+/// relative to `origin` (the frame's world origin; zero for a world-space
+/// frame). Orientation is built before translation, and the translation in
+/// f64: adding a unit direction to a large f32 world position can round
+/// away the look direction.
 fn native_frame_camera(
     eye: DVec3,
     forward: Vec3,
@@ -228,7 +226,7 @@ fn native_frame_camera(
     aspect: f32,
     near: f32,
     far: f32,
-    relative: bool,
+    origin: DVec3,
 ) -> Camera {
     let mut camera = Camera::perspective_look_at(
         Vec3::ZERO,
@@ -239,11 +237,28 @@ fn native_frame_camera(
         near,
         far,
     );
-    if !relative {
-        camera.position = eye.as_vec3();
-        camera.view = (camera.view.as_dmat4() * glam::DMat4::from_translation(-eye)).as_mat4();
+    let local = eye - origin;
+    if local != DVec3::ZERO {
+        camera.position = local.as_vec3();
+        camera.view = (camera.view.as_dmat4() * glam::DMat4::from_translation(-local)).as_mat4();
     }
     camera
+}
+
+/// Side of the cells camera-relative frames snap their world origin to.
+/// Within one cell of the origin, an f32 position steps by under 0.2 mm.
+const WORLD_ORIGIN_CELL: f64 = 1024.0;
+
+/// The world origin for a camera-relative frame with the camera at `eye`:
+/// `previous` while the camera stays within a cell of it, else the cell
+/// corner nearest the camera. Positions the scene join rebases are
+/// recomputed only when it moves, not every frame the camera does, so
+/// static draws and shadow caches survive camera motion.
+fn frame_world_origin(previous: Option<DVec3>, eye: DVec3) -> DVec3 {
+    match previous {
+        Some(origin) if (eye - origin).abs().max_element() <= WORLD_ORIGIN_CELL => origin,
+        _ => (eye / WORLD_ORIGIN_CELL).round() * WORLD_ORIGIN_CELL,
+    }
 }
 
 /// Camera velocity squared below this threshold is considered stopped.
@@ -700,6 +715,9 @@ pub struct HelioRenderer {
     voxel_altitude: Option<f64>,
     /// Coordinate space of the last frame (camera-relative or world).
     last_camera_relative: Option<bool>,
+    /// This frame's world origin when it renders camera-relative
+    /// ([`frame_world_origin`]).
+    world_origin: Option<DVec3>,
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
@@ -844,6 +862,7 @@ impl HelioRenderer {
             voxel_brush_picks: Default::default(),
             voxel_altitude: None,
             last_camera_relative: None,
+            world_origin: None,
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
             last_voxel_errors: Vec::new(),
@@ -1597,9 +1616,9 @@ impl HelioRenderer {
             let aspect = width as f32 / height.max(1) as f32;
             // Canonical voxel coordinates stay global (`self.cam_pos`,
             // `VoxelView`); only the audited frame camera is origin-relative.
-            inner
-                .renderer
-                .set_world_origin(camera_relative.then_some(self.cam_pos));
+            self.world_origin =
+                camera_relative.then(|| frame_world_origin(self.world_origin, self.cam_pos));
+            inner.renderer.set_world_origin(self.world_origin);
             let camera = native_frame_camera(
                 self.cam_pos,
                 fwd,
@@ -1607,7 +1626,7 @@ impl HelioRenderer {
                 aspect,
                 near,
                 far,
-                camera_relative,
+                self.world_origin.unwrap_or(DVec3::ZERO),
             );
 
             // Debug geometry is transient GPU execution state. World content is
@@ -2527,17 +2546,14 @@ impl VoxelSceneRead {
         // Voxel terrain traces sunlight towards the scene's directional
         // light: the opposite of the direction it travels, its owner's
         // rotation of -Y. The light must be lit the way the scene join
-        // lights it: enabled, and its owner visible. Any other lit light is
-        // positional, which camera-relative frames do not rebase.
+        // lights it: enabled, and its owner visible.
         let mut sun_owner = None;
-        let mut positional_light = false;
         for (_, (light, owner)) in world.query::<(&LightComponent, &ComponentOwner)>() {
             if !owner.is_enabled() || !light.general.enabled {
                 continue;
             }
-            if light.general.light_type != LightType::Directional {
-                positional_light = true;
-            } else if sun_owner.is_none()
+            if light.general.light_type == LightType::Directional
+                && sun_owner.is_none()
                 && world
                     .get::<pulsar_scene_model::Visibility>(owner.entity())
                     .is_none_or(|visibility| visibility.visible)
@@ -2561,10 +2577,7 @@ impl VoxelSceneRead {
             errors,
             authored_meshes,
             sun,
-            relative_camera_refusals: relative_camera_world_incompatibilities(
-                world,
-                positional_light,
-            ),
+            relative_camera_refusals: relative_camera_world_incompatibilities(world),
         }
     }
 }
@@ -2687,11 +2700,67 @@ mod native_relative_camera_tests {
         assert!(!VoxelSceneRead::of(&scene.world).relative_camera_refusals.is_empty());
         scene.world.despawn(entity);
         assert!(VoxelSceneRead::of(&scene.world).relative_camera_refusals.is_empty());
-        // A positional light is not rebased.
+        // Meshes and positional lights are rebased by the scene join
+        // (Pulsar-Native#1127): a tower and a lamp on the planet keep the
+        // frame camera-relative.
+        let tower = scene.world.spawn_object(SpawnObject::new("tower")).unwrap();
+        pulsar_world_registry::attach_value(
+            &mut scene.world,
+            tower,
+            helio_component::components::StaticMeshComponent::default(),
+        )
+        .unwrap();
         scene.world.get_mut::<LightComponent>(sun).unwrap().general.light_type = LightType::Point;
         let read = VoxelSceneRead::of(&scene.world);
-        assert_eq!(read.relative_camera_refusals, ["positional light"]);
-        assert!(read.sun.is_none());
+        assert!(read.relative_camera_refusals.is_empty(), "{:?}", read.relative_camera_refusals);
+        assert!(read.authored_meshes);
+        assert!(read.sun.is_none(), "a point light is not the sun");
+    }
+
+    /// The origin follows the camera a cell at a time, so the positions the
+    /// scene join rebases are recomputed when it moves rather than every
+    /// frame the camera does, and the camera stays close to it.
+    #[test]
+    fn the_world_origin_snaps_to_cells_and_follows_the_camera() {
+        let eye = DVec3::new(-3_426_954.1, 4_769_291.6, -2_476_450.5);
+        let origin = frame_world_origin(None, eye);
+        assert_eq!(origin, DVec3::new(-3_427_328.0, 4_769_792.0, -2_476_032.0));
+        assert!((eye - origin).abs().max_element() <= WORLD_ORIGIN_CELL / 2.0);
+        // Moving within a cell keeps it; leaving moves it to the new cell.
+        let near = eye + DVec3::new(900.0, -700.0, 300.0);
+        assert_eq!(frame_world_origin(Some(origin), near), origin);
+        let far = eye + DVec3::new(5_000.0, 0.0, 0.0);
+        let moved = frame_world_origin(Some(origin), far);
+        assert_ne!(moved, origin);
+        assert!((far - moved).abs().max_element() <= WORLD_ORIGIN_CELL / 2.0);
+    }
+
+    /// A mesh vertex on the planet's surface, in a frame relative to the
+    /// snapped origin, lands where the exact (f64) projection puts it: what
+    /// a world-space frame got 0.5 m out (the jagged mesh in #1127).
+    #[test]
+    fn surface_geometry_projects_exactly_in_a_camera_relative_frame() {
+        let eye = DVec3::new(-3_426_954.099417845, 4_769_291.620032467, -2_476_450.5275892294);
+        let forward = Vec3::new(0.9167773, 0.29777223, -0.2661786);
+        let up = Vec3::new(-0.39032218, 0.8092439, -0.43905908);
+        let origin = frame_world_origin(None, eye);
+        let relative = native_frame_camera(eye, forward, up, 1.5, 0.1, 46_371_000.0, origin);
+        let world = native_frame_camera(eye, forward, up, 1.5, 0.1, 46_371_000.0, DVec3::ZERO);
+        // A vertex 25 m in front of the camera, 0.3 m off a 0.5 m grid line.
+        let vertex = eye + forward.as_dvec3().normalize() * 25.0 + DVec3::new(0.3, 0.0, 0.0);
+        let exact = {
+            let view = glam::DMat4::look_to_rh(eye, forward.as_dvec3(), up.as_dvec3());
+            let clip = relative.proj.as_dmat4() * view * vertex.extend(1.0);
+            clip.truncate() / clip.w
+        };
+        let ndc = |camera: &Camera, point: Vec3| {
+            let clip = camera.proj * camera.view * point.extend(1.0);
+            (clip.truncate() / clip.w).as_dvec3()
+        };
+        let rebased = ndc(&relative, (vertex - origin).as_vec3());
+        let absolute = ndc(&world, vertex.as_vec3());
+        assert!((rebased - exact).truncate().length() < 1e-4, "{rebased} vs {exact}");
+        assert!((absolute - exact).truncate().length() > 1e-3, "the world-space frame snaps it");
     }
 
     /// Every buffer this engine registers in the GPU mirror is reviewed:
@@ -2734,8 +2803,9 @@ mod native_relative_camera_tests {
         let eye = DVec3::new(-3426954.099417845, 4769291.620032467, -2476450.5275892294);
         let forward = Vec3::new(0.9167773, 0.29777223, -0.2661786);
         let up = Vec3::new(-0.39032218, 0.8092439, -0.43905908);
-        let local = native_frame_camera(eye, forward, up, 1196.0 / 729.0, 2.4, 46_371_000.0, true);
-        let global = native_frame_camera(eye, forward, up, 1196.0 / 729.0, 2.4, 46_371_000.0, false);
+        let local = native_frame_camera(eye, forward, up, 1196.0 / 729.0, 2.4, 46_371_000.0, eye);
+        let global =
+            native_frame_camera(eye, forward, up, 1196.0 / 729.0, 2.4, 46_371_000.0, DVec3::ZERO);
         assert_eq!(local.position, Vec3::ZERO);
         assert_eq!(global.position, eye.as_vec3());
         let local_vp = local.proj * local.view;
