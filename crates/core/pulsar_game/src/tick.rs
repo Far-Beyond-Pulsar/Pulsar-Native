@@ -140,6 +140,7 @@ impl ScriptStats {
             self.write_instances_last = locks.phase.write_instances as u64;
             self.read_threads_last = locks.phase.read_threads as u64;
         }
+
         self.started += report.started.len() as u64;
         self.stopped += report.stopped.len() as u64;
         self.spawned += report.spawned.len() as u64;
@@ -236,6 +237,7 @@ impl TickLoop {
             TickMode::Fixed { dt } => dt * 5,
             TickMode::Variable { max_delta } => max_delta,
         };
+        
         let running = Arc::new(AtomicBool::new(false));
         Self {
             scene_store,

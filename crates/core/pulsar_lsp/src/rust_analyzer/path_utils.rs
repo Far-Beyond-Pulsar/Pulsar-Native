@@ -65,44 +65,6 @@ pub fn uri_key(uri: &str) -> String {
     path_key(&uri_to_path(uri))
 }
 
-/// Whether `file` lies inside `folder` (both compared by [`path_key`]).
-pub fn is_within(file: &Path, folder: &Path) -> bool {
-    let file = path_key(file);
-    let folder = path_key(folder);
-    let folder = folder.trim_end_matches('/');
-    file == folder || file.starts_with(&format!("{folder}/"))
-}
-
-/// The workspace folder the language server needs for `file`, or `None` when
-/// it already covers it.
-///
-/// rust-analyzer only knows the folders it was given. A file outside all of
-/// them is an unattached file: it has no crate graph, so even standard-library
-/// items answer nothing. Editors like VS Code register the file's own Cargo
-/// workspace with the running server; this finds the folder to register: the
-/// outermost directory above `file` holding a `Cargo.toml`.
-///
-/// Toolchain and dependency sources (`rustlib`, the cargo registry, git
-/// checkouts) are never folders: the server reaches them through whichever
-/// project depends on them.
-pub fn workspace_folder_for(file: &Path, existing: &[PathBuf]) -> Option<PathBuf> {
-    if existing.iter().any(|folder| is_within(file, folder)) {
-        return None;
-    }
-    let key = path_key(file);
-    if key.contains("/rustlib/")
-        || key.contains("/.cargo/registry/")
-        || key.contains("/.cargo/git/")
-    {
-        return None;
-    }
-    file.ancestors()
-        .skip(1)
-        .filter(|dir| dir.join("Cargo.toml").is_file())
-        .last()
-        .map(Path::to_path_buf)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,59 +93,6 @@ mod tests {
             PathBuf::from("/home/user/file.rs")
         );
         assert_eq!(uri_to_path("file:///C:/x%"), PathBuf::from("C:/x%"));
-    }
-
-    fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("pulsar_lsp_{name}_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn a_file_outside_every_folder_gets_the_outermost_cargo_workspace() {
-        let root = scratch("outer");
-        std::fs::create_dir_all(root.join("crates/inner/src")).unwrap();
-        std::fs::write(root.join("Cargo.toml"), "[workspace]").unwrap();
-        std::fs::write(root.join("crates/inner/Cargo.toml"), "[package]").unwrap();
-        let file = root.join("crates/inner/src/lib.rs");
-        std::fs::write(&file, "").unwrap();
-
-        let project = scratch("project");
-        assert_eq!(
-            workspace_folder_for(&file, &[project]).map(|p| path_key(&p)),
-            Some(path_key(&root))
-        );
-    }
-
-    #[test]
-    fn a_file_already_covered_needs_no_new_folder() {
-        let root = scratch("covered");
-        std::fs::write(root.join("Cargo.toml"), "[package]").unwrap();
-        let file = root.join("src.rs");
-        std::fs::write(&file, "").unwrap();
-        assert_eq!(workspace_folder_for(&file, &[root.clone()]), None);
-        assert!(is_within(&file, &root));
-        assert!(!is_within(&root.with_file_name("other"), &root));
-    }
-
-    #[test]
-    fn toolchain_and_registry_sources_are_never_folders() {
-        let root = scratch("sysroot");
-        let lib = root.join("lib/rustlib/src/rust/library/std/src");
-        std::fs::create_dir_all(&lib).unwrap();
-        std::fs::write(root.join("lib/rustlib/src/rust/library/std/Cargo.toml"), "[package]").unwrap();
-        let file = lib.join("vec.rs");
-        std::fs::write(&file, "").unwrap();
-        assert_eq!(workspace_folder_for(&file, &[]), None);
-    }
-
-    #[test]
-    fn a_loose_file_with_no_manifest_has_no_folder() {
-        let root = scratch("loose");
-        let file = root.join("script.rs");
-        std::fs::write(&file, "").unwrap();
-        assert_eq!(workspace_folder_for(&file, &[]), None);
     }
 
     #[test]
