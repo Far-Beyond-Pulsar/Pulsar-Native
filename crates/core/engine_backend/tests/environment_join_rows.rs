@@ -70,6 +70,7 @@ impl Join {
                     device: &self.device,
                     queue: &self.queue,
                     inputs: &inputs,
+                    world_origin: None,
                 },
                 &mut encoder,
             );
@@ -82,6 +83,7 @@ impl Join {
                 device: &self.device,
                 queue: &self.queue,
                 inputs: &inputs,
+                world_origin: None,
             },
             &mut encoder,
         );

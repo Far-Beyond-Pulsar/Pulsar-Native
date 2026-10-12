@@ -127,6 +127,32 @@ pub struct OpenTerminalHere {
     pub folder_path: String,
 }
 
+/// Reimport a linked source, given the source or the native asset built from
+/// it (empty: the selection).
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct ReimportSource {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+/// Import an importable file that has no link, through the import
+/// configurator (empty: the selection).
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct ImportSource {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+/// Drop a source's import link, keeping both files (empty: the selection).
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct UnlinkSource {
+    #[serde(default)]
+    pub item_path: String,
+}
+
 #[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager)]
 pub struct ValidateAsset {

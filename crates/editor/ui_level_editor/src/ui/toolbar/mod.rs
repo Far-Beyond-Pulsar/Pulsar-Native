@@ -90,7 +90,7 @@ impl ToolbarPanel {
                 let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
                 ToolModeDropdown::render(state, state_arc.clone(), cx)
             })
-            .child(LevelEditorMenus::render())
+            .child(LevelEditorMenus::render(state))
             .child(TransformSnapControls::render(snap_panels, state))
             .child(self.render_separator(cx))
             .when(has_mode_controls, |el| {

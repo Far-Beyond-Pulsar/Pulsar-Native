@@ -1,6 +1,7 @@
 pub mod actions;
 mod drag_drop;
 pub(crate) mod import_scan;
+pub(crate) mod import_state;
 pub mod fs_metadata;
 pub mod git_integration;
 pub mod helpers;

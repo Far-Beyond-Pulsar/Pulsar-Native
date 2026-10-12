@@ -34,6 +34,13 @@ FileManager.ToggleGitignore: "गिटिग्नोर टॉगल करे
 FileManager.ToggleHidden: "छिपा हुआ टॉगल करें"
 FileManager.CheckMultiuserSync: "मल्टीयूज़र सिंक जाँचें"
 FileManager.ShowHistory: "इतिहास दिखाएँ"
+FileManager.ImportSource: "इम्पोर्ट करें..."
+FileManager.Reimport: "फिर से इम्पोर्ट करें"
+FileManager.ReimportFromSource: "स्रोत से फिर से इम्पोर्ट करें"
+FileManager.UnlinkSource: "स्रोत अनलिंक करें"
+FileManager.UnlinkFromSource: "स्रोत से अनलिंक करें"
+FileManager.OutOfDate: "पुराना"
+FileManager.OutOfDateTooltip: "इम्पोर्ट के बाद स्रोत फ़ाइल बदल गई है। संदर्भ मेनू से फिर से इम्पोर्ट करें।"
 FileManager.SetColor: "रंग सेट करें"
 FileManager.ClearColor: "रंग साफ़ करें"
 

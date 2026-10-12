@@ -4751,6 +4751,7 @@ name = "helio-default-graphs"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio",
  "helio-core",
  "helio-mats",
@@ -4825,6 +4826,7 @@ name = "helio-pass-corona"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "helio-pass-gbuffer",
  "pulsar_reflection",
@@ -6839,7 +6841,7 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=bf2b5da85a2b237def8c5c565c55fed9d526dcb2#bf2b5da85a2b237def8c5c565c55fed9d526dcb2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
  "ropey 1.6.1",
 ]
@@ -6847,7 +6849,7 @@ dependencies = [
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=bf2b5da85a2b237def8c5c565c55fed9d526dcb2#bf2b5da85a2b237def8c5c565c55fed9d526dcb2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
  "mockaco-core",
  "similar 3.2.0",
@@ -6856,7 +6858,7 @@ dependencies = [
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=bf2b5da85a2b237def8c5c565c55fed9d526dcb2#bf2b5da85a2b237def8c5c565c55fed9d526dcb2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
  "gpui-ce",
  "mockaco-core",
@@ -6868,7 +6870,7 @@ dependencies = [
 [[package]]
 name = "mockaco-language"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=bf2b5da85a2b237def8c5c565c55fed9d526dcb2#bf2b5da85a2b237def8c5c565c55fed9d526dcb2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
  "mockaco-core",
  "streaming-iterator",
@@ -6879,7 +6881,7 @@ dependencies = [
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=bf2b5da85a2b237def8c5c565c55fed9d526dcb2#bf2b5da85a2b237def8c5c565c55fed9d526dcb2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
  "mockaco-core",
 ]
@@ -9183,7 +9185,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
 dependencies = [
  "heck",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "petgraph 0.8.3",
@@ -9202,7 +9204,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -13838,12 +13840,14 @@ dependencies = [
  "engine_backend",
  "engine_state",
  "gpui-ce",
+ "image",
  "parking_lot",
  "profiling 0.1.0",
  "rodio",
  "rust-i18n",
  "serde_json",
  "smol",
+ "tempfile",
  "tracing",
  "ui",
  "ui_common",

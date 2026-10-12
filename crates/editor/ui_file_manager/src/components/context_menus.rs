@@ -242,11 +242,59 @@ impl CategoryNode {
     }
 }
 
+/// Import actions for a file with an import state (#1102), followed by a
+/// separator; nothing for other files.
+fn import_items(
+    menu: ui::popup_menu::PopupMenu,
+    path: &std::path::Path,
+    import: Option<&asset_import::FileImportState>,
+) -> ui::popup_menu::PopupMenu {
+    use asset_import::FileImportState;
+    let item_path = path.to_string_lossy().to_string();
+    match import {
+        None => menu,
+        Some(FileImportState::Unlinked | FileImportState::Ignored) => menu
+            .menu_with_icon(
+                t!("FileManager.ImportSource").to_string(),
+                ui::Icon::new(ui::IconName::Import),
+                Box::new(ImportSource { item_path }),
+            )
+            .separator(),
+        Some(
+            state @ (FileImportState::LinkedSource { .. } | FileImportState::LinkedAsset { .. }),
+        ) => {
+            let from_asset = matches!(state, FileImportState::LinkedAsset { .. });
+            let (reimport, unlink) = if from_asset {
+                (
+                    t!("FileManager.ReimportFromSource"),
+                    t!("FileManager.UnlinkFromSource"),
+                )
+            } else {
+                (t!("FileManager.Reimport"), t!("FileManager.UnlinkSource"))
+            };
+            menu.menu_with_icon(
+                reimport.to_string(),
+                ui::Icon::new(ui::IconName::Refresh),
+                Box::new(ReimportSource {
+                    item_path: item_path.clone(),
+                }),
+            )
+            .menu_with_icon(
+                unlink.to_string(),
+                ui::Icon::new(ui::IconName::LinkSlash),
+                Box::new(UnlinkSource { item_path }),
+            )
+            .separator()
+        }
+    }
+}
+
 /// Build a context menu for files and other items
 pub fn item_context_menu(
     path: PathBuf,
     has_clipboard: bool,
     is_class: bool,
+    import: Option<asset_import::FileImportState>,
 ) -> impl Fn(
     ui::popup_menu::PopupMenu,
     &mut Window,
@@ -306,7 +354,11 @@ pub fn item_context_menu(
                 ui::Icon::new(ui::IconName::Copy),
                 Box::new(DuplicateItem::default()),
             )
-            .separator()
+            .separator();
+
+        menu = import_items(menu, &path_for_submenu, import.as_ref());
+
+        menu = menu
             .menu_with_icon(
                 t!("FileManager.ValidateAsset").to_string(),
                 ui::Icon::new(ui::IconName::CircleCheck),
