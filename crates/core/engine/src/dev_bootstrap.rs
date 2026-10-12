@@ -239,7 +239,8 @@ fn run_bootstrap(args: &[OsString], stable_executable: Option<&Path>, shared: &S
         let workspace = PathBuf::from(arg(args, 3)?);
         let working_directory = PathBuf::from(arg(args, 5)?);
         let restart_args = args.get(6..).unwrap_or_default().to_vec();
-        let release_executable = release_executable_path(&workspace);
+        let target_dir = cargo_target_dir(&workspace);
+        let release_executable = release_executable_path(&target_dir);
 
         wait_for_process_exit(parent_pid)?;
         let log_path = bootstrap_log_path();
@@ -249,9 +250,12 @@ fn run_bootstrap(args: &[OsString], stable_executable: Option<&Path>, shared: &S
             .write(true)
             .open(&log_path)
             .map_err(|error| format!("Could not create {}: {error}", log_path.display()))?;
-        append_log("Building the release engine binary...\n");
+        append_log(&format!(
+            "Building the release engine binary in {}...\n",
+            target_dir.display()
+        ));
         set_progress(shared, "Building release engine", 0.12);
-        match run_cargo_build(&workspace, shared)? {
+        match run_cargo_build(&workspace, &target_dir, shared)? {
             status if status.success() => {}
             status => return Err(format!("The release engine build failed with {status}")),
         }
@@ -349,6 +353,7 @@ fn show_failure_and_wait(
 
 fn run_cargo_build(
     workspace: &Path,
+    target_dir: &Path,
     shared: &SharedState,
 ) -> Result<std::process::ExitStatus, String> {
     let log_path = bootstrap_log_path();
@@ -366,6 +371,8 @@ fn run_cargo_build(
         .current_dir(workspace)
         .args(["build", "-p", "pulsar_engine", "--release"])
         .args(["-j", worker_arg.as_str()])
+        .arg("--target-dir")
+        .arg(target_dir)
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(stderr));
     hide_console(&mut cargo);
@@ -387,8 +394,8 @@ fn run_cargo_build(
     }
 }
 
-fn release_executable_path(workspace: &Path) -> PathBuf {
-    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+fn cargo_target_dir(workspace: &Path) -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .map(|path| {
             if path.is_absolute() {
@@ -397,7 +404,10 @@ fn release_executable_path(workspace: &Path) -> PathBuf {
                 workspace.join(path)
             }
         })
-        .unwrap_or_else(|| workspace.join("target"));
+        .unwrap_or_else(|| workspace.join("target"))
+}
+
+fn release_executable_path(target_dir: &Path) -> PathBuf {
     #[cfg(windows)]
     let binary_name = "pulsar_engine.exe";
     #[cfg(not(windows))]
