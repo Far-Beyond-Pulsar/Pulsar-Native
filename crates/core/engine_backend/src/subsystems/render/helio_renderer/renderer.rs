@@ -1751,6 +1751,9 @@ impl HelioRenderer {
             // that the zero-central-knowledge architecture mandate says
             // shouldn't exist here -- flagged for a follow-up pass, not
             // fixed now.
+            // Meshes and other assets load off the write path; bind the
+            // finished ones before this frame's upload (SceneDB#84).
+            crate::scene::pump_assets(&self.scene_store);
             {
                 profiling::profile_scope!("helio_flush_gpu_mirror");
                 let store = {

@@ -91,6 +91,38 @@ pub fn new_scene() -> pulsar_scenedb::SceneDb {
     scene
 }
 
+/// How long a level load waits for its assets before showing the level with
+/// the rest still loading.
+pub const LEVEL_ASSET_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Load the assets a just-hydrated level references (its meshes) before it
+/// is shown, so the first frame is complete (SceneDB#84). The loads run in
+/// parallel on SceneDB's workers; anything still loading after
+/// [`LEVEL_ASSET_WAIT`] finishes through the renderer's per-frame pump.
+pub fn resolve_level_assets(world: &mut pulsar_scenedb::World) {
+    profiling::profile_scope!("scene::resolve_level_assets");
+    if !world.resolve_assets_blocking(LEVEL_ASSET_WAIT) {
+        tracing::warn!(
+            "Level assets still loading after {:?}; they appear as they finish",
+            LEVEL_ASSET_WAIT
+        );
+    }
+}
+
+/// Advance asset loading in the shared scene: start loads for newly
+/// referenced assets and bind the finished ones. Takes the scene's write
+/// lock only when there is work. Called once per frame before the GPU
+/// upload by every render loop (the editor viewport's, and the game's
+/// windowed and embedded ones), and at the end of every game tick, which
+/// also covers headless runs.
+pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
+    if !scene.read().world.asset_work_pending() {
+        return pulsar_scenedb::AssetPumpReport::default();
+    }
+    profiling::profile_scope!("scene::pump_assets");
+    scene.write().world.pump_assets()
+}
+
 /// Close this frame's change window: drop everything the world's change
 /// tracker recorded since the last call and start a new frame.
 ///

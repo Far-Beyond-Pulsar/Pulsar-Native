@@ -486,8 +486,8 @@ impl PulsarApp {
         // actors survive; no pulsar_scene::SceneLoader's second world.
         if let Some(ref path) = scene_path {
             tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into shared world");
-            // Asset-resolving hydrates (`StaticMeshComponent`'s mesh load)
-            // read the asset root from the engine global, which
+            // The level's assets (its meshes) are loaded before it is shown;
+            // their sources resolve against the engine global, which
             // `standalone::prepare_engine` set before the event loop ran.
             // Placed classes resolve against the content's classes (its
             // class index when packaged).
@@ -728,7 +728,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // flush its GPU mirror. Helio's scene join reads the mirrored
                 // rows directly -- there is no renderer-owned frame projection
                 // or CPU object cache to rebuild here (same seam the editor
-                // viewport renderer uses).
+                // viewport renderer uses). Bind the meshes that finished
+                // loading first, so they upload with this frame (SceneDB#84).
+                engine_backend::scene::pump_assets(&self.scene_store);
                 self.scene_store.write().step();
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,

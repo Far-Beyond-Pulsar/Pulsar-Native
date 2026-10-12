@@ -491,6 +491,11 @@ impl TickLoop {
         self.events.flush(pulsar_events::FlushPoint::AfterScripts);
         self.events.flush(pulsar_events::FlushPoint::EndOfFrame);
 
+        // Assets this tick referenced (a spawned actor's mesh) start loading,
+        // and the finished ones bind, also in a headless run with no render
+        // loop to do it (SceneDB#84). An already-loaded mesh binds here.
+        engine_backend::scene::pump_assets(&self.scene_store);
+
         // The world's change history only covers the current frame, so the
         // frame's moves are checked before it closes. Anything this tick
         // moved that is authored fixed is a bug (it is logged once).

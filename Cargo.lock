@@ -2313,7 +2313,7 @@ dependencies = [
  "cssparser-macros",
  "dtoa-short",
  "itoa",
- "phf 0.11.3",
+ "phf 0.10.1",
  "smallvec",
 ]
 
@@ -6291,12 +6291,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lhash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "744a4c881f502e98c2241d2e5f50040ac73b30194d64452bb6260393b53f0dc9"
-
-[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6559,12 +6553,9 @@ checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
 name = "mach-dxcompiler-rs"
-version = "0.1.6+2026.09.16-48d5a66.1"
+version = "0.1.4+2024.11.22-df583a3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "699d5b85d279d172f6ea742c6c47342fdd7c388872cea2e137e2c6721ef2e6d6"
-dependencies = [
- "lhash",
-]
+checksum = "0e3cd67e8ea2ba061339150970542cf1c60ba44c6d17e31279cbc133a4b018f8"
 
 [[package]]
 name = "mach2"
@@ -8470,7 +8461,9 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fabbf1ead8a5bcbc20f5f8b939ee3f5b0f6f281b6ad3468b84656b658b455259"
 dependencies = [
+ "phf_macros 0.10.0",
  "phf_shared 0.10.0",
+ "proc-macro-hack",
 ]
 
 [[package]]
@@ -8479,7 +8472,6 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd6780a80ae0c52cc120a26a1a42c1ae51b247a253e4e06113d23d2c2edd078"
 dependencies = [
- "phf_macros 0.11.3",
  "phf_shared 0.11.3",
 ]
 
@@ -8577,15 +8569,16 @@ dependencies = [
 
 [[package]]
 name = "phf_macros"
-version = "0.11.3"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f84ac04429c13a7ff43785d75ad27569f2951ce0ffd30a3321230db2fc727216"
+checksum = "58fdf3184dd560f160dd73922bea2d5cd6e8f064bf4b13110abd81b03697b4e0"
 dependencies = [
- "phf_generator 0.11.3",
- "phf_shared 0.11.3",
+ "phf_generator 0.10.0",
+ "phf_shared 0.10.0",
+ "proc-macro-hack",
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -9078,6 +9071,12 @@ checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
 dependencies = [
  "toml_edit 0.25.13+spec-1.1.0",
 ]
+
+[[package]]
+name = "proc-macro-hack"
+version = "0.5.20+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc375e1527247fe1a97d8b7156678dfe7c1af2fc075c9a4db3690ecd2a148068"
 
 [[package]]
 name = "proc-macro-utils"
@@ -9686,7 +9685,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=685b1b0aa212b64912549efd583c93480bea027f#685b1b0aa212b64912549efd583c93480bea027f"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=81bb3557b71014ccc00f1275f60138867cc492ea#81bb3557b71014ccc00f1275f60138867cc492ea"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9702,7 +9701,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=685b1b0aa212b64912549efd583c93480bea027f#685b1b0aa212b64912549efd583c93480bea027f"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=81bb3557b71014ccc00f1275f60138867cc492ea#81bb3557b71014ccc00f1275f60138867cc492ea"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
@@ -11505,7 +11504,7 @@ version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
- "dirs 6.0.0",
+ "dirs 5.0.1",
 ]
 
 [[package]]

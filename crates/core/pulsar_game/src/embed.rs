@@ -429,7 +429,9 @@ impl EmbeddedGame {
         //    directly -- there is no renderer-owned frame projection or CPU
         //    object cache to rebuild here (same seam the editor viewport
         //    renderer uses). A runtime-spawned entity or a moved object
-        //    therefore shows up on the very next frame.
+        //    therefore shows up on the very next frame. Meshes that finished
+        //    loading are bound first, so they upload with it (SceneDB#84).
+        engine_backend::scene::pump_assets(&self.scene_store);
         self.scene_store.write().step();
 
         // 3. Camera. A Camera-typed entity in the shared world drives the

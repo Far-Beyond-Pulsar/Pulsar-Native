@@ -218,6 +218,7 @@ impl RuntimeLevel {
         // One sky and one directional light per level; extras are kept but
         // disabled, logged.
         crate::scene::level_rules::enforce_on_load(world);
+        crate::scene::resolve_level_assets(world);
         // What the migration could not turn into a ClassInstance (a second
         // class bound to one object) has no script instance any more.
         for (stable_id, bindings) in &file.blueprint_bindings {
