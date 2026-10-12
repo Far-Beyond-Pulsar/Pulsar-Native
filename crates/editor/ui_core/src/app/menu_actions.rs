@@ -105,11 +105,11 @@ impl PulsarApp {
                     let Some(source_root) = source_build_root() else {
                         return;
                     };
-                    let manifest = source_root.join("Cargo.toml");
-                    if manifest.is_file() {
-                        this.open_path_with_project_root(manifest, source_root, window, cx);
+                    let engine_entry = source_root.join("crates/core/engine/src/main.rs");
+                    if engine_entry.is_file() {
+                        this.open_path_with_project_root(engine_entry, source_root, window, cx);
                     } else {
-                        tracing::error!(?source_root, "Source build workspace has no Cargo.toml");
+                        tracing::error!(?source_root, "Engine source entry point was not found");
                     }
                 }),
             )

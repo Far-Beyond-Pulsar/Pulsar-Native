@@ -45,41 +45,35 @@ fn run_sidecar(
 
     wait_for_process_exit(parent_pid)?;
 
-    let profile = executable
-        .parent()
-        .and_then(|path| path.file_name())
-        .and_then(|name| name.to_str())
-        .unwrap_or("debug");
-    let mut cargo = Command::new("cargo");
-    cargo
-        .current_dir(&workspace)
-        .args(["build", "-p", "pulsar_engine"]);
-    if profile == "release" {
-        cargo.arg("--release");
-    }
-
     let log_path = bootstrap_log_path();
-    let log = OpenOptions::new()
+    OpenOptions::new()
         .create(true)
         .truncate(true)
         .write(true)
         .open(&log_path)
         .map_err(|error| format!("Could not create {}: {error}", log_path.display()))?;
-    let stderr = log
-        .try_clone()
-        .map_err(|error| format!("Could not open bootstrap log: {error}"))?;
-    cargo.stdout(Stdio::from(log)).stderr(Stdio::from(stderr));
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt as _;
-        cargo.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
+    append_log("Building debug and release engine binaries...\n");
 
-    let status = match cargo.status() {
-        Ok(status) => status,
-        Err(error) => {
-            let message = format!("Could not run cargo build: {error}");
-            append_log(&format!("\n{message}\n"));
+    for release in [false, true] {
+        let profile_name = if release { "release" } else { "debug" };
+        let status = match run_cargo_build(&workspace, release) {
+            Ok(status) => status,
+            Err(error) => {
+                let message = format!("Could not run the {profile_name} build: {error}");
+                append_log(&format!("\n{message}\n"));
+                offer_stable_relaunch(
+                    stable_executable,
+                    &executable,
+                    &working_directory,
+                    &restart_args,
+                    &message,
+                );
+                return Ok(());
+            }
+        };
+        if !status.success() {
+            let message = format!("The {profile_name} engine build failed with {status}");
+            append_log(&format!("\n{message}.\n"));
             offer_stable_relaunch(
                 stable_executable,
                 &executable,
@@ -89,21 +83,10 @@ fn run_sidecar(
             );
             return Ok(());
         }
-    };
-    if !status.success() {
-        let message = format!("Cargo build failed with {status}");
-        append_log(&format!("\n{message}.\n"));
-        offer_stable_relaunch(
-            stable_executable,
-            &executable,
-            &working_directory,
-            &restart_args,
-            &message,
-        );
-        return Ok(());
     }
 
-    let mut restart = Command::new(&executable);
+    let active_executable = executable.clone();
+    let mut restart = Command::new(&active_executable);
     restart.current_dir(working_directory).args(restart_args);
     #[cfg(windows)]
     {
@@ -116,9 +99,40 @@ fn run_sidecar(
 
     append_log(&format!(
         "\nEngine rebuilt from source and relaunched from {}.\n",
-        executable.display()
+        active_executable.display()
     ));
     Ok(())
+}
+
+fn run_cargo_build(
+    workspace: &std::path::Path,
+    release: bool,
+) -> Result<std::process::ExitStatus, String> {
+    let log_path = bootstrap_log_path();
+    let log = OpenOptions::new()
+        .append(true)
+        .open(&log_path)
+        .map_err(|error| format!("Could not open {}: {error}", log_path.display()))?;
+    let stderr = log
+        .try_clone()
+        .map_err(|error| format!("Could not open bootstrap log: {error}"))?;
+    let mut cargo = Command::new("cargo");
+    cargo
+        .current_dir(workspace)
+        .args(["build", "-p", "pulsar_engine"]);
+    if release {
+        cargo.arg("--release");
+    }
+    cargo.stdout(Stdio::from(log)).stderr(Stdio::from(stderr));
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        cargo.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    cargo
+        .status()
+        .map_err(|error| format!("could not start cargo: {error}"))
 }
 
 fn offer_stable_relaunch(
