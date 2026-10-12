@@ -174,10 +174,12 @@ fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec
         component_id::<pulsar_scene_model::attachments::ComponentMeta>(),
         // Kept data of an unregistered class: nothing draws it.
         component_id::<pulsar_scene_model::attachments::UnresolvedComponent>(),
-        // The voxel world itself, traced camera-relative. (A free-standing
-        // VoxelComponent draws as a world-space mesh, so it is not here.)
+        // The voxel world itself, traced camera-relative.
         component_id::<helio_component::VoxelTerrainComponent>(),
         component_id::<helio_component::VoxelTerrainLayersComponent>(),
+        // A free-standing voxel object: its chunks are its mesh rows, which
+        // the scene join places like any mesh (below).
+        component_id::<helio_component::VoxelComponent>(),
         // Lights of every type: the scene join writes their positions
         // relative to the world origin, so culling and shadow matrices are
         // in the frame's space; their editor icons are billboards, which
@@ -192,6 +194,22 @@ fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec
         component_id::<helio_component::AtmosphereComponent>(),
         component_id::<helio_component::PostProcessVolumeComponent>(),
         component_id::<helio_component::CameraPostProcessComponent>(),
+        // The environment join places decals, particle emitters, water
+        // volumes and the water bodies push relative to the world origin;
+        // the Corona pass moves live particles, and the water simulation
+        // its waves and previous body bounds, with the origin.
+        component_id::<helio_component::components::DecalComponent>(),
+        component_id::<helio_component::components::ParticleEmitterComponent>(),
+        component_id::<helio_component::WaterVolumeComponent>(),
+        component_id::<pulsar_physics::PhysicsComponent>(),
+        // Fog volumes stay in world space: the fog pass adds the world
+        // origin to the positions it reconstructs.
+        component_id::<helio_component::components::GlobalFogComponent>(),
+        component_id::<helio_component::components::LocalFogVolumeComponent>(),
+        // Splines draw as world-space lines in the editor overlay, which
+        // subtracts the world origin; LOD settings draw nothing.
+        component_id::<helio_component::components::SplineComponent>(),
+        component_id::<helio_component::components::LODComponent>(),
         // The global wind: a direction and speed, no position.
         component_id::<helio_component::components::WindComponent>(),
         // 2D sprites: screen space, drawn by their own camera.
@@ -2715,6 +2733,38 @@ mod native_relative_camera_tests {
         assert!(read.relative_camera_refusals.is_empty(), "{:?}", read.relative_camera_refusals);
         assert!(read.authored_meshes);
         assert!(read.sun.is_none(), "a point light is not the sun");
+
+        // So are decals, particles, water and the bodies that push it, fog,
+        // splines and free-standing voxel objects.
+        let props = scene.world.spawn_object(SpawnObject::new("props")).unwrap();
+        let world = &mut scene.world;
+        use helio_component::components as c;
+        pulsar_world_registry::attach_value(world, props, c::DecalComponent::default()).unwrap();
+        pulsar_world_registry::attach_value(world, props, c::ParticleEmitterComponent::default())
+            .unwrap();
+        pulsar_world_registry::attach_value(world, props, helio_component::WaterVolumeComponent::default())
+            .unwrap();
+        pulsar_world_registry::attach_value(world, props, pulsar_physics::PhysicsComponent::default())
+            .unwrap();
+        pulsar_world_registry::attach_value(world, props, c::GlobalFogComponent::default()).unwrap();
+        pulsar_world_registry::attach_value(world, props, c::LocalFogVolumeComponent::default())
+            .unwrap();
+        pulsar_world_registry::attach_value(world, props, c::SplineComponent::default()).unwrap();
+        pulsar_world_registry::attach_value(world, props, c::LODComponent::default()).unwrap();
+        pulsar_world_registry::attach_value(world, props, helio_component::VoxelComponent::default())
+            .unwrap();
+        let read = VoxelSceneRead::of(&scene.world);
+        assert!(read.relative_camera_refusals.is_empty(), "{:?}", read.relative_camera_refusals);
+
+        // Foliage is grown in world tiles: it keeps frames in world space.
+        pulsar_world_registry::attach_value(&mut scene.world, props, c::FoliageComponent::default())
+            .unwrap();
+        let read = VoxelSceneRead::of(&scene.world);
+        assert!(
+            read.relative_camera_refusals.iter().any(|name| name.contains("Foliage")),
+            "{:?}",
+            read.relative_camera_refusals
+        );
     }
 
     /// The origin follows the camera a cell at a time, so the positions the
@@ -2727,7 +2777,7 @@ mod native_relative_camera_tests {
         assert_eq!(origin, DVec3::new(-3_427_328.0, 4_769_792.0, -2_476_032.0));
         assert!((eye - origin).abs().max_element() <= WORLD_ORIGIN_CELL / 2.0);
         // Moving within a cell keeps it; leaving moves it to the new cell.
-        let near = eye + DVec3::new(900.0, -700.0, 300.0);
+        let near = eye + DVec3::new(500.0, -400.0, 300.0);
         assert_eq!(frame_world_origin(Some(origin), near), origin);
         let far = eye + DVec3::new(5_000.0, 0.0, 0.0);
         let moved = frame_world_origin(Some(origin), far);
