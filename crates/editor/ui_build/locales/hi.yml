@@ -1,0 +1,170 @@
+# Build - hi
+
+# Build button
+Build.Button.Cancel: "बिल्ड रद्द करें"
+Build.Button.CancelTooltip: "बिल्ड रोकें"
+Build.Button.NoConfiguration: "कोई कॉन्फ़िगरेशन नहीं"
+Build.Button.NoConfigurationTooltip: "कोई बिल्ड कॉन्फ़िगरेशन चुनें"
+Build.Button.ChooseTooltip: "बिल्ड कॉन्फ़िगरेशन चुनें"
+Build.Button.StopGame: "रोकें"
+Build.Button.StopGameTooltip: "चल रहा गेम रोकें"
+
+# Picker
+Build.Picker.Empty: "अभी तक कोई बिल्ड कॉन्फ़िगरेशन नहीं है।"
+Build.Picker.Edit: "कॉन्फ़िगरेशन संपादित करें…"
+
+# Search
+Build.Search.Configurations: "कॉन्फ़िगरेशन खोजें…"
+Build.Search.Platforms: "प्लेटफ़ॉर्म खोजें…"
+Build.Search.NoConfigurationsMatch: "“%{query}” से मेल खाता कोई कॉन्फ़िगरेशन नहीं है।"
+Build.Search.NoPlatformsMatch: "आपकी खोज से मेल खाता कोई प्लेटफ़ॉर्म नहीं है।"
+
+# Configurator window
+Build.Configurator.Title: "बिल्ड कॉन्फ़िगरेशन"
+Build.Configurator.Configurations: "कॉन्फ़िगरेशन"
+Build.Configurator.New: "नया"
+Build.Configurator.NewTooltip: "बिल्ड कॉन्फ़िगरेशन बनाएँ"
+Build.Configurator.Empty: "अभी तक कोई कॉन्फ़िगरेशन नहीं है।"
+Build.Configurator.CountOne: "%{count} कॉन्फ़िगरेशन"
+Build.Configurator.CountMany: "%{count} कॉन्फ़िगरेशन"
+Build.Configurator.Filtered: "%{total} में से %{shown}"
+Build.Configurator.NoneTitle: "कोई बिल्ड कॉन्फ़िगरेशन नहीं"
+Build.Configurator.NoneDescription: "कॉन्फ़िगरेशन बताता है कि कैसे बिल्ड करना है: Rust मोड, प्लेटफ़ॉर्म और चरण।"
+Build.Configurator.Create: "कॉन्फ़िगरेशन बनाएँ"
+Build.Configurator.SetActive: "सक्रिय बनाएँ"
+Build.Configurator.SetActiveTooltip: "बिल्ड बटन के लिए यह कॉन्फ़िगरेशन इस्तेमाल करें"
+Build.Configurator.Active: "सक्रिय"
+Build.Configurator.Duplicate: "डुप्लिकेट"
+Build.Configurator.Delete: "हटाएँ"
+Build.Configurator.ConfirmDelete: "हटाने के लिए फिर से क्लिक करें"
+
+# General section
+Build.General.Title: "सामान्य"
+Build.General.Description: "यह कॉन्फ़िगरेशन बिल्ड मेनू में कैसे दिखता है।"
+Build.General.Name: "नाम"
+Build.General.NamePlaceholder: "कॉन्फ़िगरेशन का नाम"
+Build.General.NameRequired: "कॉन्फ़िगरेशन का नाम होना ज़रूरी है।"
+Build.General.NameTaken: "यह नाम पहले से किसी दूसरे कॉन्फ़िगरेशन में इस्तेमाल हो रहा है।"
+Build.General.ConfigDescription: "विवरण"
+Build.General.DescriptionPlaceholder: "यह कॉन्फ़िगरेशन किसलिए है"
+
+# Rust build mode section
+Build.Profile.Title: "Rust बिल्ड मोड"
+Build.Profile.Description: "वह cargo प्रोफ़ाइल जिसे हर कंपाइल चरण इस्तेमाल करता है।"
+Build.Profile.Debug.Summary: "कंपाइल तेज़, चलना धीमा। डीबग असर्शन चालू।"
+Build.Profile.Release.Summary: "असली प्रदर्शन जाँचने के लिए ऑप्टिमाइज़्ड बिल्ड।"
+Build.Profile.Shipping.Summary: "fat LTO, एक codegen यूनिट और हटाए गए सिंबल वाला Release।"
+
+# Platforms section
+Build.Platforms.Title: "प्लेटफ़ॉर्म"
+Build.Platforms.Description: "हर चुना गया प्लेटफ़ॉर्म बारी-बारी से बिल्ड होता है। इस मशीन के लिए बिल्ड करने हेतु खाली छोड़ें।"
+Build.Platforms.ThisMachine: "यह मशीन"
+Build.Platforms.ThisMachineDefault: "यह मशीन (डिफ़ॉल्ट)"
+Build.Platforms.ThisMachineTooltip: "उस प्लेटफ़ॉर्म के लिए बिल्ड करें जिस पर यह एडिटर चल रहा है"
+Build.Platforms.Desktop: "डेस्कटॉप"
+Build.Platforms.DesktopTooltip: "Windows x64, Linux x64 और macOS Apple Silicon"
+Build.Platforms.Chosen: "%{total} में से %{chosen}"
+Build.Platforms.NeedsSdk: "कंसोल SDK चाहिए; cargo इसे बिल्ड नहीं कर सकता"
+
+# Platform families
+Build.Family.Unix: "Solaris और illumos"
+Build.Family.Other: "अन्य"
+Build.Family.Console: "कंसोल"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7 (हार्डवेयर फ़्लोट)"
+Build.Target.LinuxArmGnueabi: "Linux ARM (सॉफ़्टवेयर फ़्लोट)"
+Build.Target.LinuxArmGnueabihf: "Linux ARM (हार्डवेयर फ़्लोट)"
+Build.Target.IosAarch64: "iOS डिवाइस"
+Build.Target.IosX86_64: "iOS सिम्युलेटर (Intel)"
+Build.Target.IosAarch64Sim: "iOS सिम्युलेटर (Apple Silicon)"
+
+# Build steps section
+Build.Steps.Title: "बिल्ड चरण"
+Build.Steps.Description: "ये हमेशा इसी क्रम में चलते हैं। इस्तेमाल न होने वाले चरण छोड़ दिए जाते हैं।"
+Build.Steps.Update.Title: "डिपेंडेंसी अपडेट करें"
+Build.Steps.Update.Description: "cargo update: पहले नवीनतम संगत वर्ज़न लाएँ।"
+Build.Steps.Clean.Title: "पहले साफ़ करें"
+Build.Steps.Clean.Description: "cargo clean: पुराना बिल्ड आउटपुट हटाकर शुरू से शुरू करें।"
+Build.Steps.Check.Title: "जाँचें"
+Build.Steps.Check.Description: "cargo check: बाइनरी बनाए बिना जल्दी टाइप-जाँच करें।"
+Build.Steps.Build.Title: "बिल्ड"
+Build.Steps.Build.Description: "cargo build: हर चुने गए प्लेटफ़ॉर्म के लिए कंपाइल करें।"
+Build.Steps.Run.Title: "चलाएँ"
+Build.Steps.Run.Description: "बिल्ड पूरा होने पर गेम शुरू करें (बिल्ड चालू हो जाता है)।"
+Build.Steps.Preset.QuickCheck: "त्वरित जाँच"
+Build.Steps.Preset.Build: "बिल्ड"
+Build.Steps.Preset.CleanBuild: "क्लीन बिल्ड"
+Build.Steps.Preset.BuildAndRun: "बिल्ड करें और चलाएँ"
+Build.Steps.Preset.FullRefresh: "पूरा रीफ़्रेश"
+Build.Steps.Summary.Update: "अपडेट"
+Build.Steps.Summary.Clean: "साफ़"
+Build.Steps.Summary.Check: "जाँच"
+Build.Steps.Summary.Build: "बिल्ड"
+Build.Steps.Summary.Run: "चलाएँ"
+Build.Steps.Summary.None: "कोई चरण नहीं"
+
+# Pipeline preview
+Build.Preview.Title: "पाइपलाइन पूर्वावलोकन"
+Build.Preview.Bootstrap: "प्रोजेक्ट फ़ाइलें बनाएँ या रीफ़्रेश करें"
+Build.Preview.Environment: "एनवायरनमेंट: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "उन्नत"
+Build.Advanced.Description: "हर cargo check, build और run को दिया जाता है।"
+Build.Advanced.Features: "Cargo फ़ीचर (कॉमा या स्पेस से अलग)"
+Build.Advanced.ExtraArgs: "अतिरिक्त cargo आर्ग्युमेंट"
+Build.Advanced.QuoteHint: "स्पेस वाले आर्ग्युमेंट को उद्धरण चिह्नों में रखें: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "प्रोजेक्ट तैयार हो रहा है"
+Build.Step.Update: "डिपेंडेंसी अपडेट हो रही हैं"
+Build.Step.Clean: "बिल्ड आर्टिफ़ैक्ट साफ़ हो रहे हैं"
+Build.Step.Check: "जाँच हो रही है"
+Build.Step.CheckFor: "%{platform} के लिए जाँच हो रही है"
+Build.Step.Build: "बिल्ड हो रहा है"
+Build.Step.BuildFor: "%{platform} के लिए बिल्ड हो रहा है"
+Build.Step.Run: "शुरू हो रहा है"
+Build.Step.RunFor: "%{platform} के लिए शुरू हो रहा है"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "इस कॉन्फ़िगरेशन में कोई चरण चालू नहीं है।"
+Build.Plan.UnbuildablePlatform: "%{platform} को cargo से बिल्ड नहीं किया जा सकता; इसके लिए प्लेटफ़ॉर्म SDK चाहिए।"
+Build.Plan.RunSkipped: "चलाना छोड़ दिया गया: चुने गए प्लेटफ़ॉर्म में से कोई भी इस मशीन पर नहीं चल सकता।"
+
+# Progress
+Build.Progress.Starting: "शुरू हो रहा है"
+Build.Progress.Resolving: "डिपेंडेंसी हल हो रही हैं"
+Build.Progress.Compiling: "%{name} कंपाइल हो रहा है"
+Build.Progress.Updating: "%{what} अपडेट हो रहा है"
+Build.Task.Title: "बिल्ड: %{name}"
+Build.Task.Starting: "बिल्ड शुरू हो रहा है"
+
+# Notifications
+Build.Notification.NoProject: "बिल्ड करने से पहले कोई प्रोजेक्ट खोलें।"
+Build.Notification.AlreadyRunning: "एक बिल्ड पहले से चल रहा है।"
+Build.Notification.Starting: "शुरू हो रहा है…"
+Build.Notification.Succeeded: "बिल्ड सफल"
+Build.Notification.Failed: "बिल्ड विफल"
+Build.Notification.Cancelled: "बिल्ड रद्द किया गया"
+Build.Notification.StoppedUnexpectedly: "बिल्ड अप्रत्याशित रूप से रुक गया।"
+
+# Cargo errors
+Build.Error.CouldNotStart: "cargo %{subcommand} शुरू नहीं हो सका: %{error}"
+Build.Error.CouldNotWait: "cargo की प्रतीक्षा नहीं हो सकी: %{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} विफल:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "त्रुटि %{number}"
+Build.Failure.Copy: "कॉपी करें"
+Build.Failure.CountOne: "Cargo से %{count} कंपाइलर त्रुटि मिली।"
+Build.Failure.CountMany: "Cargo से %{count} कंपाइलर त्रुटियाँ मिलीं।"
+Build.Failure.CopyAll: "सभी त्रुटियाँ कॉपी करें"
+Build.Failure.Close: "बंद करें"
+
+# Running the game
+Build.Game.Title: "चलाएँ"
+Build.Game.LaunchFailed: "गेम शुरू नहीं हो सका: %{error}"
+Build.Game.NonZeroExit: "गेम शून्य से भिन्न स्टेटस कोड के साथ बंद हुआ।"
+Build.Game.Crashed: "गेम क्रैश हो गया:\n%{output}"
+Build.Game.CrashedWithReport: "गेम क्रैश हो गया।\nरिपोर्ट यहाँ सहेजी गई: %{path}\n\n%{output}"

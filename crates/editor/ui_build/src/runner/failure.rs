@@ -6,6 +6,7 @@ use gpui::{
     ClipboardItem, Context, FontWeight, IntoElement, ListSizingBehavior, Render, Size, Window, div,
     prelude::*, px, size,
 };
+use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _};
 use ui::{
     ActiveTheme as _, ContextModal as _, IconName, Sizable as _, VirtualListScrollHandle, h_flex,
@@ -63,14 +64,14 @@ impl FailureList {
                         div()
                             .text_sm()
                             .font_weight(FontWeight::BOLD)
-                            .child(format!("Error {}", index + 1)),
+                            .child(t!("Build.Failure.Error", number = index + 1).to_string()),
                     )
                     .child(
                         Button::new(format!("copy-build-error-{index}"))
                             .small()
                             .ghost()
                             .icon(IconName::Copy)
-                            .label("Copy")
+                            .label(t!("Build.Failure.Copy").to_string())
                             .on_click(move |_, _, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
                             }),
@@ -106,11 +107,11 @@ impl Render for FailureList {
                 div()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child(format!(
-                        "{} compiler error{} captured from Cargo.",
-                        self.errors.len(),
-                        if self.errors.len() == 1 { "" } else { "s" }
-                    )),
+                    .child(if self.errors.len() == 1 {
+                        t!("Build.Failure.CountOne", count = 1).to_string()
+                    } else {
+                        t!("Build.Failure.CountMany", count = self.errors.len()).to_string()
+                    }),
             )
             .child(
                 div()
@@ -158,7 +159,7 @@ pub fn show(message: String, title: String, window: &mut Window, cx: &mut gpui::
                             Button::new("copy-all-build-errors")
                                 .primary()
                                 .icon(IconName::Copy)
-                                .label("Copy All Errors")
+                                .label(t!("Build.Failure.CopyAll").to_string())
                                 .on_click(move |_, _, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
                                         copy_all.clone(),
@@ -168,7 +169,7 @@ pub fn show(message: String, title: String, window: &mut Window, cx: &mut gpui::
                         .child(
                             Button::new("close-build-errors")
                                 .ghost()
-                                .label("Close")
+                                .label(t!("Build.Failure.Close").to_string())
                                 .on_click(|_, window, cx| window.close_modal(cx)),
                         ),
                 ),

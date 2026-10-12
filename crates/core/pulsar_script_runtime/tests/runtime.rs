@@ -160,7 +160,7 @@ fn instances_are_isolated_and_take_overrides() {
         .unwrap();
     let json: HashMap<String, serde_json::Value> =
         [("step".to_string(), serde_json::json!(100))].into();
-    rt.spawn_with_json("c", "Counter", None, &json).unwrap();
+    assert!(rt.spawn_with_json("c", "Counter", None, &json, &|_| None).unwrap().is_empty());
     rt.dispatch_pending_begin_play(&mut world);
     rt.tick_all(&mut world, 1.0);
     assert_eq!(rt.variable("a", "ticks"), Some(&Value::Int(1)));
@@ -174,7 +174,7 @@ fn instances_are_isolated_and_take_overrides() {
     // JSON overrides (level files) skip variables that no longer exist.
     let stale: HashMap<String, serde_json::Value> =
         [("gone".to_string(), serde_json::json!(1))].into();
-    rt.spawn_with_json("e", "Counter", None, &stale).unwrap();
+    assert!(rt.spawn_with_json("e", "Counter", None, &stale, &|_| None).unwrap().is_empty());
     assert!(matches!(
         rt.spawn("a", "Counter", None, &[]),
         Err(RuntimeError::DuplicateInstance(_))
@@ -183,6 +183,43 @@ fn instances_are_isolated_and_take_overrides() {
         rt.spawn("x", "Nope", None, &[]),
         Err(RuntimeError::UnknownClass(_))
     ));
+}
+
+#[test]
+fn json_overrides_name_entities_by_stable_id_and_fail_one_by_one() {
+    let mut rt = runtime();
+    let mut world = World::new();
+    let target = world.spawn();
+    let mut class = counter("Counter");
+    class.variables.push(Variable {
+        name: "target".into(),
+        ty: Type::Entity,
+        default: None,
+        id: None,
+    });
+    rt.load_class(class).unwrap();
+    let entity_for = |stable_id: &str| (stable_id == "door").then_some(target);
+
+    let overrides: HashMap<String, serde_json::Value> = [
+        ("target".to_string(), serde_json::json!("door")),
+        ("step".to_string(), serde_json::json!("not a number")),
+    ]
+    .into();
+    let rejected = rt
+        .spawn_with_json("a", "Counter", None, &overrides, &entity_for)
+        .unwrap();
+    // The bad override is reported on its own; the good one applies.
+    assert!(matches!(&rejected[..], [RuntimeError::BadVariable { name, .. }] if name == "step"));
+    assert_eq!(rt.variable("a", "target"), Some(&Value::Entity(target)));
+    assert_eq!(rt.variable("a", "step"), Some(&Value::Int(1)), "the class default");
+
+    let missing: HashMap<String, serde_json::Value> =
+        [("target".to_string(), serde_json::json!("gone"))].into();
+    let rejected = rt
+        .spawn_with_json("b", "Counter", None, &missing, &entity_for)
+        .unwrap();
+    assert_eq!(rejected.len(), 1);
+    rt.dispatch_pending_begin_play(&mut world);
 }
 
 #[test]

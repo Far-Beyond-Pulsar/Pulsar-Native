@@ -539,6 +539,7 @@ name = "asset_viewer_plugin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "asset_import",
  "bytemuck",
  "engine_state",
  "glam 0.33.5",
@@ -3137,7 +3138,7 @@ dependencies = [
  "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "rust-embed",
  "scenedb-inspector-agent",
  "serde",
@@ -4750,6 +4751,7 @@ name = "helio-default-graphs"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio",
  "helio-core",
  "helio-mats",
@@ -4824,7 +4826,9 @@ name = "helio-pass-corona"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
+ "helio-pass-gbuffer",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -6287,12 +6291,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lhash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "744a4c881f502e98c2241d2e5f50040ac73b30194d64452bb6260393b53f0dc9"
-
-[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6555,12 +6553,9 @@ checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
 name = "mach-dxcompiler-rs"
-version = "0.1.6+2026.09.16-48d5a66.1"
+version = "0.1.4+2024.11.22-df583a3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "699d5b85d279d172f6ea742c6c47342fdd7c388872cea2e137e2c6721ef2e6d6"
-dependencies = [
- "lhash",
-]
+checksum = "0e3cd67e8ea2ba061339150970542cf1c60ba44c6d17e31279cbc133a4b018f8"
 
 [[package]]
 name = "mach2"
@@ -6837,12 +6832,15 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
+dependencies = [
+ "ropey 1.6.1",
+]
 
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
  "mockaco-core",
  "similar 3.2.0",
@@ -6851,17 +6849,30 @@ dependencies = [
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
+ "gpui-ce",
  "mockaco-core",
  "mockaco-diff",
+ "mockaco-language",
  "mockaco-renderer",
+]
+
+[[package]]
+name = "mockaco-language"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
+dependencies = [
+ "mockaco-core",
+ "streaming-iterator",
+ "tree-sitter",
+ "tree-sitter-rust",
 ]
 
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
 dependencies = [
  "mockaco-core",
 ]
@@ -6979,8 +6990,7 @@ dependencies = [
 [[package]]
 name = "naga"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a616d2fb8c89516ac2723a581f69d6c18576046bed761bd6b305e5618e6ae130"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -7005,8 +7015,7 @@ dependencies = [
 [[package]]
 name = "naga-types"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "590afbf58a6f4f62873cd5cff4468061844bafa1cdf399cc954537c22d768d49"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -8752,6 +8761,7 @@ dependencies = [
  "gpui-ce",
  "inventory",
  "pulsar_events",
+ "pulsar_lsp",
  "pulsar_reflection",
  "pulsar_script_vm",
  "pulsar_world_registry",
@@ -8785,6 +8795,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_loader_fixture",
  "pulsar_events",
+ "pulsar_lsp",
  "pulsar_world_registry",
  "serde_json",
  "sha2 0.11.0",
@@ -9540,7 +9551,7 @@ dependencies = [
  "flume",
  "gpui-ce",
  "lsp-types",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "serde",
  "serde_json",
  "tracing",
@@ -9674,7 +9685,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=685b1b0aa212b64912549efd583c93480bea027f#685b1b0aa212b64912549efd583c93480bea027f"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=81bb3557b71014ccc00f1275f60138867cc492ea#81bb3557b71014ccc00f1275f60138867cc492ea"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9690,7 +9701,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=685b1b0aa212b64912549efd583c93480bea027f#685b1b0aa212b64912549efd583c93480bea027f"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=81bb3557b71014ccc00f1275f60138867cc492ea#81bb3557b71014ccc00f1275f60138867cc492ea"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
@@ -10558,6 +10569,16 @@ dependencies = [
 
 [[package]]
 name = "ropey"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93411e420bcd1a75ddd1dc3caf18c23155eda2c090631a85af21ba19e97093b5"
+dependencies = [
+ "smallvec",
+ "str_indices",
+]
+
+[[package]]
+name = "ropey"
 version = "2.0.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4045a00dc327d084a2bbf126976e14125b54f23bd30511d45b842eba76c52d74"
@@ -11083,6 +11104,7 @@ dependencies = [
  "mockaco-core",
  "mockaco-diff",
  "mockaco-gpui",
+ "mockaco-language",
  "parking_lot",
  "plugin_editor_api",
  "rust-i18n",
@@ -11482,7 +11504,7 @@ version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
- "dirs 6.0.0",
+ "dirs 5.0.1",
 ]
 
 [[package]]
@@ -13277,13 +13299,14 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter"
-version = "0.24.7"
+version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5387dffa7ffc7d2dae12b50c6f7aab8ff79d6210147c6613561fc3d474c6f75"
+checksum = "78f873475d258561b06f1c595d93308a7ed124d9977cb26b148c2084a4a3cc87"
 dependencies = [
  "cc",
  "regex",
  "regex-syntax",
+ "serde_json",
  "streaming-iterator",
  "tree-sitter-language",
 ]
@@ -13727,7 +13750,7 @@ dependencies = [
  "quote",
  "regex",
  "resvg",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "rust-embed",
  "rust-i18n",
  "rust_decimal",
@@ -13816,11 +13839,14 @@ dependencies = [
  "engine_backend",
  "engine_state",
  "gpui-ce",
+ "image",
  "parking_lot",
  "profiling 0.1.0",
  "rodio",
+ "rust-i18n",
  "serde_json",
  "smol",
+ "tempfile",
  "tracing",
  "ui",
  "ui_common",
@@ -13881,6 +13907,7 @@ dependencies = [
  "engine_state",
  "futures",
  "gpui-ce",
+ "image",
  "plugin_editor_api",
  "plugin_manager",
  "plugin_matter",
@@ -13892,12 +13919,14 @@ dependencies = [
  "pulsar_world_registry",
  "rfd",
  "rust-i18n",
+ "rustls",
  "schemars",
  "script_editor_plugin",
  "serde",
  "serde_json",
  "shader_editor_plugin",
  "smol",
+ "tempfile",
  "tracing",
  "ui",
  "ui_about",
@@ -13970,6 +13999,7 @@ dependencies = [
  "gpui-ce",
  "helio_component",
  "image",
+ "notify 8.2.0",
  "parking_lot",
  "plugin_editor_api",
  "pulsar_reflection",
@@ -13979,6 +14009,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "smol",
+ "tempfile",
  "tracing",
  "ui",
  "ui_common",
@@ -14885,8 +14916,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 [[package]]
 name = "wgpu"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "527ccdf43dd5b2e8676eed9984ce00e2bbb0a1b85b70c1969dcb6cd2eb55ab9e"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.1",
@@ -14915,8 +14945,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14c018fce9b6270aa203c2fdd56f3cce996713534bd757e4ea58c8560b121f14"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -14949,8 +14978,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061f3d319a40d39d00b1ecc2c33b89fe21d4e6fe01859df3500a3a8ecccd6b68"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "wgpu-hal",
 ]
@@ -14958,8 +14986,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d98b86cf4abf524a902dd35f18ca6a3f08fc2ae9847c8f10b48e30491b1f0b86"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "wgpu-hal",
 ]
@@ -14967,8 +14994,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7586165fd5f6d881cb9ce4bb71f40d6caab2c0f1837e3fc1d9788a197fb6004f"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "wgpu-hal",
 ]
@@ -14976,8 +15002,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6b7fb58561a792bc237628ba0792e332de418fefe145f13b5ed8201e6d52f58"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -15033,8 +15058,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2f62e73117bb7a62bfd9c5a5841438a823f6566c6442a808ee269d2d055c081"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -15043,8 +15067,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "30.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99dad6f1fbdbbdb4c278a6508b059d44688f5cebddf78d005a46a31340269286"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1-reusable-command-buffers#1bac7e303fb4fe6a2532a98ba0526c35ce193d2f"
 dependencies = [
  "bitflags 2.13.1",
  "bytemuck",
@@ -15080,7 +15103,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "raw-window-handle",
  "regex",
- "ropey",
+ "ropey 2.0.0-beta.1",
  "schemars",
  "serde",
  "serde_json",

@@ -288,6 +288,7 @@ impl LevelEditorPanel {
             .ok()
             .and_then(|engine| engine.editor_mailbox());
 
+        let playback_host_id = engine_state::playback::new_playback_host_id();
         let poll_state = Arc::clone(&shared_state);
         let poll_gpu = gpu_engine.clone();
         let poll_mailbox = helio_mailbox.clone();
@@ -302,7 +303,10 @@ impl LevelEditorPanel {
                     .timer(std::time::Duration::from_millis(50))
                     .await;
                 // Report Play-In-Editor status to the engine-global playback state.
-                super::playback_host::publish_playback_status(&poll_state.read());
+                super::playback_host::publish_playback_status(
+                    playback_host_id,
+                    &poll_state.read(),
+                );
                 // A released sculpt stroke becomes one undo step once the
                 // render thread applied its last samples.
                 if poll_state.read().editor.voxel_stroke.is_some() {
@@ -390,7 +394,7 @@ impl LevelEditorPanel {
             }
         });
 
-        let playback_host = Self::bind_playback_host(window, cx);
+        let playback_host = Self::bind_playback_host(playback_host_id, window, cx);
 
         let toolbar = cx.new(|cx| {
             ToolbarView::new(
@@ -416,6 +420,7 @@ impl LevelEditorPanel {
             _mesh_updates: mesh_updates,
             shared_state,
             workspace: None,
+            viewport_panel: None,
             game_panel: None,
             playback_host,
             applied_pie_signature: None,

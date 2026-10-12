@@ -469,19 +469,26 @@ fn packaged_game_runs_from_a_clean_directory() {
     let report = run_packaged(&pak_content, frames);
     check_report(&report, true, frames);
     // Pak assets were unpacked for Helio's file-based mesh loader, and the
-    // level's and the spawned Minion's meshes loaded from there.
+    // level's and the spawned Minion's meshes are bound from there. They
+    // name the same file, which loads once and is shared.
     let cache = shipped.path().join("asset-cache");
     assert!(std::fs::read_dir(&cache).unwrap().next().is_some());
+    assert!(
+        report.meshes.components >= 2 && report.meshes.bound == report.meshes.components,
+        "floor and minion meshes bound: {:?}",
+        report.meshes
+    );
     let text = log.text();
     let loaded: Vec<&str> = text
         .lines()
         .filter(|l| l.contains("StaticMeshComponent: loaded"))
         .collect();
-    assert!(loaded.len() >= 2, "floor and minion meshes loaded:\n{text}");
+    assert!(!loaded.is_empty(), "the mesh loaded:\n{text}");
+    // The logged source is the canonical path (`\\?\C:\...` on Windows).
     assert!(
-        loaded
-            .iter()
-            .all(|l| l.contains("assets/meshes/glass_red.mesh") && l.contains("asset-cache")),
+        loaded.iter().map(|l| l.replace('\\', "/")).all(|l| {
+            l.contains("assets/meshes/glass_red.mesh") && l.contains("asset-cache")
+        }),
         "{loaded:?}"
     );
     assert!(!text.contains("failed to load mesh"), "{text}");

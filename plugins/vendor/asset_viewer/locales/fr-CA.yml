@@ -58,3 +58,10 @@ AssetViewer.ColC: C
 AssetViewer.ColMat: Mat
 AssetViewer.Loading: Chargement...
 AssetViewer.Unknown: Inconnu
+AssetViewer.Mode.Lit: "Éclairé"
+AssetViewer.Mode.Unlit: "Non éclairé"
+AssetViewer.Mode.Wireframe: "Filaire"
+AssetViewer.Mode.Normals: "Normales"
+AssetViewer.Mode.Uv1: "UV 1"
+AssetViewer.Mode.Uv2: "UV 2"
+AssetViewer.Mode.Density: "Densité"

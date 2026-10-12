@@ -240,14 +240,6 @@ impl BuildProfile {
         }
     }
 
-    pub fn summary(self) -> &'static str {
-        match self {
-            Self::Debug => "Fast to compile, slow to run. Debug assertions on.",
-            Self::Release => "Optimised build for testing real performance.",
-            Self::Shipping => "Release with fat LTO, one codegen unit and stripped symbols.",
-        }
-    }
-
     /// Arguments selecting this profile.
     pub fn cargo_args(self) -> &'static [&'static str] {
         match self {

@@ -5,31 +5,48 @@
 //! runs the commands on the UI thread, and reports its Play-In-Editor status
 //! back into the resource. Bus delivery happens on the publisher's thread, so
 //! the subscription only queues; an async task drains the queue in the window.
+//!
+//! With several level editors open, one is the playback host (#1009): the
+//! editor the user last pressed Play in, or else the first one to report. Only
+//! the host reports its status and handles Stop, Pause and Step; Play goes to
+//! the editor in the active window, which becomes the host.
 
-use engine_state::playback::{update_playback_if_changed, PlayPhase};
+use engine_state::playback::{
+    claim_playback_host, claim_playback_host_if_free, is_playback_host, playback,
+    release_playback_host, update_playback_if_changed, PlayPhase,
+};
 use pulsar_events::{subscribe_playback_commands, PlaybackCommand, PlaybackSubscription};
 
 use super::*;
 
-/// Keeps the editor subscribed to playback commands and, when it goes away,
-/// leaves the shared state as "stopped" since nothing is hosting a session.
+/// Keeps the editor subscribed to playback commands and, when it goes away
+/// as the playback host, leaves the shared state as "stopped" since it no
+/// longer hosts a session.
 pub(super) struct PlaybackHostBinding {
+    host_id: u64,
     _subscription: PlaybackSubscription,
     _commands: Task<()>,
 }
 
 impl Drop for PlaybackHostBinding {
     fn drop(&mut self) {
-        update_playback_if_changed(|s| {
-            s.phase = PlayPhase::Stopped;
-            s.paused = false;
-            s.supports_control = false;
-        });
+        // Another editor's status is not this one's to reset; the next editor
+        // to report becomes the host.
+        if release_playback_host(self.host_id) {
+            update_playback_if_changed(|s| {
+                s.phase = PlayPhase::Stopped;
+                s.paused = false;
+                s.supports_control = false;
+            });
+        }
     }
 }
 
 impl LevelEditorPanel {
+    /// `host_id` comes from `new_playback_host_id`, and is the one this
+    /// editor's poll loop passes to [`publish_playback_status`].
     pub(super) fn bind_playback_host(
+        host_id: u64,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> PlaybackHostBinding {
@@ -40,9 +57,21 @@ impl LevelEditorPanel {
         let commands = cx.spawn_in(window, async move |this, cx| {
             while let Ok(command) = rx.recv().await {
                 let handled = this.update_in(cx, |panel, window, cx| {
-                    // Every open level editor hears the command; only the one
-                    // in the window the user is working in acts on it.
-                    if window.is_window_active() {
+                    // Every open level editor hears the command. Play goes to
+                    // the one in the window the user is working in, unless
+                    // another editor's session is still running; the rest go
+                    // to the host.
+                    let acts = match command {
+                        PlaybackCommand::Play => {
+                            window.is_window_active()
+                                && (is_playback_host(host_id) || playback().get().is_stopped())
+                        }
+                        _ => is_playback_host(host_id),
+                    };
+                    if acts {
+                        if command == PlaybackCommand::Play {
+                            claim_playback_host(host_id);
+                        }
                         panel.run_playback_command(command, window, cx);
                     }
                 });
@@ -52,6 +81,7 @@ impl LevelEditorPanel {
             }
         });
         PlaybackHostBinding {
+            host_id,
             _subscription: subscription,
             _commands: commands,
         }
@@ -84,9 +114,13 @@ impl LevelEditorPanel {
     }
 }
 
-/// Publish the editor's play status to the shared resource. Called from the
-/// panel's existing poll loop; only a real change wakes watchers.
-pub(super) fn publish_playback_status(state: &LevelEditorState) {
+/// Publish the editor's play status to the shared resource, if it is the
+/// playback host (or nobody is). Called from the panel's existing poll loop;
+/// only a real change wakes watchers.
+pub(super) fn publish_playback_status(host_id: u64, state: &LevelEditorState) {
+    if !claim_playback_host_if_free(host_id) {
+        return;
+    }
     let pie = &state.play.pie;
     let phase = if pie.active {
         PlayPhase::Playing

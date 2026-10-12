@@ -9,6 +9,7 @@ use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, prelude::FluentBuilder as _, px,
 };
+use rust_i18n::t;
 use ui::button::Button;
 use ui::checkbox::Checkbox;
 use ui::input::TextInput;
@@ -17,6 +18,7 @@ use ui::{Icon, IconName, Sizable as _, h_flex, v_flex};
 
 use super::form::section;
 use super::{BuildConfiguratorWindow, Palette};
+use crate::text::{family_label, platform_label};
 
 /// The "Desktop" preset: the three platforms most games ship on.
 const DESKTOP: [TargetPlatform; 3] = [
@@ -28,9 +30,11 @@ const DESKTOP: [TargetPlatform; 3] = [
 /// Whether `platform` passes the search `query` (lowercase, may be empty).
 fn matches_query(platform: TargetPlatform, query: &str) -> bool {
     query.split_whitespace().all(|word| {
-        platform.label().to_lowercase().contains(word)
+        platform_label(platform).to_lowercase().contains(word)
             || platform.triple().is_some_and(|t| t.contains(word))
-            || platform.family().label().to_lowercase().contains(word)
+            || family_label(platform.family())
+                .to_lowercase()
+                .contains(word)
     })
 }
 
@@ -64,11 +68,16 @@ impl BuildConfiguratorWindow {
 
         // What is selected, as removable chips.
         let chips: Vec<AnyElement> = if selected.is_empty() {
-            vec![chip("This machine (default)", None, p, cx)]
+            vec![chip(
+                t!("Build.Platforms.ThisMachineDefault").to_string(),
+                None,
+                p,
+                cx,
+            )]
         } else {
             selected
                 .iter()
-                .map(|&platform| chip(platform.label(), Some(platform), p, cx))
+                .map(|&platform| chip(platform_label(platform), Some(platform), p, cx))
                 .collect()
         };
 
@@ -77,15 +86,15 @@ impl BuildConfiguratorWindow {
             .child(
                 Button::new("bc-plat-host")
                     .small()
-                    .label("This machine")
-                    .tooltip("Build for the platform this editor runs on")
+                    .label(t!("Build.Platforms.ThisMachine").to_string())
+                    .tooltip(t!("Build.Platforms.ThisMachineTooltip").to_string())
                     .on_click(cx.listener(|this, _, _, cx| this.edit(cx, |c| c.platforms.clear()))),
             )
             .child(
                 Button::new("bc-plat-desktop")
                     .small()
-                    .label("Desktop")
-                    .tooltip("Windows x64, Linux x64 and macOS Apple Silicon")
+                    .label(t!("Build.Platforms.Desktop").to_string())
+                    .tooltip(t!("Build.Platforms.DesktopTooltip").to_string())
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.edit(cx, |c| c.platforms = DESKTOP.to_vec())
                     })),
@@ -131,13 +140,20 @@ impl BuildConfiguratorWindow {
                         .flex_1()
                         .text_sm()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child(family.label()),
+                        .child(family_label(family)),
                 )
                 .child(
                     div()
                         .text_xs()
                         .text_color(if chosen > 0 { p.primary } else { p.muted })
-                        .child(format!("{chosen} of {}", members.len())),
+                        .child(
+                            t!(
+                                "Build.Platforms.Chosen",
+                                chosen = chosen,
+                                total = members.len()
+                            )
+                            .to_string(),
+                        ),
                 );
 
             let rows = open.then(|| {
@@ -152,8 +168,8 @@ impl BuildConfiguratorWindow {
         let nothing_found = groups.is_empty();
 
         section(
-            "Platforms",
-            "Each selected platform is built in turn. Leave empty to build for this machine.",
+            t!("Build.Platforms.Title").to_string(),
+            t!("Build.Platforms.Description").to_string(),
             p,
             v_flex()
                 .gap_3()
@@ -194,7 +210,7 @@ impl BuildConfiguratorWindow {
                                             .p_3()
                                             .text_sm()
                                             .text_color(p.muted)
-                                            .child("No platforms match your search."),
+                                            .child(t!("Build.Search.NoPlatformsMatch").to_string()),
                                     )
                                 })
                                 .children(groups),
@@ -210,7 +226,7 @@ impl BuildConfiguratorWindow {
 
 /// A selected platform, with a button to remove it (`None` is the default chip).
 fn chip(
-    label: &'static str,
+    label: String,
     platform: Option<TargetPlatform>,
     p: Palette,
     cx: &mut Context<BuildConfiguratorWindow>,
@@ -245,12 +261,13 @@ fn platform_row(
 ) -> AnyElement {
     let detail = platform
         .triple()
-        .unwrap_or("Needs the console SDK; cargo cannot build it");
+        .map(str::to_owned)
+        .unwrap_or_else(|| t!("Build.Platforms.NeedsSdk").to_string());
     let row = h_flex().w_full().px_2().py(px(3.)).gap_3().items_center();
     if platform.is_buildable() {
         row.child(
             Checkbox::new(SharedString::from(format!("bc-plat-{}", platform.id())))
-                .label(platform.label())
+                .label(platform_label(platform))
                 .checked(selected)
                 .on_click(
                     cx.listener(move |this, _: &bool, _, cx| this.toggle_platform(platform, cx)),
@@ -261,7 +278,7 @@ fn platform_row(
         .into_any_element()
     } else {
         row.opacity(0.55)
-            .child(div().text_sm().child(platform.label()))
+            .child(div().text_sm().child(platform_label(platform)))
             .child(div().flex_1())
             .child(div().text_xs().text_color(p.muted).child(detail))
             .into_any_element()

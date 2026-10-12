@@ -58,3 +58,10 @@ AssetViewer.ColC: C
 AssetViewer.ColMat: 재질
 AssetViewer.Loading: 불러오는 중...
 AssetViewer.Unknown: 알 수 없음
+AssetViewer.Mode.Lit: "조명"
+AssetViewer.Mode.Unlit: "비조명"
+AssetViewer.Mode.Wireframe: "와이어프레임"
+AssetViewer.Mode.Normals: "노멀"
+AssetViewer.Mode.Uv1: "UV 1"
+AssetViewer.Mode.Uv2: "UV 2"
+AssetViewer.Mode.Density: "밀도"

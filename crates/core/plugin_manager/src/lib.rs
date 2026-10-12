@@ -291,6 +291,10 @@ pub struct PluginManager {
 
     /// Host-owned editor settings passed to plugin editor factories.
     editor_settings: EditorSettingsSnapshot,
+    /// Engine services (the language server) handed to every editor created.
+    /// Held weakly: this manager is a process-wide static and must not keep
+    /// the app's entities alive past the app.
+    editor_services: WeakEditorServices,
 
     /// Statusbar buttons registered by all plugins
     /// Stored with plugin ownership tracking for proper cleanup
@@ -349,6 +353,7 @@ impl PluginManager {
             engine_version: VersionInfo::current(),
             project_root: None,
             editor_settings: EditorSettingsSnapshot::default(),
+            editor_services: WeakEditorServices::default(),
             statusbar_buttons: Vec::new(),
             plugin_subsystems: Vec::new(),
             plugin_component_registrations: Vec::new(),
@@ -364,6 +369,26 @@ impl PluginManager {
     /// Replace the host-owned settings passed to subsequently created plugin editors.
     pub fn set_editor_settings_snapshot(&mut self, settings: EditorSettingsSnapshot) {
         self.editor_settings = settings;
+    }
+
+    /// Sets the engine services every editor receives. Kept apart from the
+    /// settings snapshot, which the host replaces wholesale on every change.
+    pub fn set_editor_services(&mut self, services: EditorServices) {
+        self.editor_services = services.downgrade();
+    }
+
+    /// The services editors are created with: those the host set, while the
+    /// host keeps them alive.
+    pub fn editor_services(&self) -> EditorServices {
+        self.editor_services.upgrade()
+    }
+
+    /// The settings snapshot a dynamic plugin's factory receives: the host's
+    /// settings plus the engine services.
+    pub fn snapshot_for_editor(&self) -> EditorSettingsSnapshot {
+        self.editor_settings
+            .clone()
+            .with_services(self.editor_services())
     }
 
     /// Get a mutable reference to the built-in editor registry.
@@ -1126,7 +1151,8 @@ impl PluginManager {
         // Check if this is a built-in editor
         if plugin_id.as_str() == "builtin" {
             // Create editor context with project root
-            let editor_context = EditorContext::new(self.project_root.clone());
+            let editor_context = EditorContext::new(self.project_root.clone())
+                .with_services(self.editor_services());
 
             // Create the editor directly using the provider
             return self
@@ -1164,7 +1190,7 @@ impl PluginManager {
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
         let file_path_for_decoration = file_path.clone();
-        let settings = self.editor_settings.clone();
+        let settings = self.snapshot_for_editor();
 
         let plugin =
             self.plugins

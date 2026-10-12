@@ -1,6 +1,16 @@
 use super::*;
 
 impl LevelEditorPanel {
+    /// Redraw the views that show the transform tool: the toolbar and the
+    /// viewport's options bar. Notifying this panel instead would rebuild the
+    /// whole editor for a tool switch (#812).
+    fn notify_tool_views(&self, cx: &mut Context<Self>) {
+        self.toolbar.update(cx, |_, cx| cx.notify());
+        if let Some(viewport) = self.viewport_panel.as_ref().and_then(|v| v.upgrade()) {
+            viewport.update(cx, |_, cx| cx.notify());
+        }
+    }
+
     pub(in crate::ui::panel) fn on_set_transform_snap(
         &mut self,
         action: &toolbar::SetTransformSnap,
@@ -57,7 +67,7 @@ impl LevelEditorPanel {
             .editor
             .set_tool(TransformTool::Select);
         self.queue_gizmo_mode_for_tool(TransformTool::Select);
-        cx.notify();
+        self.notify_tool_views(cx);
     }
 
     pub(in crate::ui::panel) fn on_move_tool(
@@ -71,7 +81,7 @@ impl LevelEditorPanel {
             .editor
             .set_tool(TransformTool::Move);
         self.queue_gizmo_mode_for_tool(TransformTool::Move);
-        cx.notify();
+        self.notify_tool_views(cx);
     }
 
     pub(in crate::ui::panel) fn on_rotate_tool(
@@ -85,7 +95,7 @@ impl LevelEditorPanel {
             .editor
             .set_tool(TransformTool::Rotate);
         self.queue_gizmo_mode_for_tool(TransformTool::Rotate);
-        cx.notify();
+        self.notify_tool_views(cx);
     }
 
     pub(in crate::ui::panel) fn on_scale_tool(
@@ -99,7 +109,7 @@ impl LevelEditorPanel {
             .editor
             .set_tool(TransformTool::Scale);
         self.queue_gizmo_mode_for_tool(TransformTool::Scale);
-        cx.notify();
+        self.notify_tool_views(cx);
     }
 
     // Toolbar action handlers

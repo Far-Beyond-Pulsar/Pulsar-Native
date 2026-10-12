@@ -244,7 +244,7 @@ pub fn handle_create_asset(
             d.selected_folder = Some(folder.clone());
         }
         if let Some(ref p) = d.project_path {
-            d.folder_tree = FolderNode::from_path(p);
+            d.set_folder_tree(FolderNode::from_path(p));
         }
         d.mark_directory_cache_dirty();
         cx.notify();
@@ -325,23 +325,8 @@ pub fn handle_new_folder(
 }
 
 pub fn handle_delete_item(d: &mut FileManagerDrawer, cx: &mut Context<FileManagerDrawer>) {
-    for item in d.selected_items.iter().cloned().collect::<Vec<PathBuf>>() {
-        if let Err(e) = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&item) {
-            engine_fs::virtual_fs::delete_path(&item)
-        } else if item.is_dir() {
-            std::fs::remove_dir_all(&item).map_err(Into::into)
-        } else {
-            std::fs::remove_file(&item).map_err(Into::into)
-        } {
-            tracing::error!("delete: {}", e);
-        }
-    }
-    d.selected_items.clear();
-    if let Some(ref p) = d.project_path {
-        d.folder_tree = FolderNode::from_path(p);
-    }
-    d.mark_directory_cache_dirty();
-    cx.notify();
+    let items: Vec<PathBuf> = d.selected_items.iter().cloned().collect();
+    d.delete_paths(&items, cx);
 }
 
 pub fn handle_rename_item(
@@ -383,7 +368,7 @@ pub fn handle_duplicate_item(d: &mut FileManagerDrawer, cx: &mut Context<FileMan
         }
     }
     if let Some(ref p) = d.project_path {
-        d.folder_tree = FolderNode::from_path(p);
+        d.set_folder_tree(FolderNode::from_path(p));
     }
     d.mark_directory_cache_dirty();
     cx.notify();
@@ -398,43 +383,10 @@ pub fn handle_cut(d: &mut FileManagerDrawer, _cx: &mut Context<FileManagerDrawer
 }
 
 pub fn handle_paste(d: &mut FileManagerDrawer, cx: &mut Context<FileManagerDrawer>) {
-    let Some((items, is_cut)) = d.clipboard.clone() else {
+    let Some(target) = d.selected_folder.clone() else {
         return;
     };
-    let Some(ref target) = d.selected_folder else {
-        return;
-    };
-    for item in &items {
-        if let Some(name) = item.file_name() {
-            let tp = crate::utils::cloud_join(target, &name.to_string_lossy());
-            if let Err(e) = if is_cut {
-                if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(item) {
-                    engine_fs::virtual_fs::rename(item, &tp)
-                } else {
-                    std::fs::rename(item, &tp).map_err(Into::into)
-                }
-            } else {
-                if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(item) {
-                    engine_fs::virtual_fs::read_file(item)
-                        .and_then(|d| engine_fs::virtual_fs::write_file(&tp, &d))
-                } else if item.is_dir() {
-                    FileManagerDrawer::copy_dir_recursive(item, &tp).map_err(Into::into)
-                } else {
-                    std::fs::copy(item, &tp).map(|_| ()).map_err(Into::into)
-                }
-            } {
-                tracing::error!("paste: {}", e);
-            }
-        }
-    }
-    if is_cut {
-        d.clipboard = None;
-    }
-    if let Some(ref p) = d.project_path {
-        d.folder_tree = FolderNode::from_path(p);
-    }
-    d.mark_directory_cache_dirty();
-    cx.notify();
+    d.paste_into(&target, cx);
 }
 
 pub fn handle_open_in_file_manager(
@@ -682,7 +634,7 @@ pub fn handle_restore_file(
                     // Remove from deleted list
                     d.deleted_files.retain(|e| e.path != restore_path);
                     d.mark_directory_cache_dirty();
-                    d.folder_tree = FolderNode::from_path(&proj);
+                    d.set_folder_tree(FolderNode::from_path(&proj));
                     cx.notify();
                 }
                 Err(e) => {
@@ -704,10 +656,44 @@ pub fn handle_restore_file(
 impl FileManagerDrawer {
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.project_path = Some(path.clone());
-        self.folder_tree = FolderNode::from_path(&path);
+        self.set_folder_tree(FolderNode::from_path(&path));
         self.selected_folder = Some(path.clone());
         self.fs_metadata.load_from_project_root(&path);
         self.mark_directory_cache_dirty();
         cx.notify();
+    }
+
+    /// The project's folder tree, kept current as files change on disk.
+    pub fn folder_tree(&self) -> Option<&FolderNode> {
+        self.folder_tree.as_ref()
+    }
+
+    /// The folder whose contents are listed.
+    pub fn selected_folder(&self) -> Option<&std::path::Path> {
+        self.selected_folder.as_deref()
+    }
+
+    /// List `path`'s contents, clearing the selection. Unlike clicking a folder
+    /// in the drawer's own tree, this leaves the tree's expansion alone.
+    pub fn show_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.selected_folder.as_deref() != Some(path.as_path()) {
+            self.selected_items.clear();
+            self.selection_anchor = None;
+        }
+        self.selected_folder = Some(path);
+        cx.notify();
+    }
+
+    /// Whether the folder tree beside the folder's contents is hidden.
+    pub fn folder_tree_hidden(&self) -> bool {
+        self.folder_tree_hidden
+    }
+
+    /// Hide or show the folder tree beside the folder's contents.
+    pub fn set_folder_tree_hidden(&mut self, hidden: bool, cx: &mut Context<Self>) {
+        if self.folder_tree_hidden != hidden {
+            self.folder_tree_hidden = hidden;
+            cx.notify();
+        }
     }
 }

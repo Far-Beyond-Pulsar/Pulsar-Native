@@ -6,12 +6,11 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use gpui::{AnyWindowHandle, AppContext as _, AsyncApp};
+use rust_i18n::t;
 use ui::ContextModal as _;
 use ui::notification::Notification;
 
 use super::plan::Invocation;
-
-const TITLE: &str = "Run";
 
 /// Start `invocation` (a `cargo run`), record its process in the engine's
 /// playback state, and wait for it to end, reporting a crash if it did.
@@ -41,7 +40,8 @@ pub async fn launch_and_monitor(
         Err(error) => {
             let _ = async_app.update_window(window_handle, |_, window, cx| {
                 window.push_notification(
-                    Notification::error(format!("Could not launch the game: {error}")).title(TITLE),
+                    Notification::error(t!("Build.Game.LaunchFailed", error = error).to_string())
+                        .title(t!("Build.Game.Title").to_string()),
                     cx,
                 );
             });
@@ -105,20 +105,25 @@ pub async fn launch_and_monitor(
     }
 
     let message = if stderr.trim().is_empty() {
-        "The game exited with a non-zero status code.".to_string()
+        t!("Build.Game.NonZeroExit").to_string()
     } else {
         let text = stderr.trim();
         let tail = text.get(text.len().saturating_sub(600)..).unwrap_or(text);
         match &report {
-            Some(path) => format!(
-                "The game crashed.\nReport saved to {}\n\n{tail}",
-                path.display()
-            ),
-            None => format!("The game crashed:\n{tail}"),
+            Some(path) => t!(
+                "Build.Game.CrashedWithReport",
+                path = path.display(),
+                output = tail
+            )
+            .to_string(),
+            None => t!("Build.Game.Crashed", output = tail).to_string(),
         }
     };
     let _ = async_app.update_window(window_handle, |_, window, cx| {
-        window.push_notification(Notification::error(message).title(TITLE), cx);
+        window.push_notification(
+            Notification::error(message).title(t!("Build.Game.Title").to_string()),
+            cx,
+        );
     });
 }
 

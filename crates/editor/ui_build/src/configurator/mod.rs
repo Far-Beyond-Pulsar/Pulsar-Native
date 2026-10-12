@@ -25,6 +25,7 @@ use gpui::{
     StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
     prelude::FluentBuilder as _, px,
 };
+use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::scroll::{Scrollbar, ScrollbarState};
@@ -33,6 +34,7 @@ use ui::{
 };
 
 use crate::picker::config_icon;
+use crate::text::subtitle;
 
 /// How long after the last edit the configurations are written to disk.
 const SAVE_DELAY: Duration = Duration::from_millis(350);
@@ -140,17 +142,17 @@ impl BuildConfiguratorWindow {
             .selected_id()
             .map(str::to_owned);
 
-        let input = |placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
+        let input = |placeholder: String, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
         };
-        let list_search = input("Search configurations…", window, cx);
-        let platform_search = input("Search platforms…", window, cx);
-        let name = input("Configuration name", window, cx);
-        let features = input("feature-a, feature-b", window, cx);
-        let extra_args = input("--locked --jobs 8", window, cx);
+        let list_search = input(t!("Build.Search.Configurations").to_string(), window, cx);
+        let platform_search = input(t!("Build.Search.Platforms").to_string(), window, cx);
+        let name = input(t!("Build.General.NamePlaceholder").to_string(), window, cx);
+        let features = input("feature-a, feature-b".to_owned(), window, cx);
+        let extra_args = input("--locked --jobs 8".to_owned(), window, cx);
         let description = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("What this configuration is for")
+                .placeholder(t!("Build.General.DescriptionPlaceholder").to_string())
                 .multi_line()
                 .auto_grow(2, 5)
         });
@@ -323,12 +325,12 @@ impl BuildConfiguratorWindow {
             Field::Name => {
                 let trimmed = text.trim();
                 let error = if trimmed.is_empty() {
-                    Some("A configuration needs a name.".to_owned())
+                    Some(t!("Build.General.NameRequired").to_string())
                 } else if build_configurations()
                     .read()
                     .name_taken(trimmed, Some(&config.id))
                 {
-                    Some("Another configuration already uses this name.".to_owned())
+                    Some(t!("Build.General.NameTaken").to_string())
                 } else {
                     None
                 };
@@ -447,15 +449,15 @@ impl BuildConfiguratorWindow {
                         div()
                             .text_sm()
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("Configurations"),
+                            .child(t!("Build.Configurator.Configurations").to_string()),
                     )
                     .child(
                         Button::new("bc-new")
                             .small()
                             .primary()
                             .icon(IconName::Plus)
-                            .label("New")
-                            .tooltip("Create a build configuration")
+                            .label(t!("Build.Configurator.New").to_string())
+                            .tooltip(t!("Build.Configurator.NewTooltip").to_string())
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.new_configuration(window, cx)
                             })),
@@ -495,9 +497,10 @@ impl BuildConfiguratorWindow {
                             .py_1()
                             .when(matches.is_empty(), |el| {
                                 let text = if total == 0 {
-                                    "No configurations yet.".to_owned()
+                                    t!("Build.Configurator.Empty").to_string()
                                 } else {
-                                    format!("No configurations match “{query}”.")
+                                    t!("Build.Search.NoConfigurationsMatch", query = query)
+                                        .to_string()
                                 };
                                 el.child(
                                     div()
@@ -556,7 +559,7 @@ impl BuildConfiguratorWindow {
                                                     .overflow_hidden()
                                                     .text_ellipsis()
                                                     .whitespace_nowrap()
-                                                    .child(config.subtitle()),
+                                                    .child(subtitle(config)),
                                             ),
                                     )
                                     .when(is_active, |el| el.child(active_badge(p)))
@@ -575,10 +578,17 @@ impl BuildConfiguratorWindow {
                     .border_color(p.border)
                     .text_xs()
                     .text_color(p.muted)
-                    .child(if query.is_empty() {
-                        format!("{total} configuration{}", if total == 1 { "" } else { "s" })
+                    .child(if !query.is_empty() {
+                        t!(
+                            "Build.Configurator.Filtered",
+                            shown = matches.len(),
+                            total = total
+                        )
+                        .to_string()
+                    } else if total == 1 {
+                        t!("Build.Configurator.CountOne", count = total).to_string()
                     } else {
-                        format!("{} of {total}", matches.len())
+                        t!("Build.Configurator.CountMany", count = total).to_string()
                     }),
             )
             .into_any_element()
@@ -599,16 +609,19 @@ impl BuildConfiguratorWindow {
                 div()
                     .text_lg()
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child("No build configurations"),
+                    .child(t!("Build.Configurator.NoneTitle").to_string()),
             )
-            .child(div().text_sm().text_color(p.muted).child(
-                "A configuration says how to build: the Rust mode, the platforms and the steps.",
-            ))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(p.muted)
+                    .child(t!("Build.Configurator.NoneDescription").to_string()),
+            )
             .child(
                 Button::new("bc-empty-new")
                     .primary()
                     .icon(IconName::Plus)
-                    .label("Create a configuration")
+                    .label(t!("Build.Configurator.Create").to_string())
                     .on_click(
                         cx.listener(|this, _, window, cx| this.new_configuration(window, cx)),
                     ),
@@ -650,15 +663,15 @@ impl BuildConfiguratorWindow {
                             .whitespace_nowrap()
                             .child(config.name.clone()),
                     )
-                    .child(div().text_xs().text_color(p.muted).child(config.subtitle())),
+                    .child(div().text_xs().text_color(p.muted).child(subtitle(&config))),
             )
             .child(if is_active {
                 active_badge(p).into_any_element()
             } else {
                 Button::new("bc-activate")
                     .small()
-                    .label("Set as active")
-                    .tooltip("Use this configuration for the Build button")
+                    .label(t!("Build.Configurator.SetActive").to_string())
+                    .tooltip(t!("Build.Configurator.SetActiveTooltip").to_string())
                     .on_click(cx.listener(|this, _, _, cx| this.make_active(cx)))
                     .into_any_element()
             })
@@ -667,7 +680,7 @@ impl BuildConfiguratorWindow {
                     .small()
                     .ghost()
                     .icon(IconName::Copy)
-                    .label("Duplicate")
+                    .label(t!("Build.Configurator.Duplicate").to_string())
                     .on_click(cx.listener(|this, _, window, cx| this.duplicate(window, cx))),
             )
             .child(
@@ -676,9 +689,9 @@ impl BuildConfiguratorWindow {
                     .ghost()
                     .icon(IconName::Trash)
                     .label(if armed {
-                        "Click again to delete"
+                        t!("Build.Configurator.ConfirmDelete").to_string()
                     } else {
-                        "Delete"
+                        t!("Build.Configurator.Delete").to_string()
                     })
                     .selected(armed)
                     .on_click(cx.listener(|this, _, window, cx| this.delete(window, cx))),
@@ -737,7 +750,7 @@ fn active_badge(p: Palette) -> impl IntoElement {
         .text_xs()
         .text_color(p.primary)
         .bg(p.primary.opacity(0.14))
-        .child("Active")
+        .child(t!("Build.Configurator.Active").to_string())
 }
 
 impl Render for BuildConfiguratorWindow {
@@ -757,7 +770,7 @@ impl Render for BuildConfiguratorWindow {
             .child(
                 TitleBar::new()
                     .unified_background(p.bg)
-                    .child("Build Configurations"),
+                    .child(t!("Build.Configurator.Title").to_string()),
             )
             .child(h_flex().flex_1().min_h_0().child(sidebar).child(main))
     }
@@ -769,4 +782,77 @@ impl Render for BuildConfiguratorWindow {
 #[inline(never)]
 pub fn link_anchor() -> &'static str {
     <BuildConfiguratorWindow as window_manager::PulsarWindow>::window_name()
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{
+        AppContext as _, Bounds, TestAppContext, VisualTestContext, WindowBounds, WindowOptions,
+        point, px, size,
+    };
+
+    use super::BuildConfiguratorWindow;
+
+    /// Saves PNGs of the window, scrollbars always shown, as laid out and
+    /// with the form and list scrolled, when `PULSAR_BUILD_SHOTS` names a
+    /// folder and a GPU adapter is available. The scrollbars inside the
+    /// scrolling form (the description's, the platform list's) must sit on
+    /// their own boxes' right edges (Pulsar-Native#1001).
+    #[test]
+    fn configurator_screenshots() {
+        let Some(dir) = std::env::var_os("PULSAR_BUILD_SHOTS").map(std::path::PathBuf::from) else {
+            return;
+        };
+        engine_state::EngineContext::new().set_global();
+        let project = tempfile::tempdir().unwrap();
+        engine_state::set_project_path(project.path().to_string_lossy().into_owned());
+        let mut cx = TestAppContext::with_real_text_system();
+        cx.update(|cx| {
+            ui::init(cx);
+            ui::themes::init(cx);
+            ui::Theme::global_mut(cx).scrollbar_show = ui::scroll::ScrollbarShow::Always;
+        });
+        let mut view = None;
+        let window = cx.update(|cx| {
+            let options = WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                    point(px(0.), px(0.)),
+                    size(px(1120.), px(1300.)),
+                ))),
+                ..Default::default()
+            };
+            cx.open_window(options, |window, cx| {
+                let configurator = cx.new(|cx| BuildConfiguratorWindow::new(window, cx));
+                view = Some(configurator.clone());
+                cx.new(|cx| ui::Root::new(configurator.into(), window, cx))
+            })
+            .expect("window")
+        });
+        let handle: gpui::AnyWindowHandle = window.into();
+        let headless = gpui::headless::HeadlessWindow::attach(handle, &mut cx).expect("GPU");
+        let view = view.unwrap();
+        let mut vcx = VisualTestContext::from_window(handle, &mut cx);
+        vcx.run_until_parked();
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut save = |cx: &mut TestAppContext, name: &str| {
+            for _ in 0..3 {
+                headless.draw(cx, true);
+            }
+            let _ = headless.settle(cx);
+            let (width, height) = headless.size();
+            image::RgbaImage::from_raw(width, height, headless.presented())
+                .expect("frame size")
+                .save(dir.join(format!("{name}.png")))
+                .unwrap();
+        };
+        save(&mut cx, "configurator");
+        let mut vcx = VisualTestContext::from_window(handle, &mut cx);
+        view.update(&mut vcx, |view, cx| {
+            view.form_scroll.set_offset(point(px(0.), px(-200.)));
+            view.list_scroll.set_offset(point(px(0.), px(-60.)));
+            cx.notify();
+        });
+        vcx.run_until_parked();
+        save(&mut cx, "configurator-scrolled");
+    }
 }

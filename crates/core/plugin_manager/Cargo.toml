@@ -30,6 +30,9 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 env_logger = "=0.11.11"
+# The headless suite builds real windows and a real (unstarted) analyzer.
+gpui-ce = { workspace = true, features = ["test-support"] }
+pulsar_lsp = { workspace = true }
 plugin_loader_fixture = { path = "tests/fixtures/plugin_loader_fixture" }
 
 [lints]

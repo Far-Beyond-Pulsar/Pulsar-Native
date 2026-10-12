@@ -58,7 +58,10 @@ pub struct FileTypeDefinition {
     pub structure: FileStructure,
 
     /// Default content for new files (as JSON)
-    /// For folder-based files, this is the content of the marker file
+    /// For folder-based files, this is the content of the marker file.
+    /// `Null` creates an empty file. The empty string marks a type that is
+    /// only ever imported or produced, never created from the menu (FBX, PNG,
+    /// native meshes); see [`FileTypeDefinition::is_creatable`].
     pub default_content: serde_json::Value,
 
     /// Optional category path for organizing in the create menu
@@ -71,4 +74,41 @@ pub struct FileTypeDefinition {
     /// This is useful for project assets with a canonical location, such as
     /// type definitions under `types/traits`.
     pub creation_directory: Option<String>,
+}
+
+impl FileTypeDefinition {
+    /// Whether the file manager offers to create files of this type. Types
+    /// whose files are imported or produced by a tool (FBX, PNG, `.mesh`)
+    /// register with an empty-string `default_content`, which would only
+    /// write an invalid file.
+    pub fn is_creatable(&self) -> bool {
+        self.default_content != serde_json::Value::String(String::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with_content(default_content: serde_json::Value) -> FileTypeDefinition {
+        FileTypeDefinition {
+            id: FileTypeId::new("x"),
+            extension: "x".into(),
+            display_name: "X".into(),
+            icon: ui::IconName::Cube,
+            color: gpui::Hsla::default(),
+            structure: FileStructure::Standalone,
+            default_content,
+            categories: Vec::new(),
+            creation_directory: None,
+        }
+    }
+
+    #[test]
+    fn only_import_only_types_are_hidden_from_the_create_menu() {
+        assert!(!with_content(serde_json::json!("")).is_creatable());
+        assert!(with_content(serde_json::Value::Null).is_creatable(), "an empty file");
+        assert!(with_content(serde_json::json!("# notes\n")).is_creatable());
+        assert!(with_content(serde_json::json!({ "nodes": [] })).is_creatable());
+    }
 }

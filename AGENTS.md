@@ -19,6 +19,14 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
 
+## Project data (`.pulsar/`)
+
+| Path | What |
+|---|---|
+| `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer (`asset_import`) |
+| `.pulsar/import_options.json` | Import options per native asset (`engine_fs::import_options`) |
+| `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
+
 ## Workspace
 
 ```toml

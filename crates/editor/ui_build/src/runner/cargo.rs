@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use editor_task_queue::TaskContext;
 use parking_lot::Mutex;
+use rust_i18n::t;
 
 use super::plan::Invocation;
 
@@ -86,12 +87,13 @@ fn command(invocation: &Invocation, project_root: &Path) -> Command {
     cmd
 }
 
-/// Kill `child` if `cancel` is raised before `done` is. Returns when either is.
+/// Kill `child`, and everything it started, if `cancel` is raised before
+/// `done` is. Returns when either is.
 fn watch_for_cancel(child: Arc<Mutex<Child>>, cancel: Arc<AtomicBool>, done: Arc<AtomicBool>) {
     std::thread::spawn(move || {
         while !done.load(Ordering::Acquire) {
             if cancel.load(Ordering::Acquire) {
-                let _ = child.lock().kill();
+                super::process_tree::kill_tree(&mut child.lock());
                 return;
             }
             std::thread::sleep(Duration::from_millis(50));
@@ -106,10 +108,108 @@ fn registry_activity(line: &str) -> Option<String> {
         .strip_prefix("Updating ")
         .or_else(|| line.strip_prefix("Locking "))?
         .replace('`', "");
-    Some(format!(
-        "Updating {}",
-        what.rsplit('/').next().unwrap_or(&what)
-    ))
+    Some(
+        t!(
+            "Build.Progress.Updating",
+            what = what.rsplit('/').next().unwrap_or(&what)
+        )
+        .to_string(),
+    )
+}
+
+/// How many `compiler-artifact` messages a build of `invocation` emits, from
+/// `cargo metadata`: one per package reachable through normal and build
+/// dependencies (filtered to the build's target platform), one more per
+/// build script, and one per binary of a workspace member. Fresh units are
+/// reported too, so this is the total whether or not they need rebuilding.
+/// `None` when cargo metadata can't be read; the caller then estimates as it
+/// goes.
+fn expected_artifacts(invocation: &Invocation, project_root: &Path) -> Option<u32> {
+    let target = invocation
+        .args
+        .iter()
+        .position(|arg| arg == "--target")
+        .and_then(|i| invocation.args.get(i + 1).cloned())
+        .or_else(host_triple)?;
+    let output = Command::new("cargo")
+        .args(["metadata", "--format-version", "1", "--filter-platform", &target])
+        .envs(invocation.envs.iter().map(|(k, v)| (k, v)))
+        .current_dir(project_root)
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    count_artifacts(&serde_json::from_slice(&output.stdout).ok()?)
+}
+
+fn host_triple() -> Option<String> {
+    let output = Command::new("rustc").arg("-vV").output().ok()?;
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("host: ").map(str::to_owned))
+}
+
+/// See [`expected_artifacts`].
+fn count_artifacts(metadata: &serde_json::Value) -> Option<u32> {
+    use std::collections::{HashMap, HashSet};
+    let members: HashSet<&str> = metadata["workspace_members"]
+        .as_array()?
+        .iter()
+        .filter_map(|id| id.as_str())
+        .collect();
+    let nodes: HashMap<&str, &serde_json::Value> = metadata["resolve"]["nodes"]
+        .as_array()?
+        .iter()
+        .filter_map(|node| Some((node["id"].as_str()?, node)))
+        .collect();
+    let packages: HashMap<&str, &serde_json::Value> = metadata["packages"]
+        .as_array()?
+        .iter()
+        .filter_map(|package| Some((package["id"].as_str()?, package)))
+        .collect();
+
+    // Packages a build compiles: members and what they reach without dev
+    // dependencies (`kind` null is a normal dependency).
+    let mut reached: HashSet<&str> = HashSet::new();
+    let mut queue: Vec<&str> = members.iter().copied().collect();
+    while let Some(id) = queue.pop() {
+        if !reached.insert(id) {
+            continue;
+        }
+        let Some(node) = nodes.get(id) else { continue };
+        for dep in node["deps"].as_array().into_iter().flatten() {
+            let built = dep["dep_kinds"].as_array().is_some_and(|kinds| {
+                kinds.iter().any(|kind| kind["kind"].as_str() != Some("dev"))
+            });
+            if let (true, Some(dep_id)) = (built, dep["pkg"].as_str()) {
+                queue.push(dep_id);
+            }
+        }
+    }
+
+    let mut total = 0u32;
+    for id in &reached {
+        let targets = packages.get(id).and_then(|p| p["targets"].as_array());
+        let count = |kind: &str| -> u32 {
+            targets
+                .into_iter()
+                .flatten()
+                .filter(|target| {
+                    target["kind"]
+                        .as_array()
+                        .is_some_and(|k| k.iter().any(|k| k.as_str() == Some(kind)))
+                })
+                .count() as u32
+        };
+        let library = count("lib") + count("proc-macro") + count("rlib");
+        total += library.min(1) + count("custom-build");
+        if members.contains(id) {
+            total += count("bin");
+        }
+    }
+    (total > 0).then_some(total)
 }
 
 /// Run `cargo check` or `cargo build`, following its JSON messages for
@@ -120,6 +220,9 @@ pub fn run_compiling(
     progress: &Progress,
     cancel: &Arc<AtomicBool>,
 ) -> Result<(), StepError> {
+    progress.status(t!("Build.Progress.Resolving"));
+    let total = expected_artifacts(invocation, project_root);
+
     let mut cmd = command(invocation, project_root);
     cmd.arg("--message-format=json")
         .stdout(Stdio::piped())
@@ -127,10 +230,14 @@ pub fn run_compiling(
     tracing::info!("[build] {}", invocation.display());
 
     let mut child = cmd.spawn().map_err(|e| {
-        StepError::Failed(format!(
-            "Could not start cargo {}: {e}",
-            invocation.subcommand
-        ))
+        StepError::Failed(
+            t!(
+                "Build.Error.CouldNotStart",
+                subcommand = invocation.subcommand,
+                error = e
+            )
+            .to_string(),
+        )
     })?;
     let stdout = BufReader::new(child.stdout.take().expect("piped"));
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
@@ -155,7 +262,9 @@ pub fn run_compiling(
     // Artifacts fill 10–94 %; the first 10 % is dependency resolution and the
     // last 6 % linking, which produces no messages.
     let mut seen = 0u32;
-    let mut expected = 4.0f32;
+    // Without a total, keep the estimate a few artifacts ahead of what has
+    // been seen (it then crawls towards 94 % rather than knowing the end).
+    let mut expected = total.map_or(4.0, |total| total as f32);
     let mut errors: Vec<String> = Vec::new();
     for line in stdout.lines().map_while(Result::ok) {
         if !line.contains(r#""reason""#) {
@@ -177,11 +286,13 @@ pub fn run_compiling(
             }
             Some("compiler-artifact") => {
                 seen += 1;
-                expected = expected.max(seen as f32 + 4.0);
-                progress.set(10 + ((seen as f32 / expected) * 84.0) as u32);
+                if total.is_none() {
+                    expected = expected.max(seen as f32 + 4.0);
+                }
+                progress.set(10 + ((seen as f32 / expected).min(1.0) * 84.0) as u32);
                 if !message["fresh"].as_bool().unwrap_or(false) {
                     let name = message["target"]["name"].as_str().unwrap_or("?");
-                    progress.status(format!("Compiling {name}"));
+                    progress.status(t!("Build.Progress.Compiling", name = name));
                 }
             }
             _ => {}
@@ -206,12 +317,18 @@ pub fn run_compiling(
             } else {
                 errors.join(&format!("\n\n{ERROR_SEPARATOR}\n\n"))
             };
-            Err(StepError::Failed(format!(
-                "cargo {} failed:\n\n{detail}",
-                invocation.subcommand
-            )))
+            Err(StepError::Failed(
+                t!(
+                    "Build.Error.CommandFailed",
+                    subcommand = invocation.subcommand,
+                    detail = detail
+                )
+                .to_string(),
+            ))
         }
-        Err(e) => Err(StepError::Failed(format!("Could not wait for cargo: {e}"))),
+        Err(e) => Err(StepError::Failed(
+            t!("Build.Error.CouldNotWait", error = e).to_string(),
+        )),
     }
 }
 
@@ -228,10 +345,14 @@ pub fn run_plain(
     tracing::info!("[build] {}", invocation.display());
 
     let mut child = cmd.spawn().map_err(|e| {
-        StepError::Failed(format!(
-            "Could not start cargo {}: {e}",
-            invocation.subcommand
-        ))
+        StepError::Failed(
+            t!(
+                "Build.Error.CouldNotStart",
+                subcommand = invocation.subcommand,
+                error = e
+            )
+            .to_string(),
+        )
     })?;
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
     let child = Arc::new(Mutex::new(child));
@@ -261,12 +382,17 @@ pub fn run_plain(
             progress.set(100);
             Ok(())
         }
-        Ok(_) => Err(StepError::Failed(format!(
-            "cargo {} failed:\n\n{}",
-            invocation.subcommand,
-            output.trim()
-        ))),
-        Err(e) => Err(StepError::Failed(format!("Could not wait for cargo: {e}"))),
+        Ok(_) => Err(StepError::Failed(
+            t!(
+                "Build.Error.CommandFailed",
+                subcommand = invocation.subcommand,
+                detail = output.trim()
+            )
+            .to_string(),
+        )),
+        Err(e) => Err(StepError::Failed(
+            t!("Build.Error.CouldNotWait", error = e).to_string(),
+        )),
     }
 }
 
@@ -286,6 +412,36 @@ mod tests {
         assert_eq!(bar.pct.load(Ordering::Relaxed), 60);
         slice.set(500);
         assert_eq!(bar.pct.load(Ordering::Relaxed), 60, "clamped");
+    }
+
+    #[test]
+    fn artifacts_are_counted_from_the_build_graph() {
+        // app (lib + bin + build script) -> serde (lib) -> serde_derive
+        // (proc-macro); app's dev-dependency on tester is not built.
+        let metadata = serde_json::json!({
+            "workspace_members": ["app"],
+            "packages": [
+                {"id": "app", "targets": [
+                    {"kind": ["lib"]}, {"kind": ["bin"]}, {"kind": ["custom-build"]}
+                ]},
+                {"id": "serde", "targets": [{"kind": ["lib"]}]},
+                {"id": "serde_derive", "targets": [{"kind": ["proc-macro"]}]},
+                {"id": "tester", "targets": [{"kind": ["lib"]}]}
+            ],
+            "resolve": {"nodes": [
+                {"id": "app", "deps": [
+                    {"pkg": "serde", "dep_kinds": [{"kind": null}]},
+                    {"pkg": "tester", "dep_kinds": [{"kind": "dev"}]}
+                ]},
+                {"id": "serde", "deps": [
+                    {"pkg": "serde_derive", "dep_kinds": [{"kind": null}]}
+                ]},
+                {"id": "serde_derive", "deps": []},
+                {"id": "tester", "deps": []}
+            ]}
+        });
+        // app: lib + bin + build script; serde; serde_derive.
+        assert_eq!(count_artifacts(&metadata), Some(5));
     }
 
     #[test]

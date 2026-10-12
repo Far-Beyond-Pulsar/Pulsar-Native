@@ -3,7 +3,7 @@
 use gpui::UpdateGlobal as _;
 use gpui::{
     anchored, deferred, div, point, prelude::*, px, rgba, AnyView, Context, Entity, IntoElement,
-    Render, SharedString, Subscription, Window,
+    Render, SharedString, StyleRefinement, Subscription, Window,
 };
 use rust_i18n::t;
 use std::path::PathBuf;
@@ -199,7 +199,15 @@ impl Render for PulsarRoot {
             .child(
                 v_flex()
                     .size_full()
-                    .child(div().size_full().overflow_hidden().child(self.app.clone())),
+                    .child(
+                        div().size_full().overflow_hidden().child(
+                            // Cached: the notification and modal layers
+                            // animate, and redrawing them must not rebuild
+                            // the editor under them.
+                            AnyView::from(self.app.clone())
+                                .cached(StyleRefinement::default().size_full()),
+                        ),
+                    ),
             )
             .children(drawer_layer)
             .children(modal_layer)
@@ -282,10 +290,21 @@ impl Render for EditorWindowShell {
                                     .flex_1()
                                     .min_w_0()
                                     .child(self.title_bar.clone())
-                                    .child(self.global_toolbar.clone()),
+                                    .child(
+                                        AnyView::from(self.global_toolbar.clone()).cached(
+                                            StyleRefinement::default()
+                                                .w_full()
+                                                .h(ui_level_editor::GLOBAL_TOOLBAR_HEIGHT),
+                                        ),
+                                    ),
                             ),
                     )
-                    .child(div().flex_1().overflow_hidden().child(self.content.clone())),
+                    .child(
+                        div().flex_1().overflow_hidden().child(
+                            AnyView::from(self.content.clone())
+                                .cached(StyleRefinement::default().size_full()),
+                        ),
+                    ),
             )
             .when(self.show_multiplayer, |this| {
                 this.child(

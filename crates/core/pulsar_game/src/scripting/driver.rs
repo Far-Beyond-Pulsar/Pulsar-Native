@@ -1161,11 +1161,18 @@ impl ScriptDriver {
             return;
         }
         let overrides: HashMap<String, Value> = overrides.clone().into_iter().collect();
+        let entity_for = |stable_id: &str| world.entity_for(stable_id);
         match self
             .runtime
-            .spawn_with_json(id.clone(), &class, Some(entity), &overrides)
+            .spawn_with_json(id.clone(), &class, Some(entity), &overrides, &entity_for)
         {
-            Ok(()) => {
+            Ok(rejected) => {
+                // A bad override keeps the class default; the instance runs.
+                for error in rejected {
+                    let message = format!("script instance '{id}': {error}; using the class default");
+                    tracing::warn!("{message}");
+                    report.failures.push(message);
+                }
                 bind_class_slots(&mut self.runtime, &id, world, entity);
                 if let Some(tracked) = self.tracked.get_mut(&entity) {
                     tracked.instance = Some(id.clone());

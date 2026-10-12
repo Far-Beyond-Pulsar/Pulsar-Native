@@ -4,6 +4,9 @@
 //! configurator shows one as a live preview, so what you see is what runs.
 
 use engine_state::build_config::{BuildConfiguration, TargetPlatform};
+use rust_i18n::t;
+
+use crate::text::platform_label;
 
 /// One cargo command.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,19 +65,24 @@ pub enum Step {
 impl Step {
     /// What it is doing, for status text.
     pub fn title(&self) -> String {
-        let on = |platform: &Option<TargetPlatform>| {
-            platform
-                .map(|p| format!(" for {}", p.label()))
-                .unwrap_or_default()
+        let title = match self {
+            Self::Bootstrap => t!("Build.Step.Bootstrap"),
+            Self::Update(_) => t!("Build.Step.Update"),
+            Self::Clean(_) => t!("Build.Step.Clean"),
+            Self::Check { platform: None, .. } => t!("Build.Step.Check"),
+            Self::Build { platform: None, .. } => t!("Build.Step.Build"),
+            Self::Run { platform: None, .. } => t!("Build.Step.Run"),
+            Self::Check {
+                platform: Some(p), ..
+            } => t!("Build.Step.CheckFor", platform = platform_label(*p)),
+            Self::Build {
+                platform: Some(p), ..
+            } => t!("Build.Step.BuildFor", platform = platform_label(*p)),
+            Self::Run {
+                platform: Some(p), ..
+            } => t!("Build.Step.RunFor", platform = platform_label(*p)),
         };
-        match self {
-            Self::Bootstrap => "Preparing project".into(),
-            Self::Update(_) => "Updating dependencies".into(),
-            Self::Clean(_) => "Cleaning build artifacts".into(),
-            Self::Check { platform, .. } => format!("Checking{}", on(platform)),
-            Self::Build { platform, .. } => format!("Building{}", on(platform)),
-            Self::Run { platform, .. } => format!("Launching{}", on(platform)),
-        }
+        title.to_string()
     }
 
     pub fn invocation(&self) -> Option<&Invocation> {
@@ -119,12 +127,11 @@ pub enum PlanError {
 impl std::fmt::Display for PlanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoSteps => write!(f, "This configuration has no steps enabled."),
-            Self::UnbuildablePlatform(p) => write!(
-                f,
-                "{} cannot be built with cargo; it needs its platform SDK.",
-                p.label()
-            ),
+            Self::NoSteps => f.write_str(&t!("Build.Plan.NoSteps")),
+            Self::UnbuildablePlatform(p) => f.write_str(&t!(
+                "Build.Plan.UnbuildablePlatform",
+                platform = platform_label(*p)
+            )),
         }
     }
 }
@@ -268,9 +275,7 @@ pub fn plan(config: &BuildConfiguration, host: Option<TargetPlatform>) -> Result
                 platform,
                 invocation: cargo("run", config, platform),
             }),
-            None => plan.warnings.push(
-                "Run was skipped: none of the selected platforms can run on this machine.".into(),
-            ),
+            None => plan.warnings.push(t!("Build.Plan.RunSkipped").to_string()),
         }
     }
     Ok(plan)

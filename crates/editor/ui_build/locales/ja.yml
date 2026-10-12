@@ -1,0 +1,173 @@
+# Build - ja
+
+# Build button
+Build.Button.Cancel: "ビルドをキャンセル"
+Build.Button.CancelTooltip: "ビルドを停止"
+Build.Button.NoConfiguration: "構成なし"
+Build.Button.NoConfigurationTooltip: "ビルド構成を選択してください"
+Build.Button.ChooseTooltip: "ビルド構成を選択"
+Build.Button.StopGame: "停止"
+Build.Button.StopGameTooltip: "実行中のゲームを停止"
+
+# Picker
+Build.Picker.Empty: "ビルド構成はまだありません。"
+Build.Picker.Edit: "構成を編集…"
+
+# Search
+Build.Search.Configurations: "構成を検索…"
+Build.Search.Platforms: "プラットフォームを検索…"
+Build.Search.NoConfigurationsMatch: "「%{query}」に一致する構成はありません。"
+Build.Search.NoPlatformsMatch: "検索に一致するプラットフォームはありません。"
+
+# Configurator window
+Build.Configurator.Title: "ビルド構成"
+Build.Configurator.Configurations: "構成"
+Build.Configurator.New: "新規"
+Build.Configurator.NewTooltip: "ビルド構成を作成"
+Build.Configurator.Empty: "構成はまだありません。"
+Build.Configurator.CountOne: "%{count} 件の構成"
+Build.Configurator.CountMany: "%{count} 件の構成"
+Build.Configurator.Filtered: "%{shown} / %{total}"
+Build.Configurator.NoneTitle: "ビルド構成がありません"
+Build.Configurator.NoneDescription: "構成はビルド方法を定めます。Rust のモード、プラットフォーム、ステップです。"
+Build.Configurator.Create: "構成を作成"
+Build.Configurator.SetActive: "アクティブに設定"
+Build.Configurator.SetActiveTooltip: "この構成をビルドボタンで使用"
+Build.Configurator.Active: "アクティブ"
+Build.Configurator.Duplicate: "複製"
+Build.Configurator.Delete: "削除"
+Build.Configurator.ConfirmDelete: "もう一度クリックで削除"
+
+# General section
+Build.General.Title: "一般"
+Build.General.Description: "この構成がビルドメニューにどう表示されるか。"
+Build.General.Name: "名前"
+Build.General.NamePlaceholder: "構成の名前"
+Build.General.NameRequired: "構成には名前が必要です。"
+Build.General.NameTaken: "この名前は別の構成で使われています。"
+Build.General.ConfigDescription: "説明"
+Build.General.DescriptionPlaceholder: "この構成の用途"
+
+# Rust build mode section
+Build.Profile.Title: "Rust ビルドモード"
+Build.Profile.Description: "すべてのコンパイルステップで使う cargo プロファイル。"
+Build.Profile.Debug.Label: "デバッグ"
+Build.Profile.Debug.Summary: "コンパイルは速く、実行は遅い。デバッグアサーション有効。"
+Build.Profile.Release.Label: "リリース"
+Build.Profile.Release.Summary: "実際のパフォーマンスを確かめるための最適化ビルド。"
+Build.Profile.Shipping.Label: "出荷"
+Build.Profile.Shipping.Summary: "fat LTO、コード生成ユニット 1 つ、シンボル除去付きのリリース。"
+
+# Platforms section
+Build.Platforms.Title: "プラットフォーム"
+Build.Platforms.Description: "選択した各プラットフォームを順番にビルドします。空のままにするとこのマシン向けにビルドします。"
+Build.Platforms.ThisMachine: "このマシン"
+Build.Platforms.ThisMachineDefault: "このマシン（既定）"
+Build.Platforms.ThisMachineTooltip: "このエディターが動作しているプラットフォーム向けにビルド"
+Build.Platforms.Desktop: "デスクトップ"
+Build.Platforms.DesktopTooltip: "Windows x64、Linux x64、macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} / %{total}"
+Build.Platforms.NeedsSdk: "コンソール SDK が必要です。cargo ではビルドできません"
+
+# Platform families
+Build.Family.Unix: "Solaris と illumos"
+Build.Family.Other: "その他"
+Build.Family.Console: "コンソール"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7（ハードウェア浮動小数点）"
+Build.Target.LinuxArmGnueabi: "Linux ARM（ソフトウェア浮動小数点）"
+Build.Target.LinuxArmGnueabihf: "Linux ARM（ハードウェア浮動小数点）"
+Build.Target.IosAarch64: "iOS デバイス"
+Build.Target.IosX86_64: "iOS シミュレーター（Intel）"
+Build.Target.IosAarch64Sim: "iOS シミュレーター（Apple Silicon）"
+
+# Build steps section
+Build.Steps.Title: "ビルドステップ"
+Build.Steps.Description: "常にこの順番で実行されます。使わないステップはスキップされます。"
+Build.Steps.Update.Title: "依存関係を更新"
+Build.Steps.Update.Description: "cargo update: 先に互換性のある最新バージョンを取得します。"
+Build.Steps.Clean.Title: "先にクリーン"
+Build.Steps.Clean.Description: "cargo clean: 古いビルド出力を捨てて最初からやり直します。"
+Build.Steps.Check.Title: "チェック"
+Build.Steps.Check.Description: "cargo check: バイナリを作らずに素早く型チェックします。"
+Build.Steps.Build.Title: "ビルド"
+Build.Steps.Build.Description: "cargo build: 選択したすべてのプラットフォーム向けにコンパイルします。"
+Build.Steps.Run.Title: "実行"
+Build.Steps.Run.Description: "ビルド完了後にゲームを起動します（ビルドが有効になります）。"
+Build.Steps.Preset.QuickCheck: "クイックチェック"
+Build.Steps.Preset.Build: "ビルド"
+Build.Steps.Preset.CleanBuild: "クリーンビルド"
+Build.Steps.Preset.BuildAndRun: "ビルドして実行"
+Build.Steps.Preset.FullRefresh: "フルリフレッシュ"
+Build.Steps.Summary.Update: "更新"
+Build.Steps.Summary.Clean: "クリーン"
+Build.Steps.Summary.Check: "チェック"
+Build.Steps.Summary.Build: "ビルド"
+Build.Steps.Summary.Run: "実行"
+Build.Steps.Summary.None: "ステップなし"
+
+# Pipeline preview
+Build.Preview.Title: "パイプラインのプレビュー"
+Build.Preview.Bootstrap: "プロジェクトファイルを生成または更新"
+Build.Preview.Environment: "環境: %{env}"
+
+# Advanced section
+Build.Advanced.Title: "詳細"
+Build.Advanced.Description: "すべての cargo check、build、run に渡されます。"
+Build.Advanced.Features: "Cargo フィーチャー（カンマまたはスペース区切り）"
+Build.Advanced.ExtraArgs: "追加の cargo 引数"
+Build.Advanced.QuoteHint: "スペースを含む引数は引用符で囲んでください: --config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "プロジェクトを準備中"
+Build.Step.Update: "依存関係を更新中"
+Build.Step.Clean: "ビルド成果物を削除中"
+Build.Step.Check: "チェック中"
+Build.Step.CheckFor: "%{platform} 向けにチェック中"
+Build.Step.Build: "ビルド中"
+Build.Step.BuildFor: "%{platform} 向けにビルド中"
+Build.Step.Run: "起動中"
+Build.Step.RunFor: "%{platform} 向けに起動中"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "この構成には有効なステップがありません。"
+Build.Plan.UnbuildablePlatform: "%{platform} は cargo でビルドできません。プラットフォーム SDK が必要です。"
+Build.Plan.RunSkipped: "実行はスキップされました。選択したプラットフォームはどれもこのマシンで動作しません。"
+
+# Progress
+Build.Progress.Starting: "開始中"
+Build.Progress.Resolving: "依存関係を解決中"
+Build.Progress.Compiling: "%{name} をコンパイル中"
+Build.Progress.Updating: "%{what} を更新中"
+Build.Task.Title: "ビルド: %{name}"
+Build.Task.Starting: "ビルドを開始中"
+
+# Notifications
+Build.Notification.NoProject: "ビルドする前にプロジェクトを開いてください。"
+Build.Notification.AlreadyRunning: "ビルドはすでに実行中です。"
+Build.Notification.Starting: "開始中…"
+Build.Notification.Succeeded: "ビルド成功"
+Build.Notification.Failed: "ビルド失敗"
+Build.Notification.Cancelled: "ビルドをキャンセルしました"
+Build.Notification.StoppedUnexpectedly: "ビルドが予期せず停止しました。"
+
+# Cargo errors
+Build.Error.CouldNotStart: "cargo %{subcommand} を開始できませんでした: %{error}"
+Build.Error.CouldNotWait: "cargo を待機できませんでした: %{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} に失敗しました:\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "エラー %{number}"
+Build.Failure.Copy: "コピー"
+Build.Failure.CountOne: "Cargo から %{count} 件のコンパイラエラーを取得しました。"
+Build.Failure.CountMany: "Cargo から %{count} 件のコンパイラエラーを取得しました。"
+Build.Failure.CopyAll: "すべてのエラーをコピー"
+Build.Failure.Close: "閉じる"
+
+# Running the game
+Build.Game.Title: "実行"
+Build.Game.LaunchFailed: "ゲームを起動できませんでした: %{error}"
+Build.Game.NonZeroExit: "ゲームが 0 以外の終了コードで終了しました。"
+Build.Game.Crashed: "ゲームがクラッシュしました:\n%{output}"
+Build.Game.CrashedWithReport: "ゲームがクラッシュしました。\nレポートの保存先: %{path}\n\n%{output}"

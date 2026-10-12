@@ -37,7 +37,14 @@ chrono = { workspace = true, features = ["serde"] }
 image.workspace = true
 smallvec.workspace = true
 smol = { workspace = true }
+notify = { workspace = true }
 rust-i18n.workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# Headless `TestAppContext` windows for the import-action test
+# (`utils/import_state.rs`). Test binaries only.
+gpui-ce = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

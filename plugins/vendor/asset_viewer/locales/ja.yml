@@ -58,3 +58,10 @@ AssetViewer.ColC: C
 AssetViewer.ColMat: マテリアル
 AssetViewer.Loading: 読み込み中...
 AssetViewer.Unknown: 不明
+AssetViewer.Mode.Lit: "ライティング"
+AssetViewer.Mode.Unlit: "アンリット"
+AssetViewer.Mode.Wireframe: "ワイヤーフレーム"
+AssetViewer.Mode.Normals: "法線"
+AssetViewer.Mode.Uv1: "UV 1"
+AssetViewer.Mode.Uv2: "UV 2"
+AssetViewer.Mode.Density: "密度"

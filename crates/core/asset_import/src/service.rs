@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use editor_task_queue::{TaskContext, TaskDescription, TaskDuration, TaskId};
+use engine_fs::virtual_fs;
 use parking_lot::Mutex;
 
 use crate::db::{hash_file, relative_key, ImportDb, ImportRecord};
@@ -19,18 +20,40 @@ fn with_db(project_root: &Path, edit: impl FnOnce(&mut ImportDb)) -> Result<(), 
     let _guard = DB_LOCK.lock();
     let mut db = ImportDb::load(project_root);
     edit(&mut db);
-    db.save(project_root).map_err(|error| format!("{error:#}"))
+    let saved = db.save(project_root).map_err(|error| format!("{error:#}"));
+    crate::state::bump_db_revision();
+    saved
 }
 
 /// What happens to the source file once its native asset is built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImportMode {
-    /// The native asset replaces the source file. No record is kept, so the
+    /// The native asset replaces the source file, which moves to the
+    /// project's trash folder ([`TRASH_DIR`]). No record is kept, so the
     /// conversion is one-way.
     ConvertInPlace,
     /// The source stays. A record ties it to the native asset, and later
     /// changes to the source are detected.
     Link,
+}
+
+/// Where convert-in-place moves replaced sources, relative to the project
+/// root. Each conversion gets its own timestamped folder, with the source at
+/// its project-relative path inside it, so nothing is overwritten.
+pub const TRASH_DIR: &str = ".pulsar/trash";
+
+/// Move `source` (whose record key is `key`) into the project trash. Returns
+/// where it went.
+fn move_to_trash(project_root: &Path, source: &Path, key: &str) -> anyhow::Result<PathBuf> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis());
+    let destination = project_root.join(TRASH_DIR).join(stamp.to_string()).join(key);
+    if let Some(parent) = destination.parent() {
+        virtual_fs::create_dir_all(parent)?;
+    }
+    virtual_fs::rename(source, &destination)?;
+    Ok(destination)
 }
 
 fn file_title(path: &Path) -> String {
@@ -81,9 +104,18 @@ fn convert(
             })
         }),
         ImportMode::ConvertInPlace => {
-            // The asset is written; only now is the source expendable.
-            std::fs::remove_file(source)
-                .map_err(|error| format!("converted, but could not remove {}: {error}", source.display()))?;
+            // The asset is written; only now is the source expendable. It goes
+            // to the trash rather than away. The conversion has succeeded
+            // either way, so a failed move is a warning, not a failed task.
+            match move_to_trash(project_root, source, &key) {
+                Ok(trashed) => {
+                    tracing::info!("converted {}; source moved to {}", source.display(), trashed.display());
+                }
+                Err(error) => {
+                    tracing::warn!("converted {}, but could not move it to the trash: {error:#}", source.display());
+                    task.report_progress(0.95, "Converted; source left in place");
+                }
+            }
             with_db(project_root, |db| db.remove_source(&key))
         }
     }
@@ -115,6 +147,20 @@ pub fn submit_import(
             })
         })
         .collect()
+}
+
+/// Scan `project_root` for importable sources as a task, so it shows in the
+/// Tasks window, and hand the report to `done` on the task's thread.
+pub fn submit_scan(
+    project_root: PathBuf,
+    done: impl FnOnce(crate::ScanReport) + Send + 'static,
+) -> TaskId {
+    let description = TaskDescription::new("Scan for imports", TASK_CATEGORY, TaskDuration::Short);
+    editor_task_queue::global().submit(description, move |task| {
+        task.report_progress(0.0, "Scanning project");
+        done(crate::scan_project(&project_root));
+        Ok(())
+    })
 }
 
 /// Reimport the linked source `source` (a record key) with the options its
@@ -159,6 +205,23 @@ pub fn ignore_sources(project_root: &Path, sources: &[PathBuf]) -> Result<(), St
     with_db(project_root, |db| {
         for source in sources {
             db.ignore(&relative_key(project_root, source));
+        }
+    })
+}
+
+/// Drop the link between the source `source` (a record key) and its native
+/// asset. Both files stay; the source is no longer checked for changes, and
+/// scans offer it for import again.
+pub fn unlink_source(project_root: &Path, source: &str) -> Result<(), String> {
+    with_db(project_root, |db| db.remove_source(source))
+}
+
+/// Forget that the user declined to import `sources`, so scans and the
+/// content drawer offer them again.
+pub fn unignore_sources(project_root: &Path, sources: &[PathBuf]) -> Result<(), String> {
+    with_db(project_root, |db| {
+        for source in sources {
+            db.unignore(&relative_key(project_root, source));
         }
     })
 }
@@ -251,5 +314,36 @@ mod tests {
         assert_eq!(wait(ids[0]), (TaskStatus::Succeeded, None));
         assert!(!source.exists() && root.join("cube.mesh").exists());
         assert!(ImportDb::load(&root).records.is_empty());
+
+        // The source is recoverable from the trash, byte for byte.
+        let trashed: Vec<_> = std::fs::read_dir(root.join(TRASH_DIR))
+            .unwrap()
+            .map(|entry| entry.unwrap().path().join("cube.fbx"))
+            .collect();
+        assert_eq!(trashed.len(), 1);
+        assert_eq!(std::fs::read(&trashed[0]).unwrap(), std::fs::read(cube()).unwrap());
+    }
+    #[test]
+    fn unlink_keeps_both_files_and_unignore_offers_the_source_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let source = root.join("cube.fbx");
+        std::fs::copy(cube(), &source).unwrap();
+        let options = Arc::new(Mutex::new(OptionValues::new()));
+        let ids = submit_import(root.clone(), vec![source.clone()], ImportMode::Link, options);
+        assert_eq!(wait(ids[0]).0, TaskStatus::Succeeded);
+
+        let before = crate::db_revision();
+        unlink_source(&root, "cube.fbx").unwrap();
+        assert!(crate::db_revision() > before, "a database write bumps the revision");
+        assert!(source.exists() && root.join("cube.mesh").exists());
+        let states = crate::import_states(&root, &[source.clone(), root.join("cube.mesh")]);
+        assert_eq!(states[&source], crate::FileImportState::Unlinked);
+        assert!(!states.contains_key(&root.join("cube.mesh")), "the asset is no longer linked");
+
+        ignore_sources(&root, &[source.clone()]).unwrap();
+        assert_eq!(crate::import_states(&root, &[source.clone()])[&source], crate::FileImportState::Ignored);
+        unignore_sources(&root, &[source.clone()]).unwrap();
+        assert_eq!(crate::import_states(&root, &[source.clone()])[&source], crate::FileImportState::Unlinked);
     }
 }

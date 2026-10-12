@@ -1,0 +1,173 @@
+# Build - zh-HK
+
+# Build button
+Build.Button.Cancel: "取消建置"
+Build.Button.CancelTooltip: "停止建置"
+Build.Button.NoConfiguration: "沒有設定"
+Build.Button.NoConfigurationTooltip: "選擇一個建置設定"
+Build.Button.ChooseTooltip: "選擇建置設定"
+Build.Button.StopGame: "停止"
+Build.Button.StopGameTooltip: "停止正在執行的遊戲"
+
+# Picker
+Build.Picker.Empty: "尚未有建置設定。"
+Build.Picker.Edit: "編輯設定…"
+
+# Search
+Build.Search.Configurations: "搜尋設定…"
+Build.Search.Platforms: "搜尋平台…"
+Build.Search.NoConfigurationsMatch: "沒有與「%{query}」相符的設定。"
+Build.Search.NoPlatformsMatch: "沒有與搜尋相符的平台。"
+
+# Configurator window
+Build.Configurator.Title: "建置設定"
+Build.Configurator.Configurations: "設定"
+Build.Configurator.New: "新增"
+Build.Configurator.NewTooltip: "建立建置設定"
+Build.Configurator.Empty: "尚未有設定。"
+Build.Configurator.CountOne: "%{count} 個設定"
+Build.Configurator.CountMany: "%{count} 個設定"
+Build.Configurator.Filtered: "%{shown} / %{total}"
+Build.Configurator.NoneTitle: "沒有建置設定"
+Build.Configurator.NoneDescription: "設定說明如何建置：Rust 模式、平台和步驟。"
+Build.Configurator.Create: "建立設定"
+Build.Configurator.SetActive: "設為使用中"
+Build.Configurator.SetActiveTooltip: "建置按鈕使用此設定"
+Build.Configurator.Active: "使用中"
+Build.Configurator.Duplicate: "複製"
+Build.Configurator.Delete: "刪除"
+Build.Configurator.ConfirmDelete: "再按一次以刪除"
+
+# General section
+Build.General.Title: "一般"
+Build.General.Description: "此設定在建置選單中的顯示方式。"
+Build.General.Name: "名稱"
+Build.General.NamePlaceholder: "設定名稱"
+Build.General.NameRequired: "設定需要一個名稱。"
+Build.General.NameTaken: "另一個設定已在使用此名稱。"
+Build.General.ConfigDescription: "描述"
+Build.General.DescriptionPlaceholder: "此設定的用途"
+
+# Rust build mode section
+Build.Profile.Title: "Rust 建置模式"
+Build.Profile.Description: "每個編譯步驟使用的 cargo 設定檔。"
+Build.Profile.Debug.Label: "偵錯"
+Build.Profile.Debug.Summary: "編譯快，執行慢。啟用偵錯斷言。"
+Build.Profile.Release.Label: "發行"
+Build.Profile.Release.Summary: "用於測試真實效能的最佳化建置。"
+Build.Profile.Shipping.Label: "出貨"
+Build.Profile.Shipping.Summary: "採用完整 LTO、單一程式碼產生單元並移除符號的發行建置。"
+
+# Platforms section
+Build.Platforms.Title: "平台"
+Build.Platforms.Description: "依次建置每個已選平台。留空則為本機建置。"
+Build.Platforms.ThisMachine: "本機"
+Build.Platforms.ThisMachineDefault: "本機（預設）"
+Build.Platforms.ThisMachineTooltip: "為執行此編輯器的平台建置"
+Build.Platforms.Desktop: "桌面"
+Build.Platforms.DesktopTooltip: "Windows x64、Linux x64 及 macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} / %{total}"
+Build.Platforms.NeedsSdk: "需要遊戲機 SDK；cargo 無法建置"
+
+# Platform families
+Build.Family.Unix: "Solaris 及 illumos"
+Build.Family.Other: "其他"
+Build.Family.Console: "遊戲機"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7（硬件浮點）"
+Build.Target.LinuxArmGnueabi: "Linux ARM（軟件浮點）"
+Build.Target.LinuxArmGnueabihf: "Linux ARM（硬件浮點）"
+Build.Target.IosAarch64: "iOS 裝置"
+Build.Target.IosX86_64: "iOS 模擬器（Intel）"
+Build.Target.IosAarch64Sim: "iOS 模擬器（Apple Silicon）"
+
+# Build steps section
+Build.Steps.Title: "建置步驟"
+Build.Steps.Description: "一律按此順序執行。未使用的步驟會被略過。"
+Build.Steps.Update.Title: "更新相依套件"
+Build.Steps.Update.Description: "cargo update：先取得最新的相容版本。"
+Build.Steps.Clean.Title: "先清理"
+Build.Steps.Clean.Description: "cargo clean：捨棄舊的建置輸出，從頭開始。"
+Build.Steps.Check.Title: "檢查"
+Build.Steps.Check.Description: "cargo check：快速檢查型別，不產生二進位檔。"
+Build.Steps.Build.Title: "建置"
+Build.Steps.Build.Description: "cargo build：為每個已選平台編譯。"
+Build.Steps.Run.Title: "執行"
+Build.Steps.Run.Description: "建置完成後啟動遊戲（會開啟建置）。"
+Build.Steps.Preset.QuickCheck: "快速檢查"
+Build.Steps.Preset.Build: "建置"
+Build.Steps.Preset.CleanBuild: "清理建置"
+Build.Steps.Preset.BuildAndRun: "建置並執行"
+Build.Steps.Preset.FullRefresh: "完整重新整理"
+Build.Steps.Summary.Update: "更新"
+Build.Steps.Summary.Clean: "清理"
+Build.Steps.Summary.Check: "檢查"
+Build.Steps.Summary.Build: "建置"
+Build.Steps.Summary.Run: "執行"
+Build.Steps.Summary.None: "沒有步驟"
+
+# Pipeline preview
+Build.Preview.Title: "流程預覽"
+Build.Preview.Bootstrap: "產生或重新整理專案檔案"
+Build.Preview.Environment: "環境：%{env}"
+
+# Advanced section
+Build.Advanced.Title: "進階"
+Build.Advanced.Description: "傳遞給每個 cargo check、build 和 run。"
+Build.Advanced.Features: "Cargo 功能（以逗號或空格分隔）"
+Build.Advanced.ExtraArgs: "額外的 cargo 參數"
+Build.Advanced.QuoteHint: "包含空格的參數請以引號括住：--config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "正在準備專案"
+Build.Step.Update: "正在更新相依套件"
+Build.Step.Clean: "正在清理建置產物"
+Build.Step.Check: "正在檢查"
+Build.Step.CheckFor: "正在為 %{platform} 檢查"
+Build.Step.Build: "正在建置"
+Build.Step.BuildFor: "正在為 %{platform} 建置"
+Build.Step.Run: "正在啟動"
+Build.Step.RunFor: "正在為 %{platform} 啟動"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "此設定未啟用任何步驟。"
+Build.Plan.UnbuildablePlatform: "%{platform} 無法以 cargo 建置；需要其平台 SDK。"
+Build.Plan.RunSkipped: "已略過執行：已選平台都無法在本機執行。"
+
+# Progress
+Build.Progress.Starting: "正在開始"
+Build.Progress.Resolving: "正在解析相依套件"
+Build.Progress.Compiling: "正在編譯 %{name}"
+Build.Progress.Updating: "正在更新 %{what}"
+Build.Task.Title: "建置：%{name}"
+Build.Task.Starting: "正在開始建置"
+
+# Notifications
+Build.Notification.NoProject: "建置前請先開啟專案。"
+Build.Notification.AlreadyRunning: "已有建置正在執行。"
+Build.Notification.Starting: "正在開始…"
+Build.Notification.Succeeded: "建置成功"
+Build.Notification.Failed: "建置失敗"
+Build.Notification.Cancelled: "已取消建置"
+Build.Notification.StoppedUnexpectedly: "建置意外停止。"
+
+# Cargo errors
+Build.Error.CouldNotStart: "無法啟動 cargo %{subcommand}：%{error}"
+Build.Error.CouldNotWait: "無法等待 cargo：%{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} 失敗：\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "錯誤 %{number}"
+Build.Failure.Copy: "複製"
+Build.Failure.CountOne: "從 Cargo 擷取到 %{count} 個編譯器錯誤。"
+Build.Failure.CountMany: "從 Cargo 擷取到 %{count} 個編譯器錯誤。"
+Build.Failure.CopyAll: "複製所有錯誤"
+Build.Failure.Close: "關閉"
+
+# Running the game
+Build.Game.Title: "執行"
+Build.Game.LaunchFailed: "無法啟動遊戲：%{error}"
+Build.Game.NonZeroExit: "遊戲以非零狀態碼結束。"
+Build.Game.Crashed: "遊戲當機：\n%{output}"
+Build.Game.CrashedWithReport: "遊戲當機。\n報告已儲存至 %{path}\n\n%{output}"

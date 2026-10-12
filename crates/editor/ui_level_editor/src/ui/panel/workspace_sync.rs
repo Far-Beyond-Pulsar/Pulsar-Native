@@ -20,7 +20,7 @@ impl LevelEditorPanel {
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
 
-        workspace.update(cx, |workspace, cx| {
+        let viewport_panel = workspace.update(cx, |workspace, cx| {
             let dock_area = workspace.dock_area().downgrade();
 
             // Create viewport in center
@@ -90,6 +90,7 @@ impl LevelEditorPanel {
             // Set center and right dock only (no left dock, matching DAW approach).
             // The Game tab (Play In Editor, issue #243) is added dynamically
             // when the game starts and removed on stop — see `sync_game_tab`.
+            let viewport_handle = viewport_panel.downgrade();
             let center_tabs = DockItem::tabs(
                 vec![std::sync::Arc::new(viewport_panel)
                     as std::sync::Arc<dyn ui::dock::PanelView>],
@@ -102,8 +103,10 @@ impl LevelEditorPanel {
                 dock_area.set_center(center_tabs, window, cx);
                 dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
             });
+            viewport_handle
         });
 
+        self.viewport_panel = Some(viewport_panel);
         self.workspace = Some(workspace);
     }
 

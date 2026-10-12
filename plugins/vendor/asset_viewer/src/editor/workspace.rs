@@ -53,6 +53,7 @@ impl AssetViewerPanel {
 pub struct ViewportPanel {
     editor: WeakEntity<AssetViewerPanel>,
     focus_handle: FocusHandle,
+    density_hover_band: Option<u32>,
 }
 
 impl ViewportPanel {
@@ -64,6 +65,7 @@ impl ViewportPanel {
         Self {
             editor,
             focus_handle: cx.focus_handle(),
+            density_hover_band: None,
         }
     }
 }
@@ -79,7 +81,13 @@ impl Focusable for ViewportPanel {
 impl Render for ViewportPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(editor_entity) = self.editor.upgrade() {
+            // Capture the viewport before the editor update shadows its context.
+            let viewport_entity: Entity<ViewportPanel> = cx.entity();
+            let density_hover_band = self.density_hover_band;
             editor_entity.update(cx, |editor, cx| {
+                // Keep the render state on the viewport entity, which owns
+                // these hover events, then sync it before rendering the mesh.
+                editor.density_hover_band = density_hover_band;
                 editor.render_content(window, cx);
                 // A shader-graph material can animate: keep frames coming
                 // so its `time` node advances.
@@ -115,45 +123,52 @@ impl Render for ViewportPanel {
                         .border_color(cx.theme().border)
                         .child(render_mode_button(
                             "asset_view_lit",
-                            "Lit",
+                            t!("AssetViewer.Mode.Lit"),
                             mode == MeshRenderMode::Lit,
                             editor_entity.clone(),
                             MeshRenderMode::Lit,
                         ))
                         .child(render_mode_button(
                             "asset_view_unlit",
-                            "Unlit",
+                            t!("AssetViewer.Mode.Unlit"),
                             mode == MeshRenderMode::Unlit,
                             editor_entity.clone(),
                             MeshRenderMode::Unlit,
                         ))
                         .child(render_mode_button(
                             "asset_view_wireframe",
-                            "Wireframe",
+                            t!("AssetViewer.Mode.Wireframe"),
                             mode == MeshRenderMode::Wireframe,
                             editor_entity.clone(),
                             MeshRenderMode::Wireframe,
                         ))
                         .child(render_mode_button(
                             "asset_view_normals",
-                            "Normals",
+                            t!("AssetViewer.Mode.Normals"),
                             mode == MeshRenderMode::Normals,
                             editor_entity.clone(),
                             MeshRenderMode::Normals,
                         ))
                         .child(render_mode_button(
                             "asset_view_uv0",
-                            "UV 1",
+                            t!("AssetViewer.Mode.Uv1"),
                             mode == MeshRenderMode::Uv0,
                             editor_entity.clone(),
                             MeshRenderMode::Uv0,
                         ))
                         .child(render_mode_button(
                             "asset_view_uv1",
-                            "UV 2",
+                            t!("AssetViewer.Mode.Uv2"),
                             mode == MeshRenderMode::Uv1,
                             editor_entity.clone(),
                             MeshRenderMode::Uv1,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_vertex_density",
+                            t!("AssetViewer.Mode.Density"),
+                            mode == MeshRenderMode::VertexDensity,
+                            editor_entity.clone(),
+                            MeshRenderMode::VertexDensity,
                         ));
 
                     div()
@@ -180,6 +195,140 @@ impl Render for ViewportPanel {
                         .on_key_up(AssetViewerPanel::on_key_up(cx))
                         .child(surface_elem)
                         .child(div().absolute().top(px(12.0)).left(px(12.0)).child(overlay))
+                        .child(if mode == MeshRenderMode::VertexDensity {
+                            v_flex()
+                                .absolute()
+                                .bottom(px(12.0))
+                                .left(px(12.0))
+                                .items_center()
+                                .gap_1()
+                                .px_2()
+                                .py_2()
+                                .bg(cx.theme().background.opacity(0.9))
+                                .rounded(cx.theme().radius)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .text_xs()
+                                .child("Bad")
+                                .child(
+                                    v_flex()
+                                        .w(px(28.0))
+                                        .h(px(168.0))
+                                        .children([
+                                            (0xf2080a, "red"),
+                                            (0xff6100, "orange"),
+                                            (0xfff200, "yellow"),
+                                            (0x0de61f, "green"),
+                                            (0x00edf5, "cyan"),
+                                            (0x0d33ff, "blue"),
+                                            (0x8c14ff, "violet"),
+                                        ].into_iter().enumerate().map(|(index, (color, _name))| {
+                                            let band = 6 - index as u32;
+                                            let viewport_entity = viewport_entity.clone();
+                                            div()
+                                                // GPUI registers hover handlers only for elements with persistent state.
+                                                .id(("density-legend-swatch", index))
+                                                .h(px(24.0))
+                                                .w_full()
+                                                .cursor_pointer()
+                                                .bg(gpui::rgb(color))
+                                                .on_hover(move |hovered: &bool, _, app| {
+                                                    let selected = if *hovered { Some(band) } else { None };
+                                                    let _ = viewport_entity.update(app, |viewport, cx| {
+                                                        if selected.is_some() || viewport.density_hover_band == Some(band) {
+                                                            viewport.density_hover_band = selected;
+                                                            cx.notify();
+                                                        }
+                                                    });
+                                                })
+                                        })),
+                                )
+                                .child("Good")
+                                .into_any_element()
+                        } else {
+                            div().into_any_element()
+                        })
+                        .child(if mode == MeshRenderMode::VertexDensity {
+                            density_hover_band.map_or_else(
+                                || div().into_any_element(),
+                                |band| {
+                                    let name = ["violet", "blue", "cyan", "green", "yellow", "orange", "red"]
+                                        [band as usize];
+                                    let range_text = editor.density_band_ranges.map_or_else(
+                                        || format!("{name} density"),
+                                        |ranges| {
+                                            let (low, high) = ranges[band as usize];
+                                            format!("{name}: {low:.3}–{high:.3} vertices / unit²")
+                                        },
+                                    );
+                                    v_flex()
+                                        .absolute()
+                                        .bottom(px(40.0 + band as f32 * 24.0))
+                                        .left(px(76.0))
+                                        .px_3()
+                                        .py_2()
+                                        .bg(cx.theme().background.opacity(0.96))
+                                        .rounded(cx.theme().radius)
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .text_base()
+                                        .child(range_text)
+                                        .into_any_element()
+                                },
+                            )
+                        } else {
+                            div().into_any_element()
+                        })
+                        .child(if let Some(progress) = editor.density_progress {
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    v_flex()
+                                        .w(px(280.0))
+                                        .gap_2()
+                                        .p_3()
+                                        .bg(cx.theme().background.opacity(0.95))
+                                        .rounded(cx.theme().radius)
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .child("Computing density of the mesh...")
+                                        .child(
+                                            div()
+                                                .w_full()
+                                                .h(px(10.0))
+                                                .rounded(px(5.0))
+                                                .bg(cx.theme().secondary)
+                                                .child(
+                                                    div()
+                                                        .w(px(250.0 * progress.clamp(0.0, 1.0)))
+                                                        .h_full()
+                                                        .rounded(px(5.0))
+                                                        .bg(cx.theme().accent),
+                                                ),
+                                        )
+                                        .child(format!("{}%", (progress * 100.0) as u32)),
+                                )
+                                .into_any_element()
+                        } else if let Some(error) =
+                            editor.mesh_error.as_ref().or(editor.density_error.as_ref())
+                        {
+                            div()
+                                .absolute()
+                                .bottom(px(12.0))
+                                .left(px(12.0))
+                                .p_2()
+                                .bg(cx.theme().background.opacity(0.95))
+                                .text_color(cx.theme().danger)
+                                .rounded(cx.theme().radius)
+                                .child(error.clone())
+                                .into_any_element()
+                        } else {
+                            div().into_any_element()
+                        })
                         .into_any_element()
                 } else {
                     div()
@@ -218,7 +367,7 @@ impl Render for ViewportPanel {
 
 fn render_mode_button(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<SharedString>,
     selected: bool,
     editor: Entity<AssetViewerPanel>,
     mode: MeshRenderMode,
@@ -229,8 +378,7 @@ fn render_mode_button(
         .selected(selected)
         .on_click(move |_, _, cx| {
             editor.update(cx, |editor, cx| {
-                editor.render_mode = mode;
-                cx.notify();
+                editor.set_render_mode(mode, cx);
             });
         })
 }

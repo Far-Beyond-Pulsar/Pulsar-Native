@@ -1,0 +1,173 @@
+# Build - zh-CN
+
+# Build button
+Build.Button.Cancel: "取消构建"
+Build.Button.CancelTooltip: "停止构建"
+Build.Button.NoConfiguration: "无配置"
+Build.Button.NoConfigurationTooltip: "选择一个构建配置"
+Build.Button.ChooseTooltip: "选择构建配置"
+Build.Button.StopGame: "停止"
+Build.Button.StopGameTooltip: "停止正在运行的游戏"
+
+# Picker
+Build.Picker.Empty: "还没有构建配置。"
+Build.Picker.Edit: "编辑配置…"
+
+# Search
+Build.Search.Configurations: "搜索配置…"
+Build.Search.Platforms: "搜索平台…"
+Build.Search.NoConfigurationsMatch: "没有与“%{query}”匹配的配置。"
+Build.Search.NoPlatformsMatch: "没有与搜索匹配的平台。"
+
+# Configurator window
+Build.Configurator.Title: "构建配置"
+Build.Configurator.Configurations: "配置"
+Build.Configurator.New: "新建"
+Build.Configurator.NewTooltip: "创建构建配置"
+Build.Configurator.Empty: "还没有配置。"
+Build.Configurator.CountOne: "%{count} 个配置"
+Build.Configurator.CountMany: "%{count} 个配置"
+Build.Configurator.Filtered: "%{shown} / %{total}"
+Build.Configurator.NoneTitle: "没有构建配置"
+Build.Configurator.NoneDescription: "配置说明如何构建：Rust 模式、平台和步骤。"
+Build.Configurator.Create: "创建配置"
+Build.Configurator.SetActive: "设为活动"
+Build.Configurator.SetActiveTooltip: "构建按钮使用此配置"
+Build.Configurator.Active: "活动"
+Build.Configurator.Duplicate: "复制"
+Build.Configurator.Delete: "删除"
+Build.Configurator.ConfirmDelete: "再次点击以删除"
+
+# General section
+Build.General.Title: "常规"
+Build.General.Description: "此配置在构建菜单中的显示方式。"
+Build.General.Name: "名称"
+Build.General.NamePlaceholder: "配置名称"
+Build.General.NameRequired: "配置需要一个名称。"
+Build.General.NameTaken: "其他配置已在使用此名称。"
+Build.General.ConfigDescription: "描述"
+Build.General.DescriptionPlaceholder: "此配置的用途"
+
+# Rust build mode section
+Build.Profile.Title: "Rust 构建模式"
+Build.Profile.Description: "每个编译步骤使用的 cargo 配置文件。"
+Build.Profile.Debug.Label: "调试"
+Build.Profile.Debug.Summary: "编译快，运行慢。启用调试断言。"
+Build.Profile.Release.Label: "发布"
+Build.Profile.Release.Summary: "用于测试真实性能的优化构建。"
+Build.Profile.Shipping.Label: "交付"
+Build.Profile.Shipping.Summary: "使用完整 LTO、单个代码生成单元并剥离符号的发布构建。"
+
+# Platforms section
+Build.Platforms.Title: "平台"
+Build.Platforms.Description: "依次构建每个选中的平台。留空则为本机构建。"
+Build.Platforms.ThisMachine: "本机"
+Build.Platforms.ThisMachineDefault: "本机（默认）"
+Build.Platforms.ThisMachineTooltip: "为运行此编辑器的平台构建"
+Build.Platforms.Desktop: "桌面"
+Build.Platforms.DesktopTooltip: "Windows x64、Linux x64 和 macOS Apple Silicon"
+Build.Platforms.Chosen: "%{chosen} / %{total}"
+Build.Platforms.NeedsSdk: "需要主机 SDK；cargo 无法构建"
+
+# Platform families
+Build.Family.Unix: "Solaris 和 illumos"
+Build.Family.Other: "其他"
+Build.Family.Console: "主机"
+
+# Platforms, by saved id
+Build.Target.LinuxArmv7Gnueabihf: "Linux ARMv7（硬件浮点）"
+Build.Target.LinuxArmGnueabi: "Linux ARM（软件浮点）"
+Build.Target.LinuxArmGnueabihf: "Linux ARM（硬件浮点）"
+Build.Target.IosAarch64: "iOS 设备"
+Build.Target.IosX86_64: "iOS 模拟器（Intel）"
+Build.Target.IosAarch64Sim: "iOS 模拟器（Apple Silicon）"
+
+# Build steps section
+Build.Steps.Title: "构建步骤"
+Build.Steps.Description: "始终按此顺序运行。未使用的步骤将被跳过。"
+Build.Steps.Update.Title: "更新依赖"
+Build.Steps.Update.Description: "cargo update：先拉取最新的兼容版本。"
+Build.Steps.Clean.Title: "先清理"
+Build.Steps.Clean.Description: "cargo clean：丢弃旧的构建输出，从头开始。"
+Build.Steps.Check.Title: "检查"
+Build.Steps.Check.Description: "cargo check：快速类型检查，不生成二进制文件。"
+Build.Steps.Build.Title: "构建"
+Build.Steps.Build.Description: "cargo build：为每个选中的平台编译。"
+Build.Steps.Run.Title: "运行"
+Build.Steps.Run.Description: "构建完成后启动游戏（会开启构建）。"
+Build.Steps.Preset.QuickCheck: "快速检查"
+Build.Steps.Preset.Build: "构建"
+Build.Steps.Preset.CleanBuild: "清理构建"
+Build.Steps.Preset.BuildAndRun: "构建并运行"
+Build.Steps.Preset.FullRefresh: "完全刷新"
+Build.Steps.Summary.Update: "更新"
+Build.Steps.Summary.Clean: "清理"
+Build.Steps.Summary.Check: "检查"
+Build.Steps.Summary.Build: "构建"
+Build.Steps.Summary.Run: "运行"
+Build.Steps.Summary.None: "无步骤"
+
+# Pipeline preview
+Build.Preview.Title: "流水线预览"
+Build.Preview.Bootstrap: "生成或刷新项目文件"
+Build.Preview.Environment: "环境：%{env}"
+
+# Advanced section
+Build.Advanced.Title: "高级"
+Build.Advanced.Description: "传递给每个 cargo check、build 和 run。"
+Build.Advanced.Features: "Cargo 特性（以逗号或空格分隔）"
+Build.Advanced.ExtraArgs: "额外的 cargo 参数"
+Build.Advanced.QuoteHint: "包含空格的参数请用引号括起：--config \"build.jobs=4\""
+
+# Steps as they run
+Build.Step.Bootstrap: "正在准备项目"
+Build.Step.Update: "正在更新依赖"
+Build.Step.Clean: "正在清理构建产物"
+Build.Step.Check: "正在检查"
+Build.Step.CheckFor: "正在为 %{platform} 检查"
+Build.Step.Build: "正在构建"
+Build.Step.BuildFor: "正在为 %{platform} 构建"
+Build.Step.Run: "正在启动"
+Build.Step.RunFor: "正在为 %{platform} 启动"
+
+# Plan errors and warnings
+Build.Plan.NoSteps: "此配置未启用任何步骤。"
+Build.Plan.UnbuildablePlatform: "%{platform} 无法用 cargo 构建；需要其平台 SDK。"
+Build.Plan.RunSkipped: "已跳过运行：选中的平台都无法在本机运行。"
+
+# Progress
+Build.Progress.Starting: "正在开始"
+Build.Progress.Resolving: "正在解析依赖"
+Build.Progress.Compiling: "正在编译 %{name}"
+Build.Progress.Updating: "正在更新 %{what}"
+Build.Task.Title: "构建：%{name}"
+Build.Task.Starting: "正在开始构建"
+
+# Notifications
+Build.Notification.NoProject: "构建前请先打开一个项目。"
+Build.Notification.AlreadyRunning: "已有构建正在运行。"
+Build.Notification.Starting: "正在开始…"
+Build.Notification.Succeeded: "构建成功"
+Build.Notification.Failed: "构建失败"
+Build.Notification.Cancelled: "构建已取消"
+Build.Notification.StoppedUnexpectedly: "构建意外停止。"
+
+# Cargo errors
+Build.Error.CouldNotStart: "无法启动 cargo %{subcommand}：%{error}"
+Build.Error.CouldNotWait: "无法等待 cargo：%{error}"
+Build.Error.CommandFailed: "cargo %{subcommand} 失败：\n\n%{detail}"
+
+# Failure dialog
+Build.Failure.Error: "错误 %{number}"
+Build.Failure.Copy: "复制"
+Build.Failure.CountOne: "从 Cargo 捕获到 %{count} 个编译器错误。"
+Build.Failure.CountMany: "从 Cargo 捕获到 %{count} 个编译器错误。"
+Build.Failure.CopyAll: "复制所有错误"
+Build.Failure.Close: "关闭"
+
+# Running the game
+Build.Game.Title: "运行"
+Build.Game.LaunchFailed: "无法启动游戏：%{error}"
+Build.Game.NonZeroExit: "游戏以非零状态码退出。"
+Build.Game.Crashed: "游戏崩溃：\n%{output}"
+Build.Game.CrashedWithReport: "游戏崩溃。\n报告已保存到 %{path}\n\n%{output}"

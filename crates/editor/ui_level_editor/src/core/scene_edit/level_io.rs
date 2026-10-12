@@ -428,6 +428,7 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
     // One sky and one directional light per level; extras are kept but
     // disabled, logged.
     engine_backend::scene::level_rules::enforce_on_load(world);
+    engine_backend::scene::resolve_level_assets(world);
 
     tracing::info!(
         "Scene loaded from: {} (version: {})",

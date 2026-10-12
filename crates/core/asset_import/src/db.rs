@@ -112,6 +112,10 @@ impl ImportDb {
         }
     }
 
+    pub fn unignore(&mut self, source: &str) {
+        self.ignored.retain(|s| s != source);
+    }
+
     /// Compare a record against its source on disk.
     pub fn status(&self, project_root: &Path, record: &ImportRecord) -> LinkStatus {
         let file = project_root.join(&record.source);

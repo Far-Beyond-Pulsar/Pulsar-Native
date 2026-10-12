@@ -10,10 +10,13 @@
 //! - [`button`]: the Build split button the global toolbar shows.
 //! - [`configurator`]: the window for creating and editing configurations.
 
+rust_i18n::i18n!("locales", fallback = "en");
+
 pub mod button;
 pub mod configurator;
 pub mod picker;
 pub mod runner;
+mod text;
 
 pub use button::build_button;
 pub use configurator::BuildConfiguratorWindow;

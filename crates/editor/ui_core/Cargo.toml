@@ -79,3 +79,14 @@ rfd = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Headless `TestAppContext` windows for the unified sidebar test
+# (`app/nav_sidebar/tests.rs`). Test binaries only.
+gpui-ce = { workspace = true, features = ["test-support"] }
+tempfile = { workspace = true }
+# Saves that test's optional screenshots.
+image = { workspace = true }
+# The editor window builds HTTP clients; the engine binary installs this
+# provider at startup, the test does the same (same spec as `engine`).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

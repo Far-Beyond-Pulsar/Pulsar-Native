@@ -6,15 +6,17 @@ use gpui::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
+use rust_i18n::t;
 use ui::input::TextInput;
 use ui::{h_flex, v_flex};
 
 use super::{BuildConfiguratorWindow, Palette};
+use crate::text::{profile_label, profile_summary};
 
 /// A titled card. `description` explains the section in one line.
 pub(super) fn section(
-    title: &'static str,
-    description: &'static str,
+    title: String,
+    description: String,
     p: Palette,
     content: impl IntoElement,
 ) -> AnyElement {
@@ -41,11 +43,7 @@ pub(super) fn section(
 }
 
 /// A label above a control.
-pub(super) fn labeled(
-    label: &'static str,
-    p: Palette,
-    control: impl IntoElement,
-) -> impl IntoElement {
+pub(super) fn labeled(label: String, p: Palette, control: impl IntoElement) -> impl IntoElement {
     v_flex()
         .gap_1()
         .child(div().text_xs().text_color(p.muted).child(label))
@@ -61,20 +59,24 @@ impl BuildConfiguratorWindow {
     ) -> AnyElement {
         let error = self.name_error.clone();
         section(
-            "General",
-            "How this configuration appears in the Build menu.",
+            t!("Build.General.Title").to_string(),
+            t!("Build.General.Description").to_string(),
             p,
             v_flex()
                 .gap_3()
                 .child(labeled(
-                    "Name",
+                    t!("Build.General.Name").to_string(),
                     p,
                     v_flex()
                         .gap_1()
                         .child(TextInput::new(&self.name))
                         .children(error.map(|e| div().text_xs().text_color(p.danger).child(e))),
                 ))
-                .child(labeled("Description", p, TextInput::new(&self.description))),
+                .child(labeled(
+                    t!("Build.General.ConfigDescription").to_string(),
+                    p,
+                    TextInput::new(&self.description),
+                )),
         )
     }
 
@@ -88,10 +90,7 @@ impl BuildConfiguratorWindow {
         let cards = BuildProfile::ALL.map(|profile| {
             let selected = profile == current;
             div()
-                .id(SharedString::from(format!(
-                    "bc-profile-{}",
-                    profile.label()
-                )))
+                .id(SharedString::from(format!("bc-profile-{profile:?}")))
                 .flex_1()
                 .min_w_0()
                 .p_3()
@@ -113,13 +112,18 @@ impl BuildConfiguratorWindow {
                     div()
                         .text_sm()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child(profile.label()),
+                        .child(profile_label(profile)),
                 )
-                .child(div().text_xs().text_color(p.muted).child(profile.summary()))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(p.muted)
+                        .child(profile_summary(profile)),
+                )
         });
         section(
-            "Rust build mode",
-            "The cargo profile every compile step uses.",
+            t!("Build.Profile.Title").to_string(),
+            t!("Build.Profile.Description").to_string(),
             p,
             h_flex().gap_3().items_stretch().children(cards),
         )
@@ -127,18 +131,18 @@ impl BuildConfiguratorWindow {
 
     pub(super) fn render_advanced(&mut self, p: Palette, _cx: &mut Context<Self>) -> AnyElement {
         section(
-            "Advanced",
-            "Passed to every cargo check, build and run.",
+            t!("Build.Advanced.Title").to_string(),
+            t!("Build.Advanced.Description").to_string(),
             p,
             v_flex()
                 .gap_3()
                 .child(labeled(
-                    "Cargo features (comma or space separated)",
+                    t!("Build.Advanced.Features").to_string(),
                     p,
                     TextInput::new(&self.features),
                 ))
                 .child(labeled(
-                    "Extra cargo arguments",
+                    t!("Build.Advanced.ExtraArgs").to_string(),
                     p,
                     TextInput::new(&self.extra_args),
                 ))
@@ -146,7 +150,7 @@ impl BuildConfiguratorWindow {
                     div()
                         .text_xs()
                         .text_color(p.muted)
-                        .child("Quote an argument that contains spaces: --config \"build.jobs=4\"")
+                        .child(t!("Build.Advanced.QuoteHint").to_string())
                         .px(px(0.)),
                 ),
         )

@@ -204,6 +204,23 @@ impl PulsarApp {
         let t = std::time::Instant::now();
         let file_manager_drawer =
             cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
+        let nav_sidebar = {
+            let app = cx.weak_entity();
+            let drawer = file_manager_drawer.clone();
+            cx.new(|cx| {
+                let mut sidebar = super::nav_sidebar::NavSidebar::new(app, drawer);
+                sidebar.observe_drawer(cx);
+                sidebar
+            })
+        };
+        let nav_overlay = {
+            let sidebar = nav_sidebar.clone();
+            cx.new(|_| super::nav_sidebar::NavSidebarOverlay::new(sidebar))
+        };
+        let status_bar = {
+            let app = cx.weak_entity();
+            cx.new(|_| super::status_bar::StatusBar::new(app))
+        };
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(MissionControlPanel::new);
@@ -278,8 +295,6 @@ impl PulsarApp {
             analyzer
         };
 
-        crate::builtin_editors::set_shared_script_editor_analyzer(cx, rust_analyzer.clone());
-
         // Subscribe to analyzer events
         cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event)
             .detach();
@@ -300,6 +315,11 @@ impl PulsarApp {
         let t_plugins = std::time::Instant::now();
         tracing::info!("[PulsarApp] plugin init start");
         let mut plugin_manager = PluginManager::new();
+        // Every editor -- built-in or a plugin library -- is created with a handle
+        // to the engine's one language server.
+        plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
+            language_server: Some(rust_analyzer.clone()),
+        });
 
         // Register built-in editors
         crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());
@@ -417,7 +437,8 @@ impl PulsarApp {
                 .clone();
             loop {
                 multiuser.changed().await;
-                this.update(cx, |_, cx| cx.notify());
+                // Only the footer shows the session.
+                _ = this.update(cx, |app, cx| app.notify_status_bar(cx));
             }
         });
 
@@ -476,6 +497,9 @@ impl PulsarApp {
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
                 navigation: Default::default(),
+                nav_sidebar,
+                nav_overlay,
+                status_bar,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
                 layout_persist: false,
@@ -498,9 +522,7 @@ impl PulsarApp {
                 let next_revision = task_queue.revision();
                 if next_revision != revision {
                     revision = next_revision;
-                    this.update(cx, |app, cx| {
-                        cx.notify();
-                    });
+                    _ = this.update(cx, |app, cx| app.notify_status_bar(cx));
                 }
             }
         });
@@ -578,6 +600,17 @@ impl PulsarApp {
                     "View",
                     |window, cx| {
                         window.dispatch_action(Box::new(ToggleFileManager), cx);
+                    },
+                    cx,
+                );
+
+                palette.add_item(
+                    "Toggle Unified Sidebar",
+                    "Switch between the tab bar and the left sidebar of editors and folders",
+                    IconName::PanelLeft,
+                    "View",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(crate::actions::ToggleUnifiedSidebar), cx);
                     },
                     cx,
                 );

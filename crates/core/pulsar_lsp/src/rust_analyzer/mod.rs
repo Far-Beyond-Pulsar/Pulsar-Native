@@ -6,7 +6,7 @@
 //! components can subscribe to indexing progress and diagnostics.
 
 mod path_utils;
-pub use path_utils::path_to_uri;
+pub use path_utils::{path_key, path_to_uri, uri_key, uri_to_path};
 
 use anyhow::{anyhow, Result};
 use gpui::{Context, EventEmitter, Window};
@@ -39,6 +39,14 @@ pub enum AnalyzerEvent {
     Ready,
     Error(String),
     Diagnostics(Vec<Diagnostic>),
+    /// The complete diagnostic set for one file, published whenever the
+    /// server re-analyses it. Unlike [`AnalyzerEvent::Diagnostics`] this is
+    /// also sent when the set becomes empty, so a fixed error clears.
+    /// `key` identifies the file for comparison with [`path_utils::path_key`].
+    FileDiagnostics {
+        key: String,
+        diagnostics: Vec<Diagnostic>,
+    },
 }
 
 #[derive(Debug)]
@@ -48,6 +56,12 @@ enum ProgressUpdate {
     Error(String),
     ProcessExited(ExitStatus),
     Diagnostics(Vec<Diagnostic>),
+    FileDiagnostics {
+        key: String,
+        diagnostics: Vec<Diagnostic>,
+    },
+    /// The server's own `completionProvider.triggerCharacters`.
+    CompletionTriggers(Vec<char>),
 }
 
 /// Minimum wall time between emitted `IndexingProgress` events. Raw updates
@@ -59,6 +73,20 @@ const PROGRESS_EMIT_MIN_INTERVAL: Duration = Duration::from_millis(100);
 /// of this percentage, so the reported value stays within one visible step of
 /// reality even during slow indexing.
 const PROGRESS_EMIT_MILESTONE_STEP: f32 = 5.0;
+
+/// The completion trigger characters in an `initialize` reply.
+fn trigger_characters_in(reply: &Value) -> Vec<char> {
+    reply
+        .pointer("/result/capabilities/completionProvider/triggerCharacters")
+        .and_then(|value| value.as_array())
+        .map(|chars| {
+            chars
+                .iter()
+                .filter_map(|c| c.as_str()?.chars().next())
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
 pub struct RustAnalyzerManager {
     /// Path to rust-analyzer executable
@@ -93,6 +121,16 @@ pub struct RustAnalyzerManager {
     /// are detected against this so suppressed updates can still end at an
     /// observable final value.
     last_emitted_progress: Option<f32>,
+    /// Editors that currently hold each document open. The server sees one
+    /// `didOpen` for the first and one `didClose` after the last, however many
+    /// editors show the file.
+    open_documents: Arc<Mutex<HashMap<String, usize>>>,
+    /// Latest diagnostics per file key, so an editor opened later shows them
+    /// without waiting for the next analysis.
+    file_diagnostics: HashMap<String, Vec<Diagnostic>>,
+    /// Characters the server asked to be offered completion on (from its
+    /// initialize reply). Empty until that reply arrives.
+    completion_triggers: Vec<char>,
 }
 
 impl EventEmitter<AnalyzerEvent> for RustAnalyzerManager {}
@@ -120,6 +158,9 @@ impl RustAnalyzerManager {
             initial_analysis_complete: false,
             last_progress_emit: None,
             last_emitted_progress: None,
+            open_documents: Arc::new(Mutex::new(HashMap::new())),
+            file_diagnostics: HashMap::new(),
+            completion_triggers: Vec::new(),
         }
     }
 
@@ -857,6 +898,9 @@ impl RustAnalyzerManager {
                                             ));
                                         } else if msg.get("result").is_some() {
                                             tracing::debug!("[LSP ANALYZER] Initialize succeeded, server is ready");
+                                            let triggers = trigger_characters_in(&msg);
+                                            let _ = progress_tx_stdout
+                                                .send(ProgressUpdate::CompletionTriggers(triggers));
                                             // Initialization complete - server is ready for document operations
                                         }
                                     }
@@ -1207,6 +1251,11 @@ impl RustAnalyzerManager {
                         .filter_map(|diag| Self::parse_diagnostic(diag, &file_path))
                         .collect();
 
+                    let _ = progress_tx.send(ProgressUpdate::FileDiagnostics {
+                        key: path_utils::uri_key(uri),
+                        diagnostics: diagnostics.clone(),
+                    });
+
                     if !diagnostics.is_empty() {
                         let _ = progress_tx.send(ProgressUpdate::Diagnostics(diagnostics));
                     }
@@ -1452,6 +1501,12 @@ impl RustAnalyzerManager {
         }
         self.initialized = false;
         self.progress_rx = None;
+        // A new process knows no documents and has published nothing yet.
+        if let Ok(mut open) = self.open_documents.lock() {
+            open.clear();
+        }
+        self.file_diagnostics.clear();
+        self.completion_triggers.clear();
     }
 
     /// Restart rust-analyzer
@@ -1509,6 +1564,20 @@ impl RustAnalyzerManager {
             return Err(anyhow!("Analyzer not running"));
         }
 
+        let key = path_utils::path_key(file_path);
+        {
+            let mut open = self
+                .open_documents
+                .lock()
+                .map_err(|e| anyhow!("Lock error: {}", e))?;
+            let holders = open.entry(key).or_insert(0);
+            *holders += 1;
+            if *holders > 1 {
+                // Already open for another editor: the server has the text.
+                return Ok(());
+            }
+        }
+
         let uri = self.path_to_uri(file_path);
         tracing::debug!(
             "[LSP ANALYZER] did_open_file: path={:?} uri={} content_len={}",
@@ -1530,7 +1599,20 @@ impl RustAnalyzerManager {
             }
         });
 
-        self.send_notification(notification)
+        let sent = self.send_notification(notification);
+        if sent.is_err() {
+            // The server never saw it, so this editor does not hold it open.
+            if let Ok(mut open) = self.open_documents.lock() {
+                let key = path_utils::path_key(file_path);
+                if let Some(holders) = open.get_mut(&key) {
+                    *holders = holders.saturating_sub(1);
+                    if *holders == 0 {
+                        open.remove(&key);
+                    }
+                }
+            }
+        }
+        sent
     }
 
     /// Send didChange notification for a file
@@ -1555,6 +1637,56 @@ impl RustAnalyzerManager {
         });
 
         self.send_notification(notification)
+    }
+
+    /// Send an incremental didChange: `changes` are LSP content-change
+    /// objects (`range` + `text`) applied in order. Costs only the edit, not
+    /// the document.
+    pub fn did_change_file_incremental(
+        &self,
+        file_path: &PathBuf,
+        version: i32,
+        changes: Vec<Value>,
+    ) -> Result<()> {
+        if !self.is_running() || changes.is_empty() {
+            return Ok(());
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let notification = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": { "uri": uri, "version": version },
+                "contentChanges": changes
+            }
+        });
+
+        self.send_notification(notification)
+    }
+
+    /// Whether the server has `file_path` open (an editor called
+    /// [`Self::did_open_file`] and none has closed it since).
+    pub fn is_document_open(&self, file_path: &PathBuf) -> bool {
+        let key = path_utils::path_key(file_path);
+        self.open_documents
+            .lock()
+            .map(|open| open.contains_key(&key))
+            .unwrap_or(false)
+    }
+
+    /// The characters the server registered to open completion (empty until it
+    /// has answered `initialize`).
+    pub fn completion_trigger_characters(&self) -> Vec<char> {
+        self.completion_triggers.clone()
+    }
+
+    /// The latest diagnostics the server published for `file_path`.
+    pub fn diagnostics_for(&self, file_path: &PathBuf) -> Vec<Diagnostic> {
+        self.file_diagnostics
+            .get(&path_utils::path_key(file_path))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Send didSave notification for a file (triggers re-analysis)
@@ -1583,6 +1715,26 @@ impl RustAnalyzerManager {
     pub fn did_close_file(&self, file_path: &PathBuf) -> Result<()> {
         if !self.is_running() {
             return Ok(());
+        }
+
+        let key = path_utils::path_key(file_path);
+        {
+            let mut open = self
+                .open_documents
+                .lock()
+                .map_err(|e| anyhow!("Lock error: {}", e))?;
+            let remaining = match open.get_mut(&key) {
+                Some(holders) => {
+                    *holders = holders.saturating_sub(1);
+                    *holders
+                }
+                None => return Ok(()),
+            };
+            if remaining > 0 {
+                // Another editor still shows it: keep it open.
+                return Ok(());
+            }
+            open.remove(&key);
         }
 
         let uri = self.path_to_uri(file_path);
@@ -1811,6 +1963,17 @@ impl RustAnalyzerManager {
                 self.initialized = false;
                 cx.emit(AnalyzerEvent::Error(error_msg));
                 cx.notify();
+            }
+            ProgressUpdate::CompletionTriggers(triggers) => {
+                self.completion_triggers = triggers;
+            }
+            ProgressUpdate::FileDiagnostics { key, diagnostics } => {
+                if diagnostics.is_empty() {
+                    self.file_diagnostics.remove(&key);
+                } else {
+                    self.file_diagnostics.insert(key.clone(), diagnostics.clone());
+                }
+                cx.emit(AnalyzerEvent::FileDiagnostics { key, diagnostics });
             }
             ProgressUpdate::Diagnostics(diagnostics) => {
                 if self.first_diagnostics_time.is_none() {
@@ -2099,5 +2262,20 @@ impl RustAnalyzerManager {
 impl Drop for RustAnalyzerManager {
     fn drop(&mut self) {
         self.stop_internal();
+    }
+}
+
+#[cfg(test)]
+mod trigger_tests {
+    use super::*;
+
+    #[test]
+    fn the_servers_registered_trigger_characters_are_read_from_initialize() {
+        let reply = json!({ "id": 17, "result": { "capabilities": { "completionProvider": {
+            "triggerCharacters": [":", ".", "'", "("]
+        } } } });
+        assert_eq!(trigger_characters_in(&reply), vec![':', '.', '\x27', '(']);
+        assert!(trigger_characters_in(&json!({ "result": { "capabilities": {} } })).is_empty());
+        assert!(trigger_characters_in(&json!({ "error": {} })).is_empty());
     }
 }

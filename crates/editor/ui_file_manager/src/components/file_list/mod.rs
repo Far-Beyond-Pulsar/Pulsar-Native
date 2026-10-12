@@ -31,6 +31,9 @@ use crate::utils::{
 pub struct FileManagerDrawer {
     pub project_path: Option<PathBuf>,
     pub(crate) folder_tree: Option<FolderNode>,
+    /// Bumped whenever the folder tree or the cached file listings change, so
+    /// views built from them (the sidebar's content tree) know to rebuild.
+    pub(crate) content_revision: u64,
     pub(crate) selected_folder: Option<PathBuf>,
     pub(crate) selected_items: HashSet<PathBuf>,
     /// Anchor item for Shift-click range selection.
@@ -59,7 +62,17 @@ pub struct FileManagerDrawer {
     pub(crate) file_filter_state: Entity<InputState>,
     pub(crate) directory_cache: Option<(PathBuf, Vec<FileItem>)>,
     pub(crate) directory_cache_dirty: bool,
+    /// [`Self::files_in`] listings, by folder; cleared with the directory cache.
+    pub(crate) tree_files:
+        std::cell::RefCell<std::collections::HashMap<PathBuf, std::rc::Rc<Vec<FileItem>>>>,
+    /// An item [`Self::reveal`] asked to scroll into view on the next render.
+    pub(crate) pending_reveal: Option<PathBuf>,
     pub(crate) fs_event_listener: Option<gpui::Task<()>>,
+    /// Rescans for imports when importable files change (#1101).
+    pub(crate) import_watch: Option<crate::utils::import_scan::ImportWatch>,
+    /// Import state of the open folder's files, for their context menus and
+    /// out-of-date badges (#1102).
+    pub(crate) import_states: crate::utils::import_state::FolderImportStates,
     pub(crate) clipboard: Option<(Vec<PathBuf>, bool)>,
     pub(crate) grid_scroll_handle: VirtualListScrollHandle,
     pub(crate) list_scroll_handle: VirtualListScrollHandle,
@@ -73,6 +86,9 @@ pub struct FileManagerDrawer {
     pub(crate) deleted_files: Vec<crate::utils::git_integration::DeletedFileEntry>,
     pub(crate) recent_commits: Vec<crate::utils::git_integration::CommitInfo>,
     pub(crate) commit_picker: gpui::Entity<crate::components::commit_picker::CommitPicker>,
+    /// Show only the folder's contents, without the folder tree beside them.
+    /// The editor's left sidebar sets this when it supplies the tree itself.
+    pub(crate) folder_tree_hidden: bool,
 }
 
 impl FileManagerDrawer {
@@ -212,7 +228,12 @@ impl FileManagerDrawer {
             file_filter_state,
             directory_cache: None,
             directory_cache_dirty: true,
+            tree_files: Default::default(),
+            content_revision: 0,
+            pending_reveal: None,
             fs_event_listener: None,
+            import_watch: None,
+            import_states: Default::default(),
             show_hidden_files,
             clipboard: None,
             registered_file_types: Vec::new(),
@@ -232,6 +253,7 @@ impl FileManagerDrawer {
             deleted_files: Vec::new(),
             recent_commits: Vec::new(),
             commit_picker,
+            folder_tree_hidden: false,
         };
 
         this.fs_event_listener = Some(cx.spawn(async move |drawer, cx| {
@@ -247,7 +269,7 @@ impl FileManagerDrawer {
                         }
                         drawer.mark_directory_cache_dirty();
                         if !matches!(event.kind, engine_fs::FsChangeKind::Modified) {
-                            drawer.folder_tree = FolderNode::from_path(&project_root);
+                            drawer.set_folder_tree(FolderNode::from_path(&project_root));
                         }
                         cx.notify();
                     })
@@ -256,6 +278,7 @@ impl FileManagerDrawer {
         }));
 
         this.scan_for_imports(window, cx);
+        this.import_watch = this.watch_for_imports(window, cx);
         this
     }
 
@@ -309,7 +332,7 @@ impl Render for FileManagerDrawer {
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .on_action(cx.listener(|this, _: &RefreshFileManager, _w, cx| {
                 if let Some(ref p) = this.project_path {
-                    this.folder_tree = FolderNode::from_path(p);
+                    this.set_folder_tree(FolderNode::from_path(p));
                 }
                 this.mark_directory_cache_dirty();
                 cx.notify();
@@ -378,6 +401,15 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(|this, a: &OpenTerminalHere, _w, cx| {
                 crate::handlers::handle_open_terminal_here(this, a, cx)
             }))
+            .on_action(cx.listener(|this, a: &ReimportSource, w, cx| {
+                crate::utils::import_state::handle_reimport_source(this, a, w, cx)
+            }))
+            .on_action(cx.listener(|this, a: &ImportSource, w, cx| {
+                crate::utils::import_state::handle_import_source(this, a, w, cx)
+            }))
+            .on_action(cx.listener(|this, a: &UnlinkSource, w, cx| {
+                crate::utils::import_state::handle_unlink_source(this, a, w, cx)
+            }))
             .on_action(cx.listener(|this, a: &ValidateAsset, _w, cx| {
                 crate::handlers::handle_validate_asset(this, a, cx)
             }))
@@ -416,7 +448,10 @@ pub fn render_content(
     d: &mut FileManagerDrawer,
     window: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
-) -> impl IntoElement {
+) -> AnyElement {
+    if d.folder_tree_hidden {
+        return render_file_content(d, window, cx).into_any_element();
+    }
     h_resizable("file-manager-resizable")
         .state(d.resizable_state.clone())
         .child(
@@ -425,6 +460,7 @@ pub fn render_content(
                 .size(px(250.)),
         )
         .child(resizable_panel().child(render_file_content(d, window, cx)))
+        .into_any_element()
 }
 
 pub fn render_file_content(
@@ -436,11 +472,13 @@ pub fn render_file_content(
     // the UI filter or virtualizing rows. This keeps offscreen and filtered
     // items from being skipped by the editor task queue.
     if let Some(folder) = d.selected_folder.clone() {
-        for item in d.cached_items_for_folder(&folder) {
+        let folder_items = d.cached_items_for_folder(&folder);
+        for item in &folder_items {
             if !item.is_folder && !item.is_ghost {
                 d.ensure_thumbnail(&item.path, cx);
             }
         }
+        d.refresh_import_states(&folder, &folder_items, cx);
     }
     let items = d.get_filtered_items();
     let hc = d.clipboard.is_some();
@@ -629,6 +667,9 @@ pub fn render_grid_view(
     let sizes = Rc::new(vec![size(px(0.0), px(CH + G)); rows]);
     let view = cx.entity().clone();
     let handle = d.grid_scroll_handle.clone();
+    if let Some(index) = d.take_pending_reveal(&items) {
+        handle.scroll_to_item(index / cols, gpui::ScrollStrategy::Center);
+    }
     let scrollbar_state = d.grid_scrollbar_state.clone();
     div()
         .relative()
@@ -709,6 +750,8 @@ pub fn render_grid_item(
     let cls = item.is_class();
     let fld = item.is_folder;
     let ghost = item.is_ghost;
+    let import = d.import_state(&item.path).cloned();
+    let out_of_date = import.as_ref().is_some_and(|state| state.is_out_of_date());
     if !fld {
         d.ensure_thumbnail(&item.path, cx);
     }
@@ -845,6 +888,7 @@ pub fn render_grid_item(
                         .rounded_tl(px(8.0))
                         .rounded_tr(px(8.0))
                         .bg(ic.opacity(0.15))
+                        .relative()
                         .flex()
                         .items_center()
                         .justify_center()
@@ -857,6 +901,15 @@ pub fn render_grid_item(
                                     .object_fit(gpui::ObjectFit::Cover),
                             ),
                             None => e.child(Icon::new(icon).size(px(48.0)).text_color(ic)),
+                        })
+                        .when(out_of_date, |e| {
+                            e.child(
+                                div()
+                                    .absolute()
+                                    .top_1()
+                                    .right_1()
+                                    .child(out_of_date_badge(&item.name, cx)),
+                            )
                         }),
                 )
                 .child(if ren {
@@ -934,9 +987,12 @@ pub fn render_grid_item(
                     if ghost {
                         crate::components::context_menus::deleted_item_context_menu(&irc)(m, w, cx)
                     } else {
-                        crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(
-                            m, w, cx,
-                        )
+                        crate::components::context_menus::item_context_menu(
+                            ip.clone(),
+                            hc,
+                            cls,
+                            import.clone(),
+                        )(m, w, cx)
                     }
                 }),
         )
@@ -956,6 +1012,9 @@ pub fn render_list_view(
     let sizes = Rc::new(vec![size(px(0.0), px(40.0)); n]);
     let view = cx.entity().clone();
     let handle = d.list_scroll_handle.clone();
+    if let Some(index) = d.take_pending_reveal(&items) {
+        handle.scroll_to_item(index, gpui::ScrollStrategy::Center);
+    }
     let scrollbar_state = d.list_scrollbar_state.clone();
     div()
         .relative()
@@ -989,6 +1048,30 @@ pub fn render_list_view(
         .into_any_element()
 }
 
+/// Marks a linked source, or the native asset built from it, whose source
+/// changed since it was last imported.
+fn out_of_date_badge(name: &str, cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    let selector = format!("out-of-date-{name}");
+    h_flex()
+        .id("out-of-date")
+        .debug_selector(move || selector.clone())
+        .gap_1()
+        .px_1p5()
+        .py_0p5()
+        .rounded_sm()
+        .bg(theme.warning.opacity(0.9))
+        .text_color(theme.warning_foreground)
+        .text_xs()
+        .font_weight(gpui::FontWeight::MEDIUM)
+        .child(Icon::new(IconName::WarningTriangle).size_3())
+        .child(t!("FileManager.OutOfDate").to_string())
+        .tooltip(|window, cx| {
+            ui::tooltip::Tooltip::new(t!("FileManager.OutOfDateTooltip").to_string())
+                .build(window, cx)
+        })
+}
+
 pub fn render_list_item(
     d: &mut FileManagerDrawer,
     item: &FileItem,
@@ -1009,6 +1092,8 @@ pub fn render_list_item(
     let cls = item.is_class();
     let fld = item.is_folder;
     let ghost = item.is_ghost;
+    let import = d.import_state(&item.path).cloned();
+    let out_of_date = import.as_ref().is_some_and(|state| state.is_out_of_date());
     let paths = if sel {
         d.selected_items.iter().cloned().collect()
     } else {
@@ -1150,6 +1235,7 @@ pub fn render_list_item(
             .child(item.name.clone())
             .into_any_element()
     })
+    .when(out_of_date, |e| e.child(out_of_date_badge(&item.name, cx)))
     .when(!item.is_folder, |e| {
         e.child(
             div()
@@ -1205,7 +1291,9 @@ pub fn render_list_item(
         if ghost {
             crate::components::context_menus::deleted_item_context_menu(&irc)(m, w, cx)
         } else {
-            crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(m, w, cx)
+            crate::components::context_menus::item_context_menu(ip.clone(), hc, cls, import.clone())(
+                m, w, cx,
+            )
         }
     })
 }
