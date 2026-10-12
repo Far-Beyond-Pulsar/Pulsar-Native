@@ -112,8 +112,9 @@ pub fn resolve_level_assets(world: &mut pulsar_scenedb::World) {
 /// Advance asset loading in the shared scene: start loads for newly
 /// referenced assets and bind the finished ones. Takes the scene's write
 /// lock only when there is work. Called once per frame before the GPU
-/// upload by every render loop: the editor viewport's, and the game's
-/// windowed and embedded ones.
+/// upload by every render loop (the editor viewport's, and the game's
+/// windowed and embedded ones), and at the end of every game tick, which
+/// also covers headless runs.
 pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     if !scene.read().world.asset_work_pending() {
         return pulsar_scenedb::AssetPumpReport::default();
