@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use ui::dock::{DockItem, TabPanel};
 use ui_file_manager::FileSelected;
 
-use super::{PulsarApp, open_editors::OpenEditorInfo};
+use super::{open_editors::OpenEditorInfo, PulsarApp};
 
 impl PulsarApp {
     pub(crate) fn refresh_open_editor_snapshot(&self, cx: &App) {
@@ -207,12 +207,7 @@ impl PulsarApp {
 
             // Let the plugin system handle everything - no match statements needed!
             let result = if let Some(project_root) = editor_project_root {
-                pm.create_editor_for_file_with_project_root(
-                    &path,
-                    Some(project_root),
-                    window,
-                    cx,
-                )
+                pm.create_editor_for_file_with_project_root(&path, Some(project_root), window, cx)
             } else {
                 pm.create_editor_for_file(&path, window, cx)
             };

@@ -19,9 +19,7 @@ use ui::{
     ThemeMode, TitleBar,
 };
 
-mod dev_popover;
 use crate::profile_dropdown::ProfileDropdownEvent;
-use dev_popover::DevPopover;
 use ui::themes::ThemeSwitcher;
 
 // Define UI preference actions
@@ -97,11 +95,6 @@ actions!(
         ViewLogs,
         ReleaseNotes,
         // Developer menu (source builds only)
-        DevSaveAsDefaultLevel,
-        DevReloadAssets,
-        DevInspectEngineState,
-        DevShowBuildInfo,
-        DevOpenWorkspaceRoot,
         DevOpenEngineSource,
         DevBootstrapEngine,
     ]
@@ -503,8 +496,6 @@ impl Render for AppTitleBar {
             }
         }
 
-        let dev_popover = cx.new(DevPopover::new);
-
         TitleBar::new()
             .unified_background(cx.theme().background)
             .child(
@@ -523,31 +514,6 @@ impl Render for AppTitleBar {
                     .gap_2()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(self.child.clone()(window, cx))
-                    .when(
-                        engine_state::EngineContext::global()
-                            .map(|ctx| {
-                                ctx.store
-                                    .get_or_init::<engine_state::DevContext>()
-                                    .read()
-                                    .is_source_build
-                            })
-                            .unwrap_or(false),
-                        |el| {
-                            el.child(
-                                ui::popover::Popover::<DevPopover>::new("dev-popover")
-                                    .anchor(Corner::TopRight)
-                                    .trigger(
-                                        Button::new("dev-menu")
-                                            .label("Dev")
-                                            .icon(IconName::Bug)
-                                            .small()
-                                            .ghost()
-                                            .tooltip("Developer menu and runtime diagnostics"),
-                                    )
-                                    .content(move |_, _| dev_popover.clone()),
-                            )
-                        },
-                    )
                     .child({
                         let theme_picker = self.theme_picker.clone();
                         ui::popover::Popover::<crate::theme_dropdown::ThemePicker>::new(

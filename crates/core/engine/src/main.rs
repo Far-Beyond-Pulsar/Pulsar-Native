@@ -49,9 +49,9 @@ use ui_log_viewer::TrackingAllocator;
 use blueprint_editor_plugin as _;
 // Force-link the built-in Trait Editor so its `LinkedEditorProvider` inventory
 // registration is retained in the final binary, as with the Blueprint editor.
-use trait_editor_plugin as _;
 #[cfg(feature = "typescript")]
 use plugin_typescript as _;
+use trait_editor_plugin as _;
 
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
@@ -76,6 +76,7 @@ pub mod appdata; // App data and resource directory management
 pub mod args; // Command-line argument parsing
 pub mod assets; // Asset embedding and management
 pub mod consts; // Engine constants (name, version, authors, etc.)
+mod dev_bootstrap;
 pub mod discord; // Discord Rich Presence integration
 pub mod file_association;
 pub mod gpu_policy; // GPU detection and policy enforcement
@@ -85,7 +86,6 @@ pub mod macos_permissions;
 pub mod runtime; // Async runtime setup and management
 pub mod settings; // Engine settings loading and saving
 mod steps;
-mod dev_bootstrap;
 pub mod uri; // URI scheme handling // Project file association management
 
 // --- Engine context re-exports ---
@@ -96,7 +96,7 @@ pub use engine_state::{
     WindowRequest,
 };
 
-use init::{InitContext, InitGraph, init_task, task_ids::*};
+use init::{init_task, task_ids::*, InitContext, InitGraph};
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]

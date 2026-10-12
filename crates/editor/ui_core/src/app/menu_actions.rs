@@ -6,11 +6,11 @@
 //! shortcuts and toolbar already use, so a menu entry is never a second
 //! implementation.
 
-use gpui::{Context, InteractiveElement, Window, px};
-use std::path::PathBuf;
-use std::process::Command;
+use gpui::{px, Context, InteractiveElement, Window};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt as _;
+use std::path::PathBuf;
+use std::process::Command;
 use ui::{ActiveTheme as _, Theme};
 use ui_common::menu;
 
@@ -100,17 +100,19 @@ impl PulsarApp {
             .on_action(cx.listener(|this, _: &menu::ToggleNetwork, window, cx| {
                 this.toggle_multiplayer(window, cx)
             }))
-            .on_action(cx.listener(|this, _: &menu::DevOpenEngineSource, window, cx| {
-                let Some(source_root) = source_build_root() else {
-                    return;
-                };
-                let manifest = source_root.join("Cargo.toml");
-                if manifest.is_file() {
-                    this.open_path_with_project_root(manifest, source_root, window, cx);
-                } else {
-                    tracing::error!(?source_root, "Source build workspace has no Cargo.toml");
-                }
-            }))
+            .on_action(
+                cx.listener(|this, _: &menu::DevOpenEngineSource, window, cx| {
+                    let Some(source_root) = source_build_root() else {
+                        return;
+                    };
+                    let manifest = source_root.join("Cargo.toml");
+                    if manifest.is_file() {
+                        this.open_path_with_project_root(manifest, source_root, window, cx);
+                    } else {
+                        tracing::error!(?source_root, "Source build workspace has no Cargo.toml");
+                    }
+                }),
+            )
             .on_action(cx.listener(|_, _: &menu::DevBootstrapEngine, _, cx| {
                 let Some(source_root) = source_build_root() else {
                     return;
@@ -141,11 +143,10 @@ impl PulsarApp {
 
 fn source_build_root() -> Option<PathBuf> {
     engine_state::EngineContext::global().and_then(|ctx| {
-        let dev = ctx
-            .store
-            .get_or_init::<engine_state::DevContext>()
-            .read();
-        dev.is_source_build.then(|| dev.source_path.clone()).flatten()
+        let dev = ctx.store.get_or_init::<engine_state::DevContext>().read();
+        dev.is_source_build
+            .then(|| dev.source_path.clone())
+            .flatten()
     })
 }
 
@@ -174,5 +175,11 @@ fn start_engine_bootstrap_sidecar(workspace: &std::path::Path) -> std::io::Resul
     command.args(std::env::args_os().skip(1));
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    command.spawn().map(|_| ())
+    match command.spawn() {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = std::fs::remove_file(sidecar);
+            Err(error)
+        }
+    }
 }

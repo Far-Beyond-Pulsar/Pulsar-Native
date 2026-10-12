@@ -5,7 +5,7 @@
 //! then starts the newly built executable with the original arguments.
 
 use std::ffi::OsString;
-use std::fs::{self, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -22,14 +22,18 @@ pub fn run_if_requested() -> bool {
         return false;
     }
 
+    let sidecar = std::env::current_exe().ok();
     if let Err(error) = run_sidecar(&args) {
         append_log(&format!("Bootstrap failed: {error}\n"));
     }
+    schedule_sidecar_cleanup(sidecar);
     true
 }
 
 fn run_sidecar(args: &[OsString]) -> Result<(), String> {
-    let parent_pid = arg(args, 2)?.to_string_lossy().parse::<u32>()
+    let parent_pid = arg(args, 2)?
+        .to_string_lossy()
+        .parse::<u32>()
         .map_err(|error| format!("Invalid parent process id: {error}"))?;
     let workspace = PathBuf::from(arg(args, 3)?);
     let executable = PathBuf::from(arg(args, 4)?);
@@ -44,7 +48,9 @@ fn run_sidecar(args: &[OsString]) -> Result<(), String> {
         .and_then(|name| name.to_str())
         .unwrap_or("debug");
     let mut cargo = Command::new("cargo");
-    cargo.current_dir(&workspace).args(["build", "-p", "pulsar_engine"]);
+    cargo
+        .current_dir(&workspace)
+        .args(["build", "-p", "pulsar_engine"]);
     if profile == "release" {
         cargo.arg("--release");
     }
@@ -85,8 +91,10 @@ fn run_sidecar(args: &[OsString]) -> Result<(), String> {
         .spawn()
         .map_err(|error| format!("Could not relaunch {}: {error}", executable.display()))?;
 
-    append_log(&format!("\nEngine rebuilt and relaunched from {}.\n", executable.display()));
-    schedule_sidecar_cleanup(std::env::current_exe().ok());
+    append_log(&format!(
+        "\nEngine rebuilt from source and relaunched from {}.\n",
+        executable.display()
+    ));
     Ok(())
 }
 
@@ -100,6 +108,7 @@ fn wait_for_process_exit(pid: u32) -> Result<(), String> {
         #[cfg(windows)]
         let alive = Command::new("tasklist")
             .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .creation_flags(0x0800_0000)
             .output()
             .map(|output| String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\"")))
             .map_err(|error| format!("Could not inspect editor process: {error}"))?;
@@ -147,6 +156,6 @@ fn schedule_sidecar_cleanup(sidecar: Option<PathBuf>) {
     }
     #[cfg(not(windows))]
     {
-        let _ = fs::remove_file(sidecar);
+        let _ = std::fs::remove_file(sidecar);
     }
 }

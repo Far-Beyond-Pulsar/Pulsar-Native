@@ -99,12 +99,10 @@ mod tests {
         let uri = "http://example.com";
         let result = parse_uri(uri);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Invalid URI scheme")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid URI scheme"));
     }
 
     #[test]
@@ -112,12 +110,10 @@ mod tests {
         let uri = "pulsar://invalid";
         let result = parse_uri(uri);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Invalid URI format")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid URI format"));
     }
 
     #[test]
@@ -125,12 +121,10 @@ mod tests {
         let uri = "pulsar://unknown_command/path";
         let result = parse_uri(uri);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Unknown URI command")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown URI command"));
     }
 
     #[test]
@@ -180,11 +174,9 @@ mod tests {
         // Parse the URI - should fail
         let result = parse_uri(&uri);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("missing Pulsar.toml")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing Pulsar.toml"));
     }
 }
