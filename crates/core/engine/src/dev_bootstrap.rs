@@ -86,25 +86,23 @@ struct BootstrapView {
 
 impl BootstrapView {
     fn new(shared: SharedState, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let poll_task = cx.spawn(async move |this, cx| {
-            loop {
-                smol::Timer::after(Duration::from_millis(150)).await;
-                let finished = shared
-                    .0
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .finished;
-                let _ = cx.update(|cx| {
-                    if let Some(this) = this.upgrade() {
-                        this.update(cx, |_, cx| cx.notify());
-                    }
-                    if finished {
-                        cx.quit();
-                    }
-                });
-                if finished {
-                    break;
+        let poll_task = cx.spawn(async move |this, cx| loop {
+            smol::Timer::after(Duration::from_millis(150)).await;
+            let finished = shared
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .finished;
+            let _ = cx.update(|cx| {
+                if let Some(this) = this.upgrade() {
+                    this.update(cx, |_, cx| cx.notify());
                 }
+                if finished {
+                    cx.quit();
+                }
+            });
+            if finished {
+                break;
             }
         });
         Self {
