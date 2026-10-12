@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::{
-    MeshAssetPath, ObjectMovability, StaticMeshComponent, StaticMeshMaterialSlot,
+    MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent, StaticMeshMaterialSlot,
     StaticMeshMaterialSlots,
 };
 use pulsar_reflection::REGISTRY;
@@ -421,6 +421,9 @@ fn typed_mesh() -> StaticMeshComponent {
         .collect();
     StaticMeshComponent {
         mesh_asset: MeshAssetPath::new(mesh_asset()),
+        // Filled in here rather than bound from a load, so it names its
+        // geometry itself.
+        geometry_key: MeshGeometryKey::for_path(&MeshAssetPath::new(mesh_asset())),
         material_slots: StaticMeshMaterialSlots { slots },
         vertices: upload.geometry.vertices,
         indices: upload.geometry.indices,

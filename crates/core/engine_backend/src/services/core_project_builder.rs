@@ -709,7 +709,7 @@ fn starter_lib_rs() -> String {
 //! game runs and your actors re-bind to their existing entities instead of
 //! spawning duplicates.
 
-use pulsar_game::scene::{attach_value, attachments, MeshAssetPath, StaticMeshComponent, Transform};
+use pulsar_game::scene::{attach_value, attachments, StaticMeshComponent, Transform};
 use pulsar_game::tick::TickLoop;
 // Re-exports: script crates need no direct scenedb dependency — everything
 // gameplay-facing rides on `pulsar_game`.
@@ -727,10 +727,7 @@ pub struct Spinner {
 impl Actor for Spinner {
     fn begin_play(&mut self, entity: Entity, world: &mut World) {
         if attachments::enabled_components_of::<StaticMeshComponent>(world, entity).is_empty() {
-            let cube = StaticMeshComponent {
-                mesh_asset: MeshAssetPath::new("meshes/primitives/SM_Cube.fbx"),
-                ..Default::default()
-            };
+            let cube = StaticMeshComponent::for_mesh_asset("meshes/primitives/SM_Cube.fbx");
             if let Err(error) = attach_value(world, entity, cube) {
                 eprintln!("Spinner: could not attach its cube mesh: {error}");
             }
