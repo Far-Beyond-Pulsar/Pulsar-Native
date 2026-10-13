@@ -580,7 +580,7 @@ pub(super) fn resolve_layout(
             .leaves()
             .iter()
             .any(|p| snapshot.anchor_panels.contains(&p.view().entity_id()));
-        if holds_anchor && state.admit(&plan) {
+        if anchor_requirement_met(snapshot.anchor_panels.len(), holds_anchor) && state.admit(&plan) {
             Some(plan)
         } else {
             tracing::warn!("layout: saved centre has no editor tab; keeping the default");
@@ -666,10 +666,26 @@ pub(super) fn resolve_layout(
     }
 }
 
+/// Whether a saved centre satisfies the anchor rule. The centre must hold a
+/// panel of the anchor group (the level editor) only when this window has one:
+/// a window built without a level editor has an empty anchor group and any
+/// centre is acceptable.
+fn anchor_requirement_met(anchor_panel_count: usize, centre_holds_anchor: bool) -> bool {
+    anchor_panel_count == 0 || centre_holds_anchor
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::super::format::tests::tab_group;
     use super::*;
+
+    #[test]
+    fn the_anchor_rule_applies_only_to_windows_that_have_an_anchor() {
+        assert!(anchor_requirement_met(0, false));
+        assert!(anchor_requirement_met(1, true));
+        assert!(!anchor_requirement_met(1, false));
+    }
 
     /// Resolves a leaf to its file name; files starting with `gone` are missing.
     #[derive(Default)]

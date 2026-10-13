@@ -83,6 +83,8 @@ pub struct AppState {
     // Dock layout persistence (see `layout`)
     /// This window saves and restores the project layout.
     pub layout_persist: bool,
+    /// The layout slot of this window within its project (see `layout::store`).
+    pub layout_slot: Option<u32>,
     /// Last known window geometry, saved with the layout.
     pub window_bounds: Option<gpui::WindowBounds>,
     /// The last windowed (not maximized / fullscreen) bounds: the size to

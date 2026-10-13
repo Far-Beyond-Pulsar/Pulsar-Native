@@ -7,9 +7,10 @@
 //! ```
 //!
 //! The file is a map of window *slots*; each slot is a [`SavedWindowLayout`].
-//! Only slot [`PRIMARY_SLOT`] is read and written today. Writing a slot is a
+//! Each window of the project owns one slot (see [`super::store`]); slot
+//! [`PRIMARY_SLOT`] is the primary window. Writing a slot is a
 //! read-modify-write that keeps every other slot as a raw JSON value, so a
-//! later version (or another window) can own them without this code needing to
+//! window with another slot (or a later version) can own them without this code needing to
 //! understand them.
 //!
 //! `popouts` lists the pop-out windows opened from the window (bounds + their
@@ -181,7 +182,32 @@ pub(super) fn write_slot(
     let mut raw = read_raw(path).unwrap_or_default();
     raw.windows
         .insert(slot.to_string(), serde_json::to_value(layout)?);
+    write_raw(path, &raw)
+}
 
+/// Remove window `slot` from the file, leaving every other slot untouched.
+/// Missing file or slot is not an error.
+pub(super) fn remove_slot(path: &Path, slot: &str) -> std::io::Result<()> {
+    let Some(mut raw) = read_raw(path) else {
+        return Ok(());
+    };
+    if raw.windows.remove(slot).is_none() {
+        return Ok(());
+    }
+    write_raw(path, &raw)
+}
+
+/// The slot keys recorded in the file (readable or not), in numeric order
+/// where they are ordinals.
+pub(super) fn slot_keys(path: &Path) -> Vec<String> {
+    let mut keys: Vec<String> = read_raw(path)
+        .map(|raw| raw.windows.into_keys().collect())
+        .unwrap_or_default();
+    keys.sort_by_key(|k| (k.parse::<u32>().unwrap_or(u32::MAX), k.clone()));
+    keys
+}
+
+fn write_raw(path: &Path, raw: &RawLayout) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

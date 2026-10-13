@@ -494,6 +494,7 @@ impl PulsarApp {
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
                 layout_persist: false,
+                layout_slot: None,
                 window_bounds: None,
                 window_restore_bounds: None,
                 layout_ready: false,
@@ -766,7 +767,7 @@ impl PulsarApp {
         app.refresh_open_editor_snapshot(cx);
 
         // Restore the project's saved tab layout and keep saving it.
-        if has_project && create_level_editor {
+        if has_project {
             app.init_layout_persistence(window, cx);
         }
 

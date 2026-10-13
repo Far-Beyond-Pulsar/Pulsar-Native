@@ -6,7 +6,7 @@
 //! a file records that file (the `TabPanel` dump does this for any panel with a
 //! `panel_file_path`). Paths inside the project are stored relative to it. The
 //! record lives at `<project>/.pulsar/layout.json`, a map of window slots (see
-//! [`format`]); this window reads and writes slot 0 and leaves the others alone.
+//! [`format`]); this window reads and writes its own slot and leaves the others alone.
 //!
 //! **When.** Any `DockEvent::LayoutChanged` (tab opened / closed / moved /
 //! activated, split or dock resized, dock toggled) arms a 4 second timer; a
@@ -75,6 +75,39 @@
 //! disabled) are not kept dormant, since the dormant list is per main root; they
 //! are lost at the next save.
 //!
+//! **Windows and slots.** Every editor window of a project owns one slot of
+//! `layout.json` (see [`format`], [`store`]). The slot is claimed when the
+//! window is built: the lowest ordinal not held by a live window of the
+//! project, so the primary window is slot 0. Each window saves and restores
+//! only its slot; a window whose slot has no record keeps its defaults (and a
+//! centre without a level-editor tab is valid when the window has none: the
+//! resolver requires the anchor group only if the window has one). Writes are
+//! read-modify-write under one in-process lock, so windows never clobber each
+//! other; two engine *processes* on one project are last-writer-wins per slot.
+//!
+//! *Closing.* When a window is gone its slot is released
+//! ([`store::LayoutStore::release_slot`]). A secondary window closed on its own
+//! while others of the project remain drops its slot. Closing the primary
+//! window, the last window, or any window once the app is quitting
+//! (`on_app_quit`) keeps every slot. The close itself still goes through
+//! `on_window_should_close` (final save, then `layout_closing` so pop-outs that
+//! close with the window cannot overwrite it); the slot is released afterwards,
+//! on entity release, so a close that is vetoed never loses a slot.
+//!
+//! *Startup.* After the primary window (slot 0) has restored, it reopens the
+//! other recorded slots once per process ([`PulsarApp::reopen_recorded_windows`]):
+//! each is opened through `PulsarRoot::open_additional` (the normal project
+//! window path without the one-window-per-kind focus dedup) with its slot
+//! reserved, so it restores its own slot and opens with that slot's window
+//! geometry (`saved_window_bounds`, validated against the connected displays
+//! when the window is created). A slot whose window cannot be created stays
+//! recorded and is skipped; reopened windows are non-primary so they cannot
+//! reopen anything themselves.
+//!
+//! Note: nothing in the editor creates a second window for the *same* project
+//! yet (`PulsarRoot::open` focuses the existing editor window), so slots other
+//! than 0 appear only once such a feature calls `open_additional`.
+//!
 //! `layout.json` is per-user (window geometry, open tabs), so new projects
 //! gitignore it.
 //!
@@ -85,6 +118,7 @@ mod commit;
 mod dormant;
 mod format;
 mod resolve;
+mod store;
 mod window_geometry;
 
 use std::time::Duration;
@@ -93,11 +127,12 @@ use gpui::{AnyWindowHandle, AppContext as _, Context, Window, WindowBounds};
 use ui::dock::{live_popouts, popout_events, DockEvent, PopoutEvent};
 
 use super::PulsarApp;
-use format::{layout_path, read_slot, write_slot, SavedPopout, SavedWindowLayout, PRIMARY_SLOT};
+use format::{SavedPopout, SavedWindowLayout};
+use store::{LayoutStore, MAX_REOPENED, PRIMARY};
 use window_geometry::SavedWindow;
 
 pub(crate) use dormant::DormantLeaf;
-pub(crate) use window_geometry::saved_window_bounds;
+pub(crate) use window_geometry::{saved_window_bounds, saved_window_bounds_for};
 
 /// Quiet time after the last layout change before it is written.
 const SAVE_DEBOUNCE: Duration = Duration::from_secs(4);
@@ -105,13 +140,37 @@ const SAVE_DEBOUNCE: Duration = Duration::from_secs(4);
 // ── Save ─────────────────────────────────────────────────────────────────────
 
 impl PulsarApp {
-    /// Wire up layout persistence for this window. Only the primary project
-    /// window persists; secondary windows share the project and would race it.
+    /// Wire up layout persistence for this window: claim its slot in the
+    /// project's layout file and save / restore that slot. Every project window
+    /// persists, each into its own slot (see [`store`]).
     pub(super) fn init_layout_persistence(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.project_path.is_none() {
+        let Some(root) = self.state.project_path.clone() else {
             return;
-        }
+        };
         self.state.layout_persist = true;
+        // Pop-outs are matched to the window that opened them by this handle.
+        self.state.layout_window = Some(window.window_handle());
+        let slot = LayoutStore::global().claim_slot(&root);
+        self.state.layout_slot = Some(slot);
+
+        // The app quitting is learnt before any window is torn down, so windows
+        // that close as part of it keep their slots.
+        cx.on_app_quit(|_, _| {
+            LayoutStore::global().mark_quitting();
+            async {}
+        })
+        .detach();
+        // The window is gone (closed, or removed without a close request): give
+        // the slot back; a window closed on its own drops it from the file.
+        cx.on_release({
+            let root = root.clone();
+            move |app, _| {
+                app.state.layout_closing = true;
+                app.state.layout_save_task = None;
+                LayoutStore::global().release_slot(&root, slot);
+            }
+        })
+        .detach();
 
         // Track the window's size and position; moving or resizing it saves the
         // layout like any other change (debounced).
@@ -119,16 +178,14 @@ impl PulsarApp {
         // A window that opened full screen never shows its windowed size, so
         // carry the saved one forward until the user leaves full screen.
         if self.state.window_restore_bounds.is_none() {
-            if let Some(root) = self.state.project_path.as_deref() {
-                self.state.window_restore_bounds = match saved_window_bounds(root) {
-                    Some(
-                        WindowBounds::Windowed(b)
-                        | WindowBounds::Maximized(b)
-                        | WindowBounds::Fullscreen(b),
-                    ) => Some(b),
-                    None => None,
-                };
-            }
+            self.state.window_restore_bounds = match saved_window_bounds_for(&root, slot) {
+                Some(
+                    WindowBounds::Windowed(b)
+                    | WindowBounds::Maximized(b)
+                    | WindowBounds::Fullscreen(b),
+                ) => Some(b),
+                None => None,
+            };
         }
         cx.observe_window_bounds(window, |this, window, cx| {
             this.note_window_bounds(window.window_bounds());
@@ -179,6 +236,10 @@ impl PulsarApp {
             this.update(cx, |app, cx| {
                 app.restore_layout(window, cx);
                 app.state.layout_ready = true;
+                // Only the primary window brings the others back.
+                if app.state.layout_slot == Some(PRIMARY) {
+                    app.reopen_recorded_windows(cx);
+                }
             });
         });
     }
@@ -308,7 +369,10 @@ impl PulsarApp {
         };
         layout.relativize(&root);
 
-        if let Err(error) = write_slot(&layout_path(&root), PRIMARY_SLOT, &layout) {
+        let Some(slot) = self.state.layout_slot else {
+            return;
+        };
+        if let Err(error) = LayoutStore::global().save_slot(&root, slot, &layout) {
             tracing::warn!("could not save the editor layout: {error}");
         }
     }
@@ -321,7 +385,11 @@ impl PulsarApp {
         let Some(root) = self.state.project_path.clone() else {
             return;
         };
-        let Some(mut layout) = read_slot(&layout_path(&root), PRIMARY_SLOT) else {
+        let Some(slot) = self.state.layout_slot else {
+            return;
+        };
+        // A window with no recorded slot (a new secondary) keeps its defaults.
+        let Some(mut layout) = LayoutStore::global().read_slot(&root, slot) else {
             return;
         };
         layout.absolutize(&root);
@@ -360,5 +428,52 @@ impl PulsarApp {
 
         self.refresh_open_editor_snapshot(cx);
         cx.notify();
+    }
+}
+
+// ── Other windows ────────────────────────────────────────────────────────────
+
+impl PulsarApp {
+    /// Reopen the other windows recorded for this project, each through the
+    /// ordinary project-window path so it restores its own slot (and its own
+    /// geometry, via `saved_window_bounds`). Runs once per process and project,
+    /// from the primary window only; a reopened window has a non-primary slot
+    /// so it can never reopen anything itself. A slot whose window fails to
+    /// open stays recorded and is simply skipped.
+    fn reopen_recorded_windows(&mut self, cx: &mut Context<Self>) {
+        let Some(root) = self.state.project_path.clone() else {
+            return;
+        };
+        let store = LayoutStore::global();
+        if !store.begin_reopen(&root) {
+            return;
+        }
+        let slots: Vec<u32> = store
+            .slots(&root)
+            .into_iter()
+            .filter(|slot| *slot != PRIMARY && !store.is_live(&root, *slot))
+            .take(MAX_REOPENED)
+            .collect();
+        if slots.is_empty() {
+            return;
+        }
+        // Not inside this window's update: opening a window runs a whole
+        // editor's construction.
+        cx.defer(move |cx| {
+            let store = LayoutStore::global();
+            for slot in slots {
+                if store.is_live(&root, slot) {
+                    continue;
+                }
+                store.reserve_slot(&root, slot);
+                crate::PulsarRoot::open_additional(root.clone(), cx);
+                // Construction is synchronous: either the window claimed the
+                // reservation or it never came up.
+                if !store.is_live(&root, slot) {
+                    tracing::warn!("layout: could not reopen window slot {slot}");
+                }
+                store.clear_reservations(&root);
+            }
+        });
     }
 }

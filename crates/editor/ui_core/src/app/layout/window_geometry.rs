@@ -9,7 +9,7 @@ use std::path::Path;
 use gpui::{Bounds, Pixels, WindowBounds};
 use serde::{Deserialize, Serialize};
 
-use super::format::{layout_path, read_slot, PRIMARY_SLOT};
+use super::store::LayoutStore;
 
 /// How the window was shown. The bounds saved alongside are the *restore*
 /// bounds, so a maximized window comes back maximized and un-maximizes to its
@@ -76,11 +76,18 @@ impl SavedWindow {
     }
 }
 
-/// The window geometry saved for `project_root`, to open its window with.
-/// Whether it is still on a connected display is checked when the window is
-/// opened.
+/// The window geometry saved for the window `project_root` opens next (the
+/// slot the store would hand it), to open that window with. Whether it is
+/// still on a connected display is checked when the window is opened.
 pub(crate) fn saved_window_bounds(project_root: &Path) -> Option<WindowBounds> {
-    read_slot(&layout_path(project_root), PRIMARY_SLOT)?
+    let store = LayoutStore::global();
+    saved_window_bounds_for(project_root, store.peek_slot(project_root))
+}
+
+/// The window geometry saved for `slot` of `project_root`.
+pub(crate) fn saved_window_bounds_for(project_root: &Path, slot: u32) -> Option<WindowBounds> {
+    LayoutStore::global()
+        .read_slot(project_root, slot)?
         .window?
         .to_window_bounds()
 }
@@ -189,7 +196,7 @@ pub(crate) fn fit_to_connected_displays(
 
 #[cfg(test)]
 mod tests {
-    use super::super::format::{write_slot, SavedWindowLayout};
+    use super::super::format::{layout_path, write_slot, SavedWindowLayout, PRIMARY_SLOT};
     use super::*;
     use gpui::{point, px, size};
 
