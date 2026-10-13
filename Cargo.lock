@@ -8835,6 +8835,7 @@ dependencies = [
  "gpui-ce",
  "image",
  "parking_lot",
+ "plugin_editor_api",
  "profiling 0.1.0",
  "pulsar_image_format",
  "resvg",
