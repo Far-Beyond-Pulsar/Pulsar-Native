@@ -1,5 +1,6 @@
 //! Launching the built game and watching it until it exits.
 
+use std::collections::HashMap;
 use std::io::{BufReader, Read as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -12,93 +13,127 @@ use ui::notification::Notification;
 
 use super::plan::Invocation;
 
-/// Start `invocation` (a `cargo run`), record its process in the engine's
-/// playback state, and wait for it to end, reporting a crash if it did.
+/// Start `invocation` (a `cargo run`) once per player the multiplayer settings
+/// ask for, record the processes in the engine's playback state, and wait for
+/// all of them to end, reporting a crash if any did.
 pub async fn launch_and_monitor(
     invocation: Invocation,
     project_root: PathBuf,
     window_handle: AnyWindowHandle,
     async_app: &mut AsyncApp,
 ) {
-    // stderr is piped so a crash can be reported; stdout goes to the editor's
-    // own terminal so game logging stays visible.
-    let spawned = Command::new("cargo")
-        .arg(invocation.subcommand)
-        .args(&invocation.args)
-        .envs(invocation.envs.iter().map(|(k, v)| (k, v)))
-        .current_dir(&project_root)
-        .env("RUST_BACKTRACE", "1")
-        // Publish the game for the profiler (listed in its start screen;
-        // nothing is recorded until a recording starts).
-        .env(profiling::remote::ENV_FLAG, "1")
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::piped())
-        .spawn();
-    let mut child = match spawned {
-        Ok(child) => child,
-        Err(error) => {
-            let _ = async_app.update_window(window_handle, |_, window, cx| {
-                window.push_notification(
-                    Notification::error(t!("Build.Game.LaunchFailed", error = error).to_string())
-                        .title(t!("Build.Game.Title").to_string()),
-                    cx,
-                );
-            });
-            return;
-        }
-    };
-
-    // Drain stderr off-thread so the pipe never blocks the game.
-    let stderr_pipe = child.stderr.take();
-    let (stderr_tx, stderr_rx) = smol::channel::bounded::<String>(1);
-    std::thread::spawn(move || {
-        let Some(pipe) = stderr_pipe else { return };
-        let mut buffer = String::new();
-        let _ = BufReader::new(pipe).read_to_string(&mut buffer);
-        let _ = smol::block_on(stderr_tx.send(buffer));
-    });
-
     let playback = engine_state::playback::playback();
     let game = engine_state::playback::game_process();
-    *game.read().0.lock() = Some(child);
+    let count = usize::from(playback.get().multiplayer.instance_count());
+
+    // pid -> (instance index, stderr receiver). stderr is piped so a crash can
+    // be reported; stdout goes to the editor's own terminal so game logging
+    // stays visible.
+    let mut stderrs = HashMap::new();
+    for index in 0..count {
+        let spawned = Command::new("cargo")
+            .arg(invocation.subcommand)
+            .args(&invocation.args)
+            .envs(invocation.envs.iter().map(|(k, v)| (k, v)))
+            .current_dir(&project_root)
+            .env("RUST_BACKTRACE", "1")
+            .env("PULSAR_INSTANCE_INDEX", index.to_string())
+            .env("PULSAR_INSTANCE_COUNT", count.to_string())
+            // Publish the game for the profiler (listed in its start screen;
+            // nothing is recorded until a recording starts).
+            .env(profiling::remote::ENV_FLAG, "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::piped())
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(error) => {
+                let _ = async_app.update_window(window_handle, |_, window, cx| {
+                    window.push_notification(
+                        Notification::error(
+                            t!("Build.Game.LaunchFailed", error = error).to_string(),
+                        )
+                        .title(t!("Build.Game.Title").to_string()),
+                        cx,
+                    );
+                });
+                break;
+            }
+        };
+
+        // Drain stderr off-thread so the pipe never blocks the game.
+        let stderr_pipe = child.stderr.take();
+        let (stderr_tx, stderr_rx) = smol::channel::bounded::<String>(1);
+        std::thread::spawn(move || {
+            let Some(pipe) = stderr_pipe else { return };
+            let mut buffer = String::new();
+            let _ = BufReader::new(pipe).read_to_string(&mut buffer);
+            let _ = smol::block_on(stderr_tx.send(buffer));
+        });
+        stderrs.insert(child.id(), (index, stderr_rx));
+        game.read().0.lock().push(child);
+    }
+    if game.read().0.lock().is_empty() {
+        return;
+    }
     playback.update(|s| s.game_running = true);
 
-    let exit_status = loop {
+    // Instances that exited on their own; the Stop button empties the list
+    // without adding here.
+    let mut exits = Vec::new();
+    loop {
         async_app
             .background_executor()
             .timer(Duration::from_millis(500))
             .await;
 
         let process = game.read();
-        let mut guard = process.0.lock();
-        match guard.as_mut() {
-            // Stopped by the Stop button, which already took and killed it.
-            None => break None,
-            Some(child) => match child.try_wait() {
-                Ok(Some(status)) => break Some(status),
-                Ok(None) => {}
-                Err(_) => break None,
-            },
+        let mut children = process.0.lock();
+        children.retain_mut(|child| match child.try_wait() {
+            Ok(Some(status)) => {
+                exits.push((child.id(), status));
+                false
+            }
+            Ok(None) => true,
+            Err(_) => false,
+        });
+        if children.is_empty() {
+            break;
         }
-    };
+    }
 
-    game.read().0.lock().take();
     playback.update(|s| s.game_running = false);
 
-    let stderr = stderr_rx.try_recv().unwrap_or_default();
-    let failed = exit_status.is_some_and(|s| !s.success());
+    let mut failed = false;
+    let mut stderr = String::new();
+    for (pid, status) in &exits {
+        let Some((index, rx)) = stderrs.get(pid) else {
+            continue;
+        };
+        let text = rx.try_recv().unwrap_or_default();
+        let bad = !status.success();
+        failed |= bad;
+        if text.trim().is_empty() {
+            continue;
+        }
+        if bad {
+            tracing::error!("[run] game #{index} stderr:\n{}", text.trim());
+            if !stderr.is_empty() {
+                stderr.push('\n');
+            }
+            if count > 1 {
+                stderr.push_str(&format!("[instance {index}]\n"));
+            }
+            stderr.push_str(text.trim());
+        } else {
+            tracing::warn!("[run] game #{index} stderr:\n{}", text.trim());
+        }
+    }
     let report = (failed && !stderr.trim().is_empty())
         .then(|| save_crash_report(&project_root, &stderr))
         .flatten();
 
-    if !stderr.trim().is_empty() {
-        if failed {
-            tracing::error!("[run] game stderr:\n{}", stderr.trim());
-        } else {
-            tracing::warn!("[run] game stderr:\n{}", stderr.trim());
-        }
-    }
     if !failed {
         tracing::info!("[run] game exited cleanly");
         return;

@@ -101,7 +101,8 @@ pub fn build_button(
                     .tooltip(t!("Build.Button.StopGameTooltip").to_string())
                     .on_click(|_, _, _| {
                         let game = game_process();
-                        if let Some(mut child) = game.read().0.lock().take() {
+                        let children = std::mem::take(&mut *game.read().0.lock());
+                        for mut child in children {
                             // `cargo run`'s child is the game itself.
                             crate::runner::process_tree::kill_tree(&mut child);
                             let _ = child.wait();

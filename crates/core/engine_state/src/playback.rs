@@ -139,12 +139,25 @@ impl PlaybackState {
     }
 }
 
-/// The standalone game process started by Build + Run.
+/// The standalone game processes started by Build + Run: one per player the
+/// multiplayer settings ask for.
 ///
 /// A resource of its own because [`Child`] is neither `Clone` nor `PartialEq`;
-/// whether it is alive is mirrored in [`PlaybackState::game_running`].
+/// whether any is alive is mirrored in [`PlaybackState::game_running`].
 #[derive(Default)]
-pub struct GameProcess(pub Mutex<Option<Child>>);
+pub struct GameProcess(pub Mutex<Vec<Child>>);
+
+impl MultiplayerSettings {
+    /// How many copies of the built game a run starts: the player count where
+    /// it applies (listen / dedicated server), otherwise one.
+    pub fn instance_count(&self) -> u8 {
+        if self.mode.has_player_count() {
+            self.players.clamp(1, MAX_PLAYERS)
+        } else {
+            1
+        }
+    }
+}
 
 /// The engine's playback state resource.
 ///
