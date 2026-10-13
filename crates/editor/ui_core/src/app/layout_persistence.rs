@@ -26,6 +26,12 @@
 //! - A live side-dock panel the saved layout does not mention (for example one
 //!   added by an update) is put back in its dock rather than lost.
 //!
+//! If the saved centre is unusable it is abandoned as a whole and the live
+//! panels it consumed return to the pool.
+//!
+//! `layout.json` is per-user (window geometry, open tabs), so new projects
+//! gitignore it. Files of another `version` are ignored.
+//!
 //! Nothing is written until the restore has finished, so the default layout can
 //! never overwrite a saved one.
 
@@ -574,12 +580,27 @@ impl PulsarApp {
         // Centre. If the saved tree never mentions the anchor group's panels
         // (it always should: the level editor cannot be closed) leave the
         // centre as it is rather than orphan the entity everything holds.
+        //
+        // Building the centre consumes live panels from the pool. If the build
+        // is abandoned, hand them back so the side docks and the final
+        // "unmentioned panel" pass still see them.
+        let pool_before: Vec<LivePanel> = restorer
+            .live
+            .iter()
+            .map(|l| LivePanel {
+                panel: l.panel.clone(),
+                placement: l.placement,
+            })
+            .collect();
         let center = restorer.build_item(&layout.dock.center, window, cx);
         match center {
             Some(center) if restorer.anchor.is_none() => {
                 dock_area.update(cx, |area, cx| area.set_center(center, window, cx));
             }
-            _ => tracing::warn!("layout: saved centre has no editor tab; keeping the default"),
+            _ => {
+                tracing::warn!("layout: saved centre has no editor tab; keeping the default");
+                restorer.live = pool_before;
+            }
         }
 
         // Side docks, only those this app has.
