@@ -11643,6 +11643,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 
 [[package]]
+name = "skeletal_animation_plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "gpui-ce",
+ "log",
+ "naga",
+ "plugin_editor_api",
+ "serde",
+ "serde_json",
+ "smol",
+ "tracing",
+ "ui",
+ "ui_common",
+ "uuid",
+ "wgpu",
+]
+
+[[package]]
 name = "skrifa"
 version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13932,6 +13952,7 @@ dependencies = [
  "futures",
  "gpui-ce",
  "image",
+ "physics_plugin",
  "plugin_editor_api",
  "plugin_manager",
  "plugin_matter",
@@ -13949,6 +13970,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shader_editor_plugin",
+ "skeletal_animation_plugin",
  "smol",
  "tempfile",
  "tracing",

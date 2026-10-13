@@ -53,6 +53,8 @@ plugin_matter = { path = "../../../plugins/vendor/matter_editor" }
 shader_editor_plugin = { path = "../../../plugins/vendor/shader_editor" }
 editor_table_plugin = { path = "../../../plugins/vendor/table_editor" }
 asset_viewer_plugin = { path = "../../../plugins/vendor/asset_viewer", features = ["builtin"] }
+skeletal_animation_plugin = { path = "../../../plugins/vendor/skm_editor", features = ["builtin"] }
+physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = ["builtin"] }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

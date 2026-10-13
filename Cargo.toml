@@ -14,6 +14,8 @@ members = [
     "crates/agent-providers/*",
     "crates/ui/wgpui-base",
     "plugins/vendor/asset_viewer",
+    # Skeletal animation editor; built-in plugin of the editor.
+    "plugins/vendor/skm_editor",
     # Physics asset types (materials, collision layers); in-repo cdylib plugin.
     "plugins/vendor/physics_plugin",
     # Helio's component crate names this workspace as its own

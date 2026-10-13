@@ -317,6 +317,79 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
     }
 }
 
+/// Wraps the skeletal_animation_plugin crate as a built-in editor provider.
+/// Opens `.skelanim` folders in the Skeletal Animation Editor.
+pub struct SkeletalAnimationBuiltinProvider;
+
+impl BuiltinEditorProvider for SkeletalAnimationBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.skeletal-animation-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        skeletal_animation_plugin::SkeletalAnimationPlugin::default().file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        skeletal_animation_plugin::SkeletalAnimationPlugin::default().editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == skeletal_animation_plugin::EDITOR_ID
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        skeletal_animation_plugin::SkeletalAnimationPlugin::create_editor(file_path, window, cx)
+    }
+}
+
+/// Wraps the physics_plugin crate as a built-in provider. It has no editor
+/// panel: it contributes the `.physmat` / `.physlayers` file types and the
+/// physics components. Linking the crate is what registers the components,
+/// their simulation behaviors and the `physics::` events, so the simulation
+/// runs in every build of the editor and engine.
+pub struct PhysicsBuiltinProvider;
+
+impl BuiltinEditorProvider for PhysicsBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.physics"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        physics_plugin::PhysicsPlugin::default().file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        physics_plugin::PhysicsPlugin::default().editors()
+    }
+
+    fn can_handle(&self, _editor_id: &EditorId) -> bool {
+        false
+    }
+
+    fn component_definitions(&self) -> Vec<ComponentDefinition> {
+        physics_plugin::PhysicsPlugin::default().component_definitions()
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        Err(PluginError::Other {
+            message: format!("the physics plugin has no editor for {}", file_path.display()),
+        })
+    }
+}
+
 /// Wraps the shader_editor_plugin crate as a built-in editor provider.
 /// Opens `.material` files in the visual Shader Graph Editor.
 pub struct ShaderEditorBuiltinProvider;
@@ -594,6 +667,13 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Asset viewer (opens .fbx, .png files)
     registry.register_provider(Arc::new(AssetViewerBuiltinProvider));
+
+    // Skeletal animation editor (opens .skelanim folders)
+    registry.register_provider(Arc::new(SkeletalAnimationBuiltinProvider));
+
+    // Physics (file types and components; the simulation itself is
+    // registered by linking the crate)
+    registry.register_provider(Arc::new(PhysicsBuiltinProvider));
 
     // Editors that are part of the build but not of this crate (the Blueprint
     // editor, ..) register themselves at link time; see

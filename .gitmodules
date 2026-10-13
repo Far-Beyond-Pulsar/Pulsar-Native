@@ -44,3 +44,6 @@
 [submodule "plugins/vendor/physics_plugin"]
 	path = plugins/vendor/physics_plugin
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Physics
+[submodule "plugins/vendor/skm_editor"]
+	path = plugins/vendor/skm_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_SKM
