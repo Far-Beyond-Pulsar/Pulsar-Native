@@ -90,12 +90,11 @@ pub struct SceneDomain {
     /// The level's undo history (Pulsar-Native#554, #931): one entry per
     /// mutating `SceneCommand` (`execute_command` commits them) or voxel
     /// stroke, in the order they were made, bounded at
-    /// [`MAX_UNDO_HISTORY`]. Shared with every other view of the level
-    /// through the host's `UndoService` (see [`Self::set_current_scene`]).
+    /// [`MAX_UNDO_HISTORY`]. Registered with the host's `UndoService` under
+    /// the level's file (see [`Self::set_current_scene`]).
     history: SharedHistory<SceneEdit>,
     /// The host's undo histories, when the editor was given them: the
-    /// level's history is the one kept for its file (one per document,
-    /// shared by every view of it).
+    /// level's history is registered there under its file.
     pub undo_service: Option<UndoService>,
 }
 
@@ -264,7 +263,7 @@ impl SceneDomain {
             self.history = new_history();
         }
         if let (Some(service), Some(path)) = (&self.undo_service, &self.current_scene) {
-            service.adopt(&DocumentId::for_path(path), &mut self.history);
+            service.adopt(&DocumentId::for_path(path), &self.history);
         }
     }
 
