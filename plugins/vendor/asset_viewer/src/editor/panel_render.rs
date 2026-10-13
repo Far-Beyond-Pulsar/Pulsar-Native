@@ -2373,6 +2373,16 @@ impl Render for AssetViewerPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            // The host's shared Undo/Redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z,
+            // Ctrl+Y), from anywhere in the viewer (Pulsar-Native#931).
+            .on_action(cx.listener(|panel, _: &plugin_editor_api::Undo, _, cx| {
+                panel.undo();
+                cx.notify();
+            }))
+            .on_action(cx.listener(|panel, _: &plugin_editor_api::Redo, _, cx| {
+                panel.redo();
+                cx.notify();
+            }))
             .child(div().flex_1().min_h_0().map(|el| {
                 if let Some(workspace) = &self.workspace {
                     el.child(workspace.clone())

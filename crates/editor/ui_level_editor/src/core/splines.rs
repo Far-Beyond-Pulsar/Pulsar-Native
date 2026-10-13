@@ -21,6 +21,64 @@ pub const SPLINE_CLASS: &str = helio_component::components::SPLINE_CLASS_NAME;
 /// curve into the component and drops the prop.
 pub const LEGACY_SPLINE_PROPERTY: &str = "editor_spline";
 
+/// Counts changes to what the spline panel shows: curves, which objects
+/// carry one (attachments and their enabled state), object names, ids,
+/// lock and visibility, and legacy curve props. Moving an object is not
+/// one of them (points are shown in local space), so dragging a curve's
+/// owner does not re-render the panel or resample its curve
+/// (Pulsar-Native#995).
+pub struct SplinePanelWatch {
+    cursors: Vec<pulsar_scenedb::ChangeCursor>,
+    world_revision: u64,
+    revision: u64,
+    scratch: Vec<pulsar_scenedb::ComponentChange>,
+}
+
+impl SplinePanelWatch {
+    pub fn new(world: &World) -> Self {
+        use engine_backend::scene::{
+            attachments::{ComponentMeta, ComponentOwner},
+            Name, RenderProps, StableId, Visibility,
+        };
+        Self {
+            cursors: vec![
+                world.open_change_cursor::<SplineData>(),
+                world.open_change_cursor::<ComponentOwner>(),
+                world.open_change_cursor::<ComponentMeta>(),
+                world.open_change_cursor::<Name>(),
+                world.open_change_cursor::<StableId>(),
+                world.open_change_cursor::<Visibility>(),
+                world.open_change_cursor::<RenderProps>(),
+            ],
+            world_revision: world.revision(),
+            revision: 0,
+            scratch: Vec::new(),
+        }
+    }
+
+    /// A number that changes exactly when something the panel shows may
+    /// have changed since the last call.
+    pub fn revision(&mut self, world: &World) -> u64 {
+        if world.revision() < self.world_revision {
+            // The world was replaced, and the cursors with it.
+            let revision = self.revision + 1;
+            *self = Self::new(world);
+            self.revision = revision;
+            return revision;
+        }
+        self.world_revision = world.revision();
+        let mut changed = false;
+        for cursor in &mut self.cursors {
+            self.scratch.clear();
+            changed |= world.read_changes(cursor, &mut self.scratch)
+                == pulsar_scenedb::ChangeRead::Overflowed
+                || !self.scratch.is_empty();
+        }
+        self.revision += changed as u64;
+        self.revision
+    }
+}
+
 /// The object's live spline component: its index in the object's
 /// component list and a copy of its current value, read off the World (the
 /// `component_instances` on a `SceneObjectData` is only a load-time copy).
@@ -290,6 +348,37 @@ mod tests {
             serde_json::from_value::<SplineData>(spline.data.clone()).unwrap(),
             curve
         );
+    }
+    #[test]
+    fn the_panel_watch_ignores_moves_and_sees_what_it_shows() {
+        let mut state = LevelEditorState::new();
+        let line = preset(&state, "line");
+        create(&mut state, line);
+        let id = state.scene.selected_object().unwrap();
+        let mut watch = SplinePanelWatch::new(&state.scene.world());
+        let start = watch.revision(&state.scene.world());
+        assert_eq!(watch.revision(&state.scene.world()), start, "nothing changed");
+
+        // Dragging the curve's owner (#995): no panel refresh.
+        for x in 0..5 {
+            execute_command(
+                &mut state,
+                SceneCommand::SetTransform {
+                    id: id.clone(),
+                    position: Some([x as f32, 0.0, 0.0]),
+                    rotation: None,
+                    scale: None,
+                },
+            );
+            assert_eq!(watch.revision(&state.scene.world()), start, "a move");
+        }
+
+        edit(&mut state, |d| d.closed = true);
+        let edited = watch.revision(&state.scene.world());
+        assert_ne!(edited, start, "the curve changed");
+
+        create(&mut state, SplineData::default());
+        assert_ne!(watch.revision(&state.scene.world()), edited, "a curve was added");
     }
     #[test]
     fn edits_reach_the_world_component_the_renderer_reads() {

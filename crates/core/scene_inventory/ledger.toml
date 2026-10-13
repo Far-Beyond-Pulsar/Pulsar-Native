@@ -1233,6 +1233,26 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
+file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/animated_content.rs"
+count = 7
+owner = "core::engine_backend::subsystems::render::helio_renderer::animated_content (AnimatedContent)"
+disposition = "keep: independent ParticleEmitter, Foliage, WaterVolume, Wind, StaticMesh and ComponentOwner cursors; the keep-awake answer is re-checked only when one of them reports a change, not when an object moves (Pulsar-Native#995); a replaced world reopens them"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "crates/core/engine_backend/src/subsystems/render/helio_renderer/animated_content.rs (moving_objects_does_not_recheck_and_component_edits_do)"
+status = "verified"
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/editor/ui_level_editor/src/core/splines.rs"
+count = 8
+owner = "editor::ui_level_editor::core::splines (SplinePanelWatch)"
+disposition = "keep: independent Spline, ComponentOwner, ComponentMeta, Name, StableId, Visibility and RenderProps cursors; the spline panel re-renders only when what it shows changed, not when an object moves (Pulsar-Native#995); a replaced world reopens them"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/src/core/splines.rs (the_panel_watch_ignores_moves_and_sees_what_it_shows)"
+status = "verified"
+
+[[site]]
+pattern = "change-cursor"
 file = "crates/core/pulsar_game/src/scripting/driver.rs"
 count = 4
 owner = "core::pulsar_game::scripting::driver"
@@ -1274,9 +1294,9 @@ status = "verified"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
-count = 2
+count = 3
 owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "converted (Phase 3): AddComponent and AddObjectWithComponents carry typed values (class default when none); nothing is decoded in the command layer"
+disposition = "converted (Phase 3): AddComponent and AddObjectWithComponents carry typed values (class default when none); nothing is decoded in the command layer. The third site is `command_label`'s match arm naming the undo entry (#931), not a producer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "crates/editor/ui_level_editor/src/core/commands/tests.rs typed_component_commands_are_undoable_and_report_no_ops"
 status = "verified"

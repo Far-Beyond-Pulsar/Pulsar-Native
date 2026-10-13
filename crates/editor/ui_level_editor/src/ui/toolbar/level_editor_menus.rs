@@ -1,4 +1,4 @@
-//! The level editor's own menu strip (Edit / View / Go / Project).
+//! The level editor's own menu strip (Edit / Create / View / Go / Project).
 //!
 //! These sit in the level editor's top bar, separate from the app-wide menus in
 //! the title bar (Pulsar-Native#1012). Adding a menu here is one more
@@ -10,9 +10,9 @@ use plugin_editor_api::{EditorMenu, EditorMenuStrip};
 use rust_i18n::t;
 
 use crate::ui::actions::{
-    DeleteObject, DuplicateObject, FocusSelected, FrontView, NewScene, OpenScene, OrthographicView,
-    PerspectiveView, Redo, SaveScene, SaveSceneAs, SideView, ToggleGrid, ToggleLighting,
-    TogglePerformanceOverlay, ToggleViewportOptions, ToggleWireframe, TopView, Undo,
+    AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, FrontView, NewScene, OpenScene, OrthographicView,
+    PerspectiveView, SaveScene, SaveSceneAs, SideView, ToggleGrid, ToggleLighting,
+    TogglePerformanceOverlay, ToggleViewportOptions, ToggleWireframe, TopView,
 };
 use crate::LevelEditorState;
 
@@ -24,12 +24,16 @@ impl LevelEditorMenus {
         EditorMenuStrip::new("level-editor-menus")
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.Edit"))
-                    .action_if(t!("LevelEditor.Menu.Undo"), Undo, state.scene.can_undo())
-                    .action_if(t!("LevelEditor.Menu.Redo"), Redo, state.scene.can_redo())
+                    .undo_redo(
+                        t!("LevelEditor.Menu.Undo"),
+                        t!("LevelEditor.Menu.Redo"),
+                        Some(state.scene.history().clone() as _),
+                    )
                     .separator()
                     .action_if(t!("LevelEditor.Menu.Duplicate"), DuplicateObject, selected)
                     .action_if(t!("LevelEditor.Menu.Delete"), DeleteObject, selected),
             )
+            .menu(Self::create_menu())
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.View"))
                     .action(t!("LevelEditor.Menu.ToggleGrid"), ToggleGrid)
@@ -64,5 +68,32 @@ impl LevelEditorMenus {
                     .action(t!("LevelEditor.Menu.SaveScene"), SaveScene)
                     .action(t!("LevelEditor.Menu.SaveSceneAs"), SaveSceneAs),
             )
+    }
+
+    /// Create: what used to be the global Game Engine menu's objects and
+    /// lights, each added at the origin as one undo step and selected.
+    fn create_menu() -> EditorMenu {
+        let mut menu = EditorMenu::new(t!("LevelEditor.Menu.Create"));
+        let mut last_group = None;
+        for &(kind, label) in crate::scene_edit::create::KINDS {
+            // Separators between objects, lights, meshes and environment.
+            let this_group = match kind.split('_').next() {
+                Some("light") => "light",
+                Some("mesh") => "mesh",
+                Some("sky" | "wind") => "environment",
+                _ => "object",
+            };
+            if last_group.is_some_and(|last| last != this_group) {
+                menu = menu.separator();
+            }
+            last_group = Some(this_group);
+            menu = menu.action(
+                t!(label),
+                AddObjectOfType {
+                    object_type: kind.to_string(),
+                },
+            );
+        }
+        menu
     }
 }

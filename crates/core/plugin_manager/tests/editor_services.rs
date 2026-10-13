@@ -105,6 +105,7 @@ fn a_builtin_editor_is_created_with_the_language_server(cx: &mut TestAppContext)
 
     manager.set_editor_services(EditorServices {
         language_server: Some(analyzer.clone()),
+        ..Default::default()
     });
     assert!(
         created_with(&mut manager, cx).contains("language_server=true"),
@@ -126,6 +127,7 @@ fn plugin_libraries_receive_the_same_handle_through_the_settings_snapshot(cx: &m
 
     manager.set_editor_services(EditorServices {
         language_server: Some(analyzer.clone()),
+        ..Default::default()
     });
     // The host replaces the snapshot wholesale whenever a setting changes;
     // that must not drop the services.
@@ -152,6 +154,7 @@ fn the_manager_does_not_keep_the_language_server_alive(cx: &mut TestAppContext) 
     let mut manager = PluginManager::new();
     manager.set_editor_services(EditorServices {
         language_server: Some(analyzer.clone()),
+        ..Default::default()
     });
     assert!(manager.editor_services().language_server.is_some());
 

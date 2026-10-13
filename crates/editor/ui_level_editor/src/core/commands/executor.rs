@@ -4,6 +4,27 @@ use crate::state::LevelEditorState;
 use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 
+/// Locale key naming a command's undo entry in the Edit menu.
+fn command_label(cmd: &SceneCommand) -> Option<&'static str> {
+    Some(match cmd {
+        SceneCommand::AddObject { .. }
+        | SceneCommand::AddObjectWithComponents { .. }
+        | SceneCommand::InstantiateClass { .. } => "LevelEditor.Undo.Add",
+        SceneCommand::RemoveObject { .. } => "LevelEditor.Undo.Delete",
+        SceneCommand::DuplicateObject { .. } => "LevelEditor.Undo.Duplicate",
+        SceneCommand::ReparentObject { .. } => "LevelEditor.Undo.Reparent",
+        SceneCommand::SetTransform { .. } => "LevelEditor.Undo.Move",
+        SceneCommand::SetName { .. } => "LevelEditor.Undo.Rename",
+        SceneCommand::SetVisibility { .. } => "LevelEditor.Undo.Visibility",
+        SceneCommand::AddComponent { .. } | SceneCommand::DuplicateComponent { .. } => {
+            "LevelEditor.Undo.AddComponent"
+        }
+        SceneCommand::RemoveComponent { .. } => "LevelEditor.Undo.RemoveComponent",
+        SceneCommand::SelectObject { .. } => return None,
+        _ => "LevelEditor.Undo.Edit",
+    })
+}
+
 fn command_scope(cmd: &SceneCommand) -> Vec<String> {
     match cmd {
         SceneCommand::AddObject { data, .. } => (!data.id.is_empty())
@@ -126,6 +147,7 @@ fn revert_if_refused(
 pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> CommandResult {
     let is_undoable = !matches!(cmd, SceneCommand::SelectObject { .. });
     let scope = command_scope(&cmd);
+    let label = command_label(&cmd);
     let pre_state = is_undoable.then(|| capture_history_subset(&state.scene.world(), &scope));
 
     // Reborrowed (not the outer `state` itself) so the `move` closure below
@@ -817,7 +839,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 }
             }
             let post = capture_history_subset(&state.scene.world(), &post_scope);
-            state.scene.commit_undo_checkpoint(pre, post);
+            state.scene.commit_labeled_checkpoint(pre, post, label);
         }
     }
     result

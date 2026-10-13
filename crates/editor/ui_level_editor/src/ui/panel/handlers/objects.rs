@@ -38,27 +38,8 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{execute_command, SceneCommand};
         let mut state = self.shared_state.write();
-        execute_command(
-            &mut state,
-            SceneCommand::AddObject {
-                data: SceneObjectData {
-                    id: String::new(),
-                    name: format!("New {}", action.object_type),
-                    object_type: ObjectType::Empty,
-                    transform: Transform::default(),
-                    visible: true,
-                    locked: false,
-                    parent: None,
-                    children: vec![],
-                    scene_path: String::new(),
-                    props: Default::default(),
-                    component_instances: None,
-                },
-                parent_id: None,
-            },
-        );
+        crate::scene_edit::create::create(&mut state, &action.object_type);
         drop(state);
         cx.notify();
     }

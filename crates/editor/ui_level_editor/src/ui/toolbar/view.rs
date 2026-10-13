@@ -56,6 +56,10 @@ pub struct ToolbarSignature {
     scale_snap: u32,
     // profiling button
     show_performance_overlay: bool,
+    // Edit menu: what Undo/Redo show and whether the selection items are
+    // enabled (Pulsar-Native#1012)
+    history_revision: u64,
+    has_selection: bool,
 }
 
 impl ToolbarSignature {
@@ -72,6 +76,8 @@ impl ToolbarSignature {
             rotation_snap: state.editor.rotation_snap.to_bits(),
             scale_snap: state.editor.scale_snap.to_bits(),
             show_performance_overlay: state.overlays.state.show_performance_overlay,
+            history_revision: plugin_editor_api::undo::lock(state.scene.history()).revision(),
+            has_selection: state.scene.selected_object().is_some(),
         }
     }
 }

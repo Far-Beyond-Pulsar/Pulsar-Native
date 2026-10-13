@@ -146,7 +146,7 @@ pub fn instantiate_class(
     };
     let root = match class_world::instantiate_class(world, def, instance, spawn) {
         Ok(placement) => {
-            remember_built_definition(def);
+            remember_built_definition(world, def);
             placement.root()
         }
         Err(error) => {
@@ -251,7 +251,7 @@ pub fn rebuild_instance(
         class_world::store_class_instance(world, root, &fixed);
     }
     class_world::expand_class_instance(world, root, &def);
-    remember_built_definition(&def);
+    remember_built_definition(world, &def);
     Some(instance_object_ids(world, root))
 }
 
@@ -729,7 +729,7 @@ pub fn apply_class_asset_update(
         let Some(entry) = registry.resolve(&stored) else {
             continue;
         };
-        if let Some(built_from) = built_definition(&entry.id) {
+        if let Some(built_from) = built_definition(world, &entry.id) {
             let current = class_world::collect_overrides(world, root, &built_from);
             class_world::store_class_instance(world, root, &current);
         }
@@ -747,30 +747,65 @@ pub fn apply_class_asset_update(
     touched
 }
 
-/// Definitions instances were last built from, per class, so an asset
-/// update can tell the instance's own edits from old class defaults.
+/// Definitions instances were last built from, per world and class, so an
+/// asset update can tell an instance's own edits from old class defaults.
+/// Keyed by world as well (Pulsar-Native#931): with two levels open, the
+/// first one rebuilt must not record the new definition for the other,
+/// whose instances were still built from the old one. A world is keyed by
+/// its address, stable while it lives; every way an instance appears
+/// (placement, rebuild, level load) records its definition, so an address
+/// a later world reuses never yields a stale entry for a live instance.
 fn built_definitions() -> &'static std::sync::Mutex<
-    std::collections::HashMap<pulsar_class::ClassId, pulsar_class::ClassDefinition>,
+    std::collections::HashMap<(usize, pulsar_class::ClassId), pulsar_class::ClassDefinition>,
 > {
     static BUILT: std::sync::OnceLock<
         std::sync::Mutex<
-            std::collections::HashMap<pulsar_class::ClassId, pulsar_class::ClassDefinition>,
+            std::collections::HashMap<
+                (usize, pulsar_class::ClassId),
+                pulsar_class::ClassDefinition,
+            >,
         >,
     > = std::sync::OnceLock::new();
     BUILT.get_or_init(Default::default)
 }
 
-fn remember_built_definition(def: &pulsar_class::ClassDefinition) {
-    built_definitions()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .insert(def.id.clone(), def.clone());
+fn world_key(world: &World) -> usize {
+    world as *const World as usize
 }
 
-fn built_definition(id: &pulsar_class::ClassId) -> Option<pulsar_class::ClassDefinition> {
+fn remember_built_definition(world: &World, def: &pulsar_class::ClassDefinition) {
     built_definitions()
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .get(id)
+        .insert((world_key(world), def.id.clone()), def.clone());
+}
+
+fn built_definition(
+    world: &World,
+    id: &pulsar_class::ClassId,
+) -> Option<pulsar_class::ClassDefinition> {
+    built_definitions()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&(world_key(world), id.clone()))
         .cloned()
+}
+
+/// The instance at `root_id`'s `ClassInstance` with its live edits folded
+/// into the overrides, diffed against the definition it was built from (or
+/// the class's current one when that is unknown). What undo stores for a
+/// placed class (#931): its class and overrides, never its built
+/// components, so a restore rebuilds from whatever the class is now.
+pub fn folded_class_instance(
+    world: &World,
+    root_id: &str,
+    registry: &ClassRegistry,
+) -> Option<ClassInstance> {
+    let root = entity(world, root_id)?;
+    let instance = class_world::class_instance_of(world, root)?;
+    let def = registry
+        .resolve(&instance)
+        .and_then(|entry| built_definition(world, &entry.id))
+        .or_else(|| registry.definition_for(&instance))?;
+    Some(class_world::collect_overrides(world, root, &def))
 }
