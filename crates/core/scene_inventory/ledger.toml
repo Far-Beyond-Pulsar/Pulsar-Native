@@ -600,7 +600,7 @@ buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
 clears_on_remove = true
 releases_var_len = true
 registered = true
-writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; decode and mesh_asset writes load the geometry"
+writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; a mesh_asset write names the mesh by AssetId and SceneDB's asset table loads the geometry off the write path and binds it (SceneDB#84)"
 owner = "helio_component::components::static_mesh_component"
 disposition = "keep: the authored mesh instance; the scene join draws it from its own rows joined to its owner (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2702,4 +2702,51 @@ owner = "physics_plugin::runtime (tick: read_moves, read_parts)"
 disposition = "keep: one cursor per registered physics behavior's component plus ComponentOwner and Transform; each frame sends the simulation only what those journals report (a Transform the simulation did not write is a move by someone else), and an idle scene sends only the elapsed time; an overflowed cursor resends the behavior's rows"
 target_contract = "Phase 5; 04-state-notifications.md"
 test = "plugins/vendor/physics_plugin/src/runtime.rs (an_idle_scene_sends_nothing_to_the_simulation, editing_a_component_updates_its_physics_partner, removing_the_body_component_ends_its_simulation)"
+status = "verified"
+
+# ── Asset table (SceneDB#84) ────────────────────────────────────────────
+# Asset kinds registered with SceneDB's asset table, the components they bind
+# into, and the engine's reload and pump call sites. A component naming an
+# asset by AssetId needs no caller-side loading: the world loads it off the
+# write path, binds it into every dependent and reloads it when its source
+# changes.
+
+[[site]]
+pattern = "asset-kind"
+file = "crates/renderer/helio/crates/helio-component/src/components/static_mesh_component.rs"
+count = 1
+owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
+disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh. Materials, sprite and decal textures are still read by path in the GPU dispatch and are not asset kinds yet"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
+pattern = "asset-binding"
+file = "crates/renderer/helio/crates/helio-component/src/components/static_mesh_component.rs"
+count = 1
+owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
+disposition = "keep: binds a loaded mesh into StaticMeshComponent (vertices, indices, interned geometry); a failed load binds the empty mesh. The world calls it for every component naming the asset, on load and on reload"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
+pattern = "asset-reload"
+file = "crates/core/engine_backend/src/scene/mod.rs"
+count = 1
+owner = "engine_backend::scene (reload_updated_asset, subscribe_asset_reloads)"
+disposition = "keep: the one reload path. A mesh AssetUpdated reloads that file's asset in a world, which rebinds every dependent; the editor's subscription and every game loop that builds its own world go through it, so a headless world reloads without the editor"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/core/pulsar_game/tests/asset_reload.rs (a_game_world_reloads_a_reimported_mesh_without_the_editor), crates/editor/ui_level_editor/tests/mesh_reimport.rs (a_reimported_mesh_reloads_every_mesh_naming_it)"
+status = "verified"
+
+[[site]]
+pattern = "asset-pump"
+file = "crates/core/engine_backend/src/scene/mod.rs"
+count = 2
+owner = "engine_backend::scene (resolve_level_assets, pump_assets)"
+disposition = "keep: resolve_level_assets waits for a just-loaded level's assets before its first frame; pump_assets starts and binds loads once per frame from every render loop and at the end of every game tick, so headless runs bind too"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/core/pulsar_package/tests/smoke.rs (packaged_game_runs_from_a_clean_directory: every mesh bound in a headless run)"
 status = "verified"

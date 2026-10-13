@@ -77,15 +77,12 @@ pub fn subscribe_mesh_updates(state: Arc<RwLock<LevelEditorState>>) -> AssetSubs
 }
 
 /// Reload the mesh asset of the updated file in the editor's world
-/// (SceneDB#84): the world loads it again off the write path and rebinds
-/// every `StaticMeshComponent` showing it when the new data arrives.
-/// Returns how many assets were queued (0 or 1).
+/// (SceneDB#84), as every game loop does for the world it builds (see
+/// `engine_backend::scene::reload_updated_asset`): the world loads it again
+/// off the write path and rebinds every `StaticMeshComponent` showing it
+/// when the new data arrives. Returns how many assets were queued (0 or 1).
 pub fn handle_mesh_update(state: &Arc<RwLock<LevelEditorState>>, event: &AssetUpdated) -> usize {
-    let Some(path) = event.path.as_ref() else {
-        return 0;
-    };
-    let source = helio_component::components::mesh_source_for_file(path);
     let state = state.read();
     let mut world = state.scene.world_mut();
-    world.asset_source_changed(&source)
+    engine_backend::scene::reload_updated_asset(&mut world, event)
 }

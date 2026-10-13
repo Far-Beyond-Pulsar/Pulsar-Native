@@ -123,6 +123,41 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     scene.write().world.pump_assets()
 }
 
+/// Apply one asset update to `world` (SceneDB#84): a mesh update reloads
+/// that file's mesh asset, and the world rebinds every component showing it
+/// when the new data arrives. Returns how many assets were queued (0 or 1).
+/// Other kinds are not world assets yet and are left to their own handlers.
+pub fn reload_updated_asset(
+    world: &mut pulsar_scenedb::World,
+    event: &pulsar_events::AssetUpdated,
+) -> usize {
+    match (&event.kind, event.path.as_deref()) {
+        (pulsar_events::AssetKind::Mesh, Some(path)) => {
+            world.asset_source_changed(&helio_component::components::mesh_source_for_file(path))
+        }
+        _ => 0,
+    }
+}
+
+/// Keep `scene` current with updated assets for as long as the returned
+/// subscription lives: each [`AssetUpdated`](pulsar_events::AssetUpdated)
+/// on the host bus goes through [`reload_updated_asset`]. Whoever creates a
+/// world holds one for it (the editor for its level, a game loop for the
+/// world it builds), so a re-import reaches every world, headless ones
+/// included, without the editor. Holds the scene weakly.
+pub fn subscribe_asset_reloads(scene: &SharedScene) -> pulsar_events::AssetSubscription {
+    let scene = std::sync::Arc::downgrade(scene);
+    pulsar_events::subscribe_asset_updates(None, move |event| {
+        let Some(scene) = scene.upgrade() else {
+            return;
+        };
+        let queued = reload_updated_asset(&mut scene.write().world, event);
+        if queued > 0 {
+            tracing::info!(kind = ?event.kind, path = ?event.path, "Reloading an updated asset");
+        }
+    })
+}
+
 /// Close this frame's change window: drop everything the world's change
 /// tracker recorded since the last call and start a new frame.
 ///
