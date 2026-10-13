@@ -12,6 +12,10 @@
 //! later version (or another window) can own them without this code needing to
 //! understand them.
 //!
+//! `popouts` lists the pop-out windows opened from the window (bounds + their
+//! whole dock tree); see [`SavedPopout`]. Their trees get the same project-relative
+//! path rewriting as the main window. An unreadable entry is skipped on its own.
+//!
 //! `dormant` lists tabs kept for a plugin that is not loaded (see [`super::dormant`]);
 //! `reinsert_dormant` offers them to the resolver again on the next load.
 //!
@@ -50,9 +54,14 @@ pub(super) struct SavedWindowLayout {
     /// Pinned tabs, collapsed groups and expanded folders of the left sidebar.
     #[serde(default, skip_serializing_if = "SavedSidebar::is_empty")]
     pub sidebar: SavedSidebar,
-    /// Pop-out windows. Written by a later step; kept verbatim until then.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub popouts: Vec<Value>,
+    /// Pop-out windows opened from this window. An entry that does not parse is
+    /// skipped on its own.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "lenient_list"
+    )]
+    pub popouts: Vec<SavedPopout>,
     /// Tabs whose panel could not be recreated this session because nothing is
     /// registered to build it (see [`super::dormant`]). Written back verbatim
     /// and offered again on the next load.
@@ -65,6 +74,35 @@ pub(super) struct SavedWindowLayout {
     /// Drawers and other window chrome (see [`super::super::chrome`]).
     #[serde(default, skip_serializing_if = "SavedChrome::is_empty")]
     pub chrome: SavedChrome,
+}
+
+/// One pop-out window: where it was and the whole tree it held (a pop-out can
+/// have been split, or had tabs dropped into it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub(super) struct SavedPopout {
+    pub bounds: SavedWindow,
+    /// The pop-out dock's tree, in the same form as the main window's centre.
+    pub dock: PanelState,
+}
+
+/// Deserialize a list leniently: an entry that does not parse is skipped
+/// instead of making the whole window slot unreadable.
+pub(super) fn lenient_list<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let values = Vec::<Value>::deserialize(deserializer)?;
+    Ok(values
+        .into_iter()
+        .filter_map(|value| match serde_json::from_value(value) {
+            Ok(item) => Some(item),
+            Err(error) => {
+                tracing::warn!("layout: dropping an unreadable saved entry: {error}");
+                None
+            }
+        })
+        .collect())
 }
 
 /// The file as stored: slots kept raw so unknown ones survive a rewrite.
@@ -223,6 +261,9 @@ impl SavedWindowLayout {
         if let Some(zoomed) = &mut self.dock.zoomed {
             relativize(&mut zoomed.panel, root);
         }
+        for popout in &mut self.popouts {
+            relativize(&mut popout.dock, root);
+        }
         for leaf in &mut self.dormant {
             relativize(&mut leaf.state, root);
             if let Some(AnchorKey::File(file)) = &mut leaf.anchor {
@@ -236,6 +277,9 @@ impl SavedWindowLayout {
         edit_roots(&mut self.dock, &mut |_, state| absolutize(state, root));
         if let Some(zoomed) = &mut self.dock.zoomed {
             absolutize(&mut zoomed.panel, root);
+        }
+        for popout in &mut self.popouts {
+            absolutize(&mut popout.dock, root);
         }
         for leaf in &mut self.dormant {
             absolutize(&mut leaf.state, root);
@@ -619,5 +663,71 @@ pub(super) mod tests {
         let dock = dock.unwrap();
         assert_eq!(dock.panel().children[0].file(), Some("x.rs"));
         assert!(dock.is_open());
+    }
+
+    fn popout(files: &[&str], x: f32) -> SavedPopout {
+        use gpui::{point, px, size, Bounds, WindowBounds};
+        SavedPopout {
+            bounds: SavedWindow::capture(
+                WindowBounds::Windowed(Bounds {
+                    origin: point(px(x), px(40.)),
+                    size: size(px(800.), px(600.)),
+                }),
+                None,
+            ),
+            dock: tab_group(files),
+        }
+    }
+
+    #[test]
+    fn popouts_round_trip_with_their_paths_rewritten() {
+        let root = Path::new("/proj");
+        let mut layout = SavedWindowLayout {
+            popouts: vec![
+                popout(&["/proj/a.rs", "/elsewhere/b.rs"], 10.),
+                popout(&["/proj/c.rs"], 900.),
+            ],
+            ..Default::default()
+        };
+        let original = layout.clone();
+
+        layout.relativize(root);
+        assert_eq!(layout.popouts[0].dock.children[0].file(), Some("a.rs"));
+        assert_eq!(
+            layout.popouts[0].dock.children[1].file(),
+            Some("/elsewhere/b.rs")
+        );
+        assert_eq!(layout.popouts[1].dock.children[0].file(), Some("c.rs"));
+
+        let dir = temp("popouts");
+        let path = layout_path(&dir);
+        write_slot(&path, PRIMARY_SLOT, &layout).unwrap();
+        let mut read = read_slot(&path, PRIMARY_SLOT).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(read.popouts, layout.popouts);
+
+        read.absolutize(root);
+        assert_eq!(
+            Path::new(read.popouts[1].dock.children[0].file().unwrap()),
+            root.join("c.rs")
+        );
+        assert_eq!(read.popouts[0].bounds, original.popouts[0].bounds);
+    }
+
+    #[test]
+    fn a_bad_popout_entry_is_skipped_on_its_own() {
+        let mut slot = serde_json::to_value(SavedWindowLayout {
+            popouts: vec![popout(&["a.rs"], 10.), popout(&["b.rs"], 20.)],
+            ..Default::default()
+        })
+        .unwrap();
+        let list = slot["popouts"].as_array_mut().unwrap();
+        list.insert(1, serde_json::json!({ "bounds": "nonsense" }));
+        list.push(serde_json::json!(42));
+
+        let layout: SavedWindowLayout = serde_json::from_value(slot).unwrap();
+        assert_eq!(layout.popouts.len(), 2);
+        assert_eq!(layout.popouts[0].dock.children[0].file(), Some("a.rs"));
+        assert_eq!(layout.popouts[1].dock.children[0].file(), Some("b.rs"));
     }
 }

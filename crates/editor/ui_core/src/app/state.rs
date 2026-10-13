@@ -2,8 +2,7 @@
 
 use gpui::{Entity, FocusHandle, Task};
 use std::path::PathBuf;
-use std::sync::Arc;
-use ui::dock::{DockArea, PanelView, TabPanel};
+use ui::dock::{DockArea, TabPanel};
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
 // use ui_level_editor::LevelEditorPanel;
@@ -74,8 +73,6 @@ pub struct AppState {
     // Focus management
     pub focus_handle: FocusHandle,
 
-    // Popped out panels tracking (panel, source tab panel)
-    pub popped_out_panels: Vec<Arc<dyn PanelView>>,
 
     // Multiuser status refresh listener
     pub multiuser_refresh_task: Option<Task<()>>,
@@ -98,6 +95,17 @@ pub struct AppState {
     /// Saved tabs this session could not rebuild (plugin not loaded); written
     /// back on every save so they are not lost. See `layout::dormant`.
     pub layout_dormant: Vec<super::layout::DormantLeaf>,
+    /// This window's handle, to tell which pop-outs it owns.
+    pub layout_window: Option<gpui::AnyWindowHandle>,
+    /// The window is closing: the final layout was written and nothing may
+    /// overwrite it (pop-outs close with it and must not be erased).
+    pub layout_closing: bool,
+    /// Pop-outs opened from this window, each with the last windowed bounds it
+    /// had (what a maximized one returns to).
+    pub layout_popouts: std::collections::HashMap<
+        gpui::AnyWindowHandle,
+        Option<gpui::Bounds<gpui::Pixels>>,
+    >,
 
     // Navigation history
     pub navigation: super::navigation::NavigationHistory,

@@ -4,57 +4,13 @@
 //! in the respective window crate''s `PulsarWindow` impl - not here.
 
 use gpui::{AppContext as _, Context, UpdateGlobal, Window};
-use std::path::PathBuf;
-use std::sync::Arc;
 use ui::dock::DockPlacement;
-use ui::Root;
 use ui_common::PulsarWindowExt as _;
-use window_manager::{WindowConfig, WindowRegistry};
+use window_manager::WindowRegistry;
 
-use super::panel_window::PanelWindow;
 use super::PulsarApp;
 
 impl PulsarApp {
-    /// Create a detached pop-out window for a panel.
-    /// Uses a custom layout (position follows cursor), so it stays manual.
-    pub(super) fn create_detached_window(
-        &mut self,
-        panel: Arc<dyn ui::dock::PanelView>,
-        position: gpui::Point<gpui::Pixels>,
-        parent_window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        tracing::trace!(
-            "[POPOUT] Creating detached window for panel at position: {:?}",
-            position
-        );
-        self.state.popped_out_panels.push(panel.clone());
-
-        let center_tabs = self.state.center_tabs.clone();
-        let panel_for_popout = panel.clone();
-        let parent_window_handle = parent_window.window_handle();
-
-        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(
-                window_manager::WindowRequest::DetachedPanel,
-                WindowConfig::detached_panel(position),
-                move |window, cx| {
-                    let panel_window = cx.new(|cx| {
-                        PanelWindow::new(
-                            panel_for_popout,
-                            center_tabs,
-                            parent_window_handle,
-                            window,
-                            cx,
-                        )
-                    });
-                    cx.new(|cx| Root::new(panel_window.into(), window, cx))
-                },
-                cx,
-            )
-        });
-    }
-
     pub(super) fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if self.state.chrome.drawer_docked {
             return;

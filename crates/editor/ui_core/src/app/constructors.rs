@@ -487,7 +487,6 @@ impl PulsarApp {
                 project_switcher_view: None,
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
-                popped_out_panels: Vec::new(),
                 navigation: Default::default(),
                 nav_sidebar,
                 nav_overlay,
@@ -500,6 +499,9 @@ impl PulsarApp {
                 layout_ready: false,
                 layout_save_task: None,
                 layout_dormant: Vec::new(),
+                layout_window: None,
+                layout_closing: false,
+                layout_popouts: Default::default(),
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };

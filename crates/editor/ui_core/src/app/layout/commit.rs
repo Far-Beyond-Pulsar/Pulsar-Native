@@ -5,15 +5,18 @@
 //! restore mutates the dock.
 //!
 //! Order: centre (filling the anchor tab group in place), side docks, then the
-//! live side-dock panels no plan mentioned. Later steps add tile / pop-out
-//! roots and the zoom after the trees are installed.
+//! live side-dock panels no plan mentioned, the zoom, and finally the pop-out
+//! windows (see [`open_popouts`]).
 
 use std::sync::Arc;
 
 use gpui::{App, Entity, WeakEntity};
-use ui::dock::{DockArea, DockItem, DockPlacement, PanelView, TabPanel};
+use ui::dock::{
+    open_popout_with, DockArea, DockChannel, DockItem, DockPlacement, PanelSource, PanelView,
+    PopoutSpec, TabPanel,
+};
 
-use super::resolve::{Plan, ResolvedLayout};
+use super::resolve::{Plan, PopoutPlan, ResolvedLayout};
 
 type PanelPlan = Plan<Arc<dyn PanelView>>;
 
@@ -90,6 +93,46 @@ fn fill_anchor(
     }
 }
 
+/// A pop-out window opened by [`commit`]: its handle and the windowed bounds it
+/// returns to when maximized.
+pub(super) type OpenedPopout = (gpui::AnyWindowHandle, Option<gpui::Bounds<gpui::Pixels>>);
+
+/// Open the pop-out windows of a restore. Their tabs return to the centre
+/// `anchor` group of `parent` when the user closes them, so closing a restored
+/// pop-out never loses its tabs.
+fn open_popouts(
+    popouts: Vec<PopoutPlan>,
+    anchor: &Entity<TabPanel>,
+    parent: gpui::AnyWindowHandle,
+    cx: &mut App,
+) -> Vec<OpenedPopout> {
+    let mut opened = Vec::new();
+    for PopoutPlan {
+        bounds,
+        restore_bounds,
+        plan,
+    } in popouts
+    {
+        let build = move |window: &mut gpui::Window, dock: &WeakEntity<DockArea>, cx: &mut App| {
+            // A pop-out never holds the anchor group.
+            let no_anchor = std::collections::HashSet::new();
+            let mut builder = Builder {
+                dock_area: dock.clone(),
+                anchor_panels: &no_anchor,
+                anchor: None,
+            };
+            builder.build(plan, window, cx)
+        };
+        let source = PanelSource::tab_panel(anchor, parent, None);
+        let spec = PopoutSpec::tree(build, bounds, DockChannel::default(), Some(source));
+        match open_popout_with(spec, cx) {
+            Some(handle) => opened.push((handle, restore_bounds)),
+            None => tracing::warn!("layout: could not reopen a pop-out window"),
+        }
+    }
+    opened
+}
+
 /// Install `resolved` into `dock_area`. `anchor` is the centre tab group to keep
 /// and `anchor_panels` the ids of the panels it held when the plan was resolved.
 pub(super) fn commit(
@@ -99,13 +142,14 @@ pub(super) fn commit(
     anchor_panels: &std::collections::HashSet<gpui::EntityId>,
     window: &mut gpui::Window,
     cx: &mut App,
-) {
+) -> Vec<OpenedPopout> {
     let ResolvedLayout {
         center,
         docks,
         unmentioned,
         dormant: _,
         zoomed,
+        popouts,
     } = resolved;
 
     let mut builder = Builder {
@@ -149,4 +193,8 @@ pub(super) fn commit(
             tracing::debug!("layout: saved zoom matches no tab group; dropped");
         }
     }
+
+    // Pop-outs last: the main layout is in place, so the anchor group they
+    // return their tabs to is final.
+    open_popouts(popouts, anchor, window.window_handle(), cx)
 }

@@ -1,6 +1,8 @@
 //! Saved window geometry: size, position and maximized / fullscreen state.
 //!
-//! Shared by the main window and, in a later step, pop-out windows.
+//! Shared by the main window and pop-out windows. [`fit_to_displays`] checks a
+//! restored secondary window against the connected displays (the main window is
+//! checked when it is opened, in `ui_common::open_window`).
 
 use std::path::Path;
 
@@ -83,6 +85,108 @@ pub(crate) fn saved_window_bounds(project_root: &Path) -> Option<WindowBounds> {
         .to_window_bounds()
 }
 
+// ── Display validation ───────────────────────────────────────────────────────
+
+/// Size of a pop-out whose saved size is unusable or whose display is gone.
+const FALLBACK_POPOUT_SIZE: (f32, f32) = (800.0, 600.0);
+/// Distance from the display's top-left corner of a fallback window.
+const FALLBACK_INSET: f32 = 80.0;
+
+fn bounds_in(b: &Bounds<Pixels>) -> (f32, f32, f32, f32) {
+    (
+        f32::from(b.origin.x),
+        f32::from(b.origin.y),
+        f32::from(b.size.width),
+        f32::from(b.size.height),
+    )
+}
+
+fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds {
+        origin: gpui::point(gpui::px(x), gpui::px(y)),
+        size: gpui::size(gpui::px(w), gpui::px(h)),
+    }
+}
+
+/// Whether a window at `bounds` is reachable on one of `displays`: its centre
+/// lies on a display. Returns that display.
+pub(crate) fn display_holding<'a>(
+    bounds: &Bounds<Pixels>,
+    displays: &'a [Bounds<Pixels>],
+) -> Option<&'a Bounds<Pixels>> {
+    let (x, y, w, h) = bounds_in(bounds);
+    let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+    if !(cx.is_finite() && cy.is_finite()) {
+        return None;
+    }
+    displays.iter().find(|d| {
+        let (dx, dy, dw, dh) = bounds_in(d);
+        cx >= dx && cx < dx + dw && cy >= dy && cy < dy + dh
+    })
+}
+
+/// The bounds to open a restored secondary window with, given what was saved
+/// (`None` when the saved size was unusable) and the connected `displays`
+/// (primary first).
+///
+/// A window whose centre is still on a display keeps its position and state,
+/// with its size limited to that display and its origin nudged so the whole
+/// window is on it (the title bar stays reachable). One whose display is gone
+/// (or with nothing saved) opens windowed at the default size, inset from the
+/// primary display's corner.
+pub(crate) fn fit_to_displays(
+    saved: Option<WindowBounds>,
+    displays: &[Bounds<Pixels>],
+) -> WindowBounds {
+    let fallback = |display: Option<&Bounds<Pixels>>| {
+        let (dx, dy, dw, dh) = display.map(bounds_in).unwrap_or((0.0, 0.0, f32::MAX, f32::MAX));
+        let (w, h) = FALLBACK_POPOUT_SIZE;
+        WindowBounds::Windowed(rect(
+            dx + FALLBACK_INSET,
+            dy + FALLBACK_INSET,
+            w.min(dw - FALLBACK_INSET),
+            h.min(dh - FALLBACK_INSET),
+        ))
+    };
+    let Some(saved) = saved else {
+        return fallback(displays.first());
+    };
+    let (WindowBounds::Windowed(b) | WindowBounds::Maximized(b) | WindowBounds::Fullscreen(b)) =
+        saved;
+    let Some(display) = display_holding(&b, displays) else {
+        return fallback(displays.first());
+    };
+    let (dx, dy, dw, dh) = bounds_in(display);
+    let (x, y, w, h) = bounds_in(&b);
+    let (w, h) = (w.min(dw), h.min(dh));
+    let x = x.clamp(dx, dx + dw - w);
+    let y = y.clamp(dy, dy + dh - h);
+    let fitted = rect(x, y, w, h);
+    match saved {
+        WindowBounds::Windowed(_) => WindowBounds::Windowed(fitted),
+        WindowBounds::Maximized(_) => WindowBounds::Maximized(fitted),
+        WindowBounds::Fullscreen(_) => WindowBounds::Fullscreen(fitted),
+    }
+}
+
+/// [`fit_to_displays`] against the displays connected now.
+pub(crate) fn fit_to_connected_displays(
+    saved: SavedWindow,
+    cx: &gpui::App,
+) -> WindowBounds {
+    let mut displays: Vec<Bounds<Pixels>> = Vec::new();
+    if let Some(primary) = cx.primary_display() {
+        displays.push(primary.bounds());
+    }
+    for display in cx.displays() {
+        let b = display.bounds();
+        if !displays.contains(&b) {
+            displays.push(b);
+        }
+    }
+    fit_to_displays(saved.to_window_bounds(), &displays)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::format::{write_slot, SavedWindowLayout};
@@ -161,5 +265,72 @@ mod tests {
         assert!(SavedWindow::capture(WindowBounds::Windowed(nan), None)
             .to_window_bounds()
             .is_none());
+    }
+
+    fn display(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+        rect(x, y, w, h)
+    }
+
+    #[test]
+    fn a_window_on_a_connected_display_keeps_its_place() {
+        let displays = [display(0., 0., 1920., 1080.), display(1920., 0., 1920., 1080.)];
+        let on_second = rect(2000., 100., 800., 600.);
+        assert_eq!(
+            fit_to_displays(Some(WindowBounds::Windowed(on_second)), &displays),
+            WindowBounds::Windowed(on_second)
+        );
+        // Maximized keeps its state.
+        assert_eq!(
+            fit_to_displays(Some(WindowBounds::Maximized(on_second)), &displays),
+            WindowBounds::Maximized(on_second)
+        );
+    }
+
+    #[test]
+    fn a_window_is_limited_to_and_nudged_inside_its_display() {
+        let displays = [display(0., 0., 1000., 700.)];
+        // Hangs off the right/bottom edges and is too wide.
+        let big = rect(200., 400., 1400., 400.);
+        let WindowBounds::Windowed(fit) = fit_to_displays(Some(WindowBounds::Windowed(big)), &displays)
+        else {
+            panic!("stays windowed");
+        };
+        assert_eq!(bounds_in(&fit), (0., 300., 1000., 400.));
+    }
+
+    #[test]
+    fn a_window_on_a_vanished_display_opens_at_default_on_the_primary() {
+        let displays = [display(0., 0., 1920., 1080.)];
+        let gone = rect(3000., 200., 900., 700.);
+        for state in [
+            WindowBounds::Windowed(gone),
+            WindowBounds::Maximized(gone),
+            WindowBounds::Fullscreen(gone),
+        ] {
+            assert_eq!(
+                fit_to_displays(Some(state), &displays),
+                WindowBounds::Windowed(rect(80., 80., 800., 600.))
+            );
+        }
+        // Nothing saved: same default.
+        assert_eq!(
+            fit_to_displays(None, &displays),
+            WindowBounds::Windowed(rect(80., 80., 800., 600.))
+        );
+    }
+
+    #[test]
+    fn the_fallback_fits_a_small_display_and_survives_no_displays() {
+        let tiny = [display(100., 50., 500., 400.)];
+        assert_eq!(
+            fit_to_displays(None, &tiny),
+            WindowBounds::Windowed(rect(180., 130., 420., 320.))
+        );
+        assert_eq!(
+            fit_to_displays(None, &[]),
+            WindowBounds::Windowed(rect(80., 80., 800., 600.))
+        );
+        // A NaN position is not on any display.
+        assert!(display_holding(&rect(f32::NAN, 0., 10., 10.), &tiny).is_none());
     }
 }

@@ -3,7 +3,7 @@
 //! Use these instead of hand-building WindowOptions at each call site.
 
 use gpui::{
-    px, size, Bounds, Point, Size, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    px, Bounds, Point, Size, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
     WindowIcon, WindowKind, WindowOptions,
 };
 
@@ -116,38 +116,6 @@ impl WindowConfig {
     pub fn dialog_profile(width: f32, height: f32) -> WindowProfile {
         WindowProfile::new(
             base(100.0, 100.0, width, height, width * 0.5, height * 0.5),
-            WindowContentWrapper::None,
-        )
-    }
-
-    /// Panel popped out of the dock. Positioned near the given cursor.
-    pub fn detached_panel(cursor: gpui::Point<gpui::Pixels>) -> WindowOptions {
-        Self::detached_panel_profile(cursor).options()
-    }
-
-    /// Detached panel profile.
-    pub fn detached_panel_profile(cursor: gpui::Point<gpui::Pixels>) -> WindowProfile {
-        WindowProfile::new(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                    Point {
-                        x: cursor.x - px(100.0),
-                        y: cursor.y - px(30.0),
-                    },
-                    size(px(800.0), px(600.0)),
-                ))),
-                titlebar: None,
-                kind: WindowKind::Normal,
-                is_resizable: true,
-                window_decorations: Some(WindowDecorations::Client),
-                window_min_size: Some(Size {
-                    width: px(400.0),
-                    height: px(300.0),
-                }),
-                window_background: WindowBackgroundAppearance::Opaque,
-                app_icon: app_icon(),
-                ..Default::default()
-            },
             WindowContentWrapper::None,
         )
     }
