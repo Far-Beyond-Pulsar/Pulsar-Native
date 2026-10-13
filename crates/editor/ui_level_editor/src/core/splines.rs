@@ -352,7 +352,8 @@ mod tests {
     #[test]
     fn the_panel_watch_ignores_moves_and_sees_what_it_shows() {
         let mut state = LevelEditorState::new();
-        create(&mut state, preset(&state, "line"));
+        let line = preset(&state, "line");
+        create(&mut state, line);
         let id = state.scene.selected_object().unwrap();
         let mut watch = SplinePanelWatch::new(&state.scene.world());
         let start = watch.revision(&state.scene.world());

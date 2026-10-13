@@ -49,7 +49,9 @@ impl AnimatedContent {
                 world.open_change_cursor::<attachments::ComponentOwner>(),
             ];
             self.live = self.check(world);
-        } else if self.world.is_some_and(|(_, revision)| revision != world.revision()) {
+        } else {
+            // Cheap: a cursor read costs the changes since the last one,
+            // and moving an object adds none to these journals.
             let mut changed = false;
             for cursor in &mut self.cursors {
                 self.scratch.clear();

@@ -81,7 +81,11 @@ impl SplinePanel {
                 cx.notify();
             }
         });
-        let mut watch = splines::SplinePanelWatch::new(&state.read().scene.world());
+        let mut watch = {
+            let st = state.read();
+            let world = st.scene.world();
+            splines::SplinePanelWatch::new(&world)
+        };
         let last_signature = Self::signature(&state, &mut watch);
         Self {
             owner,
@@ -101,8 +105,9 @@ impl SplinePanel {
     }
     fn signature(state: &SharedState, watch: &mut splines::SplinePanelWatch) -> Signature {
         let st = state.read();
+        let revision = watch.revision(&st.scene.world());
         (
-            watch.revision(&st.scene.world()),
+            revision,
             st.scene.rebuild_epoch,
             st.scene.selected_object(),
             st.editor.spline.clone(),
