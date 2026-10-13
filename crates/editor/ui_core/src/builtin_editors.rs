@@ -355,11 +355,11 @@ impl BuiltinEditorProvider for SkeletalAnimationBuiltinProvider {
     }
 }
 
-/// Wraps the physics_plugin crate as a built-in provider. It has no editor
-/// panel: it contributes the `.physmat` / `.physlayers` file types and the
-/// physics components. Linking the crate is what registers the components,
-/// their simulation behaviors and the `physics::` events, so the simulation
-/// runs in every build of the editor and engine.
+/// Wraps the physics_plugin crate as a built-in provider: the `.physmat` and
+/// `.physlayers` file types with their editors (Physics Material and Collision
+/// Layers), and the physics components. Linking the crate is what registers
+/// the components, their simulation behaviors and the `physics::` events, so
+/// the simulation runs in every build of the editor and engine.
 pub struct PhysicsBuiltinProvider;
 
 impl BuiltinEditorProvider for PhysicsBuiltinProvider {
@@ -375,8 +375,11 @@ impl BuiltinEditorProvider for PhysicsBuiltinProvider {
         physics_plugin::PhysicsPlugin::default().editors()
     }
 
-    fn can_handle(&self, _editor_id: &EditorId) -> bool {
-        false
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        physics_plugin::PhysicsPlugin::default()
+            .editors()
+            .iter()
+            .any(|editor| editor.id == *editor_id)
     }
 
     fn component_definitions(&self) -> Vec<ComponentDefinition> {
@@ -386,13 +389,34 @@ impl BuiltinEditorProvider for PhysicsBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
-        _window: &mut Window,
-        _cx: &mut App,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        Err(PluginError::Other {
-            message: format!("the physics plugin has no editor for {}", file_path.display()),
-        })
+        // Without an editor id, the file's type says which editor it opens in.
+        let Some(editor_id) = physics_plugin::PhysicsPlugin::editor_for_path(&file_path) else {
+            return Err(PluginError::Other {
+                message: format!("the physics plugin has no editor for {}", file_path.display()),
+            });
+        };
+        self.create_editor_for(&editor_id, file_path, editor_context, window, cx)
+    }
+
+    fn create_editor_for(
+        &self,
+        editor_id: &EditorId,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        physics_plugin::PhysicsPlugin::create_editor(
+            editor_id,
+            file_path,
+            Some(&editor_context.services.undo),
+            window,
+            cx,
+        )
     }
 }
 
