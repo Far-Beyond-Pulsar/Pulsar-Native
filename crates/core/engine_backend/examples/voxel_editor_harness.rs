@@ -31,7 +31,7 @@
 //! - `profile:<seconds>`: the view held (the camera nudged a millimetre
 //!   every other frame, so the editor keeps rendering): the graph's GPU
 //!   time, and by pass.
-//! - `stress:<ascent|descent|cruise|orbit>:<seconds>`: a flight in real
+//! - `stress:<ascent|descent|cruise|orbit>:<seconds>[:<sample>]`: a flight in real
 //!   time (the path follows the wall clock, as the editor's camera does:
 //!   a slow frame moves it further) from the camera's ground: from 2 m to
 //!   400 km or back, at 300 m/s 40 m over the ground, or in orbit at 400 km
@@ -400,6 +400,8 @@ fn main() {
             "stress" => {
                 let mode = parts.get(1).copied().unwrap_or("descent").to_string();
                 let seconds = number(2, 20.0);
+                // A frame captured every `sample` seconds (1).
+                let sample = number(3, 1.0);
                 let camera = h.camera();
                 let start = glam::DVec3::from_array(camera.position);
                 let up = start.normalize();
@@ -456,7 +458,7 @@ fn main() {
                     if sw > 0.0 {
                         switches.push(sw);
                     }
-                    captured = t >= samples.len() as f64;
+                    captured = t >= samples.len() as f64 * sample;
                     if captured {
                         h.capture(&format!("stress_{n}_{:02}", samples.len()));
                         samples.push((position, look));
