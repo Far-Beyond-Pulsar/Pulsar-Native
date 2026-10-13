@@ -11087,6 +11087,7 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "helio_component",
+ "input_plugin",
  "physics_plugin",
  "pulsar_class",
  "pulsar_physics",

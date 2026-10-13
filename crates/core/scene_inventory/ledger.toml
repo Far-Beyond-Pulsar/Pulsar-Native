@@ -240,6 +240,17 @@ test = "plugins/vendor/physics_plugin/src/runtime.rs (a_character_controller_wal
 status = "verified"
 
 [[class]]
+name = "PlayerInputComponent"
+category = "Input"
+world_registered = true
+own_gpu_columns = false
+owner = "input_plugin::runtime::component"
+disposition = "non-render: input plugin data (an object's input mapping, by path, with an enabled flag and a priority); the plugin's input driver follows these components and publishes the mapping's actions on the owning object's event channel. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "plugins/vendor/input_plugin/src/runtime/driver.rs (pressing_a_key_publishes_the_action_to_a_script_on_the_owner, removing_the_component_ends_the_mapping_and_completes_its_actions, changing_a_components_mapping_swaps_it)"
+status = "verified"
+
+[[class]]
 name = "ColliderComponent"
 category = "Physics"
 world_registered = true
