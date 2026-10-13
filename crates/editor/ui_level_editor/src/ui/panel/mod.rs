@@ -159,7 +159,12 @@ impl Panel for LevelEditorPanel {
 
         // Get the file type icon from the plugin manager registry
         if let Some(plugin_mgr) = plugin_manager::global() {
-            if let Some(file_type_def) = plugin_mgr.read().get_file_type_for_path(file_path) {
+            // `try_read`: tabs are drawn while a layout restore or file open
+            // holds the manager's write lock on this same thread.
+            if let Some(file_type_def) = plugin_mgr
+                .try_read()
+                .and_then(|mgr| mgr.get_file_type_for_path(file_path).cloned())
+            {
                 return Some(file_type_def.icon.clone());
             }
         }

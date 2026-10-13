@@ -170,7 +170,14 @@ fn creatable_file_types() -> Vec<FileTypeDefinition> {
     let Some(plugins) = plugin_manager::global() else {
         return Vec::new();
     };
-    let plugins = plugins.read();
+    // `try_read`: this runs while the editor is being built, and the caller
+    // that is building it (layout restore, opening a file) holds the manager's
+    // write lock, so a blocking read would wait on this very thread forever.
+    // The toolbar signature counts these types, so the menu is rebuilt with the
+    // full list on the next frame.
+    let Some(plugins) = plugins.try_read() else {
+        return Vec::new();
+    };
     plugins
         .file_type_registry()
         .get_all_file_types()
@@ -186,7 +193,13 @@ pub(crate) fn creatable_file_type_count() -> usize {
     let Some(plugins) = plugin_manager::global() else {
         return 0;
     };
-    let plugins = plugins.read();
+    // `try_read`, see `creatable_file_types`: a blocking read deadlocks when the
+    // toolbar is built under the manager's write lock. A contended count of 0
+    // differs from the real one, so the signature changes and the menu is
+    // rebuilt next frame.
+    let Some(plugins) = plugins.try_read() else {
+        return 0;
+    };
     plugins
         .file_type_registry()
         .get_all_file_types()
