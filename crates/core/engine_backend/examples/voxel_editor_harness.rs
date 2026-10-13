@@ -50,6 +50,9 @@ use std::time::Instant;
 
 // The editor presents to an sRGB surface: the graph's final pass encodes into it.
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+/// Frames recorded ahead of the GPU, as a game loop keeps it fed (waiting
+/// for every frame lets the driver lower its clocks and inflates times).
+const FRAMES_IN_FLIGHT: usize = 2;
 
 struct Harness {
     device: wgpu::Device,
@@ -63,15 +66,29 @@ struct Harness {
     csv: std::fs::File,
     step: String,
     frame: u64,
+    /// Submitted frames not yet done on the GPU.
+    in_flight: std::collections::VecDeque<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Harness {
-    /// One editor frame; its wall time (queue drained), or `None` when the
-    /// editor was idle and rendered nothing.
+    /// One editor frame; its wall time (at most `FRAMES_IN_FLIGHT` frames
+    /// ahead of the GPU), or `None` when the editor was idle and rendered
+    /// nothing.
     fn frame(&mut self) -> Option<f64> {
+        use std::sync::atomic::{AtomicBool, Ordering};
         let started = Instant::now();
         let submitted = self.renderer.render_frame(&self.device, &self.queue, &self.view, self.size[0], self.size[1], FORMAT);
-        self.device.poll(wgpu::PollType::wait_indefinitely()).ok();
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = done.clone();
+        self.queue.on_submitted_work_done(move || flag.store(true, Ordering::Release));
+        self.in_flight.push_back(done);
+        while self.in_flight.len() > FRAMES_IN_FLIGHT {
+            let oldest = self.in_flight.pop_front().unwrap();
+            while !oldest.load(Ordering::Acquire) {
+                let _ = self.device.poll(wgpu::PollType::Poll);
+                std::thread::sleep(std::time::Duration::from_micros(50));
+            }
+        }
         let ms = started.elapsed().as_secs_f64() * 1e3;
         self.frame += 1;
         writeln!(self.csv, "{},{},{:.3},{}", self.frame, self.step, ms, u8::from(submitted.is_some())).ok();
@@ -258,7 +275,7 @@ fn main() {
     });
     let view = texture.create_view(&Default::default());
     let csv = std::fs::File::create(out.join("frames.csv")).expect("frames.csv");
-    let mut h = Harness { device, queue, renderer, scene, texture, view, size, out, csv, step: "start".into(), frame: 0 };
+    let mut h = Harness { device, queue, renderer, scene, texture, view, size, out, csv, step: "start".into(), frame: 0, in_flight: Default::default() };
     writeln!(h.csv, "frame,step,ms,rendered").ok();
 
     // Start: the level's own camera, as the editor opens it.
@@ -405,6 +422,11 @@ fn main() {
                     let local_ahead = ahead * angle.cos() - up * angle.sin();
                     (local_up * (ground + altitude), local_ahead - local_up * pitch_down)
                 };
+                // From the path's start, settled (a descent starts from a
+                // settled orbit, not a jump from the ground).
+                let (position, look) = path(0.0);
+                h.look(position, look);
+                h.settle(3000);
                 let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px\n");
                 let (mut times, mut coarse, mut worst, mut switches) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
                 let mut samples = Vec::new();
