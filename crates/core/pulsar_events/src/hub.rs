@@ -209,8 +209,15 @@ impl EventHub {
         self.inner.bus.descriptor(id)
     }
 
+    /// The event registered as `name`. A plain name is in the main
+    /// namespace; `namespace::name` is in that explicit namespace
+    /// (`main::..` never resolves: the main namespace is only reached by
+    /// not naming one).
     pub fn descriptor_by_name(&self, name: &str) -> Option<Arc<EventDescriptor>> {
-        self.inner.bus.descriptor_by_name(name)
+        match name.split_once("::") {
+            Some((namespace, name)) => self.inner.bus.descriptor_by_name_in(namespace, name),
+            None => self.inner.bus.descriptor_by_name(name),
+        }
     }
 
     /// Every registered event, sorted by category then name. Events
@@ -220,7 +227,7 @@ impl EventHub {
         let mut events: Vec<EventInfo> = self
             .inner
             .bus
-            .descriptors()
+            .all_descriptors()
             .into_iter()
             .map(|descriptor| {
                 let (category, builtin) = info
@@ -360,7 +367,7 @@ impl EventHub {
     pub fn global_subscriber_counts(&self) -> Vec<(String, usize)> {
         self.inner
             .bus
-            .descriptors()
+            .all_descriptors()
             .iter()
             .map(|d| (d.name.clone(), self.subscriber_count(d.id, Channel::Global)))
             .collect()
@@ -528,6 +535,38 @@ mod tests {
             .find(|e| e.descriptor.id == id)
             .unwrap();
         assert_eq!(info.category.to_string(), "Custom/Door");
+    }
+
+    #[test]
+    fn namespaced_events_resolve_by_qualified_name_only() {
+        let hub = EventHub::new();
+        let plain = EventDescriptor::dynamic("Probe", [("by", FieldType::U64)]);
+        let physics = EventDescriptor::dynamic_in("physics", "Probe", [("by", FieldType::U64)]).unwrap();
+        let (plain_id, physics_id) = (
+            hub.register(plain, EventCategory::Gameplay).unwrap(),
+            hub.register(physics, EventCategory::Physics).unwrap(),
+        );
+        assert_ne!(plain_id, physics_id);
+        assert_eq!(hub.descriptor_by_name("Probe").unwrap().id, plain_id);
+        assert_eq!(hub.descriptor_by_name("physics::Probe").unwrap().id, physics_id);
+        // The main namespace cannot be named, and unknown ones are empty.
+        assert!(hub.descriptor_by_name("main::Probe").is_none());
+        assert!(hub.descriptor_by_name("other::Probe").is_none());
+        // `events()` lists both.
+        let names: Vec<_> = hub
+            .events()
+            .into_iter()
+            .filter(|e| e.descriptor.name == "Probe")
+            .map(|e| e.descriptor.namespace.clone())
+            .collect();
+        assert_eq!(names.len(), 2);
+        // Named publishes follow the same rule.
+        assert!(hub
+            .publish_named(Channel::Global, "physics::Probe", vec![DynValue::U64(1)])
+            .is_ok());
+        assert!(hub
+            .publish_named(Channel::Global, "main::Probe", vec![DynValue::U64(1)])
+            .is_err());
     }
 
     #[test]

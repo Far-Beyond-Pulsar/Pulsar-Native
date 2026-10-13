@@ -631,6 +631,15 @@ impl PluginManager {
             ),
         }
 
+        // Share the editor's profiler so the plugin's scopes reach the
+        // flamegraph; plugins built before this export nothing and keep a
+        // private (never-read) profiler.
+        match attach_profiler(&library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host profiler", path),
+            Some(false) => tracing::warn!("Plugin at {:?} refused the host profiler", path),
+            None => {}
+        }
+
         // Give the plugin the host's event bus before it runs any code of
         // its own, so its asset updates and events reach the editor (#930).
         match attach_event_bus(&library) {
@@ -1550,6 +1559,19 @@ pub fn attach_world_runtime(library: &PermanentLibrary) -> Option<bool> {
     // SAFETY: `host` is this process's runtimes, which live for the process;
     // plugins are never unloaded.
     Some(unsafe { attach(host.cast()) })
+}
+
+/// Share this process's profiler with `library` through its
+/// [`ATTACH_SYMBOL`](profiling::scope::ATTACH_SYMBOL) entry point. `None` when it
+/// does not export it; `Some(false)` when it refused (different layout).
+pub fn attach_profiler(library: &PermanentLibrary) -> Option<bool> {
+    let attach: libloading::Symbol<unsafe extern "C" fn(*const std::ffi::c_void) -> bool> =
+        unsafe { library.get(profiling::scope::ATTACH_SYMBOL.as_bytes()) }.ok()?;
+    // Leaked: plugins are never unloaded, so the handle must outlive them.
+    let handle: &'static profiling::scope::HostProfiler =
+        Box::leak(Box::new(profiling::scope::host_handle()));
+    // SAFETY: `handle` is this process's profiler handle, valid for the process.
+    Some(unsafe { attach((handle as *const profiling::scope::HostProfiler).cast()) })
 }
 
 /// Hand `library` the host's Gamma event bus through its

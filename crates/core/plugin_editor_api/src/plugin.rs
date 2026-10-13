@@ -286,6 +286,11 @@ macro_rules! export_plugin {
         // component classes are World components of the editor.
         $crate::pulsar_world_registry::export_world_runtime_attach!();
 
+        // Share the editor's profiler: `_plugin_attach_profiler`, called by
+        // the plugin manager before `_plugin_create`, makes this library's
+        // `profiling` scopes land in the editor's flamegraph.
+        $crate::profiling::export_profiler_attach!();
+
         /// Get the plugin's version information.
         #[no_mangle]
         pub extern "C" fn _plugin_version() -> $crate::version::VersionInfo {

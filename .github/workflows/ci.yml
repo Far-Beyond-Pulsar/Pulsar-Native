@@ -133,7 +133,7 @@ jobs:
           # These two are explicit root-workspace members: the built-in asset
           # viewer, and the GPUI-free Blueprint compiler and graph model tested
           # against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph")
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph", "physics_plugin")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )

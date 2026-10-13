@@ -41,3 +41,6 @@
 [submodule "crates/external/pulsar-reflection"]
 	path = crates/external/pulsar-reflection
 	url = https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection.git
+[submodule "plugins/vendor/physics_plugin"]
+	path = plugins/vendor/physics_plugin
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Physics

@@ -14,6 +14,8 @@ members = [
     "crates/agent-providers/*",
     "crates/ui/wgpui-base",
     "plugins/vendor/asset_viewer",
+    # Physics asset types (materials, collision layers); in-repo cdylib plugin.
+    "plugins/vendor/physics_plugin",
     # Helio's component crate names this workspace as its own
     # (`package.workspace`) so its inventory registrations share the editor's
     # SceneDB/reflection copies. Listing it here overrides the
@@ -156,7 +158,7 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 # Gamma v2 (Pulsar-Native#923): the event bus under `pulsar_events`' engine
 # hub. Pinned to the merged v0.2.0 on Gamma `main`.
-gamma                              = { git = "https://github.com/Far-Beyond-Pulsar/Gamma", rev = "b4ebf98486fb716d090d35b689a4eb8a0e414cc1" }
+gamma                              = { git = "https://github.com/Far-Beyond-Pulsar/Gamma", rev = "c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_world_registry              = { path = "crates/core/pulsar_world_registry" }
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
