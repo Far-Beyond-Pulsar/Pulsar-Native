@@ -384,6 +384,7 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     if options.skip_build {
         tracing::warn!("--skip-build: the game executable was not built");
     } else {
+        engine_backend::services::ensure_core_bootstrap(&project).map_err(PackageError::Build)?;
         report.executable = Some(build_game(
             &project,
             &options.out,
