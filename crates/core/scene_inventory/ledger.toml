@@ -229,6 +229,61 @@ test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs ri
 status = "verified"
 
 [[class]]
+name = "CharacterControllerComponent"
+category = "Physics"
+world_registered = true
+own_gpu_columns = false
+owner = "physics_plugin::components::character_controller"
+disposition = "non-render: physics plugin data (a kinematic character controller); the plugin's runtime reads its change journal and sends what changed to its Rapier counterpart on the simulation thread. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "plugins/vendor/physics_plugin/src/runtime.rs (a_character_controller_walks_and_lands)"
+status = "verified"
+
+[[class]]
+name = "ColliderComponent"
+category = "Physics"
+world_registered = true
+own_gpu_columns = false
+owner = "physics_plugin::components::collider"
+disposition = "non-render: physics plugin data (a collision shape, attached to its object's body or static); the plugin's runtime reads its change journal and sends what changed to its Rapier counterpart on the simulation thread. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "plugins/vendor/physics_plugin/src/runtime.rs (a_dynamic_box_falls_onto_a_static_collider_through_scenedb, colliders_and_bodies_find_each_other_in_either_order, a_trigger_reports_who_entered_it)"
+status = "verified"
+
+[[class]]
+name = "ForceFieldComponent"
+category = "Physics"
+world_registered = true
+own_gpu_columns = false
+owner = "physics_plugin::components::force_field"
+disposition = "non-render: physics plugin data (a force applied to bodies in its volume); the plugin's runtime reads its change journal and sends what changed to its Rapier counterpart on the simulation thread. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "none yet: no test applies a force field (the runtime tests cover bodies, colliders, joints, triggers and character controllers)"
+status = "unverified"
+
+[[class]]
+name = "JointComponent"
+category = "Physics"
+world_registered = true
+own_gpu_columns = false
+owner = "physics_plugin::components::joint"
+disposition = "non-render: physics plugin data (a joint between two bodies, or a body and the world); the plugin's runtime reads its change journal and sends what changed to its Rapier counterpart on the simulation thread. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "plugins/vendor/physics_plugin/src/runtime.rs (a_joint_keeps_a_body_attached_to_the_world)"
+status = "verified"
+
+[[class]]
+name = "RigidBodyComponent"
+category = "Physics"
+world_registered = true
+own_gpu_columns = false
+owner = "physics_plugin::components::rigid_body"
+disposition = "non-render: physics plugin data (a simulated body; removing it ends the simulation); the plugin's runtime reads its change journal and sends what changed to its Rapier counterpart on the simulation thread. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "plugins/vendor/physics_plugin/src/runtime.rs (a_dynamic_box_falls_onto_a_static_collider_through_scenedb, removing_the_body_component_ends_its_simulation, editing_a_component_updates_its_physics_partner)"
+status = "verified"
+
+[[class]]
 name = "SplineComponent"
 category = "Gameplay"
 world_registered = true
@@ -2638,3 +2693,13 @@ disposition = "not composed by helio-default-graphs; out of scope until a graph 
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: not in a production graph"
 status = "out-of-scope"
+
+[[site]]
+pattern = "change-cursor"
+file = "plugins/vendor/physics_plugin/src/runtime.rs"
+count = 5
+owner = "physics_plugin::runtime (tick: read_moves, read_parts)"
+disposition = "keep: one cursor per registered physics behavior's component plus ComponentOwner and Transform; each frame sends the simulation only what those journals report (a Transform the simulation did not write is a move by someone else), and an idle scene sends only the elapsed time; an overflowed cursor resends the behavior's rows"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "plugins/vendor/physics_plugin/src/runtime.rs (an_idle_scene_sends_nothing_to_the_simulation, editing_a_component_updates_its_physics_partner, removing_the_body_component_ends_its_simulation)"
+status = "verified"
