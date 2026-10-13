@@ -20,6 +20,9 @@ members = [
     "plugins/vendor/physics_plugin",
     # Widget assets (.widget) and the WYSIWYG widget editor; built-in plugin of the editor.
     "plugins/vendor/ui_editor",
+    # Input actions (.inputaction), input mappings (.inputmap), and the input
+    # runtime that publishes them on the event bus; built-in plugin of the editor.
+    "plugins/vendor/input_plugin",
     # Helio's component crate names this workspace as its own
     # (`package.workspace`) so its inventory registrations share the editor's
     # SceneDB/reflection copies. Listing it here overrides the

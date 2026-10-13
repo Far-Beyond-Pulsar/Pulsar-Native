@@ -56,6 +56,7 @@ asset_viewer_plugin = { path = "../../../plugins/vendor/asset_viewer", features 
 skeletal_animation_plugin = { path = "../../../plugins/vendor/skm_editor", features = ["builtin"] }
 physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = ["builtin"] }
 ui_editor_plugin = { path = "../../../plugins/vendor/ui_editor", features = ["builtin"] }
+input_plugin = { path = "../../../plugins/vendor/input_plugin", features = ["builtin"] }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

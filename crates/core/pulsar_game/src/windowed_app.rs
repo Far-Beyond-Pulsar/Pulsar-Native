@@ -361,6 +361,8 @@ pub struct PulsarApp {
     focused_window: Option<WindowHandle>,
     /// Whether the cursor is currently captured for mouse-look.
     cursor_captured: bool,
+    /// Where the cursor last was, in window pixels, for motion deltas.
+    last_cursor: Option<(f64, f64)>,
     /// Time of last `about_to_wait` — used to compute per-frame dt for freecam.
     last_frame: Instant,
     /// When the last frame was drawn, for the profiler's frame markers.
@@ -393,6 +395,7 @@ impl PulsarApp {
             events,
             focused_window: None,
             cursor_captured: false,
+            last_cursor: None,
             last_frame: Instant::now(),
             last_redraw: None,
         }
@@ -603,6 +606,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         // when the cursor is captured.
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             if self.cursor_captured {
+                let (x, y) = self.last_cursor.unwrap_or((0.0, 0.0));
+                self.events.publish(
+                    pulsar_events::gamma::Channel::Global,
+                    pulsar_events::builtin::MouseMoved { x, y, dx, dy },
+                );
                 if let Some(handle) = self.focused_window {
                     if let Some(gw) = self.windows.get_mut(&handle) {
                         gw.freecam.on_mouse_delta(dx, dy);
@@ -686,6 +694,33 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.freecam.on_key(&key_event.physical_key, pressed);
                 }
+            }
+
+            // ── Cursor and wheel — published as input events. While the
+            //    cursor is captured the raw motion in `device_event` is used
+            //    instead, so the two never double up.
+            WindowEvent::CursorMoved { position, .. } => {
+                let (x, y) = (position.x, position.y);
+                let (dx, dy) = self.last_cursor.map_or((0.0, 0.0), |(lx, ly)| (x - lx, y - ly));
+                self.last_cursor = Some((x, y));
+                if !self.cursor_captured && (dx != 0.0 || dy != 0.0) {
+                    self.events.publish(
+                        pulsar_events::gamma::Channel::Global,
+                        pulsar_events::builtin::MouseMoved { x, y, dx, dy },
+                    );
+                }
+            }
+
+            WindowEvent::MouseWheel { delta, .. } => {
+                let (x, y) = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(x, y) => (f64::from(x), f64::from(y)),
+                    // About 40 pixels is a notch on a precision touchpad.
+                    winit::event::MouseScrollDelta::PixelDelta(p) => (p.x / 40.0, p.y / 40.0),
+                };
+                self.events.publish(
+                    pulsar_events::gamma::Channel::Global,
+                    pulsar_events::builtin::MouseWheel { x, y },
+                );
             }
 
             // ── Mouse buttons — published as input events; a left click

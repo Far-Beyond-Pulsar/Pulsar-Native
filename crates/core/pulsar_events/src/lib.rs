@@ -40,6 +40,7 @@ pub mod channel;
 pub mod foreign_tap;
 pub mod host;
 pub mod hub;
+pub mod keycodes;
 pub mod playback;
 pub mod problems;
 pub mod session;

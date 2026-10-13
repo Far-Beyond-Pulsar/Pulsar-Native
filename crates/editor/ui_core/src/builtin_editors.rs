@@ -420,6 +420,61 @@ impl BuiltinEditorProvider for PhysicsBuiltinProvider {
     }
 }
 
+/// Wraps the input_plugin crate as a built-in provider: `.inputaction` and
+/// `.inputmap` with their editors, and the Player Input component. Linking the
+/// crate is what registers the component and the per-frame input runtime that
+/// publishes `input::` events.
+pub struct InputBuiltinProvider;
+
+impl BuiltinEditorProvider for InputBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.input"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        input_plugin::InputPlugin.file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        input_plugin::InputPlugin.editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        matches!(editor_id.as_str(), input_plugin::ACTION_EDITOR_ID | input_plugin::MAPPING_EDITOR_ID)
+    }
+
+    fn component_definitions(&self) -> Vec<ComponentDefinition> {
+        input_plugin::InputPlugin.component_definitions()
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        // Without an editor id, the file's type says which editor it opens in.
+        let Some(editor_id) = input_plugin::InputPlugin::editor_for_path(&file_path) else {
+            return Err(PluginError::Other {
+                message: format!("the input plugin has no editor for {}", file_path.display()),
+            });
+        };
+        self.create_editor_for(&editor_id, file_path, editor_context, window, cx)
+    }
+
+    fn create_editor_for(
+        &self,
+        editor_id: &EditorId,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        input_plugin::InputPlugin::create_editor(editor_id, file_path, Some(&editor_context.services.undo), window, cx)
+    }
+}
+
 /// Wraps the ui_editor_plugin crate as a built-in provider: the `.widget`
 /// file type and the WYSIWYG widget editor.
 pub struct WidgetEditorBuiltinProvider;
@@ -744,6 +799,10 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Widget assets and the widget editor (opens .widget files)
     registry.register_provider(Arc::new(WidgetEditorBuiltinProvider));
+
+    // Input actions and mappings (open .inputaction and .inputmap files); the
+    // runtime that publishes their events is registered by linking the crate
+    registry.register_provider(Arc::new(InputBuiltinProvider));
 
     // Editors that are part of the build but not of this crate (the Blueprint
     // editor, ..) register themselves at link time; see

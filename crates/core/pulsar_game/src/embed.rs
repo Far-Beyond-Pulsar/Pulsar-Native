@@ -227,6 +227,8 @@ pub struct EmbeddedGame {
     scene_store: engine_backend::scene::SharedScene,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
+    /// Where the pointer last was (normalized), for motion deltas.
+    last_pointer: Option<(f32, f32)>,
 
     // ── Host log callback ───────────────────────────────────────────────────
     userdata: *mut std::ffi::c_void,
@@ -355,6 +357,10 @@ impl EmbeddedGame {
         // `setup()`'s `enable_project_scripting` reads its classes and
         // settings from here (the dylib has its own copy of this global).
         pulsar_content::ContentRoot::project(project_root.clone()).install();
+        // Plugins loaded as separate libraries have their own copy of that
+        // global; the environment is the one place they can all read it
+        // (the input runtime finds its mappings this way).
+        std::env::set_var(pulsar_content::PROJECT_ROOT_ENV, &project_root);
 
         // NOTE: `setup()` deliberately runs AFTER adoption so project actors
         // register against the host's world. The scene file is NOT loaded:
@@ -400,6 +406,7 @@ impl EmbeddedGame {
             out_view,
             scene_store,
             freecam,
+            last_pointer: None,
             userdata: ctx.userdata,
             log: ctx.log,
         })
@@ -476,15 +483,33 @@ impl EmbeddedGame {
         use pulsar_pie_abi::input_kind;
         match ev.kind {
             input_kind::MOUSE_MOVE => {
-                // Editor forwards look deltas via wheel/move; hook here when the
-                // editor drives an in-game cursor. No-op for now.
+                // The editor sends the pointer in normalized viewport
+                // coordinates; the game sees pixels of its render size.
+                let (w, h) = (f64::from(self.width), f64::from(self.height));
+                let (x, y) = (f64::from(ev.x) * w, f64::from(ev.y) * h);
+                let (dx, dy) = self
+                    .last_pointer
+                    .map_or((0.0, 0.0), |(lx, ly)| ((f64::from(ev.x - lx)) * w, f64::from(ev.y - ly) * h));
+                self.last_pointer = Some((ev.x, ev.y));
+                if dx != 0.0 || dy != 0.0 {
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::MouseMoved { x, y, dx, dy });
+                }
             }
             input_kind::MOUSE_WHEEL => {
                 self.freecam.on_mouse_delta(0.0, ev.delta as f64);
+                self.session
+                    .tick_loop
+                    .publish_input(pulsar_events::builtin::MouseWheel { x: 0.0, y: f64::from(ev.delta) });
             }
             // Keys and buttons become input events on the session's hub,
             // delivered at the next tick's after-input flush.
             input_kind::KEY => {
+                // A key the engine has no name for.
+                if ev.button_or_key == u32::MAX {
+                    return;
+                }
                 let key = i64::from(ev.button_or_key);
                 if ev.pressed != 0 {
                     self.session
