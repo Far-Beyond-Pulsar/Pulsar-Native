@@ -109,7 +109,16 @@ pub enum SceneEdit {
     Voxel(VoxelEditJournal),
 }
 
-impl UndoEntry for SceneEdit {}
+impl UndoEntry for SceneEdit {
+    fn label(&self) -> String {
+        let key = match self {
+            SceneEdit::Scene(delta) => delta.label,
+            SceneEdit::Voxel(_) => Some("LevelEditor.Undo.Sculpt"),
+        };
+        key.map(|key| rust_i18n::t!(key).to_string())
+            .unwrap_or_default()
+    }
+}
 
 fn new_history() -> SharedHistory<SceneEdit> {
     Arc::new(std::sync::Mutex::new(History::with_capacity(MAX_UNDO_HISTORY)))
@@ -303,12 +312,62 @@ impl SceneDomain {
         pre_state: SceneHistorySnapshot,
         post_state: SceneHistorySnapshot,
     ) {
+        self.commit_labeled_checkpoint(pre_state, post_state, None);
+    }
+
+    /// [`Self::commit_undo_checkpoint`], named for the Edit menu by the
+    /// locale key `label`.
+    pub fn commit_labeled_checkpoint(
+        &mut self,
+        pre_state: SceneHistorySnapshot,
+        post_state: SceneHistorySnapshot,
+        label: Option<&'static str>,
+    ) {
         let mut history = lock(&self.history);
         history.push(SceneEdit::Scene(SceneHistoryDelta {
             before: pre_state,
             after: post_state,
+            label,
         }));
         history.seal();
+    }
+
+    /// Record a finished gizmo drag as one undo step (#931). The renderer
+    /// moves the object directly while dragging; this captures the object
+    /// as it was (by briefly putting the starting transform back, so a
+    /// placed class's overrides are captured the same way as any edit) and
+    /// as it is now.
+    pub fn record_gizmo_drag(
+        &mut self,
+        entity: Entity,
+        before: engine_backend::scene::Transform,
+    ) -> bool {
+        let (pre, post) = {
+            let mut world = self.world_mut();
+            let Some(id) = world.stable_id_of(entity).map(str::to_string) else {
+                return false;
+            };
+            let Some(now) = world.get::<engine_backend::scene::Transform>(entity).copied() else {
+                return false;
+            };
+            if now == before {
+                return false;
+            }
+            let ids = [id];
+            let post = scene_edit::history::capture_history_subset(&world, &ids);
+            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity)
+            {
+                *transform = before;
+            }
+            let pre = scene_edit::history::capture_history_subset(&world, &ids);
+            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity)
+            {
+                *transform = now;
+            }
+            (pre, post)
+        };
+        self.commit_labeled_checkpoint(pre, post, Some("LevelEditor.Undo.Move"));
+        true
     }
 
     /// Commit a voxel append-range without capturing the terrain component.

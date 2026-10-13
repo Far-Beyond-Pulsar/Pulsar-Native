@@ -40,6 +40,8 @@ pub struct SceneHistorySnapshot {
 pub struct SceneHistoryDelta {
     pub(crate) before: SceneHistorySnapshot,
     pub(crate) after: SceneHistorySnapshot,
+    /// Locale key naming the edit for the Edit menu ("Undo Move").
+    pub(crate) label: Option<&'static str>,
 }
 
 /// Compact journal for voxel authoring. A sculpt stroke appends to the terrain

@@ -133,9 +133,9 @@ impl<E: UndoEntry> History<E> {
                 self.saved_at = None;
             }
         }
-        if self.merging {
+        if self.merging && self.saved_at != Some(self.undo.len()) {
             if let Some(last) = self.undo.back_mut() {
-                if self.saved_at != Some(self.undo.len()) && last.merge(&entry) {
+                if last.merge(&entry) {
                     return;
                 }
             }

@@ -573,6 +573,16 @@ pub struct HelioEditorMailbox {
     viewport_bloom: Arc<AtomicBool>,
     viewport_realtime: Arc<AtomicBool>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
+    completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
+}
+
+/// A gizmo drag that moved its object, reported when the mouse is released
+/// so the editor can record it as one undo step (#931).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompletedDrag {
+    pub entity: pulsar_scenedb::Entity,
+    /// The transform the object had when the drag started.
+    pub before: crate::scene::Transform,
 }
 
 /// A gizmo drag started on an object whose authored movability promises a
@@ -597,6 +607,14 @@ impl HelioEditorMailbox {
     /// has not taken it yet.
     pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
         self.static_drag_warning.lock().ok()?.take()
+    }
+
+    /// The gizmo drags finished since the last call, oldest first.
+    pub fn take_completed_drags(&self) -> Vec<CompletedDrag> {
+        self.completed_drags
+            .lock()
+            .map(|mut drags| std::mem::take(&mut *drags))
+            .unwrap_or_default()
     }
 
     /// Queue the SceneDB interaction gizmo mode for the render thread to apply
@@ -697,6 +715,8 @@ pub struct HelioRenderer {
     /// Written by the render thread when a gizmo drag starts on a fixed-
     /// movability object; taken by the UI (`HelioEditorMailbox`).
     pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
+    /// Gizmo drags that moved their object, taken by the UI for undo.
+    completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -878,6 +898,7 @@ impl HelioRenderer {
             camera_jitter_override: None,
             animated_content: Default::default(),
             static_drag_warning: Arc::new(Mutex::new(None)),
+            completed_drags: Arc::new(Mutex::new(Vec::new())),
             reset_taa_next_frame: false,
             inner: None,
             applied_graph_settings: None,
@@ -2280,6 +2301,7 @@ impl HelioRenderer {
             viewport_bloom: self.viewport_bloom.clone(),
             viewport_realtime: self.viewport_realtime.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
+            completed_drags: self.completed_drags.clone(),
         }
     }
 
@@ -2454,8 +2476,20 @@ impl HelioRenderer {
     pub fn handle_left_release(&mut self) {
         self.gizmo_dirty = true;
         self.voxel_stroke_last = None;
-        if let Some(inner) = &mut self.inner {
-            inner.interaction.cancel_drag();
+        let Some(inner) = &mut self.inner else { return };
+        let Some((entity, before)) = inner.interaction.finish_drag() else {
+            return;
+        };
+        let moved = self
+            .scene_store
+            .read()
+            .world
+            .get::<crate::scene::Transform>(entity)
+            .is_some_and(|now| *now != before);
+        if moved {
+            if let Ok(mut drags) = self.completed_drags.lock() {
+                drags.push(CompletedDrag { entity, before });
+            }
         }
     }
     fn configure_gizmo_view(&mut self) {

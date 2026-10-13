@@ -27,6 +27,7 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod classes;
 pub mod components;
+pub mod create;
 pub mod history;
 pub mod level_io;
 pub mod objects;

@@ -325,6 +325,17 @@ impl LevelEditorPanel {
                         engine.sync_selection_to_helio();
                     }
                 }
+                // Finished gizmo drags become undo steps (#931).
+                if let Some(drags) = poll_mailbox
+                    .as_ref()
+                    .map(|mailbox| mailbox.take_completed_drags())
+                    .filter(|drags| !drags.is_empty())
+                {
+                    let mut s = poll_state.write();
+                    for drag in drags {
+                        s.scene.record_gizmo_drag(drag.entity, drag.before);
+                    }
+                }
                 // A gizmo drag on a Static/Stationary object (#837); the
                 // notification needs a window, so render shows it.
                 if let Some(warning) = poll_mailbox
