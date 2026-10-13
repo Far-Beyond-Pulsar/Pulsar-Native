@@ -21,9 +21,11 @@
 //!    panels and produces a pure `Plan`. Live panels the app creates itself
 //!    (level editor, agent chat, manual tool) are *claimed* by `panel_name`;
 //!    panels that edit a file are recreated through the plugin manager exactly
-//!    as `open_path` does. Files that no longer exist and groups left empty are
-//!    dropped; a split left with one side collapses into it. Nothing is attached
-//!    to the live UI.
+//!    as `open_path` does; panels that declare a restore key are rebuilt by the
+//!    restorer registered for its kind (`plugin_manager::panel_restorers`), see
+//!    [`resolve`] for the full order. Files that no longer exist and groups left
+//!    empty are dropped; a split left with one side collapses into it. Nothing
+//!    is attached to the live UI.
 //! 2. The plan is validated (the centre must hold a panel of the anchor group,
 //!    i.e. the level editor, and each live panel is claimed at most once). A
 //!    root that fails is discarded whole and its claims released; the live UI
@@ -32,6 +34,14 @@
 //!    that entity) and filled in place, side docks are set, and a live side-dock
 //!    panel the saved layout does not mention is put back in its dock.
 //!
+//! **Dormant tabs.** A tab that names a panel (restore key or file) but cannot be
+//! rebuilt because nothing is registered for it (its plugin is disabled or
+//! missing) is not dropped: it is kept in `AppState::layout_dormant`, written
+//! back under `dormant` on every save, and offered again on the next load
+//! (see [`dormant`]). Disabling a plugin for one session therefore does not
+//! erase its tabs. Ephemeral panels (`PanelState::ephemeral`) are skipped on
+//! purpose and never kept.
+//!
 //! `layout.json` is per-user (window geometry, open tabs), so new projects
 //! gitignore it.
 //!
@@ -39,6 +49,7 @@
 //! never overwrite a saved one.
 
 mod commit;
+mod dormant;
 mod format;
 mod resolve;
 mod window_geometry;
@@ -52,6 +63,7 @@ use super::PulsarApp;
 use format::{layout_path, read_slot, write_slot, SavedWindowLayout, PRIMARY_SLOT};
 use window_geometry::SavedWindow;
 
+pub(crate) use dormant::DormantLeaf;
 pub(crate) use window_geometry::saved_window_bounds;
 
 /// Quiet time after the last layout change before it is written.
@@ -164,6 +176,8 @@ impl PulsarApp {
                 .window_bounds
                 .map(|b| SavedWindow::capture(b, self.state.window_restore_bounds)),
             sidebar: self.state.nav_sidebar.read(cx).model.save(&root),
+            // Tabs no plugin could build this session ride along unchanged.
+            dormant: dormant::prune(self.state.layout_dormant.clone(), |p| p.exists()),
             ..Default::default()
         };
         layout.relativize(&root);
@@ -185,6 +199,8 @@ impl PulsarApp {
             return;
         };
         layout.absolutize(&root);
+        // Offer tabs shelved last time again; they resolve with everything else.
+        layout.reinsert_dormant();
         let sidebar = std::mem::take(&mut layout.sidebar);
         self.state.nav_sidebar.update(cx, |nav, cx| {
             nav.model.restore(sidebar, &root);
@@ -197,6 +213,8 @@ impl PulsarApp {
         // Phase 1: resolve against a read-only snapshot; nothing live changes.
         let snapshot = resolve::LiveSnapshot::capture(&dock_area, &anchor, cx);
         let resolved = resolve::resolve_layout(&layout, &snapshot, &root, &dock_area, window, cx);
+        // Whatever is still unbuildable is shelved again (and so saved again).
+        self.state.layout_dormant = resolved.dormant.clone();
 
         // Phase 2: attach.
         commit::commit(

@@ -104,6 +104,7 @@ pub(super) fn commit(
         center,
         docks,
         unmentioned,
+        dormant: _,
     } = resolved;
 
     let mut builder = Builder {

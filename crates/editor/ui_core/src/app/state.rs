@@ -103,6 +103,9 @@ pub struct AppState {
     pub layout_ready: bool,
     /// Pending debounced save; dropping it cancels the save.
     pub layout_save_task: Option<Task<()>>,
+    /// Saved tabs this session could not rebuild (plugin not loaded); written
+    /// back on every save so they are not lost. See `layout::dormant`.
+    pub layout_dormant: Vec<super::layout::DormantLeaf>,
 
     // Navigation history
     pub navigation: super::navigation::NavigationHistory,

@@ -12,6 +12,9 @@
 //! later version (or another window) can own them without this code needing to
 //! understand them.
 //!
+//! `dormant` lists tabs kept for a plugin that is not loaded (see [`super::dormant`]);
+//! `reinsert_dormant` offers them to the resolver again on the next load.
+//!
 //! Version 1 files (`{ version, dock, window, sidebar }`) are migrated on read
 //! as slot 0. Any other version is ignored.
 //!
@@ -25,6 +28,7 @@ use serde_json::Value;
 use ui::dock::{DockAreaState, DockState, PanelState};
 
 use super::super::nav_sidebar::model::SavedSidebar;
+use super::dormant::{self, AnchorKey, DormantLeaf, DormantRoot};
 use super::window_geometry::SavedWindow;
 
 /// Bump when the format changes incompatibly.
@@ -48,10 +52,15 @@ pub(super) struct SavedWindowLayout {
     /// Pop-out windows. Written by a later step; kept verbatim until then.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub popouts: Vec<Value>,
-    /// Tabs whose panel could not be recreated this session. Written by a later
-    /// step; kept verbatim until then.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub dormant: Vec<Value>,
+    /// Tabs whose panel could not be recreated this session because nothing is
+    /// registered to build it (see [`super::dormant`]). Written back verbatim
+    /// and offered again on the next load.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "dormant::lenient"
+    )]
+    pub dormant: Vec<DormantLeaf>,
     /// Drawers and other window chrome. Filled by a later step.
     #[serde(default, skip_serializing_if = "SavedChrome::is_empty")]
     pub chrome: SavedChrome,
@@ -186,7 +195,7 @@ fn absolutize(state: &mut PanelState, root: &Path) {
     }
 }
 
-fn map_dock_panels(dock: &mut Option<DockState>, f: impl Fn(&mut PanelState)) {
+fn map_dock_panels(dock: &mut Option<DockState>, f: impl FnOnce(&mut PanelState)) {
     if let Some(dock) = dock {
         // `DockState` exposes its tree read-only; round-trip through serde to
         // rewrite it, which also keeps this independent of its field layout.
@@ -206,22 +215,66 @@ fn map_dock_panels(dock: &mut Option<DockState>, f: impl Fn(&mut PanelState)) {
     }
 }
 
-fn transform_dock(dock: &mut DockAreaState, f: impl Fn(&mut PanelState) + Copy) {
-    f(&mut dock.center);
-    map_dock_panels(&mut dock.left_dock, f);
-    map_dock_panels(&mut dock.right_dock, f);
-    map_dock_panels(&mut dock.bottom_dock, f);
+/// Run `f` on the tree of every root of `dock`, saying which root it is.
+fn edit_roots(dock: &mut DockAreaState, f: &mut dyn FnMut(DormantRoot, &mut PanelState)) {
+    f(DormantRoot::Center, &mut dock.center);
+    map_dock_panels(&mut dock.left_dock, |s| f(DormantRoot::Left, s));
+    map_dock_panels(&mut dock.right_dock, |s| f(DormantRoot::Right, s));
+    map_dock_panels(&mut dock.bottom_dock, |s| f(DormantRoot::Bottom, s));
 }
 
 impl SavedWindowLayout {
-    /// Store file paths inside `root` as project-relative.
+    /// Store file paths inside `root` as project-relative. Dormant tabs are
+    /// rewritten with the rest; restore data stays opaque and is not touched.
     pub fn relativize(&mut self, root: &Path) {
-        transform_dock(&mut self.dock, |state| relativize(state, root));
+        edit_roots(&mut self.dock, &mut |_, state| relativize(state, root));
+        for leaf in &mut self.dormant {
+            relativize(&mut leaf.state, root);
+            if let Some(AnchorKey::File(file)) = &mut leaf.anchor {
+                *file = relative_path(file, root);
+            }
+        }
     }
 
     /// Make stored file paths absolute under `root`.
     pub fn absolutize(&mut self, root: &Path) {
-        transform_dock(&mut self.dock, |state| absolutize(state, root));
+        edit_roots(&mut self.dock, &mut |_, state| absolutize(state, root));
+        for leaf in &mut self.dormant {
+            absolutize(&mut leaf.state, root);
+            if let Some(AnchorKey::File(file)) = &mut leaf.anchor {
+                *file = absolute_path(file, root);
+            }
+        }
+    }
+
+    /// Offer every dormant tab again: put each back into its root's tree so it
+    /// is resolved with everything else, and clear the list (whatever still
+    /// cannot be resolved becomes dormant again). Call after [`Self::absolutize`].
+    pub fn reinsert_dormant(&mut self) {
+        let leaves = std::mem::take(&mut self.dormant);
+        edit_roots(&mut self.dock, &mut |root, tree| {
+            for leaf in leaves.iter().filter(|l| l.root == root) {
+                if !dormant::reinsert(tree, leaf) {
+                    tracing::debug!("layout: no tab group to offer a dormant tab to");
+                }
+            }
+        });
+    }
+}
+
+fn relative_path(file: &str, root: &Path) -> String {
+    match Path::new(file).strip_prefix(root) {
+        Ok(relative) => relative.to_string_lossy().replace('\\', "/"),
+        Err(_) => file.to_string(),
+    }
+}
+
+fn absolute_path(file: &str, root: &Path) -> String {
+    let path = Path::new(file);
+    if path.is_relative() {
+        root.join(path).to_string_lossy().into_owned()
+    } else {
+        file.to_string()
     }
 }
 
@@ -437,6 +490,52 @@ pub(super) mod tests {
         assert_eq!(after["windows"]["1"], other);
         assert!(after["windows"]["0"].is_object());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dormant_tabs_round_trip_and_are_offered_again() {
+        let root = Path::new("/proj");
+        let mut layout = SavedWindowLayout {
+            dock: DockAreaState {
+                center: tab_group(&["/proj/a.rs"]),
+                ..Default::default()
+            },
+            dormant: vec![DormantLeaf {
+                root: DormantRoot::Center,
+                anchor: Some(AnchorKey::File("/proj/a.rs".into())),
+                state: PanelState::default().with_file("/proj/thing.xyz"),
+            }],
+            ..Default::default()
+        };
+
+        layout.relativize(root);
+        assert_eq!(layout.dormant[0].state.file(), Some("thing.xyz"));
+        assert_eq!(
+            layout.dormant[0].anchor,
+            Some(AnchorKey::File("a.rs".into()))
+        );
+
+        let dir = temp("dormant");
+        let path = layout_path(&dir);
+        write_slot(&path, PRIMARY_SLOT, &layout).unwrap();
+        let mut read = read_slot(&path, PRIMARY_SLOT).unwrap();
+        assert_eq!(read.dormant, layout.dormant);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        read.absolutize(root);
+        read.reinsert_dormant();
+        assert!(read.dormant.is_empty());
+        let group = &read.dock.center.children;
+        assert_eq!(group.len(), 2);
+        assert_eq!(Path::new(group[1].file().unwrap()), root.join("thing.xyz"));
+    }
+
+    #[test]
+    fn a_slot_with_a_bad_dormant_entry_still_reads() {
+        let mut slot = serde_json::to_value(SavedWindowLayout::default()).unwrap();
+        slot["dormant"] = serde_json::json!([{ "root": "nope" }]);
+        let layout: SavedWindowLayout = serde_json::from_value(slot).unwrap();
+        assert!(layout.dormant.is_empty());
     }
 
     #[test]

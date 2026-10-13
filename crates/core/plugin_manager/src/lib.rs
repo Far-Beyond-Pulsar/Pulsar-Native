@@ -175,6 +175,7 @@ impl PanelView for FileTypeDecoratedPanelView {
 pub mod builtin;
 mod permanent_library;
 mod registry;
+mod restorers;
 pub mod tool_bridge;
 
 /// Re-exported so a linked provider can `inventory::submit!` without its own
@@ -185,6 +186,7 @@ pub use builtin::{
 };
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
+pub use restorers::{panel_restorers, PanelRestorers, RestoreOutcome};
 pub use tool_bridge::PluginToolBridge;
 
 // ============================================================================
@@ -814,6 +816,18 @@ impl PluginManager {
                 "  📝 Registering {} editor factories",
                 editor_factories.factories().len()
             );
+        }
+
+        // Panel restorers ride the same registration call: merge them into the
+        // host's global set so layout restore can rebuild this plugin's panels.
+        for (kind, restorer) in editor_factories.take_restorers().take() {
+            if panel_restorers().register_shared(kind.clone(), restorer) {
+                tracing::warn!(
+                    "plugin {} replaced the panel restorer for kind '{}'",
+                    plugin_id,
+                    kind
+                );
+            }
         }
 
         // Store the plugin

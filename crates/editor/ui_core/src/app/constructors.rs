@@ -507,6 +507,7 @@ impl PulsarApp {
                 window_restore_bounds: None,
                 layout_ready: false,
                 layout_save_task: None,
+                layout_dormant: Vec::new(),
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };
