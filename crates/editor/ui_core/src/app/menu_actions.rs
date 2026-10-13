@@ -1,5 +1,5 @@
 //! Handlers for the global app-menu actions (View / Go / Search / Project /
-//! Tools).
+//! Tools), and the Assets actions editors' own menus dispatch.
 //!
 //! The menus themselves live in `ui_common::menu`, which cannot see the app;
 //! each action is handled here by calling the same methods the keyboard
@@ -87,6 +87,13 @@ impl PulsarApp {
                     cx.reveal_path(root);
                 }
             }))
+            // Assets (dispatched from editors' own Assets menus)
+            .on_action(cx.listener(|this, action: &menu::NewAsset, window, cx| {
+                this.new_asset(&action.file_type_id, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &menu::ImportAssets, window, cx| {
+                this.import_assets(window, cx)
+            }))
             // Tools
             .on_action(cx.listener(|this, _: &menu::ToggleProfiler, window, cx| {
                 this.toggle_flamegraph(window, cx)
@@ -123,6 +130,42 @@ impl PulsarApp {
                 }
                 cx.quit();
             }))
+    }
+
+    /// Create an asset of a registered file type in the file manager's
+    /// folder, showing the file manager so the new file is in view.
+    fn new_asset(&mut self, file_type_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let created = self.state.file_manager_drawer.update(cx, |drawer, cx| {
+            drawer.create_asset_of_type(file_type_id, cx)
+        });
+        if created {
+            self.open_drawer(window, cx);
+        } else {
+            tracing::warn!(file_type_id, "No registered file type to create");
+        }
+    }
+
+    /// Pick files and copy them into the file manager's folder; source
+    /// models among them are offered for import.
+    fn import_assets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut dialog = rfd::AsyncFileDialog::new().set_title("Import");
+        if let Some(root) = self.state.project_path.as_deref() {
+            dialog = dialog.set_directory(root);
+        }
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(handles) = dialog.pick_files().await else {
+                return;
+            };
+            let paths: Vec<PathBuf> = handles.iter().map(|h| h.path().to_path_buf()).collect();
+            this.update_in(cx, |this, window, cx| {
+                this.state
+                    .file_manager_drawer
+                    .update(cx, |drawer, cx| drawer.import_files(&paths, window, cx));
+                this.open_drawer(window, cx);
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Change the UI font size by `delta` px, within sensible limits.

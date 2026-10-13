@@ -668,6 +668,26 @@ impl FileManagerDrawer {
         self.folder_tree.as_ref()
     }
 
+    /// Create an asset of the registered file type `file_type_id`, as the
+    /// folder menu's New does. Returns false when no such type is registered.
+    pub fn create_asset_of_type(&mut self, file_type_id: &str, cx: &mut Context<Self>) -> bool {
+        if !self
+            .registered_file_types
+            .iter()
+            .any(|file_type| file_type.id.as_str() == file_type_id)
+        {
+            return false;
+        }
+        let action = CreateAsset {
+            file_type_id: file_type_id.to_string(),
+            display_name: String::new(),
+            extension: String::new(),
+            default_content: serde_json::Value::Null,
+        };
+        handle_create_asset(self, &action, cx);
+        true
+    }
+
     /// The folder whose contents are listed.
     pub fn selected_folder(&self) -> Option<&std::path::Path> {
         self.selected_folder.as_deref()

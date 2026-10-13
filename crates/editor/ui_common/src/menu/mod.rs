@@ -39,6 +39,16 @@ pub struct SelectRadius(pub i32);
 #[action(namespace = ui, no_json)]
 pub struct SelectScrollbarShow(pub ScrollbarShow);
 
+/// Create a new asset of the registered file type `file_type_id`, as the
+/// file manager's New submenu does: in the type's creation directory, else
+/// in the folder the file manager lists. Editors' Assets menus dispatch it;
+/// the app shell hands it to the file manager.
+#[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
+#[action(namespace = menu, no_json)]
+pub struct NewAsset {
+    pub file_type_id: String,
+}
+
 // Define actions for the main menu
 actions!(
     menu,
@@ -77,6 +87,9 @@ actions!(
         ProjectSettings,
         OpenCargoToml,
         RevealProjectFolder,
+        // Assets (editors' own menus): pick files to copy into the folder the
+        // file manager lists, offering importable sources for import.
+        ImportAssets,
         // Tools menu
         ToggleProfiler,
         ToggleConsole,
