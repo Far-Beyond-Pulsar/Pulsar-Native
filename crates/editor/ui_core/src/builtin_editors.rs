@@ -604,7 +604,7 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
@@ -668,6 +668,8 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
                 cx,
             )
         });
+        let undo = editor_context.services.undo.clone();
+        panel.update(cx, |panel, _| panel.set_undo_service(undo));
         Ok(Arc::new(panel))
     }
 }

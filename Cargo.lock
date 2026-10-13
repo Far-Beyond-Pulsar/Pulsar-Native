@@ -8835,6 +8835,7 @@ dependencies = [
  "gpui-ce",
  "image",
  "parking_lot",
+ "plugin_editor_api",
  "profiling 0.1.0",
  "pulsar_image_format",
  "resvg",
@@ -11028,6 +11029,7 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "helio_component",
+ "physics_plugin",
  "pulsar_class",
  "pulsar_physics",
  "pulsar_reflection",

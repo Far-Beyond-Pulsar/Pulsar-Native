@@ -1,10 +1,13 @@
 //! One undo/redo system for every editor (Pulsar-Native#931).
 //!
-//! History is **per document**: a level, a Blueprint, a script, a texture.
-//! Every view of a document shares its one history, and an editor finds it
-//! by the document's id through the host's [`UndoService`] (handed to it in
-//! [`crate::EditorServices`], never a process global: a plugin library has
-//! its own copy of those).
+//! History is **per document**: a level, a Blueprint, a script, a texture,
+//! not per panel or per editor kind. The editor of a document registers its
+//! history under the document's id with the host's [`UndoService`] (handed
+//! to it in [`crate::EditorServices`], never a process global: a plugin
+//! library has its own copy of those), so the host can find it. A second
+//! editor of the same file (another window on the project, with its own
+//! copy of the data) keeps its own history: it must never replay the
+//! other's edits ([`UndoService::adopt`]).
 //!
 //! The pieces:
 //! - [`History`]: the undo and redo stacks of one document, generic over an
@@ -273,7 +276,8 @@ pub trait HistoryView: Any + Send + Sync {
     fn revision(&self) -> u64;
 }
 
-/// A document's history, shared by every view of the document.
+/// A document's history, shared by the editor's own parts (panels, menus)
+/// and registered with the host.
 pub type SharedHistory<E> = Arc<Mutex<History<E>>>;
 
 impl<E: UndoEntry> HistoryView for Mutex<History<E>> {
@@ -317,10 +321,11 @@ impl UndoService {
         Self::default()
     }
 
-    /// The history of `document` with entries of type `E`: the one every
-    /// other view of it already holds, or a new one. `None` when the
-    /// document's history holds another entry type (two editors disagree
-    /// on what the document is).
+    /// The history of `document` with entries of type `E`: the one already
+    /// registered, or a new one. For parts that edit the same copy of the
+    /// document; an editor with its own copy uses [`Self::adopt`] instead.
+    /// `None` when the document's history holds another entry type (two
+    /// editors disagree on what the document is).
     pub fn history<E: UndoEntry>(&self, document: &DocumentId) -> Option<SharedHistory<E>> {
         let mut histories = self.histories.lock().unwrap_or_else(|p| p.into_inner());
         histories.retain(|_, history| history.strong_count() > 0);
@@ -334,25 +339,24 @@ impl UndoService {
         Some(history)
     }
 
-    /// Point `history` at the one kept for `document`, shared with its
-    /// other views. What `history` recorded before (a view that learned its
-    /// document late) moves over when the document's history is empty.
-    /// Returns `false`, leaving `history` as it is, when the document's
-    /// history holds another entry type.
-    pub fn adopt<E: UndoEntry>(&self, document: &DocumentId, history: &mut SharedHistory<E>) -> bool {
-        let Some(shared) = self.history::<E>(document) else {
-            return false;
-        };
-        if !Arc::ptr_eq(&shared, history) {
-            {
-                let mut old = lock(history);
-                let mut new = lock(&shared);
-                if new.is_empty() && !new.can_redo() {
-                    std::mem::swap(&mut *old, &mut *new);
-                }
-            }
-            *history = shared;
+    /// Register `history` as `document`'s, keeping what it already
+    /// recorded (a view that learned its document late). When another live
+    /// view already holds the document's history, `history` stays this
+    /// view's own: each editor holds its own copy of the document's data (a
+    /// second window on the project opens the file again), so one view must
+    /// never replay another's edits. Returns whether `history` is the one
+    /// the host keeps for `document`.
+    pub fn adopt<E: UndoEntry>(&self, document: &DocumentId, history: &SharedHistory<E>) -> bool {
+        let mut histories = self.histories.lock().unwrap_or_else(|p| p.into_inner());
+        histories.retain(|_, history| history.strong_count() > 0);
+        if let Some(existing) = histories.get(document).and_then(Weak::upgrade) {
+            let any: Arc<dyn Any + Send + Sync> = existing;
+            return any
+                .downcast::<Mutex<History<E>>>()
+                .is_ok_and(|existing| Arc::ptr_eq(&existing, history));
         }
+        let view: Arc<dyn HistoryView> = history.clone();
+        histories.insert(document.clone(), Arc::downgrade(&view));
         true
     }
 
@@ -536,23 +540,29 @@ mod tests {
     }
 
     #[test]
-    fn a_view_adopting_its_document_brings_its_early_edits() {
+    fn a_view_adopting_its_document_keeps_its_edits_and_never_takes_another_views() {
         let service = UndoService::new();
         let doc = DocumentId::new("graph");
-        let mut early: SharedHistory<Edit> = Arc::default();
+        let early: SharedHistory<Edit> = Arc::default();
         lock(&early).push(Edit::Push("a".into()));
-        assert!(service.adopt(&doc, &mut early));
+        assert!(service.adopt(&doc, &early));
+        assert!(service.adopt(&doc, &early), "adopting again is a no-op");
+        assert_eq!(service.view(&doc).unwrap().undo_label().as_deref(), Some("add a"));
+
+        // A second view of the document (its own copy of the data) keeps
+        // its own history: undoing there must not replay the first's edits.
+        let late: SharedHistory<Edit> = Arc::default();
+        lock(&late).push(Edit::Push("b".into()));
+        assert!(!service.adopt(&doc, &late));
+        assert_eq!(lock(&late).undo_label().as_deref(), Some("add b"));
         assert_eq!(lock(&early).undo_label().as_deref(), Some("add a"));
 
-        // A second view finds them, and its own early edits stay behind.
-        let mut late: SharedHistory<Edit> = Arc::default();
-        lock(&late).push(Edit::Push("b".into()));
-        assert!(service.adopt(&doc, &mut late));
-        assert!(Arc::ptr_eq(&early, &late));
-        assert_eq!(lock(&late).len(), 1);
+        // Once the first closes, the next view becomes the document's.
+        drop(early);
+        assert!(service.adopt(&doc, &late));
 
-        let mut wrong: SharedHistory<u8> = Arc::default();
-        assert!(!service.adopt(&doc, &mut wrong));
+        let wrong: SharedHistory<u8> = Arc::default();
+        assert!(!service.adopt(&doc, &wrong));
     }
 
     impl UndoEntry for u8 {}

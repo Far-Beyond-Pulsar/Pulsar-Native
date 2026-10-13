@@ -358,14 +358,10 @@ impl AssetViewerPanel {
         true
     }
 
-    /// Use the host's undo histories: this file's history becomes the one
-    /// every other view of it shares.
+    /// Register this file's history with the host's undo histories.
     pub fn set_undo_service(&mut self, service: plugin_editor_api::UndoService) {
         if let Some(path) = &self.current_path {
-            service.adopt(
-                &plugin_editor_api::DocumentId::for_path(path),
-                &mut self.history,
-            );
+            service.adopt(&plugin_editor_api::DocumentId::for_path(path), &self.history);
         }
     }
 
