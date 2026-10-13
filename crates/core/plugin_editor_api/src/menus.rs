@@ -72,6 +72,35 @@ impl EditorMenu {
         self
     }
 
+    /// The Edit menu's Undo and Redo: "`undo` <what>" and "`redo` <what>"
+    /// (the caller's translated words), greyed out when `history` has
+    /// nothing to undo or redo. They dispatch the shared [`crate::Undo`] and
+    /// [`crate::Redo`], which the editor handles for its document.
+    pub fn undo_redo(
+        self,
+        undo: impl Into<SharedString>,
+        redo: impl Into<SharedString>,
+        history: Option<&dyn crate::undo::HistoryView>,
+    ) -> Self {
+        let label = |word: SharedString, what: Option<String>| -> SharedString {
+            match what {
+                Some(what) if !what.is_empty() => format!("{word} {what}").into(),
+                _ => word,
+            }
+        };
+        let (can_undo, can_redo) = history.map_or((false, false), |h| (h.can_undo(), h.can_redo()));
+        self.action_if(
+            label(undo.into(), history.and_then(|h| h.undo_label())),
+            crate::undo::Undo,
+            can_undo,
+        )
+        .action_if(
+            label(redo.into(), history.and_then(|h| h.redo_label())),
+            crate::undo::Redo,
+            can_redo,
+        )
+    }
+
     pub fn separator(mut self) -> Self {
         self.items.push(EditorMenuItem::Separator);
         self

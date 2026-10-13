@@ -40,6 +40,9 @@ pub struct EditorServices {
     /// The one rust-analyzer the engine runs for the project. Editors attach
     /// to it; they never start, restart or replace it.
     pub language_server: Option<Entity<RustAnalyzerManager>>,
+    /// The host's undo histories, one per document (Pulsar-Native#931).
+    /// The host makes one and hands the same to every editor.
+    pub undo: crate::undo::UndoService,
 }
 
 impl EditorServices {
@@ -47,6 +50,7 @@ impl EditorServices {
     pub fn downgrade(&self) -> WeakEditorServices {
         WeakEditorServices {
             language_server: self.language_server.as_ref().map(Entity::downgrade),
+            undo: self.undo.clone(),
         }
     }
 }
@@ -57,6 +61,8 @@ impl EditorServices {
 #[derive(Clone, Default)]
 pub struct WeakEditorServices {
     language_server: Option<WeakEntity<RustAnalyzerManager>>,
+    /// Holds only the registry; each history lives with its views.
+    undo: crate::undo::UndoService,
 }
 
 impl WeakEditorServices {
@@ -64,6 +70,7 @@ impl WeakEditorServices {
     pub fn upgrade(&self) -> EditorServices {
         EditorServices {
             language_server: self.language_server.as_ref().and_then(WeakEntity::upgrade),
+            undo: self.undo.clone(),
         }
     }
 }

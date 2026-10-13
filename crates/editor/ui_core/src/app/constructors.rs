@@ -316,9 +316,11 @@ impl PulsarApp {
         tracing::info!("[PulsarApp] plugin init start");
         let mut plugin_manager = PluginManager::new();
         // Every editor -- built-in or a plugin library -- is created with a handle
-        // to the engine's one language server.
+        // to the engine's one language server and its one set of undo
+        // histories (one per document, Pulsar-Native#931).
         plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
             language_server: Some(rust_analyzer.clone()),
+            undo: plugin_editor_api::UndoService::new(),
         });
 
         // Register built-in editors

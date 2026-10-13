@@ -533,6 +533,93 @@ fn reverts_and_variable_edits_are_undoable_commands() {
     classes::set_fallback_project_root(None);
 }
 
+/// #931: a class rebuild lands between an edit and its undo. Undo restores
+/// the instance's own overrides but builds it from the class as it is now:
+/// nothing of the old definition comes back, and redo works the same way.
+#[test]
+fn undo_past_a_class_rebuild_keeps_the_current_class() {
+    use crate::commands::{execute_command, SceneCommand};
+    use crate::state::LevelEditorState;
+    use plugin_editor_api::{AssetKind, AssetUpdated};
+
+    let (project, dir) = project_with_lamp(1.0);
+    classes::set_fallback_project_root(Some(project.path().to_path_buf()));
+    let mut state = LevelEditorState::new();
+    let a = place(&mut state.scene.world_mut(), &dir, 0.0);
+    // An override, through an undoable command.
+    let result = execute_command(
+        &mut state,
+        SceneCommand::SetClassVariable {
+            id: a.clone(),
+            name: "speed".into(),
+            value: Some(json!(8.0)),
+        },
+    );
+    assert!(result.changed, "{}", result.no_op_reason);
+
+    // The class is saved with a new default; placed instances rebuild.
+    write_lamp_prefab(&dir, 3.0);
+    let update = AssetUpdated::new(AssetKind::Blueprint).with_path(dir.clone());
+    assert!(!classes::apply_class_asset_update(&mut state.scene.world_mut(), &update).is_empty());
+    assert_eq!(light(&state.scene.world(), &a).intensity.intensity, 3.0);
+
+    // Undo the override, past the rebuild.
+    assert!(state.scene.undo());
+    {
+        let world = state.scene.world();
+        assert!(
+            classes::class_instance(&world, &a)
+                .unwrap()
+                .variable_overrides
+                .is_empty(),
+            "the override is undone"
+        );
+        assert_eq!(
+            light(&world, &a).intensity.intensity,
+            3.0,
+            "still built from the current class, not the one the edit saw"
+        );
+        assert_eq!(children(&world, &a).len(), 1, "children rebuilt, not duplicated");
+    }
+    assert!(state.scene.redo());
+    {
+        let world = state.scene.world();
+        assert_eq!(
+            classes::class_instance(&world, &a).unwrap().variable_overrides["speed"],
+            json!(8.0),
+            "redo reapplies the override"
+        );
+        assert_eq!(light(&world, &a).intensity.intensity, 3.0);
+        assert_eq!(children(&world, &a).len(), 1);
+    }
+    classes::set_fallback_project_root(None);
+}
+
+/// #931: two open levels with instances of one class. Rebuilding the first
+/// must not make the second diff its instances against the new definition
+/// (which would turn the old defaults into overrides and keep them).
+#[test]
+fn a_class_update_reaches_every_open_level() {
+    use plugin_editor_api::{AssetKind, AssetUpdated};
+
+    let (_project, dir) = project_with_lamp(1.0);
+    let mut first = new_scene();
+    let mut second = new_scene();
+    let a = place(&mut first.world, &dir, 0.0);
+    let b = place(&mut second.world, &dir, 0.0);
+
+    write_lamp_prefab(&dir, 3.0);
+    let update = AssetUpdated::new(AssetKind::Blueprint).with_path(dir.clone());
+    classes::apply_class_asset_update(&mut first.world, &update);
+    classes::apply_class_asset_update(&mut second.world, &update);
+    assert_eq!(light(&first.world, &a).intensity.intensity, 3.0);
+    assert_eq!(
+        light(&second.world, &b).intensity.intensity,
+        3.0,
+        "the second level's instance gets the new default too"
+    );
+}
+
 /// The hierarchy shows a placed class as one class object: its generated
 /// children are class-owned; `ClassInstance` is not offered as a component.
 #[test]

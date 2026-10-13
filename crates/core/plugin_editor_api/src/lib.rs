@@ -99,6 +99,7 @@ pub mod scripting;
 pub mod statusbar;
 pub mod subsystems;
 pub mod surface_animation;
+pub mod undo;
 pub mod version;
 
 // ── Re-exports for plugin convenience ────────────────────────────────────────
@@ -128,6 +129,10 @@ pub use panel_restore::*;
 pub use plugin::*;
 pub use scripting::*;
 pub use statusbar::*;
+pub use undo::{
+    bind_undo_keys, DocumentId, History, HistoryView, Redo, SharedHistory, Undo, UndoEntry,
+    UndoService,
+};
 pub use subsystems::*;
 pub use version::*;
 

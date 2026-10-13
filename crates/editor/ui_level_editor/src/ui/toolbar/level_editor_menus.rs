@@ -11,8 +11,8 @@ use rust_i18n::t;
 
 use crate::ui::actions::{
     DeleteObject, DuplicateObject, FocusSelected, FrontView, NewScene, OpenScene, OrthographicView,
-    PerspectiveView, Redo, SaveScene, SaveSceneAs, SideView, ToggleGrid, ToggleLighting,
-    TogglePerformanceOverlay, ToggleViewportOptions, ToggleWireframe, TopView, Undo,
+    PerspectiveView, SaveScene, SaveSceneAs, SideView, ToggleGrid, ToggleLighting,
+    TogglePerformanceOverlay, ToggleViewportOptions, ToggleWireframe, TopView,
 };
 use crate::LevelEditorState;
 
@@ -24,8 +24,11 @@ impl LevelEditorMenus {
         EditorMenuStrip::new("level-editor-menus")
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.Edit"))
-                    .action_if(t!("LevelEditor.Menu.Undo"), Undo, state.scene.can_undo())
-                    .action_if(t!("LevelEditor.Menu.Redo"), Redo, state.scene.can_redo())
+                    .undo_redo(
+                        t!("LevelEditor.Menu.Undo"),
+                        t!("LevelEditor.Menu.Redo"),
+                        Some(&**state.scene.history() as &dyn plugin_editor_api::HistoryView),
+                    )
                     .separator()
                     .action_if(t!("LevelEditor.Menu.Duplicate"), DuplicateObject, selected)
                     .action_if(t!("LevelEditor.Menu.Delete"), DeleteObject, selected),

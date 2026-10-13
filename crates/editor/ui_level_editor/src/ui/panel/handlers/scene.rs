@@ -37,7 +37,7 @@ impl LevelEditorPanel {
                             Ok((editor_state, world_settings)) => {
                                 this.apply_editor_camera_state(editor_state.camera.as_ref());
                                 let mut state = state_arc.write();
-                                state.scene.current_scene = Some(path);
+                                state.scene.set_current_scene(Some(path), false);
                                 state.scene.world_settings = world_settings;
                                 state.editor.terrain.foliage_sets = editor_state.foliage_sets;
                                 state.scene.has_unsaved_changes = false;
@@ -97,7 +97,7 @@ impl LevelEditorPanel {
         self.apply_editor_camera_state(editor_state.camera.as_ref());
         {
             let mut state = self.shared_state.write();
-            state.scene.current_scene = None;
+            state.scene.set_current_scene(None, false);
             state.scene.world_settings = world_settings;
             state.editor.terrain.foliage_sets = editor_state.foliage_sets;
             state.scene.has_unsaved_changes = false;

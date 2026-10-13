@@ -110,18 +110,22 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let undo = editor_context.services.undo.clone();
         let panel = cx.new(|cx| {
-            match ui_level_editor::LevelEditorPanel::new_with_path(file_path.clone(), window, cx) {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!("Failed to load level {:?}: {}", file_path, e);
-                    ui_level_editor::LevelEditorPanel::new(window, cx)
-                }
-            }
+            let mut panel =
+                match ui_level_editor::LevelEditorPanel::new_with_path(file_path.clone(), window, cx) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::error!("Failed to load level {:?}: {}", file_path, e);
+                        ui_level_editor::LevelEditorPanel::new(window, cx)
+                    }
+                };
+            panel.set_undo_service(undo);
+            panel
         });
         Ok(Arc::new(panel))
     }

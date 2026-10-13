@@ -16,7 +16,8 @@ use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 use pulsar_scenedb::{Entity, World};
-use std::collections::{HashSet, VecDeque};
+use plugin_editor_api::undo::{lock, DocumentId, History, SharedHistory, UndoEntry, UndoService};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -86,16 +87,32 @@ pub struct SceneDomain {
     /// which may change the selection; the panel poller takes it and points
     /// the gizmo at the restored selection.
     pub pending_selection_sync: bool,
-    /// Undo history (Pulsar-Native#554) — one entry per mutating
-    /// `SceneCommand` (`commands.rs::execute_command` pushes onto this),
-    /// oldest first. Bounded at [`MAX_UNDO_HISTORY`].
-    undo_stack: VecDeque<SceneHistoryDelta>,
-    /// Redo history — populated by [`Self::undo`], cleared by every new
-    /// mutating command (standard undo/redo semantics: once you make a new
-    /// change, the old "future" you undid past is gone).
-    redo_stack: VecDeque<SceneHistoryDelta>,
-    voxel_undo: VecDeque<VoxelEditJournal>,
-    voxel_redo: VecDeque<VoxelEditJournal>,
+    /// The level's undo history (Pulsar-Native#554, #931): one entry per
+    /// mutating `SceneCommand` (`execute_command` commits them) or voxel
+    /// stroke, in the order they were made, bounded at
+    /// [`MAX_UNDO_HISTORY`]. Shared with every other view of the level
+    /// through the host's `UndoService` once [`Self::use_history`] hands it
+    /// the document's history.
+    history: SharedHistory<SceneEdit>,
+    /// The host's undo histories, when the editor was given them: the
+    /// level's history is the one kept for its file (one per document,
+    /// shared by every view of it).
+    pub undo_service: Option<UndoService>,
+}
+
+/// One undoable change to a level.
+#[derive(Debug)]
+pub enum SceneEdit {
+    /// A command's before/after state of the objects it touched.
+    Scene(SceneHistoryDelta),
+    /// A voxel sculpt stroke: the edits it appended.
+    Voxel(VoxelEditJournal),
+}
+
+impl UndoEntry for SceneEdit {}
+
+fn new_history() -> SharedHistory<SceneEdit> {
+    Arc::new(std::sync::Mutex::new(History::with_capacity(MAX_UNDO_HISTORY)))
 }
 
 impl Default for SceneDomain {
@@ -112,10 +129,8 @@ impl Default for SceneDomain {
             has_unsaved_changes: false,
             revision: 0,
             pending_selection_sync: false,
-            undo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
-            redo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
-            voxel_undo: VecDeque::new(),
-            voxel_redo: VecDeque::new(),
+            history: new_history(),
+            undo_service: None,
         }
     }
 }
@@ -139,10 +154,8 @@ impl SceneDomain {
             has_unsaved_changes: self.has_unsaved_changes,
             revision: self.revision,
             pending_selection_sync: self.pending_selection_sync,
-            undo_stack: VecDeque::new(),
-            redo_stack: VecDeque::new(),
-            voxel_undo: VecDeque::new(),
-            voxel_redo: VecDeque::new(),
+            history: new_history(),
+            undo_service: self.undo_service.clone(),
         }
     }
 
@@ -215,7 +228,7 @@ impl SceneDomain {
     //
     // v1, correctness-first: whole-scene snapshot per step, no per-command
     // diffing. `commands.rs::execute_command` is the sole call site that
-    // pushes onto `undo_stack` -- it captures the pre-state before running a
+    // commits scene edits -- it captures the pre-state before running a
     // mutating command and commits it here only if the command actually
     // changed something, so no-op commands and selection changes never
     // clutter the history. `undo`/`redo` themselves are not run through
@@ -232,105 +245,135 @@ impl SceneDomain {
         scene_edit::history::capture_history_snapshot(&self.world())
     }
 
-    /// Commit a previously captured pre-state onto the undo stack and clear
-    /// the redo stack. Called by `execute_command` only when the command it
-    /// preceded actually changed something.
+    /// Show the level stored at `path` (`None`: a never-saved one), and use
+    /// its history. `keep_history` carries the edits made so far over, for
+    /// the same level saved under a new name; opening or creating a level
+    /// starts from that level's own history instead, so an undo never
+    /// applies another level's edits.
+    pub fn set_current_scene(&mut self, path: Option<PathBuf>, keep_history: bool) {
+        let history = match (&self.undo_service, &path) {
+            (Some(service), Some(path)) => {
+                service.history::<SceneEdit>(&DocumentId::for_path(path))
+            }
+            _ => None,
+        }
+        .unwrap_or_else(new_history);
+        self.current_scene = path;
+        if keep_history {
+            self.use_history(history);
+        } else {
+            self.history = history;
+        }
+    }
+
+    /// Use the host's undo histories from now on, keeping the edits made
+    /// so far.
+    pub fn set_undo_service(&mut self, service: UndoService) {
+        self.undo_service = Some(service);
+        self.set_current_scene(self.current_scene.clone(), true);
+    }
+
+    /// Use `history` as this level's history (the one the host keeps for
+    /// the level's document, shared with its other views). The edits made
+    /// so far move into it when it is empty.
+    pub fn use_history(&mut self, history: SharedHistory<SceneEdit>) {
+        if Arc::ptr_eq(&history, &self.history) {
+            return;
+        }
+        {
+            let mut old = lock(&self.history);
+            let mut new = lock(&history);
+            if new.is_empty() && !new.can_redo() {
+                std::mem::swap(&mut *old, &mut *new);
+            }
+        }
+        self.history = history;
+    }
+
+    /// The level's history, for menus and the host's undo service.
+    pub fn history(&self) -> &SharedHistory<SceneEdit> {
+        &self.history
+    }
+
+    /// Commit a previously captured pre-state as one undoable edit. Called
+    /// by `execute_command` only when the command it preceded actually
+    /// changed something.
     pub fn commit_undo_checkpoint(
         &mut self,
         pre_state: SceneHistorySnapshot,
         post_state: SceneHistorySnapshot,
     ) {
-        self.undo_stack.push_back(SceneHistoryDelta {
+        let mut history = lock(&self.history);
+        history.push(SceneEdit::Scene(SceneHistoryDelta {
             before: pre_state,
             after: post_state,
-        });
-        if self.undo_stack.len() > MAX_UNDO_HISTORY {
-            self.undo_stack.pop_front();
-        }
-        self.redo_stack.clear();
+        }));
+        history.seal();
     }
 
     /// Commit a voxel append-range without capturing the terrain component.
     pub fn commit_voxel_journal(&mut self, journal: VoxelEditJournal) {
-        self.voxel_undo.push_back(journal);
-        if self.voxel_undo.len() > MAX_UNDO_HISTORY {
-            self.voxel_undo.pop_front();
-        }
-        self.voxel_redo.clear();
+        let mut history = lock(&self.history);
+        history.push(SceneEdit::Voxel(journal));
+        history.seal();
     }
 
     pub fn can_undo(&self) -> bool {
-        !self.undo_stack.is_empty() || !self.voxel_undo.is_empty()
+        lock(&self.history).can_undo()
     }
 
     pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty() || !self.voxel_redo.is_empty()
+        lock(&self.history).can_redo()
     }
 
-    /// Undo the last mutating command. Returns `true` if something was
-    /// undone (the caller should then bump the revision/mark unsaved, which
-    /// this method deliberately leaves to the caller since it has no `cx` to
-    /// notify with here).
+    /// Undo the last edit, scene command or voxel stroke, in the order they
+    /// were made. Returns `true` if something was undone (the caller should
+    /// then bump the revision/mark unsaved, which this method deliberately
+    /// leaves to the caller since it has no `cx` to notify with here). An
+    /// edit that can no longer be reverted is dropped.
     pub fn undo(&mut self) -> bool {
-        if let Some(journal) = self.voxel_undo.pop_back() {
-            if !self.apply_voxel_journal(&journal, false) {
-                self.voxel_undo.push_back(journal);
-                return false;
-            }
-            self.voxel_redo.push_back(journal);
-            return true;
-        }
-        let Some(delta) = self.undo_stack.pop_back() else {
-            return false;
-        };
-        let ids = delta.ids();
-        let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
-        if !self.restore_delta(&delta.before, &ids) {
-            self.undo_stack.push_back(delta);
-            return false;
-        }
-        // Redo returns to the state just left. Keeping `before` keeps the
-        // ids it names in scope, so redoing a removal removes the object.
-        self.redo_stack.push_back(SceneHistoryDelta {
-            before: delta.before,
-            after: current,
-        });
-        if self.redo_stack.len() > MAX_UNDO_HISTORY {
-            self.redo_stack.pop_front();
-        }
-        true
+        let history = Arc::clone(&self.history);
+        let mut history = lock(&history);
+        history
+            .undo(|edit| match edit {
+                SceneEdit::Voxel(journal) => self.apply_voxel_journal(journal, false),
+                SceneEdit::Scene(delta) => {
+                    let ids = delta.ids();
+                    let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
+                    if !self.restore_delta(&delta.before, &ids) {
+                        return false;
+                    }
+                    // Redo returns to the state just left. Keeping `before`
+                    // keeps the ids it names in scope, so redoing a removal
+                    // removes the object.
+                    delta.after = current;
+                    true
+                }
+            })
+            .is_some()
     }
 
-    /// Redo the last undone command. See [`Self::undo`]'s doc for the
-    /// caller's responsibilities on success.
+    /// Redo the last undone edit. See [`Self::undo`]'s doc for the caller's
+    /// responsibilities on success.
     pub fn redo(&mut self) -> bool {
-        if let Some(journal) = self.voxel_redo.pop_back() {
-            if !self.apply_voxel_journal(&journal, true) {
-                self.voxel_redo.push_back(journal);
-                return false;
-            }
-            self.voxel_undo.push_back(journal);
-            return true;
-        }
-        let Some(delta) = self.redo_stack.pop_back() else {
-            return false;
-        };
-        let ids = delta.ids();
-        let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
-        if !self.restore_delta(&delta.after, &ids) {
-            self.redo_stack.push_back(delta);
-            return false;
-        }
-        // Undo returns to the state just left; `after` keeps its ids in
-        // scope, so undoing a redone add removes the object.
-        self.undo_stack.push_back(SceneHistoryDelta {
-            before: current,
-            after: delta.after,
-        });
-        if self.undo_stack.len() > MAX_UNDO_HISTORY {
-            self.undo_stack.pop_front();
-        }
-        true
+        let history = Arc::clone(&self.history);
+        let mut history = lock(&history);
+        history
+            .redo(|edit| match edit {
+                SceneEdit::Voxel(journal) => self.apply_voxel_journal(journal, true),
+                SceneEdit::Scene(delta) => {
+                    let ids = delta.ids();
+                    let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
+                    if !self.restore_delta(&delta.after, &ids) {
+                        return false;
+                    }
+                    // Undo returns to the state just left; `after` keeps its
+                    // ids in scope, so undoing a redone add removes the object.
+                    delta.before = current;
+                    true
+                }
+            })
+            .is_some()
     }
 
     fn apply_voxel_journal(&mut self, journal: &VoxelEditJournal, redo: bool) -> bool {
