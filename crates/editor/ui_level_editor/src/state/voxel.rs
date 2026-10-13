@@ -44,10 +44,11 @@ impl Default for VoxelSculptDomain {
 }
 
 pub const MIN_RADIUS_M: f32 = 0.1;
-/// Up to 2 km (a 4 km footprint): brushes larger than a few metres stay
-/// analytic shapes in the engine, so their cost is the columns they cover
-/// regenerating, which streaming spreads over frames.
-pub const MAX_RADIUS_M: f32 = 2_000.0;
+/// Up to 10 000 km, planet scale (a world can be destroyed whole): brushes
+/// larger than a few metres stay analytic shapes in the engine, so their
+/// cost is the tiles they cover regenerating, coarsest first, which
+/// streaming spreads over frames.
+pub const MAX_RADIUS_M: f32 = 10_000_000.0;
 /// Solid terrain material ids (see `helio_component::voxel_world::material`):
 /// every built-in material, shared by all terrain programs.
 pub const MATERIALS: std::ops::RangeInclusive<u32> = 1..=helio_component::voxel_world::material::COUNT - 1;
@@ -242,7 +243,7 @@ mod tests {
         sculpt.mode = VoxelSculptMode::Smooth;
         assert_eq!(sculpt.request(true).tool, VoxelBrushTool::Smooth, "Shift swaps only dig and build");
         sculpt.mode = VoxelSculptMode::Paint;
-        sculpt.set_radius(10_000.0);
+        sculpt.set_radius(1.0e9);
         sculpt.set_material(0);
         assert_eq!((sculpt.radius_m, sculpt.material), (MAX_RADIUS_M, 1));
         assert_eq!(sculpt.material_name(), "Grass");
