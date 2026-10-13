@@ -32,7 +32,9 @@ use ui::dock::{PanelInfo, PanelState};
 /// The most dormant tabs one window keeps. Oldest are dropped first.
 pub(super) const MAX_DORMANT: usize = 64;
 
-/// Which saved root a dormant leaf belonged to.
+/// Which saved root a dormant leaf belonged to. A pop-out is a root of its
+/// own, named by its stable id rather than its position (positions shift when
+/// a pop-out is closed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum DormantRoot {
@@ -40,6 +42,8 @@ pub(crate) enum DormantRoot {
     Left,
     Right,
     Bottom,
+    /// The tree of the saved pop-out with this id (`SavedPopout::id`).
+    Popout(u32),
 }
 
 /// The identity of a tab, used to find the group a dormant leaf sat in.
@@ -138,6 +142,15 @@ pub(super) fn prune(
         kept.drain(..kept.len() - MAX_DORMANT);
     }
     kept
+}
+
+/// Drop leaves that belong to a pop-out which is not part of the save (the
+/// user closed it): there is nowhere to offer them again.
+pub(super) fn drop_orphaned(leaves: &mut Vec<DormantLeaf>, saved_popouts: &[u32]) {
+    leaves.retain(|leaf| match leaf.root {
+        DormantRoot::Popout(id) => saved_popouts.contains(&id),
+        _ => true,
+    });
 }
 
 /// Put `leaf` back into the tab group of `tree` where it belongs: the group
@@ -272,6 +285,18 @@ mod tests {
     }
 
     #[test]
+    fn leaves_of_a_closed_popout_are_dropped() {
+        let mut leaves = vec![
+            leaf(DormantRoot::Center, None, "a.dat"),
+            leaf(DormantRoot::Popout(1), None, "b.dat"),
+            leaf(DormantRoot::Popout(2), None, "c.dat"),
+        ];
+        drop_orphaned(&mut leaves, &[2]);
+        assert_eq!(leaves.len(), 2);
+        assert_eq!(leaves[1].root, DormantRoot::Popout(2));
+    }
+
+    #[test]
     fn restore_keyed_dormant_leaves_are_kept_without_a_file_check() {
         let l = DormantLeaf {
             root: DormantRoot::Right,
@@ -289,6 +314,20 @@ mod tests {
         let holder: Holder =
             serde_json::from_value(serde_json::json!([good, { "root": "nowhere" }, 7])).unwrap();
         assert_eq!(holder.0.len(), 1);
+    }
+
+    #[test]
+    fn popout_roots_round_trip_beside_the_old_string_roots() {
+        let l = leaf(DormantRoot::Popout(3), None, "x.dat");
+        let json = serde_json::to_value(&l).unwrap();
+        assert_eq!(json["root"], serde_json::json!({ "popout": 3 }));
+        assert_eq!(serde_json::from_value::<DormantLeaf>(json).unwrap(), l);
+        // Files written before pop-out roots existed still read.
+        let old = serde_json::json!({ "root": "center", "state": l.state });
+        assert_eq!(
+            serde_json::from_value::<DormantLeaf>(old).unwrap().root,
+            DormantRoot::Center
+        );
     }
 
     #[test]

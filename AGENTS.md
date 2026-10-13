@@ -15,6 +15,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `.agents/ECS.md` | SceneDB's archetype ECS — `World`, queries, journals, `Schedule`, actors |
 | `.agents/SCENEDB_MIGRATION.md` | Scene data as built: SceneDB ownership, component instances, data flow, observers, renderer, architecture checks |
+| `.agents/LAYOUT.md` | Layout persistence — `.pulsar/layout.json` v2 slots, resolve/validate/commit restore, restorers + dormant tabs, zoom, chrome, pop-outs |
 | `.agents/FILE_MANAGER.md` | `ui_file_manager` — flat crate layout, modules, conventions |
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
@@ -24,6 +25,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | Path | What |
 |---|---|
 | `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer (`asset_import`) |
+| `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Import options per native asset (`engine_fs::import_options`) |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
 

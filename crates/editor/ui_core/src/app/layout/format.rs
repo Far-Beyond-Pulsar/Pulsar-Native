@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use ui::dock::{DockAreaState, DockState, PanelState};
+use ui::dock::{DockAreaState, DockState, PanelInfo, PanelState, ZoomedState};
 
 use super::super::chrome::SavedChrome;
 use super::super::nav_sidebar::model::SavedSidebar;
@@ -80,10 +80,36 @@ pub(super) struct SavedWindowLayout {
 /// One pop-out window: where it was and the whole tree it held (a pop-out can
 /// have been split, or had tabs dropped into it).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(super) struct SavedPopout {
+pub(crate) struct SavedPopout {
+    /// Stable within the window's slot: names this pop-out as a dormant root
+    /// ([`DormantRoot::Popout`]). Files without one read as 0; duplicates are
+    /// renumbered on load.
+    #[serde(default)]
+    pub id: u32,
     pub bounds: SavedWindow,
     /// The pop-out dock's tree, in the same form as the main window's centre.
     pub dock: PanelState,
+    /// The zoomed group of the pop-out's dock, named like the main window's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoomed: Option<ZoomedState>,
+}
+
+impl SavedPopout {
+    /// A pop-out with no tabs yet: it keeps its place (id and bounds) in the
+    /// file while everything it held is dormant, and is the tab group the
+    /// dormant tabs are reinserted into.
+    pub fn empty(id: u32, bounds: SavedWindow) -> Self {
+        Self {
+            id,
+            bounds,
+            dock: PanelState {
+                panel_name: "TabPanel".into(),
+                info: PanelInfo::tabs(0),
+                ..Default::default()
+            },
+            zoomed: None,
+        }
+    }
 }
 
 /// Deserialize a list leniently: an entry that does not parse is skipped
@@ -161,6 +187,46 @@ fn read_raw(path: &Path) -> Option<RawLayout> {
     parse(&text, path)
 }
 
+/// Copy a layout file this build cannot read to `layout.json.bak` (once), so
+/// the next save, which replaces it, does not destroy the only copy.
+fn keep_unreadable_copy(path: &Path) {
+    let backup = path.with_extension("json.bak");
+    if !backup.exists() {
+        if let Err(error) = std::fs::copy(path, &backup) {
+            tracing::warn!("could not keep a copy of the unreadable layout: {error}");
+        }
+    }
+}
+
+/// The file to modify for a write. A missing file starts empty and an
+/// unreadable one is replaced (a copy is kept), but a file that exists and
+/// cannot be read right now, or that belongs to another version, is never
+/// overwritten: a write would erase layouts this build does not understand.
+fn raw_for_write(path: &Path) -> std::io::Result<RawLayout> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RawLayout::default())
+        }
+        Err(error) => return Err(error),
+    };
+    if let Ok(value) = serde_json::from_str::<Value>(&text) {
+        let version = value.get("version").and_then(Value::as_u64);
+        if let Some(v) = version {
+            if v != u64::from(LAYOUT_VERSION) && v != u64::from(LEGACY_VERSION) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("layout file has version {v}; not overwriting it"),
+                ));
+            }
+        }
+    }
+    Ok(parse(&text, path).unwrap_or_else(|| {
+        keep_unreadable_copy(path);
+        RawLayout::default()
+    }))
+}
+
 /// The saved layout of window `slot`, if the file and the slot are readable.
 pub(super) fn read_slot(path: &Path, slot: &str) -> Option<SavedWindowLayout> {
     let raw = read_raw(path)?;
@@ -168,6 +234,8 @@ pub(super) fn read_slot(path: &Path, slot: &str) -> Option<SavedWindowLayout> {
         Ok(layout) => Some(layout),
         Err(error) => {
             tracing::warn!("ignoring unreadable layout slot {slot}: {error}");
+            // The next save replaces the slot; keep what could not be read.
+            keep_unreadable_copy(path);
             None
         }
     }
@@ -179,7 +247,7 @@ pub(super) fn write_slot(
     slot: &str,
     layout: &SavedWindowLayout,
 ) -> std::io::Result<()> {
-    let mut raw = read_raw(path).unwrap_or_default();
+    let mut raw = raw_for_write(path)?;
     raw.windows
         .insert(slot.to_string(), serde_json::to_value(layout)?);
     write_raw(path, &raw)
@@ -289,6 +357,9 @@ impl SavedWindowLayout {
         }
         for popout in &mut self.popouts {
             relativize(&mut popout.dock, root);
+            if let Some(zoomed) = &mut popout.zoomed {
+                relativize(&mut zoomed.panel, root);
+            }
         }
         for leaf in &mut self.dormant {
             relativize(&mut leaf.state, root);
@@ -306,6 +377,9 @@ impl SavedWindowLayout {
         }
         for popout in &mut self.popouts {
             absolutize(&mut popout.dock, root);
+            if let Some(zoomed) = &mut popout.zoomed {
+                absolutize(&mut zoomed.panel, root);
+            }
         }
         for leaf in &mut self.dormant {
             absolutize(&mut leaf.state, root);
@@ -319,7 +393,12 @@ impl SavedWindowLayout {
     /// is resolved with everything else, and clear the list (whatever still
     /// cannot be resolved becomes dormant again). Call after [`Self::absolutize`].
     pub fn reinsert_dormant(&mut self) {
-        let leaves = std::mem::take(&mut self.dormant);
+        // A hand-edited or damaged file must not make this unbounded.
+        let mut leaves = std::mem::take(&mut self.dormant);
+        if leaves.len() > dormant::MAX_DORMANT {
+            leaves.drain(..leaves.len() - dormant::MAX_DORMANT);
+        }
+        self.renumber_duplicate_popout_ids();
         edit_roots(&mut self.dock, &mut |root, tree| {
             for leaf in leaves.iter().filter(|l| l.root == root) {
                 if !dormant::reinsert(tree, leaf) {
@@ -327,6 +406,34 @@ impl SavedWindowLayout {
                 }
             }
         });
+        for popout in &mut self.popouts {
+            let root = DormantRoot::Popout(popout.id);
+            for leaf in leaves.iter().filter(|l| l.root == root) {
+                if !dormant::reinsert(&mut popout.dock, leaf) {
+                    tracing::debug!("layout: no tab group in a pop-out for a dormant tab");
+                }
+            }
+        }
+    }
+
+    /// Pop-out ids name dormant roots, so they must be unique. Files without
+    /// ids (all 0) keep the first and renumber the rest.
+    fn renumber_duplicate_popout_ids(&mut self) {
+        let mut taken: std::collections::HashSet<u32> =
+            self.popouts.iter().map(|p| p.id).collect();
+        let mut seen = std::collections::HashSet::new();
+        let mut next = 0u32;
+        for popout in &mut self.popouts {
+            if seen.insert(popout.id) {
+                continue;
+            }
+            while taken.contains(&next) {
+                next += 1;
+            }
+            popout.id = next;
+            taken.insert(next);
+            seen.insert(next);
+        }
     }
 }
 
@@ -694,6 +801,8 @@ pub(super) mod tests {
     fn popout(files: &[&str], x: f32) -> SavedPopout {
         use gpui::{point, px, size, Bounds, WindowBounds};
         SavedPopout {
+            id: 0,
+            zoomed: None,
             bounds: SavedWindow::capture(
                 WindowBounds::Windowed(Bounds {
                     origin: point(px(x), px(40.)),
@@ -738,6 +847,107 @@ pub(super) mod tests {
             root.join("c.rs")
         );
         assert_eq!(read.popouts[0].bounds, original.popouts[0].bounds);
+    }
+
+    #[test]
+    fn popout_zoom_is_rewritten_and_dormant_tabs_return_to_their_popout() {
+        let root = Path::new("/proj");
+        let mut a = popout(&["/proj/a.rs"], 10.);
+        a.id = 4;
+        a.zoomed = Some(ZoomedState {
+            panel: PanelState::default().with_file("/proj/a.rs"),
+            placement: ui::dock::DockPlacement::Center,
+            path: vec![],
+        });
+        let mut b = popout(&["/proj/b.rs"], 20.);
+        b.id = 9;
+        let mut layout = SavedWindowLayout {
+            popouts: vec![a, b, SavedPopout::empty(2, popout(&[], 0.).bounds)],
+            dormant: vec![
+                DormantLeaf {
+                    root: DormantRoot::Popout(9),
+                    anchor: Some(AnchorKey::File("/proj/b.rs".into())),
+                    state: PanelState::default().with_file("/proj/b.xyz"),
+                },
+                DormantLeaf {
+                    root: DormantRoot::Popout(2),
+                    anchor: None,
+                    state: PanelState::default().with_file("/proj/ghost.xyz"),
+                },
+                // Its pop-out is gone from the file: nowhere to go.
+                DormantLeaf {
+                    root: DormantRoot::Popout(77),
+                    anchor: None,
+                    state: PanelState::default().with_file("/proj/lost.xyz"),
+                },
+            ],
+            ..Default::default()
+        };
+
+        layout.relativize(root);
+        assert_eq!(
+            layout.popouts[0].zoomed.as_ref().unwrap().panel.file(),
+            Some("a.rs")
+        );
+        layout.absolutize(root);
+        assert_eq!(
+            Path::new(layout.popouts[0].zoomed.as_ref().unwrap().panel.file().unwrap()),
+            root.join("a.rs")
+        );
+
+        layout.reinsert_dormant();
+        assert!(layout.dormant.is_empty());
+        assert_eq!(layout.popouts[1].dock.children.len(), 2);
+        assert_eq!(layout.popouts[0].dock.children.len(), 1, "other popouts untouched");
+        // The ghost is an empty tab group: it takes its dormant tab.
+        assert_eq!(layout.popouts[2].dock.children.len(), 1);
+    }
+
+    #[test]
+    fn duplicate_or_missing_popout_ids_are_renumbered() {
+        let mut layout = SavedWindowLayout {
+            popouts: vec![popout(&["a.rs"], 1.), popout(&["b.rs"], 2.), popout(&["c.rs"], 3.)],
+            ..Default::default()
+        };
+        layout.popouts[2].id = 1;
+        layout.reinsert_dormant();
+        let ids: Vec<u32> = layout.popouts.iter().map(|p| p.id).collect();
+        assert_eq!(ids, vec![0, 2, 1]);
+    }
+
+    #[test]
+    fn a_file_of_another_version_is_never_overwritten() {
+        let dir = temp("no-overwrite");
+        let path = layout_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let future = r#"{"version":3,"windows":{"0":{"new":"shape"}}}"#;
+        std::fs::write(&path, future).unwrap();
+
+        assert!(write_slot(&path, PRIMARY_SLOT, &SavedWindowLayout::default()).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), future);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_file_is_replaced_but_a_copy_is_kept() {
+        let dir = temp("garbage");
+        let path = layout_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{ not json").unwrap();
+
+        write_slot(&path, PRIMARY_SLOT, &SavedWindowLayout::default()).unwrap();
+        assert!(read_slot(&path, PRIMARY_SLOT).is_some());
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("json.bak")).unwrap(),
+            "{ not json"
+        );
+        // An empty or non-object file is the same story and must not panic.
+        for junk in ["", "[]", "null", "{\"version\":2}", "{\"version\":2,\"windows\":[]}"] {
+            std::fs::write(&path, junk).unwrap();
+            assert!(read_slot(&path, PRIMARY_SLOT).is_none());
+            write_slot(&path, PRIMARY_SLOT, &SavedWindowLayout::default()).unwrap();
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -1,3 +1,17 @@
+> **Status: implemented** (branch `layout-persistence`). As built: see `.agents/LAYOUT.md`.
+> Deviations that were decided while building:
+>
+> - Mission Control, Git Manager, Problems and the Type Debugger are separate OS
+>   windows, not dock chrome; they are **not persisted** (only the file manager
+>   drawer's docked / height are).
+> - Pop-outs **do not claim live singleton panels**; their tabs are rebuilt from
+>   restore keys and files only. Dormant tabs inside pop-outs are supported
+>   (`DormantRoot::Popout(id)`, empty "ghost" pop-outs).
+> - **No secondary editor window of the same project exists yet**: slots other than
+>   0 are implemented and unit tested but nothing creates a second window.
+> - A restored maximized pop-out on a vanished display comes back windowed.
+> - The `PanelWindow` / `create_detached_window` pop-out path was deleted.
+
 # Layout persistence, complete (Pulsar-Native#1016)
 
 Goal: every piece of editor layout the user can arrange survives a restart,

@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use gpui::{App, Entity, WeakEntity};
 use ui::dock::{
-    open_popout_with, DockArea, DockChannel, DockItem, DockPlacement, PanelSource, PanelView,
-    PopoutSpec, TabPanel,
+    live_popouts, open_popout_with, DockArea, DockChannel, DockItem, DockPlacement, PanelSource,
+    PanelView, PopoutSpec, TabPanel, ZoomedState,
 };
 
 use super::resolve::{Plan, PopoutPlan, ResolvedLayout};
@@ -93,9 +93,33 @@ fn fill_anchor(
     }
 }
 
-/// A pop-out window opened by [`commit`]: its handle and the windowed bounds it
-/// returns to when maximized.
-pub(super) type OpenedPopout = (gpui::AnyWindowHandle, Option<gpui::Bounds<gpui::Pixels>>);
+/// A pop-out window opened by [`commit`]: its handle, its saved id and the
+/// windowed bounds it returns to when maximized.
+pub(super) type OpenedPopout = (
+    gpui::AnyWindowHandle,
+    u32,
+    Option<gpui::Bounds<gpui::Pixels>>,
+);
+
+/// Zoom the group of a freshly opened pop-out that `zoomed` names (by the
+/// identity of its active panel, like the main window); dropped if none matches.
+fn apply_popout_zoom(handle: gpui::AnyWindowHandle, zoomed: &ZoomedState, cx: &mut App) {
+    let Some(dock) = live_popouts(cx)
+        .into_iter()
+        .find(|p| p.window == handle)
+        .and_then(|p| p.dock_area.upgrade())
+    else {
+        return;
+    };
+    let applied = handle
+        .update(cx, |_, window, cx| {
+            dock.update(cx, |area, cx| area.apply_zoomed(zoomed, window, cx))
+        })
+        .unwrap_or(false);
+    if !applied {
+        tracing::debug!("layout: saved pop-out zoom matches no tab group; dropped");
+    }
+}
 
 /// Open the pop-out windows of a restore. Their tabs return to the centre
 /// `anchor` group of `parent` when the user closes them, so closing a restored
@@ -108,6 +132,8 @@ fn open_popouts(
 ) -> Vec<OpenedPopout> {
     let mut opened = Vec::new();
     for PopoutPlan {
+        id,
+        zoomed,
         bounds,
         restore_bounds,
         plan,
@@ -126,7 +152,12 @@ fn open_popouts(
         let source = PanelSource::tab_panel(anchor, parent, None);
         let spec = PopoutSpec::tree(build, bounds, DockChannel::default(), Some(source));
         match open_popout_with(spec, cx) {
-            Some(handle) => opened.push((handle, restore_bounds)),
+            Some(handle) => {
+                if let Some(zoomed) = zoomed {
+                    apply_popout_zoom(handle, &zoomed, cx);
+                }
+                opened.push((handle, id, restore_bounds));
+            }
             None => tracing::warn!("layout: could not reopen a pop-out window"),
         }
     }
@@ -148,6 +179,7 @@ pub(super) fn commit(
         docks,
         unmentioned,
         dormant: _,
+        ghost_popouts: _,
         zoomed,
         popouts,
     } = resolved;

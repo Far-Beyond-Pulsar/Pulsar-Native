@@ -55,8 +55,11 @@ use ui::dock::{
 };
 
 use super::dormant::{AnchorKey, DormantLeaf, DormantRoot, PendingDormant};
-use super::format::SavedWindowLayout;
+use super::format::{SavedPopout, SavedWindowLayout};
 use super::window_geometry;
+
+/// The most pop-outs one restore opens: a bound against a damaged file.
+const MAX_POPOUTS: usize = 16;
 
 // ── Plan ─────────────────────────────────────────────────────────────────────
 
@@ -402,8 +405,10 @@ impl LeafSources for Resolver<'_> {
             tracing::info!("layout: skipping {} (no longer exists)", path.display());
             return FileStep::Gone;
         }
+        // No plugin manager means nothing is registered to edit the file; keep
+        // the tab for a session that has one rather than dropping it.
         let Some(manager) = plugin_manager::global() else {
-            return FileStep::Failed;
+            return FileStep::NoEditor;
         };
         let mut manager = manager.write();
         manager.set_project_root(Some(self.project_root.clone()));
@@ -461,6 +466,10 @@ pub(super) struct DockPlan {
 
 /// A resolved pop-out window, ready to open.
 pub(super) struct PopoutPlan {
+    /// The saved pop-out's id; kept while the window lives.
+    pub id: u32,
+    /// The zoom to apply once the window is open.
+    pub zoomed: Option<ZoomedState>,
     /// Validated against the connected displays.
     pub bounds: gpui::WindowBounds,
     /// The windowed size a maximized pop-out returns to.
@@ -481,6 +490,10 @@ pub(super) struct ResolvedLayout {
     pub zoomed: Option<ZoomedState>,
     /// Pop-out windows to open once the main layout is installed.
     pub popouts: Vec<PopoutPlan>,
+    /// Saved pop-outs that open nothing because everything they held is
+    /// dormant. They stay in the file (empty, with their id and bounds) so the
+    /// dormant tabs have a pop-out to come back to.
+    pub ghost_popouts: Vec<SavedPopout>,
 }
 
 /// Validation bookkeeping shared by the roots of one window.
@@ -529,8 +542,11 @@ pub(super) fn resolve_layout(
         seen: HashSet::new(),
         dormant: Vec::new(),
     };
+    // `claim_live`: whether the root may claim the live panels by name. Pop-outs
+    // never do: a live panel sits in the main window's dock.
     let resolve = |state: &mut ResolveState,
-                   root: Option<DormantRoot>,
+                   root: DormantRoot,
+                   claim_live: bool,
                    tree: &PanelState,
                    window: &mut Window,
                    cx: &mut App| {
@@ -538,7 +554,7 @@ pub(super) fn resolve_layout(
         let plan = {
             let mut resolver = Resolver {
                 project_root: project_root.to_path_buf(),
-                claim_live: root.is_some(),
+                claim_live,
                 snapshot,
                 claims: &mut state.claims,
                 dormant: &mut pending,
@@ -547,21 +563,9 @@ pub(super) fn resolve_layout(
             };
             resolve_tree(&mut resolver, tree)
         };
-        match root {
-            Some(root) => state
-                .dormant
-                .extend(pending.into_iter().map(|p| p.into_leaf(root))),
-            // A tab no plugin can build in a pop-out is not kept (the dormant
-            // list has no pop-out root; see the module docs).
-            None => {
-                for p in pending {
-                    tracing::info!(
-                        "layout: a pop-out tab cannot be rebuilt and is dropped: {}",
-                        p.state.panel_name
-                    );
-                }
-            }
-        }
+        state
+            .dormant
+            .extend(pending.into_iter().map(|p| p.into_leaf(root)));
         plan
     };
 
@@ -570,7 +574,8 @@ pub(super) fn resolve_layout(
     // centre as it is rather than orphan the entity everything holds.
     let center = resolve(
         &mut state,
-        Some(DormantRoot::Center),
+        DormantRoot::Center,
+        true,
         &saved.dock.center,
         window,
         cx,
@@ -615,7 +620,7 @@ pub(super) fn resolve_layout(
         if !dock_area.read(cx).has_dock(placement) {
             continue;
         }
-        let Some(plan) = resolve(&mut state, Some(root), saved_dock.panel(), window, cx) else {
+        let Some(plan) = resolve(&mut state, root, true, saved_dock.panel(), window, cx) else {
             continue;
         };
         if !state.admit(&plan) {
@@ -633,19 +638,34 @@ pub(super) fn resolve_layout(
     // Pop-outs: more roots, resolved after the main window's so the main
     // layout wins any contested panel. Their windows open at commit.
     let mut popouts = Vec::new();
-    for saved_popout in &saved.popouts {
-        let Some(plan) = resolve(&mut state, None, &saved_popout.dock, window, cx) else {
-            tracing::info!("layout: a saved pop-out resolves to nothing; dropped");
+    let mut ghost_popouts = Vec::new();
+    for saved_popout in saved.popouts.iter().take(MAX_POPOUTS) {
+        let root = DormantRoot::Popout(saved_popout.id);
+        let plan = resolve(&mut state, root, false, &saved_popout.dock, window, cx);
+        let admitted = match plan {
+            Some(plan) if state.admit(&plan) => Some(plan),
+            Some(plan) => {
+                state.release(&plan);
+                None
+            }
+            None => None,
+        };
+        let Some(plan) = admitted else {
+            // Nothing opens, but tabs it held that no plugin can build yet stay
+            // saved under the pop-out's place in the file.
+            if state.dormant.iter().any(|leaf| leaf.root == root) {
+                ghost_popouts.push(SavedPopout::empty(saved_popout.id, saved_popout.bounds));
+            } else {
+                tracing::info!("layout: a saved pop-out resolves to nothing; dropped");
+            }
             continue;
         };
-        if !state.admit(&plan) {
-            state.release(&plan);
-            continue;
-        }
         popouts.push(PopoutPlan {
+            id: saved_popout.id,
             bounds: window_geometry::fit_to_connected_displays(saved_popout.bounds, cx),
             restore_bounds: Some(saved_popout.bounds.bounds),
             plan,
+            zoomed: saved_popout.zoomed.clone(),
         });
     }
 
@@ -663,6 +683,7 @@ pub(super) fn resolve_layout(
         dormant: state.dormant,
         zoomed: saved.dock.zoomed.clone(),
         popouts,
+        ghost_popouts,
     }
 }
 

@@ -503,6 +503,7 @@ impl PulsarApp {
                 layout_window: None,
                 layout_closing: false,
                 layout_popouts: Default::default(),
+                layout_ghosts: Vec::new(),
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };

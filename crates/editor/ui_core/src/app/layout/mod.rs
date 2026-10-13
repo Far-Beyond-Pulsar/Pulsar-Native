@@ -51,7 +51,7 @@
 //! it if no group matches.
 //!
 //! **Pop-outs.** Every live pop-out window opened from this window is saved
-//! under `popouts` as `{ bounds, dock }`: its window geometry (same rule as the
+//! under `popouts` as `{ id, bounds, dock, zoomed }`: its window geometry (same rule as the
 //! main window, maximized pop-outs save the windowed size to return to) and the
 //! whole tree of its own dock, since it may have been split or had tabs dropped
 //! into it. `ui::dock::popout_events` (Opened / Changed / Closed) arm the same
@@ -71,9 +71,19 @@
 //! a window whose display is gone opens windowed at the default size near the
 //! primary display's corner). Closing a restored pop-out returns its tabs to the
 //! centre anchor group of the main window. A pop-out that resolves to nothing is
-//! dropped. Limitation: tabs inside a pop-out that nothing can rebuild (plugin
-//! disabled) are not kept dormant, since the dormant list is per main root; they
-//! are lost at the next save.
+//! dropped. The zoomed group of a pop-out is saved in its `zoomed` and applied
+//! once its window is open (same identity rule as the main window). A pop-out
+//! restored on a display that is gone opens windowed near the primary display;
+//! if it was maximized it comes back windowed, not maximized (accepted).
+//!
+//! Tabs inside a pop-out that nothing can rebuild (plugin disabled) are kept
+//! dormant like the main window's, under the root `DormantRoot::Popout(id)`.
+//! `id` is the stable `SavedPopout::id` (positions shift when one closes). A
+//! pop-out whose tabs are *all* dormant opens no window; it stays in the file as
+//! an empty pop-out (a "ghost") carrying its id and bounds so its tabs have
+//! somewhere to return to, and goes once no dormant tab refers to it. Closing a
+//! pop-out drops its dormant tabs; a save drops dormant tabs of pop-outs it does
+//! not contain.
 //!
 //! **Windows and slots.** Every editor window of a project owns one slot of
 //! `layout.json` (see [`format`], [`store`]). The slot is claimed when the
@@ -127,12 +137,22 @@ use gpui::{AnyWindowHandle, AppContext as _, Context, Window, WindowBounds};
 use ui::dock::{live_popouts, popout_events, DockEvent, PopoutEvent};
 
 use super::PulsarApp;
-use format::{SavedPopout, SavedWindowLayout};
+use format::SavedWindowLayout;
 use store::{LayoutStore, MAX_REOPENED, PRIMARY};
 use window_geometry::SavedWindow;
 
 pub(crate) use dormant::DormantLeaf;
+pub(crate) use format::SavedPopout;
 pub(crate) use window_geometry::{saved_window_bounds, saved_window_bounds_for};
+
+/// What a window remembers about one of its pop-outs.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct PopoutNote {
+    /// The pop-out's id in the saved layout (see [`SavedPopout::id`]).
+    pub id: u32,
+    /// The last windowed bounds, which a maximized pop-out returns to.
+    pub restore: Option<gpui::Bounds<gpui::Pixels>>,
+}
 
 /// Quiet time after the last layout change before it is written.
 const SAVE_DEBOUNCE: Duration = Duration::from_secs(4);
@@ -265,7 +285,13 @@ impl PulsarApp {
             PopoutEvent::Closed { window } => {
                 // The pop-out is already gone from `live_popouts`, so the next
                 // save leaves it out.
-                if self.state.layout_popouts.remove(&window).is_some() {
+                if let Some(note) = self.state.layout_popouts.remove(&window) {
+                    // Its dormant tabs go with it, so a new pop-out reusing the
+                    // id does not inherit them.
+                    self.state
+                        .layout_dormant
+                        .retain(|leaf| leaf.root != dormant::DormantRoot::Popout(note.id));
+                    self.state.layout_ghosts.retain(|g| g.id != note.id);
                     self.schedule_layout_save(cx);
                 }
             }
@@ -288,15 +314,40 @@ impl PulsarApp {
             Ok(WindowBounds::Windowed(b)) => Some(b),
             _ => None,
         };
-        let entry = self.state.layout_popouts.entry(window).or_default();
+        let note = self.popout_note(window);
         if windowed.is_some() {
-            *entry = windowed;
+            note.restore = windowed;
         }
         self.schedule_layout_save(cx);
     }
 
+    /// The note for pop-out `window`, giving it the lowest unused id if new.
+    fn popout_note(&mut self, window: AnyWindowHandle) -> &mut PopoutNote {
+        if !self.state.layout_popouts.contains_key(&window) {
+            let taken: Vec<u32> = self
+                .state
+                .layout_popouts
+                .values()
+                .map(|note| note.id)
+                .chain(self.state.layout_ghosts.iter().map(|g| g.id))
+                .chain(self.state.layout_dormant.iter().filter_map(|leaf| match leaf.root {
+                    dormant::DormantRoot::Popout(id) => Some(id),
+                    _ => None,
+                }))
+                .collect();
+            let id = (0..).find(|id| !taken.contains(id)).unwrap_or(u32::MAX);
+            self.state
+                .layout_popouts
+                .insert(window, PopoutNote { id, restore: None });
+        }
+        self.state
+            .layout_popouts
+            .get_mut(&window)
+            .expect("inserted above")
+    }
+
     /// Every live pop-out opened from this window, as saved.
-    fn capture_popouts(&self, cx: &mut Context<Self>) -> Vec<SavedPopout> {
+    fn capture_popouts(&mut self, cx: &mut Context<Self>) -> Vec<SavedPopout> {
         let Some(me) = self.state.layout_window else {
             return Vec::new();
         };
@@ -308,7 +359,8 @@ impl PulsarApp {
             let Some(dock) = info.dock_area.upgrade() else {
                 continue;
             };
-            let remembered = self.state.layout_popouts.get(&info.window).copied().flatten();
+            let note = *self.popout_note(info.window);
+            let remembered = note.restore;
             let bounds = match cx.update_window(info.window, |_, w, _| w.window_bounds()) {
                 Ok(bounds) => bounds,
                 // Mid-update (its own callback is running): fall back to the
@@ -318,13 +370,16 @@ impl PulsarApp {
                     None => continue,
                 },
             };
-            let tree = dock.read(cx).dump(cx).center;
+            let dump = dock.read(cx).dump(cx);
+            let tree = dump.center;
             if tree.children.is_empty() {
                 continue;
             }
             saved.push(SavedPopout {
+                id: note.id,
                 bounds: SavedWindow::capture(bounds, remembered),
                 dock: tree,
+                zoomed: dump.zoomed,
             });
         }
         saved
@@ -354,6 +409,26 @@ impl PulsarApp {
             return;
         };
 
+        let popouts = self.capture_popouts(cx);
+        // Tabs no plugin could build this session ride along unchanged, kept
+        // only for pop-outs that are part of this save.
+        let mut dormant = dormant::prune(self.state.layout_dormant.clone(), |p| p.exists());
+        let ghosts: Vec<SavedPopout> = self
+            .state
+            .layout_ghosts
+            .iter()
+            .filter(|g| {
+                dormant
+                    .iter()
+                    .any(|leaf| leaf.root == dormant::DormantRoot::Popout(g.id))
+            })
+            .cloned()
+            .collect();
+        let saved_ids: Vec<u32> = popouts.iter().chain(&ghosts).map(|p| p.id).collect();
+        dormant::drop_orphaned(&mut dormant, &saved_ids);
+        let mut popouts = popouts;
+        popouts.extend(ghosts);
+
         let mut layout = SavedWindowLayout {
             dock: self.state.dock_area.read(cx).dump(cx),
             window: self
@@ -362,9 +437,8 @@ impl PulsarApp {
                 .map(|b| SavedWindow::capture(b, self.state.window_restore_bounds)),
             sidebar: self.state.nav_sidebar.read(cx).model.save(&root),
             chrome: self.state.chrome.save(),
-            // Tabs no plugin could build this session ride along unchanged.
-            popouts: self.capture_popouts(cx),
-            dormant: dormant::prune(self.state.layout_dormant.clone(), |p| p.exists()),
+            popouts,
+            dormant,
             ..Default::default()
         };
         layout.relativize(&root);
@@ -411,6 +485,7 @@ impl PulsarApp {
         let resolved = resolve::resolve_layout(&layout, &snapshot, &root, &dock_area, window, cx);
         // Whatever is still unbuildable is shelved again (and so saved again).
         self.state.layout_dormant = resolved.dormant.clone();
+        self.state.layout_ghosts = resolved.ghost_popouts.clone();
 
         // Phase 2: attach.
         let popouts = commit::commit(
@@ -422,8 +497,10 @@ impl PulsarApp {
             cx,
         );
         // Seed the windowed size a restored maximized pop-out returns to.
-        for (handle, restore) in popouts {
-            self.state.layout_popouts.insert(handle, restore);
+        for (handle, id, restore) in popouts {
+            self.state
+                .layout_popouts
+                .insert(handle, PopoutNote { id, restore });
         }
 
         self.refresh_open_editor_snapshot(cx);
