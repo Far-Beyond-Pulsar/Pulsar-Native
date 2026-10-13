@@ -175,8 +175,10 @@ impl PulsarApp {
 
         // The app quitting is learnt before any window is torn down, so windows
         // that close as part of it keep their slots.
-        cx.on_app_quit(|_, _| {
+        cx.on_app_quit(|app, cx| {
             LayoutStore::global().mark_quitting();
+            // Last chance to write while the windows are still open.
+            app.flush_layout_for_close(cx);
             async {}
         })
         .detach();
@@ -236,19 +238,30 @@ impl PulsarApp {
 
         // Flush a pending change when the window closes.
         let this = cx.entity().downgrade();
-        window.on_window_should_close(cx, move |window, cx| {
-            let bounds = window.window_bounds();
-            _ = this.update(cx, |app, cx| {
-                app.note_window_bounds(bounds);
-                // Pop-outs are still alive here, so this captures them. Once
-                // it is written they close with the window, and nothing may
-                // save over it.
-                app.save_layout_now(cx);
-                app.state.layout_closing = true;
-                app.state.layout_save_task = None;
-            });
-            true
+        window.on_window_should_close(cx, {
+            let this = this.clone();
+            move |window, cx| {
+                let bounds = window.window_bounds();
+                _ = this.update(cx, |app, cx| {
+                    app.note_window_bounds(bounds);
+                    app.flush_layout_for_close(cx);
+                });
+                true
+            }
         });
+        // The title-bar close button removes the window without a close request,
+        // so it runs this hook instead.
+        ui_common::close_hooks::on_before_close(
+            window,
+            move |window, cx| {
+                let bounds = window.window_bounds();
+                _ = this.update(cx, |app, cx| {
+                    app.note_window_bounds(bounds);
+                    app.flush_layout_for_close(cx);
+                });
+            },
+            cx,
+        );
 
         // Restore once construction (plugin manager included) has finished.
         let this = cx.entity();
@@ -385,6 +398,18 @@ impl PulsarApp {
         saved
     }
 
+    /// Write the layout one last time, while the window and its pop-outs are
+    /// still alive, then stop saving: pop-outs closing along with the window
+    /// must not save over it.
+    fn flush_layout_for_close(&mut self, cx: &mut Context<Self>) {
+        if self.state.layout_closing {
+            return;
+        }
+        self.save_layout_now(cx);
+        self.state.layout_closing = true;
+        self.state.layout_save_task = None;
+    }
+
     /// (Re)arm the debounce timer. Dropping the previous task cancels it.
     pub(super) fn schedule_layout_save(&mut self, cx: &mut Context<Self>) {
         if !self.state.layout_persist || !self.state.layout_ready || self.state.layout_closing {
@@ -446,6 +471,12 @@ impl PulsarApp {
         let Some(slot) = self.state.layout_slot else {
             return;
         };
+        tracing::info!(
+            slot,
+            popouts = layout.popouts.len(),
+            left_open = layout.dock.left_dock.as_ref().map(|d| d.is_open()),
+            "layout: saving"
+        );
         if let Err(error) = LayoutStore::global().save_slot(&root, slot, &layout) {
             tracing::warn!("could not save the editor layout: {error}");
         }
@@ -480,6 +511,12 @@ impl PulsarApp {
         let dock_area = self.state.dock_area.clone();
         let anchor = self.state.center_tabs.clone();
 
+        tracing::info!(
+            slot,
+            popouts = layout.popouts.len(),
+            left_open = layout.dock.left_dock.as_ref().map(|d| d.is_open()),
+            "layout: restoring"
+        );
         // Phase 1: resolve against a read-only snapshot; nothing live changes.
         let snapshot = resolve::LiveSnapshot::capture(&dock_area, &anchor, cx);
         let resolved = resolve::resolve_layout(&layout, &snapshot, &root, &dock_area, window, cx);
