@@ -51,6 +51,8 @@ impl AssetQuery {
 
 pub struct MeshAssetPicker {
     searchable_list: Entity<AssetSearchableList<AssetItem>>,
+    /// Loaded thumbnails by path. Shared with the list, which reads it per visible row.
+    thumbnails: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>>,
     /// Source-of-truth item list — thumbnails are written here as they load.
     items: Vec<AssetItem>,
     /// Tracks which paths have already had a thumbnail task spawned so we don't double-spawn.
@@ -125,6 +127,8 @@ impl MeshAssetPicker {
                 .unwrap_or_else(|| PathBuf::from("."))
         });
 
+        let thumbnails: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>> = Default::default();
+        let (image_map, picker) = (thumbnails.clone(), cx.weak_entity());
         let searchable_list = cx.new(|cx| {
             AssetSearchableList::new(
                 window,
@@ -133,7 +137,15 @@ impl MeshAssetPicker {
                 |item| item.display_name.clone(),
                 |item| item.path.clone(),
             )
-            .with_image_getter(|item| item.thumbnail.clone().map(ImageSource::Render))
+            .with_image_getter(move |item| image_map.borrow().get(&item.path).cloned().map(ImageSource::Render))
+            // Thumbnails are only made for what is on screen: a project can hold
+            // thousands of images and rendering them all at once freezes the editor.
+            .with_visible_callback(move |visible, cx| {
+                for item in visible {
+                    let path = item.path.clone();
+                    picker.update(cx, |picker, cx| picker.ensure_thumbnail(path, cx)).ok();
+                }
+            })
             .with_empty_text("No matching assets")
             .with_max_width(px(360.0))
             .with_max_height(px(420.0))
@@ -156,6 +168,7 @@ impl MeshAssetPicker {
 
         let mut picker = Self {
             searchable_list,
+            thumbnails,
             items,
             thumbnail_requested: std::collections::HashSet::new(),
             project_root,
@@ -196,10 +209,7 @@ impl MeshAssetPicker {
     /// Return the cached thumbnail for `path` if one has already been loaded.
     /// Returns `None` while still loading or for unsupported file types.
     pub fn thumbnail_for_path(&self, path: &str) -> Option<Arc<gpui::RenderImage>> {
-        self.items
-            .iter()
-            .find(|item| item.path == path)
-            .and_then(|item| item.thumbnail.clone())
+        self.thumbnails.borrow().get(path).cloned()
     }
 
     /// Request a thumbnail for a palette tile without opening the picker.
@@ -277,13 +287,9 @@ impl MeshAssetPicker {
 
             let _ = cx.update(|cx| {
                 this.update(cx, |picker, cx| {
-                    if let Some(item) = picker.items.iter_mut().find(|i| i.path == path_key) {
-                        item.thumbnail = Some(render_image);
-                    }
-                    let updated = picker.items.clone();
-                    picker.searchable_list.update(cx, |list, cx| {
-                        list.set_items(updated, cx);
-                    });
+                    picker.thumbnails.borrow_mut().insert(path_key, render_image);
+                    // Redraw the rows; the items themselves haven't changed.
+                    picker.searchable_list.update(cx, |_, cx| cx.notify());
                     cx.notify();
                 })
             });
@@ -293,14 +299,7 @@ impl MeshAssetPicker {
 }
 
 impl Render for MeshAssetPicker {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Mirror the file drawer: request thumbnails for each item as it becomes
-        // visible (i.e. when the picker is open and rendered). The
-        // thumbnail_requested set makes repeated render passes no-ops.
-        let paths: Vec<String> = self.items.iter().map(|i| i.path.clone()).collect();
-        for path in paths {
-            self.ensure_thumbnail(path, cx);
-        }
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         self.searchable_list.clone()
     }
 }
