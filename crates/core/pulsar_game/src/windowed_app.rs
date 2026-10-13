@@ -14,7 +14,7 @@ use std::time::Instant;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, ElementState, WindowEvent},
-    event_loop::ActiveEventLoop,
+    event_loop::{ActiveEventLoop, ControlFlow},
     window::{CursorGrabMode, Window, WindowId},
 };
 
@@ -40,6 +40,25 @@ struct GameWindow {
     renderer: Renderer,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
+    /// Whether the OS says this window has input focus.
+    focused: bool,
+    /// Earliest time the next frame may be requested. Holds back windows that
+    /// cannot present (occluded, minimised) and, with several game copies
+    /// running, the ones nobody is looking at.
+    next_redraw: Instant,
+}
+
+/// Frame interval of an unfocused window when several game copies are running.
+const BACKGROUND_FRAME: std::time::Duration = std::time::Duration::from_millis(66);
+/// Retry interval of a window that could not present a frame.
+const BLOCKED_FRAME: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Whether this process is one of several game copies launched together.
+fn running_beside_copies() -> bool {
+    std::env::var("PULSAR_INSTANCE_COUNT")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .is_some_and(|n| n > 1)
 }
 
 impl GameWindow {
@@ -114,6 +133,8 @@ impl GameWindow {
             queue,
             renderer,
             freecam: FreeCam::default(),
+            focused: true,
+            next_redraw: Instant::now(),
         }
     }
 
@@ -186,14 +207,18 @@ impl GameWindow {
                 texture
             }
             wgpu::CurrentSurfaceTexture::Timeout => {
-                tracing::warn!(
+                tracing::debug!(
                     window = self.handle.id(),
                     "Skipping frame after surface acquisition timeout"
                 );
+                self.next_redraw = Instant::now() + BLOCKED_FRAME;
                 return;
             }
             wgpu::CurrentSurfaceTexture::Occluded => {
-                tracing::warn!(window = self.handle.id(), "Skipping frame: window occluded");
+                // Nothing can be shown: don't spin re-requesting frames (or
+                // log every one) until the window is visible again.
+                tracing::debug!(window = self.handle.id(), "Skipping frame: window occluded");
+                self.next_redraw = Instant::now() + BLOCKED_FRAME;
                 return;
             }
             wgpu::CurrentSurfaceTexture::Validation => {
@@ -367,6 +392,8 @@ pub struct PulsarApp {
     last_frame: Instant,
     /// When the last frame was drawn, for the profiler's frame markers.
     last_redraw: Option<Instant>,
+    /// Several copies of the game are running; unfocused windows draw slowly.
+    throttle_background: bool,
 }
 
 impl PulsarApp {
@@ -398,6 +425,7 @@ impl PulsarApp {
             last_cursor: None,
             last_frame: Instant::now(),
             last_redraw: None,
+            throttle_background: running_beside_copies(),
         }
     }
 
@@ -650,6 +678,10 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
             // ── Focus ─────────────────────────────────────────────────────────
             WindowEvent::Focused(focused) => {
+                if let Some(gw) = self.windows.get_mut(&handle) {
+                    gw.focused = focused;
+                    gw.next_redraw = Instant::now();
+                }
                 if focused {
                     self.focused_window = Some(handle);
                     // Re-capture when regaining focus (if we were captured before).
@@ -776,8 +808,12 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                     Some(cam) => Some(cam),
                     None => select_world_camera(&self.scene_store.read()),
                 };
+                let background = self.throttle_background;
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(ecs_camera);
+                    if background && !gw.focused {
+                        gw.next_redraw = gw.next_redraw.max(Instant::now() + BACKGROUND_FRAME);
+                    }
                 }
             }
 
@@ -785,16 +821,27 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
 
-        // Advance every window's freecam and request a redraw.
+        // Advance every window's freecam and request a redraw for the ones
+        // that are due; sleep until the earliest of the rest instead of
+        // spinning.
+        let mut wake: Option<Instant> = None;
         for gw in self.windows.values_mut() {
             gw.freecam.update(dt);
-            gw.window.request_redraw();
+            if now >= gw.next_redraw {
+                gw.window.request_redraw();
+            } else {
+                wake = Some(wake.map_or(gw.next_redraw, |w| w.min(gw.next_redraw)));
+            }
         }
+        event_loop.set_control_flow(match wake {
+            Some(at) => ControlFlow::WaitUntil(at),
+            None => ControlFlow::Wait,
+        });
     }
 }
 

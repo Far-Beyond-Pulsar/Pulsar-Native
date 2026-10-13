@@ -207,6 +207,13 @@ pub fn run_with(
     options: LaunchOptions,
     setup: impl FnOnce(&mut TickLoop) -> Result<(), String>,
 ) -> Result<Option<HeadlessReport>, String> {
+    // A shipped game doesn't edit shaders: keep Helio's file watcher (a
+    // thread polling 20x a second, plus every shader's source held for
+    // rebuilds) out of it unless the developer asked for it. Set before any
+    // other thread exists, as the variable is read once.
+    if std::env::var_os("HELIO_SHADER_HOT_RELOAD").is_none() {
+        std::env::set_var("HELIO_SHADER_HOT_RELOAD", "0");
+    }
     let content = install_content(&options)?;
     if options.profile || profiling::remote::requested() {
         let published = profiling::remote::publish_process(profiling::remote::TargetDescription {
@@ -218,9 +225,18 @@ pub fn run_with(
             tracing::info!("Profiling enabled: the editor's profiler can record this process");
         }
     }
-    let threads = std::thread::available_parallelism()
+    // Several copies launched together (multiplayer testing) split the cores
+    // between them instead of each sizing its pool to the whole machine.
+    let copies = std::env::var("PULSAR_INSTANCE_COUNT")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(1);
+    let threads = (std::thread::available_parallelism()
         .map(|n| n.get())
-        .unwrap_or(4);
+        .unwrap_or(4)
+        / copies)
+        .max(1);
     if options.headless {
         let mut game = TickLoop::new(TickMode::Fixed { dt: HEADLESS_STEP }, threads);
         setup(&mut game).map_err(|e| format!("Level setup failed: {e}"))?;

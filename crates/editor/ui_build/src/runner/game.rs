@@ -61,7 +61,9 @@ pub async fn launch_and_monitor(
                 break;
             }
         }
-        let spawned = Command::new("cargo")
+        let mut spawned = Command::new("cargo");
+        spawned
+
             .arg(invocation.subcommand)
             .args(&invocation.args)
             .envs(invocation.envs.iter().map(|(k, v)| (k, v)))
@@ -70,13 +72,16 @@ pub async fn launch_and_monitor(
             .env("PULSAR_INSTANCE_INDEX", index.to_string())
             .env("PULSAR_INSTANCE_COUNT", count.to_string())
             .env("PULSAR_PIPELINE_CACHE", &cache_file)
-            // Publish the game for the profiler (listed in its start screen;
-            // nothing is recorded until a recording starts).
-            .env(profiling::remote::ENV_FLAG, "1")
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
-            .stderr(Stdio::piped())
-            .spawn();
+            .stderr(Stdio::piped());
+        // Publish the game for the profiler (listed in its start screen;
+        // nothing is recorded until a recording starts). Only the first copy:
+        // each publisher maps its own 32 MB ring and runs a polling thread.
+        if index == 0 {
+            spawned.env(profiling::remote::ENV_FLAG, "1");
+        }
+        let spawned = spawned.spawn();
         let mut child = match spawned {
             Ok(child) => child,
             Err(error) => {
@@ -98,9 +103,7 @@ pub async fn launch_and_monitor(
         let (stderr_tx, stderr_rx) = smol::channel::bounded::<String>(1);
         std::thread::spawn(move || {
             let Some(pipe) = stderr_pipe else { return };
-            let mut buffer = String::new();
-            let _ = BufReader::new(pipe).read_to_string(&mut buffer);
-            let _ = smol::block_on(stderr_tx.send(buffer));
+            let _ = smol::block_on(stderr_tx.send(read_tail(pipe)));
         });
         stderrs.insert(child.id(), (index, stderr_rx));
         game.read().0.lock().push(child);
@@ -191,6 +194,28 @@ pub async fn launch_and_monitor(
             cx,
         );
     });
+}
+
+/// Most of a game's stderr kept for a crash report.
+const STDERR_KEEP: usize = 256 * 1024;
+
+/// Read `pipe` to the end, keeping only the last [`STDERR_KEEP`] bytes: a game
+/// that logs without end must not grow the editor's memory with it.
+fn read_tail(pipe: impl std::io::Read) -> String {
+    let mut reader = BufReader::new(pipe);
+    let mut kept: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 16 * 1024];
+    while let Ok(n) = reader.read(&mut chunk) {
+        if n == 0 {
+            break;
+        }
+        kept.extend_from_slice(&chunk[..n]);
+        if kept.len() > 2 * STDERR_KEEP {
+            kept.drain(..kept.len() - STDERR_KEEP);
+        }
+    }
+    let start = kept.len().saturating_sub(STDERR_KEEP);
+    String::from_utf8_lossy(&kept[start..]).into_owned()
 }
 
 /// Write `stderr` to `<project>/.pulsar/crash-reports/crash_<time>.log`.
