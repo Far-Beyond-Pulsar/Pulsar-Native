@@ -311,12 +311,14 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
         let panel =
             cx.new(|cx| asset_viewer_plugin::AssetViewerPanel::new(file_path.clone(), window, cx));
+        let undo = editor_context.services.undo.clone();
+        panel.update(cx, |panel, _| panel.set_undo_service(undo));
         Ok(Arc::new(panel))
     }
 }
@@ -435,7 +437,7 @@ impl BuiltinEditorProvider for ShaderEditorBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
@@ -452,6 +454,9 @@ impl BuiltinEditorProvider for ShaderEditorBuiltinProvider {
                 }
             }
         });
+
+        let undo = editor_context.services.undo.clone();
+        panel.update(cx, |panel, cx| panel.set_undo_service(undo, cx));
 
         // Keep plugin AI tools aligned with the currently opened material's graph state.
         let graph_snapshot = panel.read(cx).graph.clone();

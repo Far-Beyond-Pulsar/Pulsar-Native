@@ -796,11 +796,15 @@ mod undo_redo_tests {
         assert!(state.scene.record_gizmo_drag(entity, before));
         assert_eq!(position(&state), [4.0, 0.0, 0.0], "recording leaves it moved");
         assert_eq!(lock(state.scene.history()).undo_label().as_deref(), Some("Move"));
-        assert!(!state.scene.record_gizmo_drag(entity, *state
+        let now = *state
             .scene
             .world()
             .get::<engine_backend::scene::Transform>(entity)
-            .unwrap()), "a drag that ended where it started is not recorded");
+            .unwrap();
+        assert!(
+            !state.scene.record_gizmo_drag(entity, now),
+            "a drag that ended where it started is not recorded"
+        );
 
         assert!(state.scene.undo());
         assert_eq!(position(&state), before.position);

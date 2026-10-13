@@ -334,6 +334,28 @@ impl UndoService {
         Some(history)
     }
 
+    /// Point `history` at the one kept for `document`, shared with its
+    /// other views. What `history` recorded before (a view that learned its
+    /// document late) moves over when the document's history is empty.
+    /// Returns `false`, leaving `history` as it is, when the document's
+    /// history holds another entry type.
+    pub fn adopt<E: UndoEntry>(&self, document: &DocumentId, history: &mut SharedHistory<E>) -> bool {
+        let Some(shared) = self.history::<E>(document) else {
+            return false;
+        };
+        if !Arc::ptr_eq(&shared, history) {
+            {
+                let mut old = lock(history);
+                let mut new = lock(&shared);
+                if new.is_empty() && !new.can_redo() {
+                    std::mem::swap(&mut *old, &mut *new);
+                }
+            }
+            *history = shared;
+        }
+        true
+    }
+
     /// `document`'s history as the host sees it, while any view holds it.
     pub fn view(&self, document: &DocumentId) -> Option<Arc<dyn HistoryView>> {
         let histories = self.histories.lock().unwrap_or_else(|p| p.into_inner());
@@ -511,6 +533,26 @@ mod tests {
         drop((first, second, view));
         assert!(service.view(&level).is_none());
         assert!(!lock(&service.history::<Edit>(&level).unwrap()).can_undo());
+    }
+
+    #[test]
+    fn a_view_adopting_its_document_brings_its_early_edits() {
+        let service = UndoService::new();
+        let doc = DocumentId::new("graph");
+        let mut early: SharedHistory<Edit> = Arc::default();
+        lock(&early).push(Edit::Push("a".into()));
+        assert!(service.adopt(&doc, &mut early));
+        assert_eq!(lock(&early).undo_label().as_deref(), Some("add a"));
+
+        // A second view finds them, and its own early edits stay behind.
+        let mut late: SharedHistory<Edit> = Arc::default();
+        lock(&late).push(Edit::Push("b".into()));
+        assert!(service.adopt(&doc, &mut late));
+        assert!(Arc::ptr_eq(&early, &late));
+        assert_eq!(lock(&late).len(), 1);
+
+        let mut wrong: SharedHistory<u8> = Arc::default();
+        assert!(!service.adopt(&doc, &mut wrong));
     }
 
     impl UndoEntry for u8 {}

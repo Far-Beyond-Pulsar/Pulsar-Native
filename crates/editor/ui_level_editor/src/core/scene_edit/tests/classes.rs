@@ -18,6 +18,26 @@ fn light_json(intensity: f32) -> Value {
 }
 
 /// A project with a `Lamp` class holding two LightComponents.
+/// The fallback project root is process-wide: a test that sets it holds
+/// this until it ends (panicking or not), so parallel tests don't see each
+/// other's projects.
+struct FallbackProjectRoot(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+impl FallbackProjectRoot {
+    fn set(root: &Path) -> Self {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let guard = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        classes::set_fallback_project_root(Some(root.to_path_buf()));
+        Self(guard)
+    }
+}
+
+impl Drop for FallbackProjectRoot {
+    fn drop(&mut self) {
+        classes::set_fallback_project_root(None);
+    }
+}
+
 fn project_with_lamp(intensity: f32) -> (tempfile::TempDir, PathBuf) {
     let project = tempfile::tempdir().unwrap();
     let dir = project.path().join("src").join("classes").join("Lamp");
@@ -459,7 +479,7 @@ fn reverts_and_variable_edits_are_undoable_commands() {
     use crate::state::LevelEditorState;
 
     let (project, dir) = project_with_lamp(1.0);
-    classes::set_fallback_project_root(Some(project.path().to_path_buf()));
+    let _root = FallbackProjectRoot::set(project.path());
     let mut state = LevelEditorState::new();
     let a = {
         let mut world = state.scene.world_mut();
@@ -530,7 +550,6 @@ fn reverts_and_variable_edits_are_undoable_commands() {
             .variable_overrides["speed"],
         json!(8.0)
     );
-    classes::set_fallback_project_root(None);
 }
 
 /// #931: a class rebuild lands between an edit and its undo. Undo restores
@@ -543,7 +562,7 @@ fn undo_past_a_class_rebuild_keeps_the_current_class() {
     use plugin_editor_api::{AssetKind, AssetUpdated};
 
     let (project, dir) = project_with_lamp(1.0);
-    classes::set_fallback_project_root(Some(project.path().to_path_buf()));
+    let _root = FallbackProjectRoot::set(project.path());
     let mut state = LevelEditorState::new();
     let a = place(&mut state.scene.world_mut(), &dir, 0.0);
     // An override, through an undoable command.
@@ -592,7 +611,6 @@ fn undo_past_a_class_rebuild_keeps_the_current_class() {
         assert_eq!(light(&world, &a).intensity.intensity, 3.0);
         assert_eq!(children(&world, &a).len(), 1);
     }
-    classes::set_fallback_project_root(None);
 }
 
 /// #931: two open levels with instances of one class. Rebuilding the first

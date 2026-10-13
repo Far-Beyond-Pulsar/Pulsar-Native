@@ -27,7 +27,7 @@ impl LevelEditorMenus {
                     .undo_redo(
                         t!("LevelEditor.Menu.Undo"),
                         t!("LevelEditor.Menu.Redo"),
-                        Some(&**state.scene.history() as &dyn plugin_editor_api::HistoryView),
+                        Some(state.scene.history().clone() as _),
                     )
                     .separator()
                     .action_if(t!("LevelEditor.Menu.Duplicate"), DuplicateObject, selected)

@@ -14,6 +14,7 @@
 //! action's key binding.
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui::{
     div, Action, App, ElementId, FocusHandle, InteractiveElement as _, IntoElement,
@@ -42,6 +43,14 @@ pub enum EditorMenuItem {
     },
     Separator,
     Submenu(EditorMenu),
+    /// Undo and Redo of `history`, as [`EditorMenu::undo_redo`] describes.
+    /// Read when the menu opens, so they are current even when the editor
+    /// did not re-render after its last edit.
+    UndoRedo {
+        undo: SharedString,
+        redo: SharedString,
+        history: Option<Arc<dyn crate::undo::HistoryView>>,
+    },
 }
 
 impl EditorMenu {
@@ -77,28 +86,17 @@ impl EditorMenu {
     /// nothing to undo or redo. They dispatch the shared [`crate::Undo`] and
     /// [`crate::Redo`], which the editor handles for its document.
     pub fn undo_redo(
-        self,
+        mut self,
         undo: impl Into<SharedString>,
         redo: impl Into<SharedString>,
-        history: Option<&dyn crate::undo::HistoryView>,
+        history: Option<Arc<dyn crate::undo::HistoryView>>,
     ) -> Self {
-        let label = |word: SharedString, what: Option<String>| -> SharedString {
-            match what {
-                Some(what) if !what.is_empty() => format!("{word} {what}").into(),
-                _ => word,
-            }
-        };
-        let (can_undo, can_redo) = history.map_or((false, false), |h| (h.can_undo(), h.can_redo()));
-        self.action_if(
-            label(undo.into(), history.and_then(|h| h.undo_label())),
-            crate::undo::Undo,
-            can_undo,
-        )
-        .action_if(
-            label(redo.into(), history.and_then(|h| h.redo_label())),
-            crate::undo::Redo,
-            can_redo,
-        )
+        self.items.push(EditorMenuItem::UndoRedo {
+            undo: undo.into(),
+            redo: redo.into(),
+            history,
+        });
+        self
     }
 
     pub fn separator(mut self) -> Self {
@@ -126,6 +124,30 @@ impl EditorMenu {
                     enabled,
                 } => popup.menu_with_disabled(label.clone(), action.boxed_clone(), !enabled),
                 EditorMenuItem::Separator => popup.separator(),
+                EditorMenuItem::UndoRedo {
+                    undo,
+                    redo,
+                    history,
+                } => {
+                    let history = history.as_deref();
+                    let label = |word: &SharedString, what: Option<String>| -> SharedString {
+                        match what {
+                            Some(what) if !what.is_empty() => format!("{word} {what}").into(),
+                            _ => word.clone(),
+                        }
+                    };
+                    popup
+                        .menu_with_disabled(
+                            label(undo, history.and_then(|h| h.undo_label())),
+                            Box::new(crate::undo::Undo),
+                            !history.is_some_and(|h| h.can_undo()),
+                        )
+                        .menu_with_disabled(
+                            label(redo, history.and_then(|h| h.redo_label())),
+                            Box::new(crate::undo::Redo),
+                            !history.is_some_and(|h| h.can_redo()),
+                        )
+                }
                 EditorMenuItem::Submenu(menu) => {
                     let menu = Rc::new(EditorMenu {
                         label: menu.label.clone(),
@@ -155,6 +177,15 @@ impl EditorMenuItem {
                 enabled: *enabled,
             },
             Self::Separator => Self::Separator,
+            Self::UndoRedo {
+                undo,
+                redo,
+                history,
+            } => Self::UndoRedo {
+                undo: undo.clone(),
+                redo: redo.clone(),
+                history: history.clone(),
+            },
             Self::Submenu(menu) => Self::Submenu(EditorMenu {
                 label: menu.label.clone(),
                 items: menu.items.iter().map(Self::duplicate).collect(),

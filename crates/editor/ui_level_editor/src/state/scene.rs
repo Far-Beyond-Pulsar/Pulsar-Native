@@ -91,8 +91,7 @@ pub struct SceneDomain {
     /// mutating `SceneCommand` (`execute_command` commits them) or voxel
     /// stroke, in the order they were made, bounded at
     /// [`MAX_UNDO_HISTORY`]. Shared with every other view of the level
-    /// through the host's `UndoService` once [`Self::use_history`] hands it
-    /// the document's history.
+    /// through the host's `UndoService` (see [`Self::set_current_scene`]).
     history: SharedHistory<SceneEdit>,
     /// The host's undo histories, when the editor was given them: the
     /// level's history is the one kept for its file (one per document,
@@ -260,18 +259,12 @@ impl SceneDomain {
     /// starts from that level's own history instead, so an undo never
     /// applies another level's edits.
     pub fn set_current_scene(&mut self, path: Option<PathBuf>, keep_history: bool) {
-        let history = match (&self.undo_service, &path) {
-            (Some(service), Some(path)) => {
-                service.history::<SceneEdit>(&DocumentId::for_path(path))
-            }
-            _ => None,
-        }
-        .unwrap_or_else(new_history);
         self.current_scene = path;
-        if keep_history {
-            self.use_history(history);
-        } else {
-            self.history = history;
+        if !keep_history {
+            self.history = new_history();
+        }
+        if let (Some(service), Some(path)) = (&self.undo_service, &self.current_scene) {
+            service.adopt(&DocumentId::for_path(path), &mut self.history);
         }
     }
 
@@ -280,23 +273,6 @@ impl SceneDomain {
     pub fn set_undo_service(&mut self, service: UndoService) {
         self.undo_service = Some(service);
         self.set_current_scene(self.current_scene.clone(), true);
-    }
-
-    /// Use `history` as this level's history (the one the host keeps for
-    /// the level's document, shared with its other views). The edits made
-    /// so far move into it when it is empty.
-    pub fn use_history(&mut self, history: SharedHistory<SceneEdit>) {
-        if Arc::ptr_eq(&history, &self.history) {
-            return;
-        }
-        {
-            let mut old = lock(&self.history);
-            let mut new = lock(&history);
-            if new.is_empty() && !new.can_redo() {
-                std::mem::swap(&mut *old, &mut *new);
-            }
-        }
-        self.history = history;
     }
 
     /// The level's history, for menus and the host's undo service.
