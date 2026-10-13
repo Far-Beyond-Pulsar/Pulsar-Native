@@ -47,3 +47,9 @@
 [submodule "plugins/vendor/skm_editor"]
 	path = plugins/vendor/skm_editor
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_SKM
+[submodule "plugins/vendor/ui_editor"]
+	path = plugins/vendor/ui_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_UI
+[submodule "plugins/vendor/input_plugin"]
+	path = plugins/vendor/input_plugin
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Input
