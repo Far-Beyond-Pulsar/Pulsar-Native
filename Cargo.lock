@@ -14014,6 +14014,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_editor_plugin"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "plugin_editor_api",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ui",
+ "uuid",
+]
+
+[[package]]
 name = "ui_fab_search"
 version = "0.1.0"
 dependencies = [
