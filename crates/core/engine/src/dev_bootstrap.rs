@@ -15,6 +15,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use ui::button::{Button, ButtonVariants as _};
 
 const SIDECAR_ARG: &str = "--pulsar-bootstrap-sidecar-run";
 
@@ -63,13 +64,13 @@ fn run_sidecar_ui(args: Vec<OsString>, stable_executable: Option<PathBuf>) {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
                     origin: Point::default(),
-                    size: size(px(480.0), px(230.0)),
+                    size: size(px(620.0), px(360.0)),
                 })),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Bootstrap Engine".into()),
                     ..Default::default()
                 }),
-                is_resizable: false,
+                is_resizable: true,
                 ..Default::default()
             },
             |window, cx| cx.new(|cx| BootstrapView::new(shared, window, cx)),
@@ -142,7 +143,7 @@ impl Render for BootstrapView {
             .size_full()
             .flex()
             .flex_col()
-            .justify_center()
+            .justify_start()
             .gap_4()
             .px_6()
             .py_5()
@@ -199,34 +200,32 @@ impl Render for BootstrapView {
                     div()
                         .flex()
                         .gap_3()
-                        .child(action_button("Relaunch last stable", move || {
-                            choose(&shared_for_relaunch, true)
-                        }))
-                        .child(action_button("Quit", move || {
-                            choose(&shared_for_close, false)
-                        })),
+                        .child(
+                            Button::new("bootstrap-relaunch-stable")
+                                .primary()
+                                .label("Relaunch last stable")
+                                .on_click(move |_, _, _| choose(&shared_for_relaunch, true)),
+                        )
+                        .child(
+                            Button::new("bootstrap-quit")
+                                .ghost()
+                                .label("Quit")
+                                .on_click(move |_, _, _| choose(&shared_for_close, false)),
+                        ),
                 )
             })
     }
-}
-
-fn action_button(label: &'static str, action: impl Fn() + 'static) -> impl IntoElement {
-    div()
-        .px_3()
-        .py_2()
-        .rounded(px(4.0))
-        .bg(rgb(0x343a46))
-        .hover(|style| style.bg(rgb(0x465267)))
-        .cursor_pointer()
-        .text_sm()
-        .child(label)
-        .on_click(move |_, _, _| action())
 }
 
 fn choose(shared: &SharedState, choice: bool) {
     let (lock, condition) = &**shared;
     let mut state = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     state.choice = Some(choice);
+    state.stage = if choice {
+        "Restoring and relaunching the last stable engine".into()
+    } else {
+        "Closing bootstrap".into()
+    };
     condition.notify_all();
 }
 
