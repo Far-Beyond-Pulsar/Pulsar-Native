@@ -52,7 +52,6 @@ That's it. Your window is now in the registry and can be opened from anywhere.
 | `WindowConfig::editor()` | 1600×900 | Main editor window |
 | `WindowConfig::entry()` | 1100×700 | Entry / project-selection screen |
 | `WindowConfig::dialog(w, h)` | custom | Settings, About, Docs, any dialog |
-| `WindowConfig::detached_panel(cursor)` | 800×600, cursor-relative | Panels popped out of the dock |
 
 `default_window_options(w, h)` is an alias for `WindowConfig::dialog(w, h)`.
 

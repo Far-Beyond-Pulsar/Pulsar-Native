@@ -498,7 +498,7 @@ impl NavSidebar {
 
     fn show_file_drawer(&mut self, cx: &mut Context<Self>) {
         _ = self.app.update(cx, |app, cx| {
-            app.state.drawer_open = true;
+            app.state.chrome.drawer_open = true;
             cx.notify();
         });
         self.close_hover(cx);

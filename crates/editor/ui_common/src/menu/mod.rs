@@ -502,6 +502,7 @@ impl Render for AppTitleBar {
         }
 
         TitleBar::new()
+            .on_close_window(|_, window, cx| crate::close_hooks::close_window(window, cx))
             .unified_background(cx.theme().background)
             .child(
                 div()

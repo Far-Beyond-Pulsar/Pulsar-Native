@@ -16,7 +16,6 @@ pub enum WindowRequest {
     FileManager {
         project_path: Option<String>,
     },
-    DetachedPanel,
     Component,
     CloseWindow {
         window_id: u64,

@@ -323,7 +323,7 @@ impl PulsarApp {
                                 Button::new("toggle-log-viewer")
                                     .ghost()
                                     .icon(Icon::new(IconName::Page).size(px(16.)).text_color(
-                                        if self.state.mission_control_open {
+                                        if self.state.chrome.mission_control_open {
                                             cx.theme().primary
                                         } else {
                                             cx.theme().muted_foreground
@@ -332,7 +332,7 @@ impl PulsarApp {
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
-                                    .when(self.state.mission_control_open, |s| {
+                                    .when(self.state.chrome.mission_control_open, |s| {
                                         s.bg(cx.theme().primary.opacity(0.15))
                                     })
                                     .tooltip("Mission Control")
@@ -344,7 +344,7 @@ impl PulsarApp {
                                 Button::new("open-git-manager")
                                     .ghost()
                                     .icon(Icon::new(IconName::GitBranch).size(px(16.)).text_color(
-                                        if self.state.git_manager_open {
+                                        if self.state.chrome.git_manager_open {
                                             cx.theme().primary
                                         } else {
                                             cx.theme().muted_foreground
@@ -353,7 +353,7 @@ impl PulsarApp {
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
-                                    .when(self.state.git_manager_open, |s| {
+                                    .when(self.state.chrome.git_manager_open, |s| {
                                         s.bg(cx.theme().primary.opacity(0.15))
                                     })
                                     .tooltip("Git Manager")
@@ -706,8 +706,8 @@ impl Render for PulsarApp {
             None
         };
 
-        let drawer_open = self.state.drawer_open;
-        let drawer_docked = self.state.drawer_docked;
+        let drawer_open = self.state.chrome.drawer_open;
+        let drawer_docked = self.state.chrome.drawer_docked;
         let resize_handle_blue = Hsla::from(rgb(0x1684ff));
         let resize_handle_black = Hsla::from(rgb(0x000000));
 
@@ -796,7 +796,7 @@ impl Render for PulsarApp {
                                 .on_mouse_down(
                                     MouseButton::Left,
                                     cx.listener(|app, _, _window, cx| {
-                                        app.state.drawer_open = false;
+                                        app.state.chrome.drawer_open = false;
                                         cx.notify();
                                     }),
                                 ),
@@ -807,7 +807,7 @@ impl Render for PulsarApp {
                                 .bottom_0()
                                 .left_4()
                                 .right_4()
-                                .h(px(self.state.drawer_height))
+                                .h(px(self.state.chrome.drawer_height))
                                 .bg(Hsla::black())
                                 .rounded_tl(px(8.))
                                 .rounded_tr(px(8.))
@@ -838,12 +838,12 @@ impl Render for PulsarApp {
                                                         .h(px(3.))
                                                         .rounded_tl(px(8.))
                                                         .rounded_tr(px(8.))
-                                                        .bg(if self.state.drawer_resizing {
+                                                        .bg(if self.state.chrome.drawer_resizing {
                                                             resize_handle_blue
                                                         } else {
                                                             resize_handle_black
                                                         })
-                                                        .when(!self.state.drawer_resizing, |this| {
+                                                        .when(!self.state.chrome.drawer_resizing, |this| {
                                                             this.group_hover(
                                                                 "file-drawer-resize-handle",
                                                                 |style| {
@@ -858,9 +858,9 @@ impl Render for PulsarApp {
                                                 .on_mouse_down(
                                                     MouseButton::Left,
                                                     cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                                                        this.state.drawer_resize_start_y = event.position.y.into();
-                                                        this.state.drawer_resize_start_height = this.state.drawer_height;
-                                                        this.state.drawer_resizing = true;
+                                                        this.state.chrome.drawer_resize_start_y = event.position.y.into();
+                                                        this.state.chrome.drawer_resize_start_height = this.state.chrome.drawer_height;
+                                                        this.state.chrome.drawer_resizing = true;
                                                         cx.notify();
                                                     }),
                                                 ),
@@ -883,27 +883,28 @@ impl Render for PulsarApp {
                                     "slide-up",
                                     Animation::new(Duration::from_secs_f64(0.2)),
                                     {
-                                        let height = self.state.drawer_height;
+                                        let height = self.state.chrome.drawer_height;
                                         move |this, delta| {
                                             this.bottom(px(-height) + delta * px(height))
                                         }
                                     },
                                 ),
                         )
-                        .when(self.state.drawer_resizing, |this| {
+                        .when(self.state.chrome.drawer_resizing, |this| {
                             this.on_mouse_move(cx.listener(
                                 |app, event: &MouseMoveEvent, _window, cx| {
                                     let mouse_y: f32 = event.position.y.into();
-                                    let drag_delta = mouse_y - app.state.drawer_resize_start_y;
-                                    let new_height = app.state.drawer_resize_start_height - drag_delta;
-                                    app.state.drawer_height = new_height.clamp(200.0, 700.0);
+                                    let drag_delta = mouse_y - app.state.chrome.drawer_resize_start_y;
+                                    let new_height = app.state.chrome.drawer_resize_start_height - drag_delta;
+                                    app.state.chrome.drawer_height = super::chrome::ChromeState::clamp_height(new_height);
+                                    app.chrome_changed(cx);
                                     cx.notify();
                                 },
                             ))
                             .on_mouse_up(
                                 MouseButton::Left,
                                 cx.listener(|app, _event, _window, cx| {
-                                    app.state.drawer_resizing = false;
+                                    app.state.chrome.drawer_resizing = false;
                                     cx.notify();
                                 }),
                             )
@@ -915,7 +916,7 @@ impl Render for PulsarApp {
                     div()
                         .id("file-manager-docked-panel")
                         .w_full()
-                        .h(px(self.state.drawer_height))
+                        .h(px(self.state.chrome.drawer_height))
                         .flex_shrink_0()
                         .bg(Hsla::black())
                         .border_t_1()
@@ -943,12 +944,12 @@ impl Render for PulsarApp {
                                                 .h(px(3.))
                                                 .rounded_tl(px(8.))
                                                 .rounded_tr(px(8.))
-                                                .bg(if self.state.drawer_resizing {
+                                                .bg(if self.state.chrome.drawer_resizing {
                                                     resize_handle_blue
                                                 } else {
                                                     resize_handle_black
                                                 })
-                                                .when(!self.state.drawer_resizing, |this| {
+                                                .when(!self.state.chrome.drawer_resizing, |this| {
                                                     this.group_hover(
                                                         "docked-file-drawer-resize-handle",
                                                         |style| {
@@ -962,9 +963,9 @@ impl Render for PulsarApp {
                                         .on_mouse_down(
                                             MouseButton::Left,
                                             cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                                                this.state.drawer_resize_start_y = event.position.y.into();
-                                                this.state.drawer_resize_start_height = this.state.drawer_height;
-                                                this.state.drawer_resizing = true;
+                                                this.state.chrome.drawer_resize_start_y = event.position.y.into();
+                                                this.state.chrome.drawer_resize_start_height = this.state.chrome.drawer_height;
+                                                this.state.chrome.drawer_resizing = true;
                                                 cx.notify();
                                             }),
                                         ),
@@ -983,20 +984,21 @@ impl Render for PulsarApp {
                                                 ),
                                 ),
                         )
-                        .when(self.state.drawer_resizing, |this| {
+                        .when(self.state.chrome.drawer_resizing, |this| {
                             this.on_mouse_move(cx.listener(
                                 |app, event: &MouseMoveEvent, _window, cx| {
                                     let mouse_y: f32 = event.position.y.into();
-                                    let drag_delta = mouse_y - app.state.drawer_resize_start_y;
-                                    let new_height = app.state.drawer_resize_start_height - drag_delta;
-                                    app.state.drawer_height = new_height.clamp(200.0, 700.0);
+                                    let drag_delta = mouse_y - app.state.chrome.drawer_resize_start_y;
+                                    let new_height = app.state.chrome.drawer_resize_start_height - drag_delta;
+                                    app.state.chrome.drawer_height = super::chrome::ChromeState::clamp_height(new_height);
+                                    app.chrome_changed(cx);
                                     cx.notify();
                                 },
                             ))
                             .on_mouse_up(
                                 MouseButton::Left,
                                 cx.listener(|app, _event, _window, cx| {
-                                    app.state.drawer_resizing = false;
+                                    app.state.chrome.drawer_resizing = false;
                                     cx.notify();
                                 }),
                             )

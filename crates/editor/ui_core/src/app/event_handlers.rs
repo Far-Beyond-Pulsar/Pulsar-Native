@@ -683,8 +683,8 @@ pub fn on_file_selected(
     // Open via plugin system
     app.open_path(event.path.clone(), window, cx);
 
-    if !app.state.drawer_docked {
-        app.state.drawer_open = false;
+    if !app.state.chrome.drawer_docked {
+        app.state.chrome.drawer_open = false;
     }
     app.update_discord_presence(cx);
     cx.notify();
@@ -697,8 +697,9 @@ pub fn on_dock_file_manager(
     _window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    app.state.drawer_docked = true;
-    app.state.drawer_open = false;
+    app.state.chrome.drawer_docked = true;
+    app.state.chrome.drawer_open = false;
+    app.chrome_changed(cx);
     cx.notify();
 }
 
@@ -716,8 +717,9 @@ pub fn on_popout_file_manager(
     // Get project path from the drawer
     let project_path = drawer.read(cx).project_path.clone();
 
-    app.state.drawer_docked = false;
-    app.state.drawer_open = false;
+    app.state.chrome.drawer_docked = false;
+    app.state.chrome.drawer_open = false;
+    app.chrome_changed(cx);
     cx.notify();
 
     // Use mouse position from event for window placement
@@ -809,18 +811,18 @@ pub fn on_drag_event(
         ui_types_common::DragEvent::AssetDragStarted(_payload) => {
             tracing::debug!("Asset drag started, closing drawer");
             // Close the drawer and set flag to suppress reopening
-            app.state.suppress_drawer_for_drag = true;
+            app.state.chrome.suppress_drawer_for_drag = true;
             app.close_drawer(window, cx);
         }
         ui_types_common::DragEvent::AssetDropped(_payload) => {
             tracing::debug!("Asset dropped, clearing suppress flag");
             // Clear the suppress flag but keep drawer closed
-            app.state.suppress_drawer_for_drag = false;
+            app.state.chrome.suppress_drawer_for_drag = false;
         }
         ui_types_common::DragEvent::AssetDragCancelled => {
             tracing::debug!("Asset drag cancelled, reopening drawer");
             // Clear the suppress flag and reopen drawer
-            app.state.suppress_drawer_for_drag = false;
+            app.state.chrome.suppress_drawer_for_drag = false;
             app.open_drawer(window, cx);
         }
     }

@@ -207,13 +207,35 @@ impl EditorFactory {
 /// dispatches editor creation requests to the appropriate factory.
 pub struct EditorFactoryRegistry {
     factories: Vec<EditorFactory>,
+    /// Panel restorers registered alongside the factories (see
+    /// [`crate::panel_restore`]). Empty for a plugin that registers none.
+    restorers: crate::panel_restore::PanelRestorerRegistry,
 }
 
 impl EditorFactoryRegistry {
     pub fn new() -> Self {
         Self {
             factories: Vec::new(),
+            restorers: Default::default(),
         }
+    }
+
+    /// Register a restorer that rebuilds panels saved with restore kind `kind`
+    /// (see [`crate::panel_restore`]).
+    pub fn register_restorer(
+        &mut self,
+        kind: impl Into<String>,
+        restorer: impl Fn(&serde_json::Value, &mut Window, &mut App) -> Option<Arc<dyn PanelView>>
+            + Send
+            + Sync
+            + 'static,
+    ) {
+        self.restorers.register(kind, restorer);
+    }
+
+    /// Take the registered restorers; the host merges them into its global set.
+    pub fn take_restorers(&mut self) -> crate::panel_restore::PanelRestorerRegistry {
+        std::mem::take(&mut self.restorers)
     }
 
     /// Register a single editor factory.

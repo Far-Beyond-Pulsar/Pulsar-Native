@@ -103,7 +103,7 @@ provides a piece of the GPUI-based editor UI shell.
 |---|---|
 | `ui_about` | About / credits dialog |
 | `ui_common` | Shared widgets, i18n, styling primitives |
-| `ui_core` | Editor shell — tab management, plugin wiring, statusbar |
+| `ui_core` | Editor shell — tab management, plugin wiring, statusbar; layout persistence (`app/layout/`, `app/chrome.rs`, see `LAYOUT.md`) |
 | `ui_documentation` | In-editor doc viewer |
 | `ui_entry` | Window entry creation and setup |
 | `ui_fab_search` | Floating action button + search |

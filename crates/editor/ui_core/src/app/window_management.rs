@@ -4,75 +4,31 @@
 //! in the respective window crate''s `PulsarWindow` impl - not here.
 
 use gpui::{AppContext as _, Context, UpdateGlobal, Window};
-use std::path::PathBuf;
-use std::sync::Arc;
 use ui::dock::DockPlacement;
-use ui::Root;
 use ui_common::PulsarWindowExt as _;
-use window_manager::{WindowConfig, WindowRegistry};
+use window_manager::WindowRegistry;
 
-use super::panel_window::PanelWindow;
 use super::PulsarApp;
 
 impl PulsarApp {
-    /// Create a detached pop-out window for a panel.
-    /// Uses a custom layout (position follows cursor), so it stays manual.
-    pub(super) fn create_detached_window(
-        &mut self,
-        panel: Arc<dyn ui::dock::PanelView>,
-        position: gpui::Point<gpui::Pixels>,
-        parent_window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        tracing::trace!(
-            "[POPOUT] Creating detached window for panel at position: {:?}",
-            position
-        );
-        self.state.popped_out_panels.push(panel.clone());
-
-        let center_tabs = self.state.center_tabs.clone();
-        let panel_for_popout = panel.clone();
-        let parent_window_handle = parent_window.window_handle();
-
-        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(
-                window_manager::WindowRequest::DetachedPanel,
-                WindowConfig::detached_panel(position),
-                move |window, cx| {
-                    let panel_window = cx.new(|cx| {
-                        PanelWindow::new(
-                            panel_for_popout,
-                            center_tabs,
-                            parent_window_handle,
-                            window,
-                            cx,
-                        )
-                    });
-                    cx.new(|cx| Root::new(panel_window.into(), window, cx))
-                },
-                cx,
-            )
-        });
-    }
-
     pub(super) fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.drawer_docked {
+        if self.state.chrome.drawer_docked {
             return;
         }
-        self.state.drawer_open = !self.state.drawer_open;
+        self.state.chrome.drawer_open = !self.state.chrome.drawer_open;
         cx.notify();
     }
 
     /// Close the file manager drawer
     pub(super) fn close_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.drawer_open = false;
+        self.state.chrome.drawer_open = false;
         cx.notify();
     }
 
     /// Open the file manager drawer (respects suppress_drawer_for_drag flag)
     pub(super) fn open_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.state.suppress_drawer_for_drag {
-            self.state.drawer_open = true;
+        if !self.state.chrome.suppress_drawer_for_drag {
+            self.state.chrome.drawer_open = true;
             cx.notify();
         }
     }
@@ -86,16 +42,16 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_log_viewer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.state.mission_control_open {
-            self.state.mission_control_open = true;
+        if !self.state.chrome.mission_control_open {
+            self.state.chrome.mission_control_open = true;
             WindowRegistry::update_global(cx, |reg, cx| reg.open("MissionControlPanel", cx));
         } else {
-            self.state.mission_control_open = false;
+            self.state.chrome.mission_control_open = false;
         }
     }
 
     pub(super) fn open_git_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.git_manager_open = true;
+        self.state.chrome.git_manager_open = true;
         WindowRegistry::update_global(cx, |reg, cx| reg.open("GitManagerWindow", cx));
     }
 

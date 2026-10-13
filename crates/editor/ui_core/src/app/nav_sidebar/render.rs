@@ -117,9 +117,9 @@ impl NavSidebar {
         Some(EditorView {
             tabs: app.sidebar_tabs(cx),
             drags,
-            drawer_open: state.drawer_open,
-            overlay_bottom: if state.drawer_open && !state.drawer_docked {
-                px(state.drawer_height)
+            drawer_open: state.chrome.drawer_open,
+            overlay_bottom: if state.chrome.drawer_open && !state.chrome.drawer_docked {
+                px(state.chrome.drawer_height)
             } else {
                 px(0.)
             },

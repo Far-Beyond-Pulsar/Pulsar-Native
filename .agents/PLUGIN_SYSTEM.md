@@ -186,6 +186,23 @@ Given a file path, the engine:
 Support for `FolderBased` file types (e.g., `MyClass.class/` directories with
 a marker file) is handled by `FileTypeDefinition.structure`.
 
+## Panel restorers
+
+A saved layout names a panel by file or by a restore key `{ kind, data }`
+(`PanelState::with_restore`). A restorer, `kind -> fn(data, window, cx) ->
+Option<Arc<dyn PanelView>>`, rebuilds the latter. A plugin registers its
+restorers next to its editor factories, in `register_editors`:
+`registry.register_restorer("my.panel", |data, window, cx| ...)`. There is no new
+FFI symbol and no `EditorPluginFull` vtable change: the registry is host-owned
+(a plugin links its own copy of `plugin_editor_api`, so a global there would be
+private to the plugin), the host collects the entries after `register_editors`
+and merges them into the one `plugin_manager::panel_restorers()`. Built-in code
+calls `panel_restorers().register(..)` directly. Layout restore resolves a tab
+as: live singleton by `panel_name`, restorer by kind, file editor; a tab whose
+kind or file type has no registration is kept *dormant* and written back so it
+returns when the plugin does (`ui_core/src/app/layout/dormant.rs`). See
+`plugin_editor_api::panel_restore`.
+
 ## Statusbar buttons
 
 Plugins return `Vec<StatusbarButtonDefinition>` from `EditorPluginStatusbar`.

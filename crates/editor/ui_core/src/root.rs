@@ -339,6 +339,16 @@ pub fn register_window_wrappers(_cx: &mut gpui::App) {
     });
 }
 
+impl PulsarRoot {
+    /// Open one more editor window for `path`, even though one is already open
+    /// (`PulsarWindowExt::open` would focus it instead). The new window takes
+    /// the next layout slot of the project, or the one reserved for it.
+    pub fn open_additional(path: PathBuf, cx: &mut gpui::App) {
+        use ui_common::PulsarWindowExt;
+        <Self as PulsarWindowExt>::open_additional(path, cx);
+    }
+}
+
 impl PulsarWindow for PulsarRoot {
     type Params = PathBuf;
 
