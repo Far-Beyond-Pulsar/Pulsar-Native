@@ -55,6 +55,7 @@ pub(crate) struct SplinePanel {
     state: SharedState,
     focus_handle: FocusHandle,
     pump_started: bool,
+    watch: splines::SplinePanelWatch,
     last_signature: Signature,
     tab: Tab,
     collapsed: HashSet<&'static str>,
@@ -80,12 +81,14 @@ impl SplinePanel {
                 cx.notify();
             }
         });
-        let last_signature = Self::signature(&state);
+        let mut watch = splines::SplinePanelWatch::new(&state.read().scene.world());
+        let last_signature = Self::signature(&state, &mut watch);
         Self {
             owner,
             state,
             focus_handle: cx.focus_handle(),
             pump_started: false,
+            watch,
             last_signature,
             tab: Tab::Manage,
             collapsed: HashSet::new(),
@@ -96,10 +99,10 @@ impl SplinePanel {
             validation: None,
         }
     }
-    fn signature(state: &SharedState) -> Signature {
+    fn signature(state: &SharedState, watch: &mut splines::SplinePanelWatch) -> Signature {
         let st = state.read();
         (
-            st.scene.world_revision(),
+            watch.revision(&st.scene.world()),
             st.scene.rebuild_epoch,
             st.scene.selected_object(),
             st.editor.spline.clone(),
@@ -111,10 +114,10 @@ impl SplinePanel {
         }
         self.pump_started = true;
         crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _, cx| {
-            let signature = Self::signature(&this.state);
+            let signature = Self::signature(&this.state, &mut this.watch);
             if signature != this.last_signature {
                 splines::sync_selection(&mut this.state.write());
-                this.last_signature = Self::signature(&this.state);
+                this.last_signature = Self::signature(&this.state, &mut this.watch);
                 cx.notify();
             }
         });
