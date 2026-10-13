@@ -31,7 +31,7 @@
 //! - `profile:<seconds>`: the view held (the camera nudged a millimetre
 //!   every other frame, so the editor keeps rendering): the graph's GPU
 //!   time, and by pass.
-//! - `stress:<ascent|descent|cruise|orbit>:<seconds>[:<sample>]`: a flight in real
+//! - `stress:<ascent|descent|cruise|orbit|dive>:<seconds>[:<sample>[:<speed>[:<altitude>]]]`: a flight in real
 //!   time (the path follows the wall clock, as the editor's camera does:
 //!   a slow frame moves it further) from the camera's ground: from 2 m to
 //!   400 km or back, at 300 m/s 40 m over the ground, or in orbit at 400 km
@@ -408,11 +408,21 @@ fn main() {
                 let forward = h.renderer.camera_forward().as_dvec3();
                 let ahead = (forward - up * forward.dot(up)).normalize();
                 let ground = start.length() - h.renderer.voxel_altitude().unwrap_or(2.0);
+                // `cruise` and `orbit`: speed (m/s) and altitude (m) after the
+                // sample; `dive`: from altitude (15 000 km) to 20 km in half a
+                // second, a second in, then hovering looking down.
+                let speed = parts.get(4).and_then(|v| v.parse::<f64>().ok());
+                let high = parts.get(5).and_then(|v| v.parse::<f64>().ok());
                 let path = |t: f64| -> (glam::DVec3, glam::DVec3) {
                     let u = (t / seconds).clamp(0.0, 1.0);
                     let (altitude, along, pitch_down) = match mode.as_str() {
-                        "cruise" => (40.0, 300.0 * t, 0.15),
-                        "orbit" => (400_000.0, 7_700.0 * t, 0.8),
+                        "cruise" => (high.unwrap_or(40.0), speed.unwrap_or(300.0) * t, 0.15),
+                        "orbit" => (high.unwrap_or(400_000.0), speed.unwrap_or(7_700.0) * t, 0.8),
+                        "dive" => {
+                            let top = high.unwrap_or(15_000_000.0);
+                            let v = ((t - 1.0) / 0.5).clamp(0.0, 1.0);
+                            (top * (20_000.0 / top).powf(v), 0.0, 8.0)
+                        }
                         m => {
                             let altitude = 2.0 * 200_000.0f64.powf(if m == "ascent" { u } else { 1.0 - u });
                             (altitude, altitude * 0.3, 0.6)

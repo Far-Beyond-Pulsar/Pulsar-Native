@@ -821,6 +821,9 @@ pub struct HelioRenderer {
     /// The last rendered frame's phases (`FramePhases`), for harnesses.
     last_phases: Vec<(&'static str, f32)>,
     last_voxel_stats_log: Instant,
+    /// Frames rendered since the last stats line and the slowest of them
+    /// (ms): the viewport's own rate, beside the renderer's GPU time.
+    voxel_stats_frames: (u32, f32),
     native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight,
     /// `PULSAR_VOXEL_NATIVE_SCULPT=1`: scripted sculpt strokes (diagnostic).
     native_sculpt: Option<NativeSculpt>,
@@ -965,6 +968,7 @@ impl HelioRenderer {
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
             last_phases: Vec::new(),
             last_voxel_stats_log: Instant::now(),
+            voxel_stats_frames: (0, 0.0),
             native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight::new(),
             native_sculpt: std::env::var("PULSAR_VOXEL_NATIVE_SCULPT")
                 .ok()
@@ -1763,11 +1767,14 @@ impl HelioRenderer {
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         if self.voxel_stats_log && self.last_voxel_stats_log.elapsed().as_secs_f32() >= 0.5 {
+            let fps = self.voxel_stats_frames.0 as f32 / self.last_voxel_stats_log.elapsed().as_secs_f32();
+            let slowest = self.voxel_stats_frames.1;
+            self.voxel_stats_frames = (0, 0.0);
             self.last_voxel_stats_log = Instant::now();
             let (forward, _, up) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
             for line in self.voxel_backends.diagnostics(&inner.renderer) {
                 tracing::info!(
-                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} camera_relative={} graph_gpu_ms={:?}",
+                    "VOXEL_STATS fps={fps:.1} slowest_frame_ms={slowest:.1} altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} camera_relative={} graph_gpu_ms={:?}",
                     self.voxel_altitude.unwrap_or(f64::NAN),
                     self.voxel_altitude
                         .map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
@@ -1887,6 +1894,7 @@ impl HelioRenderer {
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         phases.mark("render");
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
+        self.voxel_stats_frames = (self.voxel_stats_frames.0 + 1, self.voxel_stats_frames.1.max(frame_ms));
         if frame_ms >= 50.0 {
             tracing::warn!(
                 "VOXEL_FRAME_PHASES frame_ms={frame_ms:.1} {}",
