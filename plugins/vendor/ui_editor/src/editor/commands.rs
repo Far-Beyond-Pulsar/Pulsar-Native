@@ -137,7 +137,9 @@ impl Ctx {
         let widget = self.widget(cx);
         let mut at = from;
         while let Some(id) = at {
-            if widget.can_accept(id).is_ok() {
+            // Only panels that hold many widgets take a new one by default: adding
+            // while an empty border is selected puts it beside the border, not inside.
+            if widget.node(id).is_some_and(|n| n.info().children == crate::model::schema::Children::Many) {
                 return id;
             }
             at = widget.parent_of(id);

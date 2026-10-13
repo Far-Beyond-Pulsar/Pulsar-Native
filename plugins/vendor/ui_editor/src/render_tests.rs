@@ -265,3 +265,27 @@ fn nested_widgets_parameters_and_details_render_for_every_kind(cx: &mut TestAppC
     assert_eq!(library.entry(&card.id).unwrap().name, "Renamed");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[gpui::test]
+fn several_widgets_can_be_added_to_a_horizontal_box(cx: &mut TestAppContext) {
+    cx.update(ui::init);
+    let path = temp_file("hbox.widget", "");
+    let (editor, cx) = cx.add_window_view(|window, cx| WidgetEditor::new(path.clone(), None, window, cx));
+    draw(cx);
+    let ctx = editor.read_with(cx, |e, _| e.ctx.clone());
+    let hbox = cx.update(|_, cx| ctx.add_node(Kind::HorizontalBox, None, cx)).unwrap();
+    draw(cx);
+    // Keep adding with no explicit target, as the double-click on the palette does.
+    for kind in [Kind::Text, Kind::Button, Kind::Border, Kind::Image, Kind::Slider] {
+        cx.update(|_, cx| ctx.select(vec![hbox], cx));
+        cx.update(|_, cx| ctx.add_node(kind, None, cx));
+        draw(cx);
+    }
+    // And with the previous addition still selected.
+    for kind in [Kind::Text, Kind::Border, Kind::Text] {
+        cx.update(|_, cx| ctx.add_node(kind, None, cx));
+        draw(cx);
+    }
+    let n = editor.read_with(cx, |e, cx| e.ctx.widget(cx).node(hbox).unwrap().children.len());
+    assert_eq!(n, 8, "every addition lands in the box");
+}
