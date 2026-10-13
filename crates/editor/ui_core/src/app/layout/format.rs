@@ -35,6 +35,7 @@ use ui::dock::{DockAreaState, DockState, PanelInfo, PanelState, ZoomedState};
 use super::super::chrome::SavedChrome;
 use super::super::nav_sidebar::model::SavedSidebar;
 use super::dormant::{self, AnchorKey, DormantLeaf, DormantRoot};
+use super::owned;
 use super::window_geometry::SavedWindow;
 
 /// Bump when the format changes incompatibly.
@@ -290,9 +291,17 @@ fn write_raw(path: &Path, raw: &RawLayout) -> std::io::Result<()> {
 
 // ── Project-relative paths ───────────────────────────────────────────────────
 
-/// Rewrite recorded file paths inside the project as project-relative.
+/// Rewrite recorded file paths inside the project as project-relative. This
+/// covers the file a leaf edits and the file of the editor that owns it.
 fn relativize(state: &mut PanelState, root: &Path) {
     if let Some(value) = state.file_mut() {
+        if let Some(path) = value.as_str().map(PathBuf::from) {
+            if let Ok(relative) = path.strip_prefix(root) {
+                *value = relative.to_string_lossy().replace('\\', "/").into();
+            }
+        }
+    }
+    if let Some(value) = state.owner_file_mut() {
         if let Some(path) = value.as_str().map(PathBuf::from) {
             if let Ok(relative) = path.strip_prefix(root) {
                 *value = relative.to_string_lossy().replace('\\', "/").into();
@@ -307,6 +316,13 @@ fn relativize(state: &mut PanelState, root: &Path) {
 /// Inverse of [`relativize`]: make recorded paths absolute under `root`.
 fn absolutize(state: &mut PanelState, root: &Path) {
     if let Some(value) = state.file_mut() {
+        if let Some(path) = value.as_str().map(PathBuf::from) {
+            if path.is_relative() {
+                *value = root.join(path).to_string_lossy().into_owned().into();
+            }
+        }
+    }
+    if let Some(value) = state.owner_file_mut() {
         if let Some(path) = value.as_str().map(PathBuf::from) {
             if path.is_relative() {
                 *value = root.join(path).to_string_lossy().into_owned().into();
@@ -346,7 +362,30 @@ fn edit_roots(dock: &mut DockAreaState, f: &mut dyn FnMut(DormantRoot, &mut Pane
     map_dock_panels(&mut dock.bottom_dock, |s| f(DormantRoot::Bottom, s));
 }
 
+/// The live owned panels of each saved root, in tree order (see
+/// [`owned::ranks_by_root`]).
+pub(super) type OwnerRanks = std::collections::HashMap<DormantRoot, Vec<(String, usize)>>;
+
 impl SavedWindowLayout {
+    /// Give every owned leaf (a panel of another editor's dock) the `nth` of the
+    /// live panel it was dumped from, so a restore can pick the same one (see
+    /// [`owned`]). Call right after the trees are dumped, before
+    /// [`Self::relativize`]. A root whose leaves do not line up with the live
+    /// panels keeps `nth` 0.
+    pub fn assign_owner_nth(&mut self, ranks: &OwnerRanks) {
+        let empty = Vec::new();
+        let mut assign = |root: DormantRoot, tree: &mut PanelState| {
+            let live = ranks.get(&root).unwrap_or(&empty);
+            if !owned::assign_nth_in_tree(tree, live) {
+                tracing::debug!("layout: owned panels of {root:?} do not line up; nth left at 0");
+            }
+        };
+        edit_roots(&mut self.dock, &mut |root, tree| assign(root, tree));
+        for popout in &mut self.popouts {
+            assign(DormantRoot::Popout(popout.id), &mut popout.dock);
+        }
+    }
+
     /// Store file paths inside `root` as project-relative. Dormant tabs are
     /// rewritten with the rest; restore data stays opaque and is not touched.
     pub fn relativize(&mut self, root: &Path) {
@@ -496,6 +535,97 @@ pub(super) mod tests {
             root.join("scripts/a.rs")
         );
         assert_eq!(state.children[1].file(), Some("/elsewhere/b.rs"));
+    }
+
+    fn owned_leaf(name: &str, owner: &str, nth: usize) -> PanelState {
+        PanelState {
+            panel_name: name.into(),
+            ..Default::default()
+        }
+        .with_owner(owner, nth)
+    }
+
+    #[test]
+    fn the_owner_file_is_rewritten_like_a_leaf_file() {
+        let root = Path::new("/proj");
+        let mut state = tab_group(&[]);
+        state.add_child(owned_leaf("graph-canvas", "/proj/Content/A.class", 2));
+        state.add_child(owned_leaf("graph-canvas", "/elsewhere/B.class", 0));
+
+        relativize(&mut state, root);
+        assert_eq!(state.children[0].owner(), Some(("Content/A.class", 2)));
+        assert_eq!(state.children[1].owner(), Some(("/elsewhere/B.class", 0)));
+
+        absolutize(&mut state, root);
+        let (owner, nth) = state.children[0].owner().unwrap();
+        assert_eq!(Path::new(owner), root.join("Content/A.class"));
+        assert_eq!(nth, 2);
+        assert_eq!(state.children[1].owner(), Some(("/elsewhere/B.class", 0)));
+    }
+
+    #[test]
+    fn an_owned_popout_survives_a_write_and_read_with_a_relative_owner() {
+        let root = Path::new("/proj");
+        let mut dock = PanelState {
+            panel_name: "TabPanel".into(),
+            info: PanelInfo::tabs(0),
+            ..Default::default()
+        };
+        dock.add_child(owned_leaf("graph-canvas", "/proj/Content/A.class", 1));
+        let mut layout = SavedWindowLayout {
+            popouts: vec![SavedPopout { dock, ..popout(&[], 10.) }],
+            ..Default::default()
+        };
+        layout.relativize(root);
+
+        let dir = temp("owned-popout");
+        let path = layout_path(&dir);
+        write_slot(&path, PRIMARY_SLOT, &layout).unwrap();
+        let mut back = read_slot(&path, PRIMARY_SLOT).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            back.popouts[0].dock.children[0].owner(),
+            Some(("Content/A.class", 1))
+        );
+        back.absolutize(root);
+        let (owner, _) = back.popouts[0].dock.children[0].owner().unwrap();
+        assert_eq!(Path::new(owner), root.join("Content/A.class"));
+    }
+
+    #[test]
+    fn owner_nth_is_assigned_per_root_from_the_live_order() {
+        use std::collections::HashMap;
+
+        let mut dock = PanelState {
+            panel_name: "TabPanel".into(),
+            info: PanelInfo::tabs(0),
+            ..Default::default()
+        };
+        dock.add_child(owned_leaf("graph-canvas", "/proj/A.class", 0));
+        let mut layout = SavedWindowLayout {
+            dock: DockAreaState {
+                center: tab_group(&["/proj/a.rs"]),
+                ..Default::default()
+            },
+            popouts: vec![SavedPopout {
+                id: 7,
+                dock,
+                ..popout(&[], 10.)
+            }],
+            ..Default::default()
+        };
+        let mut ranks: HashMap<DormantRoot, Vec<(String, usize)>> = HashMap::new();
+        ranks.insert(DormantRoot::Popout(7), vec![("graph-canvas".into(), 3)]);
+        // Another root's panels are not this pop-out's.
+        ranks.insert(DormantRoot::Center, vec![("graph-canvas".into(), 9)]);
+
+        layout.assign_owner_nth(&ranks);
+        assert_eq!(
+            layout.popouts[0].dock.children[0].owner(),
+            Some(("/proj/A.class", 3))
+        );
+        // The centre has no owned leaf; the stray entry changed nothing there.
+        assert_eq!(layout.dock.center.children[0].owner(), None);
     }
 
     fn zoomed_layout(file: &str) -> SavedWindowLayout {

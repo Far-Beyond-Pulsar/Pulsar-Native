@@ -7,10 +7,19 @@
 //! Order: centre (filling the anchor tab group in place), side docks, then the
 //! live side-dock panels no plan mentioned, the zoom, and finally the pop-out
 //! windows (see [`open_popouts`]).
+//!
+//! **Owned panels.** A plan can hold panels the resolver *claimed* from another
+//! editor's dock (the Blueprint graph canvas...) rather than created. Before a
+//! plan is built they are taken out of the tab group they sit in
+//! ([`take_owned`], `TabPanel::take_panel`, as dragging a tab out does): a panel
+//! shown in two tab groups at once fails to render. A pop-out made only of panels
+//! from one tab group returns them there when it is closed, falling back to the
+//! centre anchor group when that tab group is gone.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use gpui::{App, Entity, WeakEntity};
+use gpui::{App, Entity, EntityId, WeakEntity};
 use ui::dock::{
     live_popouts, open_popout_with, DockArea, DockChannel, DockItem, DockPlacement, PanelSource,
     PanelView, PopoutSpec, TabPanel, ZoomedState,
@@ -19,6 +28,50 @@ use ui::dock::{
 use super::resolve::{Plan, PopoutPlan, ResolvedLayout};
 
 type PanelPlan = Plan<Arc<dyn PanelView>>;
+
+/// The tab groups claimed owned panels sit in (see [`ResolvedLayout::owned_homes`]).
+type Homes = HashMap<EntityId, Entity<TabPanel>>;
+
+/// Take the claimed owned panels of `plan` out of the tab groups they sit in.
+/// A panel that is no longer in its group (moved or closed since the plan was
+/// resolved) is dropped from the plan rather than shown twice; what that empties
+/// is pruned. Panels that were not claimed from a dock are left alone.
+fn take_owned(
+    plan: PanelPlan,
+    homes: &Homes,
+    window: &mut gpui::Window,
+    cx: &mut App,
+) -> Option<PanelPlan> {
+    if homes.is_empty() {
+        return Some(plan);
+    }
+    plan.retain_leaves(&mut |panel| {
+        let id = panel.view().entity_id();
+        let Some(home) = homes.get(&id) else {
+            return true;
+        };
+        let taken = home.update(cx, |tabs, cx| tabs.take_panel(panel.clone(), window, cx));
+        if !taken {
+            tracing::warn!("layout: an owned panel moved before it could be restored; skipped");
+        }
+        taken
+    })
+}
+
+/// Where closing a pop-out sends its panels: the tab group they all came from,
+/// when every panel of the plan was claimed from one. `None` (the centre anchor
+/// group) otherwise; `PanelSource` names one tab group per pop-out.
+fn common_home(plan: &PanelPlan, homes: &Homes) -> Option<Entity<TabPanel>> {
+    let mut common: Option<&Entity<TabPanel>> = None;
+    for panel in plan.leaves() {
+        let home = homes.get(&panel.view().entity_id())?;
+        match common {
+            Some(seen) if seen.entity_id() != home.entity_id() => return None,
+            _ => common = Some(home),
+        }
+    }
+    common.cloned()
+}
 
 struct Builder<'a> {
     dock_area: WeakEntity<DockArea>,
@@ -126,8 +179,10 @@ fn apply_popout_zoom(handle: gpui::AnyWindowHandle, zoomed: &ZoomedState, cx: &m
 /// pop-out never loses its tabs.
 fn open_popouts(
     popouts: Vec<PopoutPlan>,
+    homes: &Homes,
     anchor: &Entity<TabPanel>,
     parent: gpui::AnyWindowHandle,
+    window: &mut gpui::Window,
     cx: &mut App,
 ) -> Vec<OpenedPopout> {
     let mut opened = Vec::new();
@@ -139,6 +194,13 @@ fn open_popouts(
         plan,
     } in popouts
     {
+        // Owned panels leave their editor's dock in this (the parent) window,
+        // before the pop-out window exists.
+        let home = common_home(&plan, homes);
+        let Some(plan) = take_owned(plan, homes, window, cx) else {
+            tracing::info!("layout: a pop-out lost all its owned panels; not opened");
+            continue;
+        };
         let build = move |window: &mut gpui::Window, dock: &WeakEntity<DockArea>, cx: &mut App| {
             // A pop-out never holds the anchor group.
             let no_anchor = std::collections::HashSet::new();
@@ -149,7 +211,7 @@ fn open_popouts(
             };
             builder.build(plan, window, cx)
         };
-        let source = PanelSource::tab_panel(anchor, parent, None);
+        let source = PanelSource::tab_panel(home.as_ref().unwrap_or(anchor), parent, None);
         let spec = PopoutSpec::tree(build, bounds, DockChannel::default(), Some(source));
         match open_popout_with(spec, cx) {
             Some(handle) => {
@@ -182,6 +244,7 @@ pub(super) fn commit(
         ghost_popouts: _,
         zoomed,
         popouts,
+        owned_homes,
     } = resolved;
 
     let mut builder = Builder {
@@ -190,6 +253,7 @@ pub(super) fn commit(
         anchor: Some(anchor.clone()),
     };
 
+    let center = center.and_then(|plan| take_owned(plan, &owned_homes, window, cx));
     if let Some(center) = center {
         let item = builder.build(center, window, cx);
         dock_area.update(cx, |area, cx| area.set_center(item, window, cx));
@@ -198,7 +262,10 @@ pub(super) fn commit(
     // Only the centre may take the anchor group; a side dock never owns it.
     builder.anchor = None;
     for dock in docks {
-        let item = builder.build(dock.plan, window, cx);
+        let Some(plan) = take_owned(dock.plan, &owned_homes, window, cx) else {
+            continue;
+        };
+        let item = builder.build(plan, window, cx);
         let (size, open) = (Some(dock.size), dock.open);
         dock_area.update(cx, |area, cx| match dock.placement {
             DockPlacement::Left => area.set_left_dock(item, size, open, window, cx),
@@ -228,5 +295,6 @@ pub(super) fn commit(
 
     // Pop-outs last: the main layout is in place, so the anchor group they
     // return their tabs to is final.
-    open_popouts(popouts, anchor, window.window_handle(), cx)
+    let parent = window.window_handle();
+    open_popouts(popouts, &owned_homes, anchor, parent, window, cx)
 }

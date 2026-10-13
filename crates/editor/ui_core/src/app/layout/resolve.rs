@@ -19,9 +19,11 @@
 //! ## Resolution order for a saved tab
 //!
 //! 1. `ephemeral` tabs are skipped (debug log): a decision the panel made.
-//! 2. A live singleton with the same `panel_name` (agent chat, level editor...).
-//! 3. A restorer registered for the tab's restore `kind`.
-//! 4. A file editor via `create_editor_for_file`.
+//! 2. A tab with an owner marker (an inner panel of another editor) is looked up
+//!    among that editor's live panels and claimed ([`super::owned`]).
+//! 3. A live singleton with the same `panel_name` (agent chat, level editor...).
+//! 4. A restorer registered for the tab's restore `kind`.
+//! 5. A file editor via `create_editor_for_file`; never for a tab with an owner.
 //!
 //! A tab that is identified (restore key or file) but cannot be built because
 //! nothing is registered (unknown kind, no editor for the file type) is
@@ -44,7 +46,7 @@
 //! - [`Plan::leaves`] / [`admit`](ResolveState::admit): the validation hooks a
 //!   zoom-target check would use.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -56,6 +58,7 @@ use ui::dock::{
 
 use super::dormant::{AnchorKey, DormantLeaf, DormantRoot, PendingDormant};
 use super::format::{SavedPopout, SavedWindowLayout};
+use super::owned;
 use super::window_geometry;
 
 /// The most pop-outs one restore opens: a bound against a damaged file.
@@ -90,6 +93,74 @@ impl<L> Plan<L> {
         let mut out = Vec::new();
         self.collect_leaves(&mut out);
         out
+    }
+
+    /// Keep only the leaves `keep` accepts, pruning what that empties exactly as
+    /// [`resolve_tree`] does: emptied groups vanish, a split left with one child
+    /// collapses into it, and saved sizes are discarded once a side is gone.
+    pub fn retain_leaves(self, keep: &mut dyn FnMut(&L) -> bool) -> Option<Plan<L>> {
+        match self {
+            Plan::Split {
+                axis,
+                sizes,
+                children,
+            } => {
+                let total = children.len();
+                let mut kept = Vec::new();
+                let mut kept_sizes = Vec::new();
+                for (ix, child) in children.into_iter().enumerate() {
+                    if let Some(child) = child.retain_leaves(keep) {
+                        kept.push(child);
+                        kept_sizes.push(sizes.get(ix).copied().flatten());
+                    }
+                }
+                match kept.len() {
+                    0 => None,
+                    1 => kept.pop(),
+                    n => Some(Plan::Split {
+                        axis,
+                        sizes: if n < total { vec![None; n] } else { kept_sizes },
+                        children: kept,
+                    }),
+                }
+            }
+            Plan::Tabs { panels, active } => {
+                let mut kept = Vec::new();
+                let mut new_active = None;
+                for (ix, panel) in panels.into_iter().enumerate() {
+                    if keep(&panel) {
+                        if ix == active {
+                            new_active = Some(kept.len());
+                        }
+                        kept.push(panel);
+                    }
+                }
+                if kept.is_empty() {
+                    return None;
+                }
+                Some(Plan::Tabs {
+                    panels: kept,
+                    active: new_active.unwrap_or(0),
+                })
+            }
+            Plan::Tiles { metas, children } => {
+                let mut kept_metas = Vec::new();
+                let mut kept = Vec::new();
+                for (meta, child) in metas.into_iter().zip(children) {
+                    if let Some(child @ Plan::Tabs { .. }) = child.retain_leaves(keep) {
+                        kept_metas.push(meta);
+                        kept.push(child);
+                    }
+                }
+                if kept.is_empty() {
+                    return None;
+                }
+                Some(Plan::Tiles {
+                    metas: kept_metas,
+                    children: kept,
+                })
+            }
+        }
     }
 
     fn collect_leaves<'a>(&'a self, out: &mut Vec<&'a L>) {
@@ -161,14 +232,36 @@ pub(super) fn resolve_tree<R: LeafResolver>(
             // A sibling that resolved, to anchor shelved tabs to this group.
             let mut anchor: Option<AnchorKey> = None;
             let mut shelved: Vec<PanelState> = Vec::new();
-            for (ix, child) in state.children.iter().enumerate() {
+            // Owned panels live inside an editor that may be a sibling tab, so
+            // they are resolved after the others; the saved order is kept.
+            let mut results: Vec<Option<Result<R::Leaf, Unresolved>>> =
+                state.children.iter().map(|_| None).collect();
+            let owned_last = state
+                .children
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.owner().is_none())
+                .chain(
+                    state
+                        .children
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, c)| c.owner().is_some()),
+                );
+            for (ix, child) in owned_last {
                 // Ephemeral tabs are deliberately not restored: a decision the
                 // panel made, not a loss.
                 if child.is_ephemeral() {
                     tracing::debug!("layout: skipping ephemeral tab {}", child.panel_name);
                     continue;
                 }
-                match resolver.resolve_leaf(child) {
+                results[ix] = Some(resolver.resolve_leaf(child));
+            }
+            for (ix, (child, result)) in state.children.iter().zip(results).enumerate() {
+                let Some(result) = result else {
+                    continue;
+                };
+                match result {
                     Ok(panel) => {
                         if ix == *active_index {
                             active = Some(panels.len());
@@ -301,10 +394,23 @@ pub(super) enum FileStep<L> {
     Failed,
 }
 
-/// The three ways a tab can be named, as the resolver can ask for them. Kept
-/// apart from [`resolve_in_order`] so the order is testable without GPUI.
+/// Outcome of looking up an owned panel (a panel of another editor's dock).
+pub(super) enum OwnedStep<L> {
+    Found(L),
+    /// The owner's file no longer exists: the panel is gone with it.
+    OwnerGone,
+    /// The owner is not live (its plugin is missing, or it failed to open), or
+    /// it has no such panel: the leaf is kept dormant.
+    Missing,
+}
+
+/// The ways a tab can be named, as the resolver can ask for them. Kept apart
+/// from [`resolve_in_order`] so the order is testable without GPUI.
 pub(super) trait LeafSources {
     type Leaf;
+    /// A live panel of the editor that owns `owner_file`: the `nth` panel
+    /// named `panel_name` among that owner's (see [`owned`]). Claims it.
+    fn owned(&mut self, panel_name: &str, owner_file: &str, nth: usize) -> OwnedStep<Self::Leaf>;
     /// A live singleton with this `panel_name` that nobody has claimed.
     fn singleton(&mut self, panel_name: &str) -> Option<Self::Leaf>;
     fn restore(&mut self, kind: &str, data: &serde_json::Value) -> RestoreStep<Self::Leaf>;
@@ -313,9 +419,16 @@ pub(super) trait LeafSources {
 
 /// The panel a saved tab stands for, in order:
 ///
-/// 1. a live singleton with the same `panel_name`;
-/// 2. a restorer registered for the tab's restore `kind`;
-/// 3. a file editor.
+/// 1. for a leaf with an owner marker, the owner editor's live panel (claimed,
+///    never created);
+/// 2. a live singleton with the same `panel_name`;
+/// 3. a restorer registered for the tab's restore `kind`;
+/// 4. a file editor, **never for a leaf with an owner**: opening the file would
+///    create a second editor next to the one that owns the panel.
+///
+/// A leaf with an owner that no step finds is [`Unresolved::Dormant`] (its
+/// owner may only be missing this session), or [`Unresolved::Gone`] when the
+/// owner's file no longer exists.
 ///
 /// A tab that is identified (restore key or file) but whose kind has no
 /// restorer, or whose file type has no editor, is [`Unresolved::Dormant`]; a
@@ -326,6 +439,14 @@ pub(super) fn resolve_in_order<S: LeafSources>(
     sources: &mut S,
     leaf: &PanelState,
 ) -> Result<S::Leaf, Unresolved> {
+    let owned = leaf.owner().is_some();
+    if let Some((owner, nth)) = leaf.owner() {
+        match sources.owned(&leaf.panel_name, owner, nth) {
+            OwnedStep::Found(panel) => return Ok(panel),
+            OwnedStep::OwnerGone => return Err(Unresolved::Gone),
+            OwnedStep::Missing => {}
+        }
+    }
     if let Some(panel) = sources.singleton(&leaf.panel_name) {
         return Ok(panel);
     }
@@ -339,8 +460,9 @@ pub(super) fn resolve_in_order<S: LeafSources>(
         }
     }
 
-    let Some(file) = leaf.file() else {
-        return Err(if unregistered {
+    let file = leaf.file().filter(|_| !owned);
+    let Some(file) = file else {
+        return Err(if unregistered || owned {
             Unresolved::Dormant
         } else {
             Unresolved::Gone
@@ -366,6 +488,8 @@ pub(super) struct Resolver<'a> {
     claim_live: bool,
     snapshot: &'a LiveSnapshot,
     claims: &'a mut Claims,
+    /// Where each claimed owned panel sits now, so commit can take it out.
+    homes: &'a mut HashMap<EntityId, Entity<TabPanel>>,
     dormant: &'a mut Vec<PendingDormant>,
     window: &'a mut Window,
     cx: &'a mut App,
@@ -373,6 +497,33 @@ pub(super) struct Resolver<'a> {
 
 impl LeafSources for Resolver<'_> {
     type Leaf = Arc<dyn PanelView>;
+
+    fn owned(&mut self, panel_name: &str, owner_file: &str, nth: usize) -> OwnedStep<Self::Leaf> {
+        if !owned::owner_exists(owner_file) {
+            tracing::info!("layout: the owner {owner_file} of a {panel_name} tab is gone");
+            return OwnedStep::OwnerGone;
+        }
+        // Looked up fresh each time: editors created earlier in this same
+        // resolve pass have built their docks by now.
+        let live = owned::live_owned(self.cx);
+        match owned::find(&live, panel_name, owner_file, nth) {
+            Some(found) if !self.claims.contains(found.id()) => {
+                self.claims.0.insert(found.id());
+                self.homes.insert(found.id(), found.tab_panel.clone());
+                OwnedStep::Found(found.panel.clone())
+            }
+            Some(_) => {
+                tracing::debug!("layout: the {panel_name} #{nth} of {owner_file} is already used");
+                OwnedStep::Missing
+            }
+            None => {
+                tracing::info!(
+                    "layout: no live {panel_name} #{nth} of {owner_file}; keeping its tab dormant"
+                );
+                OwnedStep::Missing
+            }
+        }
+    }
 
     fn singleton(&mut self, panel_name: &str) -> Option<Self::Leaf> {
         if !self.claim_live {
@@ -490,6 +641,9 @@ pub(super) struct ResolvedLayout {
     pub zoomed: Option<ZoomedState>,
     /// Pop-out windows to open once the main layout is installed.
     pub popouts: Vec<PopoutPlan>,
+    /// Owned panels the plans claimed (panels of an editor's own dock) and the
+    /// tab group each sits in now. Commit takes them out of it.
+    pub owned_homes: HashMap<EntityId, Entity<TabPanel>>,
     /// Saved pop-outs that open nothing because everything they held is
     /// dormant. They stay in the file (empty, with their id and bounds) so the
     /// dormant tabs have a pop-out to come back to.
@@ -503,6 +657,8 @@ struct ResolveState {
     seen: HashSet<EntityId>,
     /// Tabs shelved by the resolver, across all roots.
     dormant: Vec<DormantLeaf>,
+    /// The tab group each claimed owned panel sits in now.
+    homes: HashMap<EntityId, Entity<TabPanel>>,
 }
 
 impl ResolveState {
@@ -522,7 +678,9 @@ impl ResolveState {
     /// Hand back the live panels `plan` had claimed.
     fn release(&mut self, plan: &Plan<Arc<dyn PanelView>>) {
         for panel in plan.leaves() {
-            self.claims.0.remove(&panel.view().entity_id());
+            let id = panel.view().entity_id();
+            self.claims.0.remove(&id);
+            self.homes.remove(&id);
         }
     }
 }
@@ -541,6 +699,7 @@ pub(super) fn resolve_layout(
         claims: Claims::default(),
         seen: HashSet::new(),
         dormant: Vec::new(),
+        homes: HashMap::new(),
     };
     // `claim_live`: whether the root may claim the live panels by name. Pop-outs
     // never do: a live panel sits in the main window's dock.
@@ -557,6 +716,7 @@ pub(super) fn resolve_layout(
                 claim_live,
                 snapshot,
                 claims: &mut state.claims,
+                homes: &mut state.homes,
                 dormant: &mut pending,
                 window,
                 cx,
@@ -683,6 +843,7 @@ pub(super) fn resolve_layout(
         dormant: state.dormant,
         zoomed: saved.dock.zoomed.clone(),
         popouts,
+        owned_homes: state.homes,
         ghost_popouts,
     }
 }
@@ -908,11 +1069,24 @@ mod tests {
         declining_kinds: Vec<&'static str>,
         editable_files: Vec<&'static str>,
         failing_files: Vec<&'static str>,
+        /// `(panel_name, owner, nth)` of live owned panels.
+        owned_panels: Vec<(&'static str, &'static str, usize)>,
         calls: Vec<String>,
     }
 
     impl LeafSources for Script {
         type Leaf = String;
+
+        fn owned(&mut self, name: &str, owner: &str, nth: usize) -> OwnedStep<String> {
+            self.calls.push(format!("owned:{name}:{owner}:{nth}"));
+            if owner.starts_with("gone") {
+                OwnedStep::OwnerGone
+            } else if self.owned_panels.contains(&(name, owner, nth)) {
+                OwnedStep::Found(format!("owned:{name}:{owner}:{nth}"))
+            } else {
+                OwnedStep::Missing
+            }
+        }
 
         fn singleton(&mut self, name: &str) -> Option<String> {
             self.calls.push(format!("singleton:{name}"));
@@ -969,6 +1143,69 @@ mod tests {
             Ok("singleton:Panel".into())
         );
         assert_eq!(s.calls, ["singleton:Panel"]);
+    }
+
+    #[test]
+    fn an_owned_leaf_is_found_among_its_owners_panels_first() {
+        let mut s = Script {
+            owned_panels: vec![("graph-canvas", "/p/A.class", 1)],
+            singletons: vec!["graph-canvas"],
+            ..Default::default()
+        };
+        let leaf = named("graph-canvas").with_owner("/p/A.class", 1);
+        assert_eq!(
+            resolve_in_order(&mut s, &leaf),
+            Ok("owned:graph-canvas:/p/A.class:1".into())
+        );
+        assert_eq!(s.calls, ["owned:graph-canvas:/p/A.class:1"]);
+    }
+
+    #[test]
+    fn an_owned_leaf_never_falls_through_to_opening_a_file() {
+        // The owner is not live, and the leaf also carries a file that has an
+        // editor: opening it would create a second editor next to the owner.
+        let mut s = Script {
+            editable_files: vec!["/p/A.class"],
+            ..Default::default()
+        };
+        let leaf = named("graph-canvas")
+            .with_file("/p/A.class")
+            .with_owner("/p/A.class", 0);
+        assert_eq!(resolve_in_order(&mut s, &leaf), Err(Unresolved::Dormant));
+        assert!(
+            !s.calls.iter().any(|c| c.starts_with("file:")),
+            "{:?}",
+            s.calls
+        );
+        // The same when no live owned panel matches the nth.
+        let mut s = Script {
+            owned_panels: vec![("graph-canvas", "/p/A.class", 0)],
+            editable_files: vec!["/p/A.class"],
+            ..Default::default()
+        };
+        let leaf = named("graph-canvas").with_owner("/p/A.class", 1);
+        assert_eq!(resolve_in_order(&mut s, &leaf), Err(Unresolved::Dormant));
+        assert!(!s.calls.iter().any(|c| c.starts_with("file:")));
+    }
+
+    #[test]
+    fn an_owned_leaf_whose_owner_file_is_gone_is_gone_not_dormant() {
+        let mut s = Script::default();
+        let leaf = named("graph-canvas").with_owner("gone/A.class", 0);
+        assert_eq!(resolve_in_order(&mut s, &leaf), Err(Unresolved::Gone));
+        assert_eq!(s.calls, ["owned:graph-canvas:gone/A.class:0"]);
+    }
+
+    #[test]
+    fn an_owned_leaf_may_still_use_a_restorer_after_a_miss() {
+        let mut s = Script {
+            known_kinds: vec!["k"],
+            ..Default::default()
+        };
+        let leaf = named("p")
+            .with_owner("/p/A", 0)
+            .with_restore("k", serde_json::Value::Null);
+        assert_eq!(resolve_in_order(&mut s, &leaf), Ok("restored:k".into()));
     }
 
     #[test]
@@ -1077,6 +1314,126 @@ mod tests {
             children,
             info: PanelInfo::tabs(active),
         }
+    }
+
+    /// A resolver that records the order leaves are asked in.
+    #[derive(Default)]
+    struct Order {
+        asked: Vec<String>,
+    }
+
+    impl LeafResolver for Order {
+        type Leaf = String;
+        fn resolve_leaf(&mut self, leaf: &PanelState) -> Result<String, Unresolved> {
+            let id = leaf
+                .owner()
+                .map(|(o, n)| format!("{}@{o}#{n}", leaf.panel_name))
+                .or_else(|| leaf.file().map(String::from))
+                .unwrap();
+            self.asked.push(id.clone());
+            Ok(id)
+        }
+        fn shelve(&mut self, _: PendingDormant) {}
+    }
+
+    #[test]
+    fn owned_tabs_resolve_after_their_siblings_but_keep_their_place() {
+        let tree = group(
+            vec![
+                named("graph-canvas").with_owner("/p/A", 0),
+                named("P").with_file("a.class"),
+                named("P").with_file("b.rs"),
+            ],
+            0,
+        );
+        let mut order = Order::default();
+        let plan = resolve_tree(&mut order, &tree).unwrap();
+        // The editor tabs are asked before the panel that lives inside one.
+        assert_eq!(order.asked, ["a.class", "b.rs", "graph-canvas@/p/A#0"]);
+        // The saved order and the active tab (index 0) are unchanged.
+        assert_eq!(
+            tabs(&plan),
+            (
+                &[
+                    "graph-canvas@/p/A#0".to_string(),
+                    "a.class".to_string(),
+                    "b.rs".to_string()
+                ][..],
+                0
+            )
+        );
+    }
+
+    #[test]
+    fn retain_leaves_prunes_like_resolve_does() {
+        let metas = |n: usize| (0..n).map(|_| TileMeta::default()).collect::<Vec<_>>();
+        let plan: Plan<&str> = Plan::Split {
+            axis: Axis::Horizontal,
+            sizes: vec![Some(gpui::px(1.)), Some(gpui::px(2.)), Some(gpui::px(3.))],
+            children: vec![
+                Plan::Tabs {
+                    panels: vec!["a", "x"],
+                    active: 1,
+                },
+                Plan::Tabs {
+                    panels: vec!["x"],
+                    active: 0,
+                },
+                Plan::Tiles {
+                    metas: metas(1),
+                    children: vec![Plan::Tabs {
+                        panels: vec!["c"],
+                        active: 0,
+                    }],
+                },
+            ],
+        };
+        let kept = plan.clone().retain_leaves(&mut |p| *p != "x").unwrap();
+        match kept {
+            Plan::Split {
+                sizes, children, ..
+            } => {
+                // The emptied middle group is gone and the sizes with it.
+                assert_eq!(children.len(), 2);
+                assert_eq!(sizes, vec![None, None]);
+                // The active tab was removed: back to the first.
+                assert_eq!(
+                    children[0],
+                    Plan::Tabs {
+                        panels: vec!["a"],
+                        active: 0
+                    }
+                );
+            }
+            other => panic!("expected split, got {other:?}"),
+        }
+        // Nothing removed: the plan is unchanged, sizes included.
+        assert_eq!(plan.clone().retain_leaves(&mut |_| true), Some(plan.clone()));
+        // Everything removed: nothing is left.
+        assert!(plan.retain_leaves(&mut |_| false).is_none());
+
+        // A split left with one child collapses into it.
+        let two: Plan<&str> = Plan::Split {
+            axis: Axis::Vertical,
+            sizes: vec![None, None],
+            children: vec![
+                Plan::Tabs {
+                    panels: vec!["x"],
+                    active: 0,
+                },
+                Plan::Tabs {
+                    panels: vec!["b"],
+                    active: 0,
+                },
+            ],
+        };
+        assert_eq!(
+            two.retain_leaves(&mut |p| *p == "b"),
+            Some(Plan::Tabs {
+                panels: vec!["b"],
+                active: 0
+            })
+        );
     }
 
     #[test]

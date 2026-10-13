@@ -35,7 +35,7 @@ pub(super) const MAX_DORMANT: usize = 64;
 /// Which saved root a dormant leaf belonged to. A pop-out is a root of its
 /// own, named by its stable id rather than its position (positions shift when
 /// a pop-out is closed).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum DormantRoot {
     Center,
@@ -129,11 +129,16 @@ pub(super) fn prune(
 ) -> Vec<DormantLeaf> {
     let mut kept: Vec<DormantLeaf> = Vec::new();
     for leaf in leaves {
-        if let Some(file) = leaf.state.file() {
-            if !file_exists(Path::new(file)) {
-                tracing::debug!("layout: dropping dormant {file} (file is gone)");
-                continue;
-            }
+        // A tab of a file that is gone, or an owned panel of an editor whose
+        // file is gone, has nothing to come back to.
+        let files = leaf
+            .state
+            .file()
+            .into_iter()
+            .chain(leaf.state.owner().map(|(owner, _)| owner));
+        if let Some(file) = files.into_iter().find(|f| !file_exists(Path::new(f))) {
+            tracing::debug!("layout: dropping dormant {file} (file is gone)");
+            continue;
         }
         kept.retain(|k| !(k.root == leaf.root && k.state.same_identity(&leaf.state)));
         kept.push(leaf);
@@ -193,6 +198,30 @@ mod tests {
             anchor: anchor.map(|a| AnchorKey::File(a.into())),
             state: PanelState::default().with_file(file),
         }
+    }
+
+    #[test]
+    fn an_owned_dormant_tab_survives_pruning_and_dies_with_its_owner() {
+        let owned = |owner: &str, nth| DormantLeaf {
+            root: DormantRoot::Popout(0),
+            anchor: None,
+            state: PanelState {
+                panel_name: "graph-canvas".into(),
+                ..Default::default()
+            }
+            .with_owner(owner, nth),
+        };
+        let kept = prune(
+            vec![owned("a.class", 0), owned("a.class", 1), owned("gone.class", 0)],
+            |p| !p.to_string_lossy().starts_with("gone"),
+        );
+        // Both canvases of an existing owner stay (they differ in nth); the one
+        // of a vanished owner goes. The owner marker is carried verbatim.
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[1].state.owner(), Some(("a.class", 1)));
+        // The same identity collapses to the latest.
+        let kept = prune(vec![owned("a.class", 0), owned("a.class", 0)], |_| true);
+        assert_eq!(kept.len(), 1);
     }
 
     #[test]

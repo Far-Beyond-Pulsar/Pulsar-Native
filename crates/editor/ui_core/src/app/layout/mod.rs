@@ -34,6 +34,13 @@
 //!    that entity) and filled in place, side docks are set, and a live side-dock
 //!    panel the saved layout does not mention is put back in its dock.
 //!
+//! **Owned panels.** An editor with a dock of its own (the Blueprint editor's graph
+//! canvas, the level editor's hierarchy...) owns inner panels the user can pop
+//! out. They carry an owner marker (`PanelState::with_owner`; a panel declares it
+//! with `Panel::owner_file`) instead of a file, are looked up among the live
+//! panels of the owner editor on restore and moved out of its dock instead of
+//! being created; see [`owned`].
+//!
 //! **Dormant tabs.** A tab that names a panel (restore key or file) but cannot be
 //! rebuilt because nothing is registered for it (its plugin is disabled or
 //! missing) is not dropped: it is kept in `AppState::layout_dormant`, written
@@ -127,6 +134,7 @@
 mod commit;
 mod dormant;
 mod format;
+mod owned;
 mod resolve;
 mod store;
 mod window_geometry;
@@ -359,8 +367,9 @@ impl PulsarApp {
             .expect("inserted above")
     }
 
-    /// Every live pop-out opened from this window, as saved.
-    fn capture_popouts(&mut self, cx: &mut Context<Self>) -> Vec<SavedPopout> {
+    /// Every live pop-out opened from this window, as saved, each with the
+    /// entity id of its dock area (to match its owned panels, see [`owned`]).
+    fn capture_popouts(&mut self, cx: &mut Context<Self>) -> Vec<(SavedPopout, gpui::EntityId)> {
         let Some(me) = self.state.layout_window else {
             return Vec::new();
         };
@@ -388,12 +397,15 @@ impl PulsarApp {
             if tree.children.is_empty() {
                 continue;
             }
-            saved.push(SavedPopout {
-                id: note.id,
-                bounds: SavedWindow::capture(bounds, remembered),
-                dock: tree,
-                zoomed: dump.zoomed,
-            });
+            saved.push((
+                SavedPopout {
+                    id: note.id,
+                    bounds: SavedWindow::capture(bounds, remembered),
+                    dock: tree,
+                    zoomed: dump.zoomed,
+                },
+                dock.entity_id(),
+            ));
         }
         saved
     }
@@ -434,7 +446,10 @@ impl PulsarApp {
             return;
         };
 
-        let popouts = self.capture_popouts(cx);
+        let captured = self.capture_popouts(cx);
+        let popout_areas: Vec<(gpui::EntityId, u32)> =
+            captured.iter().map(|(p, area)| (*area, p.id)).collect();
+        let popouts: Vec<SavedPopout> = captured.into_iter().map(|(p, _)| p).collect();
         // Tabs no plugin could build this session ride along unchanged, kept
         // only for pop-outs that are part of this save.
         let mut dormant = dormant::prune(self.state.layout_dormant.clone(), |p| p.exists());
@@ -466,6 +481,14 @@ impl PulsarApp {
             dormant,
             ..Default::default()
         };
+        // Owned panels (an editor's inner panels) get the rank that lets a restore
+        // pick the same one again.
+        let ranks = owned::ranks_by_root(
+            &owned::live_owned(cx),
+            self.state.dock_area.entity_id(),
+            &popout_areas,
+        );
+        layout.assign_owner_nth(&ranks);
         layout.relativize(&root);
 
         let Some(slot) = self.state.layout_slot else {
