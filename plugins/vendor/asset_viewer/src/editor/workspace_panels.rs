@@ -77,8 +77,8 @@ impl Render for AssetPropertiesPanel {
             .as_ref()
             .map(|(w, h, _)| format!("{} x {}", w, h))
             .unwrap_or_default();
-        let has_undo = !ed.undo_stack.is_empty();
-        let has_redo = !ed.redo_stack.is_empty();
+        let has_undo = ed.can_undo();
+        let has_redo = ed.can_redo();
         drop(ed);
 
         if is_3d {
