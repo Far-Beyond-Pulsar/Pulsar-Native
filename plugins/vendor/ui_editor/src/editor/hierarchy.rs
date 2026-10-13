@@ -375,6 +375,10 @@ impl HierarchyPanel {
 
 /// Record which part of row `id` the pointer is over during a drag.
 fn set_hint(weak: &WeakEntity<HierarchyPanel>, id: NodeId, bounds: Bounds<Pixels>, position: Point<Pixels>, cx: &mut App) {
+    // Every row hears every drag movement; only the one under the pointer may answer.
+    if !bounds.contains(&position) {
+        return;
+    }
     let t = ((position.y - bounds.origin.y) / bounds.size.height).clamp(0.0, 1.0);
     let at = if t < 0.25 {
         Where::Before
