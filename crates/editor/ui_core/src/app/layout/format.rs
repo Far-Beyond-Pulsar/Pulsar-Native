@@ -1,0 +1,457 @@
+//! The `layout.json` file format and its I/O.
+//!
+//! ```json
+//! { "version": 2,
+//!   "windows": { "0": { "dock": …, "window": …, "sidebar": …,
+//!                       "popouts": [], "dormant": [], "chrome": {} } } }
+//! ```
+//!
+//! The file is a map of window *slots*; each slot is a [`SavedWindowLayout`].
+//! Only slot [`PRIMARY_SLOT`] is read and written today. Writing a slot is a
+//! read-modify-write that keeps every other slot as a raw JSON value, so a
+//! later version (or another window) can own them without this code needing to
+//! understand them.
+//!
+//! Version 1 files (`{ version, dock, window, sidebar }`) are migrated on read
+//! as slot 0. Any other version is ignored.
+//!
+//! The file is replaced atomically (write beside, then rename).
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use ui::dock::{DockAreaState, DockState, PanelState};
+
+use super::super::nav_sidebar::model::SavedSidebar;
+use super::window_geometry::SavedWindow;
+
+/// Bump when the format changes incompatibly.
+pub(super) const LAYOUT_VERSION: u32 = 2;
+/// The format before window slots existed; still readable.
+const LEGACY_VERSION: u32 = 1;
+pub(super) const LAYOUT_FILE: &str = "layout.json";
+/// The slot of the primary project window.
+pub(super) const PRIMARY_SLOT: &str = "0";
+
+/// Everything saved about one editor window.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub(super) struct SavedWindowLayout {
+    pub dock: DockAreaState,
+    /// Window size, position and maximized / fullscreen state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<SavedWindow>,
+    /// Pinned tabs, collapsed groups and expanded folders of the left sidebar.
+    #[serde(default, skip_serializing_if = "SavedSidebar::is_empty")]
+    pub sidebar: SavedSidebar,
+    /// Pop-out windows. Written by a later step; kept verbatim until then.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub popouts: Vec<Value>,
+    /// Tabs whose panel could not be recreated this session. Written by a later
+    /// step; kept verbatim until then.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dormant: Vec<Value>,
+    /// Drawers and other window chrome. Filled by a later step.
+    #[serde(default, skip_serializing_if = "SavedChrome::is_empty")]
+    pub chrome: SavedChrome,
+}
+
+/// Placeholder for the saved window chrome (drawers, overlays).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub(super) struct SavedChrome {}
+
+impl SavedChrome {
+    pub fn is_empty(&self) -> bool {
+        true
+    }
+}
+
+/// The file as stored: slots kept raw so unknown ones survive a rewrite.
+#[derive(Default)]
+struct RawLayout {
+    windows: BTreeMap<String, Value>,
+}
+
+pub(super) fn layout_path(project_root: &Path) -> PathBuf {
+    project_root.join(".pulsar").join(LAYOUT_FILE)
+}
+
+/// Parse `text` as a layout of any readable version, normalised to slots.
+fn parse(text: &str, path: &Path) -> Option<RawLayout> {
+    let mut value: Value = match serde_json::from_str(text) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(
+                "ignoring unreadable saved layout {}: {error}",
+                path.display()
+            );
+            return None;
+        }
+    };
+    let version = value.get("version").and_then(Value::as_u64);
+    match version {
+        Some(v) if v == u64::from(LAYOUT_VERSION) => {
+            let Value::Object(map) = value.get_mut("windows")?.take() else {
+                return None;
+            };
+            Some(RawLayout {
+                windows: map.into_iter().collect(),
+            })
+        }
+        Some(v) if v == u64::from(LEGACY_VERSION) => {
+            // v1 was a single window: the slot is the file minus `version`.
+            value.as_object_mut()?.remove("version");
+            Some(RawLayout {
+                windows: BTreeMap::from([(PRIMARY_SLOT.to_string(), value)]),
+            })
+        }
+        other => {
+            tracing::info!(
+                found = ?other,
+                expected = LAYOUT_VERSION,
+                "ignoring saved layout of another version"
+            );
+            None
+        }
+    }
+}
+
+fn read_raw(path: &Path) -> Option<RawLayout> {
+    let text = std::fs::read_to_string(path).ok()?;
+    parse(&text, path)
+}
+
+/// The saved layout of window `slot`, if the file and the slot are readable.
+pub(super) fn read_slot(path: &Path, slot: &str) -> Option<SavedWindowLayout> {
+    let raw = read_raw(path)?;
+    match serde_json::from_value(raw.windows.get(slot)?.clone()) {
+        Ok(layout) => Some(layout),
+        Err(error) => {
+            tracing::warn!("ignoring unreadable layout slot {slot}: {error}");
+            None
+        }
+    }
+}
+
+/// Replace window `slot` in the file, leaving every other slot untouched.
+pub(super) fn write_slot(
+    path: &Path,
+    slot: &str,
+    layout: &SavedWindowLayout,
+) -> std::io::Result<()> {
+    let mut raw = read_raw(path).unwrap_or_default();
+    raw.windows
+        .insert(slot.to_string(), serde_json::to_value(layout)?);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = serde_json::json!({ "version": LAYOUT_VERSION, "windows": raw.windows });
+    let json = serde_json::to_vec_pretty(&file)?;
+    // Write beside the target and rename, so a crash mid-write cannot leave a
+    // truncated layout behind.
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json)?;
+    std::fs::rename(&tmp, path)
+}
+
+// ── Project-relative paths ───────────────────────────────────────────────────
+
+/// Rewrite recorded file paths inside the project as project-relative.
+fn relativize(state: &mut PanelState, root: &Path) {
+    if let Some(value) = state.file_mut() {
+        if let Some(path) = value.as_str().map(PathBuf::from) {
+            if let Ok(relative) = path.strip_prefix(root) {
+                *value = relative.to_string_lossy().replace('\\', "/").into();
+            }
+        }
+    }
+    for child in &mut state.children {
+        relativize(child, root);
+    }
+}
+
+/// Inverse of [`relativize`]: make recorded paths absolute under `root`.
+fn absolutize(state: &mut PanelState, root: &Path) {
+    if let Some(value) = state.file_mut() {
+        if let Some(path) = value.as_str().map(PathBuf::from) {
+            if path.is_relative() {
+                *value = root.join(path).to_string_lossy().into_owned().into();
+            }
+        }
+    }
+    for child in &mut state.children {
+        absolutize(child, root);
+    }
+}
+
+fn map_dock_panels(dock: &mut Option<DockState>, f: impl Fn(&mut PanelState)) {
+    if let Some(dock) = dock {
+        // `DockState` exposes its tree read-only; round-trip through serde to
+        // rewrite it, which also keeps this independent of its field layout.
+        if let Ok(mut value) = serde_json::to_value(&*dock) {
+            if let Some(panel) = value.get_mut("panel") {
+                if let Ok(mut state) = serde_json::from_value::<PanelState>(panel.take()) {
+                    f(&mut state);
+                    if let Ok(v) = serde_json::to_value(&state) {
+                        *panel = v;
+                    }
+                }
+            }
+            if let Ok(updated) = serde_json::from_value::<DockState>(value) {
+                *dock = updated;
+            }
+        }
+    }
+}
+
+fn transform_dock(dock: &mut DockAreaState, f: impl Fn(&mut PanelState) + Copy) {
+    f(&mut dock.center);
+    map_dock_panels(&mut dock.left_dock, f);
+    map_dock_panels(&mut dock.right_dock, f);
+    map_dock_panels(&mut dock.bottom_dock, f);
+}
+
+impl SavedWindowLayout {
+    /// Store file paths inside `root` as project-relative.
+    pub fn relativize(&mut self, root: &Path) {
+        transform_dock(&mut self.dock, |state| relativize(state, root));
+    }
+
+    /// Make stored file paths absolute under `root`.
+    pub fn absolutize(&mut self, root: &Path) {
+        transform_dock(&mut self.dock, |state| absolutize(state, root));
+    }
+}
+
+#[cfg(test)]
+pub(super) mod tests {
+    use super::*;
+    use ui::dock::PanelInfo;
+
+    pub fn tab_group(files: &[&str]) -> PanelState {
+        let mut group = PanelState {
+            panel_name: "TabPanel".into(),
+            info: PanelInfo::tabs(0),
+            ..Default::default()
+        };
+        for file in files {
+            group.add_child(
+                PanelState {
+                    panel_name: "Editor".into(),
+                    ..Default::default()
+                }
+                .with_file(*file),
+            );
+        }
+        group
+    }
+
+    fn temp(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("pulsar-layout-{name}-{}", std::process::id()))
+    }
+
+    #[test]
+    fn project_paths_round_trip_through_relative_form() {
+        let root = Path::new("/proj");
+        let mut state = tab_group(&["/proj/scripts/a.rs", "/elsewhere/b.rs"]);
+
+        relativize(&mut state, root);
+        assert_eq!(state.children[0].file(), Some("scripts/a.rs"));
+        // Outside the project stays absolute.
+        assert_eq!(state.children[1].file(), Some("/elsewhere/b.rs"));
+
+        absolutize(&mut state, root);
+        assert_eq!(
+            Path::new(state.children[0].file().unwrap()),
+            root.join("scripts/a.rs")
+        );
+        assert_eq!(state.children[1].file(), Some("/elsewhere/b.rs"));
+    }
+
+    #[test]
+    fn layout_survives_a_write_and_read() {
+        let dir = temp("rw");
+        let path = layout_path(&dir);
+        let layout = SavedWindowLayout {
+            dock: DockAreaState {
+                center: tab_group(&["a.rs", "b.rs"]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        write_slot(&path, PRIMARY_SLOT, &layout).unwrap();
+        let read = read_slot(&path, PRIMARY_SLOT).expect("layout reads back");
+        assert_eq!(read.dock.center, layout.dock.center);
+        assert!(
+            !path.with_extension("json.tmp").exists(),
+            "temp file renamed away"
+        );
+        let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(file["version"], 2);
+        assert!(file["windows"]["0"].is_object());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tile_bounds_and_stacking_survive_a_write_and_read() {
+        use gpui::{point, px, size, Bounds};
+        use ui::dock::TileMeta;
+
+        let metas = vec![
+            TileMeta {
+                bounds: Bounds {
+                    origin: point(px(10.), px(20.)),
+                    size: size(px(300.), px(200.)),
+                },
+                z_index: 1,
+            },
+            TileMeta {
+                bounds: Bounds {
+                    origin: point(px(50.), px(60.)),
+                    size: size(px(400.), px(250.)),
+                },
+                z_index: 0,
+            },
+        ];
+        let tiles = PanelState {
+            panel_name: "Tiles".into(),
+            children: vec![tab_group(&["a.rs"]), tab_group(&["b.rs"])],
+            info: PanelInfo::tiles(metas.clone()),
+        };
+        let dir = temp("tiles");
+        let path = layout_path(&dir);
+        let layout = SavedWindowLayout {
+            dock: DockAreaState {
+                center: tiles,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        write_slot(&path, PRIMARY_SLOT, &layout).unwrap();
+        let read = read_slot(&path, PRIMARY_SLOT).unwrap();
+        assert_eq!(read.dock.center.info, PanelInfo::tiles(metas));
+        assert_eq!(read.dock.center.children.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sidebar_state_survives_a_write_and_older_files_read_without_it() {
+        use super::super::super::nav_sidebar::model::{SavedGroup, TabKey};
+        let dir = temp("sidebar");
+        let path = layout_path(&dir);
+        let layout = SavedWindowLayout {
+            sidebar: SavedSidebar {
+                pinned: vec![
+                    TabKey::File("Content/Hero.class".into()),
+                    TabKey::Panel("Level Editor".into()),
+                ],
+                groups: vec![SavedGroup {
+                    name: "Combat".into(),
+                    members: vec![TabKey::File("Content/Sword.class".into())],
+                    collapsed: false,
+                }],
+                collapsed_groups: vec!["Blueprint Editor".into()],
+                expanded_folders: vec!["Content/Maps".into()],
+                panes: {
+                    use super::super::super::nav_sidebar::panes::{PaneKind, PaneStack};
+                    let mut panes = PaneStack::default();
+                    panes.toggle(PaneKind::Content);
+                    panes
+                },
+            },
+            ..Default::default()
+        };
+        write_slot(&path, PRIMARY_SLOT, &layout).unwrap();
+        assert_eq!(
+            read_slot(&path, PRIMARY_SLOT).unwrap().sidebar,
+            layout.sidebar
+        );
+
+        // A file written before the sidebar existed has no `sidebar` key.
+        let mut older = serde_json::to_value(&layout).unwrap();
+        older.as_object_mut().unwrap().remove("sidebar");
+        let file = serde_json::json!({ "version": 2, "windows": { "0": older } });
+        std::fs::write(&path, file.to_string()).unwrap();
+        assert!(read_slot(&path, PRIMARY_SLOT)
+            .expect("older layout")
+            .sidebar
+            .is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_layout_of_an_unknown_version_is_ignored() {
+        let dir = temp("version");
+        let path = layout_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        for version in [0, LAYOUT_VERSION + 1] {
+            let file = serde_json::json!({ "version": version, "windows": { "0": {
+                "dock": serde_json::to_value(DockAreaState::default()).unwrap() } } });
+            std::fs::write(&path, file.to_string()).unwrap();
+            assert!(read_slot(&path, PRIMARY_SLOT).is_none());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_v1_file_migrates_to_slot_zero() {
+        let dir = temp("v1");
+        let path = layout_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let dock = DockAreaState {
+            center: tab_group(&["a.rs"]),
+            ..Default::default()
+        };
+        let v1 = serde_json::json!({ "version": 1, "dock": dock });
+        std::fs::write(&path, v1.to_string()).unwrap();
+
+        let read = read_slot(&path, PRIMARY_SLOT).expect("v1 migrates");
+        assert_eq!(read.dock.center, dock.center);
+        assert!(read.popouts.is_empty() && read.dormant.is_empty());
+
+        // The next write upgrades the file to v2.
+        write_slot(&path, PRIMARY_SLOT, &read).unwrap();
+        let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(file["version"], 2);
+        assert!(file.get("dock").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn writing_a_slot_preserves_the_others_verbatim() {
+        let dir = temp("slots");
+        let path = layout_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let other = serde_json::json!({ "mystery": [1, 2, 3], "dock": null });
+        let file = serde_json::json!({ "version": 2, "windows": { "1": other.clone() } });
+        std::fs::write(&path, file.to_string()).unwrap();
+
+        write_slot(&path, PRIMARY_SLOT, &SavedWindowLayout::default()).unwrap();
+
+        let after: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(after["windows"]["1"], other);
+        assert!(after["windows"]["0"].is_object());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rewriting_dock_panels_round_trips_a_side_dock() {
+        // The side docks go through `map_dock_panels`; check it reaches inside.
+        let json = serde_json::json!({
+            "panel": serde_json::to_value(tab_group(&["/proj/x.rs"])).unwrap(),
+            "placement": "left",
+            "size": 420.0,
+            "open": true,
+        });
+        let mut dock = Some(serde_json::from_value::<DockState>(json).unwrap());
+        map_dock_panels(&mut dock, |s| relativize(s, Path::new("/proj")));
+        let dock = dock.unwrap();
+        assert_eq!(dock.panel().children[0].file(), Some("x.rs"));
+        assert!(dock.is_open());
+    }
+}
