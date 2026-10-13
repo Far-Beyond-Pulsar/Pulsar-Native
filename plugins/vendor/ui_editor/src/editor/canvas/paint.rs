@@ -91,7 +91,7 @@ impl Painter<'_> {
                 );
             }
             Cmd::Quad { rect, radii, fill, border } => {
-                let (width, color) = border.map_or((0.0, Color::TRANSPARENT), |(w, c)| (w, c));
+                let (width, color) = border.unwrap_or((0.0, Color::TRANSPARENT));
                 window.paint_quad(PaintQuad {
                     bounds: self.surface.bounds(*rect),
                     corner_radii: corners(*radii, k),
@@ -185,7 +185,7 @@ impl Painter<'_> {
         match image {
             Some(Some(Ok(data))) => {
                 let size = data.size(0);
-                let natural = Vec2::new(f32::from(size.width.0 as f32), f32::from(size.height.0 as f32));
+                let natural = Vec2::new(size.width.0 as f32, size.height.0 as f32);
                 let dest = fit_image(rect, natural, stretch);
                 let _ = tint;
                 // Parts beyond the box (cover mode) are clipped to it.

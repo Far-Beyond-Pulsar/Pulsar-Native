@@ -188,3 +188,80 @@ fn a_file_without_an_id_gets_one_on_open(cx: &mut TestAppContext) {
     assert_eq!(on_disk, Some(id));
     assert!(!editor.read_with(cx, |e, cx| e.tab_unsaved(cx)));
 }
+
+#[gpui::test]
+fn nested_widgets_parameters_and_details_render_for_every_kind(cx: &mut TestAppContext) {
+    use crate::model::{Arg, ValueClass};
+    cx.update(ui::init);
+    let dir = std::env::temp_dir().join(format!("ui_editor_nested_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("Pulsar.toml"), "").unwrap();
+
+    // A card with a title parameter and a body slot.
+    let mut card = WidgetAsset::new();
+    let root = card.root.id;
+    let mut title = card.new_node(Kind::Text);
+    title.name = "Title".into();
+    let title_id = title.id;
+    card.add(root, None, title).unwrap();
+    let mut slot = card.new_node(Kind::NamedSlot);
+    slot.name = "Body".into();
+    let sid = slot.id;
+    card.add(root, None, slot).unwrap();
+    card.node_mut(sid).unwrap().set_slot(SlotKind::Canvas, "offsets", serde_json::json!([0.0, 40.0, 200.0, 100.0]));
+    let param = card.add_parameter("Heading", ValueClass::Text);
+    card.link_parameter(param, title_id, "text").unwrap();
+    std::fs::write(dir.join("Card.widget"), card.to_text()).unwrap();
+
+    // A menu that uses it twice.
+    let mut menu = WidgetAsset::new();
+    let root = menu.root.id;
+    let mut first = menu.new_instance(card.id.clone(), "Card");
+    first.instance.as_mut().unwrap().overrides.insert(param, Arg::Value(serde_json::json!("Sword")));
+    let first_id = first.id;
+    menu.add(root, None, first).unwrap();
+    menu.node_mut(first_id).unwrap().set_slot(SlotKind::Canvas, "offsets", serde_json::json!([50.0, 50.0, 250.0, 150.0]));
+    let mut filler = menu.new_node(Kind::Button);
+    filler.for_slot = Some("Body".into());
+    let filler_id = filler.id;
+    menu.add(first_id, None, filler).unwrap();
+    let menu_path = dir.join("Menu.widget");
+    std::fs::write(&menu_path, menu.to_text()).unwrap();
+
+    let (editor, cx) = cx.add_window_view(|window, cx| WidgetEditor::new(menu_path.clone(), None, window, cx));
+    draw(cx);
+    let ctx = editor.read_with(cx, |e, _| e.ctx.clone());
+    assert_eq!(ctx.lib.read_with(cx, |l, _| l.library().len()), 2, "both widgets are found by id");
+
+    // Select the instance and its slot content, then one of every kind.
+    for id in [first_id, filler_id] {
+        cx.update(|_, cx| ctx.select(vec![id], cx));
+        draw(cx);
+    }
+    for kind in Kind::ALL {
+        if kind == Kind::Instance {
+            continue;
+        }
+        let id = cx.update(|_, cx| ctx.add_node(kind, None, cx)).expect("added");
+        cx.update(|_, cx| ctx.select(vec![id], cx));
+        draw(cx);
+    }
+    // Make a parameter from a property, then drive it.
+    let text = cx.update(|_, cx| ctx.add_node(Kind::Text, None, cx)).unwrap();
+    let made = cx.update(|_, cx| ctx.parameterize(text, "text", cx));
+    draw(cx);
+    assert!(made.is_some());
+    cx.update(|_, cx| ctx.select(Vec::new(), cx));
+    draw(cx);
+
+    // Moving the file keeps the reference good.
+    std::fs::create_dir_all(dir.join("moved")).unwrap();
+    std::fs::rename(dir.join("Card.widget"), dir.join("moved/Renamed.widget")).unwrap();
+    ctx.lib.update(cx, |l, cx| l.refresh(cx));
+    draw(cx);
+    let library = ctx.lib.read_with(cx, |l, _| l.library());
+    assert!(library.entry(&card.id).is_some());
+    assert_eq!(library.entry(&card.id).unwrap().name, "Renamed");
+    std::fs::remove_dir_all(&dir).ok();
+}

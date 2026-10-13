@@ -157,7 +157,6 @@ impl Render for LibraryPanel {
         let library = self.ctx.lib.read(cx).library();
         let scanning = self.ctx.lib.read(cx).is_scanning();
         let this_id = self.ctx.widget(cx).id.clone();
-        let this_path = self.ctx.doc.read(cx).path().map(|p| p.to_path_buf());
         let current = self.ctx.library_now(cx);
         let usage = library.usage_counts();
         let query = self.search.read(cx).value().trim().to_lowercase();

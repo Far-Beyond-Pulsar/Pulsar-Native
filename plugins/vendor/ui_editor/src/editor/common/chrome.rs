@@ -8,14 +8,6 @@ use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt};
 
 use crate::model::{Issue, Severity};
 
-/// Monospace face for numbers.
-pub const MONO: &str = "JetBrainsMono-Regular";
-
-/// An sRGB byte triple as a GPUI color.
-pub fn color_of(rgb: [u8; 3]) -> Hsla {
-    gpui::rgb(((rgb[0] as u32) << 16) | ((rgb[1] as u32) << 8) | rgb[2] as u32).into()
-}
-
 pub fn severity_color(severity: Severity, cx: &App) -> Hsla {
     let theme = cx.theme();
     match severity {
@@ -73,49 +65,6 @@ pub fn toolbar_divider(cx: &App) -> impl IntoElement {
         .bg(cx.theme().border)
 }
 
-/// Small caption used above groups of controls.
-pub fn caption(text: impl Into<SharedString>, cx: &App) -> impl IntoElement {
-    div()
-        .text_xs()
-        .text_color(cx.theme().muted_foreground)
-        .child(text.into())
-}
-
-/// A titled group inside a panel: small caps title, optional hint, content.
-pub fn section(
-    title: impl Into<SharedString>,
-    hint: Option<SharedString>,
-    content: impl IntoElement,
-    cx: &App,
-) -> impl IntoElement {
-    let theme = cx.theme();
-    v_flex()
-        .w_full()
-        .px_3()
-        .py_2p5()
-        .gap_2()
-        .border_b_1()
-        .border_color(theme.border.opacity(0.6))
-        .child(
-            v_flex()
-                .gap_0p5()
-                .child(
-                    div()
-                        .text_xs()
-                        .font_semibold()
-                        .text_color(theme.foreground)
-                        .child(title.into()),
-                )
-                .children(hint.map(|hint| {
-                    div()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child(hint)
-                })),
-        )
-        .child(content)
-}
-
 /// Centered icon + message shown when a panel has nothing to display.
 pub fn empty_message(
     icon: IconName,
@@ -151,17 +100,6 @@ pub fn empty_message(
                 .text_color(theme.muted_foreground)
                 .child(hint.into()),
         )
-}
-
-/// A small filled swatch.
-pub fn swatch(color: Hsla, size: f32, cx: &App) -> impl IntoElement {
-    div()
-        .flex_shrink_0()
-        .size(px(size))
-        .rounded(px(size * 0.28))
-        .bg(color)
-        .border_1()
-        .border_color(cx.theme().foreground.opacity(0.18))
 }
 
 /// A banner across the top of an editor, for a problem with the file itself.

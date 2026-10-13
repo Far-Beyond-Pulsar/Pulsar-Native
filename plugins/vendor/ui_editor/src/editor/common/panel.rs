@@ -52,11 +52,6 @@ impl Dock {
         Self { groups: vec![panels], size, axis: Axis::Horizontal }
     }
 
-    /// Each of `panels` in its own group, side by side.
-    pub fn side_by_side(size: f32, panels: Vec<Arc<dyn PanelView>>) -> Self {
-        Self { groups: panels.into_iter().map(|p| vec![p]).collect(), size, axis: Axis::Horizontal }
-    }
-
     /// Each group of tabs in `groups`, stacked top to bottom.
     pub fn stacked(size: f32, groups: Vec<Vec<Arc<dyn PanelView>>>) -> Self {
         Self { groups, size, axis: Axis::Vertical }
@@ -94,7 +89,7 @@ pub fn build_workspace<V: 'static>(
 
         let center = tabs(layout.center, window, cx);
         let area_for_split = area_weak.clone();
-        let mut dock_item = |dock: Dock, window: &mut Window, cx: &mut Context<Workspace>| {
+        let dock_item = |dock: Dock, window: &mut Window, cx: &mut Context<Workspace>| {
             let (size, axis) = (dock.size, dock.axis);
             let mut groups: Vec<DockItem> = dock.groups.into_iter().map(|g| tabs(g, window, cx)).collect();
             let item = if groups.len() == 1 {

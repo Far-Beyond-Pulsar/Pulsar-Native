@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use gpui::*;
 
-use crate::display::DisplayOptions;
 use crate::model::{NodeId, Rect, Vec2};
 
 use super::super::canvas::geometry::{Guide, GuideAxis, Handle};
@@ -58,7 +57,6 @@ pub struct ViewShot {
 pub struct OverlayData {
     pub frame: Arc<Frame>,
     pub view: ViewShot,
-    pub options: DisplayOptions,
     pub selection: Vec<NodeId>,
     pub primary: Option<NodeId>,
     pub primary_name: String,
@@ -277,7 +275,7 @@ fn paint_grid(window: &mut Window, origin: Point<Pixels>, view: &ViewShot, scree
     let mut n = 0u32;
     let mut x = screen.x;
     while x <= screen.right() && n < 4000 {
-        let c = if n % 8 == 0 { major } else { minor };
+        let c = if n.is_multiple_of(8) { major } else { minor };
         fill(window, px_rect(origin, Rect::new(x, screen.y, 1.0, screen.h)), c);
         x += step;
         n += 1;
@@ -285,7 +283,7 @@ fn paint_grid(window: &mut Window, origin: Point<Pixels>, view: &ViewShot, scree
     let mut n = 0u32;
     let mut y = screen.y;
     while y <= screen.bottom() && n < 4000 {
-        let c = if n % 8 == 0 { major } else { minor };
+        let c = if n.is_multiple_of(8) { major } else { minor };
         fill(window, px_rect(origin, Rect::new(screen.x, y, screen.w, 1.0)), c);
         y += step;
         n += 1;

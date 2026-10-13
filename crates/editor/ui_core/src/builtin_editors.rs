@@ -420,6 +420,38 @@ impl BuiltinEditorProvider for PhysicsBuiltinProvider {
     }
 }
 
+/// Wraps the ui_editor_plugin crate as a built-in provider: the `.widget`
+/// file type and the WYSIWYG widget editor.
+pub struct WidgetEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for WidgetEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.ui-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        ui_editor_plugin::UiEditorPlugin.file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        ui_editor_plugin::UiEditorPlugin.editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == ui_editor_plugin::WIDGET_EDITOR_ID
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        ui_editor_plugin::UiEditorPlugin::create_editor(file_path, Some(&editor_context.services.undo), window, cx)
+    }
+}
+
 /// Wraps the shader_editor_plugin crate as a built-in editor provider.
 /// Opens `.material` files in the visual Shader Graph Editor.
 pub struct ShaderEditorBuiltinProvider;
@@ -709,6 +741,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
     // Physics (file types and components; the simulation itself is
     // registered by linking the crate)
     registry.register_provider(Arc::new(PhysicsBuiltinProvider));
+
+    // Widget assets and the widget editor (opens .widget files)
+    registry.register_provider(Arc::new(WidgetEditorBuiltinProvider));
 
     // Editors that are part of the build but not of this crate (the Blueprint
     // editor, ..) register themselves at link time; see

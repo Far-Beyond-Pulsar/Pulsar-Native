@@ -7,7 +7,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::menu::context_menu::ContextMenuExt;
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt};
+use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 use crate::model::{Kind, NodeId};
 

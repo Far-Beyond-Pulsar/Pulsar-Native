@@ -461,6 +461,7 @@ mod tests {
 /// The `offsets` that place a canvas child at `wanted` in a parent of
 /// `parent` size: the inverse of [`canvas_slot_rect`], for dragging and
 /// resizing. Keeps the child's anchors and alignment.
+#[cfg(test)]
 pub fn offsets_for_rect(child: &ResolvedNode, parent: Rect, wanted: Rect) -> [f32; 4] {
     let v = child.slot_view();
     offsets_for(v.vec2("anchor_min"), v.vec2("anchor_max"), v.vec2("alignment"), parent, wanted)

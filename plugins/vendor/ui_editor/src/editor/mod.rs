@@ -65,6 +65,7 @@ fn as_panel<P: PanelView + 'static>(panel: P) -> Arc<dyn PanelView> {
 
 pub struct WidgetEditor {
     pub(crate) ctx: Ctx,
+    #[allow(dead_code)]
     pub(crate) designer: Entity<DesignerPanel>,
     workspace: Entity<Workspace>,
     focus_handle: FocusHandle,

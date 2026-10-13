@@ -210,7 +210,6 @@ impl DesignerPanel {
                 outlines: view.outlines,
                 safe_zone: view.safe_zone,
             },
-            options: DisplayOptions { state: view.state, placeholders: view.placeholders, time: 0.0 },
             selection: sel.ids().to_vec(),
             primary,
             primary_name: primary.and_then(|p| widget.node(p)).map(|n| n.name.clone()).unwrap_or_default(),

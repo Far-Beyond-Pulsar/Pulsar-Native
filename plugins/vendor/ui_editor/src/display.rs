@@ -246,7 +246,7 @@ fn paint_text(node: &ResolvedNode, rect: Rect, k: f32, alpha: f32, out: &mut Vec
         "right" => Justify::Right,
         _ => Justify::Left,
     };
-    let mut cmd = |rect: Rect, color: Color| Cmd::Text {
+    let cmd = |rect: Rect, color: Color| Cmd::Text {
         rect,
         text: text.clone(),
         size: v.f32("font_size") * k,

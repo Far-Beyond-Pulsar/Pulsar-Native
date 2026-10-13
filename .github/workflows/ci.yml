@@ -113,7 +113,8 @@ jobs:
             "script_editor_plugin",
             "asset_viewer_plugin",
             "skeletal_animation_plugin",
-            "physics_plugin"
+            "physics_plugin",
+            "ui_editor_plugin"
           )) {
             $node = Get-ResolvedPackage $plugin
             if ($node["features"] -notcontains "builtin") {
@@ -135,7 +136,7 @@ jobs:
           # These two are explicit root-workspace members: the built-in asset
           # viewer, and the GPUI-free Blueprint compiler and graph model tested
           # against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph", "physics_plugin", "skeletal_animation_plugin")
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph", "physics_plugin", "skeletal_animation_plugin", "ui_editor_plugin")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )
@@ -159,7 +160,8 @@ jobs:
             "plugin_matter",
             "script_editor_plugin",
             "shader_editor_plugin",
-            "skeletal_animation_plugin"
+            "skeletal_animation_plugin",
+            "ui_editor_plugin"
           )
           $missingBuiltins = @(
             $expectedBuiltins | Where-Object { $uiCoreDependencies -notcontains $_ }

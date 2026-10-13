@@ -175,7 +175,6 @@ impl DetailsPanel {
             }
         };
 
-        let theme = cx.theme().clone();
         let menu = self.prop_menu(node.id, def, set_here, driver.clone().map(|(id, name, _)| (id, name)), compatible);
         let tip = match &driver {
             Some((_, name, _)) => format!("Driven by the parameter {name}. Change its default in the Parameters panel."),

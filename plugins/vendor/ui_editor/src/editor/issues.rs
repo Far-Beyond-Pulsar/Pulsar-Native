@@ -1,10 +1,10 @@
 //! The issues panel: what is wrong with the widget, with one-click repairs.
 
 use gpui::*;
-use ui::button::{Button, ButtonVariants};
+use ui::button::Button;
 use ui::scroll::ScrollbarAxis;
 use ui::tag::Tag;
-use ui::{h_flex, v_flex, ActiveTheme, Disableable, IconName, Sizable};
+use ui::{h_flex, v_flex, ActiveTheme, Disableable, IconName, Sizable, StyledExt};
 
 use crate::model::validate::WidgetFix;
 use crate::model::Severity;

@@ -3,6 +3,5 @@
 
 pub mod chrome;
 pub mod document;
-pub mod paint;
 pub mod panel;
 pub mod toolbar;

@@ -39,10 +39,6 @@ impl Selection {
         self.ids.contains(&id)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.ids.is_empty()
-    }
-
     pub fn len(&self) -> usize {
         self.ids.len()
     }
@@ -55,14 +51,6 @@ impl Selection {
         }
     }
 
-    pub fn select(&mut self, id: NodeId, cx: &mut Context<Self>) {
-        self.set(vec![id], cx);
-    }
-
-    pub fn clear(&mut self, cx: &mut Context<Self>) {
-        self.set(Vec::new(), cx);
-    }
-
     /// Add or remove `id` from the selection; an added node becomes primary.
     pub fn toggle(&mut self, id: NodeId, cx: &mut Context<Self>) {
         if let Some(at) = self.ids.iter().position(|&i| i == id) {
@@ -70,13 +58,6 @@ impl Selection {
         } else {
             self.ids.push(id);
         }
-        cx.notify();
-    }
-
-    /// Add `id` (making it primary) without removing anything.
-    pub fn add(&mut self, id: NodeId, cx: &mut Context<Self>) {
-        self.ids.retain(|&i| i != id);
-        self.ids.push(id);
         cx.notify();
     }
 
@@ -117,7 +98,6 @@ pub enum Screen {
     /// The size the widget says it is designed for.
     Design,
     Preset(usize),
-    Custom(Vec2),
 }
 
 /// How the designer is looking at the widget.
@@ -174,7 +154,6 @@ impl View {
         match self.screen {
             Screen::Design => widget.design_size,
             Screen::Preset(i) => SCREEN_PRESETS.get(i).map_or(widget.design_size, |p| p.size),
-            Screen::Custom(size) => size,
         }
     }
 
@@ -190,7 +169,6 @@ impl View {
         let name = match self.screen {
             Screen::Design => "Design size".to_string(),
             Screen::Preset(i) => SCREEN_PRESETS.get(i).map_or("Screen".to_string(), |p| p.name.to_string()),
-            Screen::Custom(_) => "Custom".to_string(),
         };
         if matches!(self.screen, Screen::Preset(_)) {
             name
@@ -230,6 +208,7 @@ impl View {
         Vec2::new((canvas_point.x - self.pan.x) / scale, (canvas_point.y - self.pan.y) / scale)
     }
 
+    #[cfg(test)]
     pub fn to_canvas(&self, widget_point: Vec2) -> Vec2 {
         let scale = self.scale();
         Vec2::new(widget_point.x * scale + self.pan.x, widget_point.y * scale + self.pan.y)
@@ -341,7 +320,5 @@ mod tests {
         assert_eq!(view.screen_size(&widget), Vec2::new(1280.0, 720.0));
         view.dpi = 2.0;
         assert_eq!(view.layout_size(&widget), Vec2::new(640.0, 360.0));
-        view.screen = Screen::Custom(Vec2::new(500.0, 400.0));
-        assert!(view.screen_label(&widget).contains("500"));
     }
 }

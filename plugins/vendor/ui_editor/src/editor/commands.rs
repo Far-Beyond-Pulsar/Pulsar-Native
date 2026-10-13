@@ -625,11 +625,6 @@ impl Ctx {
         });
         self.select(ids, cx);
     }
-
-    /// Copy canvas offsets of every selected widget into the same place on a screen.
-    pub fn set_canvas_rect(&self, id: NodeId, parent: Rect, wanted: Rect, cx: &mut App) {
-        self.doc.update(cx, |d, cx| d.live(cx, |w| set_canvas_rect(w, id, parent, wanted)));
-    }
 }
 
 // ── Pieces shared with the canvas ──────────────────────────────────────────

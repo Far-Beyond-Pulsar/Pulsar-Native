@@ -360,7 +360,7 @@ mod tests {
     // Explicit imports: `super::*` would pull in `gpui::*`, whose own `test`
     // macro shadows the built-in `#[test]` attribute.
     use super::{AssetEdit, Document, Instant, MERGE_WINDOW};
-    use crate::model::{Asset, WidgetAsset};
+    use crate::model::WidgetAsset;
     use plugin_editor_api::undo::lock;
     use plugin_editor_api::SharedHistory;
     use std::time::Duration;

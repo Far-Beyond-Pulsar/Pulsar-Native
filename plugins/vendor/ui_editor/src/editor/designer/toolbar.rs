@@ -6,7 +6,7 @@ use gpui::*;
 use ui::button::{Button, ButtonVariants};
 use ui::menu::DropdownMenu;
 use ui::tag::Tag;
-use ui::{h_flex, ActiveTheme, Disableable, IconName, Selectable, Sizable, StyledExt};
+use ui::{h_flex, ActiveTheme, Disableable, IconName, Selectable, Sizable};
 
 use crate::display::PreviewState;
 use crate::model::{SlotKind, Vec2};

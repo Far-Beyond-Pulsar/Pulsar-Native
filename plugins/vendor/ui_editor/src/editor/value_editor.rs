@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use gpui::*;
 use serde_json::{json, Value as Json};
-use ui::button::{Button, ButtonVariants};
+use ui::button::Button;
 use ui::color_picker::ColorPicker;
 use ui::input::{NumberInput, TextInput};
 use ui::menu::DropdownMenu;

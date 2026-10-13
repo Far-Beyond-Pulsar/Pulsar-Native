@@ -56,7 +56,7 @@ impl ParametersPanel {
 
     fn row(&mut self, id: ParamId, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let theme = cx.theme().clone();
-        let widget = self.ctx.widget(cx);
+        let widget = self.ctx.widget(cx).clone();
         let param = widget.parameter(id)?.clone();
         let targets: Vec<(crate::model::NodeId, String, String, bool)> = param
             .targets
