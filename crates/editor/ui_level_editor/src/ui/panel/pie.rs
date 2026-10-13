@@ -220,6 +220,11 @@ fn build_pie_dylib(
         }
     }
 
+    // Refresh engine-owned generated files before deciding whether the last
+    // artifact is reusable. In particular, a newer engine can change the
+    // pinned game dependencies without changing any project source files.
+    engine_backend::services::ensure_core_bootstrap(root)?;
+
     // Fastpath — reuse the existing artifact when nothing changed. Needs the
     // crate name, which needs a manifest; if it's missing we fall through to a
     // full build that generates it.
@@ -248,14 +253,10 @@ fn build_pie_dylib(
         }
     }
 
-    // Slow path — regenerate scaffolding (src/lib.rs + the cdylib manifest) and
-    // build.
+    // Slow path — the bootstrap above refreshed scaffolding; build it now.
     if task.is_cancelled() {
         return Err("Build cancelled".into());
     }
-    task.report_progress(0.15, "Preparing generated project files");
-    engine_backend::services::ensure_core_bootstrap(root)?;
-
     task.report_progress(0.25, "Compiling game library");
     let output = std::process::Command::new("cargo")
         .arg("build")

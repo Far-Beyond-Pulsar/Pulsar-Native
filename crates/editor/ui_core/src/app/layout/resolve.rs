@@ -585,7 +585,19 @@ impl LeafResolver for Resolver<'_> {
     type Leaf = Arc<dyn PanelView>;
 
     fn resolve_leaf(&mut self, leaf: &PanelState) -> Result<Self::Leaf, Unresolved> {
-        resolve_in_order(self, leaf)
+        let result = resolve_in_order(self, leaf);
+        let outcome = match &result {
+            Ok(panel) => format!("panel {}", panel.panel_name(self.cx)),
+            Err(why) => format!("{why:?}"),
+        };
+        tracing::info!(
+            leaf = %leaf.panel_name,
+            file = ?leaf.file(),
+            owner = ?leaf.owner(),
+            claim_live = self.claim_live,
+            "layout: resolved a saved tab -> {outcome}"
+        );
+        result
     }
 
     fn shelve(&mut self, dormant: PendingDormant) {
