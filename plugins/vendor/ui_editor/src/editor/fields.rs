@@ -13,6 +13,7 @@ use std::rc::Rc;
 use gpui::*;
 use ui::color_picker::{ColorPickerEvent, ColorPickerState};
 use ui::input::{InputEvent, InputState, NumberInputEvent, StepAction};
+use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 use crate::model::Color;
 
@@ -38,13 +39,16 @@ pub fn format_number(v: f32, decimals: usize) -> String {
 pub struct Fields<V: 'static> {
     inputs: HashMap<String, Entity<InputState>>,
     pickers: HashMap<String, Entity<ColorPickerState>>,
+    images: HashMap<String, Entity<MeshAssetPicker>>,
+    /// The project the image picker searches.
+    root: std::path::PathBuf,
     subscriptions: Vec<Subscription>,
     _panel: std::marker::PhantomData<fn() -> V>,
 }
 
 impl<V: 'static> Default for Fields<V> {
     fn default() -> Self {
-        Self { inputs: HashMap::new(), pickers: HashMap::new(), subscriptions: Vec::new(), _panel: std::marker::PhantomData }
+        Self { inputs: HashMap::new(), pickers: HashMap::new(), images: HashMap::new(), root: std::path::PathBuf::new(), subscriptions: Vec::new(), _panel: std::marker::PhantomData }
     }
 }
 
@@ -57,6 +61,36 @@ fn sync_text<V: 'static>(input: &Entity<InputState>, text: &str, window: &mut Wi
 }
 
 impl<V: 'static> Fields<V> {
+    /// Fields whose image pickers search the project at `root`.
+    pub fn new(root: std::path::PathBuf) -> Self {
+        Self { root, ..Self::default() }
+    }
+
+    /// An image picker: the project's images, searchable, with thumbnails.
+    pub fn image(
+        &mut self,
+        key: String,
+        current: &str,
+        set: impl Fn(&mut V, String, &mut Context<V>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<MeshAssetPicker> {
+        if !self.images.contains_key(&key) {
+            let root = (!self.root.as_os_str().is_empty()).then(|| self.root.clone());
+            let picker = cx.new(|cx| MeshAssetPicker::new(current.to_string(), Vec::new(), root, AssetQuery::texture_images(), window, cx));
+            self.subscriptions.push(cx.subscribe_in(&picker, window, move |this: &mut V, picker, _e: &AssetPickedEvent, _w, cx| {
+                let chosen = picker.read(cx).selected_path().to_string();
+                set(this, chosen, cx);
+            }));
+            self.images.insert(key.clone(), picker);
+        }
+        let picker = self.images[&key].clone();
+        if picker.read(cx).selected_path() != current {
+            picker.update(cx, |p, _| p.set_selected_path(current.to_string()));
+        }
+        picker
+    }
+
     /// A number field. `current` is what the model holds now (`None` to show nothing).
     /// `get` re-reads it when the field fires; `set` stores a new value.
     #[allow(clippy::too_many_arguments)]

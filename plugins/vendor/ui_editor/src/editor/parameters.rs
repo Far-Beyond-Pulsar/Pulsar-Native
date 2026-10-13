@@ -41,7 +41,8 @@ dock_panel!(ParametersPanel, "widget-parameters", "Parameters");
 impl ParametersPanel {
     pub fn new(ctx: Ctx, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let subscriptions = vec![cx.observe(&ctx.doc, |_, _, cx| cx.notify())];
-        Self { ctx, fields: Fields::default(), focus_handle: cx.focus_handle(), _subscriptions: subscriptions }
+        let fields = Fields::new(ctx.lib.read(cx).root().to_path_buf());
+        Self { ctx, fields, focus_handle: cx.focus_handle(), _subscriptions: subscriptions }
     }
 
     fn edit_param(&self, id: ParamId, cx: &mut App, change: impl FnOnce(&mut crate::model::Parameter)) {

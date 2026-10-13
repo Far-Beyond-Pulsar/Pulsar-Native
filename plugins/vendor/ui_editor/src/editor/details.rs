@@ -52,7 +52,8 @@ impl DetailsPanel {
                 }
             }),
         ];
-        Self { ctx, fields: Fields::default(), filter, collapsed: HashSet::new(), focus_handle: cx.focus_handle(), _subscriptions: subscriptions }
+        let fields = Fields::new(ctx.lib.read(cx).root().to_path_buf());
+        Self { ctx, fields, filter, collapsed: HashSet::new(), focus_handle: cx.focus_handle(), _subscriptions: subscriptions }
     }
 
     // ── Reading the model ──────────────────────────────────────────────────

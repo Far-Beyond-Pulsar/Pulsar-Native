@@ -6,7 +6,8 @@ use std::rc::Rc;
 
 use gpui::*;
 use serde_json::{json, Value as Json};
-use ui::button::Button;
+use ui::button::{Button, ButtonVariants};
+use ui_common::MeshAssetPicker;
 use ui::color_picker::ColorPicker;
 use ui::input::{NumberInput, TextInput};
 use ui::menu::DropdownMenu;
@@ -108,22 +109,33 @@ pub fn value_editor<V: 'static>(
             div().flex_1().min_w_0().child(TextInput::new(&input).small().disabled(disabled)).into_any_element()
         }
         PropType::Image => {
-            let (g, s) = (get.clone(), set.clone());
-            let input = fields.text(
-                key.to_string(),
-                false,
-                "Project path, or drop an image here",
-                current.as_str().unwrap_or(""),
-                move |this, cx| g(this, cx).and_then(|j| j.as_str().map(str::to_string)),
-                move |this, text, cx| s(this, json!(text.replace('\\', "/")), cx),
-                window,
-                cx,
-            );
+            let path = current.as_str().unwrap_or("").to_string();
             let s = set.clone();
-            div()
+            let picker = fields.image(key.to_string(), &path, move |this, chosen, cx| s(this, json!(chosen.replace('\\', "/")), cx), window, cx);
+            let label = if path.is_empty() { "No image".to_string() } else { path.rsplit('/').next().unwrap_or(&path).to_string() };
+            let (s, clear) = (set.clone(), set.clone());
+            let clear_button = Button::new(SharedString::from(format!("{key}-clear")))
+                .icon(ui::IconName::Close)
+                .ghost()
+                .xsmall()
+                .disabled(disabled || path.is_empty())
+                .tooltip("Clear the image")
+                .on_click(cx.listener(move |this, _, _, cx| clear(this, json!(""), cx)));
+            h_flex()
                 .flex_1()
                 .min_w_0()
-                .child(TextInput::new(&input).small().disabled(disabled))
+                .gap_1()
+                .items_center()
+                .child(
+                    div().flex_1().min_w_0().child(
+                        ui::popover::Popover::<MeshAssetPicker>::new(SharedString::from(format!("{key}-image-popover")))
+                            .anchor(Corner::BottomLeft)
+                            .trigger(Button::new(SharedString::from(format!("{key}-image"))).label(label).small().outline().w_full().disabled(disabled).dropdown_caret(true))
+                            .content(move |_, _| picker.clone()),
+                    ),
+                )
+                .child(clear_button)
+                // A file dragged in from the file manager also sets it.
                 .on_drop(cx.listener(move |this, drag: &plugin_editor_api::AssetPayload, _, cx| {
                     s(this, json!(drag.engine_path.replace('\\', "/")), cx);
                 }))
