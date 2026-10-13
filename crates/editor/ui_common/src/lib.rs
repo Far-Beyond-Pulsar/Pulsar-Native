@@ -31,6 +31,7 @@ pub mod generic_window;
 pub mod locale_picker;
 pub mod menu;
 pub mod open_window;
+pub mod popout_decorations;
 pub mod panel;
 pub mod profile_dropdown;
 pub mod properties_inspector;
