@@ -1294,9 +1294,9 @@ status = "verified"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
-count = 2
+count = 3
 owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "converted (Phase 3): AddComponent and AddObjectWithComponents carry typed values (class default when none); nothing is decoded in the command layer"
+disposition = "converted (Phase 3): AddComponent and AddObjectWithComponents carry typed values (class default when none); nothing is decoded in the command layer. The third site is `command_label`'s match arm naming the undo entry (#931), not a producer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "crates/editor/ui_level_editor/src/core/commands/tests.rs typed_component_commands_are_undoable_and_report_no_ops"
 status = "verified"
