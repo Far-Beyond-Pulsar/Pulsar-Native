@@ -105,6 +105,7 @@ pub(super) fn commit(
         docks,
         unmentioned,
         dormant: _,
+        zoomed,
     } = resolved;
 
     let mut builder = Builder {
@@ -137,5 +138,15 @@ pub(super) fn commit(
         dock_area.update(cx, |area, cx| {
             area.add_panel(live.panel, live.placement, None, window, cx)
         });
+    }
+
+    // Zoom last, once every group it could name exists. It is found by the
+    // identity of its active panel (then tree position), never by a runtime id;
+    // a zoom that matches nothing is dropped.
+    if let Some(zoomed) = zoomed {
+        let applied = dock_area.update(cx, |area, cx| area.apply_zoomed(&zoomed, window, cx));
+        if !applied {
+            tracing::debug!("layout: saved zoom matches no tab group; dropped");
+        }
     }
 }

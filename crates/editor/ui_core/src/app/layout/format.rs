@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ui::dock::{DockAreaState, DockState, PanelState};
 
+use super::super::chrome::SavedChrome;
 use super::super::nav_sidebar::model::SavedSidebar;
 use super::dormant::{self, AnchorKey, DormantLeaf, DormantRoot};
 use super::window_geometry::SavedWindow;
@@ -61,19 +62,9 @@ pub(super) struct SavedWindowLayout {
         deserialize_with = "dormant::lenient"
     )]
     pub dormant: Vec<DormantLeaf>,
-    /// Drawers and other window chrome. Filled by a later step.
+    /// Drawers and other window chrome (see [`super::super::chrome`]).
     #[serde(default, skip_serializing_if = "SavedChrome::is_empty")]
     pub chrome: SavedChrome,
-}
-
-/// Placeholder for the saved window chrome (drawers, overlays).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub(super) struct SavedChrome {}
-
-impl SavedChrome {
-    pub fn is_empty(&self) -> bool {
-        true
-    }
 }
 
 /// The file as stored: slots kept raw so unknown ones survive a rewrite.
@@ -228,6 +219,10 @@ impl SavedWindowLayout {
     /// rewritten with the rest; restore data stays opaque and is not touched.
     pub fn relativize(&mut self, root: &Path) {
         edit_roots(&mut self.dock, &mut |_, state| relativize(state, root));
+        // The zoom target names its panel by file like the tree does.
+        if let Some(zoomed) = &mut self.dock.zoomed {
+            relativize(&mut zoomed.panel, root);
+        }
         for leaf in &mut self.dormant {
             relativize(&mut leaf.state, root);
             if let Some(AnchorKey::File(file)) = &mut leaf.anchor {
@@ -239,6 +234,9 @@ impl SavedWindowLayout {
     /// Make stored file paths absolute under `root`.
     pub fn absolutize(&mut self, root: &Path) {
         edit_roots(&mut self.dock, &mut |_, state| absolutize(state, root));
+        if let Some(zoomed) = &mut self.dock.zoomed {
+            absolutize(&mut zoomed.panel, root);
+        }
         for leaf in &mut self.dormant {
             absolutize(&mut leaf.state, root);
             if let Some(AnchorKey::File(file)) = &mut leaf.anchor {
@@ -321,6 +319,75 @@ pub(super) mod tests {
             root.join("scripts/a.rs")
         );
         assert_eq!(state.children[1].file(), Some("/elsewhere/b.rs"));
+    }
+
+    fn zoomed_layout(file: &str) -> SavedWindowLayout {
+        SavedWindowLayout {
+            dock: DockAreaState {
+                center: tab_group(&["/proj/a.rs"]),
+                zoomed: Some(ui::dock::ZoomedState {
+                    panel: PanelState {
+                        panel_name: "Editor".into(),
+                        ..Default::default()
+                    }
+                    .with_file(file),
+                    placement: ui::dock::DockPlacement::Center,
+                    path: vec![0],
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn zoom_target_path_is_rewritten_with_the_tree() {
+        let root = Path::new("/proj");
+        let mut layout = zoomed_layout("/proj/scripts/a.rs");
+
+        layout.relativize(root);
+        let zoomed = layout.dock.zoomed.as_ref().unwrap();
+        assert_eq!(zoomed.panel.file(), Some("scripts/a.rs"));
+        assert_eq!(zoomed.path, vec![0], "tree position is untouched");
+
+        layout.absolutize(root);
+        let zoomed = layout.dock.zoomed.as_ref().unwrap();
+        assert_eq!(
+            Path::new(zoomed.panel.file().unwrap()),
+            root.join("scripts/a.rs")
+        );
+
+        // A file outside the project stays as it is both ways.
+        let mut outside = zoomed_layout("/elsewhere/b.rs");
+        outside.relativize(root);
+        assert_eq!(
+            outside.dock.zoomed.as_ref().unwrap().panel.file(),
+            Some("/elsewhere/b.rs")
+        );
+    }
+
+    #[test]
+    fn zoom_and_chrome_survive_a_write_and_read() {
+        let dir = temp("zoom-chrome");
+        let path = layout_path(&dir);
+        let mut layout = zoomed_layout("scripts/a.rs");
+        layout.chrome = SavedChrome {
+            file_manager_docked: true,
+            file_manager_height: 512.0,
+        };
+
+        write_slot(&path, PRIMARY_SLOT, &layout).unwrap();
+        let read = read_slot(&path, PRIMARY_SLOT).expect("layout reads back");
+        assert_eq!(read.dock.zoomed, layout.dock.zoomed);
+        assert_eq!(read.chrome, layout.chrome);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn default_chrome_and_no_zoom_write_nothing() {
+        let value = serde_json::to_value(SavedWindowLayout::default()).unwrap();
+        assert!(value.get("chrome").is_none());
+        assert!(value["dock"].get("zoomed").is_none());
     }
 
     #[test]

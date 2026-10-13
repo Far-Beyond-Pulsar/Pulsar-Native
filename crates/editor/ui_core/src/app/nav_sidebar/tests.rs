@@ -425,13 +425,13 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     });
     ed.draw();
     ed.app.read_with(&ed.cx, |app, cx| {
-        assert!(app.state.drawer_open);
+        assert!(app.state.chrome.drawer_open);
         let drawer = app.state.file_manager_drawer.read(cx);
         assert_eq!(drawer.selected_folder(), Some(maps.as_path()));
         assert!(drawer.folder_tree_hidden(), "the sidebar supplies the tree");
     });
     // The hover sidebar stops above the floating file drawer.
-    let drawer_height = ed.app.read_with(&ed.cx, |app, _| app.state.drawer_height);
+    let drawer_height = ed.app.read_with(&ed.cx, |app, _| app.state.chrome.drawer_height);
     let sidebar = ed.bounds("nav-sidebar-drawer").expect("hover sidebar");
     assert_eq!(
         sidebar.bottom(),
@@ -447,7 +447,7 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     ed.draw();
     shots.save(cx, "4-folder-assets");
     ed.app.update(&mut ed.cx, |app, cx| {
-        app.state.drawer_open = false;
+        app.state.chrome.drawer_open = false;
         cx.notify();
     });
 
@@ -551,10 +551,10 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
     let maps = root.join("Content/Maps");
     let arena = maps.join("Arena.level");
     ed.app.update(&mut ed.cx, |app, cx| {
-        app.state.drawer_open = false;
+        app.state.chrome.drawer_open = false;
         cx.notify();
     });
-    let drawer_open = |ed: &mut Editor| ed.app.read_with(&ed.cx, |app, _| app.state.drawer_open);
+    let drawer_open = |ed: &mut Editor| ed.app.read_with(&ed.cx, |app, _| app.state.chrome.drawer_open);
 
     // Open the hover drawer and expand Maps with a click on its row.
     let rail = ed.bounds("nav-sidebar-rail").expect("rail");
@@ -650,7 +650,7 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
     // Double-clicking a folder lists it in the file drawer; its first click
     // expanded it. (Showing the file drawer closed the hover sidebar.)
     ed.app.update(&mut ed.cx, |app, cx| {
-        app.state.drawer_open = false;
+        app.state.chrome.drawer_open = false;
         cx.notify();
     });
     ed.cx
@@ -687,7 +687,7 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
     ed.nav
         .update(&mut ed.cx, |nav, cx| nav.toggle_folder(&materials, cx));
     ed.app.update(&mut ed.cx, |app, cx| {
-        app.state.drawer_open = false;
+        app.state.chrome.drawer_open = false;
         cx.notify();
     });
 

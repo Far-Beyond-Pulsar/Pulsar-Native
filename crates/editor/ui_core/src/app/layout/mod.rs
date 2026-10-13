@@ -42,6 +42,14 @@
 //! erase its tabs. Ephemeral panels (`PanelState::ephemeral`) are skipped on
 //! purpose and never kept.
 //!
+//! **Chrome and zoom.** The file manager drawer (docked, height) is saved in
+//! `chrome` (see [`super::chrome`] for what is deliberately not saved). Those
+//! changes emit no `DockEvent`, so they call `PulsarApp::chrome_changed`, which
+//! arms the same debounce. The zoomed tab group is saved in `dock.zoomed`,
+//! named by its active panel (not a runtime id); `DockArea::set_zoomed_in/out`
+//! emit `LayoutChanged`. Commit applies it last, after the trees exist, and drops
+//! it if no group matches.
+//!
 //! `layout.json` is per-user (window geometry, open tabs), so new projects
 //! gitignore it.
 //!
@@ -176,6 +184,7 @@ impl PulsarApp {
                 .window_bounds
                 .map(|b| SavedWindow::capture(b, self.state.window_restore_bounds)),
             sidebar: self.state.nav_sidebar.read(cx).model.save(&root),
+            chrome: self.state.chrome.save(),
             // Tabs no plugin could build this session ride along unchanged.
             dormant: dormant::prune(self.state.layout_dormant.clone(), |p| p.exists()),
             ..Default::default()
@@ -201,6 +210,8 @@ impl PulsarApp {
         layout.absolutize(&root);
         // Offer tabs shelved last time again; they resolve with everything else.
         layout.reinsert_dormant();
+        // Chrome is plain flags; applying it cannot fail (heights are clamped).
+        self.state.chrome.restore(&layout.chrome);
         let sidebar = std::mem::take(&mut layout.sidebar);
         self.state.nav_sidebar.update(cx, |nav, cx| {
             nav.model.restore(sidebar, &root);

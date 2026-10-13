@@ -56,23 +56,23 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.drawer_docked {
+        if self.state.chrome.drawer_docked {
             return;
         }
-        self.state.drawer_open = !self.state.drawer_open;
+        self.state.chrome.drawer_open = !self.state.chrome.drawer_open;
         cx.notify();
     }
 
     /// Close the file manager drawer
     pub(super) fn close_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.drawer_open = false;
+        self.state.chrome.drawer_open = false;
         cx.notify();
     }
 
     /// Open the file manager drawer (respects suppress_drawer_for_drag flag)
     pub(super) fn open_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.state.suppress_drawer_for_drag {
-            self.state.drawer_open = true;
+        if !self.state.chrome.suppress_drawer_for_drag {
+            self.state.chrome.drawer_open = true;
             cx.notify();
         }
     }
@@ -86,16 +86,16 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_log_viewer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.state.mission_control_open {
-            self.state.mission_control_open = true;
+        if !self.state.chrome.mission_control_open {
+            self.state.chrome.mission_control_open = true;
             WindowRegistry::update_global(cx, |reg, cx| reg.open("MissionControlPanel", cx));
         } else {
-            self.state.mission_control_open = false;
+            self.state.chrome.mission_control_open = false;
         }
     }
 
     pub(super) fn open_git_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.git_manager_open = true;
+        self.state.chrome.git_manager_open = true;
         WindowRegistry::update_global(cx, |reg, cx| reg.open("GitManagerWindow", cx));
     }
 

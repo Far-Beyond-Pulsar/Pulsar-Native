@@ -39,8 +39,8 @@
 //!
 //! - [`resolve_in_order`]: the resolution order (live singleton, restorer,
 //!   file) and the one place a new way of naming a panel would be added.
-//! - [`ResolvedLayout`]: gains tile / pop-out roots and a zoom target next to
-//!   `center` and `docks`.
+//! - [`ResolvedLayout`]: gains tile / pop-out roots next to `center` and `docks`;
+//!   it already carries the zoom target.
 //! - [`Plan::leaves`] / [`admit`](ResolveState::admit): the validation hooks a
 //!   zoom-target check would use.
 
@@ -50,7 +50,9 @@ use std::sync::Arc;
 
 use gpui::{App, Axis, Entity, EntityId, Pixels, Window};
 use plugin_manager::{PluginManagerError, RestoreOutcome};
-use ui::dock::{DockArea, DockPlacement, PanelInfo, PanelState, PanelView, TabPanel, TileMeta};
+use ui::dock::{
+    DockArea, DockPlacement, PanelInfo, PanelState, PanelView, TabPanel, TileMeta, ZoomedState,
+};
 
 use super::dormant::{AnchorKey, DormantLeaf, DormantRoot, PendingDormant};
 use super::format::SavedWindowLayout;
@@ -459,6 +461,8 @@ pub(super) struct ResolvedLayout {
     pub unmentioned: Vec<LivePanel>,
     /// Identified tabs nothing is registered to build; saved back verbatim.
     pub dormant: Vec<DormantLeaf>,
+    /// The zoomed group, applied by identity after the trees are installed.
+    pub zoomed: Option<ZoomedState>,
 }
 
 /// Validation bookkeeping shared by the roots of one window.
@@ -607,6 +611,7 @@ pub(super) fn resolve_layout(
         docks,
         unmentioned,
         dormant: state.dormant,
+        zoomed: saved.dock.zoomed.clone(),
     }
 }
 
