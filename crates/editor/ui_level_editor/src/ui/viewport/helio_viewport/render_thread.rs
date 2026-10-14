@@ -13,6 +13,13 @@ impl HelioViewport {
             return;
         }
 
+        // wgpui holds the device's lost and error callbacks; the renderer
+        // reads the loss from wgpui's flag instead of taking them.
+        engine_backend::services::device_loss::DeviceLoss::adopt(
+            surface.device(),
+            surface.device_lost_flag(),
+        );
+
         let engine = self.gpu_engine.clone();
         let stop = self.render_thread_stop.clone();
         let tab_activated = self.tab_activated.clone();

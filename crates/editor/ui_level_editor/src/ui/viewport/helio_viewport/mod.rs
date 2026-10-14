@@ -169,6 +169,19 @@ impl Drop for HelioViewport {
     }
 }
 
+impl HelioViewport {
+    /// Stop the render thread and wait for it, so the next one starts with
+    /// the renderer to itself: a frame from the old thread on the lost
+    /// device would rebuild the renderer back onto it.
+    fn stop_render_thread(&mut self) {
+        self.render_thread_stop.store(true, Ordering::Release);
+        if let Some(handle) = self.render_thread_handle.take() {
+            let _ = handle.join();
+        }
+        self.render_thread_stop = Arc::new(AtomicBool::new(false));
+    }
+}
+
 impl Focusable for HelioViewport {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -192,7 +205,21 @@ impl Render for HelioViewport {
 
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-        // Lazy surface creation (once) + start the background render thread.
+        // The GPU device was lost (a driver reset, a removed GPU): stop
+        // drawing on it. The window rebuilds itself on a new device and
+        // renders every view again, and the surface made below is on that one;
+        // the renderer follows the new device (`HelioRenderer` rebuilds on it).
+        if self
+            .surface
+            .as_ref()
+            .is_some_and(WgpuSurfaceHandle::is_device_lost)
+        {
+            tracing::warn!("[HELIO-VIEWPORT] GPU device lost; waiting for the window's new device");
+            self.stop_render_thread();
+            self.surface = None;
+        }
+
+        // Lazy surface creation + start the background render thread.
         if self.surface.is_none() {
             // If this comes up empty (Wayland before `wl_surface.enter`), the
             // frame pump keeps polling via `poll_display_refresh`.
@@ -210,6 +237,9 @@ impl Render for HelioViewport {
                 format,
                 gpui::SurfaceColorConversion::LinearToSrgb,
             ) {
+                // Until the window has rebuilt on a new device, a new surface
+                // is on the lost one too; the rebuild renders this view again.
+                Some(s) if s.is_device_lost() => {}
                 Some(s) => {
                     tracing::info!("[HELIO-VIEWPORT] WgpuSurface created (format={:?})", format);
                     self.start_render_thread(s.clone(), refresh_hz);
