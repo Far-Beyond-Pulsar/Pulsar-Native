@@ -3,7 +3,7 @@ use gpui::*;
 use plugin_editor_api::PluginMetadata;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
+    h_flex, v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, StyledExt,
 };
 
 pub fn render_plugin_item(
@@ -31,16 +31,15 @@ pub fn render_plugin_item(
             .child("Built-in")
             .into_any_element()
     } else {
+        // A plugin's library is never unloaded (see the permanent library
+        // pattern in `.agents/PLUGIN_SYSTEM.md`): its types and vtables may be
+        // held anywhere in the editor. The button says so instead of acting.
         Button::new(SharedString::from(format!("unload-{}", plugin_id)))
             .label("Unload")
             .icon(IconName::Trash)
             .danger()
-            .on_click(cx.listener(move |_this, _, _window, _cx| {
-                todo!(
-                    "Implement plugin unloading in PluginManager and call it here (plugin_id: {})",
-                    plugin_id
-                );
-            }))
+            .disabled(true)
+            .tooltip("Plugins stay loaded until the editor restarts")
             .into_any_element()
     };
 

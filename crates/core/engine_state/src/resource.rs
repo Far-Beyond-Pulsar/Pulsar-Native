@@ -186,7 +186,7 @@ mod tests {
     fn version_bumps_on_update_only() {
         let handle = ResourceHandle::new(0u32);
         assert_eq!(handle.version(), 0);
-        let _ = handle.read();
+        drop(handle.read());
         assert_eq!(handle.version(), 0);
         handle.update(|v| *v += 1);
         assert_eq!(handle.version(), 1);
