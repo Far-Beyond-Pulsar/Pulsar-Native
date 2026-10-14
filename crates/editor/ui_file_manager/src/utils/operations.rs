@@ -2,41 +2,35 @@ use crate::utils::helpers::copy_dir_all;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+// Through the virtual filesystem, local or remote: its operations announce
+// each change, which keeps the project's file index (what the drawer and the
+// sidebar list) current without waiting for a watcher.
 fn fs_write(path: &Path, content: &[u8]) -> Result<()> {
-    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
-        engine_fs::virtual_fs::write_file(path, content)
-    } else {
-        std::fs::write(path, content).map_err(anyhow::Error::from)
-    }
+    engine_fs::virtual_fs::write_file(path, content)
 }
 
 fn fs_mkdir(path: &Path) -> Result<()> {
-    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
-        engine_fs::virtual_fs::create_dir_all(path)
-    } else {
-        std::fs::create_dir_all(path).map_err(anyhow::Error::from)
-    }
+    engine_fs::virtual_fs::create_dir_all(path)
 }
 
 fn fs_delete(path: &Path) -> Result<()> {
-    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
-        engine_fs::virtual_fs::delete_path(path)
-    } else if path.is_dir() {
-        std::fs::remove_dir_all(path).map_err(anyhow::Error::from)
-    } else {
-        std::fs::remove_file(path).map_err(anyhow::Error::from)
-    }
+    engine_fs::virtual_fs::delete_path(path)
 }
 
 fn fs_rename(from: &Path, to: &Path) -> Result<()> {
-    if engine_fs::virtual_fs::is_remote()
-        || engine_fs::is_cloud_path(from)
-        || engine_fs::is_cloud_path(to)
-    {
-        engine_fs::virtual_fs::rename(from, to)
+    engine_fs::virtual_fs::rename(from, to)
+}
+
+/// Copy a local file or folder, announcing the copy as the virtual
+/// filesystem's own operations do.
+pub(crate) fn copy_local(src: &Path, dst: &Path) -> Result<()> {
+    if src.is_dir() {
+        copy_dir_all(src, dst)?;
     } else {
-        std::fs::rename(from, to).map_err(anyhow::Error::from)
+        std::fs::copy(src, dst)?;
     }
+    engine_fs::emit(dst.to_path_buf(), engine_fs::FsChangeKind::Created);
+    Ok(())
 }
 
 pub struct FileOperations {
@@ -67,17 +61,16 @@ impl FileOperations {
             if dst == *src {
                 continue;
             }
-            if engine_fs::virtual_fs::is_remote()
+            let remote = engine_fs::virtual_fs::is_remote()
                 || engine_fs::is_cloud_path(src)
-                || engine_fs::is_cloud_path(target_dir)
-            {
-                engine_fs::virtual_fs::rename(src, &dst)?;
-            } else if src.is_dir() {
-                copy_dir_all(src, &dst)?;
-                std::fs::remove_dir_all(src)?;
-            } else {
-                std::fs::copy(src, &dst)?;
-                std::fs::remove_file(src)?;
+                || engine_fs::is_cloud_path(target_dir);
+            if let Err(error) = fs_rename(src, &dst) {
+                if remote {
+                    return Err(error);
+                }
+                // A rename across devices fails: copy, then delete.
+                copy_local(src, &dst)?;
+                fs_delete(src)?;
             }
         }
         Ok(())
@@ -96,10 +89,8 @@ impl FileOperations {
             {
                 let data = engine_fs::virtual_fs::read_file(src)?;
                 engine_fs::virtual_fs::write_file(&dst, &data)?;
-            } else if src.is_dir() {
-                copy_dir_all(src, &dst)?;
             } else {
-                std::fs::copy(src, &dst)?;
+                copy_local(src, &dst)?;
             }
         }
         Ok(())

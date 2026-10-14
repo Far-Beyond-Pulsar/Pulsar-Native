@@ -4,6 +4,7 @@
 //! same callback a driver reset does. Needs a GPU adapter (lavapipe works);
 //! skips without one.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use engine_backend::scene::{ensure_gpu_mirror, new_scene, SceneWorldExt, SpawnObject};
@@ -67,6 +68,32 @@ fn a_lost_device_is_noticed_and_its_errors_do_not_panic() {
 
     // After it, errors are the loss's echo: logged, not a panic.
     invalid_buffer(&device);
+}
+
+#[test]
+fn an_owner_watching_its_device_keeps_its_callbacks() {
+    let Some((device, _queue)) = devices(1).and_then(|mut gpus| gpus.pop()) else {
+        eprintln!("no GPU adapter; skipping");
+        return;
+    };
+    // The owner (wgpui in the editor) holds the device's callbacks and its
+    // own flag.
+    let owner_flag = Arc::new(AtomicBool::new(false));
+    let flag = owner_flag.clone();
+    device.set_device_lost_callback(move |_, _| flag.store(true, Ordering::Release));
+    let adopted = DeviceLoss::adopt(&device, owner_flag.clone());
+    let watched = DeviceLoss::watch(&device);
+
+    device.destroy();
+    let _ = device.poll(wgpu::PollType::Wait {
+        submission_index: None,
+        timeout: None,
+    });
+    assert!(
+        owner_flag.load(Ordering::Acquire),
+        "watching the device left the owner's lost callback in place"
+    );
+    assert!(adopted.is_lost() && watched.is_lost());
 }
 
 #[test]

@@ -312,11 +312,7 @@ pub fn handle_new_folder(
         c += 1;
     }
     d.selected_folder = Some(folder);
-    if let Err(e) = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&fp) {
-        engine_fs::virtual_fs::create_dir_all(&fp)
-    } else {
-        std::fs::create_dir(&fp).map_err(Into::into)
-    } {
+    if let Err(e) = engine_fs::virtual_fs::create_dir_all(&fp) {
         tracing::error!("new_folder: {}", e);
     } else {
         crate::utils::start_rename(d, fp, w, cx);
@@ -358,10 +354,8 @@ pub fn handle_duplicate_item(d: &mut FileManagerDrawer, cx: &mut Context<FileMan
             {
                 engine_fs::virtual_fs::read_file(&item)
                     .and_then(|d| engine_fs::virtual_fs::write_file(&np, &d))
-            } else if item.is_dir() {
-                FileManagerDrawer::copy_dir_recursive(&item, &np).map_err(Into::into)
             } else {
-                std::fs::copy(&item, &np).map(|_| ()).map_err(Into::into)
+                crate::utils::operations::copy_local(&item, &np)
             } {
                 tracing::error!("duplicate: {}", e);
             }
@@ -625,10 +619,12 @@ pub fn handle_restore_file(
             let full_path = proj.join(&restore_path);
             // Ensure parent directory exists
             if let Some(parent) = full_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                if let Err(error) = engine_fs::virtual_fs::create_dir_all(parent) {
+                    tracing::warn!(%error, "restore: could not create {}", parent.display());
+                }
             }
             // Write the file
-            match std::fs::write(&full_path, &content) {
+            match engine_fs::virtual_fs::write_file(&full_path, &content) {
                 Ok(_) => {
                     tracing::info!("Restored {} from commit {}", restore_path.display(), commit);
                     // Remove from deleted list

@@ -11,6 +11,11 @@
 //! wgpu instance; the engine makes one per process (wgpui's in the editor,
 //! the game's own when standalone).
 //!
+//! In the editor the device is wgpui's, and wgpui holds both of its slots
+//! (it rebuilds its windows on a new device after a loss). The editor hands
+//! wgpui's flag over with [`DeviceLoss::adopt`] before a renderer watches the
+//! device, so watching it reads that flag instead of taking the slots.
+//!
 //! What a loss means is the owner's to act on: the standalone game makes a
 //! new device and rebuilds its windows on it; renderers stop drawing on the
 //! dead one. The scene's GPU copy follows the device a renderer is built on
@@ -18,12 +23,24 @@
 //! the data SceneDB holds.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 /// Whether a watched device was lost. Clones share the state.
 #[derive(Clone, Debug, Default)]
 pub struct DeviceLoss {
     lost: Arc<AtomicBool>,
+}
+
+/// Every device watched in this process, with its watcher.
+fn watched() -> MutexGuard<'static, Vec<(wgpu::Device, DeviceLoss)>> {
+    static WATCHED: OnceLock<Mutex<Vec<(wgpu::Device, DeviceLoss)>>> = OnceLock::new();
+    let mut watched = WATCHED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    // A lost device is not used again; let it go.
+    watched.retain(|(_, loss)| !loss.is_lost());
+    watched
 }
 
 impl DeviceLoss {
@@ -32,13 +49,7 @@ impl DeviceLoss {
     /// wgpu's default handler does, except once the device is lost, when
     /// they are the expected echo of the loss and are only logged.
     pub fn watch(device: &wgpu::Device) -> Self {
-        static WATCHED: OnceLock<Mutex<Vec<(wgpu::Device, DeviceLoss)>>> = OnceLock::new();
-        let mut watched = WATCHED
-            .get_or_init(Default::default)
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        // A lost device is not used again; let it go.
-        watched.retain(|(_, loss)| !loss.is_lost());
+        let mut watched = watched();
         if let Some((_, loss)) = watched.iter().find(|(watched, _)| watched == device) {
             return loss.clone();
         }
@@ -57,6 +68,19 @@ impl DeviceLoss {
                 panic!("wgpu error: {error}");
             }
         }));
+        watched.push((device.clone(), loss.clone()));
+        loss
+    }
+
+    /// Watches `device` through `lost`, a flag its owner sets when it is
+    /// lost; the owner already holds the device's lost and error callbacks.
+    /// Later [`Self::watch`] calls on the device share this watcher.
+    pub fn adopt(device: &wgpu::Device, lost: Arc<AtomicBool>) -> Self {
+        let mut watched = watched();
+        if let Some((_, loss)) = watched.iter().find(|(watched, _)| watched == device) {
+            return loss.clone();
+        }
+        let loss = DeviceLoss { lost };
         watched.push((device.clone(), loss.clone()));
         loss
     }
