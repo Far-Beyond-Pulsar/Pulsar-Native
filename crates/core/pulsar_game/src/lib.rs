@@ -33,6 +33,8 @@ pub mod embed;
 
 // Standalone entry point: content discovery, headless runs (#926)
 pub mod standalone;
+#[cfg(feature = "alloc-profile")]
+pub mod alloc_profile;
 
 // Legacy tick loop (uses extracted primitives)
 pub mod tick;

@@ -207,6 +207,8 @@ pub fn run_with(
     options: LaunchOptions,
     setup: impl FnOnce(&mut TickLoop) -> Result<(), String>,
 ) -> Result<Option<HeadlessReport>, String> {
+    #[cfg(feature = "alloc-profile")]
+    crate::alloc_profile::start_reporter();
     // A shipped game doesn't edit shaders: keep Helio's file watcher (a
     // thread polling 20x a second, plus every shader's source held for
     // rebuilds) out of it unless the developer asked for it. Set before any
