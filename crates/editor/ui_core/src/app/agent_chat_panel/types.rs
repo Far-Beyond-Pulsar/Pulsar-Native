@@ -219,6 +219,13 @@ pub struct ChatSessionFile {
     /// follows the project setting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steward: Option<bool>,
+    /// The "Plan" toggle was on in this chat.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub plan_mode: bool,
+    /// A submitted plan still waiting for Approve / Edit / Reject, as the
+    /// markdown `Plan::to_markdown` writes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -226,4 +233,36 @@ pub struct ChatHistoryEntry {
     pub id: String,
     pub title: String,
     pub updated_at: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plan_state_round_trips_and_old_files_still_load() {
+        let file = ChatSessionFile {
+            id: "chat-1".into(),
+            title: "t".into(),
+            created_at: 1,
+            updated_at: 2,
+            messages: vec![],
+            display_items: vec![],
+            steward: None,
+            plan_mode: true,
+            plan: Some("# Goal\nship it".into()),
+        };
+        let text = serde_json::to_string(&file).unwrap();
+        let back: ChatSessionFile = serde_json::from_str(&text).unwrap();
+        assert!(back.plan_mode);
+        assert_eq!(back.plan.as_deref(), Some("# Goal\nship it"));
+
+        // Written before these fields existed, and with them at their defaults.
+        let old = r#"{"id":"c","title":"t","created_at":1,"updated_at":2,"messages":[]}"#;
+        let old: ChatSessionFile = serde_json::from_str(old).unwrap();
+        assert!(!old.plan_mode);
+        assert!(old.plan.is_none());
+        let plain = ChatSessionFile { plan_mode: false, plan: None, ..back };
+        assert!(!serde_json::to_string(&plain).unwrap().contains("plan"));
+    }
 }

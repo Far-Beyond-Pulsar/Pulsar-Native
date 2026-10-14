@@ -208,6 +208,8 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             messages: self.ledger.to_persisted(),
             display_items: persisted_display_items,
             steward: self.chat_steward_override,
+            plan_mode: self.plan_memory.plan_mode,
+            plan: self.plan_memory.submitted.as_ref().map(|p| p.to_markdown()),
         };
 
         if let Ok(serialized) = serde_json::to_string_pretty(&payload) {
@@ -235,6 +237,11 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
 
         self.reset_steward();
         self.chat_steward_override = chat.steward;
+        self.plan_memory.plan_mode = chat.plan_mode;
+        self.plan_memory.submitted = chat
+            .plan
+            .as_deref()
+            .and_then(|text| agent_runtime::Plan::from_markdown(text).ok());
         self.current_chat_id = chat.id;
         self.current_chat_created_at = chat.created_at;
         self.display_item_heights.clear();
@@ -295,6 +302,7 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
     pub(super) fn start_new_chat(&mut self, cx: &mut Context<Self>) {
         self.reset_steward();
         self.chat_steward_override = None;
+        self.plan_memory.plan_mode = false;
         self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
         self.current_chat_created_at = Self::now_epoch_secs();
         self.display_item_heights.clear();

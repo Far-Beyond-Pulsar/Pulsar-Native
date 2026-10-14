@@ -41,7 +41,7 @@ impl AgentChatPanel {
             .unwrap_or_default()
     }
 
-    fn save_steward_settings(&self) {
+    pub(super) fn save_steward_settings(&self) {
         if let Some(root) = Self::project_root() {
             if let Err(err) = self.steward_settings.save(&root) {
                 tracing::warn!("[agent_chat] could not save steward settings: {err}");

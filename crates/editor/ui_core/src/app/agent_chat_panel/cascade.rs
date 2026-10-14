@@ -18,7 +18,7 @@ impl AgentChatPanel {
             .unwrap_or_default()
     }
 
-    fn save_cascade_settings(&self) {
+    pub(super) fn save_cascade_settings(&self) {
         if let Some(root) = engine_state::get_project_path() {
             if let Err(err) = self.cascade_settings.save(&PathBuf::from(root)) {
                 tracing::warn!("[agent_chat] could not save agent_cascade.json: {err}");

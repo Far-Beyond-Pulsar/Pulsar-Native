@@ -330,6 +330,7 @@ impl AgentChatPanel {
             cascade_badge: None,
             mcp: Self::start_mcp(),
             mcp_open: false,
+            agent_settings_open: false,
             dismissed_pin_candidates: Vec::new(),
             pin_edit: None,
             pin_edit_input,

@@ -16,6 +16,7 @@ mod render_header;
 mod render_overlays;
 mod safety;
 mod scene_tools;
+mod settings_ui;
 mod steward;
 mod streaming;
 mod subagent;
@@ -1454,6 +1455,7 @@ impl Render for AgentChatPanel {
                     .children(self.render_pinned_strip(cx))
                     .children(self.render_safety_bar(cx))
                     .children(self.render_mcp_settings(cx))
+                    .children(self.render_agent_settings(cx))
                     .children(self.render_prefetch_tray(cx))
                     // Input row: text input + send/stop
                     .child(
@@ -1489,6 +1491,7 @@ impl Render for AgentChatPanel {
                             .child(self.render_cascade_controls(cx))
                             .child(self.render_prefetch_toggle(cx))
                             .children(self.render_mcp_button(cx))
+                            .child(self.render_agent_settings_button(cx))
                             .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")

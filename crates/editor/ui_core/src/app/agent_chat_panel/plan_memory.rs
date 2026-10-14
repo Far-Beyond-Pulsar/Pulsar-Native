@@ -111,6 +111,7 @@ impl AgentChatPanel {
         };
         if let Some(plan) = slot.take() {
             self.plan_memory.submitted = Some(plan);
+            self.save_current_chat();
             self.scroll_messages_to_bottom();
             cx.notify();
         }
@@ -120,6 +121,7 @@ impl AgentChatPanel {
 
     fn toggle_plan_mode(&mut self, cx: &mut Context<Self>) {
         self.plan_memory.plan_mode = !self.plan_memory.plan_mode;
+        self.save_current_chat();
         cx.notify();
     }
 
@@ -148,6 +150,7 @@ impl AgentChatPanel {
         }
         self.plan_memory.editing_plan = false;
         self.plan_memory.plan_error = None;
+        self.save_current_chat();
         cx.notify();
     }
 
@@ -171,6 +174,7 @@ impl AgentChatPanel {
                 self.plan_memory.submitted = Some(plan);
                 self.plan_memory.editing_plan = false;
                 self.plan_memory.plan_error = None;
+                self.save_current_chat();
             }
             Err(err) => self.plan_memory.plan_error = Some(err),
         }
