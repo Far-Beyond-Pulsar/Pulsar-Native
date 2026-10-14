@@ -11717,6 +11717,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "engine_fs",
  "gpui-ce",
  "log",
  "naga",
@@ -11724,6 +11725,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
+ "tempfile",
  "tracing",
  "ui",
  "ui_common",

@@ -81,8 +81,10 @@ them. `asset_import` handles them:
   `ImportMode::ConvertInPlace` the native asset replaces the source, which
   moves to `.pulsar/trash/<timestamp>/`, and no record is kept.
 
-Import options are still stored separately, in `.pulsar/import_options.json`
-(`engine_fs::import_options`), keyed by native asset.
+Linked imports store their importer options on the corresponding record in
+`.pulsar/import_db.json`. Existing linked records migrate options from the
+legacy `.pulsar/import_options.json` on load. Legacy entries for convert-in-place
+assets remain available as a fallback because those assets have no link record.
 
 **Mesh default materials.** A native `.mesh` carries one `MeshMaterialSlot`
 per material slot (`helio_component::mesh_cache`). `material_asset` is the

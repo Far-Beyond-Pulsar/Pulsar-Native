@@ -139,8 +139,16 @@ pub use settings_defaults::register_default_settings;
 /// static has been removed — use `EngineContext::global()` to read the path.
 pub fn set_project_path(path: String) {
     if let Some(ctx) = EngineContext::global() {
-        let project_ctx = ProjectContext::new(std::path::PathBuf::from(path));
+        let current = get_project_path();
+        if current.as_deref() != Some(path.as_str()) {
+            // Save the outgoing project's quick multiplayer setup before the
+            // engine-global toolbar state is replaced with the next project's.
+            playback::persist_multiplayer_settings();
+        }
+        let project_path = std::path::PathBuf::from(path);
+        let project_ctx = ProjectContext::new(project_path.clone());
         ctx.set_project(project_ctx);
+        playback::load_multiplayer_settings(&project_path);
     }
 }
 

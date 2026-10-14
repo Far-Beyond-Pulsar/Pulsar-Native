@@ -93,7 +93,10 @@ fn convert(
     }
 
     task.report_progress(0.3, "Converting");
-    importer.import(source, &asset, &options.lock())?;
+    let chosen_options = options.lock();
+    importer.import(source, &asset, &chosen_options)?;
+    let stored_options = importer.serialize_options(&chosen_options);
+    drop(chosen_options);
 
     task.report_progress(0.9, "Recording");
     match mode {
@@ -104,6 +107,7 @@ fn convert(
                 source_size,
                 asset: relative_key(project_root, &asset),
                 importer: importer.id().to_owned(),
+                options: Some(stored_options),
             })
         }),
         ImportMode::ConvertInPlace => {
@@ -197,13 +201,14 @@ pub fn submit_reimport(project_root: PathBuf, source: &str) -> Option<TaskId> {
                 return Err("cancelled".into());
             }
             task.report_progress(0.3, "Converting");
-            let options = importer.stored_options(&asset, ext);
+            let options = importer.stored_options(&asset, ext, record.options.as_ref());
             importer.import(&source, &asset, &options)?;
             task.report_progress(0.9, "Recording");
             with_db(&project_root, |db| {
                 db.upsert(ImportRecord {
                     source_hash,
                     source_size,
+                    options: Some(importer.serialize_options(&options)),
                     ..record
                 })
             })

@@ -159,6 +159,7 @@ mod tests {
             source_size: 1,
             asset: "models/linked.mesh".into(),
             importer: "mesh".into(),
+            options: None,
         });
         db.ignore("models/no.fbx");
         db.save(root).unwrap();
@@ -188,6 +189,7 @@ mod tests {
             source_size: 1,
             asset: "linked.mesh".into(),
             importer: "mesh".into(),
+            options: None,
         });
         db.save(root).unwrap();
 

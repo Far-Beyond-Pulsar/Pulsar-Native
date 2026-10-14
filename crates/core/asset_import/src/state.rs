@@ -135,6 +135,7 @@ mod tests {
             source_size,
             asset: "linked.mesh".into(),
             importer: "mesh".into(),
+            options: None,
         });
         db.ignore("skipped.fbx");
         db.save(root).unwrap();

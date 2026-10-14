@@ -111,7 +111,7 @@ impl MultiplayerPanel {
 }
 
 fn edit(f: impl FnOnce(&mut MultiplayerSettings)) {
-    playback().update(|s| f(&mut s.multiplayer));
+    engine_state::playback::update_multiplayer_settings(f);
 }
 
 fn mode_label(mode: MultiplayerMode) -> &'static str {

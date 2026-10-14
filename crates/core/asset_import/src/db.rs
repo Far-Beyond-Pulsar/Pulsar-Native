@@ -5,6 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use engine_fs::virtual_fs;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const DIR: &str = ".pulsar";
 const FILE: &str = "import_db.json";
@@ -21,6 +22,9 @@ pub struct ImportRecord {
     pub asset: String,
     /// [`crate::Importer::id`] of the importer that produced `asset`.
     pub importer: String,
+    /// Importer-specific settings used to build `asset`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Value>,
 }
 
 /// Whether a linked source still matches what was imported.
@@ -63,13 +67,15 @@ impl ImportDb {
     /// database must never block opening a project).
     pub fn load(project_root: &Path) -> Self {
         let file = path(project_root);
-        match virtual_fs::exists(&file) {
+        let mut db = match virtual_fs::exists(&file) {
             Ok(true) => virtual_fs::read_file(&file)
                 .ok()
                 .and_then(|bytes| serde_json::from_slice(&bytes).ok())
                 .unwrap_or_default(),
             _ => Self::default(),
-        }
+        };
+        migrate_legacy_options(project_root, &mut db);
+        db
     }
 
     pub fn save(&self, project_root: &Path) -> Result<()> {
@@ -133,6 +139,36 @@ impl ImportDb {
     }
 }
 
+/// Move options for linked assets out of the legacy asset-keyed store. Keep
+/// entries for unlinked assets there: convert-in-place imports intentionally
+/// have no `ImportRecord`, so their legacy settings remain a fallback.
+fn migrate_legacy_options(project_root: &Path, db: &mut ImportDb) {
+    let mut legacy = engine_fs::import_options::read_all(project_root);
+    let mut migrated = false;
+    for record in &mut db.records {
+        if record.options.is_some() {
+            continue;
+        }
+        let asset = record.asset.clone();
+        if let Some(options) = legacy.remove(&asset) {
+            record.options = Some(options);
+            migrated = true;
+        }
+    }
+    if !migrated {
+        return;
+    }
+    // Best effort: the next load retries migration if either write fails.
+    if db.save(project_root).is_ok() {
+        let path = project_root.join(DIR).join("import_options.json");
+        if legacy.is_empty() {
+            let _ = virtual_fs::delete_path(&path);
+        } else if let Ok(bytes) = serde_json::to_vec_pretty(&legacy) {
+            let _ = virtual_fs::write_file(&path, &bytes);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +180,7 @@ mod tests {
             source_size: 3,
             asset: "m/a.mesh".into(),
             importer: "mesh".into(),
+            options: None,
         }
     }
 
