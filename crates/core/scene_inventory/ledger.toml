@@ -21,7 +21,7 @@
 [meta]
 pulsar_native = "7b6796323"
 helio = "3e2333e1"
-scenedb = "77f74e3"
+scenedb = "fdbe195"
 reflection = "2761936b"
 
 # ── Exposed component classes ───────────────────────────────────────────
