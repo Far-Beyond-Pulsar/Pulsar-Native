@@ -6897,7 +6897,7 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=4625ca65df20d890522dcb2035caeb1870d1c27e#4625ca65df20d890522dcb2035caeb1870d1c27e"
 dependencies = [
  "ropey 1.6.1",
 ]
@@ -6905,7 +6905,7 @@ dependencies = [
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=4625ca65df20d890522dcb2035caeb1870d1c27e#4625ca65df20d890522dcb2035caeb1870d1c27e"
 dependencies = [
  "mockaco-core",
  "similar 3.2.0",
@@ -6914,7 +6914,7 @@ dependencies = [
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=4625ca65df20d890522dcb2035caeb1870d1c27e#4625ca65df20d890522dcb2035caeb1870d1c27e"
 dependencies = [
  "gpui-ce",
  "mockaco-core",
@@ -6926,7 +6926,7 @@ dependencies = [
 [[package]]
 name = "mockaco-language"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=4625ca65df20d890522dcb2035caeb1870d1c27e#4625ca65df20d890522dcb2035caeb1870d1c27e"
 dependencies = [
  "mockaco-core",
  "streaming-iterator",
@@ -6937,7 +6937,7 @@ dependencies = [
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=dcddddffea6b4b6b9289337d6b42f9e22ec264ee#dcddddffea6b4b6b9289337d6b42f9e22ec264ee"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=4625ca65df20d890522dcb2035caeb1870d1c27e#4625ca65df20d890522dcb2035caeb1870d1c27e"
 dependencies = [
  "mockaco-core",
 ]
