@@ -409,6 +409,17 @@ impl FsProvider for LocalFsProvider {
         Ok(std::fs::read(path)?)
     }
 
+    fn read_file_prefix(&self, path: &Path, len: usize) -> Result<Vec<u8>> {
+        use std::io::Read;
+
+        self.check_read_allowed(path)?;
+        let mut file = std::fs::File::open(path)?;
+        let mut bytes = vec![0; len];
+        let read = file.read(&mut bytes)?;
+        bytes.truncate(read);
+        Ok(bytes)
+    }
+
     fn write_file(&self, path: &Path, content: &[u8]) -> Result<()> {
         self.check_write_allowed(path)?;
         if let Some(p) = path.parent() {

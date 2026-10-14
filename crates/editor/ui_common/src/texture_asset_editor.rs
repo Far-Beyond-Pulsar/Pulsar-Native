@@ -3,7 +3,7 @@
 use crate::asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 use gpui::{prelude::*, *};
 use pulsar_reflection::{
-    BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory, TextureSrc,
+    BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory, TextureAssetKind, TextureSrc,
 };
 use std::path::PathBuf;
 use ui::button::{Button, ButtonVariants as _};
@@ -21,18 +21,30 @@ struct TextureSrcEditor {
 
 impl TextureSrcEditor {
     fn new(args: &PropertyEditorArgs<'_>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let path = args
+        let value = args
             .current_value
             .downcast_ref::<TextureSrc>()
-            .map(|value| value.0.clone())
+            .cloned()
             .unwrap_or_default();
         let project_root = engine_state::get_project_path().map(PathBuf::from);
+        let path = value
+            .legacy_path()
+            .map(str::to_owned)
+            .or_else(|| {
+                value.asset_ref().and_then(|reference| {
+                    project_root.as_deref().and_then(|root| {
+                        MeshAssetPicker::resolve_asset_ref_path(root, &reference)
+                            .map(|path| path.to_string_lossy().into_owned())
+                    })
+                })
+            })
+            .unwrap_or_default();
         let picker = cx.new(|cx| {
             MeshAssetPicker::new(
                 path.clone(),
                 Vec::new(),
                 project_root,
-                AssetQuery::texture_images(),
+                AssetQuery::for_kind::<TextureAssetKind>(),
                 window,
                 cx,
             )
@@ -46,7 +58,12 @@ impl TextureSrcEditor {
                     return;
                 }
                 this.path = selected.clone();
-                (this.write_back)(Box::new(TextureSrc::new(selected)), window, cx);
+                let value = picker
+                    .read(cx)
+                    .selected_or_create_asset_ref::<TextureAssetKind>()
+                    .map(TextureSrc::from_ref)
+                    .unwrap_or_else(|| TextureSrc::new(selected));
+                (this.write_back)(Box::new(value), window, cx);
                 cx.notify();
             },
         )];
@@ -63,12 +80,22 @@ impl TextureSrcEditor {
     }
 
     fn set_value(&mut self, value: &TextureSrc, cx: &mut Context<Self>) {
-        if self.path == value.0 {
+        let path = value
+            .legacy_path()
+            .map(str::to_owned)
+            .or_else(|| {
+                let root = engine_state::get_project_path().map(PathBuf::from)?;
+                let reference = value.asset_ref()?;
+                MeshAssetPicker::resolve_asset_ref_path(&root, &reference)
+                    .map(|path| path.to_string_lossy().into_owned())
+            })
+            .unwrap_or_default();
+        if self.path == path {
             return;
         }
-        self.path = value.0.clone();
+        self.path = path.clone();
         self.picker
-            .update(cx, |picker, _| picker.set_selected_path(value.0.clone()));
+            .update(cx, |picker, _| picker.set_selected_path(path));
         cx.notify();
     }
 }

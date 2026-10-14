@@ -208,6 +208,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -230,6 +231,7 @@ jobs:
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
       - name: Run unit tests
+        timeout-minutes: 60
         run: cargo nextest run --profile ci --workspace --locked
 
   check-lockfile:
