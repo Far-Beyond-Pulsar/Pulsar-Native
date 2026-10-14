@@ -2727,7 +2727,7 @@ pattern = "asset-kind"
 file = "crates/renderer/helio/crates/helio-component/src/components/static_mesh_component.rs"
 count = 1
 owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
-disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh. Materials, sprite and decal textures are still read by path in the GPU dispatch and are not asset kinds yet"
+disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh. Material graph textures are still read by path in the GPU dispatch and are not an asset kind yet"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
 status = "verified"
@@ -2743,11 +2743,31 @@ test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs
 status = "verified"
 
 [[site]]
+pattern = "asset-kind"
+file = "crates/renderer/helio/crates/helio-component/src/texture_assets.rs"
+count = 1
+owner = "helio_component::texture_assets (register_texture_assets)"
+disposition = "keep: the texture kind (sprite texture, decal albedo). Its loader reads and decodes the image on a SceneDB worker; a missing or corrupt file fails the asset and its components show the tint alone. A component's handle-ledger collector derives the AssetId from its path, so a typed insert, a decoded level, a reflected write and a script all reference it the same way; the GPU dispatch uploads the bound image and never reads the file"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input), crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene)"
+status = "verified"
+
+[[site]]
+pattern = "asset-binding"
+file = "crates/renderer/helio/crates/helio-component/src/components/mod.rs"
+count = 2
+owner = "helio_component::components (register_texture_bindings)"
+disposition = "keep: binds a loaded image into SpriteComponent.image and DecalComponent.albedo_image, tagged with its asset and content version so the GPU copy is replaced on reload; a failed load binds nothing"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
 pattern = "asset-reload"
 file = "crates/core/engine_backend/src/scene/mod.rs"
-count = 1
+count = 2
 owner = "engine_backend::scene (reload_updated_asset, subscribe_asset_reloads)"
-disposition = "keep: the one reload path. A mesh AssetUpdated reloads that file's asset in a world, which rebinds every dependent; the editor's subscription and every game loop that builds its own world go through it, so a headless world reloads without the editor"
+disposition = "keep: the one reload path. A mesh or texture AssetUpdated (the project watcher publishes one for a changed image) reloads that file's asset in a world, which rebinds every dependent; the editor's subscription and every game loop that builds its own world go through it, so a headless world reloads without the editor"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/core/pulsar_game/tests/asset_reload.rs (a_game_world_reloads_a_reimported_mesh_without_the_editor), crates/editor/ui_level_editor/tests/mesh_reimport.rs (a_reimported_mesh_reloads_every_mesh_naming_it)"
 status = "verified"

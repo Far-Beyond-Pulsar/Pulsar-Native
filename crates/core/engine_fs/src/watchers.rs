@@ -66,8 +66,26 @@ fn handle_fs_event(event: &Event, asset_index: &AssetIndex, user_types: &UserTyp
             // TODO: Once PluginManager is Send-safe, integrate registry-based detection here
             for path in &event.paths {
                 tracing::info!("File changed: {:?} - rescan project to update index", path);
+                publish_texture_update(path);
             }
         }
         _ => {}
+    }
+}
+
+/// An image written on disk is a texture update: every world showing it
+/// reloads it (SceneDB#84). Other kinds publish their own updates when they
+/// are written (a re-imported mesh, a saved class).
+fn publish_texture_update(path: &std::path::Path) {
+    let is_texture = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            ui_types_common::AssetKind::from_extension(ext) == ui_types_common::AssetKind::Texture
+        });
+    if is_texture && path.is_file() {
+        let mut update = plugin_editor_api::AssetUpdated::new(ui_types_common::AssetKind::Texture);
+        update.path = Some(path.to_path_buf());
+        plugin_editor_api::publish_asset_updated(update);
     }
 }

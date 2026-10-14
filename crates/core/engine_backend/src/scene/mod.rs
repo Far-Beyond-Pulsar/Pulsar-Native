@@ -123,10 +123,11 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     scene.write().world.pump_assets()
 }
 
-/// Apply one asset update to `world` (SceneDB#84): a mesh update reloads
-/// that file's mesh asset, and the world rebinds every component showing it
-/// when the new data arrives. Returns how many assets were queued (0 or 1).
-/// Other kinds are not world assets yet and are left to their own handlers.
+/// Apply one asset update to `world` (SceneDB#84): a mesh or texture update
+/// reloads that file's asset, and the world rebinds every component showing
+/// it when the new data arrives. Returns how many assets were queued (0 or
+/// 1). Other kinds are not world assets yet and are left to their own
+/// handlers.
 pub fn reload_updated_asset(
     world: &mut pulsar_scenedb::World,
     event: &pulsar_events::AssetUpdated,
@@ -135,6 +136,9 @@ pub fn reload_updated_asset(
         (pulsar_events::AssetKind::Mesh, Some(path)) => {
             world.asset_source_changed(&helio_component::components::mesh_source_for_file(path))
         }
+        (pulsar_events::AssetKind::Texture, Some(path)) => world.asset_source_changed(
+            &helio_component::texture_assets::texture_source_for_file(path),
+        ),
         _ => 0,
     }
 }

@@ -2808,6 +2808,11 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
     )
     .affected_ids[0]
         .clone();
+    // The world loads the image off the write path (SceneDB#84).
+    assert!(state
+        .scene
+        .world_mut()
+        .resolve_assets_blocking(std::time::Duration::from_secs(30)));
     let frame = harness.frames(&mut renderer, || {});
     frame.dump("sprites_textured");
     assert_color(
@@ -2819,6 +2824,37 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
         "the image's right half",
         pixel(&frame, centre + 70, centre + 60),
         [255, 255, 0],
+    );
+
+    // The file changes: the sprite shows the new image, re-uploaded.
+    image::save_buffer(
+        &image,
+        &[255, 255, 0, 255, 0, 0, 255, 255],
+        2,
+        1,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    {
+        let mut world = state.scene.world_mut();
+        assert_eq!(
+            world.asset_source_changed(&helio_component::texture_assets::texture_source_for_file(
+                &image
+            )),
+            1
+        );
+        assert!(world.resolve_assets_blocking(std::time::Duration::from_secs(30)));
+    }
+    let frame = harness.frames(&mut renderer, || {});
+    assert_color(
+        "the reloaded image's left half",
+        pixel(&frame, centre + 50, centre + 60),
+        [255, 255, 0],
+    );
+    assert_color(
+        "the reloaded image's right half",
+        pixel(&frame, centre + 70, centre + 60),
+        [0, 0, 255],
     );
 
     // Disabled, the 3D frame is back.
