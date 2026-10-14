@@ -418,6 +418,10 @@ impl ProjectFileIndex {
             )?;
         }
         tx.commit()?;
+        // Lock order is manifest, then connection (`ensure_typed_asset_id`,
+        // `restore_durable_asset_ids`). Holding the connection while taking the
+        // manifest lock here is the reverse, and deadlocks against them.
+        drop(connection);
         self.move_durable_asset_ids(&from, &to)?;
         Ok(())
     }
