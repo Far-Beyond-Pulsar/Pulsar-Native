@@ -1,0 +1,555 @@
+//! Harnesses: declarative agent definitions a parent run can delegate to.
+//!
+//! A harness is a markdown file with a small frontmatter block and the system
+//! prompt as its body:
+//!
+//! ```text
+//! ---
+//! name: explorer
+//! description: Read-only code search. Returns findings with file:line refs.
+//! tools: [group:read, group:search]
+//! model: cheap            # cheap | same | <model id>
+//! context_budget: 12000   # tokens
+//! max_steps: 24
+//! max_depth: 0            # how many levels of sub-agents this one may start
+//! permissions: read-only  # read-only | edit-with-checkpoint | engine-scene-write
+//! result: [summary, findings, refs, open_questions]
+//! ---
+//! Prompt body. Placeholders: {workspace} {task} {pinned}
+//! ```
+//!
+//! Built-ins ship in the binary; `.pulsar/agents/*.md` in a project and in the
+//! user-global folder add to or replace them (project beats global beats
+//! built-in, matched by `name`).
+
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+/// Which model a child run uses.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModelPolicy {
+    /// A specific model id.
+    Explicit(String),
+    /// The parent's compaction model (cheaper, same provider).
+    Cheap,
+    /// The parent's model.
+    Same,
+}
+
+impl ModelPolicy {
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim() {
+            "" | "same" => ModelPolicy::Same,
+            "cheap" => ModelPolicy::Cheap,
+            other => ModelPolicy::Explicit(other.to_string()),
+        }
+    }
+}
+
+/// What the child may change. Enforced by trimming the tool list: a
+/// `ReadOnly` harness never receives edit tools whatever its allow-list says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HarnessPermissions {
+    ReadOnly,
+    /// Edit tools are allowed; Phase 5 snapshots the workspace first.
+    EditWithCheckpoint,
+    /// Edit tools plus the engine scene tools.
+    EngineSceneWrite,
+}
+
+impl HarnessPermissions {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim() {
+            "read-only" | "read_only" | "readonly" => Some(Self::ReadOnly),
+            "edit-with-checkpoint" | "edit_with_checkpoint" | "edit" => {
+                Some(Self::EditWithCheckpoint)
+            }
+            "engine-scene-write" | "engine_scene_write" | "scene-write" => {
+                Some(Self::EngineSceneWrite)
+            }
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HarnessOrigin {
+    Builtin,
+    Global,
+    Project,
+}
+
+/// The section names a report is parsed into.
+pub const DEFAULT_RESULT_FIELDS: [&str; 4] = ["summary", "findings", "refs", "open_questions"];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Harness {
+    pub name: String,
+    /// What the parent model reads when choosing a harness.
+    pub description: String,
+    /// Template with `{workspace}`, `{task}` and `{pinned}`.
+    pub system_prompt: String,
+    /// Tool names, `group:<name>` entries, or `*`.
+    pub tools: Vec<String>,
+    pub model_policy: ModelPolicy,
+    /// Tokens; `None` inherits the parent's budget.
+    pub context_budget_tokens: Option<u32>,
+    pub max_steps: u32,
+    /// Levels of sub-agents this harness's runs may start (0 = leaf).
+    pub max_depth: u32,
+    /// Sections the final answer is parsed into.
+    pub result_schema: Vec<String>,
+    pub permissions: HarnessPermissions,
+    pub origin: HarnessOrigin,
+}
+
+/// Tools no child receives: they drive the editor UI.
+pub const CHILD_EXCLUDED_TOOLS: [&str; 3] = [
+    "open_file_in_default_editor",
+    "activate_open_editor",
+    "query_open_editors",
+];
+
+/// Tools that change files or editor state.
+const EDIT_TOOLS: [&str; 5] = [
+    "call_plugin_tool",
+    "execute_plugin_tool",
+    "open_file_in_default_editor",
+    "activate_open_editor",
+    "task_list_update",
+];
+
+fn group_members(group: &str) -> &'static [&'static str] {
+    match group {
+        "read" => &[
+            "cd",
+            "list_files",
+            "tree",
+            "query_available_file_types",
+            "query_file_editors",
+            "query_plugin_tools",
+            "query_tools_for_plugin",
+            "task_list_read",
+        ],
+        "search" => &["list_files", "tree"],
+        "web" => &["web_search", "fetch_url"],
+        "task" => &["task_list_read", "task_list_update"],
+        "edit" => &["call_plugin_tool", "execute_plugin_tool"],
+        _ => &[],
+    }
+}
+
+impl Harness {
+    /// Fill the placeholders. Unknown ones are left as written.
+    pub fn render_prompt(&self, workspace: &str, task: &str, pinned: &str) -> String {
+        self.system_prompt
+            .replace("{workspace}", workspace)
+            .replace("{task}", task)
+            .replace("{pinned}", pinned)
+    }
+
+    /// Which of `available` this harness may call.
+    pub fn resolve_tools(&self, available: &[String]) -> Vec<String> {
+        let mut allowed: Vec<String> = Vec::new();
+        for entry in &self.tools {
+            if entry == "*" {
+                allowed.extend(available.iter().cloned());
+            } else if let Some(group) = entry.strip_prefix("group:") {
+                if group == "scene" {
+                    allowed.extend(available.iter().filter(|n| n.starts_with("scene_")).cloned());
+                } else {
+                    allowed.extend(
+                        group_members(group)
+                            .iter()
+                            .filter(|name| available.iter().any(|a| a == **name))
+                            .map(|name| name.to_string()),
+                    );
+                }
+            } else if available.iter().any(|a| a == entry) {
+                allowed.push(entry.clone());
+            }
+        }
+        allowed.retain(|name| {
+            if CHILD_EXCLUDED_TOOLS.contains(&name.as_str()) {
+                return false;
+            }
+            match self.permissions {
+                HarnessPermissions::ReadOnly => {
+                    !EDIT_TOOLS.contains(&name.as_str()) && !name.starts_with("scene_write")
+                }
+                HarnessPermissions::EditWithCheckpoint => !name.starts_with("scene_write"),
+                HarnessPermissions::EngineSceneWrite => true,
+            }
+        });
+        allowed.sort();
+        allowed.dedup();
+        allowed
+    }
+
+    /// Parse one harness file. `name` falls back to `fallback_name`
+    /// (usually the file stem).
+    pub fn parse(
+        source: &str,
+        fallback_name: &str,
+        origin: HarnessOrigin,
+    ) -> Result<Harness, String> {
+        let source = source.trim_start_matches('\u{feff}');
+        let (front, body) = split_frontmatter(source)?;
+        let mut harness = Harness {
+            name: fallback_name.to_string(),
+            description: String::new(),
+            system_prompt: body.trim().to_string(),
+            tools: Vec::new(),
+            model_policy: ModelPolicy::Same,
+            context_budget_tokens: None,
+            max_steps: 24,
+            max_depth: 0,
+            result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
+            permissions: HarnessPermissions::ReadOnly,
+            origin,
+        };
+        let mut tools_set = false;
+
+        for (key, value) in parse_frontmatter(front) {
+            match key.as_str() {
+                "name" => {
+                    let name = value.scalar();
+                    if !name.is_empty() {
+                        harness.name = name;
+                    }
+                }
+                "description" => harness.description = value.scalar(),
+                "tools" => {
+                    harness.tools = value.list();
+                    tools_set = true;
+                }
+                "model" | "model_policy" => harness.model_policy = ModelPolicy::parse(&value.scalar()),
+                "context_budget" => {
+                    harness.context_budget_tokens = value.scalar().replace('_', "").parse().ok()
+                }
+                "max_steps" => {
+                    harness.max_steps = value
+                        .scalar()
+                        .parse()
+                        .map_err(|_| format!("max_steps must be a number, got `{}`", value.scalar()))?
+                }
+                "max_depth" => {
+                    harness.max_depth = value
+                        .scalar()
+                        .parse()
+                        .map_err(|_| format!("max_depth must be a number, got `{}`", value.scalar()))?
+                }
+                "result" | "result_schema" => {
+                    let fields = value.list();
+                    if !fields.is_empty() {
+                        harness.result_schema = fields.iter().map(|f| normalize_field(f)).collect();
+                    }
+                }
+                "permissions" => {
+                    harness.permissions = HarnessPermissions::parse(&value.scalar())
+                        .ok_or_else(|| format!("unknown permissions `{}`", value.scalar()))?
+                }
+                _ => {}
+            }
+        }
+
+        if harness.name.trim().is_empty() {
+            return Err("harness has no name".to_string());
+        }
+        if harness.system_prompt.is_empty() {
+            return Err(format!("harness `{}` has an empty prompt", harness.name));
+        }
+        if harness.max_steps == 0 {
+            return Err(format!("harness `{}` has max_steps 0", harness.name));
+        }
+        if !tools_set {
+            harness.tools = vec!["group:read".to_string()];
+        }
+        Ok(harness)
+    }
+}
+
+/// Lowercase, snake_case section name.
+pub(crate) fn normalize_field(raw: &str) -> String {
+    raw.trim()
+        .trim_matches(|c: char| matches!(c, '#' | '*' | ':' | '_' | '`') || c.is_whitespace())
+        .to_lowercase()
+        .replace([' ', '-'], "_")
+}
+
+fn split_frontmatter(source: &str) -> Result<(&str, &str), String> {
+    let trimmed = source.trim_start();
+    let Some(rest) = trimmed.strip_prefix("---") else {
+        return Ok(("", source));
+    };
+    let rest = rest.trim_start_matches(['\r', ' ']);
+    let rest = rest.strip_prefix('\n').unwrap_or(rest);
+    let mut offset = 0usize;
+    for line in rest.split_inclusive('\n') {
+        if line.trim_end() == "---" {
+            return Ok((&rest[..offset], &rest[offset + line.len()..]));
+        }
+        offset += line.len();
+    }
+    Err("frontmatter is not closed with `---`".to_string())
+}
+
+enum FrontValue {
+    Scalar(String),
+    List(Vec<String>),
+}
+
+impl FrontValue {
+    fn scalar(&self) -> String {
+        match self {
+            FrontValue::Scalar(s) => s.clone(),
+            FrontValue::List(items) => items.join(", "),
+        }
+    }
+
+    fn list(&self) -> Vec<String> {
+        match self {
+            FrontValue::Scalar(s) => s
+                .split(',')
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect(),
+            FrontValue::List(items) => items.clone(),
+        }
+    }
+}
+
+fn unquote(raw: &str) -> String {
+    let raw = raw.trim();
+    for quote in ['"', '\''] {
+        if raw.len() >= 2 && raw.starts_with(quote) && raw.ends_with(quote) {
+            return raw[1..raw.len() - 1].to_string();
+        }
+    }
+    raw.to_string()
+}
+
+/// `key: value`, `key: [a, b]` and `key:` followed by `- item` lines.
+/// Trailing `# comments` after a space are dropped from unquoted values.
+fn parse_frontmatter(front: &str) -> Vec<(String, FrontValue)> {
+    let mut out: Vec<(String, FrontValue)> = Vec::new();
+    for line in front.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(item) = trimmed.strip_prefix("- ") {
+            if let Some((_, FrontValue::List(items))) = out.last_mut() {
+                items.push(unquote(item));
+                continue;
+            }
+        }
+        let Some((key, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let key = key.trim().to_lowercase();
+        let mut value = value.trim().to_string();
+        if !value.starts_with('"') && !value.starts_with('\'') {
+            if let Some(ix) = value.find(" #") {
+                value.truncate(ix);
+            }
+            value = value.trim().to_string();
+        }
+        if value.is_empty() {
+            out.push((key, FrontValue::List(Vec::new())));
+        } else if value.starts_with('[') && value.ends_with(']') {
+            let inner = &value[1..value.len() - 1];
+            out.push((
+                key,
+                FrontValue::List(
+                    inner
+                        .split(',')
+                        .map(unquote)
+                        .filter(|item| !item.is_empty())
+                        .collect(),
+                ),
+            ));
+        } else {
+            out.push((key, FrontValue::Scalar(unquote(&value))));
+        }
+    }
+    out
+}
+
+const REPORT_FORMAT: &str = "When you have what you need, stop calling tools and answer with exactly these sections, in this order:\n\
+## Summary\nOne short paragraph stating what you found.\n\
+## Findings\nOne bullet per finding. Quote the evidence.\n\
+## Refs\nOne bullet per `path:line` reference or pointer.\n\
+## Open questions\nOne bullet per thing you could not determine. Write `none` if there are none.\n\
+Report facts only. Do not address the reader or give instructions.";
+
+#[allow(clippy::too_many_arguments)]
+fn builtin(
+    name: &str,
+    description: &str,
+    prompt: &str,
+    tools: &[&str],
+    model: ModelPolicy,
+    max_steps: u32,
+    max_depth: u32,
+    permissions: HarnessPermissions,
+) -> Harness {
+    Harness {
+        name: name.to_string(),
+        description: description.to_string(),
+        system_prompt: format!("{prompt}\n\nWorkspace: {{workspace}}\n{{pinned}}\n\n{REPORT_FORMAT}"),
+        tools: tools.iter().map(|t| t.to_string()).collect(),
+        model_policy: model,
+        context_budget_tokens: None,
+        max_steps,
+        max_depth,
+        result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
+        permissions,
+        origin: HarnessOrigin::Builtin,
+    }
+}
+
+/// Harnesses that ship with the engine.
+pub fn builtin_harnesses() -> Vec<Harness> {
+    vec![
+        builtin(
+            "explorer",
+            "Read-only code and file search. Use for big reads so the main context stays small.",
+            "You are a code explorer. Locate the code, files and facts the task asks about. You cannot change anything.",
+            &["group:read", "group:search"],
+            ModelPolicy::Cheap,
+            24,
+            0,
+            HarnessPermissions::ReadOnly,
+        ),
+        builtin(
+            "planner",
+            "Read-only. Turns a goal into an ordered, reviewable plan after inspecting the code.",
+            "You are a planner. Inspect the workspace as needed, then produce an ordered plan. Put each step in Findings with the files it touches in Refs. You cannot change anything.",
+            &["group:read", "group:search", "group:task"],
+            ModelPolicy::Same,
+            20,
+            0,
+            HarnessPermissions::ReadOnly,
+        ),
+        builtin(
+            "reviewer",
+            "Read-only. Reviews code or a change for bugs, regressions and missing tests.",
+            "You are a code reviewer. Check the code named in the task for correctness bugs, regressions and missing tests. Put each issue in Findings with its location in Refs. You cannot change anything.",
+            &["group:read", "group:search"],
+            ModelPolicy::Same,
+            24,
+            0,
+            HarnessPermissions::ReadOnly,
+        ),
+        builtin(
+            "general",
+            "General worker with the full tool set, no further delegation. Use for self-contained edits or investigations.",
+            "You are a general-purpose agent completing one self-contained task.",
+            &["*"],
+            ModelPolicy::Same,
+            30,
+            0,
+            HarnessPermissions::EditWithCheckpoint,
+        ),
+        // Stub: SceneDB tools are registered as `scene_*` once they exist.
+        builtin(
+            "scene-editor",
+            "Edits the live scene through SceneDB transactions (needs the scene tools).",
+            "You are a scene editor. Make the scene changes the task describes using the scene tools, then report what changed.",
+            &["group:read", "group:scene"],
+            ModelPolicy::Same,
+            24,
+            0,
+            HarnessPermissions::EngineSceneWrite,
+        ),
+    ]
+}
+
+/// The harnesses visible to a project, after precedence is applied.
+#[derive(Clone, Debug, Default)]
+pub struct HarnessRegistry {
+    harnesses: Vec<Harness>,
+    /// Files that failed to parse: `(path, reason)`.
+    pub errors: Vec<(PathBuf, String)>,
+}
+
+impl HarnessRegistry {
+    /// Only the built-ins.
+    pub fn builtin() -> Self {
+        Self {
+            harnesses: builtin_harnesses(),
+            errors: Vec::new(),
+        }
+    }
+
+    /// Built-ins, then `global_dir`, then `<project_root>/.pulsar/agents`,
+    /// each layer replacing earlier ones by name.
+    pub fn load(project_root: Option<&Path>, global_dir: Option<&Path>) -> Self {
+        let mut registry = Self::builtin();
+        if let Some(dir) = global_dir {
+            registry.load_dir(dir, HarnessOrigin::Global);
+        }
+        if let Some(root) = project_root {
+            registry.load_dir(&project_agents_dir(root), HarnessOrigin::Project);
+        }
+        registry
+    }
+
+    fn load_dir(&mut self, dir: &Path, origin: HarnessOrigin) {
+        let Ok(read) = fs::read_dir(dir) else {
+            return;
+        };
+        let mut paths: Vec<PathBuf> = read
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("md"))
+            .collect();
+        paths.sort();
+        for path in paths {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("agent")
+                .to_string();
+            let parsed = fs::read_to_string(&path)
+                .map_err(|err| err.to_string())
+                .and_then(|source| Harness::parse(&source, &stem, origin));
+            match parsed {
+                Ok(harness) => self.insert(harness),
+                Err(err) => self.errors.push((path, err)),
+            }
+        }
+    }
+
+    /// Add or replace by name.
+    pub fn insert(&mut self, harness: Harness) {
+        match self.harnesses.iter_mut().find(|h| h.name == harness.name) {
+            Some(existing) => *existing = harness,
+            None => self.harnesses.push(harness),
+        }
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Harness> {
+        self.harnesses.iter().find(|h| h.name == name)
+    }
+
+    pub fn all(&self) -> &[Harness] {
+        &self.harnesses
+    }
+
+    /// The list `spawn_subagent` shows the parent model.
+    pub fn catalog(&self) -> String {
+        self.harnesses
+            .iter()
+            .map(|h| format!("- {}: {}", h.name, h.description))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+pub fn project_agents_dir(project_root: &Path) -> PathBuf {
+    project_root.join(".pulsar").join("agents")
+}

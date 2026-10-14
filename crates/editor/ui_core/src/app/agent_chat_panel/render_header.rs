@@ -88,11 +88,6 @@ impl AgentChatPanel {
 
         // ── Three-dots menu ──
         let panel = cx.entity().clone();
-        let has_subagents =
-            self.pending_subagent_events.len() > 0 || self.is_processing_subagent_event;
-        let queued_count = self.pending_subagent_events.len();
-        let is_processing = self.is_processing_subagent_event;
-        let is_in_flight = self.is_request_in_flight;
 
         let more_menu = Button::new("agent-chat-more-trigger")
             .small()
@@ -102,8 +97,7 @@ impl AgentChatPanel {
             .popup_menu_with_anchor(Corner::TopRight, {
                 let p = panel.clone();
                 move |menu, window, cx| {
-                    let menu = menu
-                        .menu_handler_with_icon("Import Chat", IconName::Upload, {
+                    menu.menu_handler_with_icon("Import Chat", IconName::Upload, {
                             let p = p.clone();
                             move |_, cx| {
                                 p.update(cx, |this, cx| this.import_chat(cx));
@@ -129,47 +123,7 @@ impl AgentChatPanel {
                             move |window, cx| {
                                 p.update(cx, |this, cx| this.start_add_provider_prompt(window, cx));
                             }
-                        });
-
-                    if has_subagents {
-                        menu.separator()
-                            .menu_handler_with_icon_and_disabled(
-                                format!("Process Next ({})", queued_count),
-                                IconName::Play,
-                                is_in_flight || is_processing,
-                                {
-                                    let p = p.clone();
-                                    move |_, cx| {
-                                        p.update(cx, |this, cx| {
-                                            this.process_next_subagent_completion_now(cx)
-                                        });
-                                    }
-                                },
-                            )
-                            .menu_handler_with_icon("Auto Queue", IconName::Play, {
-                                let p = p.clone();
-                                move |_, cx| {
-                                    p.update(cx, |this, cx| {
-                                        this.subagent_completion_mode =
-                                            super::panel::SubagentCompletionMode::Auto;
-                                        this.maybe_start_next_subagent_processing(cx);
-                                        cx.notify();
-                                    });
-                                }
-                            })
-                            .menu_handler_with_icon("Manual Queue", IconName::Pause, {
-                                let p = p.clone();
-                                move |_, cx| {
-                                    p.update(cx, |this, cx| {
-                                        this.subagent_completion_mode =
-                                            super::panel::SubagentCompletionMode::Manual;
-                                        cx.notify();
-                                    });
-                                }
-                            })
-                    } else {
-                        menu
-                    }
+                        })
                 }
             });
 

@@ -23,9 +23,9 @@ fn now_ms() -> u64 {
 
 impl AgentChatPanel {
     /// Task manifest and active sub-agents, or `None` when both are empty.
-    fn live_agent_state() -> Option<String> {
+    fn live_agent_state(&self) -> Option<String> {
         let tasks = agent_chat_tools::get_task_manifest_snapshot();
-        let active_subs = agent_chat_tools::get_active_subagents_snapshot();
+        let active_subs = self.delegation.store().active();
         let mut parts: Vec<String> = Vec::new();
 
         if !tasks.is_empty() {
@@ -48,12 +48,14 @@ impl AgentChatPanel {
         if !active_subs.is_empty() {
             let lines: Vec<String> = active_subs
                 .iter()
-                .map(|a| {
-                    let name = a.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-                    let status = a.get("status").and_then(|v| v.as_str()).unwrap_or("?");
-                    let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                    let task = a.get("task").and_then(|v| v.as_str()).unwrap_or("");
-                    format!("  - {name} ({status}, id={id}): {task}")
+                .map(|run| {
+                    format!(
+                        "  - {} ({}, id={}): {}",
+                        run.harness,
+                        run.status.as_str(),
+                        run.id,
+                        run.task
+                    )
                 })
                 .collect();
             parts.push(format!("## Active Sub-Agents\n{}", lines.join("\n")));
@@ -237,7 +239,7 @@ impl AgentChatPanel {
         // Inject live orchestration context — task manifest and active sub-agents.
         // This survives compaction because it is rebuilt fresh on every request,
         // so the agent is always oriented even after context shrinks.
-        if let Some(live_state) = Self::live_agent_state() {
+        if let Some(live_state) = self.live_agent_state() {
             run_ledger.push(LedgerEntry::pinned(PinKind::LiveState, live_state));
         }
 
@@ -297,14 +299,16 @@ impl AgentChatPanel {
             open_file_request: None,
             query_open_editors: Some(Arc::new(|| Ok(crate::app::open_editors::snapshot_json()))),
             activate_open_editor_request: None,
-            subagent_executor: Some(super::subagent_executor::make_subagent_executor(
-                self.tool_registry.clone(),
-                provider.clone(),
-                model,
-            )),
         };
         config.context_budget_chars = history_budget;
         config.summary_char_budget = Self::COMPACTION_SUMMARY_CHAR_BUDGET;
+
+        // Sub-agents are child runs of this one; the template they derive
+        // from is the config as built above.
+        self.delegation.set_harnesses(Self::load_harnesses());
+        self.delegation
+            .set_limits(agent_runtime::DelegationLimits::for_profile(&config.profile));
+        config.delegation = Some(self.delegation.root_handle(config.clone()));
 
         let (tx, rx) = smol::channel::unbounded::<RunEvent>();
         let completion_sent = Arc::new(AtomicBool::new(false));
@@ -504,9 +508,8 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            RunEvent::ToolCallResult { id, tool_name, result_preview, result_full, is_error } => {
+                            RunEvent::ToolCallResult { id, tool_name: _, result_preview, result_full, is_error } => {
                                 let done_ms = now_ms();
-                                let result_full_for_parse = result_full.clone();
                                 for item in panel.display_items.iter_mut().rev() {
                                     if let DisplayItem::ToolCallGroup { calls, finished_at_ms, .. } = item {
                                         if let Some(call) = calls.iter_mut().find(|c| c.id == id) {
@@ -523,36 +526,6 @@ impl AgentChatPanel {
                                     }
                                 }
 
-                                if tool_name == "spawn_subagent" && !is_error {
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result_full_for_parse) {
-                                        let subagent_id = parsed
-                                            .get("subagent_id")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or_default();
-                                        if !subagent_id.is_empty() {
-                                            let name = parsed
-                                                .get("name")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or("Subagent");
-                                            let task = parsed
-                                                .get("task")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or("Subagent task");
-                                            let created_at_ms = parsed
-                                                .get("created_at_ms")
-                                                .and_then(|v| v.as_u64())
-                                                .unwrap_or(done_ms);
-                                            panel.update_subagent_invocation_started(
-                                                subagent_id,
-                                                name,
-                                                task,
-                                                created_at_ms,
-                                                cx,
-                                            );
-                                        }
-                                    }
-                                }
-
                                 cx.notify();
                             }
 
@@ -560,12 +533,6 @@ impl AgentChatPanel {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 panel.cancel = None;
-
-                                if panel.is_processing_subagent_event {
-                                    panel.complete_active_subagent_processing(true);
-                                    panel.is_processing_subagent_event = false;
-                                    panel.processing_subagent_id = None;
-                                }
 
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
                                     let is_empty = panel
@@ -605,11 +572,11 @@ impl AgentChatPanel {
                                         }
                                     }
                                 }
+                                // Background reports that finished during the run
+                                // join the ledger; the next request carries them.
+                                panel.deliver_idle_subagent_reports();
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
-                                if panel.subagent_completion_mode == SubagentCompletionMode::Auto {
-                                    panel.maybe_start_next_subagent_processing(cx);
-                                }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
@@ -618,9 +585,6 @@ impl AgentChatPanel {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 panel.cancel = None;
-                                panel.complete_active_subagent_processing(false);
-                                panel.is_processing_subagent_event = false;
-                                panel.processing_subagent_id = None;
                                 tracing::error!("[agent_chat] error: {err}");
                                 let error_text = format!("Request failed: {err}");
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
@@ -660,14 +624,18 @@ impl AgentChatPanel {
                                 if let Some(text) = panel.ledger.assistant_text_mut(message_ix) {
                                     *text = error_text;
                                 }
+                                panel.deliver_idle_subagent_reports();
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
-                                if panel.subagent_completion_mode == SubagentCompletionMode::Auto {
-                                    panel.maybe_start_next_subagent_processing(cx);
-                                }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
+
+                            // Child runs report through the delegation host's
+                            // sink (see `subagent.rs`), never through a request's.
+                            RunEvent::ChildSpawned { .. }
+                            | RunEvent::ChildProgress { .. }
+                            | RunEvent::ChildFinished { .. } => {}
 
                             RunEvent::OpenFile(path, reply) => {
                                 reply.reply(panel.open_path_in_default_editor(path, cx));

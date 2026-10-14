@@ -12,11 +12,9 @@ mod render_header;
 mod render_overlays;
 mod streaming;
 mod subagent;
-mod subagent_executor;
 pub mod types;
 
 pub use panel::AgentChatPanel;
-pub(crate) use panel::SubagentCompletionMode;
 pub use types::*;
 
 use agent_chat_core::{
@@ -63,7 +61,6 @@ use ui::{
 impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.maybe_reload_chats_from_disk(cx);
-        self.poll_subagent_completion_events(cx);
 
         let provider = self.active_provider();
         let model = self.active_model();
@@ -89,7 +86,7 @@ impl Render for AgentChatPanel {
                 .collect::<Vec<_>>(),
         );
 
-        let queued_subagent_count = self.pending_subagent_events.len();
+        let running_subagent_count = self.running_subagent_count();
 
         v_flex()
             .size_full()
@@ -1431,6 +1428,7 @@ impl Render for AgentChatPanel {
                                                     if let Some(cancel) = this.cancel.take() {
                                                         cancel.cancel();
                                                     }
+                                                    this.delegation.cancel_all();
                                                 })),
                                         ),
                                 )
@@ -1457,31 +1455,22 @@ impl Render for AgentChatPanel {
                             ),
                     )
                     // Subagent indicator: passive dot + count, only when active
-                    .when(queued_subagent_count > 0 || self.is_processing_subagent_event, |el| {
+                    .when(running_subagent_count > 0, |el| {
                         el.child(
                             h_flex()
                                 .w_full()
                                 .gap_1()
                                 .items_center()
                                 .pt(px(2.0))
-                                .child(
-                                    div()
-                                        .size(px(5.0))
-                                        .rounded_full()
-                                        .bg(if self.is_processing_subagent_event {
-                                            cx.theme().info
-                                        } else {
-                                            cx.theme().warning
-                                        }),
-                                )
+                                .child(div().size(px(5.0)).rounded_full().bg(cx.theme().info))
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(cx.theme().muted_foreground.opacity(0.7))
                                         .child(format!(
-                                            "{} subagent{} queued",
-                                            queued_subagent_count,
-                                            if queued_subagent_count == 1 { "" } else { "s" },
+                                            "{} subagent{} running",
+                                            running_subagent_count,
+                                            if running_subagent_count == 1 { "" } else { "s" },
                                         )),
                                 ),
                         )

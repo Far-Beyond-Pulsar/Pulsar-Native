@@ -15,28 +15,43 @@ use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ToolCall, ToolDef
 use agent_chat_tools::{PulsarToolExtras, ToolContext, ToolRegistry};
 
 use crate::compaction::{compact_ledger, summarize_compaction};
-use crate::ledger::{Ledger, LedgerEntry, ToolResult};
+use crate::ledger::{Ledger, LedgerEntry, SubagentStatus, ToolResult};
 use crate::preview::format_tool_result_preview;
 use crate::profile::ModelProfile;
 use crate::project::project;
 
 pub const CANCELLED_MESSAGE: &str = "Request cancelled.";
 
-/// Cooperative cancellation. Cloning shares the flag.
+/// Cooperative cancellation. Cloning shares the flag. A [`child`] token is
+/// cancelled when its parent is, but cancelling it leaves the parent alone.
+///
+/// [`child`]: CancelToken::child
 #[derive(Clone, Debug, Default)]
-pub struct CancelToken(Arc<AtomicBool>);
+pub struct CancelToken {
+    flag: Arc<AtomicBool>,
+    parent: Option<Box<CancelToken>>,
+}
 
 impl CancelToken {
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// A token that also reports cancelled once `self` is.
+    pub fn child(&self) -> CancelToken {
+        CancelToken {
+            flag: Arc::new(AtomicBool::new(false)),
+            parent: Some(Box::new(self.clone())),
+        }
+    }
+
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.flag.store(true, Ordering::SeqCst);
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.flag.load(Ordering::SeqCst)
+            || self.parent.as_ref().is_some_and(|parent| parent.is_cancelled())
     }
 }
 
@@ -98,12 +113,34 @@ pub enum RunEvent {
     OpenFile(PathBuf, UiReply),
     /// A tool wants an open editor tab activated; the panel must reply.
     ActivateOpenEditor(usize, UiReply),
+    /// A sub-agent run was created. `parent_id` is the spawning run
+    /// (`"main"` for the chat itself).
+    ChildSpawned {
+        run_id: String,
+        parent_id: String,
+        harness: String,
+        task: String,
+        depth: u32,
+        background: bool,
+    },
+    /// A running sub-agent did something worth showing ("running list_files").
+    ChildProgress { run_id: String, note: String },
+    /// A sub-agent reached a terminal state; `summary` is its report summary.
+    ChildFinished {
+        run_id: String,
+        status: SubagentStatus,
+        summary: String,
+    },
     /// Always the last event, exactly once.
     Finished(Result<ChatResponse, String>),
 }
 
 pub type EventSink = Arc<dyn Fn(RunEvent) + Send + Sync>;
 
+/// Called with the run's ledger before each request.
+pub type LedgerHook = Arc<dyn Fn(&mut Ledger) + Send + Sync>;
+
+#[derive(Clone)]
 pub struct RunConfig {
     pub provider: Arc<dyn ChatProvider>,
     pub model: String,
@@ -122,6 +159,11 @@ pub struct RunConfig {
     pub context_budget_chars: usize,
     pub summary_char_budget: usize,
     pub max_iterations: u32,
+    /// Makes the delegation tools available to this run; see
+    /// [`crate::delegation`]. `run_loop` consumes it.
+    pub delegation: Option<crate::delegation::DelegationHandle>,
+    /// Runs before every request (delivers finished background children).
+    pub pre_request_hook: Option<LedgerHook>,
 }
 
 impl RunConfig {
@@ -148,6 +190,8 @@ impl RunConfig {
             context_budget_chars: 24_000,
             summary_char_budget: 2_400,
             max_iterations: 50,
+            delegation: None,
+            pre_request_hook: None,
         }
     }
 }
@@ -165,11 +209,14 @@ pub fn spawn_run(
 /// Drive `ledger` to completion. Emits [`RunEvent::Finished`] exactly once,
 /// last, and returns the ledger including every tool exchange.
 pub fn run_loop(
-    config: RunConfig,
+    mut config: RunConfig,
     mut ledger: Ledger,
     cancel: CancelToken,
     sink: EventSink,
 ) -> Ledger {
+    if let Some(handle) = config.delegation.take() {
+        crate::delegation::install(handle, &mut config, &ledger, &cancel);
+    }
     let outcome = drive(&config, &mut ledger, &cancel, &sink);
     sink(RunEvent::Finished(outcome));
     ledger
@@ -194,6 +241,10 @@ fn drive(
             return Err(format!("Reached the {max}-iteration limit."));
         }
         iteration += 1;
+
+        if let Some(hook) = &config.pre_request_hook {
+            hook(ledger);
+        }
 
         if let Some(compaction) = compact_ledger(
             ledger,
