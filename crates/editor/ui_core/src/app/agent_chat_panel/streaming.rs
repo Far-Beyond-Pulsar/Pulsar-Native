@@ -126,7 +126,7 @@ impl AgentChatPanel {
         }
     }
 
-    fn submit_user_prompt_text(
+    pub(super) fn submit_user_prompt_text(
         &mut self,
         raw_prompt: String,
         prompt_for_model: String,
@@ -313,6 +313,8 @@ impl AgentChatPanel {
             config.steward = Some(steward);
             config.structured_summary = true;
         }
+        // Plan mode (when toggled) and project memory.
+        self.configure_plan_memory(&mut config);
 
         // Sub-agents are child runs of this one; the template they derive
         // from is the config as built above.
@@ -606,6 +608,7 @@ impl AgentChatPanel {
                                 // Background reports that finished during the run
                                 // join the ledger; the next request carries them.
                                 panel.deliver_idle_subagent_reports();
+                                panel.collect_submitted_plan(cx);
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
                                 panel.scroll_messages_to_bottom();

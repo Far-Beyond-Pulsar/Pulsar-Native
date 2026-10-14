@@ -219,6 +219,12 @@ pub struct RunConfig {
     pub keep_recent_tool_results: usize,
     /// Results shorter than this many characters are never cleared.
     pub clear_min_chars: usize,
+    /// Read-only planning run; see [`crate::plan`]. Set a fresh
+    /// [`crate::PlanMode`] per run and read the plan from it afterwards.
+    pub plan_mode: Option<crate::plan::PlanMode>,
+    /// Project memory: loaded into the system prompt, and the `remember`
+    /// tool proposes into its inbox; see [`crate::memory`].
+    pub memory: Option<crate::memory::MemoryContext>,
 }
 
 impl RunConfig {
@@ -256,6 +262,8 @@ impl RunConfig {
             reanchor_every: None,
             keep_recent_tool_results: 4,
             clear_min_chars: 1_500,
+            plan_mode: None,
+            memory: None,
         }
     }
 
@@ -291,13 +299,20 @@ pub fn run_loop(
     cancel: CancelToken,
     sink: EventSink,
 ) -> Ledger {
+    // Plan mode and `remember` first: plan mode caps what delegation may do.
+    crate::run_ext::prepare(&mut config);
     if let Some(handle) = config.delegation.take() {
         crate::delegation::install(handle, &mut config, &ledger, &cancel);
     }
     // Lite profiles run on the compact system prompt; the caller gets its
     // own prompt back.
     let original_prompt = swap_in_lite_prompt(&config, &mut ledger);
+    // Memory and plan-mode text go after the base prompt, in a fixed order.
+    let before_extension = crate::run_ext::extend_system_prompt(&config, &mut ledger);
     let outcome = drive(&config, &mut ledger, &cancel, &sink);
+    if let Some(prompt) = before_extension {
+        ledger.set_system_prompt(prompt);
+    }
     if let Some(prompt) = original_prompt {
         ledger.set_system_prompt(prompt);
     }
@@ -379,6 +394,7 @@ fn plan_tools(
         }
         None => config.tools.clone(),
     };
+    crate::plan::ensure_exit_tool(config, &mut tools);
     if !tools.is_empty() && ledger_mentions_refs(ledger) {
         tools.push(fetch_output_definition());
     }
@@ -685,6 +701,10 @@ fn drive(
             .collect();
         if !added.is_empty() {
             sink(RunEvent::FilesTouched(added));
+        }
+        // Plan mode ends with the submitted plan, not another model turn.
+        if crate::plan::submitted(config) {
+            return Ok(response);
         }
     }
 }

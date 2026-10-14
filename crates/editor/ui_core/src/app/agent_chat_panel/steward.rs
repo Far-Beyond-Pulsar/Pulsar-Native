@@ -72,6 +72,7 @@ impl AgentChatPanel {
         self.drift_warning = None;
         self.dismissed_pin_candidates.clear();
         self.pin_edit = None;
+        self.plan_memory.clear_plan();
     }
 
     /// The steward for the next request, or `None` while the setting is off

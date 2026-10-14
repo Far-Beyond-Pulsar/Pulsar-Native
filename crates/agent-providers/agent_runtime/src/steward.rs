@@ -491,6 +491,9 @@ struct Shared {
     epoch: AtomicU64,
     requests: AtomicUsize,
     dropped: AtomicUsize,
+    /// Set by [`Steward::enable_memory`]: extraction also proposes project
+    /// memory entries (never applied; the user accepts them in the panel).
+    memory: Mutex<Option<crate::memory::MemoryHook>>,
 }
 
 pub struct Steward {
@@ -514,6 +517,7 @@ impl Steward {
             epoch: AtomicU64::new(0),
             requests: AtomicUsize::new(0),
             dropped: AtomicUsize::new(0),
+            memory: Mutex::new(None),
         });
         let worker = enabled.then(|| {
             let shared = shared.clone();
@@ -530,6 +534,14 @@ impl Steward {
 
     pub fn is_enabled(&self) -> bool {
         self.shared.config.enabled
+    }
+
+    /// Let extraction also propose project-memory entries into `hook.inbox`.
+    /// Proposals are built from the user's own words only.
+    pub fn enable_memory(&self, hook: crate::memory::MemoryHook) {
+        if let Ok(mut slot) = self.shared.memory.lock() {
+            *slot = Some(hook);
+        }
     }
 
     /// Provider requests the steward has started.
@@ -703,10 +715,11 @@ fn ask(shared: &Shared, system: &str, user: String, schema: Value) -> Result<Str
 fn process(shared: &Shared, job: &JobKind) -> Result<Vec<StewardEvent>, String> {
     match job {
         JobKind::Extract(input) => {
+            let memory_events = propose_memory(shared, input);
             let raw = ask(shared, EXTRACT_SYSTEM, extract_prompt(input), diff_schema())?;
             let diff = parse_diff(&raw, input)?;
             if diff.is_empty() {
-                return Ok(Vec::new());
+                return Ok(memory_events);
             }
             let untrusted = diff
                 .changes
@@ -721,7 +734,9 @@ fn process(shared: &Shared, job: &JobKind) -> Result<Vec<StewardEvent>, String> 
             } else {
                 format!("Steward proposed {} pin change(s).", diff.changes.len())
             };
-            Ok(vec![StewardEvent::Notice(note), StewardEvent::Proposals(diff)])
+            let mut events = memory_events;
+            events.extend([StewardEvent::Notice(note), StewardEvent::Proposals(diff)]);
+            Ok(events)
         }
         JobKind::Drift(input) => {
             let raw = ask(shared, DRIFT_SYSTEM, drift_prompt(input), drift_schema())?;
@@ -737,6 +752,53 @@ fn process(shared: &Shared, job: &JobKind) -> Result<Vec<StewardEvent>, String> 
             })
         }
     }
+}
+
+/// Ask for memory entries when the setting is on. Only the user's own
+/// messages go in, so a proposal cannot be steered by tool or web content.
+fn propose_memory(shared: &Shared, input: &ExtractInput) -> Vec<StewardEvent> {
+    let Some(hook) = shared.memory.lock().ok().and_then(|slot| slot.clone()) else {
+        return Vec::new();
+    };
+    let user_lines: Vec<&WindowEntry> =
+        input.window.iter().filter(|e| e.origin == Origin::User).collect();
+    if user_lines.is_empty() {
+        return Vec::new();
+    }
+    let mut prompt = String::from("Current memory:\n");
+    for scope in [crate::memory::MemoryScope::Project, crate::memory::MemoryScope::User] {
+        let text = hook.store.read(scope);
+        if !text.trim().is_empty() {
+            prompt.push_str(&format!("[{}]\n{}\n", scope.label(), clip(&text, 1500)));
+        }
+    }
+    prompt.push_str("\nRecent user messages:\n");
+    for entry in user_lines {
+        prompt.push_str(&format!("- {}\n", entry.text));
+    }
+    prompt.push_str("\nReturn the JSON now.");
+    let Ok(raw) = ask(shared, crate::memory::MEMORY_SYSTEM, prompt, crate::memory::memory_schema())
+    else {
+        return Vec::new();
+    };
+    let mut queued = 0usize;
+    for proposal in crate::memory::parse_steward_entries(&raw, &hook.store) {
+        if hook.inbox.push(proposal) {
+            queued += 1;
+        }
+    }
+    if queued > 0 {
+        vec![StewardEvent::Notice(format!(
+            "Steward suggested {queued} memory note(s); they wait for your approval."
+        ))]
+    } else {
+        Vec::new()
+    }
+}
+
+/// [`extract_json`] for the memory parser.
+pub(crate) fn extract_json_public(raw: &str) -> Option<Value> {
+    extract_json(raw)
 }
 
 // ---------------------------------------------------------------------------
