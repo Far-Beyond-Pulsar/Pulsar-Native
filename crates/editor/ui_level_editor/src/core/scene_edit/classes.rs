@@ -17,9 +17,8 @@ use serde_json::Value;
 
 use super::{ObjectId, ObjectType, Transform};
 
-// The registries and the built-definition record live in the engine, which
-// rebuilds instances on class updates in every world (SceneDB#84).
-use engine_backend::scene::classes::{built_definition, remember_built_definition};
+// The registries live in the engine, which rebuilds instances on class
+// updates in every world (SceneDB#84).
 pub use engine_backend::scene::classes::{
     project_class_registry as project_registry, registry_for_class_dir, set_fallback_project_root,
 };
@@ -79,10 +78,7 @@ pub fn instantiate_class(
         object_type: ObjectType::Blueprint,
     };
     let root = match class_world::instantiate_class(world, def, instance, spawn) {
-        Ok(placement) => {
-            remember_built_definition(world, def);
-            placement.root()
-        }
+        Ok(placement) => placement.root(),
         Err(error) => {
             tracing::error!(class = %def.name, "Could not place class: {error}");
             return None;
@@ -622,9 +618,8 @@ pub fn folded_class_instance(
 ) -> Option<ClassInstance> {
     let root = entity(world, root_id)?;
     let instance = class_world::class_instance_of(world, root)?;
-    let def = registry
-        .resolve(&instance)
-        .and_then(|entry| built_definition(world, &entry.id))
+    let def = class_world::built_definition(world, root)
+        .cloned()
         .or_else(|| registry.definition_for(&instance))?;
     Some(class_world::collect_overrides(world, root, &def))
 }

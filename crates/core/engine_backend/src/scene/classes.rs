@@ -11,12 +11,11 @@
 //! The editor wraps these with its object ids and its UI bookkeeping
 //! (`ui_level_editor::scene_edit::classes`).
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use pulsar_class::world as class_world;
-use pulsar_class::{ClassDefinition, ClassId, ClassInstance, ClassRegistry};
+use pulsar_class::{ClassInstance, ClassRegistry};
 use pulsar_scenedb::{Entity, World};
 
 use super::{SceneWorldExt, StableId};
@@ -93,45 +92,6 @@ fn same_dir(a: &Path, b: &Path) -> bool {
     a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
-// ── Definitions instances were built from ───────────────────────────────────
-
-type BuiltDefinitions = Mutex<HashMap<(usize, ClassId), ClassDefinition>>;
-
-/// Definitions instances were last built from, per world and class, so a
-/// class update can tell an instance's own edits from old class defaults.
-/// Keyed by world as well (Pulsar-Native#931): with two worlds holding
-/// instances of one class, the first one rebuilt must not record the new
-/// definition for the other, whose instances were still built from the old
-/// one. A world is keyed by its address, stable while it lives; every way
-/// an instance appears (placement, rebuild, level load) records its
-/// definition, so an address a later world reuses never yields a stale
-/// entry for a live instance.
-fn built_definitions() -> &'static BuiltDefinitions {
-    static BUILT: OnceLock<BuiltDefinitions> = OnceLock::new();
-    BUILT.get_or_init(Default::default)
-}
-
-fn world_key(world: &World) -> usize {
-    world as *const World as usize
-}
-
-/// Record that `world`'s instances of `def`'s class are built from `def`.
-pub fn remember_built_definition(world: &World, def: &ClassDefinition) {
-    built_definitions()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .insert((world_key(world), def.id.clone()), def.clone());
-}
-
-/// The definition `world`'s instances of class `id` were last built from.
-pub fn built_definition(world: &World, id: &ClassId) -> Option<ClassDefinition> {
-    built_definitions()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .get(&(world_key(world), id.clone()))
-        .cloned()
-}
-
 // ── Rebuilding ──────────────────────────────────────────────────────────────
 
 /// `root` and its generated children.
@@ -167,7 +127,6 @@ pub fn rebuild_class_instance(
         class_world::store_class_instance(world, root, &fixed);
     }
     class_world::expand_class_instance(world, root, &def);
-    remember_built_definition(world, &def);
     Some(instance_entities(world, root))
 }
 
@@ -234,11 +193,11 @@ pub fn reload_class_instances(
         if !event_names_class(event, &stored, &registry) {
             continue;
         }
-        let Some(entry) = registry.resolve(&stored) else {
+        if registry.resolve(&stored).is_none() {
             continue;
-        };
-        if let Some(built_from) = built_definition(world, &entry.id) {
-            let current = class_world::collect_overrides(world, root, &built_from);
+        }
+        if let Some(built_from) = class_world::built_definition(world, root) {
+            let current = class_world::collect_overrides(world, root, built_from);
             class_world::store_class_instance(world, root, &current);
         }
         matching.push(root);

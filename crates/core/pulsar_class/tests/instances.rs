@@ -324,3 +324,88 @@ fn removed_slots_are_recorded_and_respected() {
     );
     assert_eq!(lamp(&world, root).intensity, 1.0);
 }
+
+/// Every way an instance is built records the definition it was built from
+/// on its root (placement, a spawn onto a reserved entity, expanding loaded
+/// roots, a rebuild), so a later class edit can tell the instance's own
+/// edits from the old defaults wherever the instance came from. Instances
+/// built together share one record, and a rebuild replaces it.
+#[test]
+fn every_build_path_records_the_definition_it_built_from() {
+    use pulsar_class::world::{
+        built_definition, expand_class_instance, expand_roots, instantiate_class_into, BuiltFrom,
+    };
+
+    let project = tempfile::tempdir().unwrap();
+    write_class(project.path(), "Lamp", lamp_prefab(1.0, "first"));
+    let registry = ClassRegistry::scan(project.path());
+    let def = registry.by_name("Lamp").unwrap().load_definition().unwrap();
+    let mut world = World::new();
+
+    let placed = instantiate_class(
+        &mut world,
+        &def,
+        ClassInstance::default(),
+        spawn_at("placed", 0.0),
+    )
+    .unwrap()
+    .root();
+    let reserved = world.spawn();
+    let spawned = instantiate_class_into(
+        &mut world,
+        &def,
+        ClassInstance::default(),
+        spawn_at("spawned", 1.0),
+        reserved,
+    )
+    .unwrap()
+    .root();
+    // A loaded level: a root with only its ClassInstance, expanded after.
+    let loaded = world.spawn_object(spawn_at("loaded", 2.0)).unwrap();
+    store_class_instance(
+        &mut world,
+        loaded,
+        &ClassInstance {
+            class: def.id.clone(),
+            class_name: def.name.clone(),
+            ..Default::default()
+        },
+    );
+    assert!(built_definition(&world, loaded).is_none());
+    expand_roots(&mut world, &registry, &[loaded]);
+
+    for root in [placed, spawned, loaded] {
+        let built = built_definition(&world, root).expect("recorded");
+        assert_eq!(built.id, def.id);
+        assert_eq!(built.prefab.components[0].data["intensity"], json!(1.0));
+    }
+    let shared = |a: Entity, b: Entity| {
+        std::sync::Arc::ptr_eq(
+            &world.get::<BuiltFrom>(a).unwrap().0,
+            &world.get::<BuiltFrom>(b).unwrap().0,
+        )
+    };
+    assert!(shared(placed, spawned) && shared(placed, loaded));
+
+    // A rebuild from the edited class records the new definition.
+    edit_lamp_default(project.path(), 4.0, "first");
+    let edited = ClassRegistry::scan(project.path())
+        .by_name("Lamp")
+        .unwrap()
+        .load_definition()
+        .unwrap();
+    expand_class_instance(&mut world, placed, &edited);
+    assert_eq!(
+        built_definition(&world, placed).unwrap().prefab.components[0].data["intensity"],
+        json!(4.0)
+    );
+    assert_eq!(
+        built_definition(&world, spawned).unwrap().prefab.components[0].data["intensity"],
+        json!(1.0),
+        "the others were not rebuilt"
+    );
+
+    // The record goes with the instance.
+    world.despawn(placed);
+    assert!(world.get::<BuiltFrom>(placed).is_none());
+}

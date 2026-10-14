@@ -14,6 +14,7 @@
 //! overrides are still diffed as JSON (Phase 3 converts that).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use pulsar_scene_model::attachments::{self, NewInstance};
@@ -368,6 +369,20 @@ pub fn clear_generated(world: &mut World, root: Entity) {
     }
 }
 
+/// The template a class instance's components were last built from, kept on
+/// its root by [`expand_from_template`] (every way an instance is built:
+/// placement, level load, a script's spawn, a rebuild). A class update diffs
+/// the instance's live values against it to tell the instance's own edits
+/// from the class's old defaults. It lives and goes with the instance, and
+/// instances of one class built together share it.
+#[derive(Clone)]
+pub struct BuiltFrom(pub Arc<ClassTemplate>);
+
+/// The definition the instance at `root` was last built from.
+pub fn built_definition(world: &World, root: Entity) -> Option<&ClassDefinition> {
+    world.get::<BuiltFrom>(root).map(|built| &built.0.def)
+}
+
 /// Build the class components of the instance at `root` from `def`, the
 /// current class definition, applying the root's `ClassInstance` overrides.
 /// Anything a previous expansion created is replaced. Returns the placement
@@ -385,7 +400,7 @@ pub fn expand_class_instance(
 pub fn expand_from_template(
     world: &mut World,
     root: Entity,
-    template: &ClassTemplate,
+    template: &Arc<ClassTemplate>,
 ) -> ClassPlacement {
     let def = &template.def;
     clear_generated(world, root);
@@ -438,6 +453,7 @@ pub fn expand_from_template(
         );
         spawned.push((slot_id, entity));
     }
+    world.insert(root, BuiltFrom(Arc::clone(template)));
     placement(world, root)
 }
 
@@ -456,7 +472,7 @@ pub fn instantiate_class(
 /// [`instantiate_class`] from an already built template.
 pub fn instantiate_template(
     world: &mut World,
-    template: &ClassTemplate,
+    template: &Arc<ClassTemplate>,
     mut instance: ClassInstance,
     spawn: SpawnObject,
 ) -> Result<ClassPlacement, SceneError> {
@@ -482,7 +498,7 @@ pub fn instantiate_class_into(
 /// [`instantiate_class_into`] from an already built template.
 pub fn instantiate_template_into(
     world: &mut World,
-    template: &ClassTemplate,
+    template: &Arc<ClassTemplate>,
     mut instance: ClassInstance,
     spawn: SpawnObject,
     entity: Entity,
@@ -495,7 +511,7 @@ pub fn instantiate_template_into(
 
 fn build_instance_root(
     world: &mut World,
-    template: &ClassTemplate,
+    template: &Arc<ClassTemplate>,
     instance: ClassInstance,
     root: Entity,
 ) -> ClassPlacement {

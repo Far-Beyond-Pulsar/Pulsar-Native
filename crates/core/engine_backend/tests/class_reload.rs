@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use engine_backend::scene::{
     attachments, classes, new_scene, reload_updated_asset, subscribe_asset_reloads, ObjectType,
-    SpawnObject,
+    SceneWorldExt, SpawnObject,
 };
 use helio_component::components::LightComponent;
 use pulsar_class::ClassInstance;
@@ -62,11 +62,29 @@ fn place(world: &mut World, dir: &Path) -> Entity {
         .load_definition()
         .expect("a class definition");
     let spawn = SpawnObject::new(def.name.clone()).with_object_type(ObjectType::Blueprint);
-    let placement =
-        pulsar_class::world::instantiate_class(world, &def, ClassInstance::default(), spawn)
-            .expect("placed");
-    classes::remember_built_definition(world, &def);
-    placement.root()
+    pulsar_class::world::instantiate_class(world, &def, ClassInstance::default(), spawn)
+        .expect("placed")
+        .root()
+}
+
+/// A level with one object, `lamp`, bound to class `name`, loaded the way a
+/// game loads one (the class is built when the level hydrates).
+fn load_level_with(project: &Path, name: &str) -> engine_backend::scene::RuntimeLevel {
+    let file: pulsar_scene::format::SceneFile = serde_json::from_value(json!({
+        "version": "2.1",
+        "objects": [{
+            "id": "lamp", "name": "Lamp", "object_type": "Empty",
+            "transform": {"position": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]},
+            "parent": null, "visible": true, "locked": false, "props": {}
+        }],
+        "components": {},
+        "metadata": {},
+        "blueprint_bindings": { "lamp": [{ "class_name": name, "overrides": {} }] }
+    }))
+    .unwrap();
+    let registry = pulsar_class::ClassRegistry::scan(project);
+    engine_backend::scene::RuntimeLevel::from_scene_file_with_classes(file, &registry)
+        .expect("level loads")
 }
 
 fn light_entity(world: &World, root: Entity) -> Entity {
@@ -134,6 +152,31 @@ fn class_updates_rebuild_instances_in_worlds_without_the_editor() {
     assert!(rebuilt >= 1);
     assert_eq!(intensity(world, unrelated), 2.0);
     assert_eq!(intensity(world, untouched), 4.0);
+
+    // ── A level a game loaded ──────────────────────────────────────────────
+    // Its instances record what they were built from as they load, so the
+    // first class edit keeps the edits made since loading.
+    let level = load_level_with(project.path(), "Lamp");
+    let loaded_scene = level.scene();
+    {
+        let mut loaded = loaded_scene.write();
+        let world = &mut loaded.world;
+        let lamp_root = world.entity_for("lamp").expect("lamp loaded");
+        assert_eq!(intensity(world, lamp_root), 4.0, "built from the class");
+        let light = light_entity(world, lamp_root);
+        world
+            .get_mut::<LightComponent>(light)
+            .unwrap()
+            .intensity
+            .intensity = 8.0;
+        write_prefab(&lamp, "Lamp", 4.5);
+        reload_updated_asset(world, &class_update(&lamp));
+        assert_eq!(
+            intensity(world, lamp_root),
+            8.0,
+            "the edit made after loading survives the first class edit"
+        );
+    }
 
     // ── Through the host bus, for a world a game loop holds ────────────────
     let game: engine_backend::scene::SharedScene = Arc::new(parking_lot::RwLock::new(new_scene()));
