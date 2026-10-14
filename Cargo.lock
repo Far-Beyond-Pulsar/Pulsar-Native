@@ -78,9 +78,25 @@ dependencies = [
  "engine_state",
  "plugin_manager",
  "serde_json",
+ "tempfile",
  "tool_registry",
  "tool_registry_builtin",
  "tool_registry_macros",
+ "tracing",
+]
+
+[[package]]
+name = "agent_mcp"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "agent_chat_tools",
+ "agent_runtime",
+ "anyhow",
+ "engine_state",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tracing",
 ]
 
@@ -174,6 +190,47 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+]
+
+[[package]]
+name = "agent_runtime"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "agent_chat_tools",
+ "anyhow",
+ "base64 0.23.1",
+ "engine_fs",
+ "engine_state",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "similar 3.2.0",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "agent_scene_tools"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "agent_chat_tools",
+ "agent_runtime",
+ "anyhow",
+ "engine_class_derive",
+ "engine_state",
+ "inventory",
+ "parking_lot",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tool_registry",
+ "tracing",
 ]
 
 [[package]]
@@ -14001,6 +14058,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "agent_chat_tools",
+ "agent_mcp",
  "agent_provider_anthropic",
  "agent_provider_aws_bedrock",
  "agent_provider_demo_random",
@@ -14010,6 +14068,8 @@ dependencies = [
  "agent_provider_openai",
  "agent_provider_opencode",
  "agent_provider_vertex_ai",
+ "agent_runtime",
+ "agent_scene_tools",
  "anyhow",
  "asset_viewer_plugin",
  "directories 6.0.0",

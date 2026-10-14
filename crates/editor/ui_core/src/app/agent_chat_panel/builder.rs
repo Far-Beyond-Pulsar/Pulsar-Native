@@ -1,5 +1,5 @@
 use crate::custom_providers;
-use agent_chat_core::{ChatMessage, ChatRole, ProviderConfig, ProviderCrate};
+use agent_chat_core::{ProviderConfig, ProviderCrate};
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProviderCrate;
 use agent_provider_aws_bedrock::AwsBedrockProviderCrate;
@@ -138,6 +138,20 @@ impl AgentChatPanel {
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste provider token..."));
         let custom_provider_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Enter provider field value..."));
+        let pin_edit_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Pinned text..."));
+        let plan_edit_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line()
+                .auto_grow(4, 14)
+                .placeholder("Goal: ...\n\nSteps:\n1. ...")
+        });
+        let memory_edit_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line()
+                .auto_grow(4, 14)
+                .placeholder("- One note per line. Loaded into every chat.")
+        });
 
         let chat_history_list = cx.new(|cx| {
             SearchableList::new(window, cx, Vec::<ChatHistoryEntry>::new(), |chat| {
@@ -237,6 +251,16 @@ impl AgentChatPanel {
                     }
                 },
             ),
+            // Typing drives the (opt-in) suggested-context lookup.
+            cx.subscribe_in(
+                &prompt_input,
+                window,
+                |this, _, event: &ui::input::InputEvent, _window, cx| {
+                    if matches!(event, ui::input::InputEvent::Change) {
+                        this.on_prompt_changed(cx);
+                    }
+                },
+            ),
             cx.subscribe(
                 &chat_history_list,
                 move |this, _, event: &SearchableListEvent<ChatHistoryEntry>, cx| {
@@ -271,7 +295,7 @@ impl AgentChatPanel {
             configuring_field_index: 0,
             config_values: HashMap::new(),
             config_error: None,
-            tool_registry: agent_chat_tools::build_default_registry(),
+            tool_registry: Self::build_tool_registry(),
             plugin_bridge,
             provider_tokens: HashMap::new(),
             pending_auth_provider: None,
@@ -285,19 +309,35 @@ impl AgentChatPanel {
             streaming_message_ix: None,
             streaming_display_item_ix: None,
             pending_rollback_confirm_ix: None,
-            messages: vec![ChatMessage {
-                role: ChatRole::System,
-                content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
-                tool_call_id: None,
-                tool_calls: vec![],
-            }],
+            ledger: agent_runtime::Ledger::with_system_prompt(
+                "Agent Chat is ready. Choose provider/model and ask anything about your project.",
+            ),
             display_items: vec![],
             display_item_heights: HashMap::new(),
-            cancel_tx: None,
-            pending_subagent_events: std::collections::VecDeque::new(),
-            is_processing_subagent_event: false,
-            processing_subagent_id: None,
-            subagent_completion_mode: super::panel::SubagentCompletionMode::Auto,
+            cancel: None,
+            confirm_policy: Self::load_confirm_policy(),
+            pending_confirms: Vec::new(),
+            safety_notice: None,
+            delegation: Self::detached_delegation(),
+            steward_settings: Self::load_steward_settings(),
+            chat_steward_override: None,
+            steward: None,
+            steward_key: String::new(),
+            pending_pin_changes: Vec::new(),
+            drift_warning: None,
+            steward_log: Vec::new(),
+            cascade_settings: Self::load_cascade_settings(),
+            cascade_badge: None,
+            scene_settings: Self::load_scene_settings(),
+            revert_conflict_run: None,
+            mcp: Self::start_mcp(),
+            mcp_open: false,
+            agent_settings_open: false,
+            dismissed_pin_candidates: Vec::new(),
+            pin_edit: None,
+            pin_edit_input,
+            plan_memory: super::plan_memory::PlanMemoryState::new(plan_edit_input, memory_edit_input),
+            prefetch: super::prefetch::PrefetchState::load(),
             auto_scroll: true,
             chat_viewport_height: px(0.0),
             _subscriptions: subscriptions,
@@ -306,6 +346,7 @@ impl AgentChatPanel {
         this.bootstrap_chat_storage(cx);
         let initial_ix = this.active_provider_ix;
         this.fetch_models_in_background(initial_ix, cx);
+        this.watch_mcp_startup(cx);
         this
     }
 }

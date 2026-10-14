@@ -1,6 +1,6 @@
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
-    ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,
+    ChatMessage, ImagePart, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
+    ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ResponseFormat, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
@@ -285,6 +285,7 @@ impl ProviderCrate for OpenAiProviderCrate {
             models_url,
             api_key,
             is_ollama: entry.use_ollama_protocol,
+            backend: Backend::from_entry_id(entry.id),
         }))
     }
 }
@@ -347,6 +348,81 @@ struct OpenAiChatProvider {
     models_url: String,
     api_key: String,
     is_ollama: bool,
+    backend: Backend,
+}
+
+/// Which server family sits behind the endpoint; decides which request
+/// extensions (constrained decoding, stream usage) are safe to send.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Backend {
+    OpenAi,
+    LmStudio,
+    LlamaCpp,
+    Vllm,
+    Ollama,
+    /// Unknown server: only the plain OpenAI fields are sent.
+    Generic,
+}
+
+impl Backend {
+    fn from_entry_id(id: &str) -> Self {
+        match id {
+            "openai" => Backend::OpenAi,
+            "lm_studio" => Backend::LmStudio,
+            "llama_cpp" => Backend::LlamaCpp,
+            "vllm" => Backend::Vllm,
+            "ollama" => Backend::Ollama,
+            _ => Backend::Generic,
+        }
+    }
+
+    /// Accepts `stream_options.include_usage`.
+    fn streams_usage(self) -> bool {
+        matches!(
+            self,
+            Backend::OpenAi | Backend::LmStudio | Backend::LlamaCpp | Backend::Vllm
+        )
+    }
+}
+
+fn json_schema_format(schema: &Value) -> Value {
+    json!({ "type": "json_schema", "json_schema": { "name": "response", "schema": schema } })
+}
+
+/// Add the constrained-decoding fields `backend` understands to an
+/// OpenAI-style payload. Unsupported combinations are skipped, never sent.
+///
+/// - OpenAI: `response_format` json_object / json_schema.
+/// - LM Studio: `response_format` json_schema only (json_object is
+///   expressed as the schema `{"type":"object"}`).
+/// - llama.cpp: `response_format` json_object / json_schema, or the server's
+///   own `grammar` field for GBNF.
+/// - vLLM: `response_format` json_object / json_schema (guided JSON), or
+///   `guided_grammar`.
+fn apply_response_format(payload: &mut Value, backend: Backend, format: &ResponseFormat) {
+    match (backend, format) {
+        (Backend::OpenAi | Backend::LlamaCpp | Backend::Vllm, ResponseFormat::JsonObject) => {
+            payload["response_format"] = json!({ "type": "json_object" });
+        }
+        (Backend::LmStudio, ResponseFormat::JsonObject) => {
+            payload["response_format"] = json_schema_format(&json!({ "type": "object" }));
+        }
+        (
+            Backend::OpenAi | Backend::LmStudio | Backend::LlamaCpp | Backend::Vllm,
+            ResponseFormat::JsonSchema(schema),
+        ) => {
+            payload["response_format"] = json_schema_format(schema);
+        }
+        (Backend::LlamaCpp, ResponseFormat::Grammar(grammar)) => {
+            payload["grammar"] = json!(grammar);
+        }
+        (Backend::Vllm, ResponseFormat::Grammar(grammar)) => {
+            payload["guided_grammar"] = json!(grammar);
+        }
+        _ => {
+            tracing::debug!(?backend, "response_format not supported by this backend; ignored");
+        }
+    }
 }
 
 impl ChatProvider for OpenAiChatProvider {
@@ -427,7 +503,7 @@ impl ChatProvider for OpenAiChatProvider {
         let payload = if self.is_ollama {
             build_ollama_payload(&request, false)
         } else {
-            build_openai_payload(&request, false)?
+            build_openai_payload(&request, false, self.backend)?
         };
 
         let body = self.send(&payload)?;
@@ -446,8 +522,9 @@ impl ChatProvider for OpenAiChatProvider {
         let payload = if self.is_ollama {
             build_ollama_payload(&request, true)
         } else {
-            build_openai_payload(&request, true)?
+            build_openai_payload(&request, true, self.backend)?
         };
+        let want_usage = !self.is_ollama && self.backend.streams_usage();
 
         let mut req = self
             .client
@@ -477,7 +554,7 @@ impl ChatProvider for OpenAiChatProvider {
         if self.is_ollama {
             read_ollama_stream(response, on_chunk)
         } else {
-            read_stream_response(response, on_chunk)
+            read_stream_response(response, on_chunk, want_usage)
         }
     }
 }
@@ -565,25 +642,83 @@ impl OpenAiChatProvider {
 
 // ── OpenAI request/response ─────────────────────────────────────────────────
 
-fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<Value> {
-    let messages: Vec<Value> = request
-        .messages
-        .iter()
-        .map(|msg| {
-            let mut m = json!({ "role": map_role(msg.role), "content": msg.content });
-            if let Some(tid) = &msg.tool_call_id {
-                m["tool_call_id"] = json!(tid);
+/// `content` for a message that carries images: text first, then one
+/// `image_url` part per image (data URLs, which every OpenAI-compatible
+/// vision server accepts).
+fn multimodal_content(text: &str, images: &[ImagePart]) -> Value {
+    let mut parts: Vec<Value> = Vec::new();
+    if !text.trim().is_empty() {
+        parts.push(json!({ "type": "text", "text": text }));
+    }
+    for image in images {
+        parts.push(json!({ "type": "image_url", "image_url": { "url": image.data_url() } }));
+    }
+    Value::Array(parts)
+}
+
+/// The chat-completions `messages` array.
+///
+/// The API takes images in user messages only, not in `tool` messages. A
+/// tool result's images therefore follow the run of tool messages it belongs
+/// to as one synthetic user message (it cannot go between two tool messages
+/// answering the same assistant turn).
+fn openai_messages(messages: &[ChatMessage]) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    let mut pending: Vec<(String, Vec<ImagePart>)> = Vec::new();
+    let flush = |out: &mut Vec<Value>, pending: &mut Vec<(String, Vec<ImagePart>)>| {
+        if pending.is_empty() {
+            return;
+        }
+        let mut parts: Vec<Value> = Vec::new();
+        for (call_id, images) in pending.drain(..) {
+            parts.push(json!({
+                "type": "text",
+                "text": format!("Image output of tool call {call_id}:"),
+            }));
+            for image in images {
+                parts.push(json!({ "type": "image_url", "image_url": { "url": image.data_url() } }));
             }
-            if !msg.tool_calls.is_empty() {
-                m["tool_calls"] =
-                    json!(msg.tool_calls.iter().map(|c| json!({
+        }
+        out.push(json!({ "role": "user", "content": parts }));
+    };
+    for msg in messages {
+        if msg.role != ChatRole::Tool {
+            flush(&mut out, &mut pending);
+        }
+        let content = if msg.role == ChatRole::User && !msg.images.is_empty() {
+            multimodal_content(&msg.content, &msg.images)
+        } else {
+            json!(msg.content)
+        };
+        let mut m = json!({ "role": map_role(msg.role), "content": content });
+        if let Some(tid) = &msg.tool_call_id {
+            m["tool_call_id"] = json!(tid);
+        }
+        if !msg.tool_calls.is_empty() {
+            m["tool_calls"] =
+                json!(msg.tool_calls.iter().map(|c| json!({
                 "id": c.id, "type": "function",
                 "function": { "name": c.name, "arguments": c.arguments_json.to_string() }
             })).collect::<Vec<_>>());
-            }
-            m
-        })
-        .collect();
+        }
+        out.push(m);
+        if msg.role == ChatRole::Tool && !msg.images.is_empty() {
+            pending.push((
+                msg.tool_call_id.clone().unwrap_or_default(),
+                msg.images.clone(),
+            ));
+        }
+    }
+    flush(&mut out, &mut pending);
+    out
+}
+
+fn build_openai_payload(
+    request: &ChatRequest,
+    stream: bool,
+    backend: Backend,
+) -> anyhow::Result<Value> {
+    let messages = openai_messages(&request.messages);
 
     let tools: Vec<Value> = if request.enable_tool_calls {
         request.tools.iter().map(|t| json!({
@@ -606,6 +741,13 @@ fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<V
     }
     if !tools.is_empty() {
         payload["tools"] = Value::Array(tools);
+    }
+    if stream && backend.streams_usage() {
+        // Token counts arrive in a final chunk; the runtime budgets on them.
+        payload["stream_options"] = json!({ "include_usage": true });
+    }
+    if let Some(format) = &request.response_format {
+        apply_response_format(&mut payload, backend, format);
     }
     Ok(payload)
 }
@@ -742,6 +884,7 @@ fn parse_stream_tool_calls(events: &[Value]) -> Vec<ToolCall> {
 fn read_stream_response(
     response: reqwest::blocking::Response,
     on_chunk: &mut dyn FnMut(String),
+    want_usage: bool,
 ) -> anyhow::Result<ChatResponse> {
     let mut events = Vec::new();
     let mut chunks = Vec::new();
@@ -795,7 +938,9 @@ fn read_stream_response(
             }
         }
         events.push(ev);
-        if fr.is_some() {
+        // With usage requested the count follows the finish chunk; keep
+        // reading until [DONE] or the end of the stream.
+        if fr.is_some() && !want_usage {
             break;
         }
     }
@@ -816,6 +961,13 @@ fn build_ollama_payload(request: &ChatRequest, stream: bool) -> Value {
         let mut m = serde_json::Map::new();
         m.insert("role".into(), json!(map_role(msg.role)));
         m.insert("content".into(), json!(msg.content));
+        if !msg.images.is_empty() {
+            // Ollama takes raw base64 in a per-message `images` array.
+            m.insert(
+                "images".into(),
+                json!(msg.images.iter().map(|i| i.data_base64.clone()).collect::<Vec<_>>()),
+            );
+        }
         if !msg.tool_calls.is_empty() {
             m.insert("tool_calls".into(), json!(msg.tool_calls.iter().map(|c| json!({ "function": { "name": c.name, "arguments": c.arguments_json } })).collect::<Vec<_>>()));
         }
@@ -835,6 +987,15 @@ fn build_ollama_payload(request: &ChatRequest, stream: bool) -> Value {
     }
     if !opts.is_empty() {
         payload["options"] = Value::Object(opts);
+    }
+    // Ollama's `format` takes "json" or a JSON schema; it has no grammar hook.
+    match &request.response_format {
+        Some(ResponseFormat::JsonObject) => payload["format"] = json!("json"),
+        Some(ResponseFormat::JsonSchema(schema)) => payload["format"] = schema.clone(),
+        Some(ResponseFormat::Grammar(_)) => {
+            tracing::debug!("ollama has no grammar support; response_format ignored");
+        }
+        None => {}
     }
     if request.enable_tool_calls && !request.tools.is_empty() {
         payload["tools"] = json!(request.tools.iter().map(|t| json!({ "type": "function", "function": { "name": t.name, "description": t.description, "parameters": t.parameters_json_schema } })).collect::<Vec<_>>());
@@ -981,7 +1142,6 @@ fn map_role(role: ChatRole) -> &'static str {
         ChatRole::User => "user",
         ChatRole::Assistant => "assistant",
         ChatRole::Tool => "tool",
-        ChatRole::AgentEvent => "system",
     }
 }
 
@@ -1044,5 +1204,187 @@ mod template_tests {
             build_chat_url("http://gpu-box:1234/v1/", false, None),
             "http://gpu-box:1234/v1/chat/completions"
         );
+    }
+}
+
+#[cfg(test)]
+mod response_format_tests {
+    use super::*;
+
+    fn request(format: Option<ResponseFormat>) -> ChatRequest {
+        ChatRequest {
+            model: "m".into(),
+            messages: vec![],
+            enable_tool_calls: false,
+            tools: vec![],
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            response_format: format,
+        }
+    }
+
+    fn schema() -> Value {
+        json!({"type": "object", "properties": {"a": {"type": "string"}}})
+    }
+
+    fn payload(backend: Backend, format: ResponseFormat) -> Value {
+        build_openai_payload(&request(Some(format)), false, backend).unwrap()
+    }
+
+    #[test]
+    fn unconstrained_requests_are_unchanged() {
+        let p = build_openai_payload(&request(None), false, Backend::LlamaCpp).unwrap();
+        assert!(p.get("response_format").is_none());
+        assert!(p.get("grammar").is_none());
+        assert!(p.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn openai_family_json_object_and_schema() {
+        for backend in [Backend::OpenAi, Backend::LlamaCpp, Backend::Vllm] {
+            let p = payload(backend, ResponseFormat::JsonObject);
+            assert_eq!(p["response_format"], json!({"type": "json_object"}));
+        }
+        let p = payload(Backend::Vllm, ResponseFormat::JsonSchema(schema()));
+        assert_eq!(p["response_format"]["type"], "json_schema");
+        assert_eq!(p["response_format"]["json_schema"]["schema"], schema());
+    }
+
+    #[test]
+    fn lm_studio_only_speaks_json_schema() {
+        let p = payload(Backend::LmStudio, ResponseFormat::JsonObject);
+        assert_eq!(p["response_format"]["type"], "json_schema");
+        assert_eq!(p["response_format"]["json_schema"]["schema"], json!({"type": "object"}));
+        let p = payload(Backend::LmStudio, ResponseFormat::Grammar("root ::= x".into()));
+        assert!(p.get("response_format").is_none() && p.get("grammar").is_none());
+    }
+
+    #[test]
+    fn grammar_goes_to_the_backends_that_take_one() {
+        let p = payload(Backend::LlamaCpp, ResponseFormat::Grammar("root ::= x".into()));
+        assert_eq!(p["grammar"], "root ::= x");
+        let p = payload(Backend::Vllm, ResponseFormat::Grammar("root ::= x".into()));
+        assert_eq!(p["guided_grammar"], "root ::= x");
+        let p = payload(Backend::OpenAi, ResponseFormat::Grammar("root ::= x".into()));
+        assert!(p.get("grammar").is_none() && p.get("response_format").is_none());
+    }
+
+    #[test]
+    fn generic_servers_get_nothing_extra() {
+        let p = payload(Backend::Generic, ResponseFormat::JsonObject);
+        assert!(p.get("response_format").is_none());
+        let streamed = build_openai_payload(&request(None), true, Backend::Generic).unwrap();
+        assert!(streamed.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn usage_is_requested_when_streaming_from_known_servers() {
+        let p = build_openai_payload(&request(None), true, Backend::LmStudio).unwrap();
+        assert_eq!(p["stream_options"], json!({"include_usage": true}));
+        let p = build_openai_payload(&request(None), false, Backend::LmStudio).unwrap();
+        assert!(p.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn ollama_format_field() {
+        let p = build_ollama_payload(&request(Some(ResponseFormat::JsonObject)), false);
+        assert_eq!(p["format"], "json");
+        let p = build_ollama_payload(&request(Some(ResponseFormat::JsonSchema(schema()))), false);
+        assert_eq!(p["format"], schema());
+        let p = build_ollama_payload(&request(Some(ResponseFormat::Grammar("g".into()))), false);
+        assert!(p.get("format").is_none());
+    }
+
+    #[test]
+    fn entries_map_to_backends() {
+        assert_eq!(Backend::from_entry_id("lm_studio"), Backend::LmStudio);
+        assert_eq!(Backend::from_entry_id("llama_cpp"), Backend::LlamaCpp);
+        assert_eq!(Backend::from_entry_id("custom_openai"), Backend::Generic);
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+
+    fn msg(role: ChatRole, content: &str, call_id: Option<&str>, images: Vec<ImagePart>) -> ChatMessage {
+        ChatMessage {
+            role,
+            content: content.to_string(),
+            tool_call_id: call_id.map(str::to_string),
+            tool_calls: vec![],
+            images,
+        }
+    }
+
+    #[test]
+    fn text_only_messages_serialize_as_before() {
+        let out = openai_messages(&[
+            msg(ChatRole::User, "hi", None, vec![]),
+            msg(ChatRole::Tool, "{}", Some("c1"), vec![]),
+        ]);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0]["content"], json!("hi"));
+        assert_eq!(out[1]["tool_call_id"], json!("c1"));
+    }
+
+    #[test]
+    fn user_images_become_content_parts() {
+        let out = openai_messages(&[msg(
+            ChatRole::User,
+            "look",
+            None,
+            vec![ImagePart::png("QUJD")],
+        )]);
+        let parts = out[0]["content"].as_array().unwrap();
+        assert_eq!(parts[0], json!({"type": "text", "text": "look"}));
+        assert_eq!(parts[1]["type"], "image_url");
+        assert_eq!(parts[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn tool_images_follow_the_whole_tool_run_in_one_user_message() {
+        let out = openai_messages(&[
+            msg(ChatRole::Assistant, "", None, vec![]),
+            msg(ChatRole::Tool, "a", Some("c1"), vec![ImagePart::png("AA==")]),
+            msg(ChatRole::Tool, "b", Some("c2"), vec![]),
+            msg(ChatRole::User, "next", None, vec![]),
+        ]);
+        let roles: Vec<&str> = out.iter().map(|m| m["role"].as_str().unwrap()).collect();
+        assert_eq!(roles, ["assistant", "tool", "tool", "user", "user"]);
+        // Tool messages stay plain strings.
+        assert_eq!(out[1]["content"], json!("a"));
+        let parts = out[3]["content"].as_array().unwrap();
+        assert!(parts[0]["text"].as_str().unwrap().contains("c1"));
+        assert_eq!(parts[1]["image_url"]["url"], "data:image/png;base64,AA==");
+    }
+
+    #[test]
+    fn a_trailing_tool_run_still_flushes_its_images() {
+        let out = openai_messages(&[msg(
+            ChatRole::Tool,
+            "a",
+            Some("c1"),
+            vec![ImagePart::png("AA==")],
+        )]);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1]["role"], "user");
+    }
+
+    #[test]
+    fn ollama_gets_raw_base64() {
+        let request = ChatRequest {
+            model: "llava".to_string(),
+            messages: vec![msg(ChatRole::User, "x", None, vec![ImagePart::png("QUJD")])],
+            enable_tool_calls: false,
+            tools: vec![],
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            response_format: None,
+        };
+        let payload = build_ollama_payload(&request, false);
+        assert_eq!(payload["messages"][0]["images"], json!(["QUJD"]));
     }
 }

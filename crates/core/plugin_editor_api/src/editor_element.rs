@@ -217,6 +217,9 @@ pub struct EditorFactoryRegistry {
     /// Panel restorers registered alongside the factories (see
     /// [`crate::panel_restore`]). Empty for a plugin that registers none.
     restorers: crate::panel_restore::PanelRestorerRegistry,
+    /// Agent harnesses registered alongside the factories (see
+    /// [`crate::agent_harness`]).
+    harnesses: crate::agent_harness::HarnessSourceRegistry,
 }
 
 impl EditorFactoryRegistry {
@@ -224,7 +227,19 @@ impl EditorFactoryRegistry {
         Self {
             factories: Vec::new(),
             restorers: Default::default(),
+            harnesses: Default::default(),
         }
+    }
+
+    /// Register an agent harness (markdown with frontmatter) the chat can
+    /// delegate to; see [`crate::agent_harness`].
+    pub fn register_harness(&mut self, name: impl Into<String>, source: impl Into<String>) {
+        self.harnesses.register(name, source);
+    }
+
+    /// Take the registered harness sources; the host merges them into its set.
+    pub fn take_harnesses(&mut self) -> crate::agent_harness::HarnessSourceRegistry {
+        std::mem::take(&mut self.harnesses)
     }
 
     /// Register a restorer that rebuilds panels saved with restore kind `kind`

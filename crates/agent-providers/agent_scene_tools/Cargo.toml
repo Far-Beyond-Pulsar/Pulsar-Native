@@ -1,0 +1,30 @@
+[package]
+name = "agent_scene_tools"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Engine-native scene tools for agents: query and edit the live SceneDB scene as undoable, run-attributed transactions, with branch sandboxes that return a reviewable diff."
+
+[dependencies]
+agent_chat_tools = { workspace = true }
+agent_runtime = { workspace = true }
+tool_registry = { workspace = true }
+anyhow = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_scene_model = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_reflection = { workspace = true }
+
+[dev-dependencies]
+agent_chat_core = { workspace = true }
+engine_class_derive = { workspace = true }
+inventory = { workspace = true }
+engine_state = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

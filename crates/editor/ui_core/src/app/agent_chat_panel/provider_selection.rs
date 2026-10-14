@@ -163,12 +163,9 @@ impl AgentChatPanel {
                         Err(e) => {
                             let label = panel.provider_catalog.get(provider_ix).map(|p| p.label).unwrap_or(&provider_id);
                             tracing::error!(provider = %provider_id, error = %e, "fetch_models_in_background: failed");
-                            panel.messages.push(ChatMessage {
-                                role: ChatRole::System,
-                                content: format!("Failed to fetch models for {label}: {e}"),
-                                tool_call_id: None,
-                                tool_calls: vec![],
-                            });
+                            panel.ledger.push(LedgerEntry::engine_notice(format!(
+                                "Failed to fetch models for {label}: {e}"
+                            )));
                             panel.scroll_messages_to_bottom();
                             cx.notify();
                         }
@@ -193,15 +190,10 @@ impl AgentChatPanel {
         tracing::debug!(provider = %provider_id, "refresh_models_for_active_provider: starting");
 
         let Some(provider_impl) = self.provider_registry.get(provider_id).cloned() else {
-            self.messages.push(ChatMessage {
-                role: ChatRole::System,
-                content: format!(
-                    "Cannot refresh models for {} because no runtime provider is registered.",
-                    provider_label
-                ),
-                tool_call_id: None,
-                tool_calls: vec![],
-            });
+            self.ledger.push(LedgerEntry::engine_notice(format!(
+                "Cannot refresh models for {} because no runtime provider is registered.",
+                provider_label
+            )));
             self.scroll_messages_to_bottom();
             self.save_current_chat();
             self.refresh_chat_history_list(cx);
@@ -220,12 +212,9 @@ impl AgentChatPanel {
                     match result {
                         Ok(models) => {
                             if models.is_empty() {
-                                panel.messages.push(ChatMessage {
-                                    role: ChatRole::System,
-                                    content: format!("{provider_label} returned no models."),
-                                    tool_call_id: None,
-                                    tool_calls: vec![],
-                                });
+                                panel.ledger.push(LedgerEntry::engine_notice(format!(
+                                    "{provider_label} returned no models."
+                                )));
                             } else {
                                 let refreshed_models = models
                                     .iter()
@@ -246,22 +235,17 @@ impl AgentChatPanel {
                                     list.set_items(refreshed_models, cx);
                                 });
 
-                                panel.messages.push(ChatMessage {
-                                    role: ChatRole::System,
-                                    content: format!("Refreshed models for {provider_label} ({} total).", models.len()),
-                                    tool_call_id: None,
-                                    tool_calls: vec![],
-                                });
+                                panel.ledger.push(LedgerEntry::engine_notice(format!(
+                                    "Refreshed models for {provider_label} ({} total).",
+                                    models.len()
+                                )));
                                 tracing::debug!(provider = %provider_id, count = models.len(), "refresh_models_for_active_provider: success");
                             }
                         }
                         Err(err) => {
-                            panel.messages.push(ChatMessage {
-                                role: ChatRole::System,
-                                content: format!("Failed to refresh models for {provider_label}: {err}"),
-                                tool_call_id: None,
-                                tool_calls: vec![],
-                            });
+                            panel.ledger.push(LedgerEntry::engine_notice(format!(
+                                "Failed to refresh models for {provider_label}: {err}"
+                            )));
                             tracing::error!(provider = %provider_id, error = %err, "refresh_models_for_active_provider: failed");
                         }
                     }

@@ -19,6 +19,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/FILE_MANAGER.md` | `ui_file_manager` — flat crate layout, modules, conventions |
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
+| `.agents/AGENT_FRAMEWORK_PLAN.md` | Agent framework overhaul plan - phases 1-6, runtime/steward/tools/MCP/scene tools |
 
 ## Project data (`.pulsar/`)
 
@@ -27,6 +28,10 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer (`asset_import`) |
 | `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Import options per native asset (`engine_fs::import_options`) |
+| `.pulsar/agent_profiles.json` | Per-model agent profile overrides keyed `provider/model` (context size, tool calling, tier, sampling; `agent_runtime::profile`) |
+| `.pulsar/agent_steward.json` | "Use AI to keep long chats on track": `enabled` (off by default), steward `model`, `drift_check`, `auto_accept_trusted` (`agent_runtime::steward`); per-chat override lives in the chat file |
+| `.pulsar/agent_cascade.json` | Cascade routing: `enabled` (off by default), `escalation_model`, `scope` (step/run), trigger thresholds (`agent_runtime::cascade`). Harness frontmatter `best_of: N` enables best-of-N sampling (`agent_runtime::best_of`) |
+| `.pulsar/agent_scene.json` | Scene sandbox: `sandbox_mode` (`off`/`overlay`/`copy`, default overlay) and `copy_max_objects` (default 50000, 0 = unlimited) (`agent_scene_tools::settings`). Harness frontmatter `sandbox: true\|overlay\|copy\|off` overrides per harness |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
 
 ## Workspace

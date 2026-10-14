@@ -1,28 +1,37 @@
 mod auth;
 mod builder;
 mod chat_history;
+mod cascade;
 mod chat_storage;
 mod context;
 mod custom_provider_wizard;
+mod mcp;
 mod panel;
-mod prompt_ranking;
+mod plan_memory;
+mod prefetch;
 mod provider_catalog;
 mod provider_selection;
 mod render;
 mod render_header;
 mod render_overlays;
+mod safety;
+mod scene_tools;
+mod settings_ui;
+mod steward;
 mod streaming;
 mod subagent;
+mod trust;
+mod visual_backend;
 pub mod types;
 
 pub use panel::AgentChatPanel;
-pub(crate) use panel::SubagentCompletionMode;
 pub use types::*;
 
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
+    ChatProvider, ProviderCrate, ProviderEntry, ProviderRegistry,
 };
 use agent_chat_tools::ToolRegistry;
+use agent_runtime::{Ledger, LedgerEntry};
 use agent_provider_anthropic::AnthropicProviderCrate;
 use agent_provider_aws_bedrock::AwsBedrockProviderCrate;
 use agent_provider_demo_random::DemoRandomProviderCrate;
@@ -62,7 +71,6 @@ use ui::{
 impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.maybe_reload_chats_from_disk(cx);
-        self.poll_subagent_completion_events(cx);
 
         let provider = self.active_provider();
         let model = self.active_model();
@@ -88,7 +96,7 @@ impl Render for AgentChatPanel {
                 .collect::<Vec<_>>(),
         );
 
-        let queued_subagent_count = self.pending_subagent_events.len();
+        let running_subagent_count = self.running_subagent_count();
 
         v_flex()
             .size_full()
@@ -144,7 +152,8 @@ impl Render for AgentChatPanel {
                                         let panel = cx.entity().clone();
 
                                         match item {
-                                            DisplayItem::ToolCallGroup { calls, is_expanded, started_at_ms, finished_at_ms } => {
+                                            DisplayItem::ToolCallGroup { calls, is_expanded, started_at_ms, finished_at_ms, checkpoint_run_id } => {
+                                                let checkpoint_run_id = checkpoint_run_id.clone();
                                                 let calls = calls.clone();
                                                 let is_expanded = *is_expanded;
                                                 let copy_tool_block = calls
@@ -292,6 +301,21 @@ impl Render for AgentChatPanel {
                                                                             .font_family("JetBrains Mono")
                                                                             .child(group_elapsed),
                                                                     )
+                                                                    .when_some(checkpoint_run_id, |el, run_id| {
+                                                                        el.child(
+                                                                            Button::new(("tool-call-revert", ix))
+                                                                                .xsmall()
+                                                                                .ghost()
+                                                                                .icon(IconName::Undo)
+                                                                                .label("Revert")
+                                                                                .tooltip("Restore the files this run changed")
+                                                                                .on_click(cx.listener(
+                                                                                    move |this, _, _, cx| {
+                                                                                        this.revert_run(&run_id, cx);
+                                                                                    },
+                                                                                )),
+                                                                        )
+                                                                    })
                                                                     .child(
                                                                         Button::new(("tool-call-copy", ix))
                                                                             .xsmall()
@@ -1298,6 +1322,25 @@ impl Render for AgentChatPanel {
                                                                             },
                                                                         ))
                                                                     })
+                                                                    .child(
+                                                                        Button::new((
+                                                                            "agent-chat-pin",
+                                                                            ix,
+                                                                        ))
+                                                                        .xsmall()
+                                                                        .ghost()
+                                                                        .icon(IconName::Plus)
+                                                                        .tooltip("Pin as requirement")
+                                                                        .on_click(cx.listener(
+                                                                            move |this, _, _, cx| {
+                                                                                this.pin_message(
+                                                                                    msg_index,
+                                                                                    agent_runtime::PinKind::Requirement,
+                                                                                    cx,
+                                                                                );
+                                                                            },
+                                                                        )),
+                                                                    )
                                                                     .when(is_user && !is_confirming_rollback, |el| {
                                                                         el.child(
                                                                             Button::new((
@@ -1406,6 +1449,14 @@ impl Render for AgentChatPanel {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
+                    .children(self.render_trust_card(cx))
+                    .children(self.render_plan_card(cx))
+                    .children(self.render_memory_strip(cx))
+                    .children(self.render_pinned_strip(cx))
+                    .children(self.render_safety_bar(cx))
+                    .children(self.render_mcp_settings(cx))
+                    .children(self.render_agent_settings(cx))
+                    .children(self.render_prefetch_tray(cx))
                     // Input row: text input + send/stop
                     .child(
                         h_flex()
@@ -1427,13 +1478,22 @@ impl Render for AgentChatPanel {
                                                 .ghost()
                                                 .tooltip("Stop generation")
                                                 .on_click(cx.listener(|this, _, _, _cx| {
-                                                    if let Some(tx) = this.cancel_tx.take() {
-                                                        let _ = tx.try_send(());
+                                                    if let Some(cancel) = this.cancel.take() {
+                                                        cancel.cancel();
                                                     }
+                                                    this.delegation.cancel_all();
                                                 })),
                                         ),
                                 )
                             })
+                            .child(self.render_plan_memory_controls(cx))
+                            .child(self.render_steward_controls(cx))
+                            .child(self.render_cascade_controls(cx))
+                            .child(self.render_prefetch_toggle(cx))
+                            .child(self.render_scene_sandbox_controls(cx))
+                            .children(self.render_mcp_button(cx))
+                            .child(self.render_agent_settings_button(cx))
+                            .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")
                                     .icon(IconName::Send)
@@ -1456,31 +1516,22 @@ impl Render for AgentChatPanel {
                             ),
                     )
                     // Subagent indicator: passive dot + count, only when active
-                    .when(queued_subagent_count > 0 || self.is_processing_subagent_event, |el| {
+                    .when(running_subagent_count > 0, |el| {
                         el.child(
                             h_flex()
                                 .w_full()
                                 .gap_1()
                                 .items_center()
                                 .pt(px(2.0))
-                                .child(
-                                    div()
-                                        .size(px(5.0))
-                                        .rounded_full()
-                                        .bg(if self.is_processing_subagent_event {
-                                            cx.theme().info
-                                        } else {
-                                            cx.theme().warning
-                                        }),
-                                )
+                                .child(div().size(px(5.0)).rounded_full().bg(cx.theme().info))
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(cx.theme().muted_foreground.opacity(0.7))
                                         .child(format!(
-                                            "{} subagent{} queued",
-                                            queued_subagent_count,
-                                            if queued_subagent_count == 1 { "" } else { "s" },
+                                            "{} subagent{} running",
+                                            running_subagent_count,
+                                            if running_subagent_count == 1 { "" } else { "s" },
                                         )),
                                 ),
                         )

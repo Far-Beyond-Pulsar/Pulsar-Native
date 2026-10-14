@@ -629,7 +629,7 @@ impl ManualToolPanel {
                     || Ok(crate::app::open_editors::snapshot_json()),
                 )),
                 activate_open_editor_request: None,
-                subagent_executor: None,
+                visual: None,
             },
         );
 

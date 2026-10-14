@@ -1,4 +1,4 @@
-use agent_chat_core::{ChatMessage, ChatRole};
+use agent_chat_core::ChatMessage;
 use gpui::*;
 use ui::scroll::ScrollHandleOffsetable;
 
@@ -9,135 +9,61 @@ impl AgentChatPanel {
     pub(super) const CONTEXT_CHAR_BUDGET: usize = 24_000;
     pub(super) const COMPACTION_SUMMARY_CHAR_BUDGET: usize = 2_400;
 
+    /// Per-model profile overrides live next to the project's other
+    /// per-project data. Edit the file to pin a model's context size, tool
+    /// calling mode, tier or sampling (see `agent_runtime::ProfileOverride`).
+    pub(super) fn profile_overrides_path() -> Option<std::path::PathBuf> {
+        let root = engine_state::get_project_path().map(std::path::PathBuf::from)?;
+        Some(root.join(".pulsar").join("agent_profiles.json"))
+    }
+
+    /// The active model's profile: name-pattern table, then the provider's
+    /// descriptor, then the user's override.
+    pub(super) fn active_profile(&self) -> agent_runtime::ModelProfile {
+        let provider = self.active_provider();
+        match self.active_model() {
+            Some(model) => Self::profile_for_model(provider, model.id),
+            None => agent_runtime::resolve_profile(agent_runtime::ResolveInput {
+                provider_id: provider.map(|p| p.id).unwrap_or(""),
+                local: provider.is_some_and(|p| p.kind == ProviderKind::Local),
+                ..Default::default()
+            }),
+        }
+    }
+
+    /// Profile of any model of `provider`, resolved exactly as the active
+    /// model's is. Sub-agents that run a different model use this.
+    pub(super) fn profile_for_model(
+        provider: Option<&ProviderDefinition>,
+        model_id: &str,
+    ) -> agent_runtime::ModelProfile {
+        let provider_id = provider.map(|p| p.id).unwrap_or("");
+        let local = provider.is_some_and(|p| p.kind == ProviderKind::Local);
+        let descriptor = provider
+            .and_then(|p| p.models.iter().find(|m| m.id == model_id))
+            .map(|model| agent_chat_core::ModelDescriptor {
+                id: model.id.to_string(),
+                label: model.label.to_string(),
+                supports_tools: model.supports_tools,
+                context_tokens: model.context_tokens,
+                compact_model: None,
+            });
+        agent_runtime::resolve_with_store(
+            Self::profile_overrides_path().as_deref(),
+            provider_id,
+            agent_runtime::ResolveInput {
+                provider_id,
+                model_id,
+                descriptor: descriptor.as_ref(),
+                local,
+                overrides: None,
+            },
+        )
+    }
+
     pub(super) fn active_context_chars(&self) -> usize {
-        let tokens = self
-            .active_model()
-            .and_then(|m| {
-                if m.context_tokens > 0 {
-                    Some(m.context_tokens as usize)
-                } else {
-                    Self::infer_context_tokens(m.id)
-                }
-            })
-            .unwrap_or(6_000);
-        tokens * 7 / 2
-    }
-
-    pub(super) fn infer_context_tokens(id: &str) -> Option<usize> {
-        let id = id.to_ascii_lowercase();
-        if id.contains("gpt-4.1") {
-            return Some(1_047_576);
-        }
-        if id.contains("gpt-4o") {
-            return Some(128_000);
-        }
-        if id.contains("o4-mini") || id == "o4-mini" {
-            return Some(200_000);
-        }
-        if id == "o3" {
-            return Some(200_000);
-        }
-        if id.contains("gpt-5") {
-            return Some(200_000);
-        }
-        if id.contains("claude") {
-            return Some(200_000);
-        }
-        if id.contains("gemini-2") {
-            return Some(1_048_576);
-        }
-        if id.contains("gemini") {
-            return Some(1_048_576);
-        }
-        if id.contains("codestral") {
-            return Some(256_000);
-        }
-        if id.contains("mistral") || id.contains("ministral") {
-            return Some(128_000);
-        }
-        if id.contains("mixtral") {
-            return Some(32_768);
-        }
-        if id.contains("llama") {
-            return Some(131_072);
-        }
-        if id.contains("qwen") {
-            return Some(131_072);
-        }
-        if id.contains("deepseek-reasoner") {
-            return Some(131_072);
-        }
-        if id.contains("deepseek") {
-            return Some(65_536);
-        }
-        if id.contains("grok") {
-            return Some(131_072);
-        }
-        if id.contains("command-a") {
-            return Some(256_000);
-        }
-        if id.contains("command-r") {
-            return Some(128_000);
-        }
-        if id.contains("sonar") {
-            return Some(200_000);
-        }
-        if id.contains("phi-4") {
-            return Some(16_384);
-        }
-        if id.contains("gemma") {
-            return Some(32_768);
-        }
-        None
-    }
-
-    pub(super) fn format_tool_result_preview(tool_name: &str, raw: &str) -> String {
-        if tool_name == "web_search" {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(raw) {
-                if let Some(results) = json.get("results").and_then(|r| r.as_array()) {
-                    let lines: Vec<String> = results
-                        .iter()
-                        .take(5)
-                        .enumerate()
-                        .map(|(i, r)| {
-                            let title = r.get("title").and_then(|v| v.as_str()).unwrap_or("—");
-                            let url = r.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                            let summary = r
-                                .get("summary")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .chars()
-                                .take(120)
-                                .collect::<String>();
-                            format!("[{}] {}\n    {}\n    {}", i + 1, title, summary, url)
-                        })
-                        .collect();
-                    return lines.join("\n\n");
-                }
-            }
-        }
-
-        if tool_name == "fetch_url" {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(raw) {
-                if let Some(content) = json.get("content").and_then(|v| v.as_str()) {
-                    let preview: String = content.chars().take(400).collect();
-                    return format!("{}…", preview);
-                }
-            }
-        }
-
-        if raw.len() > 300 {
-            format!(
-                "{}…",
-                &raw[..raw
-                    .char_indices()
-                    .nth(300)
-                    .map(|(i, _)| i)
-                    .unwrap_or(raw.len())]
-            )
-        } else {
-            raw.to_string()
-        }
+        let profile = self.active_profile();
+        (profile.effective_context() as f32 * profile.tokenizer_hint.chars_per_token()) as usize
     }
 
     pub(super) fn expand_file_references(text: &str) -> String {

@@ -159,6 +159,32 @@ These bridge the engine with external runtimes: physics (rapier3d), rendering
 One crate per LLM backend. Each implements the `ChatProvider` trait from
 `agent_chat_core`. Tool execution is centralized in `agent_chat_tools`.
 
+`agent_runtime` (no UI deps) owns the typed conversation `Ledger`, the
+`project()` function that is the only place deciding message roles (sub-agent
+reports and engine notices are delimited data envelopes, never system/instruction
+messages), the on-disk `PersistedEntry` form (old `agent_event` chats migrate on
+load), context compaction, and `run_loop`, which emits `RunEvent`s. The chat
+panel in `ui_core` is a subscriber.
+
+Sub-agents are child runs of the same `run_loop`: `harness.rs` (declarative
+agent definitions, built-ins plus `.pulsar/agents/*.md` over
+`<config dir>/pulsar/agents/*.md`), `run_store.rs` (per-chat `RunStore`, saved
+as `<chat id>.runs` next to the chat file) and `delegation.rs`
+(`DelegationHost`, the `spawn_subagent` / `await_subagent` / `read_run` /
+`cancel_subagent` tools, depth, fan-out and parallelism limits, cancel
+cascade). A foreground report is a tool result; an unawaited background report
+is a `SubagentReport` ledger entry that the projector renders as a synthetic
+`check_subagent` exchange (data envelope for tool-less profiles).
+
+`agent_scene_tools` holds the engine-native scene tools (`scene_*` reads,
+`scene_write_*` edits) over SceneDB. Each edit is one transaction journaled
+under `agent:<run_id>` with its inverse, so a run's revert undoes it; a harness
+with `sandbox: true` (built-in `scene-sandbox`) edits a forked copy of the
+scene and returns a diff that the user applies (one transaction) or discards.
+It plugs into the runtime through `agent_runtime::RunExtension` (`run_ext.rs`),
+so `agent_runtime` itself knows nothing about scene types. `ui_core` wires it in
+`agent_chat_panel/scene_tools.rs`.
+
 22 providers: anthropic, aws_bedrock, azure_openai, cohere, deepseek,
 demo_random, docker_model_runner, fireworks, gemini, github_copilot, groq,
 llama_cpp, lmstudio, mistral, ollama, openai, openrouter, perplexity,

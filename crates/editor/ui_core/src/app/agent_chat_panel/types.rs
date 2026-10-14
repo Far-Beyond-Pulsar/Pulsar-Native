@@ -59,6 +59,24 @@ pub enum SubagentStepStatus {
     Error,
 }
 
+/// What the Pinned context strip's inline editor is changing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PinEditTarget {
+    /// The pin at this ledger index.
+    Pin(usize),
+    /// The steward proposal at this index of `pending_pin_changes`.
+    Proposal(usize),
+}
+
+/// A tool call waiting for the user's approval (never persisted).
+pub struct PendingConfirm {
+    pub id: String,
+    pub tool: String,
+    pub args_preview: String,
+    pub tainted: bool,
+    pub reply: agent_runtime::ConfirmReply,
+}
+
 /// Flat items rendered in the chat virtual list.
 /// System and raw Tool-role messages are never added here.
 ///
@@ -87,6 +105,10 @@ pub enum DisplayItem {
         /// Set when the last call in the group finishes.
         #[serde(default)]
         finished_at_ms: Option<u64>,
+        /// Run whose file checkpoint this group can revert (set on the group
+        /// that made the run's first edit).
+        #[serde(default)]
+        checkpoint_run_id: Option<String>,
     },
     /// Shown when old messages were dropped to fit the context window.
     CompactionSummary {
@@ -176,11 +198,9 @@ pub struct ProviderDefinition {
     pub deletable: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PersistedChatMessage {
-    pub role: String,
-    pub content: String,
-}
+/// One saved ledger entry. Files from before the ledger existed (including
+/// the retired `agent_event` role) still deserialize; see `agent_runtime::persist`.
+pub type PersistedChatMessage = agent_runtime::PersistedEntry;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatSessionFile {
@@ -195,6 +215,17 @@ pub struct ChatSessionFile {
     /// (falls back to reconstructing from `messages`).
     #[serde(default)]
     pub display_items: Vec<DisplayItem>,
+    /// Per-chat override of "Use AI to keep long chats on track". `None`
+    /// follows the project setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steward: Option<bool>,
+    /// The "Plan" toggle was on in this chat.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub plan_mode: bool,
+    /// A submitted plan still waiting for Approve / Edit / Reject, as the
+    /// markdown `Plan::to_markdown` writes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -202,4 +233,36 @@ pub struct ChatHistoryEntry {
     pub id: String,
     pub title: String,
     pub updated_at: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plan_state_round_trips_and_old_files_still_load() {
+        let file = ChatSessionFile {
+            id: "chat-1".into(),
+            title: "t".into(),
+            created_at: 1,
+            updated_at: 2,
+            messages: vec![],
+            display_items: vec![],
+            steward: None,
+            plan_mode: true,
+            plan: Some("# Goal\nship it".into()),
+        };
+        let text = serde_json::to_string(&file).unwrap();
+        let back: ChatSessionFile = serde_json::from_str(&text).unwrap();
+        assert!(back.plan_mode);
+        assert_eq!(back.plan.as_deref(), Some("# Goal\nship it"));
+
+        // Written before these fields existed, and with them at their defaults.
+        let old = r#"{"id":"c","title":"t","created_at":1,"updated_at":2,"messages":[]}"#;
+        let old: ChatSessionFile = serde_json::from_str(old).unwrap();
+        assert!(!old.plan_mode);
+        assert!(old.plan.is_none());
+        let plain = ChatSessionFile { plan_mode: false, plan: None, ..back };
+        assert!(!serde_json::to_string(&plain).unwrap().contains("plan"));
+    }
 }

@@ -1,14 +1,14 @@
 use super::*;
-use agent_chat_core::{ChatMessage, ChatRequest, ChatRole, ToolCall};
+use agent_runtime::{CancelToken, EventSink, PinKind, RunConfig, RunEvent};
 use engine_state;
 use smol::Timer;
 use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Condvar, Mutex,
+        Arc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 use ui::{input::Enter, scroll::ScrollHandleOffsetable};
 
@@ -20,93 +20,53 @@ fn now_ms() -> u64 {
 }
 
 impl AgentChatPanel {
-    fn build_provider_history_messages(&self) -> Vec<ChatMessage> {
-        self.messages
-            .iter()
-            .filter(|m| !m.content.trim().is_empty())
-            .map(|m| ChatMessage {
-                role: m.role,
-                content: m.content.clone(),
-                tool_call_id: m.tool_call_id.clone(),
-                tool_calls: m.tool_calls.clone(),
-            })
-            .collect()
-    }
+    /// Task manifest and active sub-agents, or `None` when both are empty.
+    fn live_agent_state(&self) -> Option<String> {
+        let tasks = agent_chat_tools::get_task_manifest_snapshot();
+        let active_subs = self.delegation.store().active();
+        let mut parts: Vec<String> = Vec::new();
 
-    fn ai_summarize_dropped(
-        dropped: &[ChatMessage],
-        provider: &Arc<dyn agent_chat_core::ChatProvider>,
-        compact_model: &str,
-        token: &str,
-    ) -> String {
-        let formatted: String = dropped
-            .iter()
-            .take(40)
-            .map(|m| {
-                let role = match m.role {
-                    ChatRole::User => "User",
-                    ChatRole::Assistant => "AI",
-                    ChatRole::Tool => "Tool",
-                    ChatRole::System => "System",
-                    ChatRole::AgentEvent => "Engine",
-                };
-                let snippet: String = m.content.chars().take(600).collect();
-                format!("[{role}]: {snippet}")
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n");
+        if !tasks.is_empty() {
+            let lines: Vec<String> = tasks
+                .iter()
+                .map(|t| {
+                    let status = t.get("status").and_then(|v| v.as_str()).unwrap_or("?");
+                    let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("?");
+                    let notes = t.get("notes").and_then(|v| v.as_str()).unwrap_or("");
+                    if notes.is_empty() {
+                        format!("  [{status}] {title}")
+                    } else {
+                        format!("  [{status}] {title} — {notes}")
+                    }
+                })
+                .collect();
+            parts.push(format!("## Task List\n{}", lines.join("\n")));
+        }
 
-        let summary_request = agent_chat_core::ChatRequest {
-            model: compact_model.to_string(),
-            messages: vec![
-                ChatMessage {
-                    role: ChatRole::System,
-                    content: "You are a conversation summarizer. Given a list of messages, \
-                              produce a concise summary (max 250 words) that captures: \
-                              key decisions, important findings, files or tools used, \
-                              and any critical context needed to continue the conversation. \
-                              Write in past tense. Be specific, not vague."
-                        .to_string(),
-                    tool_call_id: None,
-                    tool_calls: vec![],
-                },
-                ChatMessage {
-                    role: ChatRole::User,
-                    content: format!(
-                        "Summarize these earlier conversation messages:\n\n{formatted}"
-                    ),
-                    tool_call_id: None,
-                    tool_calls: vec![],
-                },
-            ],
-            enable_tool_calls: false,
-            tools: vec![],
-            temperature: Some(0.3),
-            top_p: Some(1.0),
-            max_tokens: Some(350),
-        };
+        if !active_subs.is_empty() {
+            let lines: Vec<String> = active_subs
+                .iter()
+                .map(|run| {
+                    format!(
+                        "  - {} ({}, id={}): {}",
+                        run.harness,
+                        run.status.as_str(),
+                        run.id,
+                        run.task
+                    )
+                })
+                .collect();
+            parts.push(format!("## Active Sub-Agents\n{}", lines.join("\n")));
+        }
 
-        provider
-            .chat(summary_request)
-            .ok()
-            .and_then(|r| r.assistant_message)
-            .unwrap_or_else(|| {
-                dropped
-                    .iter()
-                    .take(12)
-                    .map(|m| {
-                        let role = match m.role {
-                            ChatRole::User => "user",
-                            ChatRole::Assistant => "assistant",
-                            _ => "system",
-                        };
-                        let snippet: String =
-                            m.content.replace('\n', " ").chars().take(180).collect();
-                        format!("- {role}: {snippet}")
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            })
+        if parts.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "## Live Agent State\n_{note}_\n\n{body}",
+            note = "Rebuilt each turn — always current",
+            body = parts.join("\n\n"),
+        ))
     }
 
     pub(super) fn stream_assistant_chunks(
@@ -123,13 +83,7 @@ impl AgentChatPanel {
             chunks
         };
 
-        let message_ix = self.messages.len();
-        self.messages.push(ChatMessage {
-            role: ChatRole::Assistant,
-            content: String::new(),
-            tool_call_id: None,
-            tool_calls: vec![],
-        });
+        let message_ix = self.ledger.push(LedgerEntry::assistant(String::new()));
         self.scroll_messages_to_bottom();
         cx.notify();
 
@@ -137,8 +91,8 @@ impl AgentChatPanel {
             for chunk in chunks {
                 cx.update(|cx| {
                     this.update(cx, |panel, cx| {
-                        if let Some(message) = panel.messages.get_mut(message_ix) {
-                            message.content.push_str(&chunk);
+                        if let Some(text) = panel.ledger.assistant_text_mut(message_ix) {
+                            text.push_str(&chunk);
                         }
                         panel.save_current_chat();
                         panel.scroll_messages_to_bottom();
@@ -172,20 +126,14 @@ impl AgentChatPanel {
         }
     }
 
-    fn submit_user_prompt_text(
+    pub(super) fn submit_user_prompt_text(
         &mut self,
         raw_prompt: String,
         prompt_for_model: String,
         display_user_bubble: bool,
         cx: &mut Context<Self>,
     ) -> bool {
-        let user_message_index = self.messages.len();
-        self.messages.push(ChatMessage {
-            role: ChatRole::User,
-            content: prompt_for_model,
-            tool_call_id: None,
-            tool_calls: vec![],
-        });
+        let user_message_index = self.ledger.push(LedgerEntry::user(prompt_for_model));
         if display_user_bubble {
             self.display_items.push(DisplayItem::UserMessage {
                 content: raw_prompt,
@@ -208,12 +156,9 @@ impl AgentChatPanel {
                 .active_model()
                 .map(|m| m.label)
                 .unwrap_or("Unknown Model");
-            self.messages.push(ChatMessage {
-                role: ChatRole::Assistant,
-                content: format!("Queued with {provider} / {model}."),
-                tool_call_id: None,
-                tool_calls: vec![],
-            });
+            self.ledger.push(LedgerEntry::assistant(format!(
+                "Queued with {provider} / {model}."
+            )));
             self.save_current_chat();
             self.refresh_chat_history_list(cx);
             self.scroll_messages_to_bottom();
@@ -221,7 +166,6 @@ impl AgentChatPanel {
             return false;
         };
 
-        let token = self.auth_token_for_provider(provider_id);
 
         self.launch_provider_request(provider, None, cx);
         true
@@ -254,16 +198,10 @@ impl AgentChatPanel {
     pub(super) fn launch_provider_request(
         &mut self,
         provider: Arc<dyn agent_chat_core::ChatProvider>,
-        token: Option<String>,
+        _token: Option<String>,
         cx: &mut Context<Self>,
     ) {
-        let message_ix = self.messages.len();
-        self.messages.push(ChatMessage {
-            role: ChatRole::Assistant,
-            content: String::new(),
-            tool_call_id: None,
-            tool_calls: vec![],
-        });
+        let message_ix = self.ledger.push(LedgerEntry::assistant(String::new()));
         let streaming_dix = self.display_items.len();
         self.display_items.push(DisplayItem::AssistantMessage {
             content: String::new(),
@@ -281,12 +219,9 @@ impl AgentChatPanel {
             .map(|m| m.id.to_string())
             .unwrap_or_else(|| "default".to_string());
 
-        // Leave a sliver for the compaction-instructions block itself.
-        let context_chars = self.active_context_chars();
-        let history_budget = context_chars.saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET);
-
-        // Unwrap token early so it can be used for the compaction summary call.
-        let token = token.unwrap_or_default();
+        // Context window, tool-calling mode, tier and sampling all come from
+        // the model's profile (table, descriptor, user override).
+        let profile = self.active_profile();
 
         // Resolve the compact model: use the specified one or fall back to the current model.
         let compact_model: String = self
@@ -295,99 +230,20 @@ impl AgentChatPanel {
             .unwrap_or_else(|| model.as_str())
             .to_string();
 
-        let provider_messages_raw = self.build_provider_history_messages();
-        let (mut provider_messages, dropped_opt) = super::prompt_ranking::compact_messages(
-            provider_messages_raw,
-            history_budget,
-            Self::COMPACTION_SUMMARY_CHAR_BUDGET,
-        );
-
-        // If messages were dropped, call the compact model to produce a real summary.
-        let initial_compaction_summary: Option<String> = if let Some(dropped) = dropped_opt {
-            let summary = Self::ai_summarize_dropped(&dropped, &provider, &compact_model, &token);
-            // Insert the AI summary as a system message at the top of kept history.
-            provider_messages.insert(
-                // After system messages, before dialog
-                provider_messages
-                    .iter()
-                    .position(|m| m.role != ChatRole::System)
-                    .unwrap_or(0),
-                ChatMessage {
-                    role: ChatRole::System,
-                    content: format!("Conversation summary (auto-compacted):\n{summary}"),
-                    tool_call_id: None,
-                    tool_calls: vec![],
-                },
-            );
-            Some(summary)
-        } else {
-            None
-        };
+        // The run works on its own copy; the panel's ledger only grows with
+        // the streamed assistant text.
+        let mut run_ledger = self.ledger.clone();
 
         // Inject live orchestration context — task manifest and active sub-agents.
         // This survives compaction because it is rebuilt fresh on every request,
         // so the agent is always oriented even after context shrinks.
-        {
-            let tasks = agent_chat_tools::get_task_manifest_snapshot();
-            let active_subs = agent_chat_tools::get_active_subagents_snapshot();
-            let mut parts: Vec<String> = Vec::new();
-
-            if !tasks.is_empty() {
-                let lines: Vec<String> = tasks
-                    .iter()
-                    .map(|t| {
-                        let status = t.get("status").and_then(|v| v.as_str()).unwrap_or("?");
-                        let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("?");
-                        let notes = t.get("notes").and_then(|v| v.as_str()).unwrap_or("");
-                        if notes.is_empty() {
-                            format!("  [{status}] {title}")
-                        } else {
-                            format!("  [{status}] {title} — {notes}")
-                        }
-                    })
-                    .collect();
-                parts.push(format!("## Task List\n{}", lines.join("\n")));
-            }
-
-            if !active_subs.is_empty() {
-                let lines: Vec<String> = active_subs
-                    .iter()
-                    .map(|a| {
-                        let name = a.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-                        let status = a.get("status").and_then(|v| v.as_str()).unwrap_or("?");
-                        let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                        let task = a.get("task").and_then(|v| v.as_str()).unwrap_or("");
-                        format!("  - {name} ({status}, id={id}): {task}")
-                    })
-                    .collect();
-                parts.push(format!("## Active Sub-Agents\n{}", lines.join("\n")));
-            }
-
-            if !parts.is_empty() {
-                let content = format!(
-                    "## Live Agent State\n_{note}_\n\n{body}",
-                    note = "Rebuilt each turn — always current",
-                    body = parts.join("\n\n"),
-                );
-                let insert_at = provider_messages
-                    .iter()
-                    .position(|m| m.role != ChatRole::System)
-                    .unwrap_or(provider_messages.len());
-                provider_messages.insert(
-                    insert_at,
-                    ChatMessage {
-                        role: ChatRole::System,
-                        content,
-                        tool_call_id: None,
-                        tool_calls: vec![],
-                    },
-                );
-            }
+        if let Some(live_state) = self.live_agent_state() {
+            run_ledger.push(LedgerEntry::pinned(PinKind::LiveState, live_state));
         }
 
         // Validate and convert tool schemas
-        let tools: Vec<agent_chat_core::ToolDefinition> = self
-            .tool_registry
+        let run_registry = self.registry_with_mcp();
+        let tools: Vec<agent_chat_core::ToolDefinition> = run_registry
             .definitions()
             .into_iter()
             .filter_map(|def| {
@@ -413,654 +269,111 @@ impl AgentChatPanel {
             "[agent_chat] Validated {} tools for sending to provider",
             tools.len()
         );
-
-        let request = ChatRequest {
-            model,
-            messages: provider_messages,
-            // Enable tool calls for agentic loop
-            enable_tool_calls: !tools.is_empty(),
-            tools,
-            temperature: Some(0.2),
-            top_p: Some(1.0),
-            max_tokens: Some(8192),
-        };
         tracing::error!(
-            "[agent_chat] start provider={} model={} messages={} compacted={}",
+            "[agent_chat] start provider={} model={} entries={}",
             provider_id,
-            request.model,
-            request.messages.len(),
-            initial_compaction_summary.is_some()
+            model,
+            run_ledger.len()
         );
 
-        enum StreamEvent {
-            /// AI prose text chunk — appended to the current streaming assistant bubble.
-            Chunk(String),
-            /// A `<think>` tag was opened; UI inserts a ThinkingBlock.
-            ThinkingStarted,
-            /// Incremental thinking content — appended to the open ThinkingBlock.
-            ThinkingChunk(String),
-            /// `</think>` was reached; UI marks the ThinkingBlock done.
-            ThinkingDone,
-            /// The AI returned tool calls; UI renders a collapsed tool call group
-            /// and starts a new streaming assistant bubble for the next iteration.
-            ToolCallGroup(Vec<ToolCall>),
-            /// A tool finished executing; update the matching call's result in the UI.
-            ToolCallResult {
-                id: String,
-                tool_name: String,
-                result_preview: String,
-                result_full: String,
-                is_error: bool,
-            },
-            /// Old messages were dropped inside the agentic loop to stay within context.
-            ContextCompacted(String),
-            OpenFile(PathBuf, Arc<(Mutex<Option<Result<(), String>>>, Condvar)>),
-            ActivateOpenEditor(usize, Arc<(Mutex<Option<Result<(), String>>>, Condvar)>),
-            Finished(Result<agent_chat_core::ChatResponse, String>),
+        let workspace_root = match engine_state::get_project_path() {
+            Some(path) => PathBuf::from(path),
+            None => PathBuf::from("."),
+        };
+        let mut config = RunConfig::new(
+            provider.clone(),
+            model.clone(),
+            run_registry.clone(),
+            workspace_root,
+        )
+        .with_profile(profile);
+        config.compact_model = compact_model;
+        config.tools = tools;
+        config.tool_extras = agent_chat_tools::PulsarToolExtras {
+            plugin_bridge: self.plugin_bridge.clone(),
+            open_file_request: None,
+            query_open_editors: Some(Arc::new(|| Ok(crate::app::open_editors::snapshot_json()))),
+            activate_open_editor_request: None,
+            visual: Some(super::visual_backend::editor_backend()),
+        };
+        config.safety.policy = self.confirm_policy;
+        config.cascade = self.cascade_policy();
+        self.cascade_badge = None;
+        if let Some(mcp) = &self.mcp {
+            mcp.apply_classification(&mut config.safety.classifier);
         }
 
-        let (tx, rx) = smol::channel::unbounded::<StreamEvent>();
-        let tx_for_chunks = tx.clone();
-        let tx_for_finish = tx.clone();
-        let provider_for_task = provider.clone();
-        let tool_registry_for_task = self.tool_registry.clone();
-        let tool_registry_for_subagent = self.tool_registry.clone();
-        let plugin_bridge_for_task = self.plugin_bridge.clone();
-        let completion_sent = Arc::new(AtomicBool::new(false));
-
-        // Handle initial compaction synchronously — insert the summary card before
-        // the streaming bubble so the user sees the context was trimmed.
-        if let Some(summary) = initial_compaction_summary {
-            let t = now_ms();
-            if let Some(dix) = self.streaming_display_item_ix {
-                if dix + 1 == self.display_items.len() {
-                    let bubble = self.display_items.pop().unwrap();
-                    self.display_items.push(DisplayItem::CompactionSummary {
-                        summary,
-                        is_expanded: false,
-                        started_at_ms: t,
-                        finished_at_ms: Some(t),
-                    });
-                    self.display_items.push(bubble);
-                    self.streaming_display_item_ix = Some(dix + 1);
-                }
-            }
+        // "Use AI to keep long chats on track": with it off no steward exists
+        // and no extra request is made. The steward model is the setting's
+        // choice, else the model's compact model.
+        let steward_model = self
+            .steward_settings
+            .model
+            .clone()
+            .unwrap_or_else(|| config.compact_model.clone());
+        let steward_json_mode =
+            Self::profile_for_model(self.active_provider(), &steward_model).json_mode;
+        if let Some(steward) =
+            self.ensure_steward(provider.clone(), steward_model, steward_json_mode, cx)
+        {
+            config.steward = Some(steward);
+            config.structured_summary = true;
         }
+        // Plan mode (when toggled) and project memory.
+        self.configure_plan_memory(&mut config);
 
-        // Per-request cancel channel — UI sends () to abort.
-        let (cancel_tx, cancel_rx) = smol::channel::bounded::<()>(1);
-        self.cancel_tx = Some(cancel_tx);
-
-        let context_budget = history_budget;
-        let compact_model_for_worker = compact_model.clone(); // used for in-loop AI summarization
-        let completion_for_worker = completion_sent.clone();
-        std::thread::spawn(move || {
-            let mut current_messages = request.messages.clone();
-            let mut iteration = 0u32;
-            const MAX_ITERATIONS: u32 = 50;
-
-            loop {
-                // Check for user cancellation between iterations.
-                if cancel_rx.try_recv().is_ok() {
-                    if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                        let _ = tx_for_finish
-                            .try_send(StreamEvent::Finished(Err("Request cancelled.".to_string())));
-                    }
-                    break;
-                }
-
-                if iteration >= MAX_ITERATIONS {
-                    tracing::error!("[agent_chat] max iterations ({MAX_ITERATIONS}) reached");
-                    // Treat hitting the limit as a clean finish so the UI isn't left hanging.
-                    if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                        let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(format!(
-                            "Reached the {MAX_ITERATIONS}-iteration limit."
-                        ))));
-                    }
-                    break;
-                }
-                iteration += 1;
-
-                let mut current_request = ChatRequest {
-                    model: request.model.clone(),
-                    messages: current_messages.clone(),
-                    enable_tool_calls: request.enable_tool_calls,
-                    tools: request.tools.clone(),
-                    temperature: request.temperature,
-                    top_p: request.top_p,
-                    max_tokens: request.max_tokens,
-                };
-
-                let mut pending_chunk = String::new();
-                let mut pending_thinking = String::new();
-                let mut last_emit = Instant::now();
-                let mut last_think_emit = Instant::now();
-                let mut in_thinking = false;
-
-                let mut on_chunk = |chunk: String| {
-                    let mut rest: &str = &chunk;
-                    loop {
-                        if in_thinking {
-                            if let Some(end) = rest.find("</think>") {
-                                pending_thinking.push_str(&rest[..end]);
-                                if !pending_thinking.is_empty() {
-                                    let _ = tx_for_chunks.try_send(StreamEvent::ThinkingChunk(
-                                        std::mem::take(&mut pending_thinking),
-                                    ));
-                                }
-                                let _ = tx_for_chunks.try_send(StreamEvent::ThinkingDone);
-                                in_thinking = false;
-                                rest = &rest[end + "</think>".len()..];
-                                if rest.is_empty() {
-                                    break;
-                                }
-                            } else {
-                                pending_thinking.push_str(rest);
-                                // Emit thinking in small batches so the block fills progressively.
-                                let should_emit = pending_thinking.len() >= 128
-                                    || last_think_emit.elapsed() >= Duration::from_millis(30);
-                                if should_emit {
-                                    let _ = tx_for_chunks.try_send(StreamEvent::ThinkingChunk(
-                                        std::mem::take(&mut pending_thinking),
-                                    ));
-                                    last_think_emit = Instant::now();
-                                }
-                                break;
-                            }
-                        } else if let Some(start) = rest.find("<think>") {
-                            let before = &rest[..start];
-                            if !before.is_empty() {
-                                pending_chunk.push_str(before);
-                                let out = std::mem::take(&mut pending_chunk);
-                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(out));
-                                last_emit = Instant::now();
-                            }
-                            let _ = tx_for_chunks.try_send(StreamEvent::ThinkingStarted);
-                            in_thinking = true;
-                            rest = &rest[start + "<think>".len()..];
-                        } else {
-                            pending_chunk.push_str(rest);
-                            let should_emit = pending_chunk.len() >= 256
-                                || pending_chunk.contains('\n')
-                                || last_emit.elapsed() >= Duration::from_millis(24);
-                            if should_emit {
-                                let out = std::mem::take(&mut pending_chunk);
-                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(out));
-                                last_emit = Instant::now();
-                            }
-                            break;
-                        }
-                    }
-                };
-
-                let result = provider_for_task
-                    .chat_streaming(current_request.clone(), &mut on_chunk)
-                    .map_err(|err| err.to_string());
-
-                if !pending_chunk.is_empty() {
-                    let _ = tx_for_chunks.try_send(StreamEvent::Chunk(pending_chunk));
-                }
-                // Stream ended mid-think: flush remaining content then close
-                if in_thinking {
-                    if !pending_thinking.is_empty() {
-                        let _ =
-                            tx_for_chunks.try_send(StreamEvent::ThinkingChunk(pending_thinking));
-                    }
-                    let _ = tx_for_chunks.try_send(StreamEvent::ThinkingDone);
-                }
-
-                match result {
-                    Ok(response) => {
-                        if !response.tool_calls.is_empty() {
-                            // Always add assistant message (even if empty) so tool results can follow
-                            let assistant_text =
-                                response.assistant_message.clone().unwrap_or_default();
-                            current_messages.push(ChatMessage {
-                                role: ChatRole::Assistant,
-                                content: assistant_text.clone(),
-                                tool_call_id: None,
-                                tool_calls: response.tool_calls.clone(),
-                            });
-
-                            // Show assistant text to user (if any)
-                            if !assistant_text.is_empty() {
-                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(assistant_text));
-                            }
-
-                            // Tell the UI to render a collapsed tool-call block.
-                            let _ = tx_for_chunks
-                                .try_send(StreamEvent::ToolCallGroup(response.tool_calls.clone()));
-
-                            // Create tool context for execution
-                            let workspace_root = match engine_state::get_project_path() {
-                                Some(path) => PathBuf::from(path),
-                                None => PathBuf::from("."),
-                            };
-                            let provider_for_subagent = provider_for_task.clone();
-                            let token_for_subagent = token.clone();
-                            let default_subagent_model = current_request.model.clone();
-                            let tool_context = agent_chat_tools::make_tool_context(
-                                workspace_root,
-                                None,
-                                agent_chat_tools::PulsarToolExtras {
-                                    plugin_bridge: plugin_bridge_for_task.clone(),
-                                    open_file_request: Some(Arc::new({
-                                        let tx_for_open = tx_for_chunks.clone();
-                                        move |path: PathBuf| {
-                                            let waiter =
-                                                Arc::new((Mutex::new(None), Condvar::new()));
-
-                                            tx_for_open
-                                                .try_send(StreamEvent::OpenFile(path, waiter.clone()))
-                                                .map_err(|err| {
-                                                    format!(
-                                                        "Failed to dispatch open-file request to UI thread: {}",
-                                                        err
-                                                    )
-                                                })?;
-
-                                            let (lock, cvar) = &*waiter;
-                                            let mut guard = lock.lock().map_err(|_| {
-                                                "OpenFile waiter mutex poisoned".to_string()
-                                            })?;
-                                            while guard.is_none() {
-                                                guard = cvar.wait(guard).map_err(|_| {
-                                                    "OpenFile waiter mutex poisoned".to_string()
-                                                })?;
-                                            }
-
-                                            guard.take().unwrap_or_else(|| {
-                                                Err("OpenFile waiter signaled without a result"
-                                                    .to_string())
-                                            })
-                                        }
-                                    })),
-                                    query_open_editors: Some(Arc::new(|| {
-                                        Ok(crate::app::open_editors::snapshot_json())
-                                    })),
-                                    activate_open_editor_request: Some(Arc::new({
-                                        let tx_for_activate = tx_for_chunks.clone();
-                                        move |index: usize| {
-                                            let before = crate::app::open_editors::snapshot_json();
-                                            let open_count = before
-                                                .get("open_count")
-                                                .and_then(|v| v.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            if index >= open_count {
-                                                let active_before = before
-                                                    .get("active_index")
-                                                    .and_then(|v| v.as_u64())
-                                                    .map(|v| v as usize);
-                                                return Err(format!(
-                                                    "ActivateOpenEditor index {} is out of range (open_count={}, active_before={:?}).",
-                                                    index, open_count, active_before
-                                                ));
-                                            }
-
-                                            let waiter =
-                                                Arc::new((Mutex::new(None), Condvar::new()));
-
-                                            tx_for_activate
-                                                .try_send(StreamEvent::ActivateOpenEditor(
-                                                    index,
-                                                    waiter.clone(),
-                                                ))
-                                                .map_err(|err| {
-                                                    format!(
-                                                        "Failed to dispatch activate-open-editor request to UI thread: {}",
-                                                        err
-                                                    )
-                                                })?;
-
-                                            let (lock, cvar) = &*waiter;
-                                            let mut guard = lock.lock().map_err(|_| {
-                                                "ActivateOpenEditor waiter mutex poisoned"
-                                                    .to_string()
-                                            })?;
-                                            while guard.is_none() {
-                                                guard = cvar.wait(guard).map_err(|_| {
-                                                    "ActivateOpenEditor waiter mutex poisoned"
-                                                        .to_string()
-                                                })?;
-                                            }
-
-                                            guard
-                                                .take()
-                                                .unwrap_or_else(|| {
-                                                    Err("ActivateOpenEditor waiter signaled without a result".to_string())
-                                                })
-                                        }
-                                    })),
-                                    subagent_executor: Some(Arc::new({
-                                        let registry = tool_registry_for_subagent.clone();
-                                        move |req: agent_chat_tools::SubagentLlmRequest| {
-                                            let model_used = req
-                                                .model
-                                                .clone()
-                                                .filter(|m| !m.trim().is_empty())
-                                                .unwrap_or_else(|| default_subagent_model.clone());
-
-                                            let instructions = req.instructions.unwrap_or_default();
-
-                                            // Build tool list for sub-agent, excluding UI-only and
-                                            // recursive tools so sub-agents stay focused and safe.
-                                            let sub_tools: Vec<agent_chat_core::ToolDefinition> =
-                                                registry
-                                                    .definitions()
-                                                    .into_iter()
-                                                    .filter(|def| {
-                                                        !matches!(
-                                                            def.name.as_str(),
-                                                            "spawn_subagent"
-                                                                | "query_running_subagents"
-                                                                | "open_file_in_default_editor"
-                                                                | "activate_open_editor"
-                                                                | "query_open_editors"
-                                                        )
-                                                    })
-                                                    .filter_map(|def| {
-                                                        let params = def.parameters_schema;
-                                                        if params
-                                                            .get("type")
-                                                            .and_then(|v| v.as_str())
-                                                            != Some("object")
-                                                        {
-                                                            return None;
-                                                        }
-                                                        Some(agent_chat_core::ToolDefinition {
-                                                            name: def.name,
-                                                            description: Some(def.description),
-                                                            parameters_json_schema: params,
-                                                        })
-                                                    })
-                                                    .collect();
-
-                                            let enable_tools = !sub_tools.is_empty();
-
-                                            let sub_tool_context =
-                                                agent_chat_tools::make_tool_context(
-                                                    req.workspace_root.clone(),
-                                                    None,
-                                                    agent_chat_tools::PulsarToolExtras {
-                                                        plugin_bridge: None,
-                                                        open_file_request: None,
-                                                        query_open_editors: None,
-                                                        activate_open_editor_request: None,
-                                                        subagent_executor: None,
-                                                    },
-                                                );
-
-                                            let mut current_messages = vec![
-                                                ChatMessage {
-                                                    role: ChatRole::System,
-                                                    content: format!(
-                                                        "You are an AI assistant completing a specific task.\n\
-                                                     \n\
-                                                     TASK NAME: {name}\n\
-                                                     \n\
-                                                     TASK: {task}\n\
-                                                     \n\
-                                                     INSTRUCTIONS: {instructions}\n\
-                                                     \n\
-                                                     WORKSPACE: {workspace}\n\
-                                                     \n\
-                                                     Use the available tools to read files, search the codebase, and gather evidence.\n\
-                                                     Include file paths, line numbers, and direct quotes in your answer.\n\
-                                                     When you have enough information, write your final answer and stop calling tools.",
-                                                        name = req.name,
-                                                        task = req.task,
-                                                        instructions = instructions,
-                                                        workspace = req.workspace_root.display(),
-                                                    ),
-                                                    tool_call_id: None,
-                                                    tool_calls: vec![],
-                                                },
-                                                ChatMessage {
-                                                    role: ChatRole::User,
-                                                    content: "Complete the task.".to_string(),
-                                                    tool_call_id: None,
-                                                    tool_calls: vec![],
-                                                },
-                                            ];
-
-                                            let mut all_chunks: Vec<String> = Vec::new();
-                                            let mut last_raw_response = serde_json::Value::Null;
-                                            const MAX_SUB_ITERATIONS: u32 = 8;
-
-                                            for _sub_iter in 0..MAX_SUB_ITERATIONS {
-                                                let sub_request = ChatRequest {
-                                                    model: model_used.clone(),
-                                                    messages: current_messages.clone(),
-                                                    enable_tool_calls: enable_tools,
-                                                    tools: sub_tools.clone(),
-                                                    temperature: Some(0.2),
-                                                    top_p: Some(1.0),
-                                                    max_tokens: Some(4096),
-                                                };
-
-                                                let mut iter_chunks: Vec<String> = Vec::new();
-                                                let response = provider_for_subagent
-                                                    .chat_streaming(sub_request, &mut |chunk| {
-                                                        iter_chunks.push(chunk)
-                                                    })
-                                                    .map_err(|e| {
-                                                        format!("Sub-agent provider error: {e}")
-                                                    })?;
-
-                                                all_chunks.extend(iter_chunks.clone());
-                                                last_raw_response = response.raw_response.clone();
-
-                                                let assistant_text = response
-                                                    .assistant_message
-                                                    .clone()
-                                                    .or_else(|| {
-                                                        if iter_chunks.is_empty() {
-                                                            None
-                                                        } else {
-                                                            Some(iter_chunks.join(""))
-                                                        }
-                                                    })
-                                                    .unwrap_or_default();
-
-                                                if response.tool_calls.is_empty() {
-                                                    current_messages.push(ChatMessage {
-                                                        role: ChatRole::Assistant,
-                                                        content: assistant_text,
-                                                        tool_call_id: None,
-                                                        tool_calls: vec![],
-                                                    });
-                                                    break;
-                                                }
-
-                                                // Assistant turn with tool calls
-                                                current_messages.push(ChatMessage {
-                                                    role: ChatRole::Assistant,
-                                                    content: assistant_text,
-                                                    tool_call_id: None,
-                                                    tool_calls: response.tool_calls.clone(),
-                                                });
-
-                                                // Execute tools sequentially (sub-agent context)
-                                                for call in &response.tool_calls {
-                                                    let result = registry
-                                                        .execute(
-                                                            &call.name,
-                                                            call.arguments_json.clone(),
-                                                            &sub_tool_context,
-                                                        )
-                                                        .map(|v| v.to_string())
-                                                        .unwrap_or_else(|e| {
-                                                            format!("Tool error: {e}")
-                                                        });
-                                                    current_messages.push(ChatMessage {
-                                                        role: ChatRole::Tool,
-                                                        content: result,
-                                                        tool_call_id: Some(call.id.clone()),
-                                                        tool_calls: vec![],
-                                                    });
-                                                }
-                                            }
-
-                                            // Extract the final assistant response from the transcript
-                                            let assistant_message = current_messages
-                                                .iter()
-                                                .rev()
-                                                .find(|m| {
-                                                    m.role == ChatRole::Assistant
-                                                        && !m.content.is_empty()
-                                                })
-                                                .map(|m| m.content.clone())
-                                                .unwrap_or_default();
-
-                                            let child_transcript = current_messages
-                                                .iter()
-                                                .map(|m| {
-                                                    let role = match m.role {
-                                                        ChatRole::System => "system",
-                                                        ChatRole::User => "user",
-                                                        ChatRole::Assistant => "assistant",
-                                                        ChatRole::Tool => "tool",
-                                                        ChatRole::AgentEvent => "agent_event",
-                                                    };
-                                                    serde_json::json!({
-                                                        "role": role,
-                                                        "content": m.content,
-                                                    })
-                                                })
-                                                .collect();
-
-                                            Ok(agent_chat_tools::SubagentLlmResponse {
-                                                provider_id: provider_for_subagent.id().to_string(),
-                                                model_used,
-                                                assistant_message,
-                                                streamed_chunks: all_chunks,
-                                                raw_response: last_raw_response,
-                                                child_transcript,
-                                            })
-                                        }
-                                    })),
-                                },
-                            );
-
-                            // Spawn one thread per tool call so they execute concurrently.
-                            let mut all_results = Vec::new();
-                            let handles: Vec<_> = response
-                                .tool_calls
-                                .iter()
-                                .map(|tool_call| {
-                                    let name = tool_call.name.clone();
-                                    let args = tool_call.arguments_json.clone();
-                                    let id = tool_call.id.clone();
-                                    let registry = tool_registry_for_task.clone();
-                                    let ctx = tool_context.clone();
-                                    let tx = tx_for_chunks.clone();
-                                    std::thread::spawn(move || {
-                                        let result = registry.execute(&name, args, &ctx);
-                                        let (tool_result, is_error) = match result {
-                                            Ok(value) => (value.to_string(), false),
-                                            Err(err) => (format!("Tool error: {}", err), true),
-                                        };
-                                        let result_preview =
-                                            Self::format_tool_result_preview(&name, &tool_result);
-                                        let _ = tx.try_send(StreamEvent::ToolCallResult {
-                                            id: id.clone(),
-                                            tool_name: name.clone(),
-                                            result_preview,
-                                            result_full: tool_result.clone(),
-                                            is_error,
-                                        });
-                                        (id, name, tool_result)
-                                    })
-                                })
-                                .collect();
-
-                            // Collect parallel results in original order for message threading.
-                            for handle in handles {
-                                all_results.push(handle.join().unwrap_or_else(|_| {
-                                    (
-                                        "".to_string(),
-                                        "unknown".to_string(),
-                                        "Tool thread panicked".to_string(),
-                                    )
-                                }));
-                            }
-
-                            for (tool_call_id, _tool_name, tool_result) in all_results {
-                                current_messages.push(ChatMessage {
-                                    role: ChatRole::Tool,
-                                    content: tool_result,
-                                    tool_call_id: Some(tool_call_id),
-                                    tool_calls: vec![],
-                                });
-                            }
-
-                            // Compact current_messages if tool results pushed us over budget.
-                            let total_chars: usize =
-                                current_messages.iter().map(|m| m.content.len()).sum();
-                            if total_chars > context_budget {
-                                let (mut compacted, dropped_opt) =
-                                    super::prompt_ranking::compact_messages(
-                                        std::mem::take(&mut current_messages),
-                                        context_budget,
-                                        AgentChatPanel::COMPACTION_SUMMARY_CHAR_BUDGET,
-                                    );
-                                if let Some(dropped) = dropped_opt {
-                                    let summary = AgentChatPanel::ai_summarize_dropped(
-                                        &dropped,
-                                        &provider_for_task,
-                                        &compact_model_for_worker,
-                                        &token,
-                                    );
-                                    // Insert AI summary before the kept dialog.
-                                    let insert_at = compacted
-                                        .iter()
-                                        .position(|m| m.role != ChatRole::System)
-                                        .unwrap_or(0);
-                                    compacted.insert(
-                                        insert_at,
-                                        ChatMessage {
-                                            role: ChatRole::System,
-                                            content: format!(
-                                                "Conversation summary (auto-compacted):\n{summary}"
-                                            ),
-                                            tool_call_id: None,
-                                            tool_calls: vec![],
-                                        },
-                                    );
-                                    let _ = tx_for_chunks
-                                        .try_send(StreamEvent::ContextCompacted(summary));
-                                }
-                                current_messages = compacted;
-                            }
-
-                            continue;
-                        } else {
-                            if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                                let _ = tx_for_finish.try_send(StreamEvent::Finished(Ok(response)));
-                            }
-                            break;
-                        }
-                    }
-                    Err(err) => {
-                        tracing::error!("[agent_chat] provider error (iter {iteration}): {err}");
-                        if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                            let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(err)));
-                        }
-                        break;
-                    }
-                }
-            }
+        // Sub-agents are child runs of this one; the template they derive
+        // from is the config as built above.
+        self.delegation.set_harnesses(Self::load_harnesses());
+        let limits = agent_runtime::DelegationLimits::for_profile(&config.profile);
+        self.delegation.set_budget(agent_runtime::RunBudget {
+            max_depth: limits.max_depth,
+            ..agent_runtime::RunBudget::default()
         });
+        self.delegation.set_limits(limits);
+        // A sub-agent on another model gets that model's profile (window,
+        // tool-calling mode, tier), resolved the way the chat's own is.
+        let provider_definition = self.active_provider().cloned();
+        self.delegation
+            .set_profile_resolver(Some(Arc::new(move |model: &str| {
+                Self::profile_for_model(provider_definition.as_ref(), model)
+            })));
+        config.delegation = Some(self.delegation.root_handle(config.clone()));
+        // The run hands back its ledger (tool exchanges included) just before
+        // it finishes; the panel adopts it so the chat can be replayed.
+        let ledger_slot: Arc<std::sync::Mutex<Option<Ledger>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        config.ledger_out = Some(ledger_slot.clone());
 
-        let tx_timeout = tx.clone();
+        let (tx, rx) = smol::channel::unbounded::<RunEvent>();
+        let completion_sent = Arc::new(AtomicBool::new(false));
+        // Finished is delivered once, whether it comes from the loop or the watchdog.
+        let sink: EventSink = {
+            let tx = tx.clone();
+            let completion_sent = completion_sent.clone();
+            Arc::new(move |event| {
+                if matches!(event, RunEvent::Finished(_))
+                    && completion_sent.swap(true, Ordering::SeqCst)
+                {
+                    return;
+                }
+                let _ = tx.try_send(event);
+            })
+        };
+
+        // Stop button: the UI cancels this token.
+        let cancel = CancelToken::new();
+        self.cancel = Some(cancel.clone());
+        agent_runtime::spawn_run(config, run_ledger, cancel.clone(), sink.clone());
+
         let completion_for_timeout = completion_sent.clone();
         cx.background_spawn(async move {
             // 10-minute ceiling — long enough for extended agentic runs.
             Timer::after(Duration::from_secs(600)).await;
-            if !completion_for_timeout.swap(true, Ordering::SeqCst) {
+            if !completion_for_timeout.load(Ordering::SeqCst) {
                 tracing::error!("[agent_chat] watchdog: 10-minute limit reached");
-                let _ = tx_timeout.try_send(StreamEvent::Finished(Err(
+                cancel.cancel();
+                sink(RunEvent::Finished(Err(
                     "Request timed out after 10 minutes.".to_string(),
                 )));
             }
@@ -1069,14 +382,14 @@ impl AgentChatPanel {
 
         cx.spawn(async move |this, cx| {
             while let Ok(event) = rx.recv().await {
-                let should_break = matches!(event, StreamEvent::Finished(_));
+                let should_break = matches!(event, RunEvent::Finished(_));
                 cx.update(|cx| {
                     this.update(cx, |panel, cx| {
                         match event {
-                            StreamEvent::Chunk(chunk) => {
+                            RunEvent::Chunk(chunk) => {
                                 // Update provider history message
-                                if let Some(message) = panel.messages.get_mut(message_ix) {
-                                    message.content.push_str(&chunk);
+                                if let Some(text) = panel.ledger.assistant_text_mut(message_ix) {
+                                    text.push_str(&chunk);
                                 }
                                 // Update the streaming display bubble.
                                 // Do NOT remove the cached height — the canvas measurement from the
@@ -1095,7 +408,7 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ThinkingStarted => {
+                            RunEvent::ThinkingStarted => {
                                 if let Some(dix) = panel.streaming_display_item_ix {
                                     let is_empty = panel.display_items.get(dix).map(|item|
                                         matches!(item, DisplayItem::AssistantMessage { content, .. } if content.is_empty())
@@ -1128,7 +441,7 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ThinkingChunk(chunk) => {
+                            RunEvent::ThinkingChunk(chunk) => {
                                 for (_ix, item) in panel.display_items.iter_mut().enumerate().rev() {
                                     if let DisplayItem::ThinkingBlock { content, .. } = item {
                                         content.push_str(&chunk);
@@ -1139,7 +452,7 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ThinkingDone => {
+                            RunEvent::ThinkingDone => {
                                 let done_ms = now_ms();
                                 for (ix, item) in panel.display_items.iter_mut().enumerate().rev() {
                                     if let DisplayItem::ThinkingBlock {
@@ -1159,7 +472,7 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ContextCompacted(summary) => {
+                            RunEvent::ContextCompacted(summary) => {
                                 let t = now_ms();
                                 let card = DisplayItem::CompactionSummary {
                                     summary,
@@ -1181,7 +494,20 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ToolCallGroup(calls) => {
+                            RunEvent::ContextNotice(line) => {
+                                panel.note_context_event(line, cx);
+                            }
+                            RunEvent::Escalated(escalation) => {
+                                panel.note_escalation(escalation, cx);
+                            }
+                            RunEvent::BestOf(report) => {
+                                panel.note_best_of(report, cx);
+                            }
+                            RunEvent::FilesTouched(paths) => {
+                                panel.note_files_touched(paths, cx);
+                            }
+
+                            RunEvent::ToolCallGroup(calls) => {
                                 if let Some(dix) = panel.streaming_display_item_ix {
                                     let is_empty = panel.display_items.get(dix).map(|item|
                                         matches!(item, DisplayItem::AssistantMessage { content, .. } if content.is_empty())
@@ -1218,6 +544,7 @@ impl AgentChatPanel {
                                     is_expanded: false,
                                     started_at_ms: group_start,
                                     finished_at_ms: None,
+                                    checkpoint_run_id: None,
                                 });
                                 let new_dix = panel.display_items.len();
                                 panel.display_items.push(DisplayItem::AssistantMessage {
@@ -1230,9 +557,8 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ToolCallResult { id, tool_name, result_preview, result_full, is_error } => {
+                            RunEvent::ToolCallResult { id, tool_name: _, result_preview, result_full, is_error } => {
                                 let done_ms = now_ms();
-                                let result_full_for_parse = result_full.clone();
                                 for item in panel.display_items.iter_mut().rev() {
                                     if let DisplayItem::ToolCallGroup { calls, finished_at_ms, .. } = item {
                                         if let Some(call) = calls.iter_mut().find(|c| c.id == id) {
@@ -1249,49 +575,14 @@ impl AgentChatPanel {
                                     }
                                 }
 
-                                if tool_name == "spawn_subagent" && !is_error {
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result_full_for_parse) {
-                                        let subagent_id = parsed
-                                            .get("subagent_id")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or_default();
-                                        if !subagent_id.is_empty() {
-                                            let name = parsed
-                                                .get("name")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or("Subagent");
-                                            let task = parsed
-                                                .get("task")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or("Subagent task");
-                                            let created_at_ms = parsed
-                                                .get("created_at_ms")
-                                                .and_then(|v| v.as_u64())
-                                                .unwrap_or(done_ms);
-                                            panel.update_subagent_invocation_started(
-                                                subagent_id,
-                                                name,
-                                                task,
-                                                created_at_ms,
-                                                cx,
-                                            );
-                                        }
-                                    }
-                                }
-
                                 cx.notify();
                             }
 
-                            StreamEvent::Finished(Ok(response)) => {
+                            RunEvent::Finished(Ok(response)) => {
+                                panel.drop_pending_confirms();
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
-                                panel.cancel_tx = None;
-
-                                if panel.is_processing_subagent_event {
-                                    panel.complete_active_subagent_processing(true);
-                                    panel.is_processing_subagent_event = false;
-                                    panel.processing_subagent_id = None;
-                                }
+                                panel.cancel = None;
 
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
                                     let is_empty = panel
@@ -1324,29 +615,49 @@ impl AgentChatPanel {
                                     }
                                 }
 
-                                if let Some(message) = panel.messages.get_mut(message_ix) {
-                                    if message.content.is_empty() {
+                                let adopted = ledger_slot
+                                    .lock()
+                                    .ok()
+                                    .and_then(|mut slot| slot.take())
+                                    .and_then(|run_ledger| {
+                                        agent_runtime::adopt_run_tail(
+                                            &mut panel.ledger,
+                                            message_ix,
+                                            &run_ledger,
+                                        )
+                                    });
+                                if let Some(last) = adopted {
+                                    // The run's last bubble belongs to its last turn.
+                                    for item in panel.display_items.iter_mut().rev() {
+                                        if let DisplayItem::AssistantMessage { message_index, .. } = item {
+                                            if *message_index == message_ix {
+                                                *message_index = last;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                } else if let Some(entry_text) = panel.ledger.assistant_text_mut(message_ix) {
+                                    if entry_text.is_empty() {
                                         if let Some(text) = response.assistant_message {
-                                            message.content = text;
+                                            *entry_text = text;
                                         }
                                     }
                                 }
+                                // Background reports that finished during the run
+                                // join the ledger; the next request carries them.
+                                panel.deliver_idle_subagent_reports();
+                                panel.collect_submitted_plan(cx);
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
-                                if panel.subagent_completion_mode == SubagentCompletionMode::Auto {
-                                    panel.maybe_start_next_subagent_processing(cx);
-                                }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
 
-                            StreamEvent::Finished(Err(err)) => {
+                            RunEvent::Finished(Err(err)) => {
+                                panel.drop_pending_confirms();
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
-                                panel.cancel_tx = None;
-                                panel.complete_active_subagent_processing(false);
-                                panel.is_processing_subagent_event = false;
-                                panel.processing_subagent_id = None;
+                                panel.cancel = None;
                                 tracing::error!("[agent_chat] error: {err}");
                                 let error_text = format!("Request failed: {err}");
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
@@ -1383,33 +694,33 @@ impl AgentChatPanel {
                                         panel.display_item_heights.remove(&dix);
                                     }
                                 }
-                                if let Some(message) = panel.messages.get_mut(message_ix) {
-                                    message.content = error_text;
+                                if let Some(text) = panel.ledger.assistant_text_mut(message_ix) {
+                                    *text = error_text;
                                 }
+                                panel.deliver_idle_subagent_reports();
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
-                                if panel.subagent_completion_mode == SubagentCompletionMode::Auto {
-                                    panel.maybe_start_next_subagent_processing(cx);
-                                }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
 
-                            StreamEvent::OpenFile(path, waiter) => {
-                                let result = panel.open_path_in_default_editor(path, cx);
-                                let (lock, cvar) = &*waiter;
-                                if let Ok(mut guard) = lock.lock() {
-                                    *guard = Some(result);
-                                    cvar.notify_all();
-                                }
+                            RunEvent::ConfirmRequest { id, tool, args, tainted, reply } => {
+                                panel.queue_confirm(id, tool, args, tainted, reply, cx);
                             }
-                            StreamEvent::ActivateOpenEditor(index, waiter) => {
-                                let result = panel.activate_open_editor_by_global_index(index, cx);
-                                let (lock, cvar) = &*waiter;
-                                if let Ok(mut guard) = lock.lock() {
-                                    *guard = Some(result);
-                                    cvar.notify_all();
-                                }
+                            RunEvent::CheckpointCreated { run_id } => {
+                                panel.attach_checkpoint(run_id, cx);
+                            }
+                            // Child runs report through the delegation host's
+                            // sink (see `subagent.rs`), never through a request's.
+                            RunEvent::ChildSpawned { .. }
+                            | RunEvent::ChildProgress { .. }
+                            | RunEvent::ChildFinished { .. } => {}
+
+                            RunEvent::OpenFile(path, reply) => {
+                                reply.reply(panel.open_path_in_default_editor(path, cx));
+                            }
+                            RunEvent::ActivateOpenEditor(index, reply) => {
+                                reply.reply(panel.activate_open_editor_by_global_index(index, cx));
                             }
                         }
                     })
@@ -1482,10 +793,10 @@ impl AgentChatPanel {
             return;
         };
 
-        // Truncate display_items and messages up to but NOT including this assistant.
+        // Truncate display_items and ledger up to but NOT including this assistant.
         self.display_items.truncate(dix);
-        self.messages.truncate(msg_ix);
-        if self.messages.is_empty() {
+        self.ledger.truncate_keep_pins(msg_ix);
+        if self.ledger.is_empty() {
             return;
         }
         self.display_item_heights.clear();
@@ -1494,7 +805,6 @@ impl AgentChatPanel {
         let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
             return;
         };
-        let token = self.auth_token_for_provider(provider_id);
         self.launch_provider_request(provider, None, cx);
     }
 
@@ -1519,7 +829,7 @@ impl AgentChatPanel {
             return;
         }
         self.display_items.truncate(display_ix);
-        self.messages.truncate(message_index);
+        self.ledger.truncate_keep_pins(message_index);
         self.display_item_heights.clear();
         self.streaming_display_item_ix = None;
         self.streaming_message_ix = None;

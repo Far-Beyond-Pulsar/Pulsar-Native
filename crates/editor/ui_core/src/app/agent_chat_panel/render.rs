@@ -39,28 +39,4 @@ impl AgentChatPanel {
                 .collect::<Vec<_>>(),
         )
     }
-
-    pub(crate) fn subagent_status_text(&self) -> String {
-        let queued_count = self.pending_subagent_events.len();
-        if self.is_processing_subagent_event {
-            let active_id = self
-                .processing_subagent_id
-                .clone()
-                .unwrap_or_else(|| "unknown".to_string());
-            format!(
-                "Processing subagent completion ({active_id}). {} waiting.",
-                queued_count
-            )
-        } else if queued_count > 0 {
-            let mode =
-                if self.subagent_completion_mode == super::panel::SubagentCompletionMode::Manual {
-                    "manual mode"
-                } else {
-                    "auto mode"
-                };
-            format!("{} subagent completion(s) waiting ({})", queued_count, mode)
-        } else {
-            "No subagent completions waiting".to_string()
-        }
-    }
 }

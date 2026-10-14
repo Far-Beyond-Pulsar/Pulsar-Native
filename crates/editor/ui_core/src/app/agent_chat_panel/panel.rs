@@ -1,11 +1,12 @@
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
+    ChatProvider, ProviderCrate, ProviderEntry, ProviderRegistry,
 };
 use agent_chat_tools::ToolRegistry;
+use agent_runtime::{CancelToken, Ledger};
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, RwLock},
@@ -21,12 +22,6 @@ use ui::{
 use super::chat_storage;
 use super::provider_selection;
 use super::types::*;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SubagentCompletionMode {
-    Auto,
-    Manual,
-}
 
 pub struct AgentChatPanel {
     pub(crate) dock_area: Entity<DockArea>,
@@ -67,14 +62,54 @@ pub struct AgentChatPanel {
     pub(crate) streaming_message_ix: Option<usize>,
     pub(crate) streaming_display_item_ix: Option<usize>,
     pub(crate) pending_rollback_confirm_ix: Option<usize>,
-    pub(crate) messages: Vec<ChatMessage>,
+    /// Provider history as typed entries; `DisplayItem::message_index` points into it.
+    pub(crate) ledger: Ledger,
     pub(crate) display_items: Vec<DisplayItem>,
     pub(crate) display_item_heights: HashMap<usize, Pixels>,
-    pub(crate) cancel_tx: Option<smol::channel::Sender<()>>,
-    pub(crate) pending_subagent_events: VecDeque<serde_json::Value>,
-    pub(crate) is_processing_subagent_event: bool,
-    pub(crate) processing_subagent_id: Option<String>,
-    pub(crate) subagent_completion_mode: SubagentCompletionMode,
+    pub(crate) cancel: Option<CancelToken>,
+    /// When write tools need the user's approval (.pulsar/agent_safety.json).
+    pub(crate) confirm_policy: agent_runtime::ConfirmPolicy,
+    /// Tool calls the run is blocked on, awaiting approve/deny.
+    pub(crate) pending_confirms: Vec<PendingConfirm>,
+    /// Outcome of the last revert, shown in the safety bar.
+    pub(crate) safety_notice: Option<String>,
+    /// Child runs of the current chat: store, harnesses, limits, events.
+    pub(crate) delegation: Arc<agent_runtime::DelegationHost>,
+    /// "Use AI to keep long chats on track" (.pulsar/agent_steward.json).
+    pub(crate) steward_settings: agent_runtime::StewardSettings,
+    /// This chat's override of the setting; `None` follows it.
+    pub(crate) chat_steward_override: Option<bool>,
+    /// The chat's steward, rebuilt when the model or settings change.
+    pub(crate) steward: Option<Arc<agent_runtime::Steward>>,
+    pub(crate) steward_key: String,
+    /// Changes the steward proposed, waiting for accept / edit / reject.
+    pub(crate) pending_pin_changes: Vec<agent_runtime::PinChange>,
+    pub(crate) drift_warning: Option<agent_runtime::DriftWarning>,
+    /// Audit trail of what the steward and the engine did to the context.
+    pub(crate) steward_log: Vec<String>,
+    /// "Cascade routing" (.pulsar/agent_cascade.json).
+    pub(crate) cascade_settings: agent_runtime::CascadeSettings,
+    /// Header badge set when the current run escalated.
+    pub(crate) cascade_badge: Option<String>,
+    /// Scene sandbox mode and copy cap (.pulsar/agent_scene.json).
+    pub(crate) scene_settings: agent_scene_tools::SceneSettings,
+    /// Run whose revert skipped objects the user edited since; the safety bar
+    /// offers Revert anyway for it.
+    pub(crate) revert_conflict_run: Option<String>,
+    /// External MCP servers (.pulsar/mcp.json); `None` when none are configured.
+    pub(crate) mcp: Option<Arc<agent_mcp::McpManager>>,
+    pub(crate) mcp_open: bool,
+    /// "Agent settings" strip (model pickers, profile overrides) is open.
+    pub(crate) agent_settings_open: bool,
+    /// Detected pin candidates the user dismissed (by text).
+    pub(crate) dismissed_pin_candidates: Vec<String>,
+    /// The pin or proposal being edited in the Pinned context strip.
+    pub(crate) pin_edit: Option<PinEditTarget>,
+    pub(crate) pin_edit_input: Entity<InputState>,
+    /// Plan mode toggle, the plan under review and project memory.
+    pub(crate) plan_memory: super::plan_memory::PlanMemoryState,
+    /// Suggested-context tray (off by default).
+    pub(crate) prefetch: super::prefetch::PrefetchState,
     pub(crate) auto_scroll: bool,
     pub(crate) chat_viewport_height: Pixels,
     pub(crate) _subscriptions: Vec<Subscription>,

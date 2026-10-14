@@ -64,7 +64,7 @@ impl AgentChatPanel {
 
         // ── Right: Chat History dropdown ──
         let chat_history_list = self.chat_history_list.clone();
-        let current_title = Self::inferred_chat_title(&self.messages);
+        let current_title = Self::inferred_chat_title(&self.ledger);
         let chat_label = if current_title.len() > 40 {
             format!("{}...", &current_title[..37])
         } else if current_title.is_empty() {
@@ -88,11 +88,6 @@ impl AgentChatPanel {
 
         // ── Three-dots menu ──
         let panel = cx.entity().clone();
-        let has_subagents =
-            self.pending_subagent_events.len() > 0 || self.is_processing_subagent_event;
-        let queued_count = self.pending_subagent_events.len();
-        let is_processing = self.is_processing_subagent_event;
-        let is_in_flight = self.is_request_in_flight;
 
         let more_menu = Button::new("agent-chat-more-trigger")
             .small()
@@ -102,8 +97,7 @@ impl AgentChatPanel {
             .popup_menu_with_anchor(Corner::TopRight, {
                 let p = panel.clone();
                 move |menu, window, cx| {
-                    let menu = menu
-                        .menu_handler_with_icon("Import Chat", IconName::Upload, {
+                    menu.menu_handler_with_icon("Import Chat", IconName::Upload, {
                             let p = p.clone();
                             move |_, cx| {
                                 p.update(cx, |this, cx| this.import_chat(cx));
@@ -129,47 +123,7 @@ impl AgentChatPanel {
                             move |window, cx| {
                                 p.update(cx, |this, cx| this.start_add_provider_prompt(window, cx));
                             }
-                        });
-
-                    if has_subagents {
-                        menu.separator()
-                            .menu_handler_with_icon_and_disabled(
-                                format!("Process Next ({})", queued_count),
-                                IconName::Play,
-                                is_in_flight || is_processing,
-                                {
-                                    let p = p.clone();
-                                    move |_, cx| {
-                                        p.update(cx, |this, cx| {
-                                            this.process_next_subagent_completion_now(cx)
-                                        });
-                                    }
-                                },
-                            )
-                            .menu_handler_with_icon("Auto Queue", IconName::Play, {
-                                let p = p.clone();
-                                move |_, cx| {
-                                    p.update(cx, |this, cx| {
-                                        this.subagent_completion_mode =
-                                            super::panel::SubagentCompletionMode::Auto;
-                                        this.maybe_start_next_subagent_processing(cx);
-                                        cx.notify();
-                                    });
-                                }
-                            })
-                            .menu_handler_with_icon("Manual Queue", IconName::Pause, {
-                                let p = p.clone();
-                                move |_, cx| {
-                                    p.update(cx, |this, cx| {
-                                        this.subagent_completion_mode =
-                                            super::panel::SubagentCompletionMode::Manual;
-                                        cx.notify();
-                                    });
-                                }
-                            })
-                    } else {
-                        menu
-                    }
+                        })
                 }
             });
 
@@ -209,6 +163,7 @@ impl AgentChatPanel {
                     .items_center()
                     .gap_2()
                     .child(self.render_context_meter(cx))
+                    .children(self.render_cascade_badge(cx))
                     .flex_1()
                     .child(more_menu),
             )
@@ -218,7 +173,7 @@ impl AgentChatPanel {
         let total_chars = self.active_context_chars();
         let sliver_chars = Self::COMPACTION_SUMMARY_CHAR_BUDGET;
         let usable_chars = total_chars.saturating_sub(sliver_chars);
-        let used: usize = self.messages.iter().map(|m| m.content.len()).sum();
+        let used: usize = self.ledger.char_len();
         let fill_pct = (used as f32 / usable_chars.max(1) as f32).min(1.0);
         let sliver_pct = sliver_chars as f32 / total_chars.max(1) as f32;
 
@@ -230,16 +185,7 @@ impl AgentChatPanel {
             cx.theme().success
         };
 
-        let model_ctx = self
-            .active_model()
-            .and_then(|m| {
-                if m.context_tokens > 0 {
-                    Some(m.context_tokens)
-                } else {
-                    Self::infer_context_tokens(m.id).map(|t| t as u32)
-                }
-            })
-            .unwrap_or(6_000);
+        let model_ctx = self.active_profile().effective_context();
 
         let ctx_label = if model_ctx >= 1_000_000 {
             format!("{}M ctx", model_ctx / 1_000_000)
