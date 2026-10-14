@@ -28,7 +28,8 @@ mod project_tests;
 
 pub use budget_guard::{BudgetError, BudgetGuard, RunBudget, SpawnPermit};
 pub use checkpoint::{
-    affected_paths, has_checkpoint, revert_checkpoint, CheckpointStore, RevertReport,
+    affected_paths, child_checkpoint_id, descendant_checkpoints, has_checkpoint,
+    has_checkpoint_tree, revert_checkpoint, revert_checkpoint_tree, CheckpointStore, RevertReport,
     CHECKPOINT_DIR,
 };
 pub use confirm::{ConfirmDecision, ConfirmReply, SafetyConfig};
@@ -50,8 +51,8 @@ pub use text_tools::{
     tool_call_grammar, tool_call_schema, FenceFilter, Parsed as ParsedToolCalls,
 };
 pub use delegation::{
-    deliver_pending, parse_report, report_value, subagent_report_for, DelegationHandle,
-    DelegationHost, DelegationLimits, SpawnError, ROOT_RUN_ID,
+    deliver_pending, is_child_confirm_id, parse_report, report_value, subagent_report_for,
+    DelegationHandle, DelegationHost, DelegationLimits, ProfileResolver, SpawnError, ROOT_RUN_ID,
 };
 pub use harness::{
     builtin_harnesses, project_agents_dir, Harness, HarnessOrigin, HarnessPermissions,

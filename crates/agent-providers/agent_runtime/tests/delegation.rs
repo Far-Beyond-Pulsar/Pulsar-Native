@@ -127,6 +127,8 @@ fn template(provider: Arc<dyn ChatProvider>) -> RunConfig {
 
     let mut config = RunConfig::new(provider, "main-model", base_registry(), PathBuf::from("."));
     config.compact_model = "cheap-model".to_string();
+    // The harnesses below are read-only; `double` is a pure helper.
+    config.safety.classifier.set("double", agent_runtime::ToolClass::Read);
     config.tools = vec![ToolDefinition {
         name: "double".to_string(),
         description: Some("Doubles a number".to_string()),

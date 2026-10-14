@@ -63,6 +63,10 @@ impl AgentChatPanel {
     pub(super) fn attach_delegation(&mut self, cx: &mut Context<Self>) {
         // Stop whatever the previous chat still has running.
         self.delegation.cancel_all();
+        // Their prompts belonged to the runs just cancelled.
+        for pending in self.pending_confirms.drain(..) {
+            pending.reply.deny();
+        }
 
         let store = match Self::ensure_chats_dir() {
             Some(dir) if !self.current_chat_id.is_empty() => {
@@ -199,6 +203,20 @@ impl AgentChatPanel {
                 // request; nothing is sent to it now.
                 self.deliver_idle_subagent_reports();
                 self.save_current_chat();
+            }
+            // A child's write needs the user's approval like the chat's own:
+            // it joins the same approve/deny prompt.
+            RunEvent::ConfirmRequest {
+                id,
+                tool,
+                args,
+                tainted,
+                reply,
+            } => {
+                self.queue_confirm(id, tool, args, tainted, reply, cx);
+            }
+            RunEvent::CheckpointCreated { run_id } => {
+                self.attach_checkpoint(run_id, cx);
             }
             _ => {}
         }

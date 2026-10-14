@@ -24,9 +24,12 @@ use std::{
 use agent_chat_core::ToolDefinition;
 use serde_json::{json, Value};
 
-use crate::harness::{normalize_field, Harness, HarnessRegistry, ModelPolicy};
+use crate::budget_guard::{BudgetError, BudgetGuard, RunBudget, SpawnPermit};
+use crate::checkpoint::child_checkpoint_id;
+use crate::harness::{normalize_field, Harness, HarnessPermissions, HarnessRegistry, ModelPolicy};
 use crate::ledger::{EntryKind, Ledger, LedgerEntry, SubagentReport, SubagentStatus};
-use crate::profile::{ModelProfile, ToolCalling};
+use crate::profile::{resolve_profile, ModelProfile, ResolveInput, ToolCalling};
+use crate::taint::TaintTracker;
 use crate::run::{run_loop, CancelToken, EventSink, RunConfig, RunEvent, CANCELLED_MESSAGE};
 use crate::run_store::{
     now_ms, render_transcript, ChildReport, InsertRefused, RunRecord, RunStatus, RunStore,
@@ -34,6 +37,21 @@ use crate::run_store::{
 
 /// Id of the chat's own run, the parent of top-level sub-agents.
 pub const ROOT_RUN_ID: &str = "main";
+
+/// Gives the profile of a model id the way the chat resolves its own (name
+/// table, the provider's model descriptor, the user's overrides). Installed by
+/// the embedder; without one a child falls back to the name table alone.
+pub type ProfileResolver = Arc<dyn Fn(&str) -> ModelProfile + Send + Sync>;
+
+/// Separates the child run id from the tool call id in a forwarded
+/// [`RunEvent::ConfirmRequest`].
+const CONFIRM_ID_SEPARATOR: char = '\u{1f}';
+
+/// Is this confirmation id one a child run produced? Those prompts outlive
+/// the request that started the child.
+pub fn is_child_confirm_id(id: &str) -> bool {
+    id.contains(CONFIRM_ID_SEPARATOR)
+}
 
 /// Lines `read_run` returns when no range is given, and the most it returns.
 const READ_RUN_DEFAULT_LINES: usize = 40;
@@ -81,11 +99,14 @@ pub enum SpawnError {
     DepthLimit { max_depth: u32 },
     FanOut { limit: usize },
     TotalRuns { limit: usize },
+    /// The run tree's [`BudgetGuard`] refused the spawn.
+    Budget(BudgetError),
 }
 
 impl fmt::Display for SpawnError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            SpawnError::Budget(err) => write!(f, "{err}"),
             SpawnError::UnknownHarness { name, available } => {
                 write!(f, "Unknown harness `{name}`. Available: {}.", available.join(", "))
             }
@@ -164,6 +185,9 @@ pub struct DelegationHost {
     store: Arc<RunStore>,
     harnesses: RwLock<Arc<HarnessRegistry>>,
     limits: RwLock<DelegationLimits>,
+    /// Limits of one run tree; every root handle gets a fresh guard for it.
+    budget: RwLock<RunBudget>,
+    profile_resolver: RwLock<Option<ProfileResolver>>,
     events: EventSink,
     permits: Arc<Permits>,
     tokens: Mutex<HashMap<String, CancelToken>>,
@@ -183,6 +207,8 @@ impl DelegationHost {
             store,
             harnesses: RwLock::new(Arc::new(harnesses)),
             limits: RwLock::new(limits),
+            budget: RwLock::new(RunBudget::default()),
+            profile_resolver: RwLock::new(None),
             events,
             permits: Arc::new(Permits {
                 running: Mutex::new(HashMap::new()),
@@ -212,20 +238,63 @@ impl DelegationHost {
         *self.limits.write().unwrap_or_else(|p| p.into_inner()) = limits;
     }
 
+    pub fn budget(&self) -> RunBudget {
+        *self.budget.read().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Applies to run trees started after the call. The tighter of this and
+    /// [`DelegationHost::limits`] wins on each axis.
+    pub fn set_budget(&self, budget: RunBudget) {
+        *self.budget.write().unwrap_or_else(|p| p.into_inner()) = budget;
+    }
+
+    pub fn set_profile_resolver(&self, resolver: Option<ProfileResolver>) {
+        *self.profile_resolver.write().unwrap_or_else(|p| p.into_inner()) = resolver;
+    }
+
+    /// The profile a child running `model` gets. The parent's own profile
+    /// when the model is the parent's; otherwise the embedder's resolver, or
+    /// the name table without it.
+    fn profile_for(&self, model: &str, template: &RunConfig) -> ModelProfile {
+        if model == template.model {
+            return template.profile;
+        }
+        let resolver = self
+            .profile_resolver
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        match resolver {
+            Some(resolve) => resolve(model),
+            None => resolve_profile(ResolveInput {
+                model_id: model,
+                ..ResolveInput::default()
+            }),
+        }
+    }
+
     /// The handle for the chat's own run. `template` is the config children
-    /// are derived from (provider, model, registry, workspace); it should not
-    /// carry delegation itself.
+    /// are derived from (provider, model, registry, workspace, safety); it
+    /// should not carry delegation itself. One call per request: the handle
+    /// owns that request's [`BudgetGuard`], shared by every run below it, and
+    /// the root run's taint flag (`template.safety.taint`) that children
+    /// inherit.
     pub fn root_handle(self: &Arc<Self>, template: RunConfig) -> DelegationHandle {
         let mut template = template;
         template.delegation = None;
         DelegationHandle {
             host: self.clone(),
-            template: Arc::new(template),
             run_id: ROOT_RUN_ID.to_string(),
             depth: 0,
             depth_budget: self.limits().max_depth,
             deliver_in_run: false,
             pinned: String::new(),
+            guard: BudgetGuard::new(self.budget()),
+            taint: template.safety.taint.clone(),
+            safety_run_id: template.safety.run_id.clone(),
+            root_safety_run_id: template.safety.run_id.clone(),
+            ceiling: HarnessPermissions::EngineSceneWrite,
+            template: Arc::new(template),
         }
     }
 
@@ -271,6 +340,15 @@ pub struct DelegationHandle {
     depth_budget: u32,
     deliver_in_run: bool,
     pinned: String,
+    /// Shared by every run of the tree.
+    guard: BudgetGuard,
+    /// This run's own taint flag.
+    taint: TaintTracker,
+    /// Checkpoint id of this run, and of the tree's root.
+    safety_run_id: String,
+    root_safety_run_id: String,
+    /// The most a child of this run may be allowed to change.
+    ceiling: HarnessPermissions,
 }
 
 impl DelegationHandle {
@@ -315,6 +393,13 @@ impl DelegationHandle {
                 max_depth: limits.max_depth,
             });
         }
+
+        // The run tree's budget: held by the child until it finishes, so a
+        // finished child frees its fan-out slot.
+        let permit = self
+            .guard
+            .try_spawn(&self.run_id, self.depth)
+            .map_err(SpawnError::Budget)?;
 
         let id = host.store.next_id();
         let model = resolve_model(&harness, &self.template);
@@ -362,6 +447,8 @@ impl DelegationHandle {
             task: task.to_string(),
             context: context.map(str::to_string),
             cancel: child_cancel,
+            permit: Some(permit),
+            parent_tainted: self.taint.is_tainted(),
         };
         thread::spawn(move || job.run());
         Ok(id)
@@ -383,10 +470,27 @@ struct ChildJob {
     task: String,
     context: Option<String>,
     cancel: CancelToken,
+    /// The run tree's slot for this child.
+    permit: Option<SpawnPermit>,
+    /// Whether the spawning run had untrusted content in context when it
+    /// started this child.
+    parent_tainted: bool,
+}
+
+/// A child's context window never exceeds what its harness asks for. The
+/// tier stays the model's own: the budget is a limit on this run, not a
+/// statement about the model.
+fn cap_context(mut profile: ModelProfile, tokens: u32) -> ModelProfile {
+    let tokens = tokens.max(1_024);
+    if profile.context_tokens == 0 || profile.context_tokens > tokens {
+        profile.context_tokens = tokens;
+        profile.max_tokens = profile.max_tokens.min((tokens / 4).max(256));
+    }
+    profile
 }
 
 impl ChildJob {
-    fn run(self) {
+    fn run(mut self) {
         let host = self.parent.host.clone();
         let store = host.store.clone();
 
@@ -406,6 +510,9 @@ impl ChildJob {
                 self.execute()
             }
         };
+        // Free the fan-out slot before the run reads as finished, so a parent
+        // that awaits this child can start the next one at once.
+        self.permit.take();
         self.finish(outcome);
     }
 
@@ -416,16 +523,33 @@ impl ChildJob {
         let mut config = (**template).clone();
         config.delegation = None;
         config.pre_request_hook = None;
-        config.model = resolve_model(&self.harness, template);
-        config.max_iterations = self.harness.max_steps;
-        if let Some(tokens) = self.harness.context_budget_tokens {
-            // Same chars-per-token estimate the loop's budget uses elsewhere.
-            let chars = (tokens as f64 * 3.5) as usize;
-            config.context_budget_chars = config.context_budget_chars.min(chars).max(2_000);
-        }
 
+        // The child's own model gets its own profile (tool-calling mode,
+        // window, tier, sampling); the parent's applies only when the child
+        // runs the same model.
+        let model = resolve_model(&self.harness, template);
+        let mut profile = host.profile_for(&model, template);
+        if let Some(tokens) = self.harness.context_budget_tokens {
+            profile = cap_context(profile, tokens);
+        }
+        if model != template.model {
+            config.compact_model = model.clone();
+        }
+        config.model = model;
+        config = config.with_profile(profile);
+        config.max_iterations = self.harness.max_steps;
+        // The harness prompt carries the task and the report format; the
+        // generic Lite prompt would replace it.
+        config.lite_system_prompt = None;
+
+        // What the child may change: its harness, capped by its parent's own
+        // permissions. The tool list is trimmed with the run's classifier and
+        // the safety layer refuses write calls again at run time.
+        let permissions = self.harness.permissions.min(self.parent.ceiling);
         let available: Vec<String> = template.tool_registry.names().iter().map(|n| n.to_string()).collect();
-        let allowed = self.harness.resolve_tools(&available);
+        let allowed =
+            self.harness
+                .resolve_tools_with(&available, &template.safety.classifier, self.parent.ceiling);
         for name in &available {
             if !allowed.contains(name) {
                 config.tool_registry.unregister(name);
@@ -433,10 +557,20 @@ impl ChildJob {
         }
         config.tools = definitions_of(&config.tool_registry);
 
-        let child_budget = self
-            .harness
-            .max_depth
-            .min(self.parent.depth_budget.saturating_sub(1));
+        config.safety = template.safety.for_child(
+            child_checkpoint_id(&self.parent.safety_run_id, &self.id),
+            self.parent_tainted,
+            permissions == HarnessPermissions::ReadOnly,
+        );
+
+        // Small-context (Lite) children do not delegate further.
+        let child_budget = if profile.is_lite() {
+            0
+        } else {
+            self.harness
+                .max_depth
+                .min(self.parent.depth_budget.saturating_sub(1))
+        };
         if child_budget > 0 {
             config.delegation = Some(DelegationHandle {
                 host: host.clone(),
@@ -446,6 +580,11 @@ impl ChildJob {
                 depth_budget: child_budget,
                 deliver_in_run: true,
                 pinned: String::new(),
+                guard: self.parent.guard.clone(),
+                taint: config.safety.taint.clone(),
+                safety_run_id: config.safety.run_id.clone(),
+                root_safety_run_id: self.parent.root_safety_run_id.clone(),
+                ceiling: permissions,
             });
         }
 
@@ -468,7 +607,30 @@ impl ChildJob {
             let host = host.clone();
             let id = self.id.clone();
             let finished = finished.clone();
+            let harness_name = self.harness.name.clone();
+            let root_checkpoint = self.parent.root_safety_run_id.clone();
             Arc::new(move |event| match event {
+                // A child's approval prompts go to the chat's own prompt.
+                RunEvent::ConfirmRequest {
+                    id: call_id,
+                    tool,
+                    args,
+                    tainted,
+                    reply,
+                } => {
+                    progress(&host, &id, format!("waiting for approval of {tool}"));
+                    host.emit(RunEvent::ConfirmRequest {
+                        id: format!("{id}{CONFIRM_ID_SEPARATOR}{call_id}"),
+                        tool: format!("{tool} (sub-agent {harness_name})"),
+                        args,
+                        tainted,
+                        reply,
+                    });
+                }
+                // Child checkpoints are found again from the root's id.
+                RunEvent::CheckpointCreated { .. } => host.emit(RunEvent::CheckpointCreated {
+                    run_id: root_checkpoint.clone(),
+                }),
                 RunEvent::ToolCallGroup(calls) => {
                     let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
                     progress(&host, &id, format!("running {}", names.join(", ")));
@@ -982,4 +1144,24 @@ fn pinned_text(ledger: &Ledger) -> String {
         })
         .collect();
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_harness_budget_caps_the_window_in_tokens_without_changing_the_tier() {
+        let big = ModelProfile::new(128_000, true);
+        let capped = cap_context(big, 12_000);
+        assert_eq!(capped.context_tokens, 12_000);
+        assert_eq!(capped.max_tokens, 3_000);
+        assert!(!capped.is_lite(), "the tier is the model's, not the budget's");
+
+        // A budget larger than the window changes nothing.
+        assert_eq!(cap_context(ModelProfile::new(8_192, true), 50_000), ModelProfile::new(8_192, true));
+
+        // An unknown window (character budgets) becomes a token budget.
+        assert_eq!(cap_context(ModelProfile::unknown(), 6_000).context_tokens, 6_000);
+    }
 }

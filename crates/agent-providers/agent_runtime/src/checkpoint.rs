@@ -203,6 +203,61 @@ pub fn has_checkpoint(workspace_root: &Path, run_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Run id of a child's checkpoint: the parent's id plus the child's own,
+/// so [`revert_checkpoint_tree`] can find every descendant of a run.
+pub fn child_checkpoint_id(parent_run_id: &str, child_run_id: &str) -> String {
+    format!("{parent_run_id}.{child_run_id}")
+}
+
+/// Checkpoint ids of every run started (directly or not) below `run_id`.
+pub fn descendant_checkpoints(workspace_root: &Path, run_id: &str) -> Vec<String> {
+    let prefix = format!("{run_id}.");
+    let mut found: Vec<String> = virtual_fs::list_dir(&workspace_root.join(CHECKPOINT_DIR))
+        .map(|entries| {
+            entries
+                .into_iter()
+                .filter(|entry| entry.is_dir && entry.name.starts_with(&prefix))
+                .map(|entry| entry.name)
+                .collect()
+        })
+        .unwrap_or_default();
+    // Deepest and newest first: a child's snapshot postdates its parent's.
+    found.sort_by(|a, b| b.matches('.').count().cmp(&a.matches('.').count()).then(b.cmp(a)));
+    found
+}
+
+/// Does this run, or anything it started, have a checkpoint to revert?
+pub fn has_checkpoint_tree(workspace_root: &Path, run_id: &str) -> bool {
+    has_checkpoint(workspace_root, run_id)
+        || descendant_checkpoints(workspace_root, run_id)
+            .iter()
+            .any(|id| has_checkpoint(workspace_root, id))
+}
+
+/// Revert the run and every run below it, children before parents.
+pub fn revert_checkpoint_tree(workspace_root: &Path, run_id: &str) -> Result<RevertReport, String> {
+    let mut report = RevertReport::default();
+    let mut any = false;
+    for id in descendant_checkpoints(workspace_root, run_id) {
+        if let Ok(part) = revert_checkpoint(workspace_root, &id) {
+            any = true;
+            report.restored.extend(part.restored);
+            report.removed.extend(part.removed);
+            report.failed.extend(part.failed);
+        }
+    }
+    match revert_checkpoint(workspace_root, run_id) {
+        Ok(part) => {
+            report.restored.extend(part.restored);
+            report.removed.extend(part.removed);
+            report.failed.extend(part.failed);
+            Ok(report)
+        }
+        Err(_) if any => Ok(report),
+        Err(err) => Err(err),
+    }
+}
+
 /// Put every file the run changed back as it was before the run's first edit.
 /// Safe to call twice.
 pub fn revert_checkpoint(workspace_root: &Path, run_id: &str) -> Result<RevertReport, String> {

@@ -87,11 +87,16 @@ impl AgentChatPanel {
         }
     }
 
-    /// Deny whatever is still waiting, e.g. when the run ends.
+    /// Deny whatever is still waiting, e.g. when the run ends. Prompts from
+    /// background sub-agents stay: those runs outlive the request.
     pub(super) fn drop_pending_confirms(&mut self) {
-        for pending in self.pending_confirms.drain(..) {
+        let (children, own): (Vec<_>, Vec<_>) = std::mem::take(&mut self.pending_confirms)
+            .into_iter()
+            .partition(|pending| agent_runtime::is_child_confirm_id(&pending.id));
+        for pending in own {
             pending.reply.deny();
         }
+        self.pending_confirms = children;
     }
 
     /// Mark the newest tool-call group as the one that owns the run's checkpoint.
@@ -112,7 +117,7 @@ impl AgentChatPanel {
         let root = engine_state::get_project_path()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        self.safety_notice = Some(match agent_runtime::revert_checkpoint(&root, run_id) {
+        self.safety_notice = Some(match agent_runtime::revert_checkpoint_tree(&root, run_id) {
             Ok(report) => format!("Reverted run changes. {}", report.summary()),
             Err(err) => format!("Revert failed: {err}"),
         });

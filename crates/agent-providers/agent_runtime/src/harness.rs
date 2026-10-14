@@ -27,6 +27,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::taint::{ToolClass, ToolClassifier};
+
 /// Which model a child run uses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModelPolicy {
@@ -50,7 +52,8 @@ impl ModelPolicy {
 
 /// What the child may change. Enforced by trimming the tool list: a
 /// `ReadOnly` harness never receives edit tools whatever its allow-list says.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Ordered by power: `ReadOnly < EditWithCheckpoint < EngineSceneWrite`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum HarnessPermissions {
     ReadOnly,
     /// Edit tools are allowed; Phase 5 snapshots the workspace first.
@@ -150,8 +153,23 @@ impl Harness {
             .replace("{pinned}", pinned)
     }
 
-    /// Which of `available` this harness may call.
+    /// Which of `available` this harness may call, judged with the default
+    /// tool classification.
     pub fn resolve_tools(&self, available: &[String]) -> Vec<String> {
+        self.resolve_tools_with(available, &ToolClassifier::default(), self.permissions)
+    }
+
+    /// Like [`Harness::resolve_tools`], with the run's own classifier and a
+    /// permission `ceiling` (a child never gets more than the run that
+    /// started it). A read-only result holds no tool the classifier calls
+    /// `Write`; the safety layer refuses such calls again at run time.
+    pub fn resolve_tools_with(
+        &self,
+        available: &[String],
+        classifier: &ToolClassifier,
+        ceiling: HarnessPermissions,
+    ) -> Vec<String> {
+        let permissions = self.permissions.min(ceiling);
         let mut allowed: Vec<String> = Vec::new();
         for entry in &self.tools {
             if entry == "*" {
@@ -175,9 +193,11 @@ impl Harness {
             if CHILD_EXCLUDED_TOOLS.contains(&name.as_str()) {
                 return false;
             }
-            match self.permissions {
+            match permissions {
                 HarnessPermissions::ReadOnly => {
-                    !EDIT_TOOLS.contains(&name.as_str()) && !name.starts_with("scene_write")
+                    !EDIT_TOOLS.contains(&name.as_str())
+                        && !name.starts_with("scene_write")
+                        && classifier.classify(name) != ToolClass::Write
                 }
                 HarnessPermissions::EditWithCheckpoint => !name.starts_with("scene_write"),
                 HarnessPermissions::EngineSceneWrite => true,

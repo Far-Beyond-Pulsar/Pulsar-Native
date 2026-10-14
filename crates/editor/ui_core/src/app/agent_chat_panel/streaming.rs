@@ -300,8 +300,19 @@ impl AgentChatPanel {
         // Sub-agents are child runs of this one; the template they derive
         // from is the config as built above.
         self.delegation.set_harnesses(Self::load_harnesses());
+        let limits = agent_runtime::DelegationLimits::for_profile(&config.profile);
+        self.delegation.set_budget(agent_runtime::RunBudget {
+            max_depth: limits.max_depth,
+            ..agent_runtime::RunBudget::default()
+        });
+        self.delegation.set_limits(limits);
+        // A sub-agent on another model gets that model's profile (window,
+        // tool-calling mode, tier), resolved the way the chat's own is.
+        let provider_definition = self.active_provider().cloned();
         self.delegation
-            .set_limits(agent_runtime::DelegationLimits::for_profile(&config.profile));
+            .set_profile_resolver(Some(Arc::new(move |model: &str| {
+                Self::profile_for_model(provider_definition.as_ref(), model)
+            })));
         config.delegation = Some(self.delegation.root_handle(config.clone()));
 
         let (tx, rx) = smol::channel::unbounded::<RunEvent>();

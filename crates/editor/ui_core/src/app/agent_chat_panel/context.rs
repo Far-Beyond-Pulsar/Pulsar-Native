@@ -21,29 +21,40 @@ impl AgentChatPanel {
     /// descriptor, then the user's override.
     pub(super) fn active_profile(&self) -> agent_runtime::ModelProfile {
         let provider = self.active_provider();
+        match self.active_model() {
+            Some(model) => Self::profile_for_model(provider, model.id),
+            None => agent_runtime::resolve_profile(agent_runtime::ResolveInput {
+                provider_id: provider.map(|p| p.id).unwrap_or(""),
+                local: provider.is_some_and(|p| p.kind == ProviderKind::Local),
+                ..Default::default()
+            }),
+        }
+    }
+
+    /// Profile of any model of `provider`, resolved exactly as the active
+    /// model's is. Sub-agents that run a different model use this.
+    pub(super) fn profile_for_model(
+        provider: Option<&ProviderDefinition>,
+        model_id: &str,
+    ) -> agent_runtime::ModelProfile {
         let provider_id = provider.map(|p| p.id).unwrap_or("");
         let local = provider.is_some_and(|p| p.kind == ProviderKind::Local);
-        let Some(model) = self.active_model() else {
-            return agent_runtime::resolve_profile(agent_runtime::ResolveInput {
-                provider_id,
-                local,
-                ..Default::default()
+        let descriptor = provider
+            .and_then(|p| p.models.iter().find(|m| m.id == model_id))
+            .map(|model| agent_chat_core::ModelDescriptor {
+                id: model.id.to_string(),
+                label: model.label.to_string(),
+                supports_tools: model.supports_tools,
+                context_tokens: model.context_tokens,
+                compact_model: None,
             });
-        };
-        let descriptor = agent_chat_core::ModelDescriptor {
-            id: model.id.to_string(),
-            label: model.label.to_string(),
-            supports_tools: model.supports_tools,
-            context_tokens: model.context_tokens,
-            compact_model: None,
-        };
         agent_runtime::resolve_with_store(
             Self::profile_overrides_path().as_deref(),
             provider_id,
             agent_runtime::ResolveInput {
                 provider_id,
-                model_id: model.id,
-                descriptor: Some(&descriptor),
+                model_id,
+                descriptor: descriptor.as_ref(),
                 local,
                 overrides: None,
             },

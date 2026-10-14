@@ -391,7 +391,13 @@ fn drive(
         iteration += 1;
 
         if let Some(hook) = &config.pre_request_hook {
+            // The hook delivers finished children, whose reports are
+            // untrusted: they taint this run like any other tool result.
+            let before = ledger.entries.len();
             hook(ledger);
+            if ledger.entries.len() > before {
+                safety.observe_entries(&ledger.entries[before..], &config.workspace_root);
+            }
         }
 
         let turn_tools = plan_tools(config, ledger, router.as_ref(), &unlocked, domain_limit);
