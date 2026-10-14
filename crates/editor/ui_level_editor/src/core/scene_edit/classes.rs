@@ -15,16 +15,14 @@ use pulsar_class::{ClassDefinition, ClassInstance, ClassRegistry};
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
-use super::objects::remove_object;
 use super::{ObjectId, ObjectType, Transform};
 
 // The registries and the built-definition record live in the engine, which
 // rebuilds instances on class updates in every world (SceneDB#84).
-pub use engine_backend::scene::classes::{
-    project_class_registry as project_registry, registry_for_class_dir,
-    set_fallback_project_root,
-};
 use engine_backend::scene::classes::{built_definition, remember_built_definition};
+pub use engine_backend::scene::classes::{
+    project_class_registry as project_registry, registry_for_class_dir, set_fallback_project_root,
+};
 
 /// The registry to resolve a legacy `script_asset` path with: the classes
 /// next to it when that directory exists here, else the current project's.

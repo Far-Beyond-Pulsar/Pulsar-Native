@@ -105,13 +105,21 @@ fn class_updates_rebuild_instances_in_worlds_without_the_editor() {
     // The instance's own edit survives class rebuilds; the class default
     // reaches the instance that kept it.
     let light = light_entity(world, edited);
-    world.get_mut::<LightComponent>(light).unwrap().intensity.intensity = 7.0;
+    world
+        .get_mut::<LightComponent>(light)
+        .unwrap()
+        .intensity
+        .intensity = 7.0;
     write_prefab(&lamp, "Lamp", 3.0);
     let rebuilt = reload_updated_asset(world, &class_update(&lamp));
     assert!(rebuilt >= 2, "both Lamp instances are rebuilt ({rebuilt})");
     assert_eq!(intensity(world, untouched), 3.0, "the new default");
     assert_eq!(intensity(world, edited), 7.0, "the instance's own edit");
-    assert_eq!(intensity(world, unrelated), 1.0, "another class is left alone");
+    assert_eq!(
+        intensity(world, unrelated),
+        1.0,
+        "another class is left alone"
+    );
 
     // A second edit is diffed against the definition the instances were
     // rebuilt from, so the old default does not become an override.
