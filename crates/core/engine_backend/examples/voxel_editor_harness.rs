@@ -31,11 +31,12 @@
 //! - `profile:<seconds>`: the view held (the camera nudged a millimetre
 //!   every other frame, so the editor keeps rendering): the graph's GPU
 //!   time, and by pass.
-//! - `stress:<ascent|descent|cruise|orbit|dive>:<seconds>[:<sample>[:<speed>[:<altitude>]]]`: a flight in real
+//! - `stress:<ascent|descent|cruise|orbit|dive|turn>:<seconds>[:<sample>[:<speed>[:<altitude>]]]`: a flight in real
 //!   time (the path follows the wall clock, as the editor's camera does:
 //!   a slow frame moves it further) from the camera's ground: from 2 m to
-//!   400 km or back, at 300 m/s 40 m over the ground, or in orbit at 400 km
-//!   and 7.7 km/s. Every frame's time and the chunk pass's coarse share,
+//!   400 km or back, at 300 m/s 40 m over the ground, in orbit at 400 km
+//!   and 7.7 km/s, or turning on the spot 40 m over the ground at 180
+//!   degrees a second (`speed`: degrees a second). Every frame's time and the chunk pass's coarse share,
 //!   largest cell and level switches go to `stress_<n>.csv`; a frame a
 //!   second is captured (`stress_<n>_<s>.png`), then each view again once
 //!   settled (`stress_<n>_<s>_ref.png`).
@@ -191,6 +192,19 @@ impl Harness {
     }
 
     /// The chunk pass's `name=value` from its diagnostics (NaN: none).
+    /// A word of the chunk pass's diagnostics line (`name=word`).
+    fn voxel_word(&self, name: &str) -> String {
+        let key = format!(" {name}=");
+        self.renderer
+            .voxel_diagnostics()
+            .iter()
+            .find_map(|line| {
+                let at = line.find(&key)? + key.len();
+                line[at..].split(' ').next().map(str::to_string)
+            })
+            .unwrap_or_default()
+    }
+
     fn voxel_stat(&self, name: &str) -> f64 {
         let key = format!(" {name}=");
         self.renderer
@@ -368,6 +382,10 @@ fn main() {
             "profile" => {
                 let seconds = number(1, 5.0);
                 let camera = h.camera();
+                // The view, to hold the same one in Helio's harness
+                // (`HELIO_VOXEL_FLIGHT_EYE`).
+                let forward = h.renderer.camera_forward();
+                println!("HARNESS profile eye {:?} forward {:?}", camera.position, forward.to_array());
                 let mailbox = h.renderer.editor_mailbox();
                 let mut passes: std::collections::BTreeMap<&'static str, (f64, u32)> = Default::default();
                 let mut totals = Vec::new();
@@ -415,7 +433,11 @@ fn main() {
                 let high = parts.get(5).and_then(|v| v.parse::<f64>().ok());
                 let path = |t: f64| -> (glam::DVec3, glam::DVec3) {
                     let u = (t / seconds).clamp(0.0, 1.0);
+                    // `turn`: the heading yaws about the start's up.
+                    let yaw = if mode == "turn" { speed.unwrap_or(180.0).to_radians() * t } else { 0.0 };
+                    let ahead = ahead * yaw.cos() + up.cross(ahead) * yaw.sin();
                     let (altitude, along, pitch_down) = match mode.as_str() {
+                        "turn" => (high.unwrap_or(40.0), 0.0, 0.15),
                         "cruise" => (high.unwrap_or(40.0), speed.unwrap_or(300.0) * t, 0.15),
                         "orbit" => (high.unwrap_or(400_000.0), speed.unwrap_or(7_700.0) * t, 0.8),
                         "dive" => {
@@ -439,7 +461,7 @@ fn main() {
                 let (position, look) = path(0.0);
                 h.look(position, look);
                 h.settle(3000);
-                let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px\n");
+                let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px,generated,budget,waiting,fading,plan_age,plan_ms,worst\n");
                 let (mut times, mut coarse, mut worst, mut switches) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
                 let mut samples = Vec::new();
                 // The render thread's milliseconds by phase, over the flight.
@@ -458,7 +480,9 @@ fn main() {
                         phases.entry(name).or_default().push(f64::from(phase_ms));
                     }
                     let (c, w, sw) = (h.voxel_stat("coarse"), h.voxel_stat("worst_px"), h.voxel_stat("switch_px"));
-                    csv += &format!("{t:.4},{:.1},{ms:.2},{c:.4},{w:.3},{sw:.3}\n", position.length() - ground);
+                    let work = ["generated", "budget", "waiting", "fading", "plan_age", "plan_ms"].map(|k| h.voxel_stat(k));
+                    csv += &format!("{t:.4},{:.1},{ms:.2},{c:.4},{w:.3},{sw:.3},{},{},{},{},{},{},{}
+", position.length() - ground, work[0], work[1], work[2], work[3], work[4], work[5], h.voxel_word("worst"));
                     // A frame after a capture waited for its readback.
                     if !captured {
                         times.push(ms);
