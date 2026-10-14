@@ -1481,11 +1481,8 @@ impl Render for AgentChatPanel {
                             })
                             .child(self.render_plan_memory_controls(cx))
                             .child(self.render_steward_controls(cx))
-<<<<<<< HEAD
                             .child(self.render_cascade_controls(cx))
-=======
                             .children(self.render_mcp_button(cx))
->>>>>>> worktree-agent-a0a066711b0b5aa79
                             .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")

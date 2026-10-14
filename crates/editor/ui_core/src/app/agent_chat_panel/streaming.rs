@@ -297,14 +297,11 @@ impl AgentChatPanel {
             visual: Some(super::visual_backend::editor_backend()),
         };
         config.safety.policy = self.confirm_policy;
-<<<<<<< HEAD
         config.cascade = self.cascade_policy();
         self.cascade_badge = None;
-=======
         if let Some(mcp) = &self.mcp {
             mcp.apply_classification(&mut config.safety.classifier);
         }
->>>>>>> worktree-agent-a0a066711b0b5aa79
 
         // "Use AI to keep long chats on track": with it off no steward exists
         // and no extra request is made. The steward model is the setting's
