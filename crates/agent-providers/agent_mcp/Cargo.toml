@@ -1,0 +1,31 @@
+[package]
+name = "agent_mcp"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "MCP both ways for the agent framework: consume external MCP servers as tool groups, and expose the engine's agent tools as an MCP server."
+
+[[bin]]
+name = "pulsar_mcp_server"
+path = "src/bin/pulsar_mcp_server.rs"
+
+# Test helper: a tiny hand-written stdio MCP server the integration tests spawn.
+[[bin]]
+name = "fake_mcp_server"
+path = "src/bin/fake_mcp_server.rs"
+
+[dependencies]
+agent_chat_tools = { workspace = true }
+agent_runtime = { workspace = true }
+anyhow = { workspace = true }
+engine_state = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }
+agent_chat_core = { workspace = true }
+
+[lints]
+workspace = true

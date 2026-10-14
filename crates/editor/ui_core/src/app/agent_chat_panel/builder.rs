@@ -316,8 +316,13 @@ impl AgentChatPanel {
             pending_pin_changes: Vec::new(),
             drift_warning: None,
             steward_log: Vec::new(),
+<<<<<<< HEAD
             cascade_settings: Self::load_cascade_settings(),
             cascade_badge: None,
+=======
+            mcp: Self::start_mcp(),
+            mcp_open: false,
+>>>>>>> worktree-agent-a0a066711b0b5aa79
             dismissed_pin_candidates: Vec::new(),
             pin_edit: None,
             pin_edit_input,
@@ -330,6 +335,7 @@ impl AgentChatPanel {
         this.bootstrap_chat_storage(cx);
         let initial_ix = this.active_provider_ix;
         this.fetch_models_in_background(initial_ix, cx);
+        this.watch_mcp_startup(cx);
         this
     }
 }

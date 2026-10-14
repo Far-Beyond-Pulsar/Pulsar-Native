@@ -30,11 +30,13 @@ pub enum Category {
     Tasks,
     Agents,
     Web,
+    /// Tools from external MCP servers; only reachable through `more_tools`.
+    Mcp,
     Other,
 }
 
 impl Category {
-    pub const ALL: [Category; 9] = [
+    pub const ALL: [Category; 10] = [
         Category::Files,
         Category::Search,
         Category::Scene,
@@ -43,6 +45,7 @@ impl Category {
         Category::Tasks,
         Category::Agents,
         Category::Web,
+        Category::Mcp,
         Category::Other,
     ];
 
@@ -56,6 +59,7 @@ impl Category {
             Category::Tasks => "tasks",
             Category::Agents => "agents",
             Category::Web => "web",
+            Category::Mcp => "mcp",
             Category::Other => "other",
         }
     }
@@ -76,7 +80,7 @@ impl Category {
             Category::Tasks => &["task", "todo", "plan", "progress", "step"],
             Category::Agents => &["subagent", "agent", "delegate", "parallel", "background"],
             Category::Web => &["web", "url", "http", "website", "online", "internet", "docs", "documentation"],
-            Category::Other => &[],
+            Category::Mcp | Category::Other => &[],
         }
     }
 
@@ -93,6 +97,9 @@ impl Category {
 /// Sort a tool into a category from its name and description.
 pub fn categorize(name: &str, description: &str) -> Category {
     let name = name.to_ascii_lowercase();
+    if crate::taint::is_mcp_tool(&name) {
+        return Category::Mcp;
+    }
     let has = |needles: &[&str]| needles.iter().any(|n| name.contains(n));
     if name.starts_with("level_editor") || has(&["scene"]) {
         Category::Scene
@@ -254,6 +261,10 @@ impl ToolRouter {
             .tools
             .iter()
             .enumerate()
+            // MCP tools are a separate category: hidden until unlocked.
+            .filter(|(_, routed)| {
+                routed.category != Category::Mcp || ctx.unlocked.contains(&Category::Mcp)
+            })
             .map(|(ix, routed)| (self.score(routed, &message, ctx), ix))
             .collect();
         // Higher score first; registration order breaks ties.
@@ -267,7 +278,7 @@ impl ToolRouter {
 
     /// Whether `select` can leave tools out, i.e. `more_tools` is useful.
     pub fn hides_tools(&self, limit: usize) -> bool {
-        self.tools.len() > limit
+        self.tools.len() > limit || self.tools.iter().any(|t| t.category == Category::Mcp)
     }
 
     pub fn categories(&self) -> Vec<(Category, usize)> {

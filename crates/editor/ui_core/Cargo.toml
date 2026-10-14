@@ -70,6 +70,7 @@ directories.workspace = true
 ui_loading_screen.workspace = true
 agent_chat_tools.workspace = true
 agent_runtime.workspace = true
+agent_mcp.workspace = true
 agent_provider_demo_random.workspace = true
 agent_provider_github_copilot.workspace = true
 agent_provider_openai.workspace = true

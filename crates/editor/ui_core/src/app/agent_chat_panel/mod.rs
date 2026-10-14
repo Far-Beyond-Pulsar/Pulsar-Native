@@ -5,6 +5,7 @@ mod cascade;
 mod chat_storage;
 mod context;
 mod custom_provider_wizard;
+mod mcp;
 mod panel;
 mod plan_memory;
 mod provider_catalog;
@@ -1447,6 +1448,7 @@ impl Render for AgentChatPanel {
                     .children(self.render_memory_strip(cx))
                     .children(self.render_pinned_strip(cx))
                     .children(self.render_safety_bar(cx))
+                    .children(self.render_mcp_settings(cx))
                     // Input row: text input + send/stop
                     .child(
                         h_flex()
@@ -1478,7 +1480,11 @@ impl Render for AgentChatPanel {
                             })
                             .child(self.render_plan_memory_controls(cx))
                             .child(self.render_steward_controls(cx))
+<<<<<<< HEAD
                             .child(self.render_cascade_controls(cx))
+=======
+                            .children(self.render_mcp_button(cx))
+>>>>>>> worktree-agent-a0a066711b0b5aa79
                             .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")

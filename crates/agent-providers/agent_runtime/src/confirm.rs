@@ -172,7 +172,8 @@ impl SafetyState {
         self.taint.is_tainted()
             || batch.iter().any(|other| {
                 other.id != call.id
-                    && self.config.classifier.classify(&other.name) == ToolClass::External
+                    && (self.config.classifier.classify(&other.name) == ToolClass::External
+                        || crate::taint::is_mcp_tool(&other.name))
             })
     }
 
