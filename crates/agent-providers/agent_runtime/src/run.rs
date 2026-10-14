@@ -239,6 +239,9 @@ pub struct RunConfig {
     pub cascade: Option<CascadePolicy>,
     /// Best-of-N sampling for hard steps; `None` (the default) samples once.
     pub best_of: Option<BestOf>,
+    /// Receives a copy of the final ledger just before `Finished` is sent, so
+    /// a subscriber can adopt the run's tool exchanges (see [`crate::adopt`]).
+    pub ledger_out: Option<Arc<Mutex<Option<Ledger>>>>,
 }
 
 impl RunConfig {
@@ -280,6 +283,7 @@ impl RunConfig {
             memory: None,
             cascade: None,
             best_of: None,
+            ledger_out: None,
         }
     }
 
@@ -331,6 +335,11 @@ pub fn run_loop(
     }
     if let Some(prompt) = original_prompt {
         ledger.set_system_prompt(prompt);
+    }
+    if let Some(slot) = &config.ledger_out {
+        if let Ok(mut slot) = slot.lock() {
+            *slot = Some(ledger.clone());
+        }
     }
     sink(RunEvent::Finished(outcome));
     ledger
@@ -925,6 +934,7 @@ fn run_tools(
         Running(JoinHandle<ToolResult>),
     }
 
+    safety.note_batch(calls);
     let parallel = config.profile.parallel_tools;
     let slots: Vec<Slot> = calls
         .iter()

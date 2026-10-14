@@ -339,6 +339,11 @@ impl AgentChatPanel {
                 Self::profile_for_model(provider_definition.as_ref(), model)
             })));
         config.delegation = Some(self.delegation.root_handle(config.clone()));
+        // The run hands back its ledger (tool exchanges included) just before
+        // it finishes; the panel adopts it so the chat can be replayed.
+        let ledger_slot: Arc<std::sync::Mutex<Option<Ledger>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        config.ledger_out = Some(ledger_slot.clone());
 
         let (tx, rx) = smol::channel::unbounded::<RunEvent>();
         let completion_sent = Arc::new(AtomicBool::new(false));
@@ -610,7 +615,28 @@ impl AgentChatPanel {
                                     }
                                 }
 
-                                if let Some(entry_text) = panel.ledger.assistant_text_mut(message_ix) {
+                                let adopted = ledger_slot
+                                    .lock()
+                                    .ok()
+                                    .and_then(|mut slot| slot.take())
+                                    .and_then(|run_ledger| {
+                                        agent_runtime::adopt_run_tail(
+                                            &mut panel.ledger,
+                                            message_ix,
+                                            &run_ledger,
+                                        )
+                                    });
+                                if let Some(last) = adopted {
+                                    // The run's last bubble belongs to its last turn.
+                                    for item in panel.display_items.iter_mut().rev() {
+                                        if let DisplayItem::AssistantMessage { message_index, .. } = item {
+                                            if *message_index == message_ix {
+                                                *message_index = last;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                } else if let Some(entry_text) = panel.ledger.assistant_text_mut(message_ix) {
                                     if entry_text.is_empty() {
                                         if let Some(text) = response.assistant_message {
                                             *entry_text = text;

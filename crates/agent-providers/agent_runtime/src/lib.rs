@@ -1,6 +1,7 @@
 //! Headless agent runtime: typed ledger, role projector and the agent loop.
 //! No UI dependencies; the chat panel subscribes to [`RunEvent`]s.
 
+mod adopt;
 mod best_of;
 mod budget_guard;
 mod cascade;
@@ -35,6 +36,8 @@ mod run_ext;
 
 #[cfg(test)]
 mod persist_tests;
+#[cfg(test)]
+mod persist_tool_tests;
 #[cfg(test)]
 mod project_tests;
 
@@ -98,7 +101,8 @@ pub use ledger::{
     EntryKind, Ledger, LedgerEntry, PinKind, Source, SubagentReport, SubagentStatus, ToolExchange,
     ToolResult,
 };
-pub use persist::{PersistedEntry, PersistedMeta};
+pub use adopt::adopt_run_tail;
+pub use persist::{PersistedEntry, PersistedMeta, MAX_PERSISTED_RESULT_CHARS};
 pub use preview::format_tool_result_preview;
 pub use vision::{attach_tool_images, AttachReport, MAX_IMAGES_IN_REQUEST, MAX_IMAGE_BYTES};
 pub use profile::{

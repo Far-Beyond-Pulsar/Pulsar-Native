@@ -8,9 +8,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::output_cap::{cap_output, OutputStore};
 use crate::ledger::{
     EntryKind, Ledger, LedgerEntry, PinKind, Source, SubagentReport, SubagentStatus,
 };
+
+/// Longest tool result kept verbatim in a chat file.
+pub const MAX_PERSISTED_RESULT_CHARS: usize = 12_000;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PersistedMeta {
@@ -34,6 +38,15 @@ pub struct PersistedMeta {
     /// A pin the user wrote or accepted (as opposed to one the engine keeps).
     #[serde(default, skip_serializing_if = "is_false")]
     pub user_pinned: bool,
+    /// Tool exchange: id of the call the result answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_id: Option<String>,
+    /// Tool exchange: the call's arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
+    /// Tool exchange: the tool reported an error.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub is_error: bool,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -64,6 +77,17 @@ impl PersistedEntry {
                 refs: meta.refs,
             }),
             "engine_notice" => LedgerEntry::engine_notice(self.content),
+            "tool_exchange" => LedgerEntry::tool_exchange(
+                agent_chat_core::ToolCall {
+                    id: meta.call_id.clone().unwrap_or_default(),
+                    name: meta.tool.clone().unwrap_or_else(|| "tool".to_string()),
+                    arguments_json: meta.args.clone().unwrap_or(serde_json::Value::Null),
+                },
+                crate::ledger::ToolResult {
+                    content: self.content,
+                    is_error: meta.is_error,
+                },
+            ),
             // A bare tool message has no call to attach to; keep it as data.
             "tool" => LedgerEntry::engine_notice(self.content),
             "summary" => {
@@ -92,13 +116,30 @@ impl PersistedEntry {
 }
 
 impl LedgerEntry {
-    /// `None` for tool exchanges: they are only kept in memory for now.
+    /// `None` for removed-pin tombstones. Tool results longer than
+    /// [`MAX_PERSISTED_RESULT_CHARS`] are cut to head + tail.
     pub fn to_persisted(&self) -> Option<PersistedEntry> {
         let (role, content, meta) = match &self.kind {
             EntryKind::System { text } => ("system", text.clone(), None),
             EntryKind::UserTurn { text } => ("user", text.clone(), None),
             EntryKind::AssistantTurn { text } => ("assistant", text.clone(), None),
-            EntryKind::ToolExchange(_) => return None,
+            EntryKind::ToolExchange(exchange) => (
+                "tool_exchange",
+                cap_output(
+                    &exchange.result.content,
+                    MAX_PERSISTED_RESULT_CHARS,
+                    OutputStore::global(),
+                )
+                .text,
+                Some(PersistedMeta {
+                    untrusted: true,
+                    tool: Some(exchange.call.name.clone()),
+                    call_id: Some(exchange.call.id.clone()),
+                    args: Some(exchange.call.arguments_json.clone()),
+                    is_error: exchange.result.is_error,
+                    ..PersistedMeta::default()
+                }),
+            ),
             EntryKind::SubagentReport(report) => (
                 "subagent_report",
                 report.summary.clone(),
