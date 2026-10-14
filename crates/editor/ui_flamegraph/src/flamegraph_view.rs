@@ -325,12 +325,29 @@ impl Render for FlamegraphView {
                     let sh = bounds.size.height.as_f32().max(1.0) as u32;
 
                     entity_pre.update(cx, |view, cx| {
+                        // The GPU device was lost: the surface and the
+                        // renderer's buffers are on it. Start over on the
+                        // window's new device.
+                        if view
+                            .surface
+                            .as_ref()
+                            .is_some_and(WgpuSurfaceHandle::is_device_lost)
+                        {
+                            view.surface = None;
+                            view.renderer = FlamegraphRenderer::new();
+                        }
                         if view.surface.is_none() {
-                            if let Some(s) = window.create_wgpu_surface(
-                                sw.max(64),
-                                sh.max(64),
-                                wgpu::TextureFormat::Bgra8UnormSrgb,
-                            ) {
+                            // Until the window has a new device, a new
+                            // surface is on the lost one too; the window
+                            // renders every view again once it has one.
+                            if let Some(s) = window
+                                .create_wgpu_surface(
+                                    sw.max(64),
+                                    sh.max(64),
+                                    wgpu::TextureFormat::Bgra8UnormSrgb,
+                                )
+                                .filter(|s| !s.is_device_lost())
+                            {
                                 view.surface = Some(s);
                                 cx.notify();
                             }
