@@ -9,4 +9,3 @@
 # (or a note why there is none), never to wave a new PR through.
 
 crates/third-party/pbgc 810876416 PBGC branch refactor/metadata-only; no upstream PR yet
-crates/third-party/psgc a05c2c4a2 PSGC branch codex/texture-src; no upstream PR yet
