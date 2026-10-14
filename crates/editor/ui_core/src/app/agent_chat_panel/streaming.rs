@@ -242,8 +242,8 @@ impl AgentChatPanel {
         }
 
         // Validate and convert tool schemas
-        let tools: Vec<agent_chat_core::ToolDefinition> = self
-            .tool_registry
+        let run_registry = self.registry_with_mcp();
+        let tools: Vec<agent_chat_core::ToolDefinition> = run_registry
             .definitions()
             .into_iter()
             .filter_map(|def| {
@@ -283,7 +283,7 @@ impl AgentChatPanel {
         let mut config = RunConfig::new(
             provider.clone(),
             model.clone(),
-            self.tool_registry.clone(),
+            run_registry.clone(),
             workspace_root,
         )
         .with_profile(profile);
@@ -296,6 +296,9 @@ impl AgentChatPanel {
             activate_open_editor_request: None,
         };
         config.safety.policy = self.confirm_policy;
+        if let Some(mcp) = &self.mcp {
+            mcp.apply_classification(&mut config.safety.classifier);
+        }
 
         // "Use AI to keep long chats on track": with it off no steward exists
         // and no extra request is made. The steward model is the setting's

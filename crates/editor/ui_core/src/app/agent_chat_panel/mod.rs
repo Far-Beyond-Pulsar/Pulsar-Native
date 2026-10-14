@@ -4,6 +4,7 @@ mod chat_history;
 mod chat_storage;
 mod context;
 mod custom_provider_wizard;
+mod mcp;
 mod panel;
 mod provider_catalog;
 mod provider_selection;
@@ -1443,6 +1444,7 @@ impl Render for AgentChatPanel {
                     .bg(cx.theme().background)
                     .children(self.render_pinned_strip(cx))
                     .children(self.render_safety_bar(cx))
+                    .children(self.render_mcp_settings(cx))
                     // Input row: text input + send/stop
                     .child(
                         h_flex()
@@ -1473,6 +1475,7 @@ impl Render for AgentChatPanel {
                                 )
                             })
                             .child(self.render_steward_controls(cx))
+                            .children(self.render_mcp_button(cx))
                             .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")

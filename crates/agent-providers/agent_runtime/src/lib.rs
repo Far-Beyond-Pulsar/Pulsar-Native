@@ -17,7 +17,7 @@ mod persist;
 mod preview;
 mod profile;
 mod project;
-mod router;
+pub mod router;
 mod run;
 mod taint;
 mod summary;
@@ -97,6 +97,6 @@ pub use run::{
     UiReply, CANCELLED_MESSAGE,
 };
 pub use taint::{
-    entry_taints, is_untrusted_path, ConfirmPolicy, TaintTracker, ToolClass, ToolClassifier,
+    entry_taints, is_mcp_tool, is_untrusted_path, ConfirmPolicy, MCP_TOOL_PREFIX, TaintTracker, ToolClass, ToolClassifier,
 };
 pub use run_store::{ChildReport, RunRecord, RunStatus, RunStore};

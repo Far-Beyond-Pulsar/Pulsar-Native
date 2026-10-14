@@ -87,6 +87,9 @@ pub struct AgentChatPanel {
     pub(crate) drift_warning: Option<agent_runtime::DriftWarning>,
     /// Audit trail of what the steward and the engine did to the context.
     pub(crate) steward_log: Vec<String>,
+    /// External MCP servers (.pulsar/mcp.json); `None` when none are configured.
+    pub(crate) mcp: Option<Arc<agent_mcp::McpManager>>,
+    pub(crate) mcp_open: bool,
     /// Detected pin candidates the user dismissed (by text).
     pub(crate) dismissed_pin_candidates: Vec<String>,
     /// The pin or proposal being edited in the Pinned context strip.

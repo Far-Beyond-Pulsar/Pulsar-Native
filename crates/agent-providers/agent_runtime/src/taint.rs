@@ -104,6 +104,16 @@ const READ_TOOLS: &[&str] = &[
 
 const EXTERNAL_TOOLS: &[&str] = &["web_search", "fetch_url"];
 
+/// Prefix of every tool that comes from an external MCP server
+/// (`mcp__<server>__<tool>`). Such a tool is `Write`-class unless the project
+/// config or an override says otherwise, and its result is always untrusted.
+pub const MCP_TOOL_PREFIX: &str = "mcp__";
+
+/// Is this tool served by an external MCP server?
+pub fn is_mcp_tool(name: &str) -> bool {
+    name.starts_with(MCP_TOOL_PREFIX)
+}
+
 /// Tools whose result is a sub-agent's output, which is untrusted.
 const SUBAGENT_RESULT_TOOLS: &[&str] = &["await_subagent", "get_subagent_result", "read_run"];
 
@@ -156,6 +166,8 @@ impl ToolClassifier {
         if READ_TOOLS.contains(&name) || FILE_READ_TOOLS.contains(&name) {
             return ToolClass::Read;
         }
+        // MCP tools fall through to Write like every unknown tool: a tool
+        // marked read-only in the config gets an explicit `Read` override.
         // `call_plugin_tool` / `execute_plugin_tool` run arbitrary plugin
         // code, so they fall through to Write like every unknown tool.
         ToolClass::Write
@@ -163,6 +175,10 @@ impl ToolClassifier {
 
     /// Does the result of this call put untrusted content in the context?
     pub fn taints_on_result(&self, name: &str, args: &Value, workspace_root: &Path) -> bool {
+        // An MCP server is outside our trust boundary, read-only or not.
+        if is_mcp_tool(name) {
+            return true;
+        }
         match self.classify(name) {
             ToolClass::External => true,
             _ if SUBAGENT_RESULT_TOOLS.contains(&name) => true,
