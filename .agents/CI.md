@@ -2,9 +2,9 @@
 
 | Workflow | When | What |
 |---|---|---|
-| `ci.yml` | PR (non-draft), push to `main`, nightly, manual | fmt, workflow lint, clippy + guards + nextest on **Linux**, packaging smoke test, pin checks |
+| `ci.yml` | PR (non-draft), push to `main`, nightly, manual | fmt (Pulsar-Native's own crates, `scripts/fmt-check.sh`), workflow lint, clippy + guards + nextest on **Linux**, packaging smoke test, pin checks |
 | `ci.yml` (`cross-platform`, smoke on macOS/Windows) | `main`, nightly, `gh workflow run CI -f full=true` | Windows/macOS compile check and packaging smoke test; never per PR |
-| `security.yml` | PRs touching manifests; weekly | dependency review, `cargo audit` |
+| `security.yml` | PRs touching manifests; weekly | dependency review (needs the repo's Dependency graph enabled), `cargo audit` |
 | `release.yml` | push to `main` with a version bump | full release gate and builds |
 | `pr-release-guard.yml` | PR | blocks `[FORCE-RELEASE]` commits |
 

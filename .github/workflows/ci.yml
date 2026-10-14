@@ -61,16 +61,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # The workspace manifest names members inside submodules, so cargo
+      # cannot load it without them.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          submodules: recursive
 
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           cache: false
 
+      # Pulsar-Native's own crates; the submodules' code is checked by their
+      # own repositories (#1375).
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: scripts/fmt-check.sh
 
   # Workflow files are code: lint them so a typo fails here, not at 3am.
   workflows:
