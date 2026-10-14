@@ -86,10 +86,6 @@ impl AnthropicProvider {
                     system_parts.push(message.content.clone());
                 }
 
-                ChatRole::AgentEvent => {
-                    system_parts.push(format!("[Engine event]\n{}", message.content));
-                }
-
                 ChatRole::User => {
                     out_messages.push(json!({
                         "role": "user",

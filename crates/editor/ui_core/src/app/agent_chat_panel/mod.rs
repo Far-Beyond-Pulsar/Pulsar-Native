@@ -5,7 +5,6 @@ mod chat_storage;
 mod context;
 mod custom_provider_wizard;
 mod panel;
-mod prompt_ranking;
 mod provider_catalog;
 mod provider_selection;
 mod render;
@@ -13,6 +12,7 @@ mod render_header;
 mod render_overlays;
 mod streaming;
 mod subagent;
+mod subagent_executor;
 pub mod types;
 
 pub use panel::AgentChatPanel;
@@ -20,9 +20,10 @@ pub(crate) use panel::SubagentCompletionMode;
 pub use types::*;
 
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
+    ChatProvider, ProviderCrate, ProviderEntry, ProviderRegistry,
 };
 use agent_chat_tools::ToolRegistry;
+use agent_runtime::{Ledger, LedgerEntry};
 use agent_provider_anthropic::AnthropicProviderCrate;
 use agent_provider_aws_bedrock::AwsBedrockProviderCrate;
 use agent_provider_demo_random::DemoRandomProviderCrate;
@@ -1427,8 +1428,8 @@ impl Render for AgentChatPanel {
                                                 .ghost()
                                                 .tooltip("Stop generation")
                                                 .on_click(cx.listener(|this, _, _, _cx| {
-                                                    if let Some(tx) = this.cancel_tx.take() {
-                                                        let _ = tx.try_send(());
+                                                    if let Some(cancel) = this.cancel.take() {
+                                                        cancel.cancel();
                                                     }
                                                 })),
                                         ),

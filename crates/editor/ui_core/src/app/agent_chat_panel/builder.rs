@@ -1,5 +1,5 @@
 use crate::custom_providers;
-use agent_chat_core::{ChatMessage, ChatRole, ProviderConfig, ProviderCrate};
+use agent_chat_core::{ProviderConfig, ProviderCrate};
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProviderCrate;
 use agent_provider_aws_bedrock::AwsBedrockProviderCrate;
@@ -285,15 +285,12 @@ impl AgentChatPanel {
             streaming_message_ix: None,
             streaming_display_item_ix: None,
             pending_rollback_confirm_ix: None,
-            messages: vec![ChatMessage {
-                role: ChatRole::System,
-                content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
-                tool_call_id: None,
-                tool_calls: vec![],
-            }],
+            ledger: agent_runtime::Ledger::with_system_prompt(
+                "Agent Chat is ready. Choose provider/model and ask anything about your project.",
+            ),
             display_items: vec![],
             display_item_heights: HashMap::new(),
-            cancel_tx: None,
+            cancel: None,
             pending_subagent_events: std::collections::VecDeque::new(),
             is_processing_subagent_event: false,
             processing_subagent_id: None,

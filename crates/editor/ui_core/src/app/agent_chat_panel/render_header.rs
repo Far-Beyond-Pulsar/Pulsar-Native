@@ -64,7 +64,7 @@ impl AgentChatPanel {
 
         // ── Right: Chat History dropdown ──
         let chat_history_list = self.chat_history_list.clone();
-        let current_title = Self::inferred_chat_title(&self.messages);
+        let current_title = Self::inferred_chat_title(&self.ledger);
         let chat_label = if current_title.len() > 40 {
             format!("{}...", &current_title[..37])
         } else if current_title.is_empty() {
@@ -218,7 +218,7 @@ impl AgentChatPanel {
         let total_chars = self.active_context_chars();
         let sliver_chars = Self::COMPACTION_SUMMARY_CHAR_BUDGET;
         let usable_chars = total_chars.saturating_sub(sliver_chars);
-        let used: usize = self.messages.iter().map(|m| m.content.len()).sum();
+        let used: usize = self.ledger.char_len();
         let fill_pct = (used as f32 / usable_chars.max(1) as f32).min(1.0);
         let sliver_pct = sliver_chars as f32 / total_chars.max(1) as f32;
 

@@ -176,11 +176,9 @@ pub struct ProviderDefinition {
     pub deletable: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PersistedChatMessage {
-    pub role: String,
-    pub content: String,
-}
+/// One saved ledger entry. Files from before the ledger existed (including
+/// the retired `agent_event` role) still deserialize; see `agent_runtime::persist`.
+pub type PersistedChatMessage = agent_runtime::PersistedEntry;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatSessionFile {

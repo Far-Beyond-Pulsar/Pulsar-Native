@@ -13,10 +13,10 @@ impl AgentChatPanel {
 
         self.pending_rollback_confirm_ix = None;
         self.display_items.truncate(display_ix + 1);
-        self.messages.truncate(message_index + 1);
-        if self.messages.is_empty() {
-            self.messages
-                .push(Self::default_system_message(&self.tool_registry));
+        self.ledger.truncate(message_index + 1);
+        if self.ledger.is_empty() {
+            self.ledger
+                .push(LedgerEntry::system(Self::default_system_prompt(&self.tool_registry)));
         }
 
         self.streaming_message_ix = None;
@@ -40,14 +40,16 @@ impl AgentChatPanel {
 
         self.pending_rollback_confirm_ix = None;
         self.display_items.truncate(display_ix + 1);
-        let mut forked_messages = self.messages[..=message_index].to_vec();
-        if forked_messages.is_empty() {
-            forked_messages.push(Self::default_system_message(&self.tool_registry));
+        let mut forked_ledger = self.ledger.prefix(message_index + 1);
+        if forked_ledger.is_empty() {
+            forked_ledger.push(LedgerEntry::system(Self::default_system_prompt(
+                &self.tool_registry,
+            )));
         }
 
         self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
         self.current_chat_created_at = Self::now_epoch_secs();
-        self.messages = forked_messages;
+        self.ledger = forked_ledger;
         self.streaming_message_ix = None;
         self.streaming_display_item_ix = None;
         self.display_item_heights.clear();

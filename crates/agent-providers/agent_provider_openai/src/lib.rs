@@ -981,7 +981,6 @@ fn map_role(role: ChatRole) -> &'static str {
         ChatRole::User => "user",
         ChatRole::Assistant => "assistant",
         ChatRole::Tool => "tool",
-        ChatRole::AgentEvent => "system",
     }
 }
 

@@ -1,3 +1,4 @@
+use agent_runtime::{LedgerEntry, SubagentReport, SubagentStatus};
 use gpui::*;
 use std::collections::VecDeque;
 
@@ -168,35 +169,34 @@ impl AgentChatPanel {
         self.is_processing_subagent_event = true;
         self.processing_subagent_id = Some(subagent_id.to_string());
 
+        // The report is data for the model (see `agent_runtime::project`), so it
+        // states what happened and where to look, never what to do next.
+        let status = SubagentStatus::parse(status);
         let result_preview = agent_chat_tools::get_subagent_result_preview(subagent_id);
-        let preview_block = match &result_preview {
-            Some(preview) => format!("\n\nFindings preview:\n{preview}"),
-            None => String::new(),
-        };
-        let detail_hint = if result_preview.is_some() {
-            format!(
-                "Call get_subagent_result(\"{subagent_id}\") for the full transcript and file references if needed. "
-            )
-        } else {
-            String::new()
+        let mut summary = format!("Sub-agent '{name}' finished with status {}.", status.as_str());
+        let mut refs = Vec::new();
+        if let Some(preview) = &result_preview {
+            summary.push_str(&format!("\n\nFindings preview:\n{preview}"));
+            refs.push(format!(
+                "full transcript and file references: get_subagent_result(\"{subagent_id}\")"
+            ));
+        }
+
+        let report = SubagentReport {
+            run_id: subagent_id.to_string(),
+            status,
+            summary,
+            refs,
         };
 
-        let event_content = format!(
-            "Sub-agent '{name}' (id={subagent_id}) completed — status: {status}.{preview_block}\n\n\
-             Integrate these findings into the current work. \
-             {detail_hint}\
-             Update your task list with task_list_update if any tasks changed state."
-        );
-
-        let launched = self.launch_internal_agent_event(event_content, cx);
+        let launched = self.launch_subagent_report(report, cx);
         if !launched {
             self.is_processing_subagent_event = false;
             self.processing_subagent_id = None;
         }
     }
 
-    fn launch_internal_agent_event(&mut self, content: String, cx: &mut Context<Self>) -> bool {
-        use agent_chat_core::ChatMessage;
+    fn launch_subagent_report(&mut self, report: SubagentReport, cx: &mut Context<Self>) -> bool {
         let provider_id = self
             .active_provider()
             .map(|p| p.id)
@@ -206,12 +206,7 @@ impl AgentChatPanel {
             return false;
         };
 
-        self.messages.push(ChatMessage {
-            role: agent_chat_core::ChatRole::AgentEvent,
-            content,
-            tool_call_id: None,
-            tool_calls: vec![],
-        });
+        self.ledger.push(LedgerEntry::subagent_report(report));
 
         self.launch_provider_request(provider, None, cx);
         true

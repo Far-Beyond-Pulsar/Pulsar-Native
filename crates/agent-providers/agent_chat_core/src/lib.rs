@@ -72,7 +72,6 @@ pub enum ChatRole {
     User,
     Assistant,
     Tool,
-    AgentEvent,
 }
 
 #[derive(Clone, Debug)]

@@ -159,6 +159,13 @@ These bridge the engine with external runtimes: physics (rapier3d), rendering
 One crate per LLM backend. Each implements the `ChatProvider` trait from
 `agent_chat_core`. Tool execution is centralized in `agent_chat_tools`.
 
+`agent_runtime` (no UI deps) owns the typed conversation `Ledger`, the
+`project()` function that is the only place deciding message roles (sub-agent
+reports and engine notices are delimited data envelopes, never system/instruction
+messages), the on-disk `PersistedEntry` form (old `agent_event` chats migrate on
+load), context compaction, and `run_loop`, which emits `RunEvent`s. The chat
+panel in `ui_core` is a subscriber.
+
 22 providers: anthropic, aws_bedrock, azure_openai, cohere, deepseek,
 demo_random, docker_model_runner, fireworks, gemini, github_copilot, groq,
 llama_cpp, lmstudio, mistral, ollama, openai, openrouter, perplexity,

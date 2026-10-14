@@ -177,6 +177,7 @@ pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 # ---------- Agent Providers ----------
 agent_chat_core                    = { path = "crates/agent-providers/agent_chat_core" }
 agent_chat_tools                   = { path = "crates/agent-providers/agent_chat_tools" }
+agent_runtime                      = { path = "crates/agent-providers/agent_runtime" }
 agent_provider_demo_random         = { path = "crates/agent-providers/agent_provider_demo_random" }
 agent_provider_github_copilot      = { path = "crates/agent-providers/agent_provider_github_copilot" }
 agent_provider_openai              = { path = "crates/agent-providers/agent_provider_openai" }
