@@ -1252,9 +1252,9 @@ pattern = "mirror-replay"
 file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
 count = 1
 owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
-disposition = "keep: attaches the one shared mirror. Phase 1 removed its fixed snapshot-and-reinsert list; SceneDB's attach_gpu_mirror now writes every existing GPU-bearing component of every schema (SceneDB 358ec86)"
+disposition = "keep: attaches the one shared mirror. Phase 1 removed its fixed snapshot-and-reinsert list; SceneDB's attach_gpu_mirror now writes every existing GPU-bearing component of every schema (SceneDB 358ec86). A frame on another device (the old one lost) rebuilds the renderer, and ensure_gpu_mirror moves the mirror to the new device, which writes the world into it again (SceneDB#84)"
 target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
-test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs"
+test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs; crates/core/engine_backend/tests/device_loss.rs (the_scene_gpu_copy_follows_the_renderer_onto_a_new_device)"
 status = "verified"
 
 [[site]]
