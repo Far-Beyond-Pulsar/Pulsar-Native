@@ -306,6 +306,17 @@ test = "crates/renderer/helio/crates/helio-component/src/components/spline_compo
 status = "verified"
 
 [[class]]
+name = "SkeletalMeshComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::skeletal_mesh_component"
+disposition = "render: a skinned mesh named by typed asset ids (mesh, skeleton, animation) that SceneDB loads and binds; it writes the shared mesh pools plus its skin stream and bone palette, and a derived StaticMeshDraw row, so the scene join draws it like a static mesh with the palette applied in mesh space. Its tick advances playback; a physics pose can replace the animated one"
+target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
+test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
+status = "unverified"
+
+[[class]]
 name = "StaticMeshComponent"
 category = "Rendering"
 world_registered = true
@@ -603,6 +614,20 @@ disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceR
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
 status = "verified"
+
+[[schema]]
+type = "SkeletalMeshComponent"
+path = "helio_component::components::skeletal_mesh_component::SkeletalMeshComponent"
+buffers = ["builtin_mesh_index", "builtin_mesh_vertex", "skeletal_bone_palette", "skeletal_skin_vertices"]
+clears_on_remove = true
+releases_var_len = true
+registered = true
+writer = "its own SceneDB dispatch (geometry in the shared mesh pools, skin vertices, current and previous bone palettes) and the derived StaticMeshDraw registration (bounds, movable flag, one section per mesh section), on every insert, write, removal and replay"
+owner = "helio_component::components::skeletal_mesh_component"
+disposition = "keep: the authored skinned mesh instance; the scene join draws it from its own rows joined to its owner"
+target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
+test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
+status = "unverified"
 
 [[schema]]
 type = "StaticMeshComponent"
@@ -1811,8 +1836,28 @@ test = "crates/renderer/helio/crates/helio-default-graphs/tests/scene_join.rs"
 status = "verified"
 
 [[buffer]]
+key = "skeletal_bone_palette"
+producers = ["SkeletalMeshComponent"]
+consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent"]
+owner = "helio_component (SkeletalMeshComponent)"
+disposition = "keep: each instance's current and previous joint matrices, in the mesh's own space; passes skin the vertex before the instance's model matrix, so a moved camera origin needs nothing here"
+target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
+test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
+status = "unverified"
+
+[[buffer]]
+key = "skeletal_skin_vertices"
+producers = ["SkeletalMeshComponent"]
+consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent"]
+owner = "helio_component (SkeletalMeshComponent)"
+disposition = "keep: four joint indices and weights per vertex, parallel to builtin_mesh_vertex so static geometry keeps its vertex layout"
+target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
+test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
+status = "unverified"
+
+[[buffer]]
 key = "builtin_mesh_index"
-producers = ["MeshComponent", "StaticMeshComponent"]
+producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
 consumers = ["helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: same as builtin_mesh_vertex"
@@ -1822,7 +1867,7 @@ status = "verified"
 
 [[buffer]]
 key = "builtin_mesh_vertex"
-producers = ["MeshComponent", "StaticMeshComponent"]
+producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
 consumers = ["helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: authored StaticMeshComponent pools are the canonical geometry; retire or merge the second, pass-owned producer"
@@ -2317,9 +2362,9 @@ status = "verified"
 [[pass]]
 crate = "helio-pass-depth-prepass"
 in_default_graph = false
-reads = ["builtin_mesh_index", "builtin_mesh_vertex"]
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "skeletal_bone_palette", "skeletal_skin_vertices"]
 owner = "helio-default-graphs"
-disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads builtin_mesh_index, builtin_mesh_vertex)"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads builtin_mesh_index, builtin_mesh_vertex, skeletal_bone_palette, skeletal_skin_vertices)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: not in a production graph"
 status = "out-of-scope"
@@ -2367,7 +2412,7 @@ status = "verified"
 [[pass]]
 crate = "helio-pass-forward-lit"
 in_default_graph = true
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights", "skeletal_bone_palette", "skeletal_skin_vertices"]
 owner = "helio-default-graphs (mapping); helio-pass-forward-lit (algorithm)"
 disposition = "not in the engine's graph: part of Helio's forward graph, not the engine's deferred graph"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
@@ -2387,7 +2432,7 @@ status = "verified"
 [[pass]]
 crate = "helio-pass-gbuffer"
 in_default_graph = true
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights", "skeletal_bone_palette", "skeletal_skin_vertices"]
 owner = "helio-default-graphs (mapping); helio-pass-gbuffer (algorithm)"
 disposition = "keep: draws the joined mesh rows and the authored mesh pools (Phase 2)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
@@ -2488,7 +2533,7 @@ status = "unfinished"
 [[pass]]
 crate = "helio-pass-portal-instances"
 in_default_graph = true
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "portal_views"]
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "portal_views", "skeletal_bone_palette", "skeletal_skin_vertices"]
 owner = "helio-default-graphs (mapping); helio-pass-portal-instances (algorithm)"
 disposition = "runs in the editor graph, but nothing authored feeds it: portals (Phase 4)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
@@ -2528,7 +2573,7 @@ status = "out-of-scope"
 [[pass]]
 crate = "helio-pass-shadow"
 in_default_graph = true
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials"]
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "skeletal_bone_palette", "skeletal_skin_vertices"]
 owner = "helio-default-graphs (mapping); helio-pass-shadow (algorithm)"
 disposition = "keep: draws the authored mesh pools into shadow maps for the joined lights"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
@@ -2618,7 +2663,7 @@ status = "out-of-scope"
 [[pass]]
 crate = "helio-pass-transparent"
 in_default_graph = true
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights", "skeletal_bone_palette", "skeletal_skin_vertices"]
 owner = "helio-default-graphs (mapping); helio-pass-transparent (algorithm)"
 disposition = "keep: reads the authored mesh pools, materials and joined lights, all verified upstream; the pass runs in the editor graph"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
@@ -2721,6 +2766,26 @@ status = "verified"
 # asset by AssetId needs no caller-side loading: the world loads it off the
 # write path, binds it into every dependent and reloads it when its source
 # changes.
+
+[[site]]
+pattern = "asset-kind"
+file = "crates/renderer/helio/crates/helio-component/src/components/skeletal_mesh_component.rs"
+count = 3
+owner = "helio_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
+disposition = "keep: the skeletal mesh, skeleton and animation sequence kinds. Their loaders decode the asset files on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh or pose"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
+status = "unverified"
+
+[[site]]
+pattern = "asset-binding"
+file = "crates/renderer/helio/crates/helio-component/src/components/skeletal_mesh_component.rs"
+count = 3
+owner = "helio_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
+disposition = "keep: binds a loaded skeletal mesh, skeleton or animation into SkeletalMeshComponent and refreshes its pose; the world calls them for every component naming the asset, on load and on reload"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
+status = "unverified"
 
 [[site]]
 pattern = "asset-kind"
