@@ -34,6 +34,7 @@ mod time_travel;
 pub mod testing;
 mod run_ext;
 mod report_verify;
+pub mod prefetch;
 pub mod trust;
 
 #[cfg(test)]

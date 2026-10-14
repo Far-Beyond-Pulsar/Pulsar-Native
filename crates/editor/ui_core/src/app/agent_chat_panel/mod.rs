@@ -8,6 +8,7 @@ mod custom_provider_wizard;
 mod mcp;
 mod panel;
 mod plan_memory;
+mod prefetch;
 mod provider_catalog;
 mod provider_selection;
 mod render;
@@ -1453,6 +1454,7 @@ impl Render for AgentChatPanel {
                     .children(self.render_pinned_strip(cx))
                     .children(self.render_safety_bar(cx))
                     .children(self.render_mcp_settings(cx))
+                    .children(self.render_prefetch_tray(cx))
                     // Input row: text input + send/stop
                     .child(
                         h_flex()
@@ -1485,6 +1487,7 @@ impl Render for AgentChatPanel {
                             .child(self.render_plan_memory_controls(cx))
                             .child(self.render_steward_controls(cx))
                             .child(self.render_cascade_controls(cx))
+                            .child(self.render_prefetch_toggle(cx))
                             .children(self.render_mcp_button(cx))
                             .child(self.render_confirm_policy_button(cx))
                             .child(

@@ -251,6 +251,16 @@ impl AgentChatPanel {
                     }
                 },
             ),
+            // Typing drives the (opt-in) suggested-context lookup.
+            cx.subscribe_in(
+                &prompt_input,
+                window,
+                |this, _, event: &ui::input::InputEvent, _window, cx| {
+                    if matches!(event, ui::input::InputEvent::Change) {
+                        this.on_prompt_changed(cx);
+                    }
+                },
+            ),
             cx.subscribe(
                 &chat_history_list,
                 move |this, _, event: &SearchableListEvent<ChatHistoryEntry>, cx| {
@@ -324,6 +334,7 @@ impl AgentChatPanel {
             pin_edit: None,
             pin_edit_input,
             plan_memory: super::plan_memory::PlanMemoryState::new(plan_edit_input, memory_edit_input),
+            prefetch: super::prefetch::PrefetchState::load(),
             auto_scroll: true,
             chat_viewport_height: px(0.0),
             _subscriptions: subscriptions,

@@ -101,6 +101,8 @@ pub struct AgentChatPanel {
     pub(crate) pin_edit_input: Entity<InputState>,
     /// Plan mode toggle, the plan under review and project memory.
     pub(crate) plan_memory: super::plan_memory::PlanMemoryState,
+    /// Suggested-context tray (off by default).
+    pub(crate) prefetch: super::prefetch::PrefetchState,
     pub(crate) auto_scroll: bool,
     pub(crate) chat_viewport_height: Pixels,
     pub(crate) _subscriptions: Vec<Subscription>,
