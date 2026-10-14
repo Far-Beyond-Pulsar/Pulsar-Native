@@ -1127,18 +1127,11 @@ fn write_durable_asset_id_manifest(path: &Path, manifest: &DurableAssetIdManifes
 }
 
 fn registered_file_type(path: &Path) -> Option<String> {
-    // Never block here. `ui_core` creates editors while holding the plugin
+    // Lock-free on purpose. `ui_core` creates editors while holding the plugin
     // manager's write lock, and an editor may refresh this index from that same
-    // thread; a blocking `read()` would then wait on its own write lock forever
-    // (`parking_lot` locks are not reentrant). A skipped lookup is harmless: the
-    // type column is kept from earlier rows (`COALESCE` on upsert) and filled in
-    // by the next refresh.
-    let manager = plugin_manager::global()?;
-    let manager = manager.try_read()?;
-    manager
-        .file_type_registry()
-        .get_file_type_for_path(path)
-        .map(|file_type| file_type.as_str().to_owned())
+    // thread; taking the manager's lock here would wait on itself forever
+    // (`parking_lot` locks are not reentrant).
+    plugin_manager::file_type_for_path(path).map(|file_type| file_type.as_str().to_owned())
 }
 
 #[cfg(test)]

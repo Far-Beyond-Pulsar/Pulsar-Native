@@ -2,92 +2,41 @@
 //!
 //! These registries maintain the mapping between file types, editors, and plugins.
 
+use arc_swap::ArcSwap;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 
 // ============================================================================
 // File Type Registry
 // ============================================================================
 
-/// Registry for all file types provided by plugins.
-pub struct FileTypeRegistry {
-    /// All registered file types, indexed by FileTypeId
-    file_types: HashMap<FileTypeId, FileTypeDefinition>,
-
+/// An immutable copy of what resolving a path to a file type needs.
+///
+/// The registry publishes a fresh one on every change, and anything can read
+/// the current one without taking a lock (see [`FileTypeRegistry::lookup_handle`]).
+/// That matters because the registry normally lives behind the plugin manager's
+/// `RwLock`, which `ui_core` holds for writing while it builds an editor: code
+/// running inside that editor (the file index, for one) must be able to resolve
+/// a file type without waiting for a lock its own thread is holding.
+#[derive(Clone, Default)]
+pub struct FileTypeLookup {
     /// Map from file extension to FileTypeId
     /// For folder-based files, this is the folder extension
     extension_to_type: HashMap<String, FileTypeId>,
 
-    /// Map from FileTypeId to PluginId (which plugin provides this type)
-    type_to_plugin: HashMap<FileTypeId, PluginId>,
+    /// Folder-based file types and the marker file that identifies each.
+    folder_markers: HashMap<FileTypeId, String>,
 }
 
-impl FileTypeRegistry {
-    pub fn new() -> Self {
-        Self {
-            file_types: HashMap::new(),
-            extension_to_type: HashMap::new(),
-            type_to_plugin: HashMap::new(),
-        }
-    }
-
-    /// Register a file type from a plugin.
-    pub fn register(&mut self, file_type: FileTypeDefinition, plugin_id: PluginId) {
-        let file_type_id = file_type.id.clone();
-        let extension = file_type.extension.clone();
-
-        // Store the file type
-        self.file_types.insert(file_type_id.clone(), file_type);
-
-        // Map extension to type
-        self.extension_to_type
-            .insert(extension, file_type_id.clone());
-
-        // Map type to plugin
-        self.type_to_plugin.insert(file_type_id, plugin_id);
-    }
-
-    /// Unregister all file types from a plugin.
-    pub fn unregister_by_plugin(&mut self, plugin_id: &PluginId) {
-        // Find all file types from this plugin
-        let file_type_ids: Vec<FileTypeId> = self
-            .type_to_plugin
-            .iter()
-            .filter(|(_, pid)| *pid == plugin_id)
-            .map(|(ftid, _)| ftid.clone())
-            .collect();
-
-        // Remove them
-        for file_type_id in file_type_ids {
-            self.unregister(&file_type_id);
-        }
-    }
-
-    /// Unregister a specific file type.
-    pub fn unregister(&mut self, file_type_id: &FileTypeId) {
-        if let Some(file_type) = self.file_types.remove(file_type_id) {
-            self.extension_to_type.remove(&file_type.extension);
-            self.type_to_plugin.remove(file_type_id);
-        }
-    }
-
-    /// Get a file type by ID.
-    pub fn get_file_type(&self, file_type_id: &FileTypeId) -> Option<&FileTypeDefinition> {
-        self.file_types.get(file_type_id)
-    }
-
-    /// Get all registered file types.
-    pub fn get_all_file_types(&self) -> Vec<&FileTypeDefinition> {
-        self.file_types.values().collect()
-    }
-
+impl FileTypeLookup {
     /// Get the file type for a path.
     ///
     /// This checks:
     /// 1. If the path is a folder with an extension (folder-based file)
     /// 2. If the path is a regular file with an extension
-    pub fn get_file_type_for_path(&self, path: &Path) -> Option<FileTypeId> {
+    pub fn file_type_for_path(&self, path: &Path) -> Option<FileTypeId> {
         // Check if this is a folder with an extension
         if path.is_dir() {
             if let Some(folder_name) = path.file_name().and_then(|s| s.to_str()) {
@@ -96,10 +45,8 @@ impl FileTypeRegistry {
                     let ext = &folder_name[dot_pos + 1..];
                     if let Some(file_type_id) = self.extension_to_type.get(ext) {
                         // Verify this is a folder-based file type
-                        if let Some(file_type) = self.file_types.get(file_type_id) {
-                            if matches!(file_type.structure, FileStructure::FolderBased { .. }) {
-                                return Some(file_type_id.clone());
-                            }
+                        if self.folder_markers.contains_key(file_type_id) {
+                            return Some(file_type_id.clone());
                         }
                     }
                 }
@@ -107,12 +54,9 @@ impl FileTypeRegistry {
 
             // If no extension found, check for marker files
             // This handles folders like "ExampleClass/" that contain "graph_save.json"
-            for (file_type_id, file_type) in &self.file_types {
-                if let FileStructure::FolderBased { marker_file, .. } = &file_type.structure {
-                    let marker_path = path.join(marker_file);
-                    if marker_path.exists() {
-                        return Some(file_type_id.clone());
-                    }
+            for (file_type_id, marker_file) in &self.folder_markers {
+                if path.join(marker_file).exists() {
+                    return Some(file_type_id.clone());
                 }
             }
         }
@@ -137,6 +81,115 @@ impl FileTypeRegistry {
         }
 
         None
+    }
+}
+
+/// Registry for all file types provided by plugins.
+pub struct FileTypeRegistry {
+    /// All registered file types, indexed by FileTypeId
+    file_types: HashMap<FileTypeId, FileTypeDefinition>,
+
+    /// Map from file extension to FileTypeId
+    /// For folder-based files, this is the folder extension
+    extension_to_type: HashMap<String, FileTypeId>,
+
+    /// Map from FileTypeId to PluginId (which plugin provides this type)
+    type_to_plugin: HashMap<FileTypeId, PluginId>,
+
+    /// The current [`FileTypeLookup`], republished by every mutation. Shared
+    /// by clones of the handle, so readers keep seeing later changes.
+    published: Arc<ArcSwap<FileTypeLookup>>,
+}
+
+impl FileTypeRegistry {
+    pub fn new() -> Self {
+        Self {
+            file_types: HashMap::new(),
+            extension_to_type: HashMap::new(),
+            type_to_plugin: HashMap::new(),
+            published: Arc::new(ArcSwap::from_pointee(FileTypeLookup::default())),
+        }
+    }
+
+    /// A handle to the live, lock-free lookup. It stays current as the
+    /// registry changes; reading it never blocks.
+    pub fn lookup_handle(&self) -> Arc<ArcSwap<FileTypeLookup>> {
+        self.published.clone()
+    }
+
+    /// Rebuild and publish the lookup. Called by every mutation.
+    fn republish(&self) {
+        let folder_markers = self
+            .file_types
+            .iter()
+            .filter_map(|(id, file_type)| match &file_type.structure {
+                FileStructure::FolderBased { marker_file, .. } => {
+                    Some((id.clone(), marker_file.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        self.published.store(Arc::new(FileTypeLookup {
+            extension_to_type: self.extension_to_type.clone(),
+            folder_markers,
+        }));
+    }
+
+    /// Register a file type from a plugin.
+    pub fn register(&mut self, file_type: FileTypeDefinition, plugin_id: PluginId) {
+        let file_type_id = file_type.id.clone();
+        let extension = file_type.extension.clone();
+
+        // Store the file type
+        self.file_types.insert(file_type_id.clone(), file_type);
+
+        // Map extension to type
+        self.extension_to_type
+            .insert(extension, file_type_id.clone());
+
+        // Map type to plugin
+        self.type_to_plugin.insert(file_type_id, plugin_id);
+        self.republish();
+    }
+
+    /// Unregister all file types from a plugin.
+    pub fn unregister_by_plugin(&mut self, plugin_id: &PluginId) {
+        // Find all file types from this plugin
+        let file_type_ids: Vec<FileTypeId> = self
+            .type_to_plugin
+            .iter()
+            .filter(|(_, pid)| *pid == plugin_id)
+            .map(|(ftid, _)| ftid.clone())
+            .collect();
+
+        // Remove them
+        for file_type_id in file_type_ids {
+            self.unregister(&file_type_id);
+        }
+    }
+
+    /// Unregister a specific file type.
+    pub fn unregister(&mut self, file_type_id: &FileTypeId) {
+        if let Some(file_type) = self.file_types.remove(file_type_id) {
+            self.extension_to_type.remove(&file_type.extension);
+            self.type_to_plugin.remove(file_type_id);
+            self.republish();
+        }
+    }
+
+    /// Get a file type by ID.
+    pub fn get_file_type(&self, file_type_id: &FileTypeId) -> Option<&FileTypeDefinition> {
+        self.file_types.get(file_type_id)
+    }
+
+    /// Get all registered file types.
+    pub fn get_all_file_types(&self) -> Vec<&FileTypeDefinition> {
+        self.file_types.values().collect()
+    }
+
+    /// Get the file type for a path (see [`FileTypeLookup::file_type_for_path`]).
+    pub fn get_file_type_for_path(&self, path: &Path) -> Option<FileTypeId> {
+        self.published.load().file_type_for_path(path)
     }
 
     /// Get the plugin that provides a file type.
