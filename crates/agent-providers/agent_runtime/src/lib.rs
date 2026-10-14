@@ -1,7 +1,9 @@
 //! Headless agent runtime: typed ledger, role projector and the agent loop.
 //! No UI dependencies; the chat panel subscribes to [`RunEvent`]s.
 
+mod best_of;
 mod budget_guard;
+mod cascade;
 mod checkpoint;
 mod clearing;
 mod pins;
@@ -29,6 +31,15 @@ mod persist_tests;
 #[cfg(test)]
 mod project_tests;
 
+pub use best_of::{
+    default_verifier, select as select_best_of, AllOf, BestOf, BestOfReport, Candidate, FnVerifier,
+    RefsExistVerifier, SchemaVerifier, Selection, Verdict, Verifier,
+};
+pub use cascade::{
+    has_low_confidence_marker, is_context_overflow, CascadePolicy, CascadeSettings, CascadeState,
+    CascadeTier, Escalation, EscalationReason, EscalationScope, CASCADE_SETTINGS_FILE,
+    LOW_CONFIDENCE_INSTRUCTION, LOW_CONFIDENCE_MARKER,
+};
 pub use budget_guard::{BudgetError, BudgetGuard, RunBudget, SpawnPermit};
 pub use checkpoint::{
     affected_paths, child_checkpoint_id, descendant_checkpoints, has_checkpoint,

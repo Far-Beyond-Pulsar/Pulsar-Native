@@ -558,6 +558,11 @@ impl ChildJob {
             }
         }
         config.tools = definitions_of(&config.tool_registry);
+        // Best-of-N is a per-harness option; it is off unless the harness asks.
+        config.best_of = crate::best_of::BestOf::new(
+            self.harness.best_of,
+            crate::best_of::default_verifier(&config.tools, config.workspace_root.clone()),
+        );
 
         config.safety = template.safety.for_child(
             child_checkpoint_id(&self.parent.safety_run_id, &self.id),

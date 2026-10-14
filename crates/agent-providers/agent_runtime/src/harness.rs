@@ -102,6 +102,9 @@ pub struct Harness {
     pub max_steps: u32,
     /// Levels of sub-agents this harness's runs may start (0 = leaf).
     pub max_depth: u32,
+    /// Best-of-N for this harness's runs (final report and invalid tool
+    /// calls); below 2 is off.
+    pub best_of: u32,
     /// Sections the final answer is parsed into.
     pub result_schema: Vec<String>,
     pub permissions: HarnessPermissions,
@@ -226,6 +229,7 @@ impl Harness {
             context_budget_tokens: None,
             max_steps: 24,
             max_depth: 0,
+            best_of: 0,
             result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
             permissions: HarnessPermissions::ReadOnly,
             origin,
@@ -260,6 +264,12 @@ impl Harness {
                         .scalar()
                         .parse()
                         .map_err(|_| format!("max_depth must be a number, got `{}`", value.scalar()))?
+                }
+                "best_of" => {
+                    harness.best_of = value
+                        .scalar()
+                        .parse()
+                        .map_err(|_| format!("best_of must be a number, got `{}`", value.scalar()))?
                 }
                 "result" | "result_schema" => {
                     let fields = value.list();
@@ -425,6 +435,7 @@ fn builtin(
         context_budget_tokens: None,
         max_steps,
         max_depth,
+        best_of: 0,
         result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
         permissions,
         origin: HarnessOrigin::Builtin,

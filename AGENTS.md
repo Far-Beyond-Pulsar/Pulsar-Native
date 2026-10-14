@@ -29,6 +29,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.pulsar/import_options.json` | Import options per native asset (`engine_fs::import_options`) |
 | `.pulsar/agent_profiles.json` | Per-model agent profile overrides keyed `provider/model` (context size, tool calling, tier, sampling; `agent_runtime::profile`) |
 | `.pulsar/agent_steward.json` | "Use AI to keep long chats on track": `enabled` (off by default), steward `model`, `drift_check`, `auto_accept_trusted` (`agent_runtime::steward`); per-chat override lives in the chat file |
+| `.pulsar/agent_cascade.json` | Cascade routing: `enabled` (off by default), `escalation_model`, `scope` (step/run), trigger thresholds (`agent_runtime::cascade`). Harness frontmatter `best_of: N` enables best-of-N sampling (`agent_runtime::best_of`) |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
 
 ## Workspace

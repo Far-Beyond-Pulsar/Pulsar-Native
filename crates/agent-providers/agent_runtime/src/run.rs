@@ -16,6 +16,10 @@ use agent_chat_core::{
 };
 use agent_chat_tools::{PulsarToolExtras, ToolContext, ToolRegistry};
 
+use crate::best_of::{self, BestOf, BestOfReport, StepContext};
+use crate::cascade::{
+    CascadePolicy, CascadeState, CascadeTier, Escalation, LOW_CONFIDENCE_INSTRUCTION,
+};
 use crate::budget::{usage_from_raw, Budget, Calibrator, TokenEstimator};
 use crate::clearing::{clear_old_tool_results, ClearOptions, CLEARED_PREFIX};
 use crate::compaction::{compact_ledger, compact_ledger_tokens};
@@ -165,6 +169,12 @@ pub enum RunEvent {
         status: SubagentStatus,
         summary: String,
     },
+    /// Cascade routing handed work to the escalation model. The header badge
+    /// and the engine notice come from this.
+    Escalated(Escalation),
+    /// A best-of-N step finished; `replacement` carries the text to show when
+    /// a later candidate won over the one already streamed.
+    BestOf(BestOfReport),
     /// Always the last event, exactly once.
     Finished(Result<ChatResponse, String>),
 }
@@ -219,6 +229,10 @@ pub struct RunConfig {
     pub keep_recent_tool_results: usize,
     /// Results shorter than this many characters are never cleared.
     pub clear_min_chars: usize,
+    /// Cascade routing; `None` (the default) never escalates.
+    pub cascade: Option<CascadePolicy>,
+    /// Best-of-N sampling for hard steps; `None` (the default) samples once.
+    pub best_of: Option<BestOf>,
 }
 
 impl RunConfig {
@@ -256,6 +270,8 @@ impl RunConfig {
             reanchor_every: None,
             keep_recent_tool_results: 4,
             clear_min_chars: 1_500,
+            cascade: None,
+            best_of: None,
         }
     }
 
@@ -394,22 +410,21 @@ fn drive(
     let mut iteration = 0u32;
     let safety = Arc::new(SafetyState::new(&config.safety, ledger, &config.workspace_root));
 
-    let profile = config.profile;
-    let token_mode = profile.context_tokens > 0;
-    let text_mode = profile.tool_calling == ToolCalling::None && !config.tools.is_empty();
-    let router = (profile.is_lite() && !config.tools.is_empty()).then(|| ToolRouter::new(&config.tools));
-    let domain_limit = config
-        .router_limit
-        .unwrap_or_else(|| ToolRouter::limit_for(profile.effective_context()));
-    let budget = Budget::for_profile(&profile);
-    let unit_estimator = TokenEstimator::for_profile(&profile);
+    // Per-model settings; the escalation model may have its own.
+    let primary_mode = Mode::derive(config, config.profile);
+    let escalation_mode = config
+        .cascade
+        .as_ref()
+        .and_then(|policy| policy.profile)
+        .map(|profile| Mode::derive(config, profile));
+    let mut cascade = config
+        .cascade
+        .as_ref()
+        .and_then(|policy| CascadeState::new(policy, &config.model));
     let mut calibrator = Calibrator::default();
     let mut unlocked: Vec<Category> = Vec::new();
     let mut unparsable_streak = 0u32;
     let store = OutputStore::global();
-    // Tool results are cut to a share of the window; characters per token
-    // are pessimistic for JSON-heavy output.
-    let cap_chars = token_mode.then(|| budget.tool_output_cap_tokens(profile.is_lite()) * 5 / 2);
 
     loop {
         if cancel.is_cancelled() {
@@ -433,7 +448,34 @@ fn drive(
             }
         }
 
-        let turn_tools = plan_tools(config, ledger, router.as_ref(), &unlocked, domain_limit);
+        let tier = cascade
+            .as_mut()
+            .map_or(CascadeTier::Primary, CascadeState::begin_request);
+        let mode = match (&escalation_mode, tier) {
+            (Some(mode), CascadeTier::Escalated) => mode,
+            _ => &primary_mode,
+        };
+        let profile = mode.profile;
+        let token_mode = mode.token_mode;
+        let text_mode = mode.text_mode;
+        let router = mode.router.as_ref();
+        let domain_limit = mode.domain_limit;
+        let budget = &mode.budget;
+        let unit_estimator = &mode.unit_estimator;
+        let cap_chars = mode.cap_chars;
+        let (request_model, request_provider) = match (&cascade, tier) {
+            (Some(state), CascadeTier::Escalated) => (
+                state.model_for(tier).to_string(),
+                state
+                    .policy()
+                    .provider
+                    .clone()
+                    .unwrap_or_else(|| config.provider.clone()),
+            ),
+            _ => (config.model.clone(), config.provider.clone()),
+        };
+
+        let turn_tools = plan_tools(config, ledger, router, &unlocked, domain_limit);
         let protocol = text_mode.then(|| text_tools::protocol_prompt(&turn_tools));
         let estimator = unit_estimator.with_scale(calibrator.scale());
 
@@ -500,7 +542,7 @@ fn drive(
         }
 
         let compaction = if token_mode {
-            compact_ledger_tokens(ledger, &profile, &budget, max_budget, &estimator)
+            compact_ledger_tokens(ledger, &profile, budget, max_budget, &estimator)
         } else {
             compact_ledger(ledger, &profile, max_budget, config.summary_char_budget)
         };
@@ -539,9 +581,15 @@ fn drive(
         if let Some(prompt) = &protocol {
             text_tools::inject_protocol(&mut messages, prompt);
         }
+        if cascade
+            .as_ref()
+            .is_some_and(|state| state.wants_confidence_instruction(tier))
+        {
+            text_tools::inject_protocol(&mut messages, LOW_CONFIDENCE_INSTRUCTION);
+        }
         let request_tools = if text_mode { Vec::new() } else { turn_tools.clone() };
         let request = ChatRequest {
-            model: config.model.clone(),
+            model: request_model,
             enable_tool_calls: !request_tools.is_empty(),
             tools: request_tools,
             messages,
@@ -552,12 +600,12 @@ fn drive(
         };
         // What the estimator says before calibration, to learn from usage.
         let unit_estimate = unit_estimator.request(&request.messages, &request.tools);
+        let sample_request = config.best_of.as_ref().map(|_| request.clone());
 
         let mut splitter = ThinkSplitter::default();
         let mut fence_filter = text_mode.then(FenceFilter::new);
         let mut streamed_text = String::new();
-        let result = config
-            .provider
+        let result = request_provider
             .chat_streaming(request, &mut |chunk: String| {
                 if cancel.is_cancelled() {
                     return;
@@ -585,12 +633,38 @@ fn drive(
             Ok(response) => response,
             Err(err) => {
                 tracing::error!("[agent_chat] provider error (iter {iteration}): {err}");
+                // A request that did not fit is retried on the larger model.
+                if let Some(esc) = cascade.as_mut().and_then(|c| c.note_provider_error(&err)) {
+                    announce_escalation(ledger, sink, &esc);
+                    continue;
+                }
                 return Err(err);
             }
         };
 
         if let Some(usage) = usage_from_raw(&response.raw_response) {
             calibrator.observe(unit_estimate, usage.prompt_tokens);
+        }
+
+        if let (Some(options), Some(sample_request)) = (&config.best_of, &sample_request) {
+            let known: Vec<&str> = config.tools.iter().map(|t| t.name.as_str()).collect();
+            let step = StepContext {
+                provider: &request_provider,
+                request: sample_request,
+                parallel: profile.parallel_tools,
+                text_mode,
+                known_tools: &known,
+                cancel,
+            };
+            let (chosen, report) = best_of::refine(options, &step, response);
+            response = chosen;
+            if let Some(report) = report {
+                if report.chosen != 0 {
+                    streamed_text = response.assistant_message.clone().unwrap_or_default();
+                }
+                sink(RunEvent::ContextNotice(report.notice()));
+                sink(RunEvent::BestOf(report));
+            }
         }
 
         if text_mode {
@@ -604,6 +678,15 @@ fn drive(
                 // Tell the model what was wrong and let it try again, but not forever.
                 unparsable_streak += 1;
                 ledger.push(LedgerEntry::assistant(parsed.text));
+                let escalation = cascade.as_mut().and_then(CascadeState::note_malformed);
+                if let Some(esc) = escalation {
+                    unparsable_streak = 0;
+                    ledger.push(LedgerEntry::engine_notice(text_tools::format_errors(
+                        &parsed.errors,
+                    )));
+                    announce_escalation(ledger, sink, &esc);
+                    continue;
+                }
                 if unparsable_streak > 2 {
                     return Err(format!(
                         "The model kept writing malformed tool calls: {}",
@@ -616,8 +699,24 @@ fn drive(
                 continue;
             }
             unparsable_streak = 0;
+            if let Some(state) = cascade.as_mut() {
+                state.note_well_formed();
+            }
             response.tool_calls = parsed.calls;
             response.assistant_message = Some(parsed.text);
+        }
+
+        // An explicit low-confidence reply is dropped and asked again of the
+        // larger model.
+        if let Some(state) = cascade.as_mut() {
+            let reply = response
+                .assistant_message
+                .as_deref()
+                .unwrap_or(streamed_text.as_str());
+            if let Some(esc) = state.note_reply_text(reply) {
+                announce_escalation(ledger, sink, &esc);
+                continue;
+            }
         }
 
         if response.tool_calls.is_empty() {
@@ -649,7 +748,7 @@ fn drive(
 
         let tool_context = make_context(config, sink);
         let meta = MetaTools {
-            router: router.as_ref(),
+            router,
             store,
             cap_chars,
         };
@@ -671,6 +770,9 @@ fn drive(
             touched.push((call.clone(), result.is_error));
             ledger.push(LedgerEntry::tool_exchange(call, result));
         }
+        if let Some(esc) = cascade.as_mut().and_then(|c| c.note_tool_round(&touched)) {
+            announce_escalation(ledger, sink, &esc);
+        }
         let known: Vec<String> = ledger
             .pins_of(crate::ledger::PinKind::FileTouched)
             .into_iter()
@@ -687,6 +789,49 @@ fn drive(
             sink(RunEvent::FilesTouched(added));
         }
     }
+}
+
+/// The per-model values the loop reads each turn.
+struct Mode {
+    profile: ModelProfile,
+    token_mode: bool,
+    text_mode: bool,
+    router: Option<ToolRouter>,
+    domain_limit: usize,
+    budget: Budget,
+    unit_estimator: TokenEstimator,
+    /// Tool results are cut to a share of the window; characters per token
+    /// are pessimistic for JSON-heavy output.
+    cap_chars: Option<usize>,
+}
+
+impl Mode {
+    fn derive(config: &RunConfig, profile: ModelProfile) -> Self {
+        let token_mode = profile.context_tokens > 0;
+        let budget = Budget::for_profile(&profile);
+        Mode {
+            profile,
+            token_mode,
+            text_mode: profile.tool_calling == ToolCalling::None && !config.tools.is_empty(),
+            router: (profile.is_lite() && !config.tools.is_empty())
+                .then(|| ToolRouter::new(&config.tools)),
+            domain_limit: config
+                .router_limit
+                .unwrap_or_else(|| ToolRouter::limit_for(profile.effective_context())),
+            unit_estimator: TokenEstimator::for_profile(&profile),
+            cap_chars: token_mode
+                .then(|| budget.tool_output_cap_tokens(profile.is_lite()) * 5 / 2),
+            budget,
+        }
+    }
+}
+
+/// Tell the user (header badge, notice line) and the escalated model why it
+/// is taking over.
+fn announce_escalation(ledger: &mut Ledger, sink: &EventSink, escalation: &Escalation) {
+    ledger.push(LedgerEntry::engine_notice(escalation.notice()));
+    sink(RunEvent::ContextNotice(escalation.notice()));
+    sink(RunEvent::Escalated(escalation.clone()));
 }
 
 fn make_context(config: &RunConfig, sink: &EventSink) -> ToolContext {
