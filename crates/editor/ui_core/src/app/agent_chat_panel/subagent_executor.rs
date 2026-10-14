@@ -109,6 +109,7 @@ pub(super) fn make_subagent_executor(
                 temperature: Some(0.2),
                 top_p: Some(1.0),
                 max_tokens: Some(4096),
+                response_format: None,
             };
 
             let mut iter_chunks: Vec<String> = Vec::new();

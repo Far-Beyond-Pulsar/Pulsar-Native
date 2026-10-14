@@ -179,7 +179,7 @@ impl DialogWalker {
 fn flatten_exchange(ix: usize, call: &ToolCall, result: &str, out: &mut Vec<Projected>) {
     out.push(plain(
         ChatRole::Assistant,
-        format!("[tool call] {} {}", call.name, call.arguments_json),
+        crate::text_tools::render_call(call),
         vec![ix],
     ));
     out.push(plain(

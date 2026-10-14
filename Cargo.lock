@@ -187,6 +187,7 @@ dependencies = [
  "engine_state",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
 ]
 

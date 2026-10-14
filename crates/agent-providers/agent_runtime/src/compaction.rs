@@ -15,6 +15,8 @@ use crate::project::project_indexed;
 struct Tagged {
     origin: usize,
     message: ChatMessage,
+    /// Size in the budget's unit: characters or estimated tokens.
+    cost: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -31,7 +33,7 @@ fn message_chars(message: &ChatMessage) -> usize {
 }
 
 fn tagged_chars(item: &Tagged) -> usize {
-    message_chars(&item.message)
+    item.cost
 }
 
 fn block_has_tool_chain(messages: &[Tagged]) -> bool {
@@ -179,7 +181,8 @@ fn compact_tagged(
     messages: Vec<Tagged>,
     max_chars: usize,
     summary_budget: usize,
-) -> (Vec<Tagged>, Option<Vec<Tagged>>) {
+    dialog_floor: usize,
+) ->(Vec<Tagged>, Option<Vec<Tagged>>) {
     let total_chars: usize = messages.iter().map(tagged_chars).sum();
     if total_chars <= max_chars {
         return (messages, None);
@@ -209,7 +212,7 @@ fn compact_tagged(
     let dialog_budget = max_chars
         .saturating_sub(system_chars)
         .saturating_sub(summary_budget)
-        .max(1_500);
+        .max(dialog_floor);
 
     let system_messages: Vec<Tagged> = system_blocks
         .iter()
@@ -291,9 +294,13 @@ pub fn compact_messages(
     let tagged = messages
         .into_iter()
         .enumerate()
-        .map(|(origin, message)| Tagged { origin, message })
+        .map(|(origin, message)| Tagged {
+            origin,
+            cost: message_chars(&message),
+            message,
+        })
         .collect();
-    let (kept, dropped) = compact_tagged(tagged, max_chars, summary_budget);
+    let (kept, dropped) = compact_tagged(tagged, max_chars, summary_budget, CHAR_DIALOG_FLOOR);
     (
         kept.into_iter().map(|item| item.message).collect(),
         dropped.map(|items| items.into_iter().map(|item| item.message).collect()),
@@ -316,6 +323,45 @@ pub fn compact_ledger(
     max_chars: usize,
     summary_budget: usize,
 ) -> Option<Compaction> {
+    compact_ledger_by(
+        ledger,
+        profile,
+        max_chars,
+        summary_budget,
+        CHAR_DIALOG_FLOOR,
+        &message_chars,
+    )
+}
+
+/// Same as [`compact_ledger`] but budgeted in estimated tokens.
+pub fn compact_ledger_tokens(
+    ledger: &mut Ledger,
+    profile: &ModelProfile,
+    budget: &crate::budget::Budget,
+    max_tokens: usize,
+    estimator: &crate::budget::TokenEstimator,
+) -> Option<Compaction> {
+    compact_ledger_by(
+        ledger,
+        profile,
+        max_tokens,
+        budget.summary_tokens,
+        budget.dialog_floor(),
+        &|message| estimator.message(message),
+    )
+}
+
+/// Smallest dialog allowance, in characters, compaction may shrink to.
+const CHAR_DIALOG_FLOOR: usize = 1_500;
+
+fn compact_ledger_by(
+    ledger: &mut Ledger,
+    profile: &ModelProfile,
+    max_budget: usize,
+    summary_budget: usize,
+    dialog_floor: usize,
+    cost: &dyn Fn(&ChatMessage) -> usize,
+) -> Option<Compaction> {
     let projected = project_indexed(ledger, profile);
     let entry_lists: Vec<Vec<usize>> = projected.iter().map(|p| p.entries.clone()).collect();
     let tagged: Vec<Tagged> = projected
@@ -323,12 +369,13 @@ pub fn compact_ledger(
         .enumerate()
         .map(|(origin, p)| Tagged {
             origin,
+            cost: cost(&p.message),
             message: p.message,
         })
         .collect();
     let total_messages = tagged.len();
 
-    let (kept, dropped) = compact_tagged(tagged, max_chars, summary_budget);
+    let (kept, dropped) = compact_tagged(tagged, max_budget, summary_budget, dialog_floor);
     let kept_everything = kept.len() == total_messages && dropped.is_none();
     if kept_everything {
         return None;
@@ -443,6 +490,7 @@ pub fn summarize_dropped(
         temperature: Some(0.3),
         top_p: Some(1.0),
         max_tokens: Some(350),
+        response_format: None,
     };
 
     provider

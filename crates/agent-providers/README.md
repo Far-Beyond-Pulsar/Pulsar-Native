@@ -31,3 +31,18 @@ AI provider crates — one per supported backend. Each implements the `ChatProvi
 
 All provider crates depend on `agent_chat_core`. Tool execution is centralized in `agent_chat_tools`.
 
+
+## Constrained decoding (`ChatRequest::response_format`)
+
+Honoured by the self-hosted and OpenAI entries of `agent_provider_openai`; every other provider ignores it.
+
+| Backend | `JsonObject` | `JsonSchema` | `Grammar` (GBNF) |
+|---|---|---|---|
+| Ollama | `format: "json"` | `format: <schema>` | ignored |
+| llama.cpp | `response_format` json_object | `response_format` json_schema | `grammar` |
+| vLLM | `response_format` json_object | `response_format` json_schema (guided JSON) | `guided_grammar` |
+| LM Studio | json_schema `{"type":"object"}` | `response_format` json_schema | ignored |
+| OpenAI | `response_format` json_object | `response_format` json_schema | ignored |
+| Others (Anthropic, Gemini, Copilot, Docker Model Runner, OpenCode, Bedrock, Vertex, custom OpenAI) | ignored | ignored | ignored |
+
+The same entries request `stream_options.include_usage` so `agent_runtime` can budget on real token counts.
