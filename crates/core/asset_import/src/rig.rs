@@ -533,9 +533,12 @@ fn find_by_id(root: &Path, extension: &str, id: &str) -> Option<PathBuf> {
             _ => "skmesh",
         };
         if let Ok(paths) = index.paths_for_asset_id_kind(kind, id) {
+            // The index can lag a move made outside the editor, so each hit
+            // must still be there with the id.
             let mut matching = paths.into_iter().filter(|path| {
                 path.extension()
                     .is_some_and(|found| found.eq_ignore_ascii_case(extension))
+                    && file_id(path, extension).as_deref() == Some(id)
             });
             if let Some(first) = matching.next() {
                 return matching.next().is_none().then_some(first);

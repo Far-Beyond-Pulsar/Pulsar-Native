@@ -351,9 +351,19 @@ fn reimporting_keeps_every_id_and_the_edits_made_since() {
     let skeleton_again = load_skeleton_asset(&skeleton_path).unwrap();
     assert_eq!(skeleton_again.id, skeleton.id);
     assert_eq!(skeleton_again.preview_mesh, Some(other));
-    // No second copy of anything.
-    let files = std::fs::read_dir(root).unwrap().count();
-    assert_eq!(files, 1 + 4, "the source plus four outputs");
+    // No second copy of anything. `.pulsar` holds the project's file index,
+    // not assets.
+    let mut files: Vec<String> = std::fs::read_dir(root)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name != ".pulsar")
+        .collect();
+    files.sort();
+    assert_eq!(
+        files.len(),
+        1 + 4,
+        "the source plus four outputs: {files:?}"
+    );
 }
 
 #[test]
