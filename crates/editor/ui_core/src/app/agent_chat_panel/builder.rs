@@ -285,7 +285,7 @@ impl AgentChatPanel {
             configuring_field_index: 0,
             config_values: HashMap::new(),
             config_error: None,
-            tool_registry: agent_chat_tools::build_default_registry(),
+            tool_registry: Self::build_tool_registry(),
             plugin_bridge,
             provider_tokens: HashMap::new(),
             pending_auth_provider: None,

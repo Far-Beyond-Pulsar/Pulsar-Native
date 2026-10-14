@@ -577,6 +577,7 @@ impl ChildJob {
             self.parent_tainted,
             permissions == HarnessPermissions::ReadOnly,
         );
+        config.safety.sandbox |= self.harness.sandbox;
 
         // Small-context (Lite) children do not delegate further.
         let child_budget = if profile.is_lite() {
@@ -716,6 +717,12 @@ impl ChildJob {
             ),
         };
 
+        // Run extensions attach their own sections (a sandboxed run's scene diff).
+        let mut report = report;
+        report.extra.extend(crate::run_ext::extension_report_sections(&child_checkpoint_id(
+            &self.parent.safety_run_id,
+            &self.id,
+        )));
         let summary = report.summary.clone();
         host.store.update(&self.id, |run| {
             run.status = status;

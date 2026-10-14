@@ -89,6 +89,10 @@ pub struct SafetyConfig {
     /// Refuse every tool the classifier calls `Write`, whatever the policy.
     /// Set for runs of read-only harnesses.
     pub read_only: bool,
+    /// The run edits a private sandbox (a harness with `sandbox: true`, or a
+    /// run below one): domain tools keep its changes away from the live
+    /// project and return them as a diff. Stamped on the tool context.
+    pub sandbox: bool,
 }
 
 impl SafetyConfig {
@@ -104,6 +108,7 @@ impl SafetyConfig {
             checkpoints: self.checkpoints,
             taint: TaintTracker::new(parent_tainted),
             read_only: self.read_only || read_only,
+            sandbox: self.sandbox,
         }
     }
 
@@ -127,6 +132,7 @@ impl Default for SafetyConfig {
             checkpoints: true,
             taint: TaintTracker::default(),
             read_only: false,
+            sandbox: false,
         }
     }
 }
@@ -233,6 +239,24 @@ impl SafetyState {
             }
         }
         Ok(())
+    }
+
+    /// After a write tool ran: tell the UI the run now has something to
+    /// revert that is not a file (a scene edit recorded by a run extension),
+    /// once. The revert button is keyed by the same event as file checkpoints.
+    pub(crate) fn after_call(&self, call: &ToolCall, sink: &EventSink) {
+        if self.config.classifier.classify(&call.name) != ToolClass::Write
+            || self.announced.load(Ordering::SeqCst)
+        {
+            return;
+        }
+        if crate::run_ext::extensions_have_undo(&self.config.run_id)
+            && !self.announced.swap(true, Ordering::SeqCst)
+        {
+            sink(RunEvent::CheckpointCreated {
+                run_id: self.config.run_id.clone(),
+            });
+        }
     }
 
     /// Entries added to the ledger from outside the loop (finished background

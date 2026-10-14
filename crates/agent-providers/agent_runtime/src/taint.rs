@@ -171,6 +171,10 @@ impl ToolClassifier {
         }
         // MCP tools fall through to Write like every unknown tool: a tool
         // marked read-only in the config gets an explicit `Read` override.
+        // Tools owned by a registered run extension (the scene tools).
+        if let Some(class) = crate::run_ext::classify(name) {
+            return class;
+        }
         // `call_plugin_tool` / `execute_plugin_tool` run arbitrary plugin
         // code, so they fall through to Write like every unknown tool.
         ToolClass::Write

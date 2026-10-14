@@ -316,7 +316,7 @@ pub fn run_loop(
     sink: EventSink,
 ) -> Ledger {
     // Plan mode and `remember` first: plan mode caps what delegation may do.
-    crate::run_ext::prepare(&mut config);
+    crate::run_prep::prepare(&mut config);
     if let Some(handle) = config.delegation.take() {
         crate::delegation::install(handle, &mut config, &ledger, &cancel);
     }
@@ -324,7 +324,7 @@ pub fn run_loop(
     // own prompt back.
     let original_prompt = swap_in_lite_prompt(&config, &mut ledger);
     // Memory and plan-mode text go after the base prompt, in a fixed order.
-    let before_extension = crate::run_ext::extend_system_prompt(&config, &mut ledger);
+    let before_extension = crate::run_prep::extend_system_prompt(&config, &mut ledger);
     let outcome = drive(&config, &mut ledger, &cancel, &sink);
     if let Some(prompt) = before_extension {
         ledger.set_system_prompt(prompt);
@@ -896,7 +896,16 @@ fn make_context(config: &RunConfig, sink: &EventSink) -> ToolContext {
         }
     }));
 
-    agent_chat_tools::make_tool_context(config.workspace_root.clone(), None, extras)
+    let mut ctx = agent_chat_tools::make_tool_context(config.workspace_root.clone(), None, extras);
+    // Domain tools attribute their work to the run and honour its sandbox.
+    agent_chat_tools::set_run_scope(
+        &mut ctx,
+        agent_chat_tools::AgentRunScope {
+            run_id: config.safety.run_id.clone(),
+            sandbox: config.safety.sandbox,
+        },
+    );
+    ctx
 }
 
 /// One thread per call so they run concurrently; results come back in call
@@ -940,6 +949,7 @@ fn run_tools(
                         let result =
                             registry.execute(&call.name, call.arguments_json.clone(), &ctx);
                         safety.observe(&call, &workspace_root);
+                        safety.after_call(&call, &sink);
                         result.map_err(|err| err.to_string())
                     }
                     Err(refusal) => Err(refusal),
