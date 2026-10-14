@@ -74,12 +74,41 @@ pub enum ChatRole {
     Tool,
 }
 
+/// An image attached to a message (a viewport capture, a game frame).
+///
+/// Only vision-capable models receive these; the runtime leaves `images`
+/// empty for the rest and describes the image in text instead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImagePart {
+    /// IANA media type, e.g. `image/png`.
+    pub mime_type: String,
+    /// The encoded image, base64 (standard alphabet, no data-URL prefix).
+    pub data_base64: String,
+}
+
+impl ImagePart {
+    pub fn png(data_base64: impl Into<String>) -> Self {
+        Self {
+            mime_type: "image/png".to_string(),
+            data_base64: data_base64.into(),
+        }
+    }
+
+    /// `data:<mime>;base64,<data>`, the form OpenAI-style APIs take.
+    pub fn data_url(&self) -> String {
+        format!("data:{};base64,{}", self.mime_type, self.data_base64)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ChatMessage {
     pub role: ChatRole,
     pub content: String,
     pub tool_call_id: Option<String>,
     pub tool_calls: Vec<ToolCall>,
+    /// Images that accompany `content`. A `Tool` message's images belong to
+    /// that tool result. Empty for almost every message.
+    pub images: Vec<ImagePart>,
 }
 
 #[derive(Clone, Debug)]

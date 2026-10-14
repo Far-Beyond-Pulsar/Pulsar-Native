@@ -101,7 +101,7 @@ pub fn categorize(name: &str, description: &str) -> Category {
         return Category::Mcp;
     }
     let has = |needles: &[&str]| needles.iter().any(|n| name.contains(n));
-    if name.starts_with("level_editor") || has(&["scene"]) {
+    if name.starts_with("level_editor") || has(&["scene", "viewport", "observe"]) {
         Category::Scene
     } else if has(&["task_list", "task_"]) {
         Category::Tasks
@@ -567,6 +567,7 @@ mod tests {
             content: "LONG PROMPT\n\nrule".to_string(),
             tool_call_id: None,
             tool_calls: vec![],
+            images: vec![],
         }];
         apply_compact_system(&mut messages, "LONG PROMPT", "short");
         assert_eq!(messages[0].content, "short\n\nrule");

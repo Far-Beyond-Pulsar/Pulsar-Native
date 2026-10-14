@@ -180,6 +180,7 @@ fn plain(role: ChatRole, content: String, entries: Vec<usize>) -> Projected {
             content,
             tool_call_id: None,
             tool_calls: vec![],
+            images: vec![],
         },
         entries,
     }
@@ -276,6 +277,7 @@ impl DialogWalker {
                 content: content.to_string(),
                 tool_call_id: Some(call.id.clone()),
                 tool_calls: vec![],
+                images: vec![],
             },
             entries: vec![ix],
         });

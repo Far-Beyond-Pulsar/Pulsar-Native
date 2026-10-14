@@ -27,6 +27,7 @@ mod run_ext;
 mod taint;
 mod summary;
 mod text_tools;
+mod vision;
 mod run_store;
 mod time_travel;
 pub mod testing;
@@ -98,8 +99,9 @@ pub use ledger::{
 };
 pub use persist::{PersistedEntry, PersistedMeta};
 pub use preview::format_tool_result_preview;
+pub use vision::{attach_tool_images, AttachReport, MAX_IMAGES_IN_REQUEST, MAX_IMAGE_BYTES};
 pub use profile::{
-    cached_overrides, infer_context_tokens, parse_param_billions, provider_json_mode,
+    cached_overrides, infer_context_tokens, infer_vision, parse_param_billions, provider_json_mode,
     resolve_profile, resolve_with_store, JsonMode, ModelProfile, ProfileOverride, ProfileOverrides,
     ResolveInput, Thinking, Tier, TokenizerHint, ToolCalling, LITE_CONTEXT_LIMIT,
     UNKNOWN_CONTEXT_TOKENS,

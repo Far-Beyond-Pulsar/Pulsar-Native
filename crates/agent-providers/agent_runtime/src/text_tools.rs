@@ -80,6 +80,7 @@ pub fn inject_protocol(messages: &mut Vec<ChatMessage>, prompt: &str) {
                 content: prompt.to_string(),
                 tool_call_id: None,
                 tool_calls: vec![],
+                images: vec![],
             },
         ),
     }

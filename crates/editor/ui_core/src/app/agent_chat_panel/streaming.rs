@@ -294,6 +294,7 @@ impl AgentChatPanel {
             open_file_request: None,
             query_open_editors: Some(Arc::new(|| Ok(crate::app::open_editors::snapshot_json()))),
             activate_open_editor_request: None,
+            visual: Some(super::visual_backend::editor_backend()),
         };
         config.safety.policy = self.confirm_policy;
 <<<<<<< HEAD

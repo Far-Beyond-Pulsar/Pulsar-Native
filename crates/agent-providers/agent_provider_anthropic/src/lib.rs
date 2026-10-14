@@ -11,6 +11,28 @@ const ANTHROPIC_API_VERSION: &str = "2023-06-01";
 
 const ANTHROPIC_MODEL_ENV: &str = "PULSAR_ANTHROPIC_MODEL";
 
+/// Image blocks first (the API reads best that way), then the text.
+fn content_blocks(message: &ChatMessage) -> Vec<Value> {
+    let mut blocks: Vec<Value> = message
+        .images
+        .iter()
+        .map(|image| {
+            json!({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image.mime_type,
+                    "data": image.data_base64,
+                },
+            })
+        })
+        .collect();
+    if !message.content.trim().is_empty() {
+        blocks.push(json!({"type": "text", "text": message.content}));
+    }
+    blocks
+}
+
 pub struct AnthropicProvider {
     client: Client,
     api_key: String,
@@ -87,9 +109,14 @@ impl AnthropicProvider {
                 }
 
                 ChatRole::User => {
+                    let content = if message.images.is_empty() {
+                        json!(message.content)
+                    } else {
+                        Value::Array(content_blocks(message))
+                    };
                     out_messages.push(json!({
                         "role": "user",
-                        "content": message.content,
+                        "content": content,
                     }));
                 }
 
@@ -125,7 +152,11 @@ impl AnthropicProvider {
                         "content": [{
                             "type": "tool_result",
                             "tool_use_id": message.tool_call_id.as_deref().unwrap_or(""),
-                            "content": message.content,
+                            "content": if message.images.is_empty() {
+                                json!(message.content)
+                            } else {
+                                Value::Array(content_blocks(message))
+                            },
                         }],
                     }));
                 }
@@ -703,5 +734,61 @@ impl ProviderCrate for AnthropicProviderCrate {
         anyhow::ensure!(id == "anthropic", "unknown provider: {id}");
         let api_key = config.get("api_key").unwrap_or_default().to_string();
         Ok(Box::new(AnthropicProvider::new(api_key)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_chat_core::ImagePart;
+
+    fn message(role: ChatRole, content: &str, images: Vec<ImagePart>) -> ChatMessage {
+        ChatMessage {
+            role,
+            content: content.to_string(),
+            tool_call_id: (role == ChatRole::Tool).then(|| "call_1".to_string()),
+            tool_calls: vec![],
+            images,
+        }
+    }
+
+    #[test]
+    fn plain_messages_keep_string_content() {
+        let (out, _) = AnthropicProvider::build_messages_and_system(&[
+            message(ChatRole::User, "hi", vec![]),
+            message(ChatRole::Tool, "ok", vec![]),
+        ]);
+        assert_eq!(out[0]["content"], json!("hi"));
+        assert_eq!(out[1]["content"][0]["content"], json!("ok"));
+    }
+
+    #[test]
+    fn tool_result_images_become_image_blocks_before_the_text() {
+        let image = ImagePart::png("QUJD");
+        let (out, _) = AnthropicProvider::build_messages_and_system(&[message(
+            ChatRole::Tool,
+            "captured",
+            vec![image],
+        )]);
+        let result = &out[0]["content"][0];
+        assert_eq!(result["type"], "tool_result");
+        assert_eq!(result["tool_use_id"], "call_1");
+        let blocks = result["content"].as_array().unwrap();
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["source"]["type"], "base64");
+        assert_eq!(blocks[0]["source"]["media_type"], "image/png");
+        assert_eq!(blocks[0]["source"]["data"], "QUJD");
+        assert_eq!(blocks[1], json!({"type": "text", "text": "captured"}));
+    }
+
+    #[test]
+    fn user_images_become_a_block_array() {
+        let (out, _) = AnthropicProvider::build_messages_and_system(&[message(
+            ChatRole::User,
+            "look",
+            vec![ImagePart::png("QQ==")],
+        )]);
+        assert_eq!(out[0]["content"][0]["type"], "image");
+        assert_eq!(out[0]["content"][1]["text"], "look");
     }
 }

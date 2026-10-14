@@ -26,6 +26,7 @@ pub use ai::sessions as ai_sessions;
 pub use ai::tools as ai_tools;
 pub use core::scene_edit::SceneObjectData;
 pub use state::request_thumbnail_capture;
+pub use state::request_viewport_capture;
 pub use state::spline::SplineDomain;
 pub use state::LevelEditorState;
 pub use state::{CameraMode, EditorMode, TransformTool};
