@@ -664,7 +664,61 @@ fn create_mesh_pipeline_with_density_stream(
 }
 
 impl AssetViewerPanel {
+    /// Drop everything made on the GPU device, after it was lost (a driver
+    /// reset, a removed GPU). [`Self::init_surface`] makes it all again on
+    /// the window's new device.
+    fn drop_gpu_state(&mut self) {
+        self.device = None;
+        self.queue = None;
+        self.surface_config = None;
+        self.surface_handle = None;
+        self.wire_index_buffer = None;
+        self.wire_pipeline = None;
+        self.diagnostic_vertex_buffer = None;
+        self.diagnostic_index_buffer = None;
+        self.uv_layout_vertex_buffer = None;
+        self.depth_texture = None;
+        self.depth_view = None;
+        self.mesh_vertex_buffer = None;
+        self.mesh_index_buffer = None;
+        self.mesh_pipeline = None;
+        self.density_pipeline = None;
+        self.density_vertex_buffer = None;
+        self.mesh_bind_group = None;
+        self.uv_grid_texture = None;
+        self.uv_grid_view = None;
+        self.uv_grid_sampler = None;
+        self.uv_grid_bind_group = None;
+        self.uv_grid_bgl = None;
+        self.mesh_uniform_buffer = None;
+        self.quad_pipeline = None;
+        self.quad_bind_group_layout = None;
+        self.quad_bind_group = None;
+        self.quad_texture = None;
+        self.quad_sampler = None;
+        self.quad_vertex_buffer = None;
+        self.checker_pipeline = None;
+        self.checker_bind_group_layout = None;
+        self.checker_bind_group = None;
+        self.checker_uniform_buffer = None;
+        self.mesh_bgl = None;
+        self.empty_bind_group = None;
+        self.globals_buffer = None;
+        self.globals_layout = None;
+        self.globals_bind_group = None;
+        self.graph_draws.clear();
+        self.needs_rebuild = true;
+    }
+
     pub(crate) fn init_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+        if self
+            .surface_handle
+            .as_ref()
+            .is_some_and(gpui::WgpuSurfaceHandle::is_device_lost)
+        {
+            tracing::warn!("Asset viewer: GPU device lost; rebuilding on the new device");
+            self.drop_gpu_state();
+        }
         if self.surface_handle.is_some() {
             return;
         }
@@ -673,8 +727,11 @@ impl AssetViewerPanel {
         let width = (size.width.to_f64() as u32).max(1);
         let height = (size.height.to_f64() as u32).max(1);
 
-        let Some(surface) =
-            window.create_wgpu_surface(width, height, wgpu::TextureFormat::Bgra8Unorm)
+        // Until the window has a new device after a loss, a new surface is on
+        // the lost one too; the window renders every view again once it has one.
+        let Some(surface) = window
+            .create_wgpu_surface(width, height, wgpu::TextureFormat::Bgra8Unorm)
+            .filter(|surface| !surface.is_device_lost())
         else {
             return;
         };
@@ -2507,9 +2564,7 @@ impl AssetViewerPanel {
 
 impl Render for AssetViewerPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.surface_handle.is_none() {
-            self.init_surface(window, cx);
-        }
+        self.init_surface(window, cx);
 
         if self.workspace.is_none() {
             self.initialize_workspace(window, cx);
