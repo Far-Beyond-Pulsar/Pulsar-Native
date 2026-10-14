@@ -83,8 +83,13 @@ pub fn subscribe_asset_reloads(state: Arc<RwLock<LevelEditorState>>) -> AssetSub
 /// every game loop does for the world it builds (see
 /// `engine_backend::scene::reload_updated_asset`): the world loads them
 /// again off the write path and rebinds every component showing them when
-/// the new data arrives. Returns how many assets were queued.
+/// the new data arrives. Returns how many assets were queued. Class updates
+/// are left to [`handle_asset_update`], which rebuilds the same instances
+/// and also does the editor's own bookkeeping.
 pub fn handle_asset_reload(state: &Arc<RwLock<LevelEditorState>>, event: &AssetUpdated) -> usize {
+    if event.kind == AssetKind::Blueprint {
+        return 0;
+    }
     let state = state.read();
     let mut world = state.scene.world_mut();
     engine_backend::scene::reload_updated_asset(&mut world, event)

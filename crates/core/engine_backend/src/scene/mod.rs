@@ -20,6 +20,9 @@ pub mod render_resources;
 // Helio Scene writes.
 pub mod runtime_level;
 
+/// Placed class instances follow class edits in every world (SceneDB#84).
+pub mod classes;
+
 // What a level may hold only one of (one sky, #1057), checked by editors
 // before an edit and repaired on load.
 pub mod level_rules;
@@ -126,9 +129,11 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
 /// Apply one asset update to `world` (SceneDB#84): a mesh, texture or
 /// material update reloads that file's assets, and the world rebinds every
 /// component showing them when the new data arrives. A texture is also
-/// reloaded as part of every shader-graph material that samples it. Returns
-/// how many assets were queued. Other kinds are not world assets yet and
-/// are left to their own handlers.
+/// reloaded as part of every shader-graph material that samples it. A class
+/// (Blueprint) update rebuilds every placed instance of the class from its
+/// new definition, keeping each instance's overrides (see [`classes`]).
+/// Returns how many assets were queued plus how many entities were rebuilt.
+/// Other kinds are not world assets yet and are left to their own handlers.
 pub fn reload_updated_asset(
     world: &mut pulsar_scenedb::World,
     event: &pulsar_events::AssetUpdated,
@@ -145,6 +150,9 @@ pub fn reload_updated_asset(
         }
         (pulsar_events::AssetKind::Material, Some(path)) => {
             reload_materials(world, material_sources_for_file(path))
+        }
+        (pulsar_events::AssetKind::Blueprint, _) => {
+            classes::reload_class_instances(world, event).len()
         }
         _ => 0,
     }

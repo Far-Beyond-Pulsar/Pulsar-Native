@@ -378,7 +378,9 @@ fn class_asset_updates_rebuild_placed_instances() {
         (a, b)
     };
     state.write().play.pie.active = true;
+    // Both of the editor's subscriptions, as the level editor holds them.
     let _subscription = asset_updates::subscribe_class_updates(state.clone());
+    let _reloads = asset_updates::subscribe_asset_reloads(state.clone());
 
     // The Blueprint editor saves the class with a new default, then publishes.
     write_lamp_prefab(&dir, 3.0);
@@ -404,9 +406,15 @@ fn class_asset_updates_rebuild_placed_instances() {
     );
     assert_eq!(
         st.play.pie.pending_asset_updates,
-        [event],
+        [event.clone()],
         "forwarded to the running game"
     );
+    assert_eq!(st.scene.class_updates, 1, "rebuilt once");
+    drop(world);
+    drop(st);
+    // The all-kinds reload leaves classes to the class subscription, which
+    // also does the editor's bookkeeping.
+    assert_eq!(asset_updates::handle_asset_reload(&state, &event), 0);
 }
 
 /// #935: a class edit reaches every placed instance's LIVE components: after
