@@ -93,4 +93,4 @@ tempfile = { workspace = true }
 image = { workspace = true }
 # The editor window builds HTTP clients; the engine binary installs this
 # provider at startup, the test does the same (same spec as `engine`).
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "=0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
