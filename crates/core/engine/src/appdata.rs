@@ -207,7 +207,10 @@ mod tests {
             assert!(!set.themes.is_empty(), "{file} defines no themes");
             for theme in set.themes {
                 if let Some(first) = names.insert(theme.name.to_string(), file.to_string()) {
-                    panic!("theme {:?} is defined in both {first} and {file}", theme.name);
+                    panic!(
+                        "theme {:?} is defined in both {first} and {file}",
+                        theme.name
+                    );
                 }
             }
         }
@@ -230,7 +233,11 @@ mod tests {
         assert!(set.themes.iter().any(|t| t.mode.is_dark()));
         assert!(set.themes.iter().any(|t| !t.mode.is_dark()));
         for theme in &set.themes {
-            assert!(theme.highlight.is_some(), "{} has no syntax colors", theme.name);
+            assert!(
+                theme.highlight.is_some(),
+                "{} has no syntax colors",
+                theme.name
+            );
         }
     }
 }
