@@ -166,6 +166,16 @@ messages), the on-disk `PersistedEntry` form (old `agent_event` chats migrate on
 load), context compaction, and `run_loop`, which emits `RunEvent`s. The chat
 panel in `ui_core` is a subscriber.
 
+Sub-agents are child runs of the same `run_loop`: `harness.rs` (declarative
+agent definitions, built-ins plus `.pulsar/agents/*.md` over
+`<config dir>/pulsar/agents/*.md`), `run_store.rs` (per-chat `RunStore`, saved
+as `<chat id>.runs` next to the chat file) and `delegation.rs`
+(`DelegationHost`, the `spawn_subagent` / `await_subagent` / `read_run` /
+`cancel_subagent` tools, depth, fan-out and parallelism limits, cancel
+cascade). A foreground report is a tool result; an unawaited background report
+is a `SubagentReport` ledger entry that the projector renders as a synthetic
+`check_subagent` exchange (data envelope for tool-less profiles).
+
 22 providers: anthropic, aws_bedrock, azure_openai, cohere, deepseek,
 demo_random, docker_model_runner, fireworks, gemini, github_copilot, groq,
 llama_cpp, lmstudio, mistral, ollama, openai, openrouter, perplexity,

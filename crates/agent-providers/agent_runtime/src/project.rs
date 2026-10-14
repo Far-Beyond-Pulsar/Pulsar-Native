@@ -37,11 +37,11 @@ pub fn project(ledger: &Ledger, profile: &ModelProfile) -> Vec<ChatMessage> {
 pub fn project_indexed(ledger: &Ledger, profile: &ModelProfile) -> Vec<Projected> {
     let mut out: Vec<Projected> = Vec::new();
 
-    let has_envelope = ledger.entries.iter().any(|entry| {
-        matches!(
-            entry.kind,
-            EntryKind::SubagentReport(_) | EntryKind::EngineNotice { .. }
-        )
+    let reports_are_envelopes = profile.tool_calling == ToolCalling::None;
+    let has_envelope = ledger.entries.iter().any(|entry| match entry.kind {
+        EntryKind::SubagentReport(_) => reports_are_envelopes,
+        EntryKind::EngineNotice { .. } => true,
+        _ => false,
     });
 
     // Leading system block: prompt, then pinned context, then summaries.
@@ -142,30 +142,23 @@ impl DialogWalker {
                 self.pending = Some(plain(ChatRole::Assistant, text.clone(), vec![ix]));
             }
             EntryKind::ToolExchange(exchange) => {
-                if profile.tool_calling == ToolCalling::None {
-                    self.flush(out);
-                    flatten_exchange(ix, &exchange.call, &exchange.result.content, out);
-                    return;
-                }
-                if self.pending.is_none() {
-                    self.pending = Some(plain(ChatRole::Assistant, String::new(), vec![]));
-                }
-                if let Some(pending) = &mut self.pending {
-                    pending.message.tool_calls.push(exchange.call.clone());
-                }
-                self.results.push(Projected {
-                    message: ChatMessage {
-                        role: ChatRole::Tool,
-                        content: exchange.result.content.clone(),
-                        tool_call_id: Some(exchange.call.id.clone()),
-                        tool_calls: vec![],
-                    },
-                    entries: vec![ix],
-                });
+                self.visit_exchange(ix, &exchange.call, &exchange.result.content, profile, out);
             }
             EntryKind::SubagentReport(report) => {
-                self.flush(out);
-                out.push(plain(ChatRole::User, report_envelope(report), vec![ix]));
+                if profile.tool_calling == ToolCalling::None {
+                    // No tool calling: the delimited data envelope.
+                    self.flush(out);
+                    out.push(plain(ChatRole::User, report_envelope(report), vec![ix]));
+                } else {
+                    // Tool-capable: a synthetic `check_subagent` exchange, so
+                    // the report arrives as a tool result.
+                    let call = ToolCall {
+                        id: format!("check_{}", report.run_id),
+                        name: "check_subagent".to_string(),
+                        arguments_json: serde_json::json!({ "id": report.run_id }),
+                    };
+                    self.visit_exchange(ix, &call, &report_tool_result(report), profile, out);
+                }
             }
             EntryKind::EngineNotice { text } => {
                 self.flush(out);
@@ -173,6 +166,49 @@ impl DialogWalker {
             }
         }
     }
+}
+
+impl DialogWalker {
+    fn visit_exchange(
+        &mut self,
+        ix: usize,
+        call: &ToolCall,
+        content: &str,
+        profile: &ModelProfile,
+        out: &mut Vec<Projected>,
+    ) {
+        if profile.tool_calling == ToolCalling::None {
+            self.flush(out);
+            flatten_exchange(ix, call, content, out);
+            return;
+        }
+        if self.pending.is_none() {
+            self.pending = Some(plain(ChatRole::Assistant, String::new(), vec![]));
+        }
+        if let Some(pending) = &mut self.pending {
+            pending.message.tool_calls.push(call.clone());
+        }
+        self.results.push(Projected {
+            message: ChatMessage {
+                role: ChatRole::Tool,
+                content: content.to_string(),
+                tool_call_id: Some(call.id.clone()),
+                tool_calls: vec![],
+            },
+            entries: vec![ix],
+        });
+    }
+}
+
+/// A report as the result of a `check_subagent` call: fields only.
+pub fn report_tool_result(report: &SubagentReport) -> String {
+    serde_json::json!({
+        "run_id": report.run_id,
+        "status": report.status.as_str(),
+        "summary": report.summary,
+        "refs": report.refs,
+    })
+    .to_string()
 }
 
 /// Models without tool calling see the exchange as text.

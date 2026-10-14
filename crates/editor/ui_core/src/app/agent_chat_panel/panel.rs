@@ -6,7 +6,7 @@ use agent_runtime::{CancelToken, Ledger};
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, RwLock},
@@ -22,12 +22,6 @@ use ui::{
 use super::chat_storage;
 use super::provider_selection;
 use super::types::*;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SubagentCompletionMode {
-    Auto,
-    Manual,
-}
 
 pub struct AgentChatPanel {
     pub(crate) dock_area: Entity<DockArea>,
@@ -73,16 +67,14 @@ pub struct AgentChatPanel {
     pub(crate) display_items: Vec<DisplayItem>,
     pub(crate) display_item_heights: HashMap<usize, Pixels>,
     pub(crate) cancel: Option<CancelToken>,
-    pub(crate) pending_subagent_events: VecDeque<serde_json::Value>,
-    pub(crate) is_processing_subagent_event: bool,
-    pub(crate) processing_subagent_id: Option<String>,
-    pub(crate) subagent_completion_mode: SubagentCompletionMode,
     /// When write tools need the user's approval (.pulsar/agent_safety.json).
     pub(crate) confirm_policy: agent_runtime::ConfirmPolicy,
     /// Tool calls the run is blocked on, awaiting approve/deny.
     pub(crate) pending_confirms: Vec<PendingConfirm>,
     /// Outcome of the last revert, shown in the safety bar.
     pub(crate) safety_notice: Option<String>,
+    /// Child runs of the current chat: store, harnesses, limits, events.
+    pub(crate) delegation: Arc<agent_runtime::DelegationHost>,
     pub(crate) auto_scroll: bool,
     pub(crate) chat_viewport_height: Pixels,
     pub(crate) _subscriptions: Vec<Subscription>,

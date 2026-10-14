@@ -6,6 +6,8 @@ mod checkpoint;
 mod budget;
 mod compaction;
 mod confirm;
+mod delegation;
+mod harness;
 mod ledger;
 mod output_cap;
 mod persist;
@@ -17,6 +19,7 @@ mod run;
 mod taint;
 mod summary;
 mod text_tools;
+mod run_store;
 
 #[cfg(test)]
 mod persist_tests;
@@ -46,6 +49,14 @@ pub use text_tools::{
     constrained_call_format, parse as parse_text_tool_calls, protocol_prompt, render_call,
     tool_call_grammar, tool_call_schema, FenceFilter, Parsed as ParsedToolCalls,
 };
+pub use delegation::{
+    deliver_pending, parse_report, report_value, subagent_report_for, DelegationHandle,
+    DelegationHost, DelegationLimits, SpawnError, ROOT_RUN_ID,
+};
+pub use harness::{
+    builtin_harnesses, project_agents_dir, Harness, HarnessOrigin, HarnessPermissions,
+    HarnessRegistry, ModelPolicy,
+};
 pub use ledger::{
     EntryKind, Ledger, LedgerEntry, PinKind, Source, SubagentReport, SubagentStatus, ToolExchange,
     ToolResult,
@@ -62,9 +73,10 @@ pub use project::{
     notice_envelope, project, project_indexed, report_envelope, Projected, DATA_ENVELOPE_RULE,
 };
 pub use run::{
-    run_loop, spawn_run, CancelToken, EventSink, RunConfig, RunEvent, ThinkSplitter, UiReply,
-    CANCELLED_MESSAGE,
+    run_loop, spawn_run, CancelToken, EventSink, LedgerHook, RunConfig, RunEvent, ThinkSplitter,
+    UiReply, CANCELLED_MESSAGE,
 };
 pub use taint::{
     entry_taints, is_untrusted_path, ConfirmPolicy, TaintTracker, ToolClass, ToolClassifier,
 };
+pub use run_store::{ChildReport, RunRecord, RunStatus, RunStore};

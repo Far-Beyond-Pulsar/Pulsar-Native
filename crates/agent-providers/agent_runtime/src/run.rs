@@ -19,7 +19,7 @@ use agent_chat_tools::{PulsarToolExtras, ToolContext, ToolRegistry};
 use crate::budget::{usage_from_raw, Budget, Calibrator, TokenEstimator};
 use crate::compaction::{compact_ledger, compact_ledger_tokens};
 use crate::confirm::{ConfirmReply, SafetyConfig, SafetyState};
-use crate::ledger::{EntryKind, Ledger, LedgerEntry, ToolResult};
+use crate::ledger::{EntryKind, Ledger, LedgerEntry, SubagentStatus, ToolResult};
 use crate::output_cap::{
     cap_output, fetch_output_definition, run_fetch_output, OutputStore, FETCH_OUTPUT,
 };
@@ -34,21 +34,36 @@ use crate::text_tools::{self, FenceFilter};
 
 pub const CANCELLED_MESSAGE: &str = "Request cancelled.";
 
-/// Cooperative cancellation. Cloning shares the flag.
+/// Cooperative cancellation. Cloning shares the flag. A [`child`] token is
+/// cancelled when its parent is, but cancelling it leaves the parent alone.
+///
+/// [`child`]: CancelToken::child
 #[derive(Clone, Debug, Default)]
-pub struct CancelToken(Arc<AtomicBool>);
+pub struct CancelToken {
+    flag: Arc<AtomicBool>,
+    parent: Option<Box<CancelToken>>,
+}
 
 impl CancelToken {
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// A token that also reports cancelled once `self` is.
+    pub fn child(&self) -> CancelToken {
+        CancelToken {
+            flag: Arc::new(AtomicBool::new(false)),
+            parent: Some(Box::new(self.clone())),
+        }
+    }
+
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.flag.store(true, Ordering::SeqCst);
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.flag.load(Ordering::SeqCst)
+            || self.parent.as_ref().is_some_and(|parent| parent.is_cancelled())
     }
 }
 
@@ -124,12 +139,34 @@ pub enum RunEvent {
     /// The first file of this run was snapshotted; `revert_checkpoint(run_id)`
     /// can now undo the run's edits.
     CheckpointCreated { run_id: String },
+    /// A sub-agent run was created. `parent_id` is the spawning run
+    /// (`"main"` for the chat itself).
+    ChildSpawned {
+        run_id: String,
+        parent_id: String,
+        harness: String,
+        task: String,
+        depth: u32,
+        background: bool,
+    },
+    /// A running sub-agent did something worth showing ("running list_files").
+    ChildProgress { run_id: String, note: String },
+    /// A sub-agent reached a terminal state; `summary` is its report summary.
+    ChildFinished {
+        run_id: String,
+        status: SubagentStatus,
+        summary: String,
+    },
     /// Always the last event, exactly once.
     Finished(Result<ChatResponse, String>),
 }
 
 pub type EventSink = Arc<dyn Fn(RunEvent) + Send + Sync>;
 
+/// Called with the run's ledger before each request.
+pub type LedgerHook = Arc<dyn Fn(&mut Ledger) + Send + Sync>;
+
+#[derive(Clone)]
 pub struct RunConfig {
     pub provider: Arc<dyn ChatProvider>,
     pub model: String,
@@ -157,6 +194,11 @@ pub struct RunConfig {
     pub lite_system_prompt: Option<String>,
     /// Overrides how many domain tools the Lite router exposes per turn.
     pub router_limit: Option<usize>,
+    /// Makes the delegation tools available to this run; see
+    /// [`crate::delegation`]. `run_loop` consumes it.
+    pub delegation: Option<crate::delegation::DelegationHandle>,
+    /// Runs before every request (delivers finished background children).
+    pub pre_request_hook: Option<LedgerHook>,
 }
 
 impl RunConfig {
@@ -187,6 +229,8 @@ impl RunConfig {
             response_format: None,
             lite_system_prompt: Some(LITE_SYSTEM_PROMPT.to_string()),
             router_limit: None,
+            delegation: None,
+            pre_request_hook: None,
         }
     }
 
@@ -212,11 +256,14 @@ pub fn spawn_run(
 /// Drive `ledger` to completion. Emits [`RunEvent::Finished`] exactly once,
 /// last, and returns the ledger including every tool exchange.
 pub fn run_loop(
-    config: RunConfig,
+    mut config: RunConfig,
     mut ledger: Ledger,
     cancel: CancelToken,
     sink: EventSink,
 ) -> Ledger {
+    if let Some(handle) = config.delegation.take() {
+        crate::delegation::install(handle, &mut config, &ledger, &cancel);
+    }
     // Lite profiles run on the compact system prompt; the caller gets its
     // own prompt back.
     let original_prompt = swap_in_lite_prompt(&config, &mut ledger);
@@ -342,6 +389,10 @@ fn drive(
             return Err(format!("Reached the {max}-iteration limit."));
         }
         iteration += 1;
+
+        if let Some(hook) = &config.pre_request_hook {
+            hook(ledger);
+        }
 
         let turn_tools = plan_tools(config, ledger, router.as_ref(), &unlocked, domain_limit);
         let protocol = text_mode.then(|| text_tools::protocol_prompt(&turn_tools));
