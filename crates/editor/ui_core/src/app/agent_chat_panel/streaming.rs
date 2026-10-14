@@ -303,6 +303,7 @@ impl AgentChatPanel {
                 model,
             )),
         };
+        config.safety.policy = self.confirm_policy;
         config.context_budget_chars = history_budget;
         config.summary_char_budget = Self::COMPACTION_SUMMARY_CHAR_BUDGET;
 
@@ -492,6 +493,7 @@ impl AgentChatPanel {
                                     is_expanded: false,
                                     started_at_ms: group_start,
                                     finished_at_ms: None,
+                                    checkpoint_run_id: None,
                                 });
                                 let new_dix = panel.display_items.len();
                                 panel.display_items.push(DisplayItem::AssistantMessage {
@@ -557,6 +559,7 @@ impl AgentChatPanel {
                             }
 
                             RunEvent::Finished(Ok(response)) => {
+                                panel.drop_pending_confirms();
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 panel.cancel = None;
@@ -615,6 +618,7 @@ impl AgentChatPanel {
                             }
 
                             RunEvent::Finished(Err(err)) => {
+                                panel.drop_pending_confirms();
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 panel.cancel = None;
@@ -669,6 +673,12 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
+                            RunEvent::ConfirmRequest { id, tool, args, tainted, reply } => {
+                                panel.queue_confirm(id, tool, args, tainted, reply, cx);
+                            }
+                            RunEvent::CheckpointCreated { run_id } => {
+                                panel.attach_checkpoint(run_id, cx);
+                            }
                             RunEvent::OpenFile(path, reply) => {
                                 reply.reply(panel.open_path_in_default_editor(path, cx));
                             }

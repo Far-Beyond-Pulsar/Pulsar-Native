@@ -77,6 +77,12 @@ pub struct AgentChatPanel {
     pub(crate) is_processing_subagent_event: bool,
     pub(crate) processing_subagent_id: Option<String>,
     pub(crate) subagent_completion_mode: SubagentCompletionMode,
+    /// When write tools need the user's approval (.pulsar/agent_safety.json).
+    pub(crate) confirm_policy: agent_runtime::ConfirmPolicy,
+    /// Tool calls the run is blocked on, awaiting approve/deny.
+    pub(crate) pending_confirms: Vec<PendingConfirm>,
+    /// Outcome of the last revert, shown in the safety bar.
+    pub(crate) safety_notice: Option<String>,
     pub(crate) auto_scroll: bool,
     pub(crate) chat_viewport_height: Pixels,
     pub(crate) _subscriptions: Vec<Subscription>,

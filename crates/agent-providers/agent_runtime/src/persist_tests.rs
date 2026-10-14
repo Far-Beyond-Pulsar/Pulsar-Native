@@ -101,3 +101,49 @@ fn plain_entries_keep_the_old_two_field_shape() {
     let json = serde_json::to_string(&ledger.to_persisted()).unwrap();
     assert_eq!(json, r#"[{"role":"user","content":"hi"}]"#);
 }
+
+#[test]
+fn untrusted_provenance_survives_a_round_trip() {
+    use crate::ledger::Source;
+    use crate::taint::ToolClassifier;
+    use std::path::Path;
+
+    let mut ledger = Ledger::with_system_prompt("sys");
+    ledger.push(LedgerEntry::user("hi"));
+    let mut tool_note = LedgerEntry::engine_notice("page text");
+    tool_note.source = Source::Tool {
+        name: "fetch_url".to_string(),
+    };
+    ledger.push(tool_note);
+    ledger.push(LedgerEntry::engine_notice("our own notice"));
+    ledger.push(LedgerEntry::subagent_report(SubagentReport {
+        run_id: "r1".to_string(),
+        status: SubagentStatus::Success,
+        summary: "report".to_string(),
+        refs: vec![],
+    }));
+
+    let json = serde_json::to_string(&ledger.to_persisted()).unwrap();
+    // Trusted entries keep the old shape; only untrusted ones gain a tag.
+    assert!(json.contains(r#""untrusted":true"#));
+    assert!(json.contains(r#"{"role":"engine_notice","content":"our own notice"}"#));
+
+    let back = Ledger::from_persisted(serde_json::from_str(&json).unwrap());
+    assert_eq!(
+        back.entries[2].source,
+        Source::Tool {
+            name: "fetch_url".to_string()
+        }
+    );
+    assert_eq!(back.entries[3].source, Source::Engine);
+    assert!(matches!(back.entries[4].source, Source::Subagent { .. }));
+    assert!(back.is_tainted(&ToolClassifier::new(), Path::new(".")));
+
+    // A chat with only trusted entries is not tainted.
+    let clean = Ledger::from_persisted(vec![PersistedEntry {
+        role: "engine_notice".to_string(),
+        content: "ours".to_string(),
+        meta: None,
+    }]);
+    assert!(!clean.is_tainted(&ToolClassifier::new(), Path::new(".")));
+}

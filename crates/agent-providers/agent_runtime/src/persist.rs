@@ -8,7 +8,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ledger::{EntryKind, Ledger, LedgerEntry, PinKind, SubagentReport, SubagentStatus};
+use crate::ledger::{
+    EntryKind, Ledger, LedgerEntry, PinKind, Source, SubagentReport, SubagentStatus,
+};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PersistedMeta {
@@ -22,6 +24,17 @@ pub struct PersistedMeta {
     pub pin_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub covers: Option<(usize, usize)>,
+    /// Content came from a tool, the web or a sub-agent. Reloading restores
+    /// the provenance so the run's taint survives a restart.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub untrusted: bool,
+    /// Name of the tool that produced an untrusted entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,7 +48,9 @@ pub struct PersistedEntry {
 impl PersistedEntry {
     pub fn into_entry(self) -> LedgerEntry {
         let meta = self.meta.unwrap_or_default();
-        match self.role.as_str() {
+        let untrusted_tool = (meta.untrusted || self.role == "tool")
+            .then(|| meta.tool.clone().unwrap_or_else(|| "tool".to_string()));
+        let mut entry = match self.role.as_str() {
             "system" => LedgerEntry::system(self.content),
             "user" => LedgerEntry::user(self.content),
             "agent_event" => legacy_agent_event(&self.content),
@@ -58,7 +73,12 @@ impl PersistedEntry {
             ),
             // Unknown roles were read as assistant text before the ledger.
             _ => LedgerEntry::assistant(self.content),
+        };
+        // Tool output stays untrusted after a reload.
+        if let (Some(name), EntryKind::EngineNotice { .. }) = (untrusted_tool, &entry.kind) {
+            entry.source = Source::Tool { name };
         }
+        entry
     }
 }
 
@@ -77,10 +97,22 @@ impl LedgerEntry {
                     run_id: Some(report.run_id.clone()),
                     status: Some(report.status.as_str().to_string()),
                     refs: report.refs.clone(),
+                    untrusted: true,
                     ..PersistedMeta::default()
                 }),
             ),
-            EntryKind::EngineNotice { text } => ("engine_notice", text.clone(), None),
+            EntryKind::EngineNotice { text } => (
+                "engine_notice",
+                text.clone(),
+                match &self.source {
+                    Source::Tool { name } => Some(PersistedMeta {
+                        untrusted: true,
+                        tool: Some(name.clone()),
+                        ..PersistedMeta::default()
+                    }),
+                    _ => None,
+                },
+            ),
             EntryKind::Summary { text, covers } => (
                 "summary",
                 text.clone(),

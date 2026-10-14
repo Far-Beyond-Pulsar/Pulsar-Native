@@ -59,6 +59,15 @@ pub enum SubagentStepStatus {
     Error,
 }
 
+/// A tool call waiting for the user's approval (never persisted).
+pub struct PendingConfirm {
+    pub id: String,
+    pub tool: String,
+    pub args_preview: String,
+    pub tainted: bool,
+    pub reply: agent_runtime::ConfirmReply,
+}
+
 /// Flat items rendered in the chat virtual list.
 /// System and raw Tool-role messages are never added here.
 ///
@@ -87,6 +96,10 @@ pub enum DisplayItem {
         /// Set when the last call in the group finishes.
         #[serde(default)]
         finished_at_ms: Option<u64>,
+        /// Run whose file checkpoint this group can revert (set on the group
+        /// that made the run's first edit).
+        #[serde(default)]
+        checkpoint_run_id: Option<String>,
     },
     /// Shown when old messages were dropped to fit the context window.
     CompactionSummary {

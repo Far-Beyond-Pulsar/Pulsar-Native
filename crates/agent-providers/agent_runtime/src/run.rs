@@ -15,6 +15,7 @@ use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ToolCall, ToolDef
 use agent_chat_tools::{PulsarToolExtras, ToolContext, ToolRegistry};
 
 use crate::compaction::{compact_ledger, summarize_compaction};
+use crate::confirm::{ConfirmReply, SafetyConfig, SafetyState};
 use crate::ledger::{Ledger, LedgerEntry, ToolResult};
 use crate::preview::format_tool_result_preview;
 use crate::profile::ModelProfile;
@@ -98,6 +99,20 @@ pub enum RunEvent {
     OpenFile(PathBuf, UiReply),
     /// A tool wants an open editor tab activated; the panel must reply.
     ActivateOpenEditor(usize, UiReply),
+    /// A write/external tool call needs the user's approval; the panel must
+    /// call `reply.approve()` or `reply.deny()`. The tool does not run until
+    /// then.
+    ConfirmRequest {
+        id: String,
+        tool: String,
+        args: serde_json::Value,
+        /// Untrusted content is in the run's context.
+        tainted: bool,
+        reply: ConfirmReply,
+    },
+    /// The first file of this run was snapshotted; `revert_checkpoint(run_id)`
+    /// can now undo the run's edits.
+    CheckpointCreated { run_id: String },
     /// Always the last event, exactly once.
     Finished(Result<ChatResponse, String>),
 }
@@ -122,6 +137,7 @@ pub struct RunConfig {
     pub context_budget_chars: usize,
     pub summary_char_budget: usize,
     pub max_iterations: u32,
+    pub safety: SafetyConfig,
 }
 
 impl RunConfig {
@@ -148,6 +164,7 @@ impl RunConfig {
             context_budget_chars: 24_000,
             summary_char_budget: 2_400,
             max_iterations: 50,
+            safety: SafetyConfig::default(),
         }
     }
 }
@@ -182,6 +199,7 @@ fn drive(
     sink: &EventSink,
 ) -> Result<ChatResponse, String> {
     let mut iteration = 0u32;
+    let safety = Arc::new(SafetyState::new(&config.safety, ledger, &config.workspace_root));
 
     loop {
         if cancel.is_cancelled() {
@@ -262,7 +280,7 @@ fn drive(
         sink(RunEvent::ToolCallGroup(response.tool_calls.clone()));
 
         let tool_context = make_context(config, sink);
-        for (call, result) in run_tools(config, &response.tool_calls, &tool_context, sink) {
+        for (call, result) in run_tools(config, &safety, cancel, &response.tool_calls, &tool_context, sink) {
             ledger.push(LedgerEntry::tool_exchange(call, result));
         }
     }
@@ -314,6 +332,8 @@ fn make_context(config: &RunConfig, sink: &EventSink) -> ToolContext {
 /// order for message threading.
 fn run_tools(
     config: &RunConfig,
+    safety: &Arc<SafetyState>,
+    cancel: &CancelToken,
     calls: &[ToolCall],
     context: &ToolContext,
     sink: &EventSink,
@@ -325,8 +345,20 @@ fn run_tools(
             let registry = config.tool_registry.clone();
             let ctx = context.clone();
             let sink = sink.clone();
+            let safety = safety.clone();
+            let cancel = cancel.clone();
+            let batch_tainted = safety.tainted_for(&call, calls);
+            let workspace_root = config.workspace_root.clone();
             std::thread::spawn(move || {
-                let result = registry.execute(&call.name, call.arguments_json.clone(), &ctx);
+                let result = match safety.preflight(&call, batch_tainted, &cancel, &sink) {
+                    Ok(()) => {
+                        let result =
+                            registry.execute(&call.name, call.arguments_json.clone(), &ctx);
+                        safety.observe(&call, &workspace_root);
+                        result.map_err(|err| err.to_string())
+                    }
+                    Err(refusal) => Err(refusal),
+                };
                 let (content, is_error) = match result {
                     Ok(value) => (value.to_string(), false),
                     Err(err) => (format!("Tool error: {}", err), true),

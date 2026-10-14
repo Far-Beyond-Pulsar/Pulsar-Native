@@ -183,6 +183,7 @@ dependencies = [
  "agent_chat_core",
  "agent_chat_tools",
  "anyhow",
+ "engine_fs",
  "engine_state",
  "serde",
  "serde_json",

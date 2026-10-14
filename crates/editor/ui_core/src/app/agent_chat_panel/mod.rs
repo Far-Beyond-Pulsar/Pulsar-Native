@@ -10,6 +10,7 @@ mod provider_selection;
 mod render;
 mod render_header;
 mod render_overlays;
+mod safety;
 mod streaming;
 mod subagent;
 mod subagent_executor;
@@ -145,7 +146,8 @@ impl Render for AgentChatPanel {
                                         let panel = cx.entity().clone();
 
                                         match item {
-                                            DisplayItem::ToolCallGroup { calls, is_expanded, started_at_ms, finished_at_ms } => {
+                                            DisplayItem::ToolCallGroup { calls, is_expanded, started_at_ms, finished_at_ms, checkpoint_run_id } => {
+                                                let checkpoint_run_id = checkpoint_run_id.clone();
                                                 let calls = calls.clone();
                                                 let is_expanded = *is_expanded;
                                                 let copy_tool_block = calls
@@ -293,6 +295,21 @@ impl Render for AgentChatPanel {
                                                                             .font_family("JetBrains Mono")
                                                                             .child(group_elapsed),
                                                                     )
+                                                                    .when_some(checkpoint_run_id, |el, run_id| {
+                                                                        el.child(
+                                                                            Button::new(("tool-call-revert", ix))
+                                                                                .xsmall()
+                                                                                .ghost()
+                                                                                .icon(IconName::Undo)
+                                                                                .label("Revert")
+                                                                                .tooltip("Restore the files this run changed")
+                                                                                .on_click(cx.listener(
+                                                                                    move |this, _, _, cx| {
+                                                                                        this.revert_run(&run_id, cx);
+                                                                                    },
+                                                                                )),
+                                                                        )
+                                                                    })
                                                                     .child(
                                                                         Button::new(("tool-call-copy", ix))
                                                                             .xsmall()
@@ -1407,6 +1424,7 @@ impl Render for AgentChatPanel {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
+                    .children(self.render_safety_bar(cx))
                     // Input row: text input + send/stop
                     .child(
                         h_flex()
@@ -1435,6 +1453,7 @@ impl Render for AgentChatPanel {
                                         ),
                                 )
                             })
+                            .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")
                                     .icon(IconName::Send)
