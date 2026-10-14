@@ -360,6 +360,11 @@ impl DelegationHandle {
         self
     }
 
+    /// Never let this run's children change more than `ceiling` (plan mode).
+    pub(crate) fn clamp_ceiling(&mut self, ceiling: HarnessPermissions) {
+        self.ceiling = self.ceiling.min(ceiling);
+    }
+
     pub fn run_id(&self) -> &str {
         &self.run_id
     }
@@ -525,6 +530,9 @@ impl ChildJob {
         config.pre_request_hook = None;
         // The steward belongs to the chat, not to its helpers.
         config.steward = None;
+        // Plan mode and project memory belong to the chat's own run.
+        config.plan_mode = None;
+        config.memory = None;
 
         // The child's own model gets its own profile (tool-calling mode,
         // window, tier, sampling); the parent's applies only when the child

@@ -5,6 +5,7 @@ mod chat_storage;
 mod context;
 mod custom_provider_wizard;
 mod panel;
+mod plan_memory;
 mod provider_catalog;
 mod provider_selection;
 mod render;
@@ -1441,6 +1442,8 @@ impl Render for AgentChatPanel {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
+                    .children(self.render_plan_card(cx))
+                    .children(self.render_memory_strip(cx))
                     .children(self.render_pinned_strip(cx))
                     .children(self.render_safety_bar(cx))
                     // Input row: text input + send/stop
@@ -1472,6 +1475,7 @@ impl Render for AgentChatPanel {
                                         ),
                                 )
                             })
+                            .child(self.render_plan_memory_controls(cx))
                             .child(self.render_steward_controls(cx))
                             .child(self.render_confirm_policy_button(cx))
                             .child(

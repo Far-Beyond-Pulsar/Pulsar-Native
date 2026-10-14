@@ -140,6 +140,18 @@ impl AgentChatPanel {
             cx.new(|cx| InputState::new(window, cx).placeholder("Enter provider field value..."));
         let pin_edit_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Pinned text..."));
+        let plan_edit_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line()
+                .auto_grow(4, 14)
+                .placeholder("Goal: ...\n\nSteps:\n1. ...")
+        });
+        let memory_edit_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line()
+                .auto_grow(4, 14)
+                .placeholder("- One note per line. Loaded into every chat.")
+        });
 
         let chat_history_list = cx.new(|cx| {
             SearchableList::new(window, cx, Vec::<ChatHistoryEntry>::new(), |chat| {
@@ -307,6 +319,7 @@ impl AgentChatPanel {
             dismissed_pin_candidates: Vec::new(),
             pin_edit: None,
             pin_edit_input,
+            plan_memory: super::plan_memory::PlanMemoryState::new(plan_edit_input, memory_edit_input),
             auto_scroll: true,
             chat_viewport_height: px(0.0),
             _subscriptions: subscriptions,

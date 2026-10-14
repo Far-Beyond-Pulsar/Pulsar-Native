@@ -109,10 +109,13 @@ pub struct Harness {
 }
 
 /// Tools no child receives: they drive the editor UI.
-pub const CHILD_EXCLUDED_TOOLS: [&str; 3] = [
+pub const CHILD_EXCLUDED_TOOLS: [&str; 5] = [
     "open_file_in_default_editor",
     "activate_open_editor",
     "query_open_editors",
+    // Plan mode and project memory are the chat's own.
+    "exit_plan_mode",
+    "remember",
 ];
 
 /// Tools that change files or editor state.

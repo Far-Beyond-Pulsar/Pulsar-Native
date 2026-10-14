@@ -15,10 +15,13 @@ mod ledger;
 mod output_cap;
 mod persist;
 mod preview;
+mod memory;
+mod plan;
 mod profile;
 mod project;
 mod router;
 mod run;
+mod run_ext;
 mod taint;
 mod summary;
 mod text_tools;
@@ -100,3 +103,9 @@ pub use taint::{
     entry_taints, is_untrusted_path, ConfirmPolicy, TaintTracker, ToolClass, ToolClassifier,
 };
 pub use run_store::{ChildReport, RunRecord, RunStatus, RunStore};
+pub use memory::{
+    render_block as render_memory_block, MemoryContext, MemoryHook, MemoryInbox, MemoryProposal,
+    MemoryScope, MemoryStore, ProposalOrigin, MAX_ENTRY_CHARS, MEMORY_BLOCK_CHARS, MEMORY_FILE,
+    REMEMBER,
+};
+pub use plan::{Plan, PlanMode, PlanStep, EXIT_PLAN_MODE, PLAN_MODE_PROMPT};
