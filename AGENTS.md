@@ -8,6 +8,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | File | What |
 |---|---|
 | `.agents/ROADMAP.md` | Project philosophy, core insights, architecture overview |
+| `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend, Subsystem lifecycle |
 | `.agents/PLUGIN_SYSTEM.md` | Permanent DLL pattern, plugin SDK, loading, registries |
