@@ -16,12 +16,14 @@ use std::sync::Arc;
 use helio_component::components::{
     AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow,
     FoliageSourceRow, GlobalFogSourceRow, GlobalWindSourceRow, LightSourceRow, LocalFogSourceRow,
-    PostProcessVolumeSourceRow, SpriteSourceRow, StaticMeshComponent, StaticMeshDraw,
-    WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER, CAMERA_POST_PROCESS_SOURCES_BUFFER,
-    CORONA_EMITTER_SOURCES_BUFFER, DECAL_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER,
-    GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
-    MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
-    SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER, WIND_SOURCES_BUFFER,
+    PostProcessVolumeSourceRow, SkeletalMeshComponent, SpriteSourceRow, StaticMeshComponent,
+    StaticMeshDraw, WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER,
+    CAMERA_POST_PROCESS_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER, DECAL_SOURCES_BUFFER,
+    FOLIAGE_SOURCES_BUFFER, GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER,
+    LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
+    POST_PROCESS_VOLUME_SOURCES_BUFFER, SKELETAL_PALETTE_HANDLES_BUFFER,
+    SKELETAL_SKIN_HANDLES_BUFFER, SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER,
+    WIND_SOURCES_BUFFER,
 };
 use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
@@ -50,6 +52,8 @@ pub fn scene_join_keys() -> SceneJoinKeys {
         mesh_bounds: BufferKey::of(MESH_BOUNDS_BUFFER),
         mesh_flags: BufferKey::of(MESH_FLAGS_BUFFER),
         section_handles: BufferKey::of("static_mesh_draw_sections::handles"),
+        skin_handles: BufferKey::of(SKELETAL_SKIN_HANDLES_BUFFER),
+        palette_handles: BufferKey::of(SKELETAL_PALETTE_HANDLES_BUFFER),
         mesh_sections: BufferKey::of(MESH_SECTIONS_BUFFER),
         light_sources: BufferKey::of(LIGHT_SOURCES_BUFFER),
     }
@@ -144,6 +148,7 @@ pub fn ensure_gpu_mirror(
     // only; growable registration remains the sole owner of GPU storage and
     // deduplication behavior.
     StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
+    SkeletalMeshComponent::register_gpu_columns_growable(&mut gpu_store, 128, &device);
     // The scene join's inputs (see `scene_join_keys`); the object, material
     // and light rows passes draw are the join's outputs, not SceneDB's.
     StaticMeshDraw::register_gpu_columns_growable(&mut gpu_store, 4096, &device);

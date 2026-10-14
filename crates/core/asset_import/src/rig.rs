@@ -17,12 +17,14 @@ use std::path::{Path, PathBuf};
 
 use engine_fs::virtual_fs;
 use helio_asset_compat::{ImportedClip, ImportedKey, ImportedRig};
-use skeletal_assets::animation::{AnimationClip, BoneTrack, Keyframe};
+use skeletal_assets::animation::{
+    AnimationClip, BoneTrack, KeyInterpolation, Keyframe, KeyframeTangent,
+};
 use skeletal_assets::assets::{
     load_animseq_asset, load_skeleton_asset, save_animseq_asset, save_skeleton_asset, AnimSeqAsset,
     SkeletonAsset, ANIMSEQ_EXTENSION, SKELETON_EXTENSION,
 };
-use skeletal_assets::ids::{SkeletalMeshId, SkeletonId};
+use skeletal_assets::ids::{AnimSequenceId, SkeletalMeshId, SkeletonId};
 use skeletal_assets::math::{Transform, Vec3};
 use skeletal_assets::skeleton::{Bone, Skeleton};
 use skeletal_assets::skmesh::{
@@ -121,9 +123,15 @@ pub fn import_rig(
     // A re-import keeps the materials that were assigned to slots by name.
     if mesh_at.exists {
         if let Ok(old) = load_skmesh_asset(&mesh_at.path) {
+            for (index, lod) in mesh.lods.iter_mut().enumerate() {
+                if let Some(old_lod) = old.lods.get(index) {
+                    lod.screen_size_threshold = old_lod.screen_size_threshold;
+                }
+            }
             for slot in &mut mesh.material_slots {
                 if let Some(old_slot) = old.material_slots.iter().find(|s| s.name == slot.name) {
                     slot.material = old_slot.material.clone();
+                    slot.material_id = old_slot.material_id.clone();
                 }
             }
         }
@@ -149,6 +157,13 @@ pub fn import_rig(
         .map_err(|e| format!("write {}: {e:#}", mesh_at.path.display()))?;
 
     let root = previous.project_root;
+    remember_asset_id(
+        root,
+        "skeleton",
+        &skeleton.id.to_string(),
+        &skeleton_at.path,
+    );
+    remember_asset_id(root, "skmesh", &mesh.id.to_string(), &mesh_at.path);
     let mut outputs = vec![
         ImportOutput {
             path: relative_key(root, &skeleton_at.path),
@@ -179,19 +194,30 @@ pub fn import_rig(
         );
         let mut sequence =
             AnimSeqAsset::new(Some(skeleton.id.clone()), build_clip(clip, &bone_ids));
-        let old_preview = at
+        let old_sequence = at
             .exists
             .then(|| load_animseq_asset(&at.path).ok())
-            .flatten()
-            .and_then(|old| old.preview_mesh);
+            .flatten();
+        if let Some(id) = at
+            .id
+            .as_deref()
+            .and_then(AnimSequenceId::parse)
+            .or_else(|| old_sequence.as_ref().map(|old| old.id.clone()))
+        {
+            sequence.id = id;
+        }
+        let old_preview = old_sequence
+            .as_ref()
+            .and_then(|old| old.preview_mesh.clone());
         sequence.preview_mesh = Some(old_preview.unwrap_or_else(|| mesh.id.clone()));
         save_animseq_asset(&at.path, &sequence)
             .map_err(|e| format!("write {}: {e:#}", at.path.display()))?;
+        remember_asset_id(root, "animseq", &sequence.id.to_string(), &at.path);
         matched.insert(clip.name.as_str());
         outputs.push(ImportOutput {
             path: relative_key(root, &at.path),
             kind: KIND_ANIMSEQ.into(),
-            id: None,
+            id: Some(sequence.id.to_string()),
             source_name: Some(clip.name.clone()),
         });
     }
@@ -241,28 +267,51 @@ fn bone_ids(rig: &ImportedRig) -> Vec<String> {
 }
 
 fn build_mesh(rig: &ImportedRig, bone_ids: &[String], skeleton: SkeletonId) -> SkeletalMeshAsset {
-    // One slot per material the sections use, in order of first use.
+    // One slot per material any LOD uses, in order of first use.
     let mut slot_materials: Vec<Option<usize>> = Vec::new();
-    let mut indices = Vec::new();
-    let mut sections = Vec::new();
-    for section in &rig.sections {
-        let slot = match slot_materials
-            .iter()
-            .position(|m| *m == section.material_index)
-        {
-            Some(slot) => slot,
-            None => {
-                slot_materials.push(section.material_index);
-                slot_materials.len() - 1
+    let lods = rig
+        .lods
+        .iter()
+        .enumerate()
+        .map(|(lod_index, source_lod)| {
+            let mut indices = Vec::new();
+            let mut sections = Vec::new();
+            for section in &source_lod.sections {
+                let slot = match slot_materials
+                    .iter()
+                    .position(|m| *m == section.material_index)
+                {
+                    Some(slot) => slot,
+                    None => {
+                        slot_materials.push(section.material_index);
+                        slot_materials.len() - 1
+                    }
+                };
+                sections.push(MeshSection {
+                    first_index: indices.len() as u32,
+                    index_count: section.indices.len() as u32,
+                    material_slot: slot as u32,
+                });
+                indices.extend_from_slice(&section.indices);
             }
-        };
-        sections.push(MeshSection {
-            first_index: indices.len() as u32,
-            index_count: section.indices.len() as u32,
-            material_slot: slot as u32,
-        });
-        indices.extend_from_slice(&section.indices);
-    }
+            MeshLod {
+                screen_size_threshold: 1.0 / (lod_index as f32 + 1.0),
+                vertices: source_lod
+                    .vertices
+                    .iter()
+                    .map(|v| SkinnedVertex {
+                        position: v.position,
+                        normal: v.normal,
+                        uv: v.uv,
+                        joints: v.joints,
+                        weights: v.weights,
+                    })
+                    .collect(),
+                indices,
+                sections,
+            }
+        })
+        .collect();
 
     let mut mesh = SkeletalMeshAsset::new(Some(skeleton));
     mesh.joints = rig
@@ -282,24 +331,11 @@ fn build_mesh(rig: &ImportedRig, bone_ids: &[String], skeleton: SkeletonId) -> S
                 .map(|name| name.trim())
                 .filter(|name| !name.is_empty())
                 .map_or_else(|| format!("Material {}", n + 1), str::to_string),
+            material_id: None,
             material: None,
         })
         .collect();
-    mesh.lods = vec![MeshLod {
-        vertices: rig
-            .vertices
-            .iter()
-            .map(|v| SkinnedVertex {
-                position: v.position,
-                normal: v.normal,
-                uv: v.uv,
-                joints: v.joints,
-                weights: v.weights,
-            })
-            .collect(),
-        indices,
-        sections,
-    }];
+    mesh.lods = lods;
     mesh
 }
 
@@ -344,9 +380,32 @@ pub fn keyframes(keys: &[ImportedKey]) -> Vec<Keyframe> {
             }
             previous = Some(angles);
             transform.rotation = Vec3::new(angles[0], angles[1], angles[2]);
+            let interpolation = |mode| match mode {
+                helio_asset_compat::ImportedInterpolation::Linear => KeyInterpolation::Linear,
+                helio_asset_compat::ImportedInterpolation::Step => KeyInterpolation::Step,
+                helio_asset_compat::ImportedInterpolation::CubicSpline => {
+                    KeyInterpolation::CubicSpline
+                }
+            };
             Keyframe {
                 time: key.time,
                 transform,
+                translation_interpolation: interpolation(key.translation_interpolation),
+                rotation_interpolation: interpolation(key.rotation_interpolation),
+                scale_interpolation: interpolation(key.scale_interpolation),
+                in_tangent: KeyframeTangent {
+                    translation: key.translation_in_tangent,
+                    rotation: key.rotation_in_tangent,
+                    scale: key.scale_in_tangent,
+                },
+                out_tangent: KeyframeTangent {
+                    translation: key.translation_out_tangent,
+                    rotation: key.rotation_out_tangent,
+                    scale: key.scale_out_tangent,
+                },
+                rotation_quaternion: (key.rotation_interpolation
+                    == helio_asset_compat::ImportedInterpolation::CubicSpline)
+                    .then_some(key.rotation_quaternion),
             }
         })
         .collect()
@@ -448,17 +507,41 @@ fn free_path(dir: &Path, base: &str, extension: &str, taken: &mut HashSet<PathBu
 
 /// The id stored in the skeleton or skeletal mesh file at `path`.
 fn file_id(path: &Path, extension: &str) -> Option<String> {
-    let bytes = virtual_fs::read_file(path).ok()?;
-    if extension == SKELETON_EXTENSION {
-        SkeletonAsset::peek_id(std::str::from_utf8(&bytes).ok()?).map(|id| id.to_string())
-    } else {
-        SkeletalMeshAsset::peek_id(&bytes).map(|id| id.to_string())
+    match extension {
+        SKELETON_EXTENSION | ANIMSEQ_EXTENSION => {
+            let bytes = virtual_fs::read_file(path).ok()?;
+            let text = std::str::from_utf8(&bytes).ok()?;
+            if extension == SKELETON_EXTENSION {
+                SkeletonAsset::peek_id(text).map(|id| id.to_string())
+            } else {
+                AnimSeqAsset::peek_id(text).map(|id| id.to_string())
+            }
+        }
+        _ => SkeletalMeshAsset::peek_id_at(path)
+            .ok()
+            .map(|id| id.to_string()),
     }
 }
 
 /// The project file with `extension` that carries `id`, wherever it was moved.
 /// If several copies do, none is picked (the id is ambiguous).
 fn find_by_id(root: &Path, extension: &str, id: &str) -> Option<PathBuf> {
+    if let Ok(Some(index)) = engine_fs::open_project_file_index(root) {
+        let kind = match extension {
+            SKELETON_EXTENSION => "skeleton",
+            ANIMSEQ_EXTENSION => "animseq",
+            _ => "skmesh",
+        };
+        if let Ok(paths) = index.paths_for_asset_id_kind(kind, id) {
+            let mut matching = paths.into_iter().filter(|path| {
+                path.extension()
+                    .is_some_and(|found| found.eq_ignore_ascii_case(extension))
+            });
+            if let Some(first) = matching.next() {
+                return matching.next().is_none().then_some(first);
+            }
+        }
+    }
     let entries = virtual_fs::manifest(root).ok()?;
     let mut found = entries
         .into_iter()
@@ -478,4 +561,15 @@ fn find_by_id(root: &Path, extension: &str, id: &str) -> Option<PathBuf> {
         .filter(|path| file_id(path, extension).as_deref() == Some(id));
     let first = found.next()?;
     found.next().is_none().then_some(first)
+}
+
+fn remember_asset_id(root: &Path, kind: &str, id: &str, path: &Path) {
+    if let Ok(Some(index)) = engine_fs::open_project_file_index(root) {
+        if let Err(error) = index
+            .refresh_path(path)
+            .and_then(|_| index.record_typed_asset_id(kind, id, path))
+        {
+            tracing::debug!("could not cache asset id for {}: {error:#}", path.display());
+        }
+    }
 }

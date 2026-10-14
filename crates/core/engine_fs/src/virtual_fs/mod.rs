@@ -65,6 +65,11 @@ pub fn read_file(path: &Path) -> Result<Vec<u8>> {
     global().read().read_file(path)
 }
 
+/// Read up to `len` bytes from the start of a file.
+pub fn read_file_prefix(path: &Path, len: usize) -> Result<Vec<u8>> {
+    global().read().read_file_prefix(path, len)
+}
+
 /// Overwrite (or create) a file with `content`.
 pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
     let result = global().read().write_file(path, content);
