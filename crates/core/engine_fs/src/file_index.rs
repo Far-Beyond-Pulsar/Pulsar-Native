@@ -5,15 +5,25 @@
 //! remote providers can continue to use their own manifest/query mechanisms.
 
 use anyhow::{Context, Result};
-use rusqlite::{params, params_from_iter, types::Value, Connection};
-use std::collections::HashMap;
+use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::events::{FsChangeKind, FsEventSource};
 use crate::providers::ManifestEntry;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
+const ASSET_ID_MANIFEST: &str = ".pulsar/asset_ids.json";
+static ASSET_ID_MANIFEST_LOCK: OnceLock<parking_lot::Mutex<()>> = OnceLock::new();
+
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+struct DurableAssetIdManifest {
+    version: u32,
+    /// Project-relative path -> asset kind -> stable ID.
+    assets: BTreeMap<String, BTreeMap<String, String>>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexedFile {
@@ -148,6 +158,28 @@ impl ProjectFileIndex {
                  COMMIT;",
             )?;
         }
+        if version < 3 {
+            connection.execute_batch(
+                "BEGIN IMMEDIATE;
+                 DROP INDEX IF EXISTS asset_ids_path_idx;
+                 DROP INDEX IF EXISTS asset_ids_id_idx;
+                 ALTER TABLE asset_ids RENAME TO asset_ids_legacy;
+                 CREATE TABLE asset_ids (
+                    asset_id TEXT NOT NULL,
+                    kind TEXT NOT NULL DEFAULT '',
+                    path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+                    PRIMARY KEY (asset_id, path, kind)
+                 );
+                 INSERT INTO asset_ids(asset_id, kind, path)
+                    SELECT asset_id, '', path FROM asset_ids_legacy;
+                 DROP TABLE asset_ids_legacy;
+                 CREATE INDEX asset_ids_path_idx ON asset_ids(path);
+                 CREATE INDEX asset_ids_id_idx ON asset_ids(asset_id);
+                 CREATE INDEX asset_ids_kind_idx ON asset_ids(kind);
+                 PRAGMA user_version = 3;
+                 COMMIT;",
+            )?;
+        }
         Ok(())
     }
 
@@ -255,6 +287,8 @@ impl ProjectFileIndex {
             "DELETE FROM files WHERE path = ?1 OR substr(path, 1, length(?1) + 1) = ?1 || '/'",
             [&relative],
         )?;
+        drop(connection);
+        self.remove_durable_asset_ids(&relative)?;
         Ok(())
     }
 
@@ -303,11 +337,15 @@ impl ProjectFileIndex {
 
         let mut asset_ids = Vec::new();
         {
-            let mut statement = tx.prepare("SELECT asset_id FROM asset_ids WHERE path = ?1")?;
+            let mut statement =
+                tx.prepare("SELECT asset_id, kind FROM asset_ids WHERE path = ?1")?;
             for entry in &moved {
-                let rows = statement.query_map([&entry.path], |row| row.get::<_, String>(0))?;
+                let rows = statement.query_map([&entry.path], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
                 for id in rows {
-                    asset_ids.push((id?, entry.path.clone()));
+                    let (id, kind) = id?;
+                    asset_ids.push((id, kind, entry.path.clone()));
                 }
             }
         }
@@ -367,7 +405,7 @@ impl ProjectFileIndex {
                 ],
             )?;
         }
-        for (id, old_path) in asset_ids {
+        for (id, kind, old_path) in asset_ids {
             let suffix = old_path.strip_prefix(&from).unwrap_or_default();
             let new_path = if suffix.is_empty() {
                 to.clone()
@@ -375,11 +413,12 @@ impl ProjectFileIndex {
                 format!("{to}{suffix}")
             };
             tx.execute(
-                "INSERT OR IGNORE INTO asset_ids(asset_id, path) VALUES (?1, ?2)",
-                params![id, new_path],
+                "INSERT OR IGNORE INTO asset_ids(asset_id, kind, path) VALUES (?1, ?2, ?3)",
+                params![id, kind, new_path],
             )?;
         }
         tx.commit()?;
+        self.move_durable_asset_ids(&from, &to)?;
         Ok(())
     }
 
@@ -390,11 +429,145 @@ impl ProjectFileIndex {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
         let connection = self.connection.lock().expect("file-index mutex poisoned");
-        connection.execute("DELETE FROM asset_ids WHERE path = ?1", [&relative])?;
         connection.execute(
-            "INSERT OR IGNORE INTO asset_ids(asset_id, path) VALUES (?1, ?2)",
+            "DELETE FROM asset_ids WHERE path = ?1 AND kind = ''",
+            [&relative],
+        )?;
+        connection.execute(
+            "INSERT OR IGNORE INTO asset_ids(asset_id, kind, path) VALUES (?1, '', ?2)",
             params![id, relative],
         )?;
+        Ok(())
+    }
+
+    /// Associate a stable ID and asset kind with an indexed project file.
+    /// Recording another ID of the same kind for the path replaces its prior
+    /// typed association while preserving IDs recorded for other kinds.
+    pub fn record_typed_asset_id(&self, kind: &str, id: &str, path: &Path) -> Result<()> {
+        let Some(relative) = self.relative_path(path) else {
+            anyhow::bail!("asset id path is outside the indexed project root");
+        };
+        let kind = kind.trim();
+        if kind.is_empty() {
+            anyhow::bail!("typed asset kind cannot be empty");
+        }
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        connection.execute(
+            "DELETE FROM asset_ids WHERE path = ?1 AND kind = ?2",
+            params![relative, kind],
+        )?;
+        connection.execute(
+            "INSERT OR IGNORE INTO asset_ids(asset_id, kind, path) VALUES (?1, ?2, ?3)",
+            params![id, kind, relative],
+        )?;
+        Ok(())
+    }
+
+    /// Ensure that a file or folder has a persistent typed ID.
+    ///
+    /// Embedded asset IDs should use [`record_typed_asset_id`](Self::record_typed_asset_id)
+    /// instead. This helper is for file and folder assets that cannot store
+    /// metadata in their payload (such as PNG images). IDs are saved in the
+    /// project-owned `.pulsar/asset_ids.json` manifest and mirrored into the
+    /// disposable file index for fast picker lookup.
+    pub fn ensure_typed_asset_id(&self, kind: &str, path: &Path) -> Result<String> {
+        let Some(relative) = self.relative_path(path) else {
+            anyhow::bail!("asset id path is outside the indexed project root");
+        };
+        let kind = kind.trim();
+        if kind.is_empty() {
+            anyhow::bail!("typed asset kind cannot be empty");
+        }
+        self.refresh_path(path)?;
+        let lock = ASSET_ID_MANIFEST_LOCK.get_or_init(|| parking_lot::Mutex::new(()));
+        let _guard = lock.lock();
+        let manifest_path = self.project_root.join(ASSET_ID_MANIFEST);
+        let mut manifest = read_durable_asset_id_manifest(&manifest_path)?;
+        if let Some(id) = manifest
+            .assets
+            .get(&relative)
+            .and_then(|by_kind| by_kind.get(kind))
+            .cloned()
+        {
+            self.record_typed_asset_id(kind, &id, path)?;
+            return Ok(id);
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        manifest.version = 1;
+        manifest
+            .assets
+            .entry(relative)
+            .or_default()
+            .insert(kind.to_owned(), id.clone());
+        write_durable_asset_id_manifest(&manifest_path, &manifest)?;
+        self.record_typed_asset_id(kind, &id, path)?;
+        Ok(id)
+    }
+
+    fn remove_durable_asset_ids(&self, relative: &str) -> Result<()> {
+        let lock = ASSET_ID_MANIFEST_LOCK.get_or_init(|| parking_lot::Mutex::new(()));
+        let _guard = lock.lock();
+        let manifest_path = self.project_root.join(ASSET_ID_MANIFEST);
+        let mut manifest = read_durable_asset_id_manifest(&manifest_path)?;
+        let removed: Vec<String> = manifest
+            .assets
+            .keys()
+            .filter(|path| *path == relative || path.starts_with(&format!("{relative}/")))
+            .cloned()
+            .collect();
+        if removed.is_empty() {
+            return Ok(());
+        }
+        for path in removed {
+            manifest.assets.remove(&path);
+        }
+        write_durable_asset_id_manifest(&manifest_path, &manifest)
+    }
+
+    fn move_durable_asset_ids(&self, from: &str, to: &str) -> Result<()> {
+        let lock = ASSET_ID_MANIFEST_LOCK.get_or_init(|| parking_lot::Mutex::new(()));
+        let _guard = lock.lock();
+        let manifest_path = self.project_root.join(ASSET_ID_MANIFEST);
+        let mut manifest = read_durable_asset_id_manifest(&manifest_path)?;
+        let moved: Vec<(String, BTreeMap<String, String>)> = manifest
+            .assets
+            .iter()
+            .filter(|(path, _)| *path == from || path.starts_with(&format!("{from}/")))
+            .map(|(path, kinds)| (path.clone(), kinds.clone()))
+            .collect();
+        if moved.is_empty() {
+            return Ok(());
+        }
+        for (old_path, _) in &moved {
+            manifest.assets.remove(old_path);
+        }
+        for (old_path, kinds) in moved {
+            let suffix = old_path.strip_prefix(from).unwrap_or_default();
+            let new_path = if suffix.is_empty() {
+                to.to_owned()
+            } else {
+                format!("{to}{suffix}")
+            };
+            manifest.assets.insert(new_path, kinds);
+        }
+        write_durable_asset_id_manifest(&manifest_path, &manifest)
+    }
+
+    fn restore_durable_asset_ids(&self) -> Result<()> {
+        let lock = ASSET_ID_MANIFEST_LOCK.get_or_init(|| parking_lot::Mutex::new(()));
+        let _guard = lock.lock();
+        let manifest = read_durable_asset_id_manifest(&self.project_root.join(ASSET_ID_MANIFEST))?;
+        for (relative, kinds) in manifest.assets {
+            let path = self
+                .project_root
+                .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+            if !crate::virtual_fs::exists(&path).unwrap_or(false) {
+                continue;
+            }
+            for (kind, id) in kinds {
+                self.record_typed_asset_id(&kind, &id, &path)?;
+            }
+        }
         Ok(())
     }
 
@@ -429,6 +602,69 @@ impl ProjectFileIndex {
         })
         .collect::<rusqlite::Result<Vec<_>>>()
         .context("query asset id index")
+    }
+
+    /// Return the first project path carrying `id` for `kind`, if indexed.
+    pub fn path_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Option<PathBuf>> {
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut statement = connection.prepare(
+            "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path LIMIT 2",
+        )?;
+        let mut rows = statement.query(params![kind, id])?;
+        let Some(first) = rows.next()? else {
+            return Ok(None);
+        };
+        let relative: String = first.get(0)?;
+        if rows.next()?.is_some() {
+            return Ok(None);
+        }
+        Ok(Some(self.project_root.join(
+            relative.replace('/', std::path::MAIN_SEPARATOR_STR),
+        )))
+    }
+
+    /// Return every project path carrying `id` for `kind`.
+    pub fn paths_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Vec<PathBuf>> {
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut statement = connection.prepare(
+            "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path",
+        )?;
+        let rows = statement.query_map(params![kind, id], |row| row.get::<_, String>(0))?;
+        rows.map(|row| {
+            row.map(|relative| {
+                self.project_root
+                    .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+            })
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .context("query typed asset id paths")
+    }
+
+    /// Return stable asset IDs associated with one indexed project file.
+    pub fn asset_ids_for_path(&self, path: &Path) -> Result<Vec<String>> {
+        let Some(relative) = self.relative_path(path) else {
+            anyhow::bail!("asset id path is outside the indexed project root");
+        };
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut statement = connection
+            .prepare("SELECT asset_id FROM asset_ids WHERE path = ?1 ORDER BY asset_id")?;
+        let rows = statement.query_map([relative], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("query asset ids for file")
+    }
+
+    /// Return stable asset IDs of `kind` associated with one indexed file.
+    pub fn asset_ids_for_path_kind(&self, path: &Path, kind: &str) -> Result<Vec<String>> {
+        let Some(relative) = self.relative_path(path) else {
+            anyhow::bail!("asset id path is outside the indexed project root");
+        };
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut statement = connection.prepare(
+            "SELECT asset_id FROM asset_ids WHERE path = ?1 AND kind = ?2 ORDER BY asset_id",
+        )?;
+        let rows = statement.query_map(params![relative, kind], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("query typed asset ids for file")
     }
 
     /// Refresh one local file or directory from the active VFS metadata.
@@ -743,6 +979,7 @@ pub fn open_project_file_index(project_root: &Path) -> Result<Option<Arc<Project
     let manifest =
         crate::virtual_fs::manifest(&key).context("read project manifest for file index")?;
     index.reconcile(&manifest)?;
+    index.restore_durable_asset_ids()?;
     let index = {
         let mut indexes = indexes.lock();
         if let Some(existing) = indexes.get(&key) {
@@ -861,7 +1098,28 @@ fn normalize_absolute_path(path: PathBuf) -> PathBuf {
 }
 
 fn is_cache_entry(path: &str) -> bool {
-    path == ".pulsar/cache" || path.starts_with(".pulsar/cache/")
+    path == ".pulsar/cache" || path.starts_with(".pulsar/cache/") || path == ASSET_ID_MANIFEST
+}
+
+fn read_durable_asset_id_manifest(path: &Path) -> Result<DurableAssetIdManifest> {
+    if !crate::virtual_fs::exists(path)? {
+        return Ok(DurableAssetIdManifest::default());
+    }
+    let bytes = crate::virtual_fs::read_file(path)
+        .with_context(|| format!("read durable asset IDs from {}", path.display()))?;
+    serde_json::from_slice(&bytes)
+        .with_context(|| format!("parse durable asset IDs from {}", path.display()))
+}
+
+fn write_durable_asset_id_manifest(path: &Path, manifest: &DurableAssetIdManifest) -> Result<()> {
+    let parent = path
+        .parent()
+        .context("durable asset ID manifest has no parent directory")?;
+    crate::virtual_fs::create_dir_all(parent)?;
+    let bytes = serde_json::to_vec_pretty(manifest)?;
+    crate::virtual_fs::write_file_atomically(path, &bytes)
+        .or_else(|_| crate::virtual_fs::write_file(path, &bytes))
+        .with_context(|| format!("write durable asset IDs to {}", path.display()))
 }
 
 fn registered_file_type(path: &Path) -> Option<String> {

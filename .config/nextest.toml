@@ -10,3 +10,10 @@ not (package(helio_component) & (
     | binary(content_dedup_benchmarks)
 ))
 """
+
+# A test that hangs must not hold a runner. On 2026-10-13 a single physics_plugin
+# render test sat for 18,260 s (>5 h) on a hosted runner until the run was
+# cancelled by hand. Flag any test over a minute as SLOW and kill it after ten.
+# The job-level timeout in ci.yml is the backstop; this one fails the hung test
+# by name so the cause is visible instead of an opaque cancelled job.
+slow-timeout = { period = "60s", terminate-after = 10, grace-period = "10s" }

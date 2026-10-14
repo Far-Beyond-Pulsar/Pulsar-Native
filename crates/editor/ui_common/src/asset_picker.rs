@@ -38,6 +38,14 @@ impl AssetQuery {
         Self::FolderMarker(marker_file.into())
     }
 
+    /// Queries for every extension supported by a typed asset-reference kind.
+    pub fn for_kind<K: pulsar_reflection::AssetKind>() -> Vec<Self> {
+        K::EXTENSIONS
+            .iter()
+            .map(|extension| Self::extension(*extension))
+            .collect()
+    }
+
     /// Common raster and GPU texture formats offered by the texture picker.
     pub fn texture_images() -> Vec<Self> {
         [
@@ -201,6 +209,63 @@ impl MeshAssetPicker {
 
     pub fn selected_path(&self) -> &str {
         &self.selected_path
+    }
+
+    /// Resolve the selected project's stable, kind-matched asset ID into a typed reference.
+    /// The owning asset loader is responsible for recording its embedded ID
+    /// in the project index before this is called.
+    pub fn selected_asset_ref<K: pulsar_reflection::AssetKind>(
+        &self,
+    ) -> Option<pulsar_reflection::AssetRef<K>> {
+        let root = self.project_root.as_ref()?;
+        let index = engine_fs::open_project_file_index(root).ok()??;
+        let path = Path::new(&self.selected_path);
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            root.join(path)
+        };
+        if !K::accepts_path(&path) {
+            return None;
+        }
+        let ids = index.asset_ids_for_path_kind(&path, K::KIND).ok()?;
+        ids.iter()
+            .find_map(|id| pulsar_reflection::AssetRef::parse(id))
+    }
+
+    /// Return the selected asset's typed reference, creating a durable ID for
+    /// plain file assets that do not embed one (for example PNG images).
+    pub fn selected_or_create_asset_ref<K: pulsar_reflection::AssetKind>(
+        &self,
+    ) -> Option<pulsar_reflection::AssetRef<K>> {
+        if let Some(reference) = self.selected_asset_ref::<K>() {
+            return Some(reference);
+        }
+        let root = self.project_root.as_ref()?;
+        let index = engine_fs::open_project_file_index(root).ok()??;
+        let path = Path::new(&self.selected_path);
+        if !K::accepts_path(path) {
+            return None;
+        }
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            root.join(path)
+        };
+        let id = index.ensure_typed_asset_id(K::KIND, &path).ok()?;
+        pulsar_reflection::AssetRef::parse(&id)
+    }
+
+    /// Resolve a typed reference through the project's file index.
+    pub fn resolve_asset_ref_path<K: pulsar_reflection::AssetKind>(
+        project_root: &Path,
+        reference: &pulsar_reflection::AssetRef<K>,
+    ) -> Option<PathBuf> {
+        let index = engine_fs::open_project_file_index(project_root).ok()??;
+        index
+            .path_for_asset_id_kind(K::KIND, reference.as_str())
+            .ok()
+            .flatten()
     }
 
     /// Point the picker at a path chosen elsewhere, without emitting
