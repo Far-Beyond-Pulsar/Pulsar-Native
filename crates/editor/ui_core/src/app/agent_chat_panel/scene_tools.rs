@@ -34,9 +34,66 @@ impl agent_scene_tools::SceneSource for OpenLevelScene {
         engine_backend::scene::level_rules::check_instance(world, instance)
             .map_err(str::to_string)
     }
+
+    /// An agent changed the live level: mark it unsaved and bump its revision
+    /// so pollers redraw. Undo-stack integration is deliberately not done
+    /// here: the level editor's history stores whole-scene before/after
+    /// snapshots per entry, which would cost O(scene) for every agent tool
+    /// call, and an editor undo racing the agent's own per-run revert (which
+    /// restores the same objects from its journal) would fight over the same
+    /// state. The agent's own undo is the run's Revert button, which is
+    /// conflict-aware.
+    fn scene_edited(&self, _summary: &str) {
+        if let Ok(editor) = ui_level_editor::ai_sessions::find_editor(None) {
+            editor.write().scene.bump_revision(true);
+        }
+    }
 }
 
 impl AgentChatPanel {
+    pub(super) fn load_scene_settings() -> agent_scene_tools::SceneSettings {
+        let settings = engine_state::get_project_path()
+            .map(|root| agent_scene_tools::SceneSettings::load(&PathBuf::from(root)))
+            .unwrap_or_default();
+        if let Some(toolbox) = agent_scene_tools::global_toolbox() {
+            toolbox.set_settings(settings.clone());
+        }
+        settings
+    }
+
+    fn save_scene_settings(&self) {
+        if let Some(toolbox) = agent_scene_tools::global_toolbox() {
+            toolbox.set_settings(self.scene_settings.clone());
+        }
+        if let Some(root) = engine_state::get_project_path() {
+            if let Err(err) = self.scene_settings.save(&PathBuf::from(root)) {
+                tracing::warn!("[agent_chat] could not save agent_scene.json: {err}");
+            }
+        }
+    }
+
+    /// Footer control for the project's scene sandbox mode; click cycles
+    /// off / overlay / copy.
+    pub(super) fn render_scene_sandbox_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        Button::new("agent-chat-scene-sandbox")
+            .xsmall()
+            .ghost()
+            .label(format!("Scene sandbox: {}", self.scene_settings.sandbox_mode.label()))
+            .tooltip(
+                "How sandboxed scene runs keep their edits away from the live level. \
+                 overlay: record the run's edits over the live scene, no copy (default). \
+                 copy: fork a full private copy of the scene (capped by copy_max_objects in \
+                 .pulsar/agent_scene.json, 0 = unlimited). off: sandbox runs edit the live \
+                 scene directly. A harness can override this with `sandbox: overlay|copy|off`. \
+                 Click to change.",
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.scene_settings.sandbox_mode = this.scene_settings.sandbox_mode.next();
+                this.save_scene_settings();
+                cx.notify();
+            }))
+    }
+
     /// The chat's tool registry: the default tools plus the scene tools.
     /// Installing the toolbox also registers its run extension (tool classes,
     /// revert, sandbox reports and reviews) with the agent runtime.

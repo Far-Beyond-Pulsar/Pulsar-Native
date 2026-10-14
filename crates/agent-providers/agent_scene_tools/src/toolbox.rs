@@ -7,18 +7,23 @@ use std::sync::Arc;
 
 use agent_chat_tools::AgentRunScope;
 use anyhow::{anyhow, bail, Result};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use pulsar_scenedb::World;
+use serde_json::Value;
 
 use crate::journal::{author_of, Recorder, TransactionLog};
-use crate::sandbox::Fork;
+use crate::sandbox::{Fork, ForkState, SceneDiff};
+use crate::settings::{resolve_mode, SandboxMode, SceneSettings};
 use crate::source::{SceneSource, SharedScene};
+use crate::write_op::WriteOp;
 
 /// What a write did, for the tool result.
 #[derive(Clone, Debug)]
 pub struct WriteNote {
     /// The edit went into a private sandbox, not the live scene.
     pub sandbox: bool,
+    /// `overlay` or `copy` for a sandbox edit, `live` otherwise.
+    pub mode: &'static str,
     /// Transaction number in the journal (live edits only).
     pub seq: Option<u64>,
     pub author: String,
@@ -29,6 +34,7 @@ impl WriteNote {
         if self.sandbox {
             serde_json::json!({
                 "sandbox": true,
+                "sandbox_mode": self.mode,
                 "author": self.author,
                 "note": "Recorded in your private sandbox. The live scene is unchanged; your changes come back as a diff for the user to apply or discard.",
             })
@@ -49,6 +55,7 @@ pub struct SceneToolbox {
     pub(crate) source: Arc<dyn SceneSource>,
     pub(crate) log: TransactionLog,
     pub(crate) forks: Mutex<HashMap<String, ForkHandle>>,
+    settings: RwLock<SceneSettings>,
 }
 
 pub(crate) fn scene_key(scene: &SharedScene) -> usize {
@@ -69,6 +76,7 @@ impl SceneToolbox {
             source,
             log: TransactionLog::new(),
             forks: Mutex::new(HashMap::new()),
+            settings: RwLock::new(SceneSettings::default()),
         })
     }
 
@@ -76,8 +84,26 @@ impl SceneToolbox {
         &self.log
     }
 
+    /// The project's sandbox settings (`.pulsar/agent_scene.json`).
+    pub fn settings(&self) -> SceneSettings {
+        self.settings.read().clone()
+    }
+
+    /// Replace the project's sandbox settings; applies to sandboxes created
+    /// from now on.
+    pub fn set_settings(&self, settings: SceneSettings) {
+        *self.settings.write() = settings;
+    }
+
+    /// The mode a run with this scope gets right now.
+    pub fn mode_for(&self, scope: &AgentRunScope) -> SandboxMode {
+        resolve_mode(scope.sandbox_mode.as_deref(), self.settings.read().sandbox_mode)
+    }
+
     /// The sandbox a call must use: the one this run owns (created on first
-    /// use for a sandbox run), or the open one of a run above it.
+    /// use for a sandbox run), or the open one of a run above it. `None`
+    /// means the live scene: a run without a sandbox, or one whose mode is
+    /// `off`.
     fn fork_for(&self, scope: &AgentRunScope) -> Result<Option<ForkHandle>> {
         let run_id = run_id_of(scope);
         {
@@ -97,10 +123,15 @@ impl SceneToolbox {
         if !scope.sandbox {
             return Ok(None);
         }
-        let scene = self.source.scene().map_err(|e| anyhow!(e))?;
-        let fork = {
-            let db = scene.read();
-            Fork::create(&run_id, &db.world).map_err(|e| anyhow!(e))?
+        let fork = match self.mode_for(scope) {
+            SandboxMode::Off => return Ok(None),
+            SandboxMode::Overlay => Fork::overlay(&run_id),
+            SandboxMode::Copy => {
+                let max = self.settings.read().copy_max_objects;
+                let scene = self.source.scene().map_err(|e| anyhow!(e))?;
+                let db = scene.read();
+                Fork::create(&run_id, &db.world, max).map_err(|e| anyhow!(e))?
+            }
         };
         // Two parallel tool calls of one run may both get here; the first
         // fork wins so no edit lands in a fork that is then dropped.
@@ -113,11 +144,20 @@ impl SceneToolbox {
         Ok(Some(handle))
     }
 
-    /// Run a read against the scene this run sees (its sandbox, or live).
+    /// Run a read against the scene this run sees: its copy sandbox, the live
+    /// scene plus its own pending edits (overlay), or the live scene.
     pub fn read<R>(&self, scope: &AgentRunScope, f: impl FnOnce(&World) -> Result<R>) -> Result<R> {
         if let Some(fork) = self.fork_for(scope)? {
             let fork = fork.lock();
-            return f(&fork.world);
+            match &fork.state {
+                ForkState::Copy(world) => return f(world),
+                ForkState::Overlay(overlay) if !overlay.is_empty() => {
+                    let scene = self.source.scene().map_err(|e| anyhow!(e))?;
+                    let mut db = scene.write();
+                    return overlay.view(&mut db.world, &*self.source, f);
+                }
+                ForkState::Overlay(_) => {}
+            }
         }
         let scene = self.source.scene().map_err(|e| anyhow!(e))?;
         let db = scene.read();
@@ -126,44 +166,58 @@ impl SceneToolbox {
 
     /// Run an edit as one transaction. On error everything the call wrote is
     /// rolled back. A live edit is journaled under `agent:<run id>`; a
-    /// sandbox edit only changes the sandbox.
-    pub fn write<R>(
-        &self,
-        scope: &AgentRunScope,
-        tool: &str,
-        f: impl FnOnce(&mut World, &mut Recorder, &dyn SceneSource) -> Result<(R, String)>,
-    ) -> Result<(R, WriteNote)> {
+    /// sandbox edit only changes the sandbox (a private world, or the
+    /// overlay's list of recorded ops).
+    pub fn write_op(&self, scope: &AgentRunScope, mut op: WriteOp) -> Result<(Value, WriteNote)> {
         let run_id = run_id_of(scope);
         let author = author_of(&run_id);
-        if let Some(fork) = self.fork_for(scope)? {
-            let mut fork = fork.lock();
+        if let Some(handle) = self.fork_for(scope)? {
+            let mut fork = handle.lock();
             if fork.finished {
                 bail!(
                     "This sandbox is closed: its run has finished and its diff is waiting for review."
                 );
             }
-            let mut rec = Recorder::new();
-            return match f(&mut fork.world, &mut rec, &*self.source) {
-                Ok((value, summary)) => {
-                    fork.ops.push(summary);
-                    Ok((value, WriteNote { sandbox: true, seq: None, author }))
-                }
-                Err(err) => {
-                    if let Err(re) = rec.rollback(&mut fork.world) {
-                        tracing::error!("[scene_tools] sandbox rollback failed: {re}");
+            let fork = &mut *fork;
+            let mode = match fork.state {
+                ForkState::Copy(_) => "copy",
+                ForkState::Overlay(_) => "overlay",
+            };
+            let done = match &mut fork.state {
+                ForkState::Copy(world) => {
+                    let mut rec = Recorder::new();
+                    match op.exec(world, &mut rec, &*self.source) {
+                        Ok(done) => done,
+                        Err(err) => {
+                            if let Err(re) = rec.rollback(world) {
+                                tracing::error!("[scene_tools] sandbox rollback failed: {re}");
+                            }
+                            return Err(err);
+                        }
                     }
-                    Err(err)
+                }
+                ForkState::Overlay(overlay) => {
+                    let scene = self.source.scene().map_err(|e| anyhow!(e))?;
+                    let mut db = scene.write();
+                    overlay.write(&mut db.world, &*self.source, op)?
                 }
             };
+            let (value, summary) = done;
+            fork.ops.push(summary);
+            return Ok((value, WriteNote { sandbox: true, mode, seq: None, author }));
         }
         let scene = self.source.scene().map_err(|e| anyhow!(e))?;
         let key = scene_key(&scene);
         let mut db = scene.write();
         let mut rec = Recorder::new();
-        match f(&mut db.world, &mut rec, &*self.source) {
+        match op.exec(&mut db.world, &mut rec, &*self.source) {
             Ok((value, summary)) => {
-                let seq = self.log.record(&run_id, tool, summary, key, rec);
-                Ok((value, WriteNote { sandbox: false, seq, author }))
+                let seq = self.log.record(&run_id, op.tool(), summary.clone(), key, &db.world, rec);
+                drop(db);
+                if seq.is_some() {
+                    self.source.scene_edited(&summary);
+                }
+                Ok((value, WriteNote { sandbox: false, mode: "live", seq, author }))
             }
             Err(err) => {
                 if let Err(re) = rec.rollback(&mut db.world) {
@@ -177,8 +231,15 @@ impl SceneToolbox {
     // ── Run-tree operations (used by the run extension) ──────────────────────
 
     /// Undo the scene edits of `root` and its descendants and drop their
-    /// sandboxes. Returns the notes for the revert summary.
+    /// sandboxes. Edits to objects the user changed since are left alone and
+    /// reported as an error. Returns the notes for the revert summary.
     pub fn revert_tree(&self, root: &str) -> Result<Vec<String>, String> {
+        self.revert_tree_with(root, false)
+    }
+
+    /// [`Self::revert_tree`]; with `force` the agent's edits are undone even
+    /// over objects the user changed since.
+    pub fn revert_tree_with(&self, root: &str, force: bool) -> Result<Vec<String>, String> {
         let mut notes = Vec::new();
         let dropped: Vec<String> = {
             let mut forks = self.forks.lock();
@@ -200,22 +261,30 @@ impl SceneToolbox {
         }
         let scene = self.source.scene()?;
         let key = scene_key(&scene);
-        let mut db = scene.write();
-        let outcome = self.log.revert_tree(root, &mut db.world, key);
+        let outcome = {
+            let mut db = scene.write();
+            self.log.revert_tree(root, &mut db.world, key, force)
+        };
         if outcome.reverted > 0 {
+            self.source.scene_edited(&format!("reverted agent:{root}"));
             notes.push(format!(
                 "Undid {} scene transaction(s) ({} object(s)) made by agent:{root}.",
                 outcome.reverted, outcome.objects
             ));
         }
-        if outcome.failed.is_empty() {
+        let mut problems = outcome.failed;
+        if !outcome.conflicts.is_empty() {
+            problems.extend(outcome.conflicts);
+            problems.push(
+                "Those objects were edited by someone else after the agent; they were left as they are. \
+                 Revert with force to overwrite them."
+                    .to_string(),
+            );
+        }
+        if problems.is_empty() {
             Ok(notes)
         } else {
-            Err(format!(
-                "{} {}",
-                notes.join(" "),
-                outcome.failed.join("; ")
-            ))
+            Err(format!("{} {}", notes.join(" "), problems.join("; ")))
         }
     }
 
@@ -227,8 +296,44 @@ impl SceneToolbox {
             return Vec::new();
         };
         let mut fork = handle.lock();
-        let diff = fork.compute_diff();
-        let text = diff.render_text(run_id, &fork.ops);
+        let mut ops = fork.ops.clone();
+        let computed: Result<(SceneDiff, Option<crate::sandbox::SceneImage>), String> =
+            match &fork.state {
+                ForkState::Copy(_) => Ok((fork.compute_diff(), None)),
+                ForkState::Overlay(overlay) => self
+                    .source
+                    .scene()
+                    .map_err(|e| e.to_string())
+                    .and_then(|scene| {
+                        let mut db = scene.write();
+                        overlay
+                            .finish(&mut db.world, &*self.source)
+                            .map_err(|e| e.to_string())
+                    })
+                    .map(|(base, now, skipped)| {
+                        for note in skipped {
+                            ops.push(format!("NOT APPLICABLE to the current scene, skipped: {note}"));
+                        }
+                        (SceneDiff::compute(&base, &now), Some(base))
+                    }),
+            };
+        let diff = match computed {
+            Ok((diff, base)) => {
+                if let Some(base) = base {
+                    fork.base = base;
+                }
+                diff
+            }
+            Err(err) => {
+                drop(fork);
+                self.forks.lock().remove(run_id);
+                return vec![(
+                    "scene_diff".to_string(),
+                    format!("The sandbox diff could not be computed and was dropped: {err}"),
+                )];
+            }
+        };
+        let text = diff.render_text(run_id, &ops);
         let empty = diff.is_empty();
         fork.finished = true;
         fork.review = Some((
@@ -311,10 +416,13 @@ impl SceneToolbox {
                     "applied sandbox {key}: +{} -{} ~{}",
                     report.added, report.removed, report.changed
                 );
-                let seq = self.log.record(key, "sandbox_apply", summary.clone(), scene_id, rec);
+                let seq = self.log.record(key, "sandbox_apply", summary.clone(), scene_id, &db.world, rec);
                 drop(db);
                 drop(fork);
                 self.forks.lock().remove(key);
+                if seq.is_some() {
+                    self.source.scene_edited(&summary);
+                }
                 Ok(format!(
                     "Applied sandbox {key} to the live scene as one transaction{}: {} added, {} removed, {} changed objects.",
                     seq.map(|s| format!(" (#{s}, author {})", author_of(key)))
@@ -343,5 +451,10 @@ impl SceneToolbox {
 
     pub fn sandbox_exists(&self, key: &str) -> bool {
         self.forks.lock().contains_key(key)
+    }
+
+    /// The mode of the open sandbox `key`, if there is one.
+    pub fn sandbox_mode_of(&self, key: &str) -> Option<SandboxMode> {
+        self.forks.lock().get(key).map(|h| h.lock().mode())
     }
 }

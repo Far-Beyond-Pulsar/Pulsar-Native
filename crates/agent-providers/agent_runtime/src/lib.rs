@@ -56,7 +56,7 @@ pub use cascade::{
 pub use budget_guard::{BudgetError, BudgetGuard, RunBudget, SpawnPermit};
 pub use checkpoint::{
     affected_paths, child_checkpoint_id, descendant_checkpoints, has_checkpoint,
-    has_checkpoint_tree, revert_checkpoint, revert_checkpoint_tree, CheckpointStore, RevertReport,
+    has_checkpoint_tree, revert_checkpoint, revert_checkpoint_tree, revert_checkpoint_tree_with, CheckpointStore, RevertReport,
     CHECKPOINT_DIR,
 };
 pub use confirm::{ConfirmDecision, ConfirmReply, SafetyConfig};
@@ -137,6 +137,6 @@ pub use memory::{
 pub use plan::{Plan, PlanMode, PlanStep, EXIT_PLAN_MODE, PLAN_MODE_PROMPT};
 pub use run_ext::{
     extension_report_sections, extensions_have_undo, pending_reviews, register_run_extension,
-    resolve_review, revert_extensions, run_in_tree, Review, ReviewDecision, RunExtension,
+    resolve_review, revert_extensions, revert_extensions_with, run_in_tree, Review, ReviewDecision, RunExtension,
 };
 pub use report_verify::{NonEmptyVerifier, ReportSchemaVerifier, KNOWN as REPORT_VERIFIERS};

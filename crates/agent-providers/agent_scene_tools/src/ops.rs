@@ -563,6 +563,7 @@ pub struct ComponentSpec {
     pub enabled: Option<bool>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SpawnSpec {
     pub id: Option<String>,
     pub name: String,
@@ -667,6 +668,7 @@ pub fn spawn(
     Ok(id)
 }
 
+#[derive(Debug, Clone)]
 pub struct ObjectEdit {
     pub name: Option<String>,
     pub visible: Option<bool>,
@@ -721,7 +723,7 @@ pub fn edit_object(world: &mut World, rec: &mut Recorder, id: &str, edit: Object
     Ok(())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TransformEdit {
     pub position: Option<[f32; 3]>,
     pub rotation: Option<[f32; 3]>,

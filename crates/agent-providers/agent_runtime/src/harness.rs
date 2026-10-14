@@ -121,6 +121,10 @@ pub struct Harness {
     /// failure is fed back to the child once; if it fails again the report is
     /// returned flagged `unverified`.
     pub verify: Vec<String>,
+    /// Sandbox mode chosen by the harness (`sandbox: overlay|copy|off`), kept
+    /// as written for the scene tools to interpret. `None` (`sandbox: true`
+    /// or unset) uses the project's setting.
+    pub sandbox_mode: Option<String>,
     pub origin: HarnessOrigin,
 }
 
@@ -250,6 +254,7 @@ impl Harness {
             permissions: HarnessPermissions::ReadOnly,
             sandbox: false,
             verify: Vec::new(),
+            sandbox_mode: None,
             origin,
         };
         let mut tools_set = false;
@@ -312,10 +317,19 @@ impl Harness {
                     harness.verify = names;
                 }
                 "sandbox" => {
-                    harness.sandbox = matches!(
-                        value.scalar().to_lowercase().as_str(),
-                        "true" | "yes" | "on" | "1"
-                    )
+                    let text = value.scalar().to_lowercase();
+                    match text.as_str() {
+                        // A named mode implies a sandbox request; `off` makes
+                        // the request run live.
+                        "overlay" | "copy" | "off" => {
+                            harness.sandbox = true;
+                            harness.sandbox_mode = Some(text);
+                        }
+                        other => {
+                            harness.sandbox = matches!(other, "true" | "yes" | "on" | "1");
+                            harness.sandbox_mode = None;
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -476,6 +490,7 @@ fn builtin(
         permissions,
         sandbox: false,
         verify: Vec::new(),
+        sandbox_mode: None,
         origin: HarnessOrigin::Builtin,
     }
 }
@@ -539,8 +554,8 @@ pub fn builtin_harnesses() -> Vec<Harness> {
             sandbox: true,
             ..builtin(
                 "scene-sandbox",
-                "Edits a private forked copy of the scene and returns a diff (added/removed/changed objects and components) for review. The live scene is not changed until the user applies the diff. Use for risky or parallel scene work.",
-                "You are a scene editor working in a sandbox: a private copy of the scene. Nothing you change is visible in the live scene until the user applies your diff. Inspect with scene_query and scene_get_object, make the changes the task describes with the scene_write_* tools, then report what you changed. The diff is attached to your report automatically.",
+                "Edits the scene in a sandbox (the project's sandbox mode: overlay by default) and returns a diff (added/removed/changed objects and components) for review. The live scene is not changed until the user applies the diff. Use for risky or parallel scene work.",
+                "You are a scene editor working in a sandbox: your edits stay private. Nothing you change is visible in the live scene until the user applies your diff. Inspect with scene_query and scene_get_object, make the changes the task describes with the scene_write_* tools, then report what you changed. The diff is attached to your report automatically.",
                 &["group:read", "group:scene"],
                 ModelPolicy::Same,
                 24,

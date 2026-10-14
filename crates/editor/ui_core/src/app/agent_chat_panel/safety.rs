@@ -114,13 +114,27 @@ impl AgentChatPanel {
     }
 
     pub(super) fn revert_run(&mut self, run_id: &str, cx: &mut Context<Self>) {
+        self.revert_run_with(run_id, false, cx);
+    }
+
+    /// `force` also overwrites scene objects the user edited after the
+    /// agent; a plain revert leaves those alone and offers `Revert anyway`.
+    pub(super) fn revert_run_with(&mut self, run_id: &str, force: bool, cx: &mut Context<Self>) {
         let root = engine_state::get_project_path()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        self.safety_notice = Some(match agent_runtime::revert_checkpoint_tree(&root, run_id) {
-            Ok(report) => format!("Reverted run changes. {}", report.summary()),
-            Err(err) => format!("Revert failed: {err}"),
-        });
+        self.revert_conflict_run = None;
+        self.safety_notice = Some(
+            match agent_runtime::revert_checkpoint_tree_with(&root, run_id, force) {
+                Ok(report) => {
+                    if report.extension_errors.iter().any(|e| e.contains("changed since")) {
+                        self.revert_conflict_run = Some(run_id.to_string());
+                    }
+                    format!("Reverted run changes. {}", report.summary())
+                }
+                Err(err) => format!("Revert failed: {err}"),
+            },
+        );
         cx.notify();
     }
 
@@ -198,6 +212,21 @@ impl AgentChatPanel {
                         )
                 }))
                 .children(review_cards)
+                .when_some(self.revert_conflict_run.clone(), |el, run_id| {
+                    el.child(
+                        Button::new("agent-chat-revert-anyway")
+                            .xsmall()
+                            .ghost()
+                            .label("Revert anyway")
+                            .tooltip(
+                                "Also undo the agent's edits to scene objects you changed afterwards \
+                                 (your later edits to those objects are lost).",
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.revert_run_with(&run_id, true, cx);
+                            })),
+                    )
+                })
                 .when_some(self.safety_notice.clone(), |el, notice| {
                     el.child(
                         div()

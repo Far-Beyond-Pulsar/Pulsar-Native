@@ -20,6 +20,11 @@ pub trait SceneSource: Send + Sync {
     fn check_instance(&self, _world: &World, _instance: Entity) -> Result<(), String> {
         Ok(())
     }
+
+    /// The live scene was changed by an agent (a committed write, an applied
+    /// sandbox, a revert) and the scene lock is released again. The host
+    /// marks the level dirty here. `summary` is a one-line description.
+    fn scene_edited(&self, _summary: &str) {}
 }
 
 /// A source over one fixed scene.

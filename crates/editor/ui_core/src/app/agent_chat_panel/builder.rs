@@ -328,6 +328,8 @@ impl AgentChatPanel {
             steward_log: Vec::new(),
             cascade_settings: Self::load_cascade_settings(),
             cascade_badge: None,
+            scene_settings: Self::load_scene_settings(),
+            revert_conflict_run: None,
             mcp: Self::start_mcp(),
             mcp_open: false,
             agent_settings_open: false,

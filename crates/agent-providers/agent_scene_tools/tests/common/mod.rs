@@ -78,12 +78,32 @@ pub fn scope(run_id: &str, sandbox: bool) -> ToolContext {
         AgentRunScope {
             run_id: run_id.to_string(),
             sandbox,
+            sandbox_mode: None,
+        },
+    );
+    ctx
+}
+
+/// A tool context for a sandbox run whose harness chose mode.
+pub fn scope_mode(run_id: &str, mode: Option<&str>) -> ToolContext {
+    let mut ctx = ToolContext::new();
+    set_run_scope(
+        &mut ctx,
+        AgentRunScope {
+            run_id: run_id.to_string(),
+            sandbox: true,
+            sandbox_mode: mode.map(str::to_string),
         },
     );
     ctx
 }
 
 impl Rig {
+    /// Like call_sandboxed, with the harness's own mode choice.
+    pub fn call_mode(&self, tool: &str, args: Value, run: &str, mode: Option<&str>) -> anyhow::Result<Value> {
+        self.registry.execute(tool, args, &scope_mode(run, mode))
+    }
+
     pub fn call(&self, tool: &str, args: Value, run: &str) -> anyhow::Result<Value> {
         self.registry.execute(tool, args, &scope(run, false))
     }

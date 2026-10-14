@@ -119,6 +119,32 @@ fn an_extension_joins_classification_revert_reports_and_reviews() {
 }
 
 #[test]
+fn sandbox_frontmatter_accepts_a_mode() {
+    let parse = |value: &str| {
+        Harness::parse(
+            &format!("---\nname: b\ndescription: d\nsandbox: {value}\n---\nPrompt"),
+            "b",
+            HarnessOrigin::Project,
+        )
+        .unwrap()
+    };
+    for (value, sandbox, mode) in [
+        ("true", true, None),
+        ("false", false, None),
+        ("overlay", true, Some("overlay")),
+        ("Copy", true, Some("copy")),
+        ("off", true, Some("off")),
+    ] {
+        let h = parse(value);
+        assert_eq!((h.sandbox, h.sandbox_mode.as_deref()), (sandbox, mode), "sandbox: {value}");
+    }
+    // The built-in scene-sandbox harness leaves the mode to the project.
+    let builtins = builtin_harnesses();
+    let boxed = builtins.iter().find(|h| h.name == "scene-sandbox").unwrap();
+    assert!(boxed.sandbox && boxed.sandbox_mode.is_none());
+}
+
+#[test]
 fn sandbox_is_a_harness_setting() {
     let parsed = Harness::parse(
         "---\nname: boxed\ndescription: d\ntools: [group:scene]\npermissions: engine-scene-write\nsandbox: true\n---\nPrompt {task}",

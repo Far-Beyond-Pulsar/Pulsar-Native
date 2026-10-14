@@ -248,6 +248,17 @@ pub fn has_checkpoint_tree(workspace_root: &Path, run_id: &str) -> bool {
 
 /// Revert the run and every run below it, children before parents.
 pub fn revert_checkpoint_tree(workspace_root: &Path, run_id: &str) -> Result<RevertReport, String> {
+    revert_checkpoint_tree_with(workspace_root, run_id, false)
+}
+
+/// [`revert_checkpoint_tree`]; with `force` run extensions (scene edits)
+/// also overwrite what the user changed after the run's edits, which a plain
+/// revert leaves alone and reports in `extension_errors`.
+pub fn revert_checkpoint_tree_with(
+    workspace_root: &Path,
+    run_id: &str,
+    force: bool,
+) -> Result<RevertReport, String> {
     let mut report = RevertReport::default();
     let mut any = false;
     for id in descendant_checkpoints(workspace_root, run_id) {
@@ -261,7 +272,7 @@ pub fn revert_checkpoint_tree(workspace_root: &Path, run_id: &str) -> Result<Rev
     // Run extensions (scene edits) undo the whole tree themselves.
     let had_extension_undo = crate::run_ext::extensions_have_undo(run_id);
     if had_extension_undo {
-        let (notes, errors) = crate::run_ext::revert_extensions(run_id);
+        let (notes, errors) = crate::run_ext::revert_extensions_with(run_id, force);
         report.extension_notes = notes;
         report.extension_errors = errors;
     }
