@@ -11,14 +11,25 @@ use std::{
     time::{Duration, Instant},
 };
 
-use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ToolCall, ToolDefinition};
+use agent_chat_core::{
+    ChatProvider, ChatRequest, ChatResponse, ResponseFormat, ToolCall, ToolDefinition,
+};
 use agent_chat_tools::{PulsarToolExtras, ToolContext, ToolRegistry};
 
-use crate::compaction::{compact_ledger, summarize_compaction};
-use crate::ledger::{Ledger, LedgerEntry, ToolResult};
+use crate::budget::{usage_from_raw, Budget, Calibrator, TokenEstimator};
+use crate::compaction::{compact_ledger, compact_ledger_tokens};
+use crate::ledger::{EntryKind, Ledger, LedgerEntry, ToolResult};
+use crate::output_cap::{
+    cap_output, fetch_output_definition, run_fetch_output, OutputStore, FETCH_OUTPUT,
+};
 use crate::preview::format_tool_result_preview;
-use crate::profile::ModelProfile;
+use crate::profile::{ModelProfile, ToolCalling};
 use crate::project::project;
+use crate::router::{
+    shorten_definition, Category, RouteContext, ToolRouter, LITE_SYSTEM_PROMPT, MORE_TOOLS,
+};
+use crate::summary::summarize_into_ledger;
+use crate::text_tools::{self, FenceFilter};
 
 pub const CANCELLED_MESSAGE: &str = "Request cancelled.";
 
@@ -119,9 +130,17 @@ pub struct RunConfig {
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub max_tokens: Option<u32>,
+    /// Character budgets, used only while the profile's context window is
+    /// unknown (`context_tokens == 0`). Known windows are budgeted in tokens.
     pub context_budget_chars: usize,
     pub summary_char_budget: usize,
     pub max_iterations: u32,
+    /// Constrained-decoding hook, passed to every request.
+    pub response_format: Option<ResponseFormat>,
+    /// Replaces the ledger's system prompt for Lite profiles. `None` keeps it.
+    pub lite_system_prompt: Option<String>,
+    /// Overrides how many domain tools the Lite router exposes per turn.
+    pub router_limit: Option<usize>,
 }
 
 impl RunConfig {
@@ -148,7 +167,18 @@ impl RunConfig {
             context_budget_chars: 24_000,
             summary_char_budget: 2_400,
             max_iterations: 50,
+            response_format: None,
+            lite_system_prompt: Some(LITE_SYSTEM_PROMPT.to_string()),
+            router_limit: None,
         }
+    }
+
+    /// Adopt `profile`, including its sampling defaults.
+    pub fn with_profile(mut self, profile: ModelProfile) -> Self {
+        self.temperature = Some(profile.temperature);
+        self.max_tokens = Some(profile.max_tokens);
+        self.profile = profile;
+        self
     }
 }
 
@@ -170,9 +200,92 @@ pub fn run_loop(
     cancel: CancelToken,
     sink: EventSink,
 ) -> Ledger {
+    // Lite profiles run on the compact system prompt; the caller gets its
+    // own prompt back.
+    let original_prompt = swap_in_lite_prompt(&config, &mut ledger);
     let outcome = drive(&config, &mut ledger, &cancel, &sink);
+    if let Some(prompt) = original_prompt {
+        ledger.set_system_prompt(prompt);
+    }
     sink(RunEvent::Finished(outcome));
     ledger
+}
+
+fn swap_in_lite_prompt(config: &RunConfig, ledger: &mut Ledger) -> Option<String> {
+    if !config.profile.is_lite() {
+        return None;
+    }
+    let compact = config.lite_system_prompt.as_deref()?;
+    let original = ledger.system_prompt()?.to_string();
+    if original.len() <= compact.len() {
+        return None;
+    }
+    ledger.set_system_prompt(compact);
+    Some(original)
+}
+
+/// Inputs the router reads from the ledger: the last user message, the live
+/// task state and the most recent tool names.
+fn route_inputs(ledger: &Ledger) -> (String, String, Vec<String>) {
+    let mut user = String::new();
+    let mut tasks = String::new();
+    let mut recent: Vec<String> = Vec::new();
+    for entry in &ledger.entries {
+        match &entry.kind {
+            EntryKind::UserTurn { text } => user = text.clone(),
+            EntryKind::Pinned { kind, text } if *kind == crate::ledger::PinKind::LiveState => {
+                tasks = text.clone();
+            }
+            EntryKind::ToolExchange(exchange) => recent.push(exchange.call.name.clone()),
+            _ => {}
+        }
+    }
+    let keep_from = recent.len().saturating_sub(6);
+    (user, tasks, recent.split_off(keep_from))
+}
+
+fn ledger_mentions_refs(ledger: &Ledger) -> bool {
+    ledger.entries.iter().any(|entry| match &entry.kind {
+        EntryKind::ToolExchange(exchange) => exchange.result.content.contains("fetch_output ref="),
+        _ => false,
+    })
+}
+
+/// The tools to advertise this turn.
+fn plan_tools(
+    config: &RunConfig,
+    ledger: &Ledger,
+    router: Option<&ToolRouter>,
+    unlocked: &[Category],
+    limit: usize,
+) -> Vec<ToolDefinition> {
+    let mut tools = match router {
+        Some(router) => {
+            let (user, tasks, recent) = route_inputs(ledger);
+            let mut picked: Vec<ToolDefinition> = router
+                .select(
+                    &RouteContext {
+                        last_user_message: &user,
+                        task_list: &tasks,
+                        recent_tools: &recent,
+                        unlocked,
+                    },
+                    limit,
+                )
+                .iter()
+                .map(shorten_definition)
+                .collect();
+            if router.hides_tools(limit) {
+                picked.push(router.more_tools_definition());
+            }
+            picked
+        }
+        None => config.tools.clone(),
+    };
+    if !tools.is_empty() && ledger_mentions_refs(ledger) {
+        tools.push(fetch_output_definition());
+    }
+    tools
 }
 
 fn drive(
@@ -182,6 +295,23 @@ fn drive(
     sink: &EventSink,
 ) -> Result<ChatResponse, String> {
     let mut iteration = 0u32;
+
+    let profile = config.profile;
+    let token_mode = profile.context_tokens > 0;
+    let text_mode = profile.tool_calling == ToolCalling::None && !config.tools.is_empty();
+    let router = (profile.is_lite() && !config.tools.is_empty()).then(|| ToolRouter::new(&config.tools));
+    let domain_limit = config
+        .router_limit
+        .unwrap_or_else(|| ToolRouter::limit_for(profile.effective_context()));
+    let budget = Budget::for_profile(&profile);
+    let unit_estimator = TokenEstimator::for_profile(&profile);
+    let mut calibrator = Calibrator::default();
+    let mut unlocked: Vec<Category> = Vec::new();
+    let mut unparsable_streak = 0u32;
+    let store = OutputStore::global();
+    // Tool results are cut to a share of the window; characters per token
+    // are pessimistic for JSON-heavy output.
+    let cap_chars = token_mode.then(|| budget.tool_output_cap_tokens(profile.is_lite()) * 5 / 2);
 
     loop {
         if cancel.is_cancelled() {
@@ -195,28 +325,61 @@ fn drive(
         }
         iteration += 1;
 
-        if let Some(compaction) = compact_ledger(
-            ledger,
-            &config.profile,
-            config.context_budget_chars,
-            config.summary_char_budget,
-        ) {
-            let summary =
-                summarize_compaction(ledger, &compaction, &config.provider, &config.compact_model);
+        let turn_tools = plan_tools(config, ledger, router.as_ref(), &unlocked, domain_limit);
+        let protocol = text_mode.then(|| text_tools::protocol_prompt(&turn_tools));
+        let estimator = unit_estimator.with_scale(calibrator.scale());
+
+        let compaction = if token_mode {
+            let overhead = match &protocol {
+                Some(prompt) => estimator.text(prompt),
+                None => estimator.tools(&turn_tools),
+            };
+            let max_tokens = budget.message_tokens(overhead);
+            compact_ledger_tokens(ledger, &profile, &budget, max_tokens, &estimator)
+        } else {
+            compact_ledger(
+                ledger,
+                &profile,
+                config.context_budget_chars,
+                config.summary_char_budget,
+            )
+        };
+        if let Some(compaction) = compaction {
+            let summary_cap = if token_mode {
+                budget.summary_tokens * 3
+            } else {
+                config.summary_char_budget
+            };
+            let summary = summarize_into_ledger(
+                ledger,
+                &compaction,
+                &config.provider,
+                &config.compact_model,
+                Some(summary_cap),
+            );
             sink(RunEvent::ContextCompacted(summary));
         }
 
+        let mut messages = project(ledger, &profile);
+        if let Some(prompt) = &protocol {
+            text_tools::inject_protocol(&mut messages, prompt);
+        }
+        let request_tools = if text_mode { Vec::new() } else { turn_tools.clone() };
         let request = ChatRequest {
             model: config.model.clone(),
-            messages: project(ledger, &config.profile),
-            enable_tool_calls: !config.tools.is_empty(),
-            tools: config.tools.clone(),
+            enable_tool_calls: !request_tools.is_empty(),
+            tools: request_tools,
+            messages,
             temperature: config.temperature,
             top_p: config.top_p,
             max_tokens: config.max_tokens,
+            response_format: config.response_format.clone(),
         };
+        // What the estimator says before calibration, to learn from usage.
+        let unit_estimate = unit_estimator.request(&request.messages, &request.tools);
 
         let mut splitter = ThinkSplitter::default();
+        let mut fence_filter = text_mode.then(FenceFilter::new);
         let mut streamed_text = String::new();
         let result = config
             .provider
@@ -225,18 +388,62 @@ fn drive(
                     return;
                 }
                 streamed_text.push_str(&chunk);
-                splitter.feed(&chunk, sink);
+                match fence_filter.as_mut() {
+                    Some(filter) => {
+                        let visible = filter.feed(&chunk);
+                        if !visible.is_empty() {
+                            splitter.feed(&visible, sink);
+                        }
+                    }
+                    None => splitter.feed(&chunk, sink),
+                }
             })
             .map_err(|err| err.to_string());
+        if let Some(rest) = fence_filter.as_mut().map(FenceFilter::finish) {
+            if !rest.is_empty() {
+                splitter.feed(&rest, sink);
+            }
+        }
         splitter.finish(sink);
 
-        let response = match result {
+        let mut response = match result {
             Ok(response) => response,
             Err(err) => {
                 tracing::error!("[agent_chat] provider error (iter {iteration}): {err}");
                 return Err(err);
             }
         };
+
+        if let Some(usage) = usage_from_raw(&response.raw_response) {
+            calibrator.observe(unit_estimate, usage.prompt_tokens);
+        }
+
+        if text_mode {
+            let text = response
+                .assistant_message
+                .clone()
+                .unwrap_or_else(|| streamed_text.clone());
+            let known: Vec<&str> = config.tools.iter().map(|t| t.name.as_str()).collect();
+            let parsed = text_tools::parse(&text, &known);
+            if !parsed.errors.is_empty() && parsed.calls.is_empty() {
+                // Tell the model what was wrong and let it try again, but not forever.
+                unparsable_streak += 1;
+                ledger.push(LedgerEntry::assistant(parsed.text));
+                if unparsable_streak > 2 {
+                    return Err(format!(
+                        "The model kept writing malformed tool calls: {}",
+                        parsed.errors.join("; ")
+                    ));
+                }
+                ledger.push(LedgerEntry::engine_notice(text_tools::format_errors(
+                    &parsed.errors,
+                )));
+                continue;
+            }
+            unparsable_streak = 0;
+            response.tool_calls = parsed.calls;
+            response.assistant_message = Some(parsed.text);
+        }
 
         if response.tool_calls.is_empty() {
             let text = response
@@ -256,13 +463,26 @@ fn drive(
         let assistant_text = response.assistant_message.clone().unwrap_or_default();
         ledger.push(LedgerEntry::assistant(assistant_text.clone()));
 
-        if !assistant_text.is_empty() {
+        // Text-protocol replies were already streamed (minus the call blocks).
+        if !assistant_text.is_empty() && !text_mode {
             sink(RunEvent::Chunk(assistant_text));
         }
         sink(RunEvent::ToolCallGroup(response.tool_calls.clone()));
 
         let tool_context = make_context(config, sink);
-        for (call, result) in run_tools(config, &response.tool_calls, &tool_context, sink) {
+        let meta = MetaTools {
+            router: router.as_ref(),
+            store,
+            cap_chars,
+        };
+        for (call, result) in run_tools(
+            config,
+            &response.tool_calls,
+            &tool_context,
+            sink,
+            &meta,
+            &mut unlocked,
+        ) {
             ledger.push(LedgerEntry::tool_exchange(call, result));
         }
     }
@@ -317,43 +537,130 @@ fn run_tools(
     calls: &[ToolCall],
     context: &ToolContext,
     sink: &EventSink,
+    meta: &MetaTools<'_>,
+    unlocked: &mut Vec<Category>,
 ) -> Vec<(ToolCall, ToolResult)> {
-    let handles: Vec<_> = calls
+    enum Slot {
+        Done(ToolResult),
+        Running(JoinHandle<ToolResult>),
+    }
+
+    let parallel = config.profile.parallel_tools;
+    let slots: Vec<Slot> = calls
         .iter()
         .map(|call| {
+            // Meta tools are answered by the runtime itself.
+            if let Some((content, is_error)) = meta.answer(call, unlocked) {
+                return Slot::Done(finish_call(call, content, is_error, sink, None, meta.store));
+            }
             let call = call.clone();
             let registry = config.tool_registry.clone();
             let ctx = context.clone();
             let sink = sink.clone();
-            std::thread::spawn(move || {
+            let cap_chars = meta.cap_chars;
+            let store = meta.store;
+            let handle = std::thread::spawn(move || {
                 let result = registry.execute(&call.name, call.arguments_json.clone(), &ctx);
                 let (content, is_error) = match result {
                     Ok(value) => (value.to_string(), false),
                     Err(err) => (format!("Tool error: {}", err), true),
                 };
-                sink(RunEvent::ToolCallResult {
-                    id: call.id.clone(),
-                    tool_name: call.name.clone(),
-                    result_preview: format_tool_result_preview(&call.name, &content),
-                    result_full: content.clone(),
-                    is_error,
-                });
-                ToolResult { content, is_error }
-            })
+                finish_call(&call, content, is_error, &sink, cap_chars, store)
+            });
+            if parallel {
+                Slot::Running(handle)
+            } else {
+                // Weak tool callers get one call at a time.
+                Slot::Done(join_tool(handle))
+            }
         })
         .collect();
 
     calls
         .iter()
-        .zip(handles)
-        .map(|(call, handle)| {
-            let result = handle.join().unwrap_or_else(|_| ToolResult {
-                content: "Tool thread panicked".to_string(),
-                is_error: true,
-            });
+        .zip(slots)
+        .map(|(call, slot)| {
+            let result = match slot {
+                Slot::Done(result) => result,
+                Slot::Running(handle) => join_tool(handle),
+            };
             (call.clone(), result)
         })
         .collect()
+}
+
+fn join_tool(handle: JoinHandle<ToolResult>) -> ToolResult {
+    handle.join().unwrap_or_else(|_| ToolResult {
+        content: "Tool thread panicked".to_string(),
+        is_error: true,
+    })
+}
+
+/// Announce a finished call to the UI (uncut) and return what goes into the
+/// ledger (cut to `cap_chars`, with a ref to the rest).
+fn finish_call(
+    call: &ToolCall,
+    content: String,
+    is_error: bool,
+    sink: &EventSink,
+    cap_chars: Option<usize>,
+    store: &OutputStore,
+) -> ToolResult {
+    sink(RunEvent::ToolCallResult {
+        id: call.id.clone(),
+        tool_name: call.name.clone(),
+        result_preview: format_tool_result_preview(&call.name, &content),
+        result_full: content.clone(),
+        is_error,
+    });
+    let content = match cap_chars {
+        Some(max) => cap_output(&content, max, store).text,
+        None => content,
+    };
+    ToolResult { content, is_error }
+}
+
+/// The runtime's own tools: `more_tools` and `fetch_output`.
+struct MetaTools<'a> {
+    router: Option<&'a ToolRouter>,
+    store: &'static OutputStore,
+    /// Per-result cap in characters; `None` while the window is unknown.
+    cap_chars: Option<usize>,
+}
+
+impl MetaTools<'_> {
+    /// `Some((content, is_error))` when `call` is a meta tool.
+    fn answer(&self, call: &ToolCall, unlocked: &mut Vec<Category>) -> Option<(String, bool)> {
+        match call.name.as_str() {
+            MORE_TOOLS => {
+                let Some(router) = self.router else {
+                    return Some(("All tools are already available.".to_string(), false));
+                };
+                let category = call
+                    .arguments_json
+                    .get("category")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                Some(match router.unlock(category) {
+                    Ok((category, text)) => {
+                        if !unlocked.contains(&category) {
+                            unlocked.push(category);
+                        }
+                        (text, false)
+                    }
+                    Err(err) => (format!("Tool error: {err}"), true),
+                })
+            }
+            FETCH_OUTPUT => {
+                let window = self.cap_chars.unwrap_or(8_000);
+                Some(match run_fetch_output(&call.arguments_json, self.store, window) {
+                    Ok(text) => (text, false),
+                    Err(err) => (format!("Tool error: {err}"), true),
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Splits `<think>…</think>` out of the text stream and batches both streams

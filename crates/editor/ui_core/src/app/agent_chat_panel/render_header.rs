@@ -230,16 +230,7 @@ impl AgentChatPanel {
             cx.theme().success
         };
 
-        let model_ctx = self
-            .active_model()
-            .and_then(|m| {
-                if m.context_tokens > 0 {
-                    Some(m.context_tokens)
-                } else {
-                    Self::infer_context_tokens(m.id).map(|t| t as u32)
-                }
-            })
-            .unwrap_or(6_000);
+        let model_ctx = self.active_profile().effective_context();
 
         let ctx_label = if model_ctx >= 1_000_000 {
             format!("{}M ctx", model_ctx / 1_000_000)

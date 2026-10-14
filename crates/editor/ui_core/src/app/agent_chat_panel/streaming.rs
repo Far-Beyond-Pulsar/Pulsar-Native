@@ -1,7 +1,5 @@
 use super::*;
-use agent_runtime::{
-    CancelToken, EventSink, ModelProfile, PinKind, RunConfig, RunEvent, ToolCalling,
-};
+use agent_runtime::{CancelToken, EventSink, PinKind, RunConfig, RunEvent};
 use engine_state;
 use smol::Timer;
 use std::{
@@ -219,9 +217,9 @@ impl AgentChatPanel {
             .map(|m| m.id.to_string())
             .unwrap_or_else(|| "default".to_string());
 
-        // Leave a sliver for the compaction-instructions block itself.
-        let context_chars = self.active_context_chars();
-        let history_budget = context_chars.saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET);
+        // Context window, tool-calling mode, tier and sampling all come from
+        // the model's profile (table, descriptor, user override).
+        let profile = self.active_profile();
 
         // Resolve the compact model: use the specified one or fall back to the current model.
         let compact_model: String = self
@@ -285,12 +283,9 @@ impl AgentChatPanel {
             model.clone(),
             self.tool_registry.clone(),
             workspace_root,
-        );
+        )
+        .with_profile(profile);
         config.compact_model = compact_model;
-        config.profile = ModelProfile {
-            context_tokens: self.active_model().map(|m| m.context_tokens).unwrap_or(0),
-            tool_calling: ToolCalling::Native,
-        };
         config.tools = tools;
         config.tool_extras = agent_chat_tools::PulsarToolExtras {
             plugin_bridge: self.plugin_bridge.clone(),
@@ -303,8 +298,6 @@ impl AgentChatPanel {
                 model,
             )),
         };
-        config.context_budget_chars = history_budget;
-        config.summary_char_budget = Self::COMPACTION_SUMMARY_CHAR_BUDGET;
 
         let (tx, rx) = smol::channel::unbounded::<RunEvent>();
         let completion_sent = Arc::new(AtomicBool::new(false));

@@ -1,6 +1,6 @@
 use agent_chat_core::{
     ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
-    ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,
+    ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ResponseFormat, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
@@ -285,6 +285,7 @@ impl ProviderCrate for OpenAiProviderCrate {
             models_url,
             api_key,
             is_ollama: entry.use_ollama_protocol,
+            backend: Backend::from_entry_id(entry.id),
         }))
     }
 }
@@ -347,6 +348,81 @@ struct OpenAiChatProvider {
     models_url: String,
     api_key: String,
     is_ollama: bool,
+    backend: Backend,
+}
+
+/// Which server family sits behind the endpoint; decides which request
+/// extensions (constrained decoding, stream usage) are safe to send.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Backend {
+    OpenAi,
+    LmStudio,
+    LlamaCpp,
+    Vllm,
+    Ollama,
+    /// Unknown server: only the plain OpenAI fields are sent.
+    Generic,
+}
+
+impl Backend {
+    fn from_entry_id(id: &str) -> Self {
+        match id {
+            "openai" => Backend::OpenAi,
+            "lm_studio" => Backend::LmStudio,
+            "llama_cpp" => Backend::LlamaCpp,
+            "vllm" => Backend::Vllm,
+            "ollama" => Backend::Ollama,
+            _ => Backend::Generic,
+        }
+    }
+
+    /// Accepts `stream_options.include_usage`.
+    fn streams_usage(self) -> bool {
+        matches!(
+            self,
+            Backend::OpenAi | Backend::LmStudio | Backend::LlamaCpp | Backend::Vllm
+        )
+    }
+}
+
+fn json_schema_format(schema: &Value) -> Value {
+    json!({ "type": "json_schema", "json_schema": { "name": "response", "schema": schema } })
+}
+
+/// Add the constrained-decoding fields `backend` understands to an
+/// OpenAI-style payload. Unsupported combinations are skipped, never sent.
+///
+/// - OpenAI: `response_format` json_object / json_schema.
+/// - LM Studio: `response_format` json_schema only (json_object is
+///   expressed as the schema `{"type":"object"}`).
+/// - llama.cpp: `response_format` json_object / json_schema, or the server's
+///   own `grammar` field for GBNF.
+/// - vLLM: `response_format` json_object / json_schema (guided JSON), or
+///   `guided_grammar`.
+fn apply_response_format(payload: &mut Value, backend: Backend, format: &ResponseFormat) {
+    match (backend, format) {
+        (Backend::OpenAi | Backend::LlamaCpp | Backend::Vllm, ResponseFormat::JsonObject) => {
+            payload["response_format"] = json!({ "type": "json_object" });
+        }
+        (Backend::LmStudio, ResponseFormat::JsonObject) => {
+            payload["response_format"] = json_schema_format(&json!({ "type": "object" }));
+        }
+        (
+            Backend::OpenAi | Backend::LmStudio | Backend::LlamaCpp | Backend::Vllm,
+            ResponseFormat::JsonSchema(schema),
+        ) => {
+            payload["response_format"] = json_schema_format(schema);
+        }
+        (Backend::LlamaCpp, ResponseFormat::Grammar(grammar)) => {
+            payload["grammar"] = json!(grammar);
+        }
+        (Backend::Vllm, ResponseFormat::Grammar(grammar)) => {
+            payload["guided_grammar"] = json!(grammar);
+        }
+        _ => {
+            tracing::debug!(?backend, "response_format not supported by this backend; ignored");
+        }
+    }
 }
 
 impl ChatProvider for OpenAiChatProvider {
@@ -427,7 +503,7 @@ impl ChatProvider for OpenAiChatProvider {
         let payload = if self.is_ollama {
             build_ollama_payload(&request, false)
         } else {
-            build_openai_payload(&request, false)?
+            build_openai_payload(&request, false, self.backend)?
         };
 
         let body = self.send(&payload)?;
@@ -446,8 +522,9 @@ impl ChatProvider for OpenAiChatProvider {
         let payload = if self.is_ollama {
             build_ollama_payload(&request, true)
         } else {
-            build_openai_payload(&request, true)?
+            build_openai_payload(&request, true, self.backend)?
         };
+        let want_usage = !self.is_ollama && self.backend.streams_usage();
 
         let mut req = self
             .client
@@ -477,7 +554,7 @@ impl ChatProvider for OpenAiChatProvider {
         if self.is_ollama {
             read_ollama_stream(response, on_chunk)
         } else {
-            read_stream_response(response, on_chunk)
+            read_stream_response(response, on_chunk, want_usage)
         }
     }
 }
@@ -565,7 +642,11 @@ impl OpenAiChatProvider {
 
 // ── OpenAI request/response ─────────────────────────────────────────────────
 
-fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<Value> {
+fn build_openai_payload(
+    request: &ChatRequest,
+    stream: bool,
+    backend: Backend,
+) -> anyhow::Result<Value> {
     let messages: Vec<Value> = request
         .messages
         .iter()
@@ -606,6 +687,13 @@ fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<V
     }
     if !tools.is_empty() {
         payload["tools"] = Value::Array(tools);
+    }
+    if stream && backend.streams_usage() {
+        // Token counts arrive in a final chunk; the runtime budgets on them.
+        payload["stream_options"] = json!({ "include_usage": true });
+    }
+    if let Some(format) = &request.response_format {
+        apply_response_format(&mut payload, backend, format);
     }
     Ok(payload)
 }
@@ -742,6 +830,7 @@ fn parse_stream_tool_calls(events: &[Value]) -> Vec<ToolCall> {
 fn read_stream_response(
     response: reqwest::blocking::Response,
     on_chunk: &mut dyn FnMut(String),
+    want_usage: bool,
 ) -> anyhow::Result<ChatResponse> {
     let mut events = Vec::new();
     let mut chunks = Vec::new();
@@ -795,7 +884,9 @@ fn read_stream_response(
             }
         }
         events.push(ev);
-        if fr.is_some() {
+        // With usage requested the count follows the finish chunk; keep
+        // reading until [DONE] or the end of the stream.
+        if fr.is_some() && !want_usage {
             break;
         }
     }
@@ -835,6 +926,15 @@ fn build_ollama_payload(request: &ChatRequest, stream: bool) -> Value {
     }
     if !opts.is_empty() {
         payload["options"] = Value::Object(opts);
+    }
+    // Ollama's `format` takes "json" or a JSON schema; it has no grammar hook.
+    match &request.response_format {
+        Some(ResponseFormat::JsonObject) => payload["format"] = json!("json"),
+        Some(ResponseFormat::JsonSchema(schema)) => payload["format"] = schema.clone(),
+        Some(ResponseFormat::Grammar(_)) => {
+            tracing::debug!("ollama has no grammar support; response_format ignored");
+        }
+        None => {}
     }
     if request.enable_tool_calls && !request.tools.is_empty() {
         payload["tools"] = json!(request.tools.iter().map(|t| json!({ "type": "function", "function": { "name": t.name, "description": t.description, "parameters": t.parameters_json_schema } })).collect::<Vec<_>>());
@@ -1043,5 +1143,102 @@ mod template_tests {
             build_chat_url("http://gpu-box:1234/v1/", false, None),
             "http://gpu-box:1234/v1/chat/completions"
         );
+    }
+}
+
+#[cfg(test)]
+mod response_format_tests {
+    use super::*;
+
+    fn request(format: Option<ResponseFormat>) -> ChatRequest {
+        ChatRequest {
+            model: "m".into(),
+            messages: vec![],
+            enable_tool_calls: false,
+            tools: vec![],
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            response_format: format,
+        }
+    }
+
+    fn schema() -> Value {
+        json!({"type": "object", "properties": {"a": {"type": "string"}}})
+    }
+
+    fn payload(backend: Backend, format: ResponseFormat) -> Value {
+        build_openai_payload(&request(Some(format)), false, backend).unwrap()
+    }
+
+    #[test]
+    fn unconstrained_requests_are_unchanged() {
+        let p = build_openai_payload(&request(None), false, Backend::LlamaCpp).unwrap();
+        assert!(p.get("response_format").is_none());
+        assert!(p.get("grammar").is_none());
+        assert!(p.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn openai_family_json_object_and_schema() {
+        for backend in [Backend::OpenAi, Backend::LlamaCpp, Backend::Vllm] {
+            let p = payload(backend, ResponseFormat::JsonObject);
+            assert_eq!(p["response_format"], json!({"type": "json_object"}));
+        }
+        let p = payload(Backend::Vllm, ResponseFormat::JsonSchema(schema()));
+        assert_eq!(p["response_format"]["type"], "json_schema");
+        assert_eq!(p["response_format"]["json_schema"]["schema"], schema());
+    }
+
+    #[test]
+    fn lm_studio_only_speaks_json_schema() {
+        let p = payload(Backend::LmStudio, ResponseFormat::JsonObject);
+        assert_eq!(p["response_format"]["type"], "json_schema");
+        assert_eq!(p["response_format"]["json_schema"]["schema"], json!({"type": "object"}));
+        let p = payload(Backend::LmStudio, ResponseFormat::Grammar("root ::= x".into()));
+        assert!(p.get("response_format").is_none() && p.get("grammar").is_none());
+    }
+
+    #[test]
+    fn grammar_goes_to_the_backends_that_take_one() {
+        let p = payload(Backend::LlamaCpp, ResponseFormat::Grammar("root ::= x".into()));
+        assert_eq!(p["grammar"], "root ::= x");
+        let p = payload(Backend::Vllm, ResponseFormat::Grammar("root ::= x".into()));
+        assert_eq!(p["guided_grammar"], "root ::= x");
+        let p = payload(Backend::OpenAi, ResponseFormat::Grammar("root ::= x".into()));
+        assert!(p.get("grammar").is_none() && p.get("response_format").is_none());
+    }
+
+    #[test]
+    fn generic_servers_get_nothing_extra() {
+        let p = payload(Backend::Generic, ResponseFormat::JsonObject);
+        assert!(p.get("response_format").is_none());
+        let streamed = build_openai_payload(&request(None), true, Backend::Generic).unwrap();
+        assert!(streamed.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn usage_is_requested_when_streaming_from_known_servers() {
+        let p = build_openai_payload(&request(None), true, Backend::LmStudio).unwrap();
+        assert_eq!(p["stream_options"], json!({"include_usage": true}));
+        let p = build_openai_payload(&request(None), false, Backend::LmStudio).unwrap();
+        assert!(p.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn ollama_format_field() {
+        let p = build_ollama_payload(&request(Some(ResponseFormat::JsonObject)), false);
+        assert_eq!(p["format"], "json");
+        let p = build_ollama_payload(&request(Some(ResponseFormat::JsonSchema(schema()))), false);
+        assert_eq!(p["format"], schema());
+        let p = build_ollama_payload(&request(Some(ResponseFormat::Grammar("g".into()))), false);
+        assert!(p.get("format").is_none());
+    }
+
+    #[test]
+    fn entries_map_to_backends() {
+        assert_eq!(Backend::from_entry_id("lm_studio"), Backend::LmStudio);
+        assert_eq!(Backend::from_entry_id("llama_cpp"), Backend::LlamaCpp);
+        assert_eq!(Backend::from_entry_id("custom_openai"), Backend::Generic);
     }
 }

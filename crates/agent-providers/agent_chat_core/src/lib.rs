@@ -96,6 +96,18 @@ pub struct ToolCall {
     pub arguments_json: serde_json::Value,
 }
 
+/// Constrains what the model may emit. Providers that cannot honour a
+/// variant ignore it; the runtime never relies on it for correctness.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResponseFormat {
+    /// Any valid JSON object.
+    JsonObject,
+    /// JSON matching this JSON Schema.
+    JsonSchema(serde_json::Value),
+    /// A GBNF grammar (llama.cpp syntax).
+    Grammar(String),
+}
+
 #[derive(Clone, Debug)]
 pub struct ChatRequest {
     pub model: String,
@@ -105,6 +117,8 @@ pub struct ChatRequest {
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub max_tokens: Option<u32>,
+    /// Constrained decoding hook; `None` leaves output unconstrained.
+    pub response_format: Option<ResponseFormat>,
 }
 
 #[derive(Clone, Debug)]
