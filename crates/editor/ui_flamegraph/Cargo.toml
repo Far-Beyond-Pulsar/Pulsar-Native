@@ -31,6 +31,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 rand = { workspace = true }
+gpui-ce = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true
