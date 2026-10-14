@@ -23,6 +23,8 @@ mod taint;
 mod summary;
 mod text_tools;
 mod run_store;
+mod time_travel;
+pub mod testing;
 
 #[cfg(test)]
 mod persist_tests;
@@ -100,3 +102,6 @@ pub use taint::{
     entry_taints, is_untrusted_path, ConfirmPolicy, TaintTracker, ToolClass, ToolClassifier,
 };
 pub use run_store::{ChildReport, RunRecord, RunStatus, RunStore};
+pub use time_travel::{
+    fingerprint, first_divergence, replay, script_from_ledger, LedgerSnapshot, Replay,
+};
