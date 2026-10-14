@@ -81,8 +81,10 @@ them. `asset_import` handles them:
   `ImportMode::ConvertInPlace` the native asset replaces the source, which
   moves to `.pulsar/trash/<timestamp>/`, and no record is kept.
 
-Import options are still stored separately, in `.pulsar/import_options.json`
-(`engine_fs::import_options`), keyed by native asset.
+Linked imports store their importer options on the corresponding record in
+`.pulsar/import_db.json`. Existing linked records migrate options from the
+legacy `.pulsar/import_options.json` on load. Legacy entries for convert-in-place
+assets remain available as a fallback because those assets have no link record.
 
 **Mesh default materials.** A native `.mesh` carries one `MeshMaterialSlot`
 per material slot (`helio_component::mesh_cache`). `material_asset` is the
@@ -93,6 +95,20 @@ inherits the default unless it assigns its own material
 (`StaticMeshMaterialSlot::effective_material_asset`). The component resolves
 this before anything reaches Helio. Helio's passes only ever see the
 effective material, never whether it was a default or an assignment.
+
+**Rigged sources.** A model with a skinned mesh imports as a linked set instead
+of a `.mesh` (`asset_import::rig`): one `.skeleton`, one `.skmesh` skinned to it
+and one `.animseq` per animation, each with a fresh id and referring to the
+others by id, never path. The formats, ids, math and CPU skinning live in the
+`skeletal_assets` crate (inside the `skm_editor` plugin repo; the plugin edits
+the same files). `ImportRecord::asset` is the `.skmesh`, and the optional
+`outputs` list records every file (path, kind, id, and the source animation name
+for sequences). A reimport reads those back, so each file keeps its id: an output
+that was moved or renamed is found again by its id and rewritten where it now is,
+a deleted one is recreated with the same id, and the material slots and preview
+meshes chosen since are kept. A static source is imported exactly as before.
+`helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
+of the loaded scene (`ConvertedScene::rig`).
 
 ## editor/ — Editor panels
 

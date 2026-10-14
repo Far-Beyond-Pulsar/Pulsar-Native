@@ -150,6 +150,48 @@ impl Render for ViewportPanel {
                             MeshRenderMode::Normals,
                         ))
                         .child(render_mode_button(
+                            "asset_view_world_normals",
+                            t!("AssetViewer.Mode.WorldNormals"),
+                            mode == MeshRenderMode::WorldNormals,
+                            editor_entity.clone(),
+                            MeshRenderMode::WorldNormals,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_tangents",
+                            t!("AssetViewer.Mode.Tangents"),
+                            mode == MeshRenderMode::Tangents,
+                            editor_entity.clone(),
+                            MeshRenderMode::Tangents,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_bitangents",
+                            t!("AssetViewer.Mode.Bitangents"),
+                            mode == MeshRenderMode::Bitangents,
+                            editor_entity.clone(),
+                            MeshRenderMode::Bitangents,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_normal_lines",
+                            t!("AssetViewer.Mode.NormalLines"),
+                            mode == MeshRenderMode::NormalLines,
+                            editor_entity.clone(),
+                            MeshRenderMode::NormalLines,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_tangent_lines",
+                            t!("AssetViewer.Mode.TangentLines"),
+                            mode == MeshRenderMode::TangentLines,
+                            editor_entity.clone(),
+                            MeshRenderMode::TangentLines,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_bitangent_lines",
+                            t!("AssetViewer.Mode.BitangentLines"),
+                            mode == MeshRenderMode::BitangentLines,
+                            editor_entity.clone(),
+                            MeshRenderMode::BitangentLines,
+                        ))
+                        .child(render_mode_button(
                             "asset_view_uv0",
                             t!("AssetViewer.Mode.Uv1"),
                             mode == MeshRenderMode::Uv0,
@@ -164,12 +206,46 @@ impl Render for ViewportPanel {
                             MeshRenderMode::Uv1,
                         ))
                         .child(render_mode_button(
+                            "asset_view_uv_layout",
+                            t!("AssetViewer.Mode.UvLayout"),
+                            mode == MeshRenderMode::UvLayout0,
+                            editor_entity.clone(),
+                            MeshRenderMode::UvLayout0,
+                        ))
+                        .child(render_mode_button(
                             "asset_view_vertex_density",
                             t!("AssetViewer.Mode.Density"),
                             mode == MeshRenderMode::VertexDensity,
                             editor_entity.clone(),
                             MeshRenderMode::VertexDensity,
-                        ));
+                        ))
+                        .child(
+                            if matches!(
+                                mode,
+                                MeshRenderMode::NormalLines
+                                    | MeshRenderMode::TangentLines
+                                    | MeshRenderMode::BitangentLines
+                            ) {
+                                h_flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(t!("AssetViewer.Mode.LineLength").to_string())
+                                    .child(line_length_button(
+                                        "asset_line_length_down",
+                                        "−",
+                                        editor_entity.clone(),
+                                        -0.02,
+                                    ))
+                                    .child(line_length_button(
+                                        "asset_line_length_up",
+                                        "+",
+                                        editor_entity.clone(),
+                                        0.02,
+                                    ))
+                            } else {
+                                h_flex()
+                            },
+                        );
 
                     div()
                         .relative()
@@ -396,6 +472,23 @@ fn render_mode_button(
         .on_click(move |_, _, cx| {
             editor.update(cx, |editor, cx| {
                 editor.set_render_mode(mode, cx);
+            });
+        })
+}
+
+fn line_length_button(
+    id: &'static str,
+    label: &'static str,
+    editor: Entity<AssetViewerPanel>,
+    delta: f32,
+) -> impl IntoElement {
+    Button::new(id)
+        .label(label)
+        .ghost()
+        .on_click(move |_, _, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.normal_line_length = (editor.normal_line_length + delta).clamp(0.01, 0.5);
+                cx.notify();
             });
         })
 }

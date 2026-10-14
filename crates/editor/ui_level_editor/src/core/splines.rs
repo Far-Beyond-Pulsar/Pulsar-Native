@@ -357,7 +357,11 @@ mod tests {
         let id = state.scene.selected_object().unwrap();
         let mut watch = SplinePanelWatch::new(&state.scene.world());
         let start = watch.revision(&state.scene.world());
-        assert_eq!(watch.revision(&state.scene.world()), start, "nothing changed");
+        assert_eq!(
+            watch.revision(&state.scene.world()),
+            start,
+            "nothing changed"
+        );
 
         // Dragging the curve's owner (#995): no panel refresh.
         for x in 0..5 {
@@ -378,7 +382,11 @@ mod tests {
         assert_ne!(edited, start, "the curve changed");
 
         create(&mut state, SplineData::default());
-        assert_ne!(watch.revision(&state.scene.world()), edited, "a curve was added");
+        assert_ne!(
+            watch.revision(&state.scene.world()),
+            edited,
+            "a curve was added"
+        );
     }
     #[test]
     fn edits_reach_the_world_component_the_renderer_reads() {

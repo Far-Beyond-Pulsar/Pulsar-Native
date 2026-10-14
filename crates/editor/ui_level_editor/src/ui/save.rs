@@ -104,7 +104,10 @@ pub(crate) fn save_in_background(
 
             match &result {
                 Ok(SaveOutcome::Saved) if kind == SaveKind::Level => {
-                    state.write().scene.set_current_scene(Some(path.clone()), true);
+                    state
+                        .write()
+                        .scene
+                        .set_current_scene(Some(path.clone()), true);
                     request_thumbnail_capture(&state);
                 }
                 Ok(_) => {}

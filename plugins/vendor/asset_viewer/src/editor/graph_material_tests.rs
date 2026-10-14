@@ -178,8 +178,13 @@ fn render_at(preview: &GraphPreview, time: f32) -> [u8; 4] {
         entries: &[],
     });
 
-    // One clockwise triangle covering the whole target; UV (0.25, 0.25) on both channels.
-    let vertex = |x: f32, y: f32| [x, y, 0.5, 0.0, 0.0, 1.0, 0.25, 0.25, 0.25, 0.25];
+    // One clockwise triangle; match the viewer's position, normal, two UVs,
+    // tangent and handedness vertex layout.
+    let vertex = |x: f32, y: f32| {
+        [
+            x, y, 0.5, 0.0, 0.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 0.0, 0.0, 1.0,
+        ]
+    };
     let vertices: Vec<f32> = [vertex(-1.0, -1.0), vertex(-1.0, 3.0), vertex(3.0, -1.0)]
         .into_iter()
         .flatten()

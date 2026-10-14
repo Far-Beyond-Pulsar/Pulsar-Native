@@ -250,8 +250,11 @@ impl FsProvider for RemoteFsProvider {
         self.auth(self.agent.post(&url))
             .send_json(&body)
             .context("RemoteFs rename HTTP call failed")?;
-        events::emit(from.to_path_buf(), FsChangeKind::Deleted);
-        events::emit(to.to_path_buf(), FsChangeKind::Created);
+        events::emit_move(
+            from.to_path_buf(),
+            to.to_path_buf(),
+            events::FsEventSource::Remote,
+        );
         Ok(())
     }
 

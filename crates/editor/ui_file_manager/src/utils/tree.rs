@@ -29,6 +29,10 @@ impl FolderNode {
         {
             return None;
         }
+        let absolute_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if let Some(index) = engine_fs::project_file_index_for_path(&absolute_path) {
+            return Self::from_indexed_path(path, &index);
+        }
         let children = engine_fs::virtual_fs::list_dir(path)
             .ok()?
             .into_iter()
@@ -41,6 +45,46 @@ impl FolderNode {
             })
             .collect();
         Some(FolderNode {
+            path: path.to_path_buf(),
+            name,
+            children,
+            expanded: false,
+        })
+    }
+
+    fn from_indexed_path(path: &Path, index: &engine_fs::ProjectFileIndex) -> Option<Self> {
+        let name = path.file_name()?.to_str()?.to_string();
+        let relative = path
+            .strip_prefix(index.project_root())
+            .ok()?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let entries = index
+            .query(&engine_fs::FileIndexQuery {
+                direct_children_of: Some(relative),
+                include_directories: true,
+                ..Default::default()
+            })
+            .ok()?;
+        if entries.iter().any(|entry| {
+            !entry.is_dir
+                && [
+                    "graph_save.json",
+                    "struct.json",
+                    "enum.json",
+                    "trait.json",
+                    "alias.json",
+                ]
+                .contains(&entry.name.as_str())
+        }) {
+            return None;
+        }
+        let children = entries
+            .into_iter()
+            .filter(|entry| entry.is_dir && !entry.name.starts_with('.'))
+            .filter_map(|entry| Self::from_indexed_path(&path.join(entry.name), index))
+            .collect();
+        Some(Self {
             path: path.to_path_buf(),
             name,
             children,

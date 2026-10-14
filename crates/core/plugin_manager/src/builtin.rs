@@ -241,7 +241,13 @@ impl BuiltinEditorRegistry {
     ) -> Result<std::sync::Arc<dyn PanelView>, PluginError> {
         for provider in &self.providers {
             if provider.can_handle(editor_id) {
-                return provider.create_editor_for(editor_id, file_path, editor_context, window, cx);
+                return provider.create_editor_for(
+                    editor_id,
+                    file_path,
+                    editor_context,
+                    window,
+                    cx,
+                );
             }
         }
 

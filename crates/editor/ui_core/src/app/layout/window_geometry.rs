@@ -146,7 +146,9 @@ pub(crate) fn fit_to_displays(
     displays: &[Bounds<Pixels>],
 ) -> WindowBounds {
     let fallback = |display: Option<&Bounds<Pixels>>| {
-        let (dx, dy, dw, dh) = display.map(bounds_in).unwrap_or((0.0, 0.0, f32::MAX, f32::MAX));
+        let (dx, dy, dw, dh) = display
+            .map(bounds_in)
+            .unwrap_or((0.0, 0.0, f32::MAX, f32::MAX));
         let (w, h) = FALLBACK_POPOUT_SIZE;
         WindowBounds::Windowed(rect(
             dx + FALLBACK_INSET,
@@ -177,10 +179,7 @@ pub(crate) fn fit_to_displays(
 }
 
 /// [`fit_to_displays`] against the displays connected now.
-pub(crate) fn fit_to_connected_displays(
-    saved: SavedWindow,
-    cx: &gpui::App,
-) -> WindowBounds {
+pub(crate) fn fit_to_connected_displays(saved: SavedWindow, cx: &gpui::App) -> WindowBounds {
     let mut displays: Vec<Bounds<Pixels>> = Vec::new();
     if let Some(primary) = cx.primary_display() {
         displays.push(primary.bounds());
@@ -280,7 +279,10 @@ mod tests {
 
     #[test]
     fn a_window_on_a_connected_display_keeps_its_place() {
-        let displays = [display(0., 0., 1920., 1080.), display(1920., 0., 1920., 1080.)];
+        let displays = [
+            display(0., 0., 1920., 1080.),
+            display(1920., 0., 1920., 1080.),
+        ];
         let on_second = rect(2000., 100., 800., 600.);
         assert_eq!(
             fit_to_displays(Some(WindowBounds::Windowed(on_second)), &displays),
@@ -298,7 +300,8 @@ mod tests {
         let displays = [display(0., 0., 1000., 700.)];
         // Hangs off the right/bottom edges and is too wide.
         let big = rect(200., 400., 1400., 400.);
-        let WindowBounds::Windowed(fit) = fit_to_displays(Some(WindowBounds::Windowed(big)), &displays)
+        let WindowBounds::Windowed(fit) =
+            fit_to_displays(Some(WindowBounds::Windowed(big)), &displays)
         else {
             panic!("stays windowed");
         };

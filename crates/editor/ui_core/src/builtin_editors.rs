@@ -116,14 +116,17 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
     ) -> Result<Arc<dyn PanelView>, PluginError> {
         let undo = editor_context.services.undo.clone();
         let panel = cx.new(|cx| {
-            let mut panel =
-                match ui_level_editor::LevelEditorPanel::new_with_path(file_path.clone(), window, cx) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        tracing::error!("Failed to load level {:?}: {}", file_path, e);
-                        ui_level_editor::LevelEditorPanel::new(window, cx)
-                    }
-                };
+            let mut panel = match ui_level_editor::LevelEditorPanel::new_with_path(
+                file_path.clone(),
+                window,
+                cx,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Failed to load level {:?}: {}", file_path, e);
+                    ui_level_editor::LevelEditorPanel::new(window, cx)
+                }
+            };
             panel.set_undo_service(undo);
             panel
         });
@@ -324,7 +327,9 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
 }
 
 /// Wraps the skeletal_animation_plugin crate as a built-in editor provider.
-/// Opens `.skelanim` folders in the Skeletal Animation Editor.
+/// Opens `.skeleton`, `.skmesh` and `.animseq` files (and old `.skelanim`
+/// folders, which are converted) in the Skeleton, Skeletal Mesh and Animation
+/// Sequence editors.
 pub struct SkeletalAnimationBuiltinProvider;
 
 impl BuiltinEditorProvider for SkeletalAnimationBuiltinProvider {
@@ -341,7 +346,7 @@ impl BuiltinEditorProvider for SkeletalAnimationBuiltinProvider {
     }
 
     fn can_handle(&self, editor_id: &EditorId) -> bool {
-        editor_id.as_str() == skeletal_animation_plugin::EDITOR_ID
+        skeletal_animation_plugin::provides_editor(editor_id.as_str())
     }
 
     fn create_editor(
@@ -396,7 +401,10 @@ impl BuiltinEditorProvider for PhysicsBuiltinProvider {
         // Without an editor id, the file's type says which editor it opens in.
         let Some(editor_id) = physics_plugin::PhysicsPlugin::editor_for_path(&file_path) else {
             return Err(PluginError::Other {
-                message: format!("the physics plugin has no editor for {}", file_path.display()),
+                message: format!(
+                    "the physics plugin has no editor for {}",
+                    file_path.display()
+                ),
             });
         };
         self.create_editor_for(&editor_id, file_path, editor_context, window, cx)
@@ -440,7 +448,10 @@ impl BuiltinEditorProvider for InputBuiltinProvider {
     }
 
     fn can_handle(&self, editor_id: &EditorId) -> bool {
-        matches!(editor_id.as_str(), input_plugin::ACTION_EDITOR_ID | input_plugin::MAPPING_EDITOR_ID)
+        matches!(
+            editor_id.as_str(),
+            input_plugin::ACTION_EDITOR_ID | input_plugin::MAPPING_EDITOR_ID
+        )
     }
 
     fn component_definitions(&self) -> Vec<ComponentDefinition> {
@@ -471,7 +482,13 @@ impl BuiltinEditorProvider for InputBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        input_plugin::InputPlugin::create_editor(editor_id, file_path, Some(&editor_context.services.undo), window, cx)
+        input_plugin::InputPlugin::create_editor(
+            editor_id,
+            file_path,
+            Some(&editor_context.services.undo),
+            window,
+            cx,
+        )
     }
 }
 
@@ -503,7 +520,12 @@ impl BuiltinEditorProvider for WidgetEditorBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        ui_editor_plugin::UiEditorPlugin::create_editor(file_path, Some(&editor_context.services.undo), window, cx)
+        ui_editor_plugin::UiEditorPlugin::create_editor(
+            file_path,
+            Some(&editor_context.services.undo),
+            window,
+            cx,
+        )
     }
 }
 
@@ -790,7 +812,7 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
     // Asset viewer (opens .fbx, .png files)
     registry.register_provider(Arc::new(AssetViewerBuiltinProvider));
 
-    // Skeletal animation editor (opens .skelanim folders)
+    // Skeleton and Animation Sequence editors (.skeleton, .animseq, old .skelanim)
     registry.register_provider(Arc::new(SkeletalAnimationBuiltinProvider));
 
     // Physics (file types and components; the simulation itself is

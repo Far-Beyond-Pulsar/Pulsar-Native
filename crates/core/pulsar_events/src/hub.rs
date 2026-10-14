@@ -541,14 +541,18 @@ mod tests {
     fn namespaced_events_resolve_by_qualified_name_only() {
         let hub = EventHub::new();
         let plain = EventDescriptor::dynamic("Probe", [("by", FieldType::U64)]);
-        let physics = EventDescriptor::dynamic_in("physics", "Probe", [("by", FieldType::U64)]).unwrap();
+        let physics =
+            EventDescriptor::dynamic_in("physics", "Probe", [("by", FieldType::U64)]).unwrap();
         let (plain_id, physics_id) = (
             hub.register(plain, EventCategory::Gameplay).unwrap(),
             hub.register(physics, EventCategory::Physics).unwrap(),
         );
         assert_ne!(plain_id, physics_id);
         assert_eq!(hub.descriptor_by_name("Probe").unwrap().id, plain_id);
-        assert_eq!(hub.descriptor_by_name("physics::Probe").unwrap().id, physics_id);
+        assert_eq!(
+            hub.descriptor_by_name("physics::Probe").unwrap().id,
+            physics_id
+        );
         // The main namespace cannot be named, and unknown ones are empty.
         assert!(hub.descriptor_by_name("main::Probe").is_none());
         assert!(hub.descriptor_by_name("other::Probe").is_none());
@@ -561,12 +565,14 @@ mod tests {
             .collect();
         assert_eq!(names.len(), 2);
         // Named publishes follow the same rule.
-        assert!(hub
-            .publish_named(Channel::Global, "physics::Probe", vec![DynValue::U64(1)])
-            .is_ok());
-        assert!(hub
-            .publish_named(Channel::Global, "main::Probe", vec![DynValue::U64(1)])
-            .is_err());
+        assert!(
+            hub.publish_named(Channel::Global, "physics::Probe", vec![DynValue::U64(1)])
+                .is_ok()
+        );
+        assert!(
+            hub.publish_named(Channel::Global, "main::Probe", vec![DynValue::U64(1)])
+                .is_err()
+        );
     }
 
     #[test]

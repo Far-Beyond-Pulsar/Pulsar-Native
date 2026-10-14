@@ -38,6 +38,7 @@ blueprint_graph_debug.json
 *.lg
 .env
 *.db
+/.pulsar/cache/
 
 # Local validation outputs and evidence archives.
 /docs/validation/

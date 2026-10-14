@@ -52,7 +52,8 @@ impl AssetQuery {
 pub struct MeshAssetPicker {
     searchable_list: Entity<AssetSearchableList<AssetItem>>,
     /// Loaded thumbnails by path. Shared with the list, which reads it per visible row.
-    thumbnails: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>>,
+    thumbnails:
+        std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>>,
     /// Source-of-truth item list — thumbnails are written here as they load.
     items: Vec<AssetItem>,
     /// Tracks which paths have already had a thumbnail task spawned so we don't double-spawn.
@@ -127,7 +128,9 @@ impl MeshAssetPicker {
                 .unwrap_or_else(|| PathBuf::from("."))
         });
 
-        let thumbnails: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>> = Default::default();
+        let thumbnails: std::rc::Rc<
+            std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>,
+        > = Default::default();
         let (image_map, picker) = (thumbnails.clone(), cx.weak_entity());
         let searchable_list = cx.new(|cx| {
             AssetSearchableList::new(
@@ -137,13 +140,21 @@ impl MeshAssetPicker {
                 |item| item.display_name.clone(),
                 |item| item.path.clone(),
             )
-            .with_image_getter(move |item| image_map.borrow().get(&item.path).cloned().map(ImageSource::Render))
+            .with_image_getter(move |item| {
+                image_map
+                    .borrow()
+                    .get(&item.path)
+                    .cloned()
+                    .map(ImageSource::Render)
+            })
             // Thumbnails are only made for what is on screen: a project can hold
             // thousands of images and rendering them all at once freezes the editor.
             .with_visible_callback(move |visible, cx| {
                 for item in visible {
                     let path = item.path.clone();
-                    picker.update(cx, |picker, cx| picker.ensure_thumbnail(path, cx)).ok();
+                    picker
+                        .update(cx, |picker, cx| picker.ensure_thumbnail(path, cx))
+                        .ok();
                 }
             })
             .with_empty_text("No matching assets")
@@ -287,7 +298,10 @@ impl MeshAssetPicker {
 
             let _ = cx.update(|cx| {
                 this.update(cx, |picker, cx| {
-                    picker.thumbnails.borrow_mut().insert(path_key, render_image);
+                    picker
+                        .thumbnails
+                        .borrow_mut()
+                        .insert(path_key, render_image);
                     // Redraw the rows; the items themselves haven't changed.
                     picker.searchable_list.update(cx, |_, cx| cx.notify());
                     cx.notify();
@@ -305,6 +319,48 @@ impl Render for MeshAssetPicker {
 }
 
 fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
+    if let Ok(Some(index)) = engine_fs::open_project_file_index(project_root) {
+        let mut out = BTreeSet::new();
+        for query in queries {
+            let indexed = match query {
+                AssetQuery::Extension(extension) => index.query(&engine_fs::FileIndexQuery {
+                    extension: Some(extension.clone()),
+                    ..Default::default()
+                }),
+                AssetQuery::FileType(file_type_id) => index.query(&engine_fs::FileIndexQuery {
+                    file_type_id: Some(file_type_id.clone()),
+                    ..Default::default()
+                }),
+                AssetQuery::FolderMarker(marker_file) => index.query(&engine_fs::FileIndexQuery {
+                    name_equals: Some(marker_file.clone()),
+                    ..Default::default()
+                }),
+            };
+            let Ok(indexed) = indexed else {
+                continue;
+            };
+            match query {
+                AssetQuery::FolderMarker(_) => {
+                    for entry in indexed {
+                        if let Some(parent) = Path::new(&entry.path).parent() {
+                            if !parent.as_os_str().is_empty() {
+                                out.insert(normalize_asset_path(parent.to_string_lossy()));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    out.extend(
+                        indexed
+                            .into_iter()
+                            .map(|entry| normalize_asset_path(entry.path)),
+                    );
+                }
+            }
+        }
+        return out.into_iter().collect();
+    }
+
     let extensions: std::collections::HashSet<String> = queries
         .iter()
         .filter_map(|q| match q {

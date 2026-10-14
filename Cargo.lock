@@ -525,10 +525,12 @@ dependencies = [
  "anyhow",
  "editor_task_queue",
  "engine_fs",
+ "helio-asset-compat",
  "helio_component",
  "parking_lot",
  "serde",
  "serde_json",
+ "skeletal_assets",
  "tempfile",
  "tracing",
  "twox-hash",
@@ -3195,6 +3197,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar-multiplayer-core",
  "pulsar_reflection",
+ "rusqlite",
  "serde",
  "serde_json",
  "smol",
@@ -11717,18 +11720,33 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "engine_fs",
  "gpui-ce",
  "log",
  "naga",
  "plugin_editor_api",
  "serde",
  "serde_json",
+ "skeletal_assets",
  "smol",
+ "tempfile",
  "tracing",
  "ui",
  "ui_common",
  "uuid",
  "wgpu",
+]
+
+[[package]]
+name = "skeletal_assets"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -14086,6 +14104,7 @@ dependencies = [
 name = "ui_editor_plugin"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
  "serde",

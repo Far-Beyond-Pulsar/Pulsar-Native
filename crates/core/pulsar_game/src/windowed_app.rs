@@ -733,7 +733,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             //    instead, so the two never double up.
             WindowEvent::CursorMoved { position, .. } => {
                 let (x, y) = (position.x, position.y);
-                let (dx, dy) = self.last_cursor.map_or((0.0, 0.0), |(lx, ly)| (x - lx, y - ly));
+                let (dx, dy) = self
+                    .last_cursor
+                    .map_or((0.0, 0.0), |(lx, ly)| (x - lx, y - ly));
                 self.last_cursor = Some((x, y));
                 if !self.cursor_captured && (dx != 0.0 || dy != 0.0) {
                     self.events.publish(

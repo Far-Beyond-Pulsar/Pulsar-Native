@@ -487,9 +487,9 @@ impl EmbeddedGame {
                 // coordinates; the game sees pixels of its render size.
                 let (w, h) = (f64::from(self.width), f64::from(self.height));
                 let (x, y) = (f64::from(ev.x) * w, f64::from(ev.y) * h);
-                let (dx, dy) = self
-                    .last_pointer
-                    .map_or((0.0, 0.0), |(lx, ly)| ((f64::from(ev.x - lx)) * w, f64::from(ev.y - ly) * h));
+                let (dx, dy) = self.last_pointer.map_or((0.0, 0.0), |(lx, ly)| {
+                    ((f64::from(ev.x - lx)) * w, f64::from(ev.y - ly) * h)
+                });
                 self.last_pointer = Some((ev.x, ev.y));
                 if dx != 0.0 || dy != 0.0 {
                     self.session
@@ -501,7 +501,10 @@ impl EmbeddedGame {
                 self.freecam.on_mouse_delta(0.0, ev.delta as f64);
                 self.session
                     .tick_loop
-                    .publish_input(pulsar_events::builtin::MouseWheel { x: 0.0, y: f64::from(ev.delta) });
+                    .publish_input(pulsar_events::builtin::MouseWheel {
+                        x: 0.0,
+                        y: f64::from(ev.delta),
+                    });
             }
             // Keys and buttons become input events on the session's hub,
             // delivered at the next tick's after-input flush.

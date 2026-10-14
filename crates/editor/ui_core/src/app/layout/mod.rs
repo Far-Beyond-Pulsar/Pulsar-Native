@@ -351,10 +351,15 @@ impl PulsarApp {
                 .values()
                 .map(|note| note.id)
                 .chain(self.state.layout_ghosts.iter().map(|g| g.id))
-                .chain(self.state.layout_dormant.iter().filter_map(|leaf| match leaf.root {
-                    dormant::DormantRoot::Popout(id) => Some(id),
-                    _ => None,
-                }))
+                .chain(
+                    self.state
+                        .layout_dormant
+                        .iter()
+                        .filter_map(|leaf| match leaf.root {
+                            dormant::DormantRoot::Popout(id) => Some(id),
+                            _ => None,
+                        }),
+                )
                 .collect();
             let id = (0..).find(|id| !taken.contains(id)).unwrap_or(u32::MAX);
             self.state

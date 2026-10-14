@@ -9,7 +9,7 @@ use engine_fs::virtual_fs;
 use parking_lot::Mutex;
 
 use crate::db::{hash_file, relative_key, ImportDb, ImportRecord};
-use crate::importer::{importer_by_id, importer_for, Importer, OptionValues};
+use crate::importer::{importer_by_id, importer_for, Importer, OptionValues, Previous};
 
 const TASK_CATEGORY: &str = "Import";
 
@@ -93,7 +93,23 @@ fn convert(
     }
 
     task.report_progress(0.3, "Converting");
-    importer.import(source, &asset, &options.lock())?;
+    // What an earlier import of this source wrote, so it keeps its ids.
+    let earlier = ImportDb::load(project_root)
+        .find_source(&key)
+        .map(|record| record.outputs.clone())
+        .unwrap_or_default();
+    let chosen_options = options.lock();
+    let imported = importer.import(
+        source,
+        &asset,
+        &chosen_options,
+        &Previous {
+            project_root,
+            outputs: &earlier,
+        },
+    )?;
+    let stored_options = importer.serialize_options(&chosen_options);
+    drop(chosen_options);
 
     task.report_progress(0.9, "Recording");
     match mode {
@@ -102,8 +118,10 @@ fn convert(
                 source: key,
                 source_hash,
                 source_size,
-                asset: relative_key(project_root, &asset),
+                asset: relative_key(project_root, &imported.asset),
                 importer: importer.id().to_owned(),
+                options: Some(stored_options),
+                outputs: imported.outputs,
             })
         }),
         ImportMode::ConvertInPlace => {
@@ -197,13 +215,24 @@ pub fn submit_reimport(project_root: PathBuf, source: &str) -> Option<TaskId> {
                 return Err("cancelled".into());
             }
             task.report_progress(0.3, "Converting");
-            let options = importer.stored_options(&asset, ext);
-            importer.import(&source, &asset, &options)?;
+            let options = importer.stored_options(&asset, ext, record.options.as_ref());
+            let imported = importer.import(
+                &source,
+                &asset,
+                &options,
+                &Previous {
+                    project_root: &project_root,
+                    outputs: &record.outputs,
+                },
+            )?;
             task.report_progress(0.9, "Recording");
             with_db(&project_root, |db| {
                 db.upsert(ImportRecord {
                     source_hash,
                     source_size,
+                    asset: relative_key(&project_root, &imported.asset),
+                    options: Some(importer.serialize_options(&options)),
+                    outputs: imported.outputs,
                     ..record
                 })
             })

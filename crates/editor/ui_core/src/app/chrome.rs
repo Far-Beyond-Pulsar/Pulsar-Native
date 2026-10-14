@@ -79,10 +79,7 @@ impl Default for ChromeState {
 pub struct SavedChrome {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub file_manager_docked: bool,
-    #[serde(
-        default = "default_height",
-        skip_serializing_if = "is_default_height"
-    )]
+    #[serde(default = "default_height", skip_serializing_if = "is_default_height")]
     pub file_manager_height: f32,
 }
 

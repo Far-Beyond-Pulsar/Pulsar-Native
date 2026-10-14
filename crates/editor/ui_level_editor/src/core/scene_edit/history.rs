@@ -113,8 +113,8 @@ pub fn capture_history_subset(world: &World, ids: &[ObjectId]) -> SceneHistorySn
     let mut entities = Vec::new();
     let mut class_roots = Vec::new();
     for id in ids {
-        let Some(entity) = super::classes::class_root_of(world, id)
-            .or_else(|| world.entity_for(id))
+        let Some(entity) =
+            super::classes::class_root_of(world, id).or_else(|| world.entity_for(id))
         else {
             continue;
         };

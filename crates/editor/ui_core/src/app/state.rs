@@ -73,7 +73,6 @@ pub struct AppState {
     // Focus management
     pub focus_handle: FocusHandle,
 
-
     // Multiuser status refresh listener
     pub multiuser_refresh_task: Option<Task<()>>,
 
@@ -104,8 +103,7 @@ pub struct AppState {
     pub layout_closing: bool,
     /// Pop-outs opened from this window, each with the last windowed bounds it
     /// had (what a maximized one returns to).
-    pub layout_popouts:
-        std::collections::HashMap<gpui::AnyWindowHandle, super::layout::PopoutNote>,
+    pub layout_popouts: std::collections::HashMap<gpui::AnyWindowHandle, super::layout::PopoutNote>,
     /// Saved pop-outs that opened nothing because all their tabs are dormant;
     /// written back (empty) while a dormant tab still refers to them.
     pub layout_ghosts: Vec<super::layout::SavedPopout>,

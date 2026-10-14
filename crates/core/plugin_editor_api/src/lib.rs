@@ -88,13 +88,13 @@ pub mod editor_element;
 pub mod error;
 pub mod events;
 pub mod file_types;
-pub mod runtime;
 pub mod helpers;
 pub mod identifiers;
 pub mod menus;
 pub mod metadata;
 pub mod panel_restore;
 pub mod plugin;
+pub mod runtime;
 pub mod scripting;
 pub mod statusbar;
 pub mod subsystems;
@@ -120,20 +120,20 @@ pub use editor_element::*;
 pub use error::*;
 pub use events::*;
 pub use file_types::*;
-pub use runtime::*;
 pub use helpers::*;
 pub use identifiers::*;
 pub use menus::*;
 pub use metadata::*;
 pub use panel_restore::*;
 pub use plugin::*;
+pub use runtime::*;
 pub use scripting::*;
 pub use statusbar::*;
+pub use subsystems::*;
 pub use undo::{
     bind_undo_keys, DocumentId, History, HistoryView, Redo, SharedHistory, Undo, UndoEntry,
     UndoService,
 };
-pub use subsystems::*;
 pub use version::*;
 
 /// Re-export GPUI's core types for plugin use.
@@ -148,9 +148,9 @@ pub use ui::dock::{Panel, PanelView};
 /// The `export_plugin!` macro references `$crate::JsonValue`.
 pub use serde_json::Value as JsonValue;
 
+pub use profiling;
 /// The engine's event plumbing (Gamma v2 host bus, engine event hub,
 /// built-in events). `export_plugin!` wires every plugin library to the
 /// host's bus through it (Pulsar-Native#930).
 pub use pulsar_events;
 pub use pulsar_world_registry;
-pub use profiling;

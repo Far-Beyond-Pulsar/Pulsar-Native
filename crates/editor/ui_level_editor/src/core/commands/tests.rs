@@ -794,8 +794,15 @@ mod undo_redo_tests {
         };
 
         assert!(state.scene.record_gizmo_drag(entity, before));
-        assert_eq!(position(&state), [4.0, 0.0, 0.0], "recording leaves it moved");
-        assert_eq!(lock(state.scene.history()).undo_label().as_deref(), Some("Move"));
+        assert_eq!(
+            position(&state),
+            [4.0, 0.0, 0.0],
+            "recording leaves it moved"
+        );
+        assert_eq!(
+            lock(state.scene.history()).undo_label().as_deref(),
+            Some("Move")
+        );
         let now = *state
             .scene
             .world()
@@ -808,7 +815,10 @@ mod undo_redo_tests {
 
         assert!(state.scene.undo());
         assert_eq!(position(&state), before.position);
-        assert_eq!(lock(state.scene.history()).undo_label().as_deref(), Some("Add"));
+        assert_eq!(
+            lock(state.scene.history()).undo_label().as_deref(),
+            Some("Add")
+        );
         assert!(state.scene.redo());
         assert_eq!(position(&state), [4.0, 0.0, 0.0]);
     }

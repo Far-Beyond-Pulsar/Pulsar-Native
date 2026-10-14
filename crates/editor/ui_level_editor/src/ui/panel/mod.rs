@@ -266,12 +266,16 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_redo))
             // The shared Undo/Redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y;
             // the Edit menu): this level's history (#931).
-            .on_action(cx.listener(|this, _: &plugin_editor_api::Undo, window, cx| {
-                this.on_undo(&crate::ui::actions::Undo, window, cx)
-            }))
-            .on_action(cx.listener(|this, _: &plugin_editor_api::Redo, window, cx| {
-                this.on_redo(&crate::ui::actions::Redo, window, cx)
-            }))
+            .on_action(
+                cx.listener(|this, _: &plugin_editor_api::Undo, window, cx| {
+                    this.on_undo(&crate::ui::actions::Undo, window, cx)
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &plugin_editor_api::Redo, window, cx| {
+                    this.on_redo(&crate::ui::actions::Redo, window, cx)
+                }),
+            )
             .on_action(cx.listener(Self::on_select_object))
             .on_action(cx.listener(Self::on_toggle_object_expanded))
             .on_action(cx.listener(Self::on_focus_selected))

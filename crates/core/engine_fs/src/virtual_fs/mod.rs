@@ -106,12 +106,7 @@ pub fn delete_path(path: &Path) -> Result<()> {
 
 /// Rename / move a path.
 pub fn rename(from: &Path, to: &Path) -> Result<()> {
-    let result = global().read().rename(from, to);
-    if result.is_ok() {
-        events::emit(from.to_path_buf(), FsChangeKind::Deleted);
-        events::emit(to.to_path_buf(), FsChangeKind::Created);
-    }
-    result
+    global().read().rename(from, to)
 }
 
 /// List the immediate children of a directory.

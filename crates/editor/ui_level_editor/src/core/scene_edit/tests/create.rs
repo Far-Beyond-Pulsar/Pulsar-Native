@@ -21,7 +21,10 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
         ("wind", &["WindComponent"]),
     ];
     assert_eq!(
-        create::KINDS.iter().map(|(kind, _)| *kind).collect::<Vec<_>>(),
+        create::KINDS
+            .iter()
+            .map(|(kind, _)| *kind)
+            .collect::<Vec<_>>(),
         expected.iter().map(|(kind, _)| *kind).collect::<Vec<_>>(),
     );
     for &(kind, classes) in expected {
@@ -37,7 +40,10 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
         );
 
         assert!(state.scene.undo(), "{kind}");
-        assert!(objects::get_all_objects(&state.scene.world()).is_empty(), "{kind}");
+        assert!(
+            objects::get_all_objects(&state.scene.world()).is_empty(),
+            "{kind}"
+        );
     }
 }
 

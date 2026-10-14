@@ -30,6 +30,7 @@ pub(crate) type TaskFn = fn(&Path) -> TaskResult;
 pub(crate) const TASKS: &[(&str, TaskFn)] = &[
     ("Pre-warming compiler cache", task_cargo_check),
     ("Verifying project structure", task_verify_project),
+    ("Indexing project files", task_index_project_files),
     ("Reading project configuration", task_read_config),
     ("Scanning workspace packages", task_scan_packages),
     ("Indexing source files", task_index_files),
@@ -107,6 +108,28 @@ fn task_verify_project(project: &Path) -> TaskResult {
         },
         if has_src { " • src/ ✓" } else { "" },
     );
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
+    }
+}
+
+fn task_index_project_files(project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let detail = match engine_fs::open_project_file_index(project) {
+        Ok(Some(index)) => match index.query(&engine_fs::FileIndexQuery::default()) {
+            Ok(files) => format!("{} files", files.len()),
+            Err(error) => {
+                tracing::warn!(%error, project = %project.display(), "Failed to query project file index during startup");
+                "index opened; query failed".to_owned()
+            }
+        },
+        Ok(None) => "remote provider; using provider listings".to_owned(),
+        Err(error) => {
+            tracing::warn!(%error, project = %project.display(), "Failed to initialize project file index during startup");
+            "index unavailable; using filesystem listings".to_owned()
+        }
+    };
     TaskResult {
         elapsed: t.elapsed(),
         detail: Some(detail),

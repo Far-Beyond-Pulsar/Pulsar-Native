@@ -60,10 +60,24 @@ pub enum MeshRenderMode {
     Wireframe,
     /// Object-space normals as colour.
     Normals,
+    /// World-space normals as colour (mesh preview transforms are baked on load).
+    WorldNormals,
+    /// Tangent vectors as colour.
+    Tangents,
+    /// Bitangent vectors reconstructed from tangent handedness.
+    Bitangents,
+    /// Per-vertex normal hedgehog lines.
+    NormalLines,
+    /// Per-vertex tangent hedgehog lines.
+    TangentLines,
+    /// Per-vertex bitangent hedgehog lines.
+    BitangentLines,
     /// UV channel 1 (`tex_coords0`) sampled against the embedded UV reference grid.
     Uv0,
     /// UV channel 2 (`tex_coords1`, the lightmap channel) sampled against the UV grid.
     Uv1,
+    /// UV0 islands drawn as a flat 0..1 layout.
+    UvLayout0,
     /// Relative local vertex packing, from green (sparse) to red (dense).
     VertexDensity,
 }
@@ -87,6 +101,11 @@ pub struct AssetViewerPanel {
     pub wire_index_buffer: Option<wgpu::Buffer>,
     pub wire_index_count: u32,
     pub wire_pipeline: Option<wgpu::RenderPipeline>,
+    pub diagnostic_vertex_buffer: Option<wgpu::Buffer>,
+    pub diagnostic_index_buffer: Option<wgpu::Buffer>,
+    pub diagnostic_index_count: u32,
+    pub normal_line_length: f32,
+    pub uv_layout_vertex_buffer: Option<wgpu::Buffer>,
 
     pub depth_texture: Option<wgpu::Texture>,
     pub depth_view: Option<wgpu::TextureView>,
@@ -361,7 +380,10 @@ impl AssetViewerPanel {
     /// Register this file's history with the host's undo histories.
     pub fn set_undo_service(&mut self, service: plugin_editor_api::UndoService) {
         if let Some(path) = &self.current_path {
-            service.adopt(&plugin_editor_api::DocumentId::for_path(path), &self.history);
+            service.adopt(
+                &plugin_editor_api::DocumentId::for_path(path),
+                &self.history,
+            );
         }
     }
 
@@ -570,6 +592,11 @@ impl AssetViewerPanel {
             wire_index_buffer: None,
             wire_index_count: 0,
             wire_pipeline: None,
+            diagnostic_vertex_buffer: None,
+            diagnostic_index_buffer: None,
+            diagnostic_index_count: 0,
+            normal_line_length: 0.12,
+            uv_layout_vertex_buffer: None,
             depth_texture: None,
             depth_view: None,
             mesh_vertex_buffer: None,
