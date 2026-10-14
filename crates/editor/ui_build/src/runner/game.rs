@@ -63,7 +63,6 @@ pub async fn launch_and_monitor(
         }
         let mut spawned = Command::new("cargo");
         spawned
-
             .arg(invocation.subcommand)
             .args(&invocation.args)
             .envs(invocation.envs.iter().map(|(k, v)| (k, v)))

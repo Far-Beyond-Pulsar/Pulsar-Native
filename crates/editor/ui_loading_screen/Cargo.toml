@@ -10,7 +10,7 @@ ui_common.workspace = true
 window_manager.workspace = true
 engine_backend.workspace = true
 engine_state.workspace = true
-engine_fs.workspace = true
+engine_fs = { workspace = true, features = ["editor"] }
 ui_file_manager.workspace = true
 ui_git_manager.workspace = true
 directories.workspace = true

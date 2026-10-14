@@ -69,13 +69,21 @@ fn object_for(kind: &str) -> Option<(&'static str, ObjectType, Vec<TypedComponen
         let mut light = helio_component::LightComponent::default();
         light.general.enabled = true;
         light.general.light_type = light_type;
-        (name, ObjectType::Light(kind), vec![TypedComponent::new(light)])
+        (
+            name,
+            ObjectType::Light(kind),
+            vec![TypedComponent::new(light)],
+        )
     };
     let mesh = |name, file: &str, kind| {
         let mesh = helio_component::StaticMeshComponent::for_mesh_asset(&format!(
             "meshes/primitives/{file}"
         ));
-        (name, ObjectType::Mesh(kind), vec![TypedComponent::new(mesh)])
+        (
+            name,
+            ObjectType::Mesh(kind),
+            vec![TypedComponent::new(mesh)],
+        )
     };
     use helio_component::LightType as Helio;
     Some(match kind {

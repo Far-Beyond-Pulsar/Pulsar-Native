@@ -757,7 +757,8 @@ pub(super) fn resolve_layout(
             .leaves()
             .iter()
             .any(|p| snapshot.anchor_panels.contains(&p.view().entity_id()));
-        if anchor_requirement_met(snapshot.anchor_panels.len(), holds_anchor) && state.admit(&plan) {
+        if anchor_requirement_met(snapshot.anchor_panels.len(), holds_anchor) && state.admit(&plan)
+        {
             Some(plan)
         } else {
             tracing::warn!("layout: saved centre has no editor tab; keeping the default");
@@ -867,7 +868,6 @@ pub(super) fn resolve_layout(
 fn anchor_requirement_met(anchor_panel_count: usize, centre_holds_anchor: bool) -> bool {
     anchor_panel_count == 0 || centre_holds_anchor
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1420,7 +1420,10 @@ mod tests {
             other => panic!("expected split, got {other:?}"),
         }
         // Nothing removed: the plan is unchanged, sizes included.
-        assert_eq!(plan.clone().retain_leaves(&mut |_| true), Some(plan.clone()));
+        assert_eq!(
+            plan.clone().retain_leaves(&mut |_| true),
+            Some(plan.clone())
+        );
         // Everything removed: nothing is left.
         assert!(plan.retain_leaves(&mut |_| false).is_none());
 

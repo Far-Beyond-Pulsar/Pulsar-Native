@@ -96,6 +96,20 @@ inherits the default unless it assigns its own material
 this before anything reaches Helio. Helio's passes only ever see the
 effective material, never whether it was a default or an assignment.
 
+**Rigged sources.** A model with a skinned mesh imports as a linked set instead
+of a `.mesh` (`asset_import::rig`): one `.skeleton`, one `.skmesh` skinned to it
+and one `.animseq` per animation, each with a fresh id and referring to the
+others by id, never path. The formats, ids, math and CPU skinning live in the
+`skeletal_assets` crate (inside the `skm_editor` plugin repo; the plugin edits
+the same files). `ImportRecord::asset` is the `.skmesh`, and the optional
+`outputs` list records every file (path, kind, id, and the source animation name
+for sequences). A reimport reads those back, so each file keeps its id: an output
+that was moved or renamed is found again by its id and rewritten where it now is,
+a deleted one is recreated with the same id, and the material slots and preview
+meshes chosen since are kept. A static source is imported exactly as before.
+`helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
+of the loaded scene (`ConvertedScene::rig`).
+
 ## editor/ — Editor panels
 
 20 crates, one per editor panel or subsystem. Previously `ui-crates/`. Each

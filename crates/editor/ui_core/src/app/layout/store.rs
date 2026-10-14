@@ -114,7 +114,11 @@ impl LayoutStore {
         if let Some(queue) = inner.reserved.get_mut(root) {
             queue.retain(|reserved| *reserved != slot);
         }
-        inner.live.entry(root.to_path_buf()).or_default().insert(slot);
+        inner
+            .live
+            .entry(root.to_path_buf())
+            .or_default()
+            .insert(slot);
         slot
     }
 
@@ -338,8 +342,12 @@ mod tests {
         let store = LayoutStore::new();
         let primary = store.claim_slot(root);
         let secondary = store.claim_slot(root);
-        store.save_slot(root, primary, &layout_with("a.rs")).unwrap();
-        store.save_slot(root, secondary, &layout_with("b.rs")).unwrap();
+        store
+            .save_slot(root, primary, &layout_with("a.rs"))
+            .unwrap();
+        store
+            .save_slot(root, secondary, &layout_with("b.rs"))
+            .unwrap();
 
         assert_eq!(store.release_slot(root, secondary), SlotFate::Dropped);
         assert_eq!(store.slots(root), vec![0]);
@@ -353,8 +361,12 @@ mod tests {
         let store = LayoutStore::new();
         let primary = store.claim_slot(root);
         let secondary = store.claim_slot(root);
-        store.save_slot(root, primary, &layout_with("a.rs")).unwrap();
-        store.save_slot(root, secondary, &layout_with("b.rs")).unwrap();
+        store
+            .save_slot(root, primary, &layout_with("a.rs"))
+            .unwrap();
+        store
+            .save_slot(root, secondary, &layout_with("b.rs"))
+            .unwrap();
 
         // The primary goes first: that is app quit, nothing is dropped, and
         // neither is the secondary that closes after it (it is the last).
@@ -370,8 +382,12 @@ mod tests {
         let store = LayoutStore::new();
         let primary = store.claim_slot(root);
         let secondary = store.claim_slot(root);
-        store.save_slot(root, primary, &layout_with("a.rs")).unwrap();
-        store.save_slot(root, secondary, &layout_with("b.rs")).unwrap();
+        store
+            .save_slot(root, primary, &layout_with("a.rs"))
+            .unwrap();
+        store
+            .save_slot(root, secondary, &layout_with("b.rs"))
+            .unwrap();
 
         store.mark_quitting();
         assert_eq!(store.release_slot(root, secondary), SlotFate::Kept);

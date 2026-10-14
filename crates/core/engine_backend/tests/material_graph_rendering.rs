@@ -71,12 +71,34 @@ fn texture_graph(factor: f64, opacity: Option<f64>, emissive: bool) -> GraphDesc
     graph
 }
 
-fn adapted(graph: &GraphDescription, slot: u32) -> String {
-    material_graph::compile_material_graph(
-        graph,
-        &HashMap::from([("test.png".into(), slot), ("second.png".into(), 1 - slot)]),
-    )
-    .unwrap()
+fn graph_ordinals(graph: &GraphDescription) -> HashMap<String, u32> {
+    material_graph::texture_assets(graph)
+        .unwrap()
+        .into_iter()
+        .enumerate()
+        .map(|(ordinal, asset)| (asset, ordinal as u32))
+        .collect()
+}
+
+fn adapted(graph: &GraphDescription, _scene_slot: u32) -> String {
+    material_graph::compile_material_graph(graph, &graph_ordinals(graph)).unwrap()
+}
+
+fn graph_material_assignments(graph: &GraphDescription, test_slot: u32) -> String {
+    let fields = material_graph::GRAPH_TEXTURE_FIELDS;
+    let mut assignments = String::new();
+    for (asset, ordinal) in graph_ordinals(graph) {
+        let slot = if asset == "test.png" {
+            test_slot
+        } else {
+            1 - test_slot
+        };
+        assignments.push_str(&format!(
+            "material.{} = {slot}u;\n",
+            fields[ordinal as usize]
+        ));
+    }
+    assignments
 }
 
 #[test]
@@ -99,8 +121,14 @@ fn defaults_and_explicit_zero_are_distinct() {
 fn connected_outputs_override_defaults() {
     let graph = texture_graph(2.0, Some(0.25), true);
     let source = adapted(&graph, 1);
-    assert!(source.contains("scene_textures[1u]"));
-    assert!(source.contains("scene_samplers[1u]"));
+    assert_eq!(source, adapted(&graph, 0));
+    assert_ne!(
+        graph_material_assignments(&graph, 0),
+        graph_material_assignments(&graph, 1)
+    );
+    assert!(source.contains("scene_textures[material.tex_base_color]"));
+    assert!(source.contains("scene_samplers[material.tex_base_color]"));
+    assert!(!source.contains("scene_textures[1u]"));
     assert!(!source.contains("texture_sampler"));
     assert!(!source.contains("test.png"));
     assert!(source.contains("let uv = input.tex_coords"));
@@ -121,7 +149,10 @@ fn every_texture_sampling_variant_binds_its_own_sampler() {
             .insert("texture".into(), serde_json::json!("test.png"));
         graph.nodes.insert("texture".into(), texture);
         let source = adapted(&graph, 1);
-        assert!(source.contains("scene_samplers[1u]"), "{kind}: {source}");
+        assert!(
+            source.contains("scene_samplers[material.tex_base_color]"),
+            "{kind}: {source}"
+        );
         assert!(!source.contains("texture_sampler"), "{kind}: {source}");
     }
 }
@@ -132,7 +163,7 @@ fn missing_live_texture_is_an_error_but_disconnected_texture_is_not_loaded() {
     assert!(
         material_graph::compile_material_graph(&graph, &HashMap::new())
             .unwrap_err()
-            .contains("no scene binding")
+            .contains("no material texture binding")
     );
     graph.add_node(node("unused", "sample_texture"));
     assert_eq!(
@@ -159,7 +190,7 @@ fn texture_asset_names_cannot_rewrite_shader_identifiers() {
         material_graph::compile_material_graph(&graph, &HashMap::from([("normal".into(), 1)]))
             .unwrap();
     assert!(source.contains("let normal = input.world_normal;"));
-    assert!(source.contains("scene_textures[1u]"));
+    assert!(source.contains("scene_textures[material.tex_normal]"));
 }
 
 #[test]
@@ -179,7 +210,7 @@ fn overlapping_asset_names_are_not_replaced_inside_each_other() {
             !source.contains("folder/"),
             "corrupted texture expression: {source}"
         );
-        assert!(source.contains("scene_textures[1u]"));
+        assert!(source.contains("scene_textures[material.tex_normal]"));
     }
 }
 
@@ -272,13 +303,20 @@ impl Gpu {
         if !bindless {
             source = helio_mats::apply_webgpu_material_bindings(&source, 2);
         }
+        let probe = PROBE.replace(
+            "let surface = radiant_eval_surface(material, textures, input);",
+            &format!(
+                "{}let surface = radiant_eval_surface(material, textures, input);",
+                graph_material_assignments(graph, slot)
+            ),
+        );
         source.push_str(&if missing_uvs {
-            PROBE.replace(
+            probe.replace(
                 "result.tex_coords = vec2<f32>(x, y);",
                 "result.tex_coords = vec2<f32>(0.0);",
             )
         } else {
-            PROBE.to_string()
+            probe
         });
         let device = &self.device;
         let binding_config = helio_mats::MaterialBindingConfig {

@@ -458,8 +458,7 @@ impl SavedWindowLayout {
     /// Pop-out ids name dormant roots, so they must be unique. Files without
     /// ids (all 0) keep the first and renumber the rest.
     fn renumber_duplicate_popout_ids(&mut self) {
-        let mut taken: std::collections::HashSet<u32> =
-            self.popouts.iter().map(|p| p.id).collect();
+        let mut taken: std::collections::HashSet<u32> = self.popouts.iter().map(|p| p.id).collect();
         let mut seen = std::collections::HashSet::new();
         let mut next = 0u32;
         for popout in &mut self.popouts {
@@ -573,7 +572,10 @@ pub(super) mod tests {
         };
         dock.add_child(owned_leaf("graph-canvas", "/proj/Content/A.class", 1));
         let mut layout = SavedWindowLayout {
-            popouts: vec![SavedPopout { dock, ..popout(&[], 10.) }],
+            popouts: vec![SavedPopout {
+                dock,
+                ..popout(&[], 10.)
+            }],
             ..Default::default()
         };
         layout.relativize(root);
@@ -1021,14 +1023,26 @@ pub(super) mod tests {
         );
         layout.absolutize(root);
         assert_eq!(
-            Path::new(layout.popouts[0].zoomed.as_ref().unwrap().panel.file().unwrap()),
+            Path::new(
+                layout.popouts[0]
+                    .zoomed
+                    .as_ref()
+                    .unwrap()
+                    .panel
+                    .file()
+                    .unwrap()
+            ),
             root.join("a.rs")
         );
 
         layout.reinsert_dormant();
         assert!(layout.dormant.is_empty());
         assert_eq!(layout.popouts[1].dock.children.len(), 2);
-        assert_eq!(layout.popouts[0].dock.children.len(), 1, "other popouts untouched");
+        assert_eq!(
+            layout.popouts[0].dock.children.len(),
+            1,
+            "other popouts untouched"
+        );
         // The ghost is an empty tab group: it takes its dormant tab.
         assert_eq!(layout.popouts[2].dock.children.len(), 1);
     }
@@ -1036,7 +1050,11 @@ pub(super) mod tests {
     #[test]
     fn duplicate_or_missing_popout_ids_are_renumbered() {
         let mut layout = SavedWindowLayout {
-            popouts: vec![popout(&["a.rs"], 1.), popout(&["b.rs"], 2.), popout(&["c.rs"], 3.)],
+            popouts: vec![
+                popout(&["a.rs"], 1.),
+                popout(&["b.rs"], 2.),
+                popout(&["c.rs"], 3.),
+            ],
             ..Default::default()
         };
         layout.popouts[2].id = 1;
@@ -1072,7 +1090,13 @@ pub(super) mod tests {
             "{ not json"
         );
         // An empty or non-object file is the same story and must not panic.
-        for junk in ["", "[]", "null", "{\"version\":2}", "{\"version\":2,\"windows\":[]}"] {
+        for junk in [
+            "",
+            "[]",
+            "null",
+            "{\"version\":2}",
+            "{\"version\":2,\"windows\":[]}",
+        ] {
             std::fs::write(&path, junk).unwrap();
             assert!(read_slot(&path, PRIMARY_SLOT).is_none());
             write_slot(&path, PRIMARY_SLOT, &SavedWindowLayout::default()).unwrap();

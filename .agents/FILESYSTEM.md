@@ -147,3 +147,27 @@ to keep `AssetIndex` up to date with on-disk changes.
 
 Supports `register()`, `lookup_by_id()`, `lookup_by_name()`, `lookup_by_path()`,
 `lookup_by_file_type()`, `lookup_by_category()`, `search_fuzzy()`, `clear()`.
+
+## Persistent project file index
+
+For local projects, `open_project_file_index(project_root)` returns the
+process-shared disposable SQLite `ProjectFileIndex` at
+`.pulsar/cache/files.db`; the loading splash populates and reconciles it in a
+dedicated startup step. It stores project-relative path, name, extension,
+registered file type, directory flag, size, and modified time. Local file
+watcher notifications and synchronous local `FsEvent`s keep it current, with
+rename operations preserving stable-ID rows. Consumers that need to avoid
+opening or reconciling the database can use `project_file_index_for_path`
+after the loading task has populated it. Query with `FileIndexQuery` to combine
+type, extension, modified-time, name substring, folder, and size filters and
+select a stable sort order. `record_asset_id` and `paths_for_asset_id` store
+plugin-defined stable IDs and surface duplicate claims. The cache folder is
+ignored by Git and can be deleted to rebuild.
+The cache directory is created through `virtual_fs`; SQLite opens the database
+by its local path because this service is only enabled for local providers.
+
+Remote and P2P providers do not open a local SQLite cache. Asset IDs stored in
+`ui_file_manager`, asset pickers, the widget library, and skeletal libraries
+use this index for local file discovery. Asset payloads remain plugin-owned;
+content hashing is not part of the index. `AssetIndex` remains the in-memory
+typed view.

@@ -431,7 +431,9 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
         assert!(drawer.folder_tree_hidden(), "the sidebar supplies the tree");
     });
     // The hover sidebar stops above the floating file drawer.
-    let drawer_height = ed.app.read_with(&ed.cx, |app, _| app.state.chrome.drawer_height);
+    let drawer_height = ed
+        .app
+        .read_with(&ed.cx, |app, _| app.state.chrome.drawer_height);
     let sidebar = ed.bounds("nav-sidebar-drawer").expect("hover sidebar");
     assert_eq!(
         sidebar.bottom(),
@@ -554,7 +556,10 @@ fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut Test
         app.state.chrome.drawer_open = false;
         cx.notify();
     });
-    let drawer_open = |ed: &mut Editor| ed.app.read_with(&ed.cx, |app, _| app.state.chrome.drawer_open);
+    let drawer_open = |ed: &mut Editor| {
+        ed.app
+            .read_with(&ed.cx, |app, _| app.state.chrome.drawer_open)
+    };
 
     // Open the hover drawer and expand Maps with a click on its row.
     let rail = ed.bounds("nav-sidebar-rail").expect("rail");

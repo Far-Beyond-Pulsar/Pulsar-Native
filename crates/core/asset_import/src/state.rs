@@ -136,6 +136,7 @@ mod tests {
             asset: "linked.mesh".into(),
             importer: "mesh".into(),
             options: None,
+            outputs: Vec::new(),
         });
         db.ignore("skipped.fbx");
         db.save(root).unwrap();

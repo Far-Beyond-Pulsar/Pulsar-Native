@@ -111,7 +111,11 @@ fn every_named_key_has_its_winit_code() {
         ("NumpadDecimal", KeyCode::NumpadDecimal),
         ("NumpadEnter", KeyCode::NumpadEnter),
     ];
-    assert_eq!(expected.len(), pulsar_events::keycodes::KEYS.len(), "a key was added to one list only");
+    assert_eq!(
+        expected.len(),
+        pulsar_events::keycodes::KEYS.len(),
+        "a key was added to one list only"
+    );
     for (name, code) in expected {
         let info = pulsar_events::keycodes::info_for_name(name).expect(name);
         assert_eq!(info.code, *code as i64, "{name}");

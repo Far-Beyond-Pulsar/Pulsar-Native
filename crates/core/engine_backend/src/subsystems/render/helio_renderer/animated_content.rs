@@ -174,7 +174,10 @@ mod tests {
         assert!(content.live(&world), "an enabled water volume animates");
         assert_eq!(content.checks, 2);
 
-        world.get_mut::<WaterVolumeComponent>(water).unwrap().enabled = false;
+        world
+            .get_mut::<WaterVolumeComponent>(water)
+            .unwrap()
+            .enabled = false;
         assert!(!content.live(&world), "a disabled one does not");
 
         // A new world is checked from scratch.

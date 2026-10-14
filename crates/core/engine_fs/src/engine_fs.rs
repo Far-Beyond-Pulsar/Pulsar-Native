@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::asset_index::AssetIndex;
+use crate::file_index::{project_file_index_for_path, ProjectFileIndex};
 use crate::operations::AssetOperations;
 use crate::scanner::ProjectScanner;
 use crate::user_types::UserTypeRegistry;
@@ -19,6 +20,7 @@ pub struct EngineFs {
     user_types: Arc<UserTypeRegistry>,
     operations: AssetOperations,
     scanner: ProjectScanner,
+    file_index: Option<Arc<ProjectFileIndex>>,
 }
 
 impl EngineFs {
@@ -36,6 +38,10 @@ impl EngineFs {
             asset_index.clone(),
             user_types.clone(),
         );
+        // Do not trigger a project manifest scan during EngineFs construction.
+        // The loading task owns initial index population; attach only if it has
+        // already opened the shared index.
+        let file_index = project_file_index_for_path(&project_root);
 
         let mut fs = Self {
             project_root,
@@ -43,6 +49,7 @@ impl EngineFs {
             user_types,
             operations,
             scanner,
+            file_index,
         };
 
         // Initial scan of the project
@@ -64,6 +71,13 @@ impl EngineFs {
     /// Get the user-defined type registry
     pub fn user_types(&self) -> &Arc<UserTypeRegistry> {
         &self.user_types
+    }
+
+    /// Get the persistent project file index when the active provider is local.
+    pub fn file_index(&self) -> Option<Arc<ProjectFileIndex>> {
+        self.file_index
+            .clone()
+            .or_else(|| project_file_index_for_path(&self.project_root))
     }
 
     /// Get asset operations handler
@@ -91,6 +105,7 @@ impl EngineFs {
             self.project_root.clone(),
             self.asset_index.clone(),
             self.user_types.clone(),
+            None,
         )?;
 
         tracing::trace!(

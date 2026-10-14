@@ -9,9 +9,9 @@
 //! the leak. Set `PULSAR_ALLOC_PROFILE=<seconds>` to turn the reporter on.
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::backtrace::Backtrace;
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::backtrace::Backtrace;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -171,7 +171,11 @@ fn report() {
         total >> 20
     );
     for (text, (bytes, count)) in sites.into_iter().take(6) {
-        eprintln!("[alloc-profile]  ~{:>6} MB in {:>5} samples at:\n{text}", bytes >> 20, count);
+        eprintln!(
+            "[alloc-profile]  ~{:>6} MB in {:>5} samples at:\n{text}",
+            bytes >> 20,
+            count
+        );
     }
     BUSY.with(|busy| busy.set(false));
 }
@@ -185,7 +189,9 @@ fn condense(stack: &str) -> String {
         if !trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
             continue; // "at file:line" continuation lines
         }
-        let name = trimmed.split_once(':').map_or(trimmed, |(_, rest)| rest.trim());
+        let name = trimmed
+            .split_once(':')
+            .map_or(trimmed, |(_, rest)| rest.trim());
         if name.contains("alloc_profile")
             || name.contains("__rust_alloc")
             || name.contains("__rust_realloc")

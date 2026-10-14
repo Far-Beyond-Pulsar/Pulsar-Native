@@ -850,6 +850,51 @@ impl PluginManager {
         self.plugins.values().map(|p| &p.metadata).collect()
     }
 
+    /// Get metadata entries for all registered built-in editor providers.
+    ///
+    /// Built-in providers are compiled into the engine and do not have plugin
+    /// manifests, so their display metadata is derived from their editor and
+    /// file-type registrations.
+    pub fn get_builtin_plugins(&self) -> Vec<PluginMetadata> {
+        self.builtin_registry
+            .providers()
+            .iter()
+            .map(|provider| {
+                let editors = provider.editors();
+                let file_types = provider.file_types();
+                let name = editors
+                    .iter()
+                    .map(|editor| editor.display_name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                let description = if file_types.is_empty() {
+                    "Built-in editor provider".to_string()
+                } else {
+                    format!(
+                        "Built-in editor for {}",
+                        file_types
+                            .iter()
+                            .map(|file_type| file_type.display_name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+
+                PluginMetadata {
+                    id: PluginId::new(provider.provider_id()),
+                    name: if name.is_empty() {
+                        provider.provider_id().to_string()
+                    } else {
+                        name
+                    },
+                    version: String::new(),
+                    author: "Pulsar Team".to_string(),
+                    description,
+                }
+            })
+            .collect()
+    }
+
     /// Load the plugin integrity manifest from a JSON file in the plugin directory.
     ///
     /// The manifest file must be named `plugin_integrity.json` and contains a flat

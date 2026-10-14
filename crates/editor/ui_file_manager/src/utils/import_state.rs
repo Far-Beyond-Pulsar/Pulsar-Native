@@ -215,6 +215,7 @@ mod tests {
             asset: "rock.mesh".into(),
             importer: "mesh".into(),
             options: None,
+            outputs: Vec::new(),
         });
         db.save(root).unwrap();
         std::fs::write(root.join("rock.fbx"), b"edited bytes!").unwrap();

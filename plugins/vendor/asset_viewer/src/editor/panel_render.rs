@@ -1906,10 +1906,14 @@ impl AssetViewerPanel {
         );
         let uv_layout_mode = self.render_mode == MeshRenderMode::UvLayout0;
         let render_vb = if uv_layout_mode {
-            let Some(vb) = &self.uv_layout_vertex_buffer else { return };
+            let Some(vb) = &self.uv_layout_vertex_buffer else {
+                return;
+            };
             vb
         } else if line_mode {
-            let Some(vb) = &self.diagnostic_vertex_buffer else { return };
+            let Some(vb) = &self.diagnostic_vertex_buffer else {
+                return;
+            };
             vb
         } else {
             vb
@@ -1920,8 +1924,7 @@ impl AssetViewerPanel {
             };
             (ib, self.wire_index_count, pipeline)
         } else if line_mode {
-            let (Some(ib), Some(pipeline)) =
-                (&self.diagnostic_index_buffer, &self.wire_pipeline)
+            let (Some(ib), Some(pipeline)) = (&self.diagnostic_index_buffer, &self.wire_pipeline)
             else {
                 return;
             };

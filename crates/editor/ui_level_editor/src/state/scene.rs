@@ -15,8 +15,8 @@ use engine_backend::scene::SharedScene;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
-use pulsar_scenedb::{Entity, World};
 use plugin_editor_api::undo::{lock, DocumentId, History, SharedHistory, UndoEntry, UndoService};
+use pulsar_scenedb::{Entity, World};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -119,7 +119,9 @@ impl UndoEntry for SceneEdit {
 }
 
 fn new_history() -> SharedHistory<SceneEdit> {
-    Arc::new(std::sync::Mutex::new(History::with_capacity(MAX_UNDO_HISTORY)))
+    Arc::new(std::sync::Mutex::new(History::with_capacity(
+        MAX_UNDO_HISTORY,
+    )))
 }
 
 impl Default for SceneDomain {
@@ -322,7 +324,10 @@ impl SceneDomain {
             let Some(id) = world.stable_id_of(entity).map(str::to_string) else {
                 return false;
             };
-            let Some(now) = world.get::<engine_backend::scene::Transform>(entity).copied() else {
+            let Some(now) = world
+                .get::<engine_backend::scene::Transform>(entity)
+                .copied()
+            else {
                 return false;
             };
             if now == before {
@@ -330,13 +335,11 @@ impl SceneDomain {
             }
             let ids = [id];
             let post = scene_edit::history::capture_history_subset(&world, &ids);
-            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity)
-            {
+            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity) {
                 *transform = before;
             }
             let pre = scene_edit::history::capture_history_subset(&world, &ids);
-            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity)
-            {
+            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity) {
                 *transform = now;
             }
             (pre, post)

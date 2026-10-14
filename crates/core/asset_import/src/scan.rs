@@ -160,6 +160,7 @@ mod tests {
             asset: "models/linked.mesh".into(),
             importer: "mesh".into(),
             options: None,
+            outputs: Vec::new(),
         });
         db.ignore("models/no.fbx");
         db.save(root).unwrap();
@@ -190,6 +191,7 @@ mod tests {
             asset: "linked.mesh".into(),
             importer: "mesh".into(),
             options: None,
+            outputs: Vec::new(),
         });
         db.save(root).unwrap();
 

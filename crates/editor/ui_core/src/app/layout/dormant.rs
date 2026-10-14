@@ -212,7 +212,11 @@ mod tests {
             .with_owner(owner, nth),
         };
         let kept = prune(
-            vec![owned("a.class", 0), owned("a.class", 1), owned("gone.class", 0)],
+            vec![
+                owned("a.class", 0),
+                owned("a.class", 1),
+                owned("gone.class", 0),
+            ],
             |p| !p.to_string_lossy().starts_with("gone"),
         );
         // Both canvases of an existing owner stay (they differ in nth); the one

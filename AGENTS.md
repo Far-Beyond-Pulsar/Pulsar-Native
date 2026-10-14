@@ -24,7 +24,7 @@ runtime is the editor. For the full context, see `.agents/`.
 
 | Path | What |
 |---|---|
-| `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer (`asset_import`) |
+| `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer, and for a rigged model the other files it made (`asset_import`) |
 | `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Legacy import options; linked entries migrate into `.pulsar/import_db.json`, while convert-in-place entries remain a fallback |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |

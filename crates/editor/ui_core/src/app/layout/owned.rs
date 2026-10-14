@@ -91,10 +91,7 @@ pub(super) fn live_owned(cx: &App) -> Vec<OwnedLive> {
             }
         }
     }
-    let keys: Vec<(&str, String)> = out
-        .iter()
-        .map(|l| (l.name, normalize(&l.owner)))
-        .collect();
+    let keys: Vec<(&str, String)> = out.iter().map(|l| (l.name, normalize(&l.owner))).collect();
     let ranks = rank_in_order(&keys);
     for (live, rank) in out.iter_mut().zip(ranks) {
         live.nth = rank;
@@ -110,7 +107,11 @@ pub(super) fn find<'a>(
     nth: usize,
 ) -> Option<&'a OwnedLive> {
     let owner = normalize(owner);
-    pick(live, |l| l.name == panel_name && normalize(&l.owner) == owner, nth)
+    pick(
+        live,
+        |l| l.name == panel_name && normalize(&l.owner) == owner,
+        nth,
+    )
 }
 
 // ── Pure parts ───────────────────────────────────────────────────────────────
@@ -266,7 +267,10 @@ mod tests {
             leaf("Editor", None),
             leaf("graph-canvas", Some(("A", 0))),
         ]);
-        let live = vec![("graph-canvas".to_string(), 1), ("graph-canvas".to_string(), 2)];
+        let live = vec![
+            ("graph-canvas".to_string(), 1),
+            ("graph-canvas".to_string(), 2),
+        ];
         assert!(assign_nth_in_tree(&mut tree, &live));
         assert_eq!(tree.children[0].owner(), Some(("A", 1)));
         assert_eq!(tree.children[2].owner(), Some(("A", 2)));
@@ -295,10 +299,8 @@ mod tests {
         // Two canvases of editor A live in A's own dock; B has one. The popout
         // holds A's second canvas.
         let live_names = [("g", "A"), ("g", "A"), ("g", "B")];
-        let keys: Vec<(&str, String)> = live_names
-            .iter()
-            .map(|(n, o)| (*n, normalize(o)))
-            .collect();
+        let keys: Vec<(&str, String)> =
+            live_names.iter().map(|(n, o)| (*n, normalize(o))).collect();
         let ranks = rank_in_order(&keys);
         assert_eq!(ranks, [0, 1, 0]);
 

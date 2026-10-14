@@ -10,8 +10,8 @@
 //! [`AppTitleBar`]: crate::menu::AppTitleBar
 
 use gpui::{
-    div, App, ElementId, InteractiveElement as _, IntoElement as _, MouseButton, ParentElement as _,
-    Styled as _, Window,
+    div, App, ElementId, InteractiveElement as _, IntoElement as _, MouseButton,
+    ParentElement as _, Styled as _, Window,
 };
 use ui::{
     button::{Button, ButtonVariants as _},

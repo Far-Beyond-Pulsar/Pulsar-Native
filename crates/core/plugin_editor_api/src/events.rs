@@ -1,8 +1,8 @@
 //! A thin namespaced wrapper over Gamma's real API, for engine plugins.
 
 use gamma::{
-    Channel, DynEvent, DynValue, EventDescriptor, FieldType, RegistryError, SyncEventBus,
-    SubscribeOptions, SyncSubscription,
+    Channel, DynEvent, DynValue, EventDescriptor, FieldType, RegistryError, SubscribeOptions,
+    SyncEventBus, SyncSubscription,
 };
 
 #[derive(Debug)]
@@ -19,7 +19,9 @@ pub struct PluginEventBus {
 
 impl PluginEventBus {
     pub fn new() -> Self {
-        Self { bus: SyncEventBus::new() }
+        Self {
+            bus: SyncEventBus::new(),
+        }
     }
 
     /// Declare an event. `namespace: None` is the main namespace.
@@ -35,7 +37,10 @@ impl PluginEventBus {
             None => Ok(EventDescriptor::dynamic(event, fields)),
         }
         .map_err(PluginBusError::Registry)?;
-        self.bus.register_descriptor(desc).map(drop).map_err(PluginBusError::Registry)
+        self.bus
+            .register_descriptor(desc)
+            .map(drop)
+            .map_err(PluginBusError::Registry)
     }
 
     pub fn lookup(&self, namespace: Option<&str>, event: &str) -> Option<u64> {
@@ -52,7 +57,9 @@ impl PluginEventBus {
         event: &str,
         values: Vec<DynValue>,
     ) -> Result<(), PluginBusError> {
-        let id = self.lookup(namespace, event).ok_or(PluginBusError::UnknownEvent)?;
+        let id = self
+            .lookup(namespace, event)
+            .ok_or(PluginBusError::UnknownEvent)?;
         self.bus
             .publish_dyn(Channel::Global, &DynEvent::new(id, values))
             .map_err(PluginBusError::Publish)
@@ -65,24 +72,33 @@ impl PluginEventBus {
         event: &str,
         handler: impl Fn(&DynEvent) + Send + Sync + 'static,
     ) -> Result<SyncSubscription, PluginBusError> {
-        let id = self.lookup(namespace, event).ok_or(PluginBusError::UnknownEvent)?;
-        Ok(self.bus.subscribe_dyn(id, SubscribeOptions::default(), handler))
+        let id = self
+            .lookup(namespace, event)
+            .ok_or(PluginBusError::UnknownEvent)?;
+        Ok(self
+            .bus
+            .subscribe_dyn(id, SubscribeOptions::default(), handler))
     }
 }
-
 
 #[test]
 fn test_plugin_events() {
     let bus = PluginEventBus::new();
-    bus.declare(Some("engine"), "Tick", &[("dt", FieldType::F64)]).unwrap();
-    bus.declare(None, "Tick", &[("dt", FieldType::F64)]).unwrap(); // main, distinct
+    bus.declare(Some("engine"), "Tick", &[("dt", FieldType::F64)])
+        .unwrap();
+    bus.declare(None, "Tick", &[("dt", FieldType::F64)])
+        .unwrap(); // main, distinct
     assert!(bus.declare(Some("main"), "Tick", &[]).is_err()); // reserved
 
     let sub = bus
-        .subscribe(Some("engine"), "Tick", |e| println!("engine tick: {:?}", e.fields))
+        .subscribe(Some("engine"), "Tick", |e| {
+            println!("engine tick: {:?}", e.fields)
+        })
         .unwrap();
-    bus.publish(Some("engine"), "Tick", vec![DynValue::F64(0.016)]).unwrap(); // printed
-    bus.publish(None, "Tick", vec![DynValue::F64(0.016)]).unwrap(); // main: not delivered
+    bus.publish(Some("engine"), "Tick", vec![DynValue::F64(0.016)])
+        .unwrap(); // printed
+    bus.publish(None, "Tick", vec![DynValue::F64(0.016)])
+        .unwrap(); // main: not delivered
     sub.unsubscribe(); // unsubscribing is done through the handle
 }
 

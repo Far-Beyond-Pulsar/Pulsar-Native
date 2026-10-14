@@ -606,13 +606,19 @@ fn undo_past_a_class_rebuild_keeps_the_current_class() {
             3.0,
             "still built from the current class, not the one the edit saw"
         );
-        assert_eq!(children(&world, &a).len(), 1, "children rebuilt, not duplicated");
+        assert_eq!(
+            children(&world, &a).len(),
+            1,
+            "children rebuilt, not duplicated"
+        );
     }
     assert!(state.scene.redo());
     {
         let world = state.scene.world();
         assert_eq!(
-            classes::class_instance(&world, &a).unwrap().variable_overrides["speed"],
+            classes::class_instance(&world, &a)
+                .unwrap()
+                .variable_overrides["speed"],
             json!(8.0),
             "redo reapplies the override"
         );

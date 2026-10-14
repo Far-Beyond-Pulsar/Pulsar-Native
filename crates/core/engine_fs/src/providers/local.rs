@@ -449,8 +449,11 @@ impl FsProvider for LocalFsProvider {
         self.check_write_allowed(to)?;
         let result = std::fs::rename(from, to).map_err(Into::into);
         if result.is_ok() {
-            events::emit(from.to_path_buf(), FsChangeKind::Deleted);
-            events::emit(to.to_path_buf(), FsChangeKind::Created);
+            events::emit_move(
+                from.to_path_buf(),
+                to.to_path_buf(),
+                events::FsEventSource::Local,
+            );
         }
         result
     }

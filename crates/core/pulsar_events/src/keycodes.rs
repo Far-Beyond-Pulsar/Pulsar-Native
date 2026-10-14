@@ -25,7 +25,12 @@ pub struct KeyCodeInfo {
 }
 
 const fn k(code: i64, name: &'static str, label: &'static str, gpui: &'static str) -> KeyCodeInfo {
-    KeyCodeInfo { code, name, label, gpui }
+    KeyCodeInfo {
+        code,
+        name,
+        label,
+        gpui,
+    }
 }
 
 /// Every key the engine names, in a stable order.
@@ -151,7 +156,9 @@ pub fn info_for_name(name: &str) -> Option<&'static KeyCodeInfo> {
 /// map to the left-hand key.
 pub fn code_for_gpui_name(name: &str) -> Option<i64> {
     let lower = name.to_ascii_lowercase();
-    KEYS.iter().find(|k| !k.gpui.is_empty() && k.gpui == lower).map(|k| k.code)
+    KEYS.iter()
+        .find(|k| !k.gpui.is_empty() && k.gpui == lower)
+        .map(|k| k.code)
 }
 
 #[cfg(test)]

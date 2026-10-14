@@ -1,5 +1,5 @@
+use std::collections::HashSet;
 use std::path::Path;
-use std::path::PathBuf;
 
 use crate::components::FileManagerDrawer;
 use crate::utils::cloud_join;
@@ -202,6 +202,103 @@ impl FileManagerDrawer {
                 }
             }
         } else {
+            if let Some(project_root) = &self.project_path {
+                if let Ok(Some(index)) = engine_fs::open_project_file_index(project_root) {
+                    let relative_folder = f
+                        .strip_prefix(project_root)
+                        .unwrap_or_else(|_| Path::new(""))
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let entries = index.query(&engine_fs::FileIndexQuery {
+                        direct_children_of: Some(relative_folder),
+                        include_directories: true,
+                        ..Default::default()
+                    });
+                    if let Ok(entries) = entries {
+                        let marker_paths: HashSet<String> = self
+                            .registered_file_types
+                            .iter()
+                            .filter_map(|definition| match &definition.structure {
+                                FileStructure::FolderBased { marker_file, .. } => {
+                                    Some(marker_file.as_str())
+                                }
+                                FileStructure::Standalone => None,
+                            })
+                            .flat_map(|marker| {
+                                index
+                                    .query(&engine_fs::FileIndexQuery {
+                                        name_equals: Some(marker.to_owned()),
+                                        ..Default::default()
+                                    })
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .map(|entry| entry.path)
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect();
+                        return entries
+                            .into_iter()
+                            .map(|entry| {
+                                let path = project_root.join(&entry.path);
+                                let file_type_def = if entry.is_dir {
+                                    self.registered_file_types
+                                        .iter()
+                                        .find(|definition| {
+                                            if let FileStructure::FolderBased {
+                                                marker_file, ..
+                                            } = &definition.structure
+                                            {
+                                                marker_paths.contains(&format!(
+                                                    "{}/{}",
+                                                    entry.path, marker_file
+                                                )) || entry.name.ends_with(&format!(
+                                                    ".{}",
+                                                    definition.extension
+                                                )) || Path::new(&entry.name)
+                                                    .extension()
+                                                    .and_then(|extension| extension.to_str())
+                                                    == Some(definition.extension.as_str())
+                                            } else {
+                                                false
+                                            }
+                                        })
+                                        .cloned()
+                                } else {
+                                    self.registered_file_types
+                                        .iter()
+                                        .find(|definition| {
+                                            matches!(
+                                                definition.structure,
+                                                FileStructure::Standalone
+                                            ) && (entry
+                                                .name
+                                                .ends_with(&format!(".{}", definition.extension))
+                                                || entry.extension.as_deref()
+                                                    == Some(definition.extension.as_str()))
+                                        })
+                                        .cloned()
+                                };
+                                FileItem {
+                                    path,
+                                    name: entry.name,
+                                    file_type_def: file_type_def.clone(),
+                                    is_folder: entry.is_dir && file_type_def.is_none(),
+                                    size: entry.size,
+                                    modified: entry.modified.map(|seconds| {
+                                        std::time::UNIX_EPOCH
+                                            + std::time::Duration::from_secs(
+                                                u64::try_from(seconds).unwrap_or_default(),
+                                            )
+                                    }),
+                                    is_ghost: false,
+                                    restore_commit: None,
+                                }
+                            })
+                            .collect();
+                    }
+                }
+            }
+
             let Ok(read) = std::fs::read_dir(f) else {
                 return Vec::new();
             };

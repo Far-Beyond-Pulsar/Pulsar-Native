@@ -72,7 +72,10 @@ pub unsafe fn attach_host(host: *const HostProfiler) -> bool {
         return false;
     }
     // The host passing its own handle back to itself: already shared.
-    if PROFILER.get().is_some_and(|own| std::ptr::eq(own, host.profiler)) {
+    if PROFILER
+        .get()
+        .is_some_and(|own| std::ptr::eq(own, host.profiler))
+    {
         return true;
     }
     HOST_PROFILER.store(host.profiler as *mut Profiler, Ordering::Release);

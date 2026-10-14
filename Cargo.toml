@@ -16,6 +16,8 @@ members = [
     "plugins/vendor/asset_viewer",
     # Skeletal animation editor; built-in plugin of the editor.
     "plugins/vendor/skm_editor",
+    # The skeletal asset formats, shared by that plugin and the asset importer.
+    "plugins/vendor/skm_editor/skeletal_assets",
     # Physics asset types (materials, collision layers); in-repo cdylib plugin.
     "plugins/vendor/physics_plugin",
     # Widget assets (.widget) and the WYSIWYG widget editor; built-in plugin of the editor.
@@ -147,6 +149,7 @@ profiling-v1                       = { package = "profiling", version = "1", def
 engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
 editor_task_queue                  = { path = "crates/core/editor_task_queue" }
 asset_import                       = { path = "crates/core/asset_import" }
+skeletal_assets                    = { path = "plugins/vendor/skm_editor/skeletal_assets" }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }

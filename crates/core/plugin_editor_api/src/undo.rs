@@ -28,12 +28,32 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, Weak};
 
 /// Undo the last change in the focused editor's document.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema, gpui::Action)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    gpui::Action,
+)]
 #[action(namespace = pulsar_app)]
 pub struct Undo;
 
 /// Redo the last undone change in the focused editor's document.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema, gpui::Action)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    gpui::Action,
+)]
 #[action(namespace = pulsar_app)]
 pub struct Redo;
 
@@ -304,7 +324,9 @@ impl<E: UndoEntry> HistoryView for Mutex<History<E>> {
 /// A history's lock, recovered when a panic poisoned it: the stacks stay
 /// consistent between calls, so the data is still usable.
 pub fn lock<E>(history: &Mutex<History<E>>) -> std::sync::MutexGuard<'_, History<E>> {
-    history.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    history
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// The host's histories, one per open document.
@@ -547,7 +569,10 @@ mod tests {
         lock(&early).push(Edit::Push("a".into()));
         assert!(service.adopt(&doc, &early));
         assert!(service.adopt(&doc, &early), "adopting again is a no-op");
-        assert_eq!(service.view(&doc).unwrap().undo_label().as_deref(), Some("add a"));
+        assert_eq!(
+            service.view(&doc).unwrap().undo_label().as_deref(),
+            Some("add a")
+        );
 
         // A second view of the document (its own copy of the data) keeps
         // its own history: undoing there must not replay the first's edits.

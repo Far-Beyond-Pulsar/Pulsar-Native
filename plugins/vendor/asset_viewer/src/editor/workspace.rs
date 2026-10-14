@@ -219,21 +219,33 @@ impl Render for ViewportPanel {
                             editor_entity.clone(),
                             MeshRenderMode::VertexDensity,
                         ))
-                        .child(if matches!(
-                            mode,
-                            MeshRenderMode::NormalLines
-                                | MeshRenderMode::TangentLines
-                                | MeshRenderMode::BitangentLines
-                        ) {
-                            h_flex()
-                                .items_center()
-                                .gap_1()
-                                .child(t!("AssetViewer.Mode.LineLength").to_string())
-                                .child(line_length_button("asset_line_length_down", "−", editor_entity.clone(), -0.02))
-                                .child(line_length_button("asset_line_length_up", "+", editor_entity.clone(), 0.02))
-                        } else {
-                            h_flex()
-                        });
+                        .child(
+                            if matches!(
+                                mode,
+                                MeshRenderMode::NormalLines
+                                    | MeshRenderMode::TangentLines
+                                    | MeshRenderMode::BitangentLines
+                            ) {
+                                h_flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(t!("AssetViewer.Mode.LineLength").to_string())
+                                    .child(line_length_button(
+                                        "asset_line_length_down",
+                                        "−",
+                                        editor_entity.clone(),
+                                        -0.02,
+                                    ))
+                                    .child(line_length_button(
+                                        "asset_line_length_up",
+                                        "+",
+                                        editor_entity.clone(),
+                                        0.02,
+                                    ))
+                            } else {
+                                h_flex()
+                            },
+                        );
 
                     div()
                         .relative()
@@ -470,12 +482,15 @@ fn line_length_button(
     editor: Entity<AssetViewerPanel>,
     delta: f32,
 ) -> impl IntoElement {
-    Button::new(id).label(label).ghost().on_click(move |_, _, cx| {
-        editor.update(cx, |editor, cx| {
-            editor.normal_line_length = (editor.normal_line_length + delta).clamp(0.01, 0.5);
-            cx.notify();
-        });
-    })
+    Button::new(id)
+        .label(label)
+        .ghost()
+        .on_click(move |_, _, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.normal_line_length = (editor.normal_line_length + delta).clamp(0.01, 0.5);
+                cx.notify();
+            });
+        })
 }
 
 impl ui::dock::Panel for ViewportPanel {

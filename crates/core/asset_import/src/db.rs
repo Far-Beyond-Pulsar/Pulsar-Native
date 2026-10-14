@@ -25,6 +25,30 @@ pub struct ImportRecord {
     /// Importer-specific settings used to build `asset`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<Value>,
+    /// The other files the import wrote next to `asset`, for sources that make
+    /// more than one (a rigged model: skeleton, mesh and animations, linked to
+    /// each other by id). Empty for a plain mesh, and absent from records
+    /// written before this existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outputs: Vec<ImportOutput>,
+}
+
+/// One file of a multi-file import. Re-importing reads these back to give each
+/// file the identity it had, so assets that refer to it by id keep working.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportOutput {
+    /// Project-relative, forward-slashed.
+    pub path: String,
+    /// What the file is, in the importer's own words (`skeleton`, `skmesh`,
+    /// `animseq`).
+    pub kind: String,
+    /// The id the file carries, for kinds that have one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// The name of the thing in the source this was made from (an animation
+    /// name), to pair it with the same thing on the next import.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_name: Option<String>,
 }
 
 /// Whether a linked source still matches what was imported.
@@ -90,8 +114,12 @@ impl ImportDb {
         self.records.iter().find(|r| r.source == source)
     }
 
+    /// The record that produced `asset`, whether it is the primary asset or
+    /// one of the other outputs.
     pub fn find_asset(&self, asset: &str) -> Option<&ImportRecord> {
-        self.records.iter().find(|r| r.asset == asset)
+        self.records
+            .iter()
+            .find(|r| r.asset == asset || r.outputs.iter().any(|o| o.path == asset))
     }
 
     pub fn is_ignored(&self, source: &str) -> bool {
@@ -181,6 +209,7 @@ mod tests {
             asset: "m/a.mesh".into(),
             importer: "mesh".into(),
             options: None,
+            outputs: Vec::new(),
         }
     }
 
@@ -201,6 +230,39 @@ mod tests {
     }
 
     #[test]
+    fn outputs_are_optional_in_the_file_and_found_by_path() {
+        // A record written before `outputs` existed.
+        let old = r#"{ "version": 1, "records": [ {
+            "source": "m/a.fbx", "source_hash": "1", "source_size": 3,
+            "asset": "m/a.mesh", "importer": "mesh" } ] }"#;
+        let db: ImportDb = serde_json::from_str(old).unwrap();
+        assert!(db.records[0].outputs.is_empty());
+        assert!(
+            !serde_json::to_string(&db).unwrap().contains("outputs"),
+            "a plain mesh adds nothing to the file"
+        );
+
+        let mut rec = record("m/rig.fbx", "1");
+        rec.asset = "m/rig.skmesh".into();
+        rec.outputs = vec![ImportOutput {
+            path: "m/rig.skeleton".into(),
+            kind: "skeleton".into(),
+            id: Some("7d1b1d9e-0000-4000-8000-000000000001".into()),
+            source_name: None,
+        }];
+        let mut db = ImportDb::default();
+        db.upsert(rec.clone());
+        let back: ImportDb = serde_json::from_str(&serde_json::to_string(&db).unwrap()).unwrap();
+        assert_eq!(back.records[0], rec);
+        assert!(back.find_asset("m/rig.skmesh").is_some());
+        assert!(
+            back.find_asset("m/rig.skeleton").is_some(),
+            "found through an output"
+        );
+        assert!(back.find_asset("m/other.skeleton").is_none());
+    }
+
+    #[test]
     fn status_follows_the_source_file() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("a.fbx");
@@ -217,5 +279,30 @@ mod tests {
         assert_eq!(db.status(dir.path(), &rec), LinkStatus::OutOfDate);
         std::fs::remove_file(&file).unwrap();
         assert_eq!(db.status(dir.path(), &rec), LinkStatus::SourceMissing);
+    }
+
+    #[test]
+    fn load_migrates_linked_legacy_options_and_keeps_unlinked_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut db = ImportDb::default();
+        db.upsert(record("m/a.fbx", "hash"));
+        db.save(root).unwrap();
+        engine_fs::import_options::set(root, "m/a.mesh", serde_json::json!({"scale": 0.25}))
+            .unwrap();
+        engine_fs::import_options::set(root, "m/converted.mesh", serde_json::json!({"scale": 2.0}))
+            .unwrap();
+
+        let loaded = ImportDb::load(root);
+        assert_eq!(
+            loaded.find_source("m/a.fbx").unwrap().options,
+            Some(serde_json::json!({"scale": 0.25}))
+        );
+        assert_eq!(
+            engine_fs::import_options::get(root, "m/converted.mesh"),
+            Some(serde_json::json!({"scale": 2.0}))
+        );
+        assert_eq!(engine_fs::import_options::get(root, "m/a.mesh"), None);
+        assert_eq!(ImportDb::load(root), loaded);
     }
 }

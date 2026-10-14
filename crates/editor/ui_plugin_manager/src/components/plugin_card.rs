@@ -8,6 +8,7 @@ use ui::{
 
 pub fn render_plugin_item(
     plugin: &PluginMetadata,
+    is_builtin: bool,
     cx: &mut Context<crate::screen::PluginManagerWindow>,
 ) -> impl IntoElement {
     let plugin_id = plugin.id.clone();
@@ -15,15 +16,44 @@ pub fn render_plugin_item(
     let plugin_version = plugin.version.clone();
     let plugin_author = plugin.author.clone();
 
+    let action = if is_builtin {
+        h_flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .bg(cx.theme().success.opacity(0.14))
+            .text_xs()
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .text_color(cx.theme().success)
+            .child(Icon::new(IconName::Check).size_3())
+            .child("Built-in")
+            .into_any_element()
+    } else {
+        Button::new(SharedString::from(format!("unload-{}", plugin_id)))
+            .label("Unload")
+            .icon(IconName::Trash)
+            .danger()
+            .on_click(cx.listener(move |_this, _, _window, _cx| {
+                todo!(
+                    "Implement plugin unloading in PluginManager and call it here (plugin_id: {})",
+                    plugin_id
+                );
+            }))
+            .into_any_element()
+    };
+
     h_flex()
+        .items_start()
         .w_full()
-        .p_4()
+        .p_5()
         .gap_4()
-        .rounded_lg()
+        .rounded_xl()
         .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().sidebar.opacity(0.5))
-        .hover(|style| style.bg(cx.theme().sidebar))
+        .border_color(cx.theme().border.opacity(0.65))
+        .bg(cx.theme().sidebar.opacity(0.7))
+        .hover(|style| style.bg(cx.theme().sidebar).border_color(cx.theme().border))
         .child(
             div()
                 .flex_shrink_0()
@@ -56,17 +86,19 @@ pub fn render_plugin_item(
                                 .text_color(cx.theme().foreground)
                                 .child(plugin_name),
                         )
-                        .child(
-                            div()
-                                .px_2()
-                                .py_px()
-                                .rounded(px(4.))
-                                .bg(cx.theme().muted.opacity(0.3))
-                                .text_xs()
-                                .font_family("monospace")
-                                .text_color(cx.theme().muted_foreground)
-                                .child(plugin_version),
-                        ),
+                        .when(!is_builtin, |this| {
+                            this.child(
+                                div()
+                                    .px_2()
+                                    .py_px()
+                                    .rounded(px(4.))
+                                    .bg(cx.theme().muted.opacity(0.3))
+                                    .text_xs()
+                                    .font_family("monospace")
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(plugin_version),
+                            )
+                        }),
                 )
                 .child(
                     div()
@@ -83,23 +115,5 @@ pub fn render_plugin_item(
                     )
                 }),
         )
-        .child(
-            v_flex()
-                .flex_shrink_0()
-                .gap_2()
-                .justify_center()
-                .child({
-                    let id_for_button = plugin_id.clone();
-                    Button::new(SharedString::from(format!("unload-{}", plugin_id)))
-                        .label("Unload")
-                        .icon(IconName::Trash)
-                        .danger()
-                        .on_click(cx.listener(move |_this, _, _window, _cx| {
-                            todo!(
-                                "Implement plugin unloading in PluginManager and call it here (plugin_id: {})",
-                                id_for_button
-                            );
-                        }))
-                }),
-        )
+        .child(v_flex().flex_shrink_0().justify_center().child(action))
 }

@@ -29,6 +29,8 @@ pub mod blueprint_trait_index;
 #[cfg(feature = "editor")]
 mod engine_fs;
 pub mod events;
+#[cfg(feature = "editor")]
+pub mod file_index;
 pub mod import_options;
 #[cfg(feature = "editor")]
 pub mod operations;
@@ -52,6 +54,11 @@ pub mod watchers;
 pub use asset_index::{AssetIndex, AssetInfo};
 #[cfg(feature = "editor")]
 pub use engine_fs::EngineFs;
+#[cfg(feature = "editor")]
+pub use file_index::{
+    open_project_file_index, project_file_index_for_path, update_open_project_file_indexes,
+    FileIndexQuery, FileIndexSort, IndexedFile, ProjectFileIndex,
+};
 #[cfg(feature = "editor")]
 pub use user_types::{UserTypeInfo, UserTypeRegistry};
 
