@@ -16,7 +16,7 @@ pub fn init_engine() {
 
 pub fn config(provider: Arc<dyn ChatProvider>, profile: ModelProfile) -> RunConfig {
     init_engine();
-    RunConfig::new(provider, "eval-model", ToolRegistry::new(), PathBuf::from("."))
+    RunConfig::new(provider, "eval-model", ToolRegistry::new(), agent_runtime::testing::scratch_workspace())
         .with_profile(profile)
 }
 

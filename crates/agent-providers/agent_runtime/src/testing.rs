@@ -134,3 +134,12 @@ impl ChatProvider for MockProvider {
         }
     }
 }
+
+/// A per-process workspace root under the OS temp dir, for tests that run
+/// write tools (checkpoints land in `<root>/.pulsar/agent_checkpoints`, which
+/// must not be the repository).
+pub fn scratch_workspace() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("agent_runtime_tests_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}

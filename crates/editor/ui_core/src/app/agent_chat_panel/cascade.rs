@@ -41,8 +41,17 @@ impl AgentChatPanel {
     }
 
     pub(super) fn note_best_of(&mut self, report: BestOfReport, cx: &mut Context<Self>) {
-        // The notice line already went through `ContextNotice`.
-        let _ = report;
+        // The notice line already went through `ContextNotice`. When a later
+        // candidate won after the first one streamed, its text replaces the
+        // streamed bubble.
+        if let (Some(text), Some(dix)) = (report.replacement, self.streaming_display_item_ix) {
+            if let Some(DisplayItem::AssistantMessage { content, .. }) =
+                self.display_items.get_mut(dix)
+            {
+                *content = text;
+                self.display_item_heights.remove(&dix);
+            }
+        }
         cx.notify();
     }
 

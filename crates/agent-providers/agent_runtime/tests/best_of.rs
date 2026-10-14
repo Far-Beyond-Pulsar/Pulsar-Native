@@ -128,7 +128,7 @@ fn run(provider: Arc<Mock>, profile: ModelProfile, best_of: Option<BestOf>) -> O
     init_engine();
     let (registry, defs, seen) = read_tool();
     let mut config =
-        RunConfig::new(provider, "local", registry, PathBuf::from(".")).with_profile(profile);
+        RunConfig::new(provider, "local", registry, agent_runtime::testing::scratch_workspace()).with_profile(profile);
     config.tools = defs;
     config.best_of = best_of;
     let events = Arc::new(Mutex::new(Vec::new()));

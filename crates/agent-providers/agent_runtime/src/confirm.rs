@@ -183,6 +183,23 @@ impl SafetyState {
             })
     }
 
+    /// Called before a batch of calls starts. The calls run concurrently, so
+    /// if any is external (web, MCP) the whole batch counts as tainted from
+    /// the start: a sub-agent spawned next to a fetch inherits it. Only
+    /// batches that spawn a child are marked early, so the confirmation of
+    /// the external call itself still reads as clean.
+    pub(crate) fn note_batch(&self, batch: &[ToolCall]) {
+        if !batch.iter().any(|call| call.name == "spawn_subagent") {
+            return;
+        }
+        if batch.iter().any(|call| {
+            self.config.classifier.classify(&call.name) == ToolClass::External
+                || crate::taint::is_mcp_tool(&call.name)
+        }) {
+            self.taint.mark();
+        }
+    }
+
     fn needs_confirm(&self, class: ToolClass, tainted: bool) -> bool {
         match self.config.policy {
             ConfirmPolicy::Auto => false,

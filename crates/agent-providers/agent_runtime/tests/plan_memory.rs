@@ -106,7 +106,7 @@ fn config(provider: Arc<dyn ChatProvider>, tools: &Tools) -> RunConfig {
     static ENGINE: std::sync::Once = std::sync::Once::new();
     ENGINE.call_once(|| engine_state::EngineContext::new().set_global());
 
-    let mut config = RunConfig::new(provider, "model", tools.registry.clone(), PathBuf::from("."));
+    let mut config = RunConfig::new(provider, "model", tools.registry.clone(), agent_runtime::testing::scratch_workspace());
     config.tools = ["read_file", "write_file", "scene_write_object"]
         .iter()
         .map(|name| ToolDefinition {

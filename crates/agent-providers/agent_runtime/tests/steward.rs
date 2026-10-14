@@ -146,7 +146,7 @@ fn wait_for(events: &Mutex<Vec<StewardEvent>>, what: impl Fn(&StewardEvent) -> b
 
 fn config(provider: Arc<FnProvider>, profile: ModelProfile) -> RunConfig {
     init_engine();
-    RunConfig::new(provider, "main", ToolRegistry::new(), PathBuf::from(".")).with_profile(profile)
+    RunConfig::new(provider, "main", ToolRegistry::new(), agent_runtime::testing::scratch_workspace()).with_profile(profile)
 }
 
 fn steward_for(provider: Arc<FnProvider>, enabled: bool, sink: agent_runtime::StewardSink) -> Arc<Steward> {
@@ -343,7 +343,7 @@ fn write_tools_record_files_touched_and_the_block_elides_them_first() {
         _ => text("done"),
     });
     init_engine();
-    let mut run_config = RunConfig::new(provider, "main", registry, PathBuf::from("."));
+    let mut run_config = RunConfig::new(provider, "main", registry, agent_runtime::testing::scratch_workspace());
     run_config.safety.policy = agent_runtime::ConfirmPolicy::Auto;
     run_config.safety.checkpoints = false;
     let mut ledger = Ledger::with_system_prompt("sys");
@@ -476,7 +476,7 @@ fn lite_profiles_get_a_reminder_every_few_steps() {
         |_, _| Ok(json!({"data": "x"})),
     );
     init_engine();
-    let mut run_config = RunConfig::new(provider.clone(), "tiny", registry, PathBuf::from("."))
+    let mut run_config = RunConfig::new(provider.clone(), "tiny", registry, agent_runtime::testing::scratch_workspace())
         .with_profile(ModelProfile::new(4_096, true));
     run_config.tools = vec![ToolDefinition {
         name: "read_file".into(),
@@ -722,7 +722,7 @@ fn a_failing_or_panicking_steward_never_breaks_the_main_run() {
             |_, _| Ok(json!({"ok": true})),
         );
         init_engine();
-        let mut run_config = RunConfig::new(main.clone(), "main", registry, PathBuf::from("."));
+        let mut run_config = RunConfig::new(main.clone(), "main", registry, agent_runtime::testing::scratch_workspace());
         run_config.steward = Some(steward.clone());
         let mut ledger = Ledger::with_system_prompt("sys");
         ledger.add_pin(PinKind::Requirement, "Be brief.", PinAuthor::User);

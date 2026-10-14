@@ -130,7 +130,7 @@ fn plan_mode_never_reaches_mcp_or_scene_write_tools() {
             _ => panic!("the run ends once the plan is submitted"),
         })
     });
-    let mut config = RunConfig::new(provider, "model", registry, PathBuf::from("."));
+    let mut config = RunConfig::new(provider, "model", registry, agent_runtime::testing::scratch_workspace());
     config.tools = all.iter().map(|n| definition(n)).collect();
     config.safety.policy = ConfirmPolicy::Auto;
     config.safety.checkpoints = false;
@@ -199,7 +199,7 @@ fn cascade_escalation_keeps_pinned_requirements_in_every_request() {
     });
     let mut profile = ModelProfile::new(8_192, false);
     profile.parallel_tools = false;
-    let mut config = RunConfig::new(provider.clone(), "small", ok_registry(), PathBuf::from("."))
+    let mut config = RunConfig::new(provider.clone(), "small", ok_registry(), agent_runtime::testing::scratch_workspace())
         .with_profile(profile);
     config.tools = vec![definition("ok")];
     config.cascade = CascadeSettings {

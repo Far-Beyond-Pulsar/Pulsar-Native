@@ -533,6 +533,7 @@ impl ChildJob {
         // Plan mode and project memory belong to the chat's own run.
         config.plan_mode = None;
         config.memory = None;
+        config.ledger_out = None;
 
         // The child's own model gets its own profile (tool-calling mode,
         // window, tier, sampling); the parent's applies only when the child
@@ -588,9 +589,15 @@ impl ChildJob {
                 .min(self.parent.depth_budget.saturating_sub(1))
         };
         if child_budget > 0 {
+            // `Same` / `Cheap` below this child resolve from the child's own
+            // model, not from the chat's.
+            let mut nested = (**template).clone();
+            nested.model = config.model.clone();
+            nested.compact_model = config.compact_model.clone();
+            nested.profile = config.profile;
             config.delegation = Some(DelegationHandle {
                 host: host.clone(),
-                template: template.clone(),
+                template: Arc::new(nested),
                 run_id: self.id.clone(),
                 depth: self.parent.depth + 1,
                 depth_budget: child_budget,

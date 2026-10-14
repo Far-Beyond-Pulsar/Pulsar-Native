@@ -119,7 +119,7 @@ fn config(provider: Arc<dyn ChatProvider>, registry: ToolRegistry) -> RunConfig 
     static ENGINE: std::sync::Once = std::sync::Once::new();
     ENGINE.call_once(|| engine_state::EngineContext::new().set_global());
 
-    let mut config = RunConfig::new(provider, "scripted-model", registry, PathBuf::from("."));
+    let mut config = RunConfig::new(provider, "scripted-model", registry, agent_runtime::testing::scratch_workspace());
     config.tools = vec![ToolDefinition {
         name: "double".to_string(),
         description: Some("Doubles a number".to_string()),

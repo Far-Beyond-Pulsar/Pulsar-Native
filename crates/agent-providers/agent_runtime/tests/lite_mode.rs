@@ -155,7 +155,7 @@ fn run(
 ) -> (Ledger, Arc<Mutex<Vec<RunEvent>>>) {
     init_engine();
     let mut config =
-        RunConfig::new(provider, "tiny", registry, PathBuf::from(".")).with_profile(profile);
+        RunConfig::new(provider, "tiny", registry, agent_runtime::testing::scratch_workspace()).with_profile(profile);
     config.tools = defs;
     let (sink, events) = sink();
     let ledger = run_loop(config, ledger, CancelToken::new(), sink);
@@ -403,7 +403,7 @@ fn response_format_reaches_the_request() {
     let (registry, defs) = big_registry(&["read_file".to_string()], 20);
     let provider = FnProvider::new(|_, _| text("ok"));
     init_engine();
-    let mut config = RunConfig::new(provider.clone(), "m", registry, PathBuf::from("."))
+    let mut config = RunConfig::new(provider.clone(), "m", registry, agent_runtime::testing::scratch_workspace())
         .with_profile(ModelProfile::new(32_768, true));
     config.tools = defs;
     config.response_format = Some(ResponseFormat::JsonObject);
@@ -460,7 +460,7 @@ fn fifty_turns(provider_usage_factor: Option<f32>) -> (Vec<(usize, usize)>, usiz
             "Turn {turn}: please read src/file_{turn}.rs and tell me what it does. {}",
             "Be precise. ".repeat(8)
         )));
-        let mut config = RunConfig::new(provider.clone(), "tiny", registry.clone(), PathBuf::from("."))
+        let mut config = RunConfig::new(provider.clone(), "tiny", registry.clone(), agent_runtime::testing::scratch_workspace())
             .with_profile(profile);
         config.tools = defs.clone();
         let (sink, events) = sink();

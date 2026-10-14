@@ -123,7 +123,7 @@ fn run(
     init_engine();
     let (registry, defs) = registry();
     let mut config =
-        RunConfig::new(provider, "small", registry, PathBuf::from(".")).with_profile(profile);
+        RunConfig::new(provider, "small", registry, agent_runtime::testing::scratch_workspace()).with_profile(profile);
     config.tools = defs;
     config.cascade = cascade;
     let events = Arc::new(Mutex::new(Vec::new()));

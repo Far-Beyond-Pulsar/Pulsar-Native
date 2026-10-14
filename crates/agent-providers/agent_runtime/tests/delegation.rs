@@ -125,7 +125,7 @@ fn template(provider: Arc<dyn ChatProvider>) -> RunConfig {
     static ENGINE: std::sync::Once = std::sync::Once::new();
     ENGINE.call_once(|| engine_state::EngineContext::new().set_global());
 
-    let mut config = RunConfig::new(provider, "main-model", base_registry(), PathBuf::from("."));
+    let mut config = RunConfig::new(provider, "main-model", base_registry(), agent_runtime::testing::scratch_workspace());
     config.compact_model = "cheap-model".to_string();
     // The harnesses below are read-only; `double` is a pure helper.
     config.safety.classifier.set("double", agent_runtime::ToolClass::Read);
