@@ -84,6 +84,9 @@ agent_provider_vertex_ai.workspace = true
 dirs = { workspace = true }
 rfd = { workspace = true }
 
+# Scales viewport captures for the agent's capture_viewport tool.
+image = { workspace = true }
+
 [lints]
 workspace = true
 
