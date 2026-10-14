@@ -175,6 +175,7 @@ impl PanelView for FileTypeDecoratedPanelView {
 pub mod builtin;
 mod permanent_library;
 mod registry;
+mod harnesses;
 mod restorers;
 pub mod tool_bridge;
 
@@ -186,6 +187,7 @@ pub use builtin::{
 };
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
+pub use harnesses::{plugin_harnesses, PluginHarnesses};
 pub use restorers::{panel_restorers, PanelRestorers, RestoreOutcome};
 pub use tool_bridge::PluginToolBridge;
 
@@ -827,6 +829,14 @@ impl PluginManager {
                     plugin_id,
                     kind
                 );
+            }
+        }
+
+        // Agent harnesses ride the same call: the chat's `spawn_subagent`
+        // lists them below the user-global and project ones.
+        for (name, source) in editor_factories.take_harnesses().take() {
+            if plugin_harnesses().register(name.clone(), source) {
+                tracing::warn!("plugin {} replaced the agent harness '{}'", plugin_id, name);
             }
         }
 

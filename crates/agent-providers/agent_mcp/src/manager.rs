@@ -18,6 +18,7 @@ use std::{
 };
 
 use agent_chat_tools::{ChatTool, ToolContext, ToolRegistry};
+use agent_runtime::trust::{mcp_item, PendingItem, PendingKind, TrustStore};
 use agent_runtime::{ToolClass, ToolClassifier, MCP_TOOL_PREFIX};
 use anyhow::anyhow;
 use serde_json::{json, Value};
@@ -44,6 +45,9 @@ pub enum ServerStatus {
     Failed(String),
     /// Was running, then the process went away.
     Crashed(String),
+    /// Defined by the project's `.pulsar/mcp.json` and not yet approved by the
+    /// user: nothing has been launched. See [`McpManager::approve`].
+    AwaitingApproval,
 }
 
 impl ServerStatus {
@@ -54,6 +58,7 @@ impl ServerStatus {
             ServerStatus::Disabled => "disabled",
             ServerStatus::Failed(_) => "failed",
             ServerStatus::Crashed(_) => "crashed",
+            ServerStatus::AwaitingApproval => "needs approval",
         }
     }
 }
@@ -84,12 +89,16 @@ struct ServerEntry {
     tools: Vec<RemoteTool>,
     /// Bumped on every (re)start so a slow old start cannot overwrite a newer one.
     generation: u64,
+    /// For a project-defined server under a trust record: what approving it
+    /// means (`ServerConfig::launch_description`).
+    approval: Option<String>,
 }
 
 struct Inner {
     workspace_root: PathBuf,
     servers: BTreeMap<String, ServerEntry>,
     disabled_tools: BTreeSet<String>,
+    trust: Option<Arc<TrustStore>>,
 }
 
 pub struct McpManager {
@@ -98,8 +107,75 @@ pub struct McpManager {
 
 impl McpManager {
     /// Read the config files. Nothing is launched until [`start_all`](Self::start_all).
-    pub fn load(workspace_root: &Path) -> Arc<Self> {
-        Self::with_config(workspace_root, McpConfig::load(workspace_root))
+    ///
+    /// Servers the project's `.pulsar/mcp.json` defines launch processes, and
+    /// a cloned repository can ship that file, so each needs the user's
+    /// approval (recorded in `trust`, keyed by project and by what would be
+    /// launched). Until then it is `AwaitingApproval` and nothing runs;
+    /// servers from the user-global file are the user's own.
+    pub fn load(workspace_root: &Path, trust: Arc<TrustStore>) -> Arc<Self> {
+        let (config, project_names) = McpConfig::load_with_origins(workspace_root);
+        let manager = Self::with_config(workspace_root, config);
+        {
+            let mut inner = manager.lock();
+            inner.trust = Some(trust.clone());
+            for (name, entry) in inner.servers.iter_mut() {
+                if !project_names.contains(name) || !entry.config.enabled {
+                    continue;
+                }
+                let description = entry.config.launch_description();
+                if !trust.is_trusted(workspace_root, &mcp_item(name), &description) {
+                    entry.status = ServerStatus::AwaitingApproval;
+                }
+                entry.approval = Some(description);
+            }
+        }
+        manager
+    }
+
+    /// Servers waiting for the user, with the exact command line they would run.
+    pub fn pending_approvals(&self) -> Vec<PendingItem> {
+        let inner = self.lock();
+        let Some(trust) = &inner.trust else {
+            return Vec::new();
+        };
+        inner
+            .servers
+            .iter()
+            .filter(|(_, entry)| entry.status == ServerStatus::AwaitingApproval)
+            .filter_map(|(name, entry)| {
+                PendingItem::new(
+                    trust,
+                    &inner.workspace_root,
+                    PendingKind::Mcp,
+                    mcp_item(name),
+                    name.clone(),
+                    entry.approval.clone()?,
+                )
+            })
+            .collect()
+    }
+
+    /// The user accepted this server: record it and start it.
+    pub fn approve(self: &Arc<Self>, name: &str) {
+        {
+            let mut inner = self.lock();
+            let root = inner.workspace_root.clone();
+            let Some(trust) = inner.trust.clone() else {
+                return;
+            };
+            let Some(entry) = inner.servers.get_mut(name) else {
+                return;
+            };
+            let Some(description) = entry.approval.clone() else {
+                return;
+            };
+            trust.trust(&root, &mcp_item(name), &description);
+            if entry.status == ServerStatus::AwaitingApproval {
+                entry.status = ServerStatus::Pending;
+            }
+        }
+        self.restart_server(name);
     }
 
     pub fn with_config(workspace_root: &Path, config: McpConfig) -> Arc<Self> {
@@ -120,6 +196,7 @@ impl McpManager {
                         client: None,
                         tools: Vec::new(),
                         generation: 0,
+                        approval: None,
                     },
                 )
             })
@@ -129,6 +206,7 @@ impl McpManager {
                 workspace_root: workspace_root.to_path_buf(),
                 servers,
                 disabled_tools: load_disabled(workspace_root),
+                trust: None,
             }),
         })
     }
@@ -147,7 +225,7 @@ impl McpManager {
             .lock()
             .servers
             .iter()
-            .filter(|(_, e)| e.config.enabled)
+            .filter(|(_, e)| e.config.enabled && e.status != ServerStatus::AwaitingApproval)
             .map(|(n, _)| n.clone())
             .collect();
         for name in names {
@@ -163,6 +241,10 @@ impl McpManager {
             let Some(entry) = inner.servers.get_mut(name) else {
                 return;
             };
+            // Never launch what the user has not approved.
+            if entry.status == ServerStatus::AwaitingApproval {
+                return;
+            }
             entry.generation += 1;
             entry.status = ServerStatus::Pending;
             entry.tools.clear();

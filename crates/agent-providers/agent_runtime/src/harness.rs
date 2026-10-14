@@ -29,6 +29,7 @@ use std::{
 };
 
 use crate::taint::{ToolClass, ToolClassifier};
+use crate::trust::TrustStore;
 
 /// Which model a child run uses.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,6 +82,8 @@ impl HarnessPermissions {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HarnessOrigin {
     Builtin,
+    /// Registered by a plugin; below global and project files.
+    Plugin,
     Global,
     Project,
 }
@@ -568,17 +571,53 @@ impl HarnessRegistry {
     /// Built-ins, then `global_dir`, then `<project_root>/.pulsar/agents`,
     /// each layer replacing earlier ones by name.
     pub fn load(project_root: Option<&Path>, global_dir: Option<&Path>) -> Self {
+        Self::load_layered(&[], project_root, global_dir)
+    }
+
+    /// [`Self::load`] with harnesses that plugins registered, layered between
+    /// the built-ins and the user-global folder: built-in < plugin < global <
+    /// project. `plugin_sources` are `(fallback name, markdown)` pairs.
+    pub fn load_layered(
+        plugin_sources: &[(String, String)],
+        project_root: Option<&Path>,
+        global_dir: Option<&Path>,
+    ) -> Self {
+        Self::load_gated(plugin_sources, project_root, global_dir, None)
+    }
+
+    /// [`Self::load_layered`] where project harness files are only used while
+    /// their content is trusted in `trust` (see [`crate::trust`]); the others
+    /// are skipped and listed by [`crate::trust::scan_project`]. Plugin and
+    /// user-global harnesses are the user's own and are not gated.
+    pub fn load_gated(
+        plugin_sources: &[(String, String)],
+        project_root: Option<&Path>,
+        global_dir: Option<&Path>,
+        trust: Option<&TrustStore>,
+    ) -> Self {
         let mut registry = Self::builtin();
+        for (name, source) in plugin_sources {
+            match Harness::parse(source, name, HarnessOrigin::Plugin) {
+                Ok(harness) => registry.insert(harness),
+                Err(err) => registry
+                    .errors
+                    .push((PathBuf::from(format!("plugin:{name}")), err)),
+            }
+        }
         if let Some(dir) = global_dir {
-            registry.load_dir(dir, HarnessOrigin::Global);
+            registry.load_dir(dir, HarnessOrigin::Global, None);
         }
         if let Some(root) = project_root {
-            registry.load_dir(&project_agents_dir(root), HarnessOrigin::Project);
+            registry.load_dir(
+                &project_agents_dir(root),
+                HarnessOrigin::Project,
+                trust.map(|store| (store, root)),
+            );
         }
         registry
     }
 
-    fn load_dir(&mut self, dir: &Path, origin: HarnessOrigin) {
+    fn load_dir(&mut self, dir: &Path, origin: HarnessOrigin, gate: Option<(&TrustStore, &Path)>) {
         let Ok(read) = fs::read_dir(dir) else {
             return;
         };
@@ -596,9 +635,19 @@ impl HarnessRegistry {
                 .to_string();
             let parsed = fs::read_to_string(&path)
                 .map_err(|err| err.to_string())
-                .and_then(|source| Harness::parse(&source, &stem, origin));
+                .and_then(|source| {
+                    if let Some((store, root)) = gate {
+                        let file = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                        if !store.is_trusted(root, &crate::trust::harness_item(file), &source) {
+                            // Waiting for the user's approval; not an error.
+                            return Ok(None);
+                        }
+                    }
+                    Harness::parse(&source, &stem, origin).map(Some)
+                });
             match parsed {
-                Ok(harness) => self.insert(harness),
+                Ok(Some(harness)) => self.insert(harness),
+                Ok(None) => {}
                 Err(err) => self.errors.push((path, err)),
             }
         }

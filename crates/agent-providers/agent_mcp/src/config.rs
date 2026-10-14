@@ -95,12 +95,47 @@ impl McpConfig {
     /// Global file first, project entries override. A missing or broken file
     /// is skipped, never fatal.
     pub fn load(workspace_root: &Path) -> Self {
+        Self::load_with_origins(workspace_root).0
+    }
+
+    /// [`Self::load`] plus the names of the servers the project file defines
+    /// (those can come from a cloned repository, so they need approval).
+    pub fn load_with_origins(workspace_root: &Path) -> (Self, std::collections::BTreeSet<String>) {
         let mut merged = global_config_path()
             .map(|p| Self::read(&p))
             .unwrap_or_default();
         let project = Self::read(&project_config_path(workspace_root));
+        let project_names = project.servers.keys().cloned().collect();
         merged.servers.extend(project.servers);
-        merged
+        (merged, project_names)
+    }
+}
+
+impl ServerConfig {
+    /// What approving this server means, as shown to the user and hashed for
+    /// the trust record: the process that would be launched, in full.
+    pub fn launch_description(&self) -> String {
+        let mut out = String::new();
+        if let Some(command) = &self.command {
+            out.push_str(&format!("command: {command}\n"));
+        }
+        if !self.args.is_empty() {
+            out.push_str(&format!("args: {}\n", self.args.join(" ")));
+        }
+        if let Some(cwd) = &self.cwd {
+            out.push_str(&format!("cwd: {cwd}\n"));
+        }
+        if let Some(url) = &self.url {
+            out.push_str(&format!("url: {url}\n"));
+        }
+        for (key, value) in &self.env {
+            out.push_str(&format!("env: {key}={value}\n"));
+        }
+        // Vouching for a tool as read-only skips its confirmation prompt.
+        if !self.read_only_tools.is_empty() {
+            out.push_str(&format!("read_only_tools: {}\n", self.read_only_tools.join(", ")));
+        }
+        out.trim_end().to_string()
     }
 }
 

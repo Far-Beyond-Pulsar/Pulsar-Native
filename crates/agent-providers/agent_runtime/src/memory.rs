@@ -24,6 +24,8 @@ use std::{
 
 use serde_json::{json, Value};
 
+use crate::trust::{TrustState, TrustStore, MEMORY_ITEM};
+
 /// File name, in `.pulsar/` for the project and in the global directory.
 pub const MEMORY_FILE: &str = "agent_memory.md";
 /// Tool the user-directed agent calls to propose an entry.
@@ -62,10 +64,14 @@ impl MemoryScope {
 }
 
 /// The two memory files.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct MemoryStore {
     project: PathBuf,
     user: Option<PathBuf>,
+    /// When set, the project file is only loaded into a run while its current
+    /// content is trusted (see [`crate::trust`]). The user-global file is the
+    /// user's own and is never gated.
+    trust: Option<(Arc<TrustStore>, PathBuf)>,
 }
 
 impl MemoryStore {
@@ -75,7 +81,29 @@ impl MemoryStore {
         Self {
             project: project_root.join(".pulsar").join(MEMORY_FILE),
             user: user_dir.map(|dir| dir.join(MEMORY_FILE)),
+            trust: None,
         }
+    }
+
+    /// Gate the project file on `store`'s record for `project_root`.
+    pub fn with_trust(mut self, store: Arc<TrustStore>, project_root: &Path) -> Self {
+        self.trust = Some((store, project_root.to_path_buf()));
+        self
+    }
+
+    /// Trust state of the project file's current content; `None` when the
+    /// store is not gated.
+    pub fn project_trust(&self) -> Option<TrustState> {
+        let (store, root) = self.trust.as_ref()?;
+        Some(store.state(root, MEMORY_ITEM, &self.read(MemoryScope::Project)))
+    }
+
+    /// The project file as a run may use it: empty while it is untrusted.
+    fn read_for_run(&self, scope: MemoryScope) -> String {
+        if scope == MemoryScope::Project && self.project_trust().is_some_and(|t| !t.is_trusted()) {
+            return String::new();
+        }
+        self.read(scope)
     }
 
     pub fn path(&self, scope: MemoryScope) -> Option<&Path> {
@@ -104,14 +132,23 @@ impl MemoryStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, text)
+        std::fs::write(path, text)?;
+        // The user wrote the whole file here (the panel's editor), so what they
+        // saved is what they trust.
+        if scope == MemoryScope::Project {
+            if let Some((store, root)) = &self.trust {
+                store.trust(root, MEMORY_ITEM, text);
+            }
+        }
+        Ok(())
     }
 
-    /// Both files rendered as the block the run sees.
+    /// Both files rendered as the block the run sees. An untrusted project
+    /// file is left out.
     pub fn block(&self, lite: bool) -> Option<String> {
         render_block(
-            &self.read(MemoryScope::Project),
-            &self.read(MemoryScope::User),
+            &self.read_for_run(MemoryScope::Project),
+            &self.read_for_run(MemoryScope::User),
             if lite { MEMORY_BLOCK_CHARS_LITE } else { MEMORY_BLOCK_CHARS },
         )
     }
@@ -134,6 +171,15 @@ impl MemoryStore {
             return Ok(false);
         }
         let mut text = self.read(scope);
+        // Appending must not launder a file the user has not reviewed.
+        if scope == MemoryScope::Project
+            && !text.trim().is_empty()
+            && self.project_trust().is_some_and(|t| !t.is_trusted())
+        {
+            return Err(std::io::Error::other(
+                "the project memory file has not been approved yet; review and trust it first",
+            ));
+        }
         if text.chars().count() + entry.chars().count() > MAX_FILE_CHARS {
             return Ok(false);
         }
