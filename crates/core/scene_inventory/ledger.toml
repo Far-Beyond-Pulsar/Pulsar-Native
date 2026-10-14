@@ -21,7 +21,7 @@
 [meta]
 pulsar_native = "7b6796323"
 helio = "3e2333e1"
-scenedb = "3d6402f1"
+scenedb = "77f74e3"
 reflection = "2761936b"
 
 # ── Exposed component classes ───────────────────────────────────────────
@@ -611,7 +611,7 @@ buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
 clears_on_remove = true
 releases_var_len = true
 registered = true
-writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; a mesh_asset write names the mesh by AssetId and SceneDB's asset table loads the geometry off the write path and binds it (SceneDB#84)"
+writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; a mesh_asset write names the mesh by AssetId and SceneDB's asset table loads the geometry off the write path and binds it; each slot's material is counted as a reference by the handle collector and bound into `materials` the same way, and the draw reads only what was bound (SceneDB#84)"
 owner = "helio_component::components::static_mesh_component"
 disposition = "keep: the authored mesh instance; the scene join draws it from its own rows joined to its owner (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2727,7 +2727,7 @@ pattern = "asset-kind"
 file = "crates/renderer/helio/crates/helio-component/src/components/static_mesh_component.rs"
 count = 1
 owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
-disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh. Material graph textures are still read by path in the GPU dispatch and are not an asset kind yet"
+disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
 status = "verified"
@@ -2763,11 +2763,31 @@ test = "crates/renderer/helio/crates/helio-component/tests/texture_assets.rs (te
 status = "verified"
 
 [[site]]
+pattern = "asset-kind"
+file = "crates/renderer/helio/crates/helio-component/src/material_assets.rs"
+count = 1
+owner = "helio_component::material_assets (register_material_assets)"
+disposition = "keep: the material kind (a mesh slot's surface document or shader-graph folder). Its loader resolves the authored path against the project, the working directory and the engine assets, reads and parses the document, or the graph and every texture it samples (decoded on the worker, and validated by a compile against placeholder slots); a missing or corrupt material fails the asset and its slots draw the imported surface. StaticMeshComponent's #[scene_store(collect_handles)] reports one id per slot material, so the count follows the slots"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
+pattern = "asset-binding"
+file = "crates/renderer/helio/crates/helio-component/src/material_assets.rs"
+count = 1
+owner = "helio_component::material_assets (register_material_assets)"
+disposition = "keep: binds a loaded material into StaticMeshComponent.materials (with its content version) and drops the materials no slot names any more; a failed load binds nothing and the slot draws the imported surface. The derived draw compiles a bound graph against its textures' slots in that scene's store, once per content version"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
 pattern = "asset-reload"
 file = "crates/core/engine_backend/src/scene/mod.rs"
-count = 2
+count = 3
 owner = "engine_backend::scene (reload_updated_asset, subscribe_asset_reloads)"
-disposition = "keep: the one reload path. A mesh or texture AssetUpdated (the project watcher publishes one for a changed image) reloads that file's asset in a world, which rebinds every dependent; the editor's subscription and every game loop that builds its own world go through it, so a headless world reloads without the editor"
+disposition = "keep: the one reload path. A mesh, texture or material AssetUpdated (the project watcher publishes one for a changed image, material document or shader-graph save) reloads that file's assets in a world, a texture also every graph material sampling it, which rebinds every dependent; the editor's subscription and every game loop that builds its own world go through it, so a headless world reloads without the editor"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/core/pulsar_game/tests/asset_reload.rs (a_game_world_reloads_a_reimported_mesh_without_the_editor), crates/editor/ui_level_editor/tests/mesh_reimport.rs (a_reimported_mesh_reloads_every_mesh_naming_it)"
 status = "verified"

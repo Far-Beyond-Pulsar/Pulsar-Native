@@ -415,7 +415,8 @@ impl LevelEditorPanel {
         });
         let class_updates =
             crate::core::asset_updates::subscribe_class_updates(shared_state.clone());
-        let mesh_updates = crate::core::asset_updates::subscribe_mesh_updates(shared_state.clone());
+        let asset_reloads =
+            crate::core::asset_updates::subscribe_asset_reloads(shared_state.clone());
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -425,7 +426,7 @@ impl LevelEditorPanel {
             helio_mailbox,
             render_enabled,
             _class_updates: class_updates,
-            _mesh_updates: mesh_updates,
+            _asset_reloads: asset_reloads,
             shared_state,
             workspace: None,
             viewport_panel: None,

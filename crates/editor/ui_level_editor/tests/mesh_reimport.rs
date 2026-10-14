@@ -105,7 +105,7 @@ fn a_reimported_mesh_reloads_every_mesh_naming_it() {
         )
     };
     resolve(&state.read());
-    let _subscription = asset_updates::subscribe_mesh_updates(state.clone());
+    let _subscription = asset_updates::subscribe_asset_reloads(state.clone());
 
     // The asset is rewritten on disk (a re-import), then announced.
     std::fs::copy(primitive("SM_Sphere.fbx"), meshes.join("prop.fbx")).unwrap();

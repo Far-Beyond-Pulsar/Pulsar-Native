@@ -66,25 +66,36 @@ fn handle_fs_event(event: &Event, asset_index: &AssetIndex, user_types: &UserTyp
             // TODO: Once PluginManager is Send-safe, integrate registry-based detection here
             for path in &event.paths {
                 tracing::info!("File changed: {:?} - rescan project to update index", path);
-                publish_texture_update(path);
+                publish_asset_update(path);
             }
         }
         _ => {}
     }
 }
 
-/// An image written on disk is a texture update: every world showing it
-/// reloads it (SceneDB#84). Other kinds publish their own updates when they
-/// are written (a re-imported mesh, a saved class).
-fn publish_texture_update(path: &std::path::Path) {
-    let is_texture = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| {
-            ui_types_common::AssetKind::from_extension(ext) == ui_types_common::AssetKind::Texture
-        });
-    if is_texture && path.is_file() {
-        let mut update = plugin_editor_api::AssetUpdated::new(ui_types_common::AssetKind::Texture);
+/// An image or material written on disk is an asset update: every world
+/// showing it reloads it (SceneDB#84). A shader graph folder's save is its
+/// material's update. Other kinds publish their own updates when they are
+/// written (a re-imported mesh, a saved class).
+fn publish_asset_update(path: &std::path::Path) {
+    use ui_types_common::AssetKind;
+    let extension = path.extension().and_then(|ext| ext.to_str());
+    // Surface materials are saved as `.mat` (mesh slots' extracted
+    // materials), which the file-type table does not list.
+    let kind = if path
+        .file_name()
+        .is_some_and(|name| name == "shader_graph_save.json")
+        || extension.is_some_and(|ext| ext.eq_ignore_ascii_case("mat"))
+    {
+        AssetKind::Material
+    } else {
+        match extension.map(AssetKind::from_extension) {
+            Some(kind @ (AssetKind::Texture | AssetKind::Material)) => kind,
+            _ => return,
+        }
+    };
+    if path.is_file() {
+        let mut update = plugin_editor_api::AssetUpdated::new(kind);
         update.path = Some(path.to_path_buf());
         plugin_editor_api::publish_asset_updated(update);
     }
