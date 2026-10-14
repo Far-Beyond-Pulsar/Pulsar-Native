@@ -48,9 +48,13 @@ impl AgentChatPanel {
     /// Built-ins, then the global folder, then the project's `.pulsar/agents`.
     pub(super) fn load_harnesses() -> HarnessRegistry {
         let project_root = engine_state::get_project_path().map(PathBuf::from);
-        let registry = HarnessRegistry::load(
+        // Plugins' harnesses sit below the global and project ones; project
+        // files must be trusted (see `trust.rs`) before they are used.
+        let registry = HarnessRegistry::load_gated(
+            &plugin_manager::plugin_harnesses().snapshot(),
             project_root.as_deref(),
             Self::global_agents_dir().as_deref(),
+            Some(&super::trust::trust_store()),
         );
         for (path, err) in &registry.errors {
             tracing::warn!("[agent_chat] ignoring harness {}: {err}", path.display());
@@ -102,6 +106,7 @@ impl AgentChatPanel {
         })
         .detach();
 
+        self.refresh_trust_pending();
         self.reconcile_subagent_cards();
         if self.deliver_idle_subagent_reports() {
             self.save_current_chat();

@@ -33,6 +33,9 @@ pub struct PlanMemoryState {
     pub memory_scope: MemoryScope,
     pub memory_status: Option<String>,
     pub memory_edit_input: Entity<InputState>,
+    /// Project files (memory, harnesses, MCP servers) waiting for the user's
+    /// trust; see `trust.rs`.
+    pub pending_trust: Vec<agent_runtime::trust::PendingItem>,
 }
 
 impl PlanMemoryState {
@@ -49,6 +52,7 @@ impl PlanMemoryState {
             memory_scope: MemoryScope::Project,
             memory_status: None,
             memory_edit_input,
+            pending_trust: Vec::new(),
         }
     }
 
@@ -75,7 +79,8 @@ impl AgentChatPanel {
     fn memory_store() -> Option<MemoryStore> {
         let root = engine_state::get_project_path().map(PathBuf::from)?;
         let user_dir = dirs::config_dir().map(|dir| dir.join("pulsar"));
-        Some(MemoryStore::new(&root, user_dir.as_deref()))
+        // The project's memory file is only used once the user trusted it.
+        Some(MemoryStore::new(&root, user_dir.as_deref()).with_trust(super::trust::trust_store(), &root))
     }
 
     /// Called for every request: plan mode when toggled, project memory

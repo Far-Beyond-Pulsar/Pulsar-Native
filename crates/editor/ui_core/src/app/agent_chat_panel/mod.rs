@@ -18,6 +18,7 @@ mod scene_tools;
 mod steward;
 mod streaming;
 mod subagent;
+mod trust;
 mod visual_backend;
 pub mod types;
 
@@ -1446,6 +1447,7 @@ impl Render for AgentChatPanel {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
+                    .children(self.render_trust_card(cx))
                     .children(self.render_plan_card(cx))
                     .children(self.render_memory_strip(cx))
                     .children(self.render_pinned_strip(cx))

@@ -18,7 +18,8 @@ impl AgentChatPanel {
     /// `None` when no project is open or nothing is configured.
     pub(super) fn start_mcp() -> Option<Arc<McpManager>> {
         let root = engine_state::get_project_path().map(PathBuf::from)?;
-        let manager = McpManager::load(&root);
+        // Servers from the project's mcp.json wait for approval (see `trust.rs`).
+        let manager = McpManager::load(&root, super::trust::trust_store());
         if manager.is_empty() {
             return None;
         }
