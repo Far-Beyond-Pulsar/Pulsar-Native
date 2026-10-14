@@ -11,6 +11,7 @@ mod render;
 mod render_header;
 mod render_overlays;
 mod safety;
+mod steward;
 mod streaming;
 mod subagent;
 pub mod types;
@@ -1313,6 +1314,25 @@ impl Render for AgentChatPanel {
                                                                             },
                                                                         ))
                                                                     })
+                                                                    .child(
+                                                                        Button::new((
+                                                                            "agent-chat-pin",
+                                                                            ix,
+                                                                        ))
+                                                                        .xsmall()
+                                                                        .ghost()
+                                                                        .icon(IconName::Plus)
+                                                                        .tooltip("Pin as requirement")
+                                                                        .on_click(cx.listener(
+                                                                            move |this, _, _, cx| {
+                                                                                this.pin_message(
+                                                                                    msg_index,
+                                                                                    agent_runtime::PinKind::Requirement,
+                                                                                    cx,
+                                                                                );
+                                                                            },
+                                                                        )),
+                                                                    )
                                                                     .when(is_user && !is_confirming_rollback, |el| {
                                                                         el.child(
                                                                             Button::new((
@@ -1421,6 +1441,7 @@ impl Render for AgentChatPanel {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
+                    .children(self.render_pinned_strip(cx))
                     .children(self.render_safety_bar(cx))
                     // Input row: text input + send/stop
                     .child(
@@ -1451,6 +1472,7 @@ impl Render for AgentChatPanel {
                                         ),
                                 )
                             })
+                            .child(self.render_steward_controls(cx))
                             .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")

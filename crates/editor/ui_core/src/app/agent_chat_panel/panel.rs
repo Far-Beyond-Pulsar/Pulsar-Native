@@ -75,6 +75,23 @@ pub struct AgentChatPanel {
     pub(crate) safety_notice: Option<String>,
     /// Child runs of the current chat: store, harnesses, limits, events.
     pub(crate) delegation: Arc<agent_runtime::DelegationHost>,
+    /// "Use AI to keep long chats on track" (.pulsar/agent_steward.json).
+    pub(crate) steward_settings: agent_runtime::StewardSettings,
+    /// This chat's override of the setting; `None` follows it.
+    pub(crate) chat_steward_override: Option<bool>,
+    /// The chat's steward, rebuilt when the model or settings change.
+    pub(crate) steward: Option<Arc<agent_runtime::Steward>>,
+    pub(crate) steward_key: String,
+    /// Changes the steward proposed, waiting for accept / edit / reject.
+    pub(crate) pending_pin_changes: Vec<agent_runtime::PinChange>,
+    pub(crate) drift_warning: Option<agent_runtime::DriftWarning>,
+    /// Audit trail of what the steward and the engine did to the context.
+    pub(crate) steward_log: Vec<String>,
+    /// Detected pin candidates the user dismissed (by text).
+    pub(crate) dismissed_pin_candidates: Vec<String>,
+    /// The pin or proposal being edited in the Pinned context strip.
+    pub(crate) pin_edit: Option<PinEditTarget>,
+    pub(crate) pin_edit_input: Entity<InputState>,
     pub(crate) auto_scroll: bool,
     pub(crate) chat_viewport_height: Pixels,
     pub(crate) _subscriptions: Vec<Subscription>,

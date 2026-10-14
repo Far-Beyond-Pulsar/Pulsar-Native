@@ -297,6 +297,23 @@ impl AgentChatPanel {
         };
         config.safety.policy = self.confirm_policy;
 
+        // "Use AI to keep long chats on track": with it off no steward exists
+        // and no extra request is made. The steward model is the setting's
+        // choice, else the model's compact model.
+        let steward_model = self
+            .steward_settings
+            .model
+            .clone()
+            .unwrap_or_else(|| config.compact_model.clone());
+        let steward_json_mode =
+            Self::profile_for_model(self.active_provider(), &steward_model).json_mode;
+        if let Some(steward) =
+            self.ensure_steward(provider.clone(), steward_model, steward_json_mode, cx)
+        {
+            config.steward = Some(steward);
+            config.structured_summary = true;
+        }
+
         // Sub-agents are child runs of this one; the template they derive
         // from is the config as built above.
         self.delegation.set_harnesses(Self::load_harnesses());
@@ -462,6 +479,13 @@ impl AgentChatPanel {
                                 }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
+                            }
+
+                            RunEvent::ContextNotice(line) => {
+                                panel.note_context_event(line, cx);
+                            }
+                            RunEvent::FilesTouched(paths) => {
+                                panel.note_files_touched(paths, cx);
                             }
 
                             RunEvent::ToolCallGroup(calls) => {
@@ -730,7 +754,7 @@ impl AgentChatPanel {
 
         // Truncate display_items and ledger up to but NOT including this assistant.
         self.display_items.truncate(dix);
-        self.ledger.truncate(msg_ix);
+        self.ledger.truncate_keep_pins(msg_ix);
         if self.ledger.is_empty() {
             return;
         }
@@ -764,7 +788,7 @@ impl AgentChatPanel {
             return;
         }
         self.display_items.truncate(display_ix);
-        self.ledger.truncate(message_index);
+        self.ledger.truncate_keep_pins(message_index);
         self.display_item_heights.clear();
         self.streaming_display_item_ix = None;
         self.streaming_message_ix = None;

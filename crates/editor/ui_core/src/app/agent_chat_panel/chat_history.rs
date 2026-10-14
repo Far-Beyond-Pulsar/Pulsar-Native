@@ -12,6 +12,7 @@ impl AgentChatPanel {
         }
 
         self.pending_rollback_confirm_ix = None;
+        self.reset_steward();
         self.display_items.truncate(display_ix + 1);
         self.ledger.truncate(message_index + 1);
         if self.ledger.is_empty() {
@@ -39,6 +40,7 @@ impl AgentChatPanel {
         }
 
         self.pending_rollback_confirm_ix = None;
+        self.reset_steward();
         self.display_items.truncate(display_ix + 1);
         let mut forked_ledger = self.ledger.prefix(message_index + 1);
         if forked_ledger.is_empty() {

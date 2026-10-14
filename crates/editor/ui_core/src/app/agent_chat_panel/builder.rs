@@ -138,6 +138,8 @@ impl AgentChatPanel {
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste provider token..."));
         let custom_provider_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Enter provider field value..."));
+        let pin_edit_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Pinned text..."));
 
         let chat_history_list = cx.new(|cx| {
             SearchableList::new(window, cx, Vec::<ChatHistoryEntry>::new(), |chat| {
@@ -295,6 +297,16 @@ impl AgentChatPanel {
             pending_confirms: Vec::new(),
             safety_notice: None,
             delegation: Self::detached_delegation(),
+            steward_settings: Self::load_steward_settings(),
+            chat_steward_override: None,
+            steward: None,
+            steward_key: String::new(),
+            pending_pin_changes: Vec::new(),
+            drift_warning: None,
+            steward_log: Vec::new(),
+            dismissed_pin_candidates: Vec::new(),
+            pin_edit: None,
+            pin_edit_input,
             auto_scroll: true,
             chat_viewport_height: px(0.0),
             _subscriptions: subscriptions,

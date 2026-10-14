@@ -31,6 +31,9 @@ pub struct PersistedMeta {
     /// Name of the tool that produced an untrusted entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
+    /// A pin the user wrote or accepted (as opposed to one the engine keeps).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub user_pinned: bool,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -67,10 +70,16 @@ impl PersistedEntry {
                 let (start, end) = meta.covers.unwrap_or((0, 0));
                 LedgerEntry::summary(self.content, start..end)
             }
-            "pinned" => LedgerEntry::pinned(
-                parse_pin_kind(meta.pin_kind.as_deref().unwrap_or("")),
-                self.content,
-            ),
+            "pinned" => {
+                let mut pin = LedgerEntry::pinned(
+                    parse_pin_kind(meta.pin_kind.as_deref().unwrap_or("")),
+                    self.content,
+                );
+                if meta.user_pinned {
+                    pin.source = Source::User;
+                }
+                pin
+            }
             // Unknown roles were read as assistant text before the ledger.
             _ => LedgerEntry::assistant(self.content),
         };
@@ -121,11 +130,15 @@ impl LedgerEntry {
                     ..PersistedMeta::default()
                 }),
             ),
+            // Removed pins stay as empty tombstones in memory (so ledger
+            // indexes do not shift); they are not worth saving.
+            EntryKind::Pinned { text, .. } if text.trim().is_empty() => return None,
             EntryKind::Pinned { kind, text } => (
                 "pinned",
                 text.clone(),
                 Some(PersistedMeta {
                     pin_kind: Some(kind.label().to_string()),
+                    user_pinned: self.source == Source::User,
                     ..PersistedMeta::default()
                 }),
             ),
@@ -154,14 +167,7 @@ impl Ledger {
 }
 
 fn parse_pin_kind(raw: &str) -> PinKind {
-    match raw {
-        "requirement" => PinKind::Requirement,
-        "constraint" => PinKind::Constraint,
-        "decision" => PinKind::Decision,
-        "open_question" => PinKind::OpenQuestion,
-        "file_touched" => PinKind::FileTouched,
-        _ => PinKind::LiveState,
-    }
+    PinKind::parse(raw).unwrap_or(PinKind::LiveState)
 }
 
 /// The text the panel used to write for a finished sub-agent:

@@ -59,6 +59,15 @@ pub enum SubagentStepStatus {
     Error,
 }
 
+/// What the Pinned context strip's inline editor is changing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PinEditTarget {
+    /// The pin at this ledger index.
+    Pin(usize),
+    /// The steward proposal at this index of `pending_pin_changes`.
+    Proposal(usize),
+}
+
 /// A tool call waiting for the user's approval (never persisted).
 pub struct PendingConfirm {
     pub id: String,
@@ -206,6 +215,10 @@ pub struct ChatSessionFile {
     /// (falls back to reconstructing from `messages`).
     #[serde(default)]
     pub display_items: Vec<DisplayItem>,
+    /// Per-chat override of "Use AI to keep long chats on track". `None`
+    /// follows the project setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steward: Option<bool>,
 }
 
 #[derive(Clone, Debug)]

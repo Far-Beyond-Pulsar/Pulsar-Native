@@ -12,7 +12,8 @@
 
 use agent_chat_core::{ChatMessage, ChatRole, ToolCall};
 
-use crate::ledger::{EntryKind, Ledger, LedgerEntry, SubagentReport};
+use crate::ledger::{EntryKind, Ledger, LedgerEntry, PinKind, SubagentReport};
+use crate::pins::{pin_budget_chars, pinned_block};
 use crate::profile::{ModelProfile, ToolCalling};
 
 /// Appended to the system prompt whenever an envelope is present.
@@ -34,7 +35,53 @@ pub fn project(ledger: &Ledger, profile: &ModelProfile) -> Vec<ChatMessage> {
         .collect()
 }
 
+/// What the projection adds around the dialog.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProjectOpts<'a> {
+    /// Leave out the per-request tail (live state, reminder). Compaction
+    /// budgets the dialog without it and reserves room separately.
+    pub without_tail: bool,
+    /// Re-anchoring text appended to the tail.
+    pub reminder: Option<&'a str>,
+}
+
+/// The tail message: live state (rebuilt every request) and the optional
+/// reminder. It goes after the history, so the prompt-cache prefix before it
+/// is unaffected by either changing.
+pub fn tail_text(ledger: &Ledger, reminder: Option<&str>) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    for entry in &ledger.entries {
+        if let EntryKind::Pinned {
+            kind: PinKind::LiveState,
+            text,
+        } = &entry.kind
+        {
+            if !text.trim().is_empty() {
+                parts.push(format!(
+                    "<live_state trust=\"data\">\n{}\n</live_state>",
+                    escape_close(text, "live_state")
+                ));
+            }
+        }
+    }
+    if let Some(reminder) = reminder.filter(|r| !r.trim().is_empty()) {
+        parts.push(format!(
+            "<reminder trust=\"data\">\n{}\n</reminder>",
+            escape_close(reminder, "reminder")
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join("\n"))
+}
+
 pub fn project_indexed(ledger: &Ledger, profile: &ModelProfile) -> Vec<Projected> {
+    project_with(ledger, profile, ProjectOpts::default())
+}
+
+pub fn project_with(
+    ledger: &Ledger,
+    profile: &ModelProfile,
+    opts: ProjectOpts<'_>,
+) -> Vec<Projected> {
     let mut out: Vec<Projected> = Vec::new();
 
     let reports_are_envelopes = profile.tool_calling == ToolCalling::None;
@@ -44,31 +91,45 @@ pub fn project_indexed(ledger: &Ledger, profile: &ModelProfile) -> Vec<Projected
         _ => false,
     });
 
-    // Leading system block: prompt, then pinned context, then summaries.
+    // Leading system block: the prompt, then the data rule, then the pinned
+    // block, all in one message. The pinned block's bytes depend only on the
+    // pins, so while they are unchanged the provider's cached prefix is too.
+    let pinned = pinned_block(ledger, pin_budget_chars(profile));
     let mut rule_pending = has_envelope;
+    let mut pinned_pending = pinned;
+    let mut leading_written = false;
     for (ix, entry) in ledger.entries.iter().enumerate() {
         if let EntryKind::System { text } = &entry.kind {
-            let content = if std::mem::take(&mut rule_pending) {
-                format!("{text}\n\n{DATA_ENVELOPE_RULE}")
-            } else {
-                text.clone()
-            };
-            out.push(plain(ChatRole::System, content, vec![ix]));
+            let mut content = text.clone();
+            let mut entries = vec![ix];
+            if !leading_written {
+                if std::mem::take(&mut rule_pending) {
+                    content = format!("{content}\n\n{DATA_ENVELOPE_RULE}");
+                }
+                if let Some((block, pin_entries)) = pinned_pending.take() {
+                    content = format!("{content}\n\n{block}");
+                    entries.extend(pin_entries);
+                }
+                leading_written = true;
+            }
+            out.push(plain(ChatRole::System, content, entries));
         }
     }
-    if rule_pending {
-        out.insert(
-            0,
-            plain(ChatRole::System, DATA_ENVELOPE_RULE.to_string(), vec![]),
-        );
-    }
-    for (ix, entry) in ledger.entries.iter().enumerate() {
-        if let EntryKind::Pinned { kind, text } = &entry.kind {
-            let content = match kind {
-                crate::ledger::PinKind::LiveState => text.clone(),
-                other => format!("Pinned {}:\n{text}", other.label()),
-            };
-            out.push(plain(ChatRole::System, content, vec![ix]));
+    if !leading_written {
+        let mut content = String::new();
+        let mut entries = Vec::new();
+        if rule_pending {
+            content.push_str(DATA_ENVELOPE_RULE);
+        }
+        if let Some((block, pin_entries)) = pinned_pending.take() {
+            if !content.is_empty() {
+                content.push_str("\n\n");
+            }
+            content.push_str(&block);
+            entries = pin_entries;
+        }
+        if !content.is_empty() {
+            out.insert(0, plain(ChatRole::System, content, entries));
         }
     }
     for (ix, entry) in ledger.entries.iter().enumerate() {
@@ -87,6 +148,27 @@ pub fn project_indexed(ledger: &Ledger, profile: &ModelProfile) -> Vec<Projected
         walker.visit(ix, entry, profile, &mut out);
     }
     walker.flush(&mut out);
+
+    if !opts.without_tail {
+        if let Some(tail) = tail_text(ledger, opts.reminder) {
+            let entries: Vec<usize> = ledger
+                .entries
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| {
+                    matches!(
+                        entry.kind,
+                        EntryKind::Pinned {
+                            kind: PinKind::LiveState,
+                            ..
+                        }
+                    )
+                })
+                .map(|(ix, _)| ix)
+                .collect();
+            out.push(plain(ChatRole::User, tail, entries));
+        }
+    }
 
     out
 }

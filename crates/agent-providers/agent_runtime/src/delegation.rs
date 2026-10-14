@@ -523,6 +523,8 @@ impl ChildJob {
         let mut config = (**template).clone();
         config.delegation = None;
         config.pre_request_hook = None;
+        // The steward belongs to the chat, not to its helpers.
+        config.steward = None;
 
         // The child's own model gets its own profile (tool-calling mode,
         // window, tier, sampling); the parent's applies only when the child

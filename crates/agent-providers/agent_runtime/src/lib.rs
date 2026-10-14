@@ -3,6 +3,9 @@
 
 mod budget_guard;
 mod checkpoint;
+mod clearing;
+mod pins;
+mod steward;
 mod budget;
 mod compaction;
 mod confirm;
@@ -36,7 +39,7 @@ pub use confirm::{ConfirmDecision, ConfirmReply, SafetyConfig};
 pub use budget::{usage_from_raw, Budget, Calibrator, TokenEstimator, TokenUsage};
 pub use compaction::{
     compact_ledger, compact_ledger_tokens, compact_messages, summarize_compaction,
-    summarize_dropped, Compaction,
+    Compaction,
 };
 pub use output_cap::{
     cap_output, fetch_output_definition, run_fetch_output, Capped, OutputStore, FETCH_OUTPUT,
@@ -45,7 +48,22 @@ pub use router::{
     apply_compact_system, categorize, shorten_definition, Category, RouteContext, ToolRouter,
     LITE_SYSTEM_PROMPT, MORE_TOOLS,
 };
-pub use summary::summarize_into_ledger;
+pub use clearing::{
+    clear_old_tool_results, cleared_stub, is_cleared, ClearOptions, ClearReport, CLEARED_PREFIX,
+};
+pub use pins::{
+    apply_change, build_reminder, detect_pin_candidates, pin_budget_chars, pinned_block, Acceptance,
+    PinAdd, PinAuthor, PinCandidate, PinChange, PinDiff, PinOp, PinView, Provenance,
+    MAX_FILES_TOUCHED, MAX_PIN_CHARS,
+};
+pub use steward::{
+    parse_drift_verdict, parse_pin_diff, DriftWarning, Steward, StewardConfig, StewardEvent,
+    StewardSettings, StewardSink, MAX_QUEUE, STEWARD_SETTINGS_FILE,
+};
+pub use summary::{
+    dropped_listing, structured_fallback, summarize_dropped, summarize_into_ledger,
+    summarize_into_ledger_styled, SummaryStyle,
+};
 pub use text_tools::{
     constrained_call_format, parse as parse_text_tool_calls, protocol_prompt, render_call,
     tool_call_grammar, tool_call_schema, FenceFilter, Parsed as ParsedToolCalls,
@@ -71,7 +89,8 @@ pub use profile::{
     UNKNOWN_CONTEXT_TOKENS,
 };
 pub use project::{
-    notice_envelope, project, project_indexed, report_envelope, Projected, DATA_ENVELOPE_RULE,
+    notice_envelope, project, project_indexed, project_with, report_envelope, tail_text,
+    ProjectOpts, Projected, DATA_ENVELOPE_RULE,
 };
 pub use run::{
     run_loop, spawn_run, CancelToken, EventSink, LedgerHook, RunConfig, RunEvent, ThinkSplitter,

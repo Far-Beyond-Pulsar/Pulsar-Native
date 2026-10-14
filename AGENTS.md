@@ -28,6 +28,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Import options per native asset (`engine_fs::import_options`) |
 | `.pulsar/agent_profiles.json` | Per-model agent profile overrides keyed `provider/model` (context size, tool calling, tier, sampling; `agent_runtime::profile`) |
+| `.pulsar/agent_steward.json` | "Use AI to keep long chats on track": `enabled` (off by default), steward `model`, `drift_check`, `auto_accept_trusted` (`agent_runtime::steward`); per-chat override lives in the chat file |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
 
 ## Workspace

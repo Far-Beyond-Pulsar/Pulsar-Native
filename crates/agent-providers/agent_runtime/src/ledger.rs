@@ -100,6 +100,45 @@ impl PinKind {
             PinKind::LiveState => "live_state",
         }
     }
+
+    /// Heading used in the pinned block and the panel strip.
+    pub fn title(self) -> &'static str {
+        match self {
+            PinKind::Requirement => "Requirements",
+            PinKind::Constraint => "Constraints",
+            PinKind::Decision => "Decisions",
+            PinKind::OpenQuestion => "Open questions",
+            PinKind::FileTouched => "Files touched",
+            PinKind::LiveState => "Live state",
+        }
+    }
+
+    /// Parses a label, a title or a loose spelling.
+    pub fn parse(raw: &str) -> Option<PinKind> {
+        match raw.trim().to_ascii_lowercase().replace([' ', '-'], "_").as_str() {
+            "requirement" | "requirements" => Some(PinKind::Requirement),
+            "constraint" | "constraints" => Some(PinKind::Constraint),
+            "decision" | "decisions" => Some(PinKind::Decision),
+            "open_question" | "open_questions" | "question" => Some(PinKind::OpenQuestion),
+            "file_touched" | "files_touched" | "file" => Some(PinKind::FileTouched),
+            "live_state" => Some(PinKind::LiveState),
+            _ => None,
+        }
+    }
+
+    /// The kinds the user sees, in display order.
+    pub const DURABLE: [PinKind; 5] = [
+        PinKind::Requirement,
+        PinKind::Constraint,
+        PinKind::Decision,
+        PinKind::OpenQuestion,
+        PinKind::FileTouched,
+    ];
+
+    /// Kinds that bind the agent; never elided from the pinned block.
+    pub fn is_binding(self) -> bool {
+        matches!(self, PinKind::Requirement | PinKind::Constraint)
+    }
 }
 
 #[derive(Clone, Debug)]

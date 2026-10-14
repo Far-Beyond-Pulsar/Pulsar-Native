@@ -17,6 +17,7 @@ use agent_chat_core::{
 use agent_chat_tools::{PulsarToolExtras, ToolContext, ToolRegistry};
 
 use crate::budget::{usage_from_raw, Budget, Calibrator, TokenEstimator};
+use crate::clearing::{clear_old_tool_results, ClearOptions, CLEARED_PREFIX};
 use crate::compaction::{compact_ledger, compact_ledger_tokens};
 use crate::confirm::{ConfirmReply, SafetyConfig, SafetyState};
 use crate::ledger::{EntryKind, Ledger, LedgerEntry, SubagentStatus, ToolResult};
@@ -25,11 +26,13 @@ use crate::output_cap::{
 };
 use crate::preview::format_tool_result_preview;
 use crate::profile::{ModelProfile, ToolCalling};
-use crate::project::project;
+use crate::pins::build_reminder;
+use crate::project::{project_with, tail_text, ProjectOpts};
 use crate::router::{
     shorten_definition, Category, RouteContext, ToolRouter, LITE_SYSTEM_PROMPT, MORE_TOOLS,
 };
-use crate::summary::summarize_into_ledger;
+use crate::steward::Steward;
+use crate::summary::{summarize_into_ledger_styled, SummaryStyle};
 use crate::text_tools::{self, FenceFilter};
 
 pub const CANCELLED_MESSAGE: &str = "Request cancelled.";
@@ -121,6 +124,11 @@ pub enum RunEvent {
     },
     /// Old entries were folded into a summary to stay within context.
     ContextCompacted(String),
+    /// The engine trimmed the context without a summary (old tool results
+    /// replaced by restorable stubs). Shown to the user, not sent to the model.
+    ContextNotice(String),
+    /// Write tools changed these files; the chat's pinned ledger lists them.
+    FilesTouched(Vec<String>),
     /// A tool wants a file opened in the editor; the panel must reply.
     OpenFile(PathBuf, UiReply),
     /// A tool wants an open editor tab activated; the panel must reply.
@@ -199,6 +207,18 @@ pub struct RunConfig {
     pub delegation: Option<crate::delegation::DelegationHandle>,
     /// Runs before every request (delivers finished background children).
     pub pre_request_hook: Option<LedgerHook>,
+    /// The AI context steward (the "keep long chats on track" setting). `None`
+    /// when it is off: no extra request is ever made.
+    pub steward: Option<Arc<Steward>>,
+    /// Compaction writes the structured Task / State / Next step summary.
+    pub structured_summary: bool,
+    /// Append a goal + open-tasks reminder near the tail every this many
+    /// requests. Defaults on (every 4) for Lite profiles.
+    pub reanchor_every: Option<u32>,
+    /// Tool-result clearing keeps this many newest exchanges untouched.
+    pub keep_recent_tool_results: usize,
+    /// Results shorter than this many characters are never cleared.
+    pub clear_min_chars: usize,
 }
 
 impl RunConfig {
@@ -231,6 +251,11 @@ impl RunConfig {
             router_limit: None,
             delegation: None,
             pre_request_hook: None,
+            steward: None,
+            structured_summary: false,
+            reanchor_every: None,
+            keep_recent_tool_results: 4,
+            clear_min_chars: 1_500,
         }
     }
 
@@ -238,6 +263,11 @@ impl RunConfig {
     pub fn with_profile(mut self, profile: ModelProfile) -> Self {
         self.temperature = Some(profile.temperature);
         self.max_tokens = Some(profile.max_tokens);
+        self.reanchor_every = profile.is_lite().then_some(4);
+        if profile.is_lite() {
+            self.keep_recent_tool_results = 2;
+            self.clear_min_chars = 800;
+        }
         self.profile = profile;
         self
     }
@@ -310,7 +340,10 @@ fn route_inputs(ledger: &Ledger) -> (String, String, Vec<String>) {
 
 fn ledger_mentions_refs(ledger: &Ledger) -> bool {
     ledger.entries.iter().any(|entry| match &entry.kind {
-        EntryKind::ToolExchange(exchange) => exchange.result.content.contains("fetch_output ref="),
+        EntryKind::ToolExchange(exchange) => {
+            exchange.result.content.contains("fetch_output ref=")
+                || exchange.result.content.starts_with(CLEARED_PREFIX)
+        }
         _ => false,
     })
 }
@@ -404,20 +437,72 @@ fn drive(
         let protocol = text_mode.then(|| text_tools::protocol_prompt(&turn_tools));
         let estimator = unit_estimator.with_scale(calibrator.scale());
 
-        let compaction = if token_mode {
+        // The tail (live state, re-anchoring reminder) is projected after the
+        // history; the dialog is budgeted without it and its room reserved.
+        let reminder = config
+            .reanchor_every
+            .filter(|every| *every > 0 && iteration % *every == 0)
+            .and_then(|_| build_reminder(ledger));
+        let tail_cost = tail_text(ledger, reminder.as_deref()).map_or(0, |tail| {
+            if token_mode {
+                estimator.text(&tail) + 4
+            } else {
+                tail.chars().count()
+            }
+        });
+        let max_budget = if token_mode {
             let overhead = match &protocol {
                 Some(prompt) => estimator.text(prompt),
                 None => estimator.tools(&turn_tools),
             };
-            let max_tokens = budget.message_tokens(overhead);
-            compact_ledger_tokens(ledger, &profile, &budget, max_tokens, &estimator)
+            budget.message_tokens(overhead).saturating_sub(tail_cost)
         } else {
-            compact_ledger(
+            config.context_budget_chars.saturating_sub(tail_cost)
+        };
+        let dialog_cost = |ledger: &Ledger| -> usize {
+            project_with(
                 ledger,
                 &profile,
-                config.context_budget_chars,
-                config.summary_char_budget,
+                ProjectOpts {
+                    without_tail: true,
+                    reminder: None,
+                },
             )
+            .iter()
+            .map(|p| {
+                if token_mode {
+                    estimator.message(&p.message)
+                } else {
+                    p.message.content.chars().count()
+                }
+            })
+            .sum()
+        };
+
+        // First, old large tool results become restorable stubs. Only when
+        // the window is actually over budget, so the prompt-cache prefix is
+        // left alone as long as possible.
+        let cleared = clear_old_tool_results(
+            ledger,
+            store,
+            ClearOptions {
+                keep_recent: config.keep_recent_tool_results,
+                min_chars: config.clear_min_chars,
+            },
+            &mut |ledger| dialog_cost(ledger) > max_budget,
+        );
+        if cleared.cleared > 0 {
+            sink(RunEvent::ContextNotice(format!(
+                "Cleared {} old tool result(s) (about {} KB) to save context. The model can restore them with fetch_output.",
+                cleared.cleared,
+                cleared.freed_chars.div_ceil(1024)
+            )));
+        }
+
+        let compaction = if token_mode {
+            compact_ledger_tokens(ledger, &profile, &budget, max_budget, &estimator)
+        } else {
+            compact_ledger(ledger, &profile, max_budget, config.summary_char_budget)
         };
         if let Some(compaction) = compaction {
             let summary_cap = if token_mode {
@@ -425,17 +510,32 @@ fn drive(
             } else {
                 config.summary_char_budget
             };
-            let summary = summarize_into_ledger(
+            let summary = summarize_into_ledger_styled(
                 ledger,
                 &compaction,
                 &config.provider,
                 &config.compact_model,
                 Some(summary_cap),
+                if config.structured_summary {
+                    SummaryStyle::Structured
+                } else {
+                    SummaryStyle::Plain
+                },
             );
             sink(RunEvent::ContextCompacted(summary));
         }
 
-        let mut messages = project(ledger, &profile);
+        let mut messages: Vec<_> = project_with(
+            ledger,
+            &profile,
+            ProjectOpts {
+                without_tail: false,
+                reminder: reminder.as_deref(),
+            },
+        )
+        .into_iter()
+        .map(|projected| projected.message)
+        .collect();
         if let Some(prompt) = &protocol {
             text_tools::inject_protocol(&mut messages, prompt);
         }
@@ -526,6 +626,9 @@ fn drive(
                 .clone()
                 .unwrap_or_else(|| streamed_text.clone());
             ledger.push(LedgerEntry::assistant(text));
+            if let Some(steward) = &config.steward {
+                steward.after_assistant_turn(ledger, &[]);
+            }
             return Ok(response);
         }
 
@@ -550,6 +653,11 @@ fn drive(
             store,
             cap_chars,
         };
+        // The plan is known now; the drift check runs while the tools do.
+        if let Some(steward) = &config.steward {
+            steward.after_assistant_turn(ledger, &response.tool_calls);
+        }
+        let mut touched: Vec<(ToolCall, bool)> = Vec::new();
         for (call, result) in run_tools(
             config,
             &safety,
@@ -560,7 +668,23 @@ fn drive(
             &meta,
             &mut unlocked,
         ) {
+            touched.push((call.clone(), result.is_error));
             ledger.push(LedgerEntry::tool_exchange(call, result));
+        }
+        let known: Vec<String> = ledger
+            .pins_of(crate::ledger::PinKind::FileTouched)
+            .into_iter()
+            .map(|pin| pin.text)
+            .collect();
+        ledger.note_files_touched(&touched, &config.safety.classifier);
+        let added: Vec<String> = ledger
+            .pins_of(crate::ledger::PinKind::FileTouched)
+            .into_iter()
+            .map(|pin| pin.text)
+            .filter(|text| !known.contains(text))
+            .collect();
+        if !added.is_empty() {
+            sink(RunEvent::FilesTouched(added));
         }
     }
 }

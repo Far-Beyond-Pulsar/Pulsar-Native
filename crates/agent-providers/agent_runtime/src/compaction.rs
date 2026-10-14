@@ -4,11 +4,12 @@
 
 use std::sync::Arc;
 
-use agent_chat_core::{ChatMessage, ChatProvider, ChatRequest, ChatRole};
+use agent_chat_core::{ChatMessage, ChatProvider, ChatRole};
 
 use crate::ledger::{Ledger, LedgerEntry};
 use crate::profile::ModelProfile;
-use crate::project::project_indexed;
+use crate::project::{project_with, ProjectOpts};
+use crate::summary::summarize_dropped;
 
 /// A message plus the index it had before compaction.
 #[derive(Clone, Debug)]
@@ -362,7 +363,7 @@ fn compact_ledger_by(
     dialog_floor: usize,
     cost: &dyn Fn(&ChatMessage) -> usize,
 ) -> Option<Compaction> {
-    let projected = project_indexed(ledger, profile);
+    let projected = project_with(ledger, profile, ProjectOpts { without_tail: true, reminder: None });
     let entry_lists: Vec<Vec<usize>> = projected.iter().map(|p| p.entries.clone()).collect();
     let tagged: Vec<Tagged> = projected
         .into_iter()
@@ -439,80 +440,6 @@ pub fn summarize_compaction(
         compaction.covers.clone(),
     ));
     summary
-}
-
-/// Ask `compact_model` for a short summary of `dropped`; falls back to a
-/// bulleted excerpt when the call fails.
-pub fn summarize_dropped(
-    dropped: &[ChatMessage],
-    provider: &Arc<dyn ChatProvider>,
-    compact_model: &str,
-) -> String {
-    let formatted: String = dropped
-        .iter()
-        .take(40)
-        .map(|m| {
-            let role = match m.role {
-                ChatRole::User => "User",
-                ChatRole::Assistant => "AI",
-                ChatRole::Tool => "Tool",
-                ChatRole::System => "System",
-            };
-            let snippet: String = m.content.chars().take(600).collect();
-            format!("[{role}]: {snippet}")
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    let summary_request = ChatRequest {
-        model: compact_model.to_string(),
-        messages: vec![
-            ChatMessage {
-                role: ChatRole::System,
-                content: "You are a conversation summarizer. Given a list of messages, \
-                          produce a concise summary (max 250 words) that captures: \
-                          key decisions, important findings, files or tools used, \
-                          and any critical context needed to continue the conversation. \
-                          Write in past tense. Be specific, not vague."
-                    .to_string(),
-                tool_call_id: None,
-                tool_calls: vec![],
-            },
-            ChatMessage {
-                role: ChatRole::User,
-                content: format!("Summarize these earlier conversation messages:\n\n{formatted}"),
-                tool_call_id: None,
-                tool_calls: vec![],
-            },
-        ],
-        enable_tool_calls: false,
-        tools: vec![],
-        temperature: Some(0.3),
-        top_p: Some(1.0),
-        max_tokens: Some(350),
-        response_format: None,
-    };
-
-    provider
-        .chat(summary_request)
-        .ok()
-        .and_then(|r| r.assistant_message)
-        .unwrap_or_else(|| {
-            dropped
-                .iter()
-                .take(12)
-                .map(|m| {
-                    let role = match m.role {
-                        ChatRole::User => "user",
-                        ChatRole::Assistant => "assistant",
-                        _ => "system",
-                    };
-                    let snippet: String = m.content.replace('\n', " ").chars().take(180).collect();
-                    format!("- {role}: {snippet}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
 }
 
 #[cfg(test)]

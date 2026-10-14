@@ -130,11 +130,12 @@ fn rule_is_added_even_without_a_system_prompt() {
 }
 
 #[test]
-fn pinned_and_summary_are_hoisted_into_the_leading_block() {
+fn pins_and_summary_are_hoisted_and_live_state_goes_to_the_tail() {
     let mut ledger = Ledger::with_system_prompt("sys");
     ledger.push(LedgerEntry::user("hi"));
     ledger.push(LedgerEntry::assistant("hello"));
     ledger.push(LedgerEntry::pinned(PinKind::LiveState, "## Live Agent State"));
+    ledger.push(LedgerEntry::pinned(PinKind::Requirement, "use tabs"));
     ledger.push(LedgerEntry::summary("earlier stuff", 1..4));
     ledger.push(LedgerEntry::user("next"));
 
@@ -145,14 +146,20 @@ fn pinned_and_summary_are_hoisted_into_the_leading_block() {
         vec![
             ChatRole::System,
             ChatRole::System,
-            ChatRole::System,
             ChatRole::User,
             ChatRole::Assistant,
+            ChatRole::User,
             ChatRole::User
         ]
     );
-    assert_eq!(messages[1].content, "## Live Agent State");
-    assert!(messages[2].content.starts_with("Conversation summary"));
+    // Prompt and pinned block share one message; the summary follows.
+    assert!(messages[0].content.starts_with("sys\n\n## Pinned context"));
+    assert!(messages[0].content.contains("- use tabs"));
+    assert!(messages[1].content.starts_with("Conversation summary"));
+    // Live state is after the history, never in the cacheable prefix.
+    let tail = messages.last().unwrap();
+    assert!(tail.content.contains("## Live Agent State"));
+    assert!(!messages[0].content.contains("Live Agent State"));
 }
 
 #[test]
