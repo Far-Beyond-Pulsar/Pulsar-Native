@@ -13,6 +13,9 @@ use tracing::debug;
 pub use tool_registry::{ChatTool, PluginToolRegistry, ToolContext, ToolRegistry};
 use tool_registry_macros::tool;
 
+pub mod visual;
+pub use visual::{CaptureStore, VisualBackend};
+
 pub type OpenFileRequest = Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sync>;
 pub type QueryOpenEditorsRequest = Arc<dyn Fn() -> Result<Value, String> + Send + Sync>;
 pub type ActivateOpenEditorRequest = Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>;
@@ -23,6 +26,9 @@ pub struct PulsarToolExtras {
     pub open_file_request: Option<OpenFileRequest>,
     pub query_open_editors: Option<QueryOpenEditorsRequest>,
     pub activate_open_editor_request: Option<ActivateOpenEditorRequest>,
+    /// Viewport capture and Play control for the capture_viewport and
+    /// run_and_observe tools; they report themselves unavailable without it.
+    pub visual: Option<Arc<dyn VisualBackend>>,
 }
 
 const EXTRAS_KEY: &str = "pulsar_tool_extras";

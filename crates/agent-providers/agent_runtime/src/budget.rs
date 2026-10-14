@@ -288,6 +288,7 @@ mod tests {
             content: String::new(),
             tool_call_id: None,
             tool_calls: vec![],
+            images: vec![],
         };
         let mut with_call = bare.clone();
         with_call.tool_calls.push(agent_chat_core::ToolCall {

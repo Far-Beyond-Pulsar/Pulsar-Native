@@ -454,6 +454,7 @@ mod tests {
             content: content.to_string(),
             tool_call_id: None,
             tool_calls: vec![],
+            images: vec![],
         }
     }
 
@@ -497,12 +498,14 @@ mod tests {
                 content: "tool-backed agent synthesis".to_string(),
                 tool_call_id: None,
                 tool_calls: vec![tool_call()],
+                images: vec![],
             },
             ChatMessage {
                 role: ChatRole::Tool,
                 content: "{\"ok\":true}".to_string(),
                 tool_call_id: Some("call-1".to_string()),
                 tool_calls: vec![],
+                images: vec![],
             },
             msg(ChatRole::Assistant, "tool result incorporated"),
             msg(

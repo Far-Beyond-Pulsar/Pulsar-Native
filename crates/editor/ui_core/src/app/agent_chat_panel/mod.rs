@@ -14,6 +14,7 @@ mod safety;
 mod steward;
 mod streaming;
 mod subagent;
+mod visual_backend;
 pub mod types;
 
 pub use panel::AgentChatPanel;

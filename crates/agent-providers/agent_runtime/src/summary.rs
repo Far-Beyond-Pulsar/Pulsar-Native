@@ -71,6 +71,7 @@ pub fn summarize_into_ledger_styled(
             content: format!("Earlier summary: {}", earlier.join("\n")),
             tool_call_id: None,
             tool_calls: vec![],
+            images: vec![],
         });
     }
     input.extend(compaction.dropped.iter().cloned());
@@ -173,12 +174,14 @@ fn summarize_styled(
                 content: system,
                 tool_call_id: None,
                 tool_calls: vec![],
+                images: vec![],
             },
             ChatMessage {
                 role: ChatRole::User,
                 content: user,
                 tool_call_id: None,
                 tool_calls: vec![],
+                images: vec![],
             },
         ],
         enable_tool_calls: false,

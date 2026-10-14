@@ -17,3 +17,6 @@ tool_registry_macros = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }

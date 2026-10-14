@@ -131,6 +131,16 @@ pub fn request_thumbnail_capture(shared_state: &Arc<parking_lot::RwLock<LevelEdi
     }
 }
 
+/// Requests that the viewport capture its framebuffer to `path` on the next
+/// render (the same readback as the project thumbnail). The file appears once
+/// the viewport has rendered; the AI visual tools poll for it.
+pub fn request_viewport_capture(
+    shared_state: &Arc<parking_lot::RwLock<LevelEditorState>>,
+    path: PathBuf,
+) {
+    shared_state.write().build.pending_thumbnail_capture = Some(path);
+}
+
 // Re-export enums at the module level so `use crate::state::{TransformTool, ...}`
 // still works. These were previously in the flat state module.
 pub use editor::{CameraMode, MultiplayerMode, TransformTool};

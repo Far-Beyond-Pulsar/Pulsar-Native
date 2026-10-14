@@ -100,6 +100,9 @@ const READ_TOOLS: &[&str] = &[
     "get_subagent_result",
     "cancel_subagent",
     "read_run",
+    // Writes only a PNG under .pulsar/agent_captures/; run_and_observe
+    // launches the game and stays Write, so it is confirmation-gated.
+    "capture_viewport",
 ];
 
 const EXTERNAL_TOOLS: &[&str] = &["web_search", "fetch_url"];

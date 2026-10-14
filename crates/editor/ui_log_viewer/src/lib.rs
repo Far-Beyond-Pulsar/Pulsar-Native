@@ -13,7 +13,7 @@ pub use components::panels::{
 };
 pub use screen::MissionControlPanel;
 pub use utils::atomic_memory_tracking::{AllocationEntry, SizeBucket, ATOMIC_MEMORY_COUNTERS};
-pub use utils::live_logs::{publish_live_log, subscribe_live_logs};
+pub use utils::live_logs::{live_log_mark, live_logs_since, publish_live_log, subscribe_live_logs};
 pub use utils::memory_tracking::{
     create_memory_tracker, MemoryCategory, MemoryStatsSnapshot, MemoryTracker, SharedMemoryTracker,
 };

@@ -1,5 +1,5 @@
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
+    ChatMessage, ImagePart, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
     ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ResponseFormat, ToolCall,
 };
 use anyhow::{anyhow, Context};
@@ -642,29 +642,83 @@ impl OpenAiChatProvider {
 
 // ── OpenAI request/response ─────────────────────────────────────────────────
 
+/// `content` for a message that carries images: text first, then one
+/// `image_url` part per image (data URLs, which every OpenAI-compatible
+/// vision server accepts).
+fn multimodal_content(text: &str, images: &[ImagePart]) -> Value {
+    let mut parts: Vec<Value> = Vec::new();
+    if !text.trim().is_empty() {
+        parts.push(json!({ "type": "text", "text": text }));
+    }
+    for image in images {
+        parts.push(json!({ "type": "image_url", "image_url": { "url": image.data_url() } }));
+    }
+    Value::Array(parts)
+}
+
+/// The chat-completions `messages` array.
+///
+/// The API takes images in user messages only, not in `tool` messages. A
+/// tool result's images therefore follow the run of tool messages it belongs
+/// to as one synthetic user message (it cannot go between two tool messages
+/// answering the same assistant turn).
+fn openai_messages(messages: &[ChatMessage]) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    let mut pending: Vec<(String, Vec<ImagePart>)> = Vec::new();
+    let flush = |out: &mut Vec<Value>, pending: &mut Vec<(String, Vec<ImagePart>)>| {
+        if pending.is_empty() {
+            return;
+        }
+        let mut parts: Vec<Value> = Vec::new();
+        for (call_id, images) in pending.drain(..) {
+            parts.push(json!({
+                "type": "text",
+                "text": format!("Image output of tool call {call_id}:"),
+            }));
+            for image in images {
+                parts.push(json!({ "type": "image_url", "image_url": { "url": image.data_url() } }));
+            }
+        }
+        out.push(json!({ "role": "user", "content": parts }));
+    };
+    for msg in messages {
+        if msg.role != ChatRole::Tool {
+            flush(&mut out, &mut pending);
+        }
+        let content = if msg.role == ChatRole::User && !msg.images.is_empty() {
+            multimodal_content(&msg.content, &msg.images)
+        } else {
+            json!(msg.content)
+        };
+        let mut m = json!({ "role": map_role(msg.role), "content": content });
+        if let Some(tid) = &msg.tool_call_id {
+            m["tool_call_id"] = json!(tid);
+        }
+        if !msg.tool_calls.is_empty() {
+            m["tool_calls"] =
+                json!(msg.tool_calls.iter().map(|c| json!({
+                "id": c.id, "type": "function",
+                "function": { "name": c.name, "arguments": c.arguments_json.to_string() }
+            })).collect::<Vec<_>>());
+        }
+        out.push(m);
+        if msg.role == ChatRole::Tool && !msg.images.is_empty() {
+            pending.push((
+                msg.tool_call_id.clone().unwrap_or_default(),
+                msg.images.clone(),
+            ));
+        }
+    }
+    flush(&mut out, &mut pending);
+    out
+}
+
 fn build_openai_payload(
     request: &ChatRequest,
     stream: bool,
     backend: Backend,
 ) -> anyhow::Result<Value> {
-    let messages: Vec<Value> = request
-        .messages
-        .iter()
-        .map(|msg| {
-            let mut m = json!({ "role": map_role(msg.role), "content": msg.content });
-            if let Some(tid) = &msg.tool_call_id {
-                m["tool_call_id"] = json!(tid);
-            }
-            if !msg.tool_calls.is_empty() {
-                m["tool_calls"] =
-                    json!(msg.tool_calls.iter().map(|c| json!({
-                "id": c.id, "type": "function",
-                "function": { "name": c.name, "arguments": c.arguments_json.to_string() }
-            })).collect::<Vec<_>>());
-            }
-            m
-        })
-        .collect();
+    let messages = openai_messages(&request.messages);
 
     let tools: Vec<Value> = if request.enable_tool_calls {
         request.tools.iter().map(|t| json!({
@@ -907,6 +961,13 @@ fn build_ollama_payload(request: &ChatRequest, stream: bool) -> Value {
         let mut m = serde_json::Map::new();
         m.insert("role".into(), json!(map_role(msg.role)));
         m.insert("content".into(), json!(msg.content));
+        if !msg.images.is_empty() {
+            // Ollama takes raw base64 in a per-message `images` array.
+            m.insert(
+                "images".into(),
+                json!(msg.images.iter().map(|i| i.data_base64.clone()).collect::<Vec<_>>()),
+            );
+        }
         if !msg.tool_calls.is_empty() {
             m.insert("tool_calls".into(), json!(msg.tool_calls.iter().map(|c| json!({ "function": { "name": c.name, "arguments": c.arguments_json } })).collect::<Vec<_>>()));
         }
@@ -1240,5 +1301,90 @@ mod response_format_tests {
         assert_eq!(Backend::from_entry_id("lm_studio"), Backend::LmStudio);
         assert_eq!(Backend::from_entry_id("llama_cpp"), Backend::LlamaCpp);
         assert_eq!(Backend::from_entry_id("custom_openai"), Backend::Generic);
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+
+    fn msg(role: ChatRole, content: &str, call_id: Option<&str>, images: Vec<ImagePart>) -> ChatMessage {
+        ChatMessage {
+            role,
+            content: content.to_string(),
+            tool_call_id: call_id.map(str::to_string),
+            tool_calls: vec![],
+            images,
+        }
+    }
+
+    #[test]
+    fn text_only_messages_serialize_as_before() {
+        let out = openai_messages(&[
+            msg(ChatRole::User, "hi", None, vec![]),
+            msg(ChatRole::Tool, "{}", Some("c1"), vec![]),
+        ]);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0]["content"], json!("hi"));
+        assert_eq!(out[1]["tool_call_id"], json!("c1"));
+    }
+
+    #[test]
+    fn user_images_become_content_parts() {
+        let out = openai_messages(&[msg(
+            ChatRole::User,
+            "look",
+            None,
+            vec![ImagePart::png("QUJD")],
+        )]);
+        let parts = out[0]["content"].as_array().unwrap();
+        assert_eq!(parts[0], json!({"type": "text", "text": "look"}));
+        assert_eq!(parts[1]["type"], "image_url");
+        assert_eq!(parts[1]["image_url"]["url"], "data:image/png;base64,QUJD");
+    }
+
+    #[test]
+    fn tool_images_follow_the_whole_tool_run_in_one_user_message() {
+        let out = openai_messages(&[
+            msg(ChatRole::Assistant, "", None, vec![]),
+            msg(ChatRole::Tool, "a", Some("c1"), vec![ImagePart::png("AA==")]),
+            msg(ChatRole::Tool, "b", Some("c2"), vec![]),
+            msg(ChatRole::User, "next", None, vec![]),
+        ]);
+        let roles: Vec<&str> = out.iter().map(|m| m["role"].as_str().unwrap()).collect();
+        assert_eq!(roles, ["assistant", "tool", "tool", "user", "user"]);
+        // Tool messages stay plain strings.
+        assert_eq!(out[1]["content"], json!("a"));
+        let parts = out[3]["content"].as_array().unwrap();
+        assert!(parts[0]["text"].as_str().unwrap().contains("c1"));
+        assert_eq!(parts[1]["image_url"]["url"], "data:image/png;base64,AA==");
+    }
+
+    #[test]
+    fn a_trailing_tool_run_still_flushes_its_images() {
+        let out = openai_messages(&[msg(
+            ChatRole::Tool,
+            "a",
+            Some("c1"),
+            vec![ImagePart::png("AA==")],
+        )]);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1]["role"], "user");
+    }
+
+    #[test]
+    fn ollama_gets_raw_base64() {
+        let request = ChatRequest {
+            model: "llava".to_string(),
+            messages: vec![msg(ChatRole::User, "x", None, vec![ImagePart::png("QUJD")])],
+            enable_tool_calls: false,
+            tools: vec![],
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            response_format: None,
+        };
+        let payload = build_ollama_payload(&request, false);
+        assert_eq!(payload["messages"][0]["images"], json!(["QUJD"]));
     }
 }

@@ -536,6 +536,9 @@ fn drive(
         .into_iter()
         .map(|projected| projected.message)
         .collect();
+        // Capture images ride along with the newest tool results for vision
+        // models; everyone else is told they were not shown.
+        crate::vision::attach_tool_images(&mut messages, profile.vision, &config.workspace_root);
         if let Some(prompt) = &protocol {
             text_tools::inject_protocol(&mut messages, prompt);
         }

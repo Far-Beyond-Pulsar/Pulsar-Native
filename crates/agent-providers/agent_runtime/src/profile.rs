@@ -106,6 +106,10 @@ pub struct ModelProfile {
     pub tier: Tier,
     pub temperature: f32,
     pub max_tokens: u32,
+    /// Accepts image input. Tool results that carry captures (viewport,
+    /// game frames) attach them only when this is set; other models get a
+    /// text description instead.
+    pub vision: bool,
 }
 
 impl ModelProfile {
@@ -122,6 +126,7 @@ impl ModelProfile {
             tier: Tier::Full,
             temperature: 0.2,
             max_tokens: 8_192,
+            vision: false,
         }
     }
 
@@ -277,6 +282,58 @@ impl Row {
     }
 }
 
+/// Does the model id name a model that accepts images? A separate list from
+/// the first-match table because vision cuts across families (qwen2.5-vl,
+/// llama3.2-vision, gemma3). The user override has the last word.
+pub fn infer_vision(model_id: &str) -> bool {
+    let id = model_id.to_ascii_lowercase();
+    // Known text-only members of vision families.
+    const TEXT_ONLY: &[&str] = &[
+        "claude-2",
+        "claude-1",
+        "claude-instant",
+        "gemma3:1b",
+        "gemma3:270m",
+        "gemma-3-1b",
+        "gemma-3-270m",
+        "gpt-4o-audio",
+        "gpt-4o-realtime",
+        "embedding",
+    ];
+    if TEXT_ONLY.iter().any(|needle| id.contains(needle)) {
+        return false;
+    }
+    const VISION: &[&str] = &[
+        "gpt-4o",
+        "gpt-4.1",
+        "gpt-4-turbo",
+        "gpt-4-vision",
+        "gpt-5",
+        "o4-mini",
+        "claude",
+        "gemini",
+        "llava",
+        "bakllava",
+        "pixtral",
+        "vision",
+        "minicpm-v",
+        "moondream",
+        "internvl",
+        "gemma3",
+        "gemma-3",
+        "llama-4",
+        "llama4",
+        "mistral-small-3",
+        "mistral-medium",
+        "-vl",
+        "vl-",
+        "qwen2.5vl",
+        "qwen3vl",
+    ];
+    // `o3` and its dated/pro snapshots see images; `o3-mini` does not.
+    id == "o3" || id.starts_with("o3-20") || id.starts_with("o3-pro") || VISION.iter().any(|needle| id.contains(needle))
+}
+
 /// Parameter count in billions from a name like `llama3.2:3b` or
 /// `qwen2.5-coder-7b-instruct`.
 pub fn parse_param_billions(model_id: &str) -> Option<f32> {
@@ -377,6 +434,7 @@ pub fn resolve_profile(input: ResolveInput<'_>) -> ModelProfile {
     if let Some(mode) = provider_json_mode(input.provider_id) {
         profile.json_mode = mode;
     }
+    profile.vision = infer_vision(&id);
 
     // Small self-hosted models are not served at their family's maximum.
     if input.local {
@@ -429,6 +487,7 @@ pub struct ProfileOverride {
     pub tier: Option<Tier>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    pub vision: Option<bool>,
 }
 
 impl ProfileOverride {
@@ -468,6 +527,9 @@ impl ProfileOverride {
         }
         if let Some(v) = self.max_tokens {
             profile.max_tokens = v;
+        }
+        if let Some(v) = self.vision {
+            profile.vision = v;
         }
     }
 }
@@ -573,6 +635,65 @@ mod tests {
             local,
             ..ResolveInput::default()
         })
+    }
+
+    #[test]
+    fn vision_follows_the_name_table() {
+        for id in [
+            "gpt-4o-mini",
+            "gpt-4.1",
+            "claude-sonnet-4-5",
+            "gemini-2.5-pro",
+            "llava:7b",
+            "llama3.2-vision:11b",
+            "qwen2.5-vl-7b-instruct",
+            "gemma3:4b",
+            "o3",
+        ] {
+            assert!(resolve(id, false).vision, "{id} should see images");
+        }
+        for id in [
+            "gpt-3.5-turbo",
+            "llama3.1:8b",
+            "qwen2.5-coder-7b",
+            "deepseek-r1",
+            "claude-2.1",
+            "gemma3:1b",
+            "tinyllama",
+            "o3-mini",
+        ] {
+            assert!(!resolve(id, false).vision, "{id} should be text-only");
+        }
+        assert!(!ModelProfile::unknown().vision);
+    }
+
+    #[test]
+    fn vision_override_wins_both_ways() {
+        let on = ProfileOverride {
+            vision: Some(true),
+            ..ProfileOverride::default()
+        };
+        let off = ProfileOverride {
+            vision: Some(false),
+            ..ProfileOverride::default()
+        };
+        let resolve_with = |id: &str, ov: &ProfileOverride| {
+            resolve_profile(ResolveInput {
+                model_id: id,
+                overrides: Some(ov),
+                ..ResolveInput::default()
+            })
+        };
+        assert!(resolve_with("llama3.1:8b", &on).vision);
+        assert!(!resolve_with("gpt-4o", &off).vision);
+        assert!(!on.is_empty());
+        let json = serde_json::to_string(&on).unwrap();
+        assert_eq!(serde_json::from_str::<ProfileOverride>(&json).unwrap(), on);
+        // Old override files without the field still load.
+        assert_eq!(
+            serde_json::from_str::<ProfileOverride>("{}").unwrap().vision,
+            None
+        );
     }
 
     #[test]
