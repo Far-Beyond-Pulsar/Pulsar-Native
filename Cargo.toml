@@ -158,8 +158,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "81bb3557b71014ccc00f1275f60138867cc492ea", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "81bb3557b71014ccc00f1275f60138867cc492ea" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -479,5 +479,5 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # exact revision to dependency manifests that use the same Git URL with a
 # different spelling.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "81bb3557b71014ccc00f1275f60138867cc492ea" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "81bb3557b71014ccc00f1275f60138867cc492ea" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1" }

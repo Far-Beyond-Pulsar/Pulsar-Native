@@ -123,20 +123,38 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     scene.write().world.pump_assets()
 }
 
-/// Apply one asset update to `world` (SceneDB#84): a mesh update reloads
-/// that file's mesh asset, and the world rebinds every component showing it
-/// when the new data arrives. Returns how many assets were queued (0 or 1).
-/// Other kinds are not world assets yet and are left to their own handlers.
+/// Apply one asset update to `world` (SceneDB#84): a mesh, texture or
+/// material update reloads that file's assets, and the world rebinds every
+/// component showing them when the new data arrives. A texture is also
+/// reloaded as part of every shader-graph material that samples it. Returns
+/// how many assets were queued. Other kinds are not world assets yet and
+/// are left to their own handlers.
 pub fn reload_updated_asset(
     world: &mut pulsar_scenedb::World,
     event: &pulsar_events::AssetUpdated,
 ) -> usize {
+    use helio_component::material_assets::material_sources_for_file;
     match (&event.kind, event.path.as_deref()) {
         (pulsar_events::AssetKind::Mesh, Some(path)) => {
             world.asset_source_changed(&helio_component::components::mesh_source_for_file(path))
         }
+        (pulsar_events::AssetKind::Texture, Some(path)) => {
+            world.asset_source_changed(&helio_component::texture_assets::texture_source_for_file(
+                path,
+            )) + reload_materials(world, material_sources_for_file(path))
+        }
+        (pulsar_events::AssetKind::Material, Some(path)) => {
+            reload_materials(world, material_sources_for_file(path))
+        }
         _ => 0,
     }
+}
+
+fn reload_materials(world: &mut pulsar_scenedb::World, sources: Vec<String>) -> usize {
+    sources
+        .iter()
+        .map(|source| world.asset_source_changed(source))
+        .sum()
 }
 
 /// Keep `scene` current with updated assets for as long as the returned

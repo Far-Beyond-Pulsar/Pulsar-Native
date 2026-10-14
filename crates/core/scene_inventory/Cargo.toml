@@ -25,6 +25,9 @@ pulsar_scene_model = { workspace = true }
 # The editor links the physics plugin as a built-in (ui_core); its components
 # are scene components like any other.
 physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = ["builtin"] }
+# The input plugin is linked the same way; its PlayerInputComponent is a scene
+# component.
+input_plugin = { path = "../../../plugins/vendor/input_plugin", default-features = false, features = ["builtin"] }
 
 [lints]
 workspace = true

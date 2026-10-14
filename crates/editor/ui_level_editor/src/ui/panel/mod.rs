@@ -105,8 +105,8 @@ pub struct LevelEditorPanel {
 
     /// Rebuilds placed class instances when a class asset is updated (#921).
     _class_updates: plugin_editor_api::AssetSubscription,
-    /// Re-imported meshes reload in place.
-    _mesh_updates: plugin_editor_api::AssetSubscription,
+    /// Updated meshes, images and materials reload in place.
+    _asset_reloads: plugin_editor_api::AssetSubscription,
 }
 
 impl Drop for LevelEditorPanel {

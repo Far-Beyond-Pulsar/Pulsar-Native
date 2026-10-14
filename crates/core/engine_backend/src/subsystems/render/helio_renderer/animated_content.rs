@@ -11,7 +11,7 @@
 //! check walks every mesh's material slots.
 
 use helio_component::components::{
-    slot_reads_time, FoliageComponent, ParticleEmitterComponent, StaticMeshComponent,
+    mesh_reads_time, FoliageComponent, ParticleEmitterComponent, StaticMeshComponent,
     WaterVolumeComponent, WindComponent,
 };
 use pulsar_scene_model::attachments;
@@ -141,7 +141,7 @@ fn animated_graph_materials(world: &World) -> bool {
     world
         .query::<&StaticMeshComponent>()
         .filter(|(instance, _)| attachments::is_enabled(world, *instance))
-        .any(|(_, mesh)| mesh.material_slots.slots.iter().any(slot_reads_time))
+        .any(|(_, mesh)| mesh_reads_time(mesh))
 }
 
 #[cfg(test)]

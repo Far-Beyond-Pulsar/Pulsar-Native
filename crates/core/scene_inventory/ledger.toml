@@ -20,8 +20,8 @@
 
 [meta]
 pulsar_native = "7b6796323"
-helio = "caf8bdfd"
-scenedb = "e74df984"
+helio = "3e2333e1"
+scenedb = "fdbe195"
 reflection = "2761936b"
 
 # ── Exposed component classes ───────────────────────────────────────────
@@ -237,6 +237,17 @@ owner = "physics_plugin::components::character_controller"
 disposition = "non-render: physics plugin data (a kinematic character controller); the plugin's runtime reads its change journal and sends what changed to its Rapier counterpart on the simulation thread. Nothing on the GPU reads it"
 target_contract = "Phase 5; 04-state-notifications.md"
 test = "plugins/vendor/physics_plugin/src/runtime.rs (a_character_controller_walks_and_lands)"
+status = "verified"
+
+[[class]]
+name = "PlayerInputComponent"
+category = "Input"
+world_registered = true
+own_gpu_columns = false
+owner = "input_plugin::runtime::component"
+disposition = "non-render: input plugin data (an object's input mapping, by path, with an enabled flag and a priority); the plugin's input driver follows these components and publishes the mapping's actions on the owning object's event channel. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "plugins/vendor/input_plugin/src/runtime/driver.rs (pressing_a_key_publishes_the_action_to_a_script_on_the_owner, removing_the_component_ends_the_mapping_and_completes_its_actions, changing_a_components_mapping_swaps_it)"
 status = "verified"
 
 [[class]]
@@ -600,7 +611,7 @@ buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
 clears_on_remove = true
 releases_var_len = true
 registered = true
-writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; a mesh_asset write names the mesh by AssetId and SceneDB's asset table loads the geometry off the write path and binds it (SceneDB#84)"
+writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; a mesh_asset write names the mesh by AssetId and SceneDB's asset table loads the geometry off the write path and binds it; each slot's material is counted as a reference by the handle collector and bound into `materials` the same way, and the draw reads only what was bound (SceneDB#84)"
 owner = "helio_component::components::static_mesh_component"
 disposition = "keep: the authored mesh instance; the scene join draws it from its own rows joined to its owner (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2716,7 +2727,7 @@ pattern = "asset-kind"
 file = "crates/renderer/helio/crates/helio-component/src/components/static_mesh_component.rs"
 count = 1
 owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
-disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh. Materials, sprite and decal textures are still read by path in the GPU dispatch and are not asset kinds yet"
+disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
 status = "verified"
@@ -2732,11 +2743,51 @@ test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs
 status = "verified"
 
 [[site]]
+pattern = "asset-kind"
+file = "crates/renderer/helio/crates/helio-component/src/texture_assets.rs"
+count = 1
+owner = "helio_component::texture_assets (register_texture_assets)"
+disposition = "keep: the texture kind (sprite texture, decal albedo). Its loader reads and decodes the image on a SceneDB worker; a missing or corrupt file fails the asset and its components show the tint alone. A component's handle-ledger collector derives the AssetId from its path, so a typed insert, a decoded level, a reflected write and a script all reference it the same way; the GPU dispatch uploads the bound image and never reads the file"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input), crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene)"
+status = "verified"
+
+[[site]]
+pattern = "asset-binding"
+file = "crates/renderer/helio/crates/helio-component/src/components/mod.rs"
+count = 2
+owner = "helio_component::components (register_texture_bindings)"
+disposition = "keep: binds a loaded image into SpriteComponent.image and DecalComponent.albedo_image, tagged with its asset and content version so the GPU copy is replaced on reload; a failed load binds nothing"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
+pattern = "asset-kind"
+file = "crates/renderer/helio/crates/helio-component/src/material_assets.rs"
+count = 1
+owner = "helio_component::material_assets (register_material_assets)"
+disposition = "keep: the material kind (a mesh slot's surface document or shader-graph folder). Its loader resolves the authored path against the project, the working directory and the engine assets, reads and parses the document, or the graph and every texture it samples (decoded on the worker, and validated by a compile against placeholder slots); a missing or corrupt material fails the asset and its slots draw the imported surface. StaticMeshComponent's #[scene_store(collect_handles)] reports one id per slot material, so the count follows the slots"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
+pattern = "asset-binding"
+file = "crates/renderer/helio/crates/helio-component/src/material_assets.rs"
+count = 1
+owner = "helio_component::material_assets (register_material_assets)"
+disposition = "keep: binds a loaded material into StaticMeshComponent.materials (with its content version) and drops the materials no slot names any more; a failed load binds nothing and the slot draws the imported surface. The derived draw compiles a bound graph against its textures' slots in that scene's store, once per content version"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/renderer/helio/crates/helio-component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
+status = "verified"
+
+[[site]]
 pattern = "asset-reload"
 file = "crates/core/engine_backend/src/scene/mod.rs"
-count = 1
+count = 3
 owner = "engine_backend::scene (reload_updated_asset, subscribe_asset_reloads)"
-disposition = "keep: the one reload path. A mesh AssetUpdated reloads that file's asset in a world, which rebinds every dependent; the editor's subscription and every game loop that builds its own world go through it, so a headless world reloads without the editor"
+disposition = "keep: the one reload path. A mesh, texture or material AssetUpdated (the project watcher publishes one for a changed image, material document or shader-graph save) reloads that file's assets in a world, a texture also every graph material sampling it, which rebinds every dependent; the editor's subscription and every game loop that builds its own world go through it, so a headless world reloads without the editor"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/core/pulsar_game/tests/asset_reload.rs (a_game_world_reloads_a_reimported_mesh_without_the_editor), crates/editor/ui_level_editor/tests/mesh_reimport.rs (a_reimported_mesh_reloads_every_mesh_naming_it)"
 status = "verified"
