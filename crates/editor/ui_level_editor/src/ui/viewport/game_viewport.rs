@@ -34,6 +34,8 @@ pub struct GameViewport {
     focus_handle: FocusHandle,
     surface: Option<WgpuSurfaceHandle>,
     pie_host: Option<PieHost>,
+    /// What loaded the running game, to load it again on a new GPU device.
+    loaded: Option<crate::state::PieStartRequest>,
     pie_blit: Option<PieBlit>,
     last_frame: Instant,
     /// Whether this tab currently owns input (click to capture, Esc to release).
@@ -67,6 +69,7 @@ impl GameViewport {
             focus_handle: cx.focus_handle(),
             surface: None,
             pie_host: None,
+            loaded: None,
             pie_blit: None,
             last_frame: Instant::now(),
             captured: false,
@@ -318,6 +321,32 @@ impl GameViewport {
         cx.stop_propagation();
     }
 
+    /// The GPU device was lost (a driver reset, a removed GPU): everything on
+    /// it is gone, the running game's renderer included. Stop the game and
+    /// load it again once the window has a new device, the way a native hot
+    /// reload swaps it (#653): the world lives in the editor's store, and
+    /// the guest re-binds its actors to the entities already there.
+    fn restart_after_device_loss(&mut self) {
+        tracing::warn!("PiE: GPU device lost; the game restarts on the new device");
+        self.surface = None;
+        self.pie_blit = None;
+        let Some(mut host) = self.pie_host.take() else {
+            return;
+        };
+        host.stop();
+        if let Some(loaded) = self.loaded.take() {
+            let mut st = self.shared_state.write();
+            st.play
+                .pie
+                .pending_start
+                .get_or_insert(crate::state::PieStartRequest {
+                    reload: true,
+                    scripts_only: false,
+                    ..loaded
+                });
+        }
+    }
+
     /// Load a pending game, honour a stop request, tick + blit the active game.
     fn drive(&mut self, surface: &WgpuSurfaceHandle, view: &wgpu::TextureView, w: u32, h: u32) {
         let (stop, pending) = {
@@ -331,6 +360,7 @@ impl GameViewport {
             if let Some(mut host) = self.pie_host.take() {
                 host.stop();
             }
+            self.loaded = None;
             self.captured = false;
             let mut state = self.shared_state.write();
             state.play.pie.active = false;
@@ -405,6 +435,7 @@ impl GameViewport {
                             .map(|mtime| (req.dylib_path.clone(), mtime));
                     drop(st);
                     self.pie_host = Some(host);
+                    self.loaded = Some(req.clone());
                     self.last_frame = Instant::now();
                 }
                 Err(e) => {
@@ -548,8 +579,19 @@ impl Render for GameViewport {
         self.poll_status(window, cx);
 
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        if self
+            .surface
+            .as_ref()
+            .is_some_and(WgpuSurfaceHandle::is_device_lost)
+        {
+            self.restart_after_device_loss();
+        }
         if self.surface.is_none() {
-            self.surface = window.create_wgpu_surface(1280, 720, format);
+            // Until the window has rebuilt on a new device after a loss, a new
+            // surface is on the lost one too; the rebuild renders this again.
+            self.surface = window
+                .create_wgpu_surface(1280, 720, format)
+                .filter(|surface| !surface.is_device_lost());
         }
 
         // Load / tick / blit the game into the back buffer.
