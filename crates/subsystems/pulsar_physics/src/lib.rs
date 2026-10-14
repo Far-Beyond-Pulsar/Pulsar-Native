@@ -4,8 +4,10 @@
 //! engine's reflection system for automatic UI generation.
 
 pub mod components;
+pub mod skeletal;
 
 pub use components::*;
+pub use skeletal::*;
 
 #[cfg(test)]
 mod golden_metadata;

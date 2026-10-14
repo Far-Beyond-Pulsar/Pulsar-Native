@@ -17,7 +17,9 @@ use std::path::{Path, PathBuf};
 
 use engine_fs::virtual_fs;
 use helio_asset_compat::{ImportedClip, ImportedKey, ImportedRig};
-use skeletal_assets::animation::{AnimationClip, BoneTrack, Keyframe};
+use skeletal_assets::animation::{
+    AnimationClip, BoneTrack, KeyInterpolation, Keyframe, KeyframeTangent,
+};
 use skeletal_assets::assets::{
     load_animseq_asset, load_skeleton_asset, save_animseq_asset, save_skeleton_asset, AnimSeqAsset,
     SkeletonAsset, ANIMSEQ_EXTENSION, SKELETON_EXTENSION,
@@ -121,6 +123,11 @@ pub fn import_rig(
     // A re-import keeps the materials that were assigned to slots by name.
     if mesh_at.exists {
         if let Ok(old) = load_skmesh_asset(&mesh_at.path) {
+            for (index, lod) in mesh.lods.iter_mut().enumerate() {
+                if let Some(old_lod) = old.lods.get(index) {
+                    lod.screen_size_threshold = old_lod.screen_size_threshold;
+                }
+            }
             for slot in &mut mesh.material_slots {
                 if let Some(old_slot) = old.material_slots.iter().find(|s| s.name == slot.name) {
                     slot.material = old_slot.material.clone();
@@ -150,7 +157,12 @@ pub fn import_rig(
         .map_err(|e| format!("write {}: {e:#}", mesh_at.path.display()))?;
 
     let root = previous.project_root;
-    remember_asset_id(root, "skeleton", &skeleton.id.to_string(), &skeleton_at.path);
+    remember_asset_id(
+        root,
+        "skeleton",
+        &skeleton.id.to_string(),
+        &skeleton_at.path,
+    );
     remember_asset_id(root, "skmesh", &mesh.id.to_string(), &mesh_at.path);
     let mut outputs = vec![
         ImportOutput {
@@ -255,28 +267,51 @@ fn bone_ids(rig: &ImportedRig) -> Vec<String> {
 }
 
 fn build_mesh(rig: &ImportedRig, bone_ids: &[String], skeleton: SkeletonId) -> SkeletalMeshAsset {
-    // One slot per material the sections use, in order of first use.
+    // One slot per material any LOD uses, in order of first use.
     let mut slot_materials: Vec<Option<usize>> = Vec::new();
-    let mut indices = Vec::new();
-    let mut sections = Vec::new();
-    for section in &rig.sections {
-        let slot = match slot_materials
-            .iter()
-            .position(|m| *m == section.material_index)
-        {
-            Some(slot) => slot,
-            None => {
-                slot_materials.push(section.material_index);
-                slot_materials.len() - 1
+    let lods = rig
+        .lods
+        .iter()
+        .enumerate()
+        .map(|(lod_index, source_lod)| {
+            let mut indices = Vec::new();
+            let mut sections = Vec::new();
+            for section in &source_lod.sections {
+                let slot = match slot_materials
+                    .iter()
+                    .position(|m| *m == section.material_index)
+                {
+                    Some(slot) => slot,
+                    None => {
+                        slot_materials.push(section.material_index);
+                        slot_materials.len() - 1
+                    }
+                };
+                sections.push(MeshSection {
+                    first_index: indices.len() as u32,
+                    index_count: section.indices.len() as u32,
+                    material_slot: slot as u32,
+                });
+                indices.extend_from_slice(&section.indices);
             }
-        };
-        sections.push(MeshSection {
-            first_index: indices.len() as u32,
-            index_count: section.indices.len() as u32,
-            material_slot: slot as u32,
-        });
-        indices.extend_from_slice(&section.indices);
-    }
+            MeshLod {
+                screen_size_threshold: 1.0 / (lod_index as f32 + 1.0),
+                vertices: source_lod
+                    .vertices
+                    .iter()
+                    .map(|v| SkinnedVertex {
+                        position: v.position,
+                        normal: v.normal,
+                        uv: v.uv,
+                        joints: v.joints,
+                        weights: v.weights,
+                    })
+                    .collect(),
+                indices,
+                sections,
+            }
+        })
+        .collect();
 
     let mut mesh = SkeletalMeshAsset::new(Some(skeleton));
     mesh.joints = rig
@@ -300,21 +335,7 @@ fn build_mesh(rig: &ImportedRig, bone_ids: &[String], skeleton: SkeletonId) -> S
             material: None,
         })
         .collect();
-    mesh.lods = vec![MeshLod {
-        vertices: rig
-            .vertices
-            .iter()
-            .map(|v| SkinnedVertex {
-                position: v.position,
-                normal: v.normal,
-                uv: v.uv,
-                joints: v.joints,
-                weights: v.weights,
-            })
-            .collect(),
-        indices,
-        sections,
-    }];
+    mesh.lods = lods;
     mesh
 }
 
@@ -359,9 +380,32 @@ pub fn keyframes(keys: &[ImportedKey]) -> Vec<Keyframe> {
             }
             previous = Some(angles);
             transform.rotation = Vec3::new(angles[0], angles[1], angles[2]);
+            let interpolation = |mode| match mode {
+                helio_asset_compat::ImportedInterpolation::Linear => KeyInterpolation::Linear,
+                helio_asset_compat::ImportedInterpolation::Step => KeyInterpolation::Step,
+                helio_asset_compat::ImportedInterpolation::CubicSpline => {
+                    KeyInterpolation::CubicSpline
+                }
+            };
             Keyframe {
                 time: key.time,
                 transform,
+                translation_interpolation: interpolation(key.translation_interpolation),
+                rotation_interpolation: interpolation(key.rotation_interpolation),
+                scale_interpolation: interpolation(key.scale_interpolation),
+                in_tangent: KeyframeTangent {
+                    translation: key.translation_in_tangent,
+                    rotation: key.rotation_in_tangent,
+                    scale: key.scale_in_tangent,
+                },
+                out_tangent: KeyframeTangent {
+                    translation: key.translation_out_tangent,
+                    rotation: key.rotation_out_tangent,
+                    scale: key.scale_out_tangent,
+                },
+                rotation_quaternion: (key.rotation_interpolation
+                    == helio_asset_compat::ImportedInterpolation::CubicSpline)
+                    .then_some(key.rotation_quaternion),
             }
         })
         .collect()
