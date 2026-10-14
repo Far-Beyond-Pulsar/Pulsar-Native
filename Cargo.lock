@@ -11725,6 +11725,7 @@ dependencies = [
  "log",
  "naga",
  "plugin_editor_api",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "skeletal_assets",
@@ -11743,6 +11744,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "engine_fs",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "tempfile",
@@ -14107,6 +14109,7 @@ dependencies = [
  "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "tracing",
