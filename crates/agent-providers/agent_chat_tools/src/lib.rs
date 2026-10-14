@@ -17,6 +17,30 @@ pub type OpenFileRequest = Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sy
 pub type QueryOpenEditorsRequest = Arc<dyn Fn() -> Result<Value, String> + Send + Sync>;
 pub type ActivateOpenEditorRequest = Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>;
 
+/// Who a tool call runs for. The runtime stamps it on every tool context so
+/// domain tools (the scene tools) can attribute their work to a run and keep
+/// a sandboxed run away from the live project.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AgentRunScope {
+    /// Checkpoint id of the run (`parent.child` for a child run).
+    pub run_id: String,
+    /// The run edits a private fork instead of the live project; its changes
+    /// come back as a diff for review.
+    pub sandbox: bool,
+}
+
+const RUN_SCOPE_KEY: &str = "agent_run_scope";
+
+/// The run a tool call belongs to, when the runtime supplied one.
+pub fn run_scope(ctx: &ToolContext) -> Option<&AgentRunScope> {
+    ctx.get_extra::<AgentRunScope>(RUN_SCOPE_KEY)
+}
+
+/// Stamp `scope` on `ctx` (the runtime does this; tests call it directly).
+pub fn set_run_scope(ctx: &mut ToolContext, scope: AgentRunScope) {
+    ctx.insert_extra(RUN_SCOPE_KEY, scope);
+}
+
 #[derive(Clone, Default)]
 pub struct PulsarToolExtras {
     pub plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,

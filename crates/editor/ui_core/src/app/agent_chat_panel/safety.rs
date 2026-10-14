@@ -127,7 +127,8 @@ impl AgentChatPanel {
     /// Approve/deny prompts, the revert outcome and the policy toggle. Renders
     /// nothing at all while there is nothing to say and the policy is default.
     pub(super) fn render_safety_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
-        if self.pending_confirms.is_empty() && self.safety_notice.is_none() {
+        let review_cards = self.pending_review_cards(cx);
+        if self.pending_confirms.is_empty() && self.safety_notice.is_none() && review_cards.is_empty() {
             return None;
         }
         let warn = cx.theme().warning;
@@ -196,6 +197,7 @@ impl AgentChatPanel {
                                 ),
                         )
                 }))
+                .children(review_cards)
                 .when_some(self.safety_notice.clone(), |el, notice| {
                     el.child(
                         div()

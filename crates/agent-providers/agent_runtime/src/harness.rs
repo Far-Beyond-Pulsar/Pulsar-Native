@@ -105,6 +105,10 @@ pub struct Harness {
     /// Sections the final answer is parsed into.
     pub result_schema: Vec<String>,
     pub permissions: HarnessPermissions,
+    /// The run edits a private fork of the project state (the scene) and
+    /// returns its changes as a diff for review instead of applying them.
+    /// Only meaningful with `permissions: engine-scene-write`.
+    pub sandbox: bool,
     pub origin: HarnessOrigin,
 }
 
@@ -228,6 +232,7 @@ impl Harness {
             max_depth: 0,
             result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
             permissions: HarnessPermissions::ReadOnly,
+            sandbox: false,
             origin,
         };
         let mut tools_set = false;
@@ -270,6 +275,12 @@ impl Harness {
                 "permissions" => {
                     harness.permissions = HarnessPermissions::parse(&value.scalar())
                         .ok_or_else(|| format!("unknown permissions `{}`", value.scalar()))?
+                }
+                "sandbox" => {
+                    harness.sandbox = matches!(
+                        value.scalar().to_lowercase().as_str(),
+                        "true" | "yes" | "on" | "1"
+                    )
                 }
                 _ => {}
             }
@@ -427,6 +438,7 @@ fn builtin(
         max_depth,
         result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
         permissions,
+        sandbox: false,
         origin: HarnessOrigin::Builtin,
     }
 }
@@ -474,17 +486,31 @@ pub fn builtin_harnesses() -> Vec<Harness> {
             0,
             HarnessPermissions::EditWithCheckpoint,
         ),
-        // Stub: SceneDB tools are registered as `scene_*` once they exist.
+        // The scene tools register as `scene_*` (`scene_write_*` for the ones
+        // that change the scene); see the `agent_scene_tools` crate.
         builtin(
             "scene-editor",
-            "Edits the live scene through SceneDB transactions (needs the scene tools).",
-            "You are a scene editor. Make the scene changes the task describes using the scene tools, then report what changed.",
+            "Edits the live scene through SceneDB transactions. Each tool call is one undoable transaction attributed to the run; the user can revert the run.",
+            "You are a scene editor. Inspect the scene with scene_query and scene_get_object before changing it, then make the changes the task describes with the scene_write_* tools. If a call is rejected, read the error, fix the arguments and retry. Report what changed.",
             &["group:read", "group:scene"],
             ModelPolicy::Same,
             24,
             0,
             HarnessPermissions::EngineSceneWrite,
         ),
+        Harness {
+            sandbox: true,
+            ..builtin(
+                "scene-sandbox",
+                "Edits a private forked copy of the scene and returns a diff (added/removed/changed objects and components) for review. The live scene is not changed until the user applies the diff. Use for risky or parallel scene work.",
+                "You are a scene editor working in a sandbox: a private copy of the scene. Nothing you change is visible in the live scene until the user applies your diff. Inspect with scene_query and scene_get_object, make the changes the task describes with the scene_write_* tools, then report what you changed. The diff is attached to your report automatically.",
+                &["group:read", "group:scene"],
+                ModelPolicy::Same,
+                24,
+                0,
+                HarnessPermissions::EngineSceneWrite,
+            )
+        },
     ]
 }
 

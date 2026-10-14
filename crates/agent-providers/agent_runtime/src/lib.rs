@@ -23,6 +23,7 @@ mod taint;
 mod summary;
 mod text_tools;
 mod run_store;
+mod run_ext;
 
 #[cfg(test)]
 mod persist_tests;
@@ -100,3 +101,7 @@ pub use taint::{
     entry_taints, is_untrusted_path, ConfirmPolicy, TaintTracker, ToolClass, ToolClassifier,
 };
 pub use run_store::{ChildReport, RunRecord, RunStatus, RunStore};
+pub use run_ext::{
+    extension_report_sections, extensions_have_undo, pending_reviews, register_run_extension,
+    resolve_review, revert_extensions, run_in_tree, Review, ReviewDecision, RunExtension,
+};

@@ -11,6 +11,7 @@ mod render;
 mod render_header;
 mod render_overlays;
 mod safety;
+mod scene_tools;
 mod steward;
 mod streaming;
 mod subagent;

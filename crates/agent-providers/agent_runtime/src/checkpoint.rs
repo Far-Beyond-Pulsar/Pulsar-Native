@@ -43,11 +43,15 @@ pub struct RevertReport {
     /// Files the run created, now deleted.
     pub removed: Vec<PathBuf>,
     pub failed: Vec<(PathBuf, String)>,
+    /// What run extensions (the scene tools) undid, one note each.
+    pub extension_notes: Vec<String>,
+    /// Extensions that could not undo everything.
+    pub extension_errors: Vec<String>,
 }
 
 impl RevertReport {
     pub fn is_clean(&self) -> bool {
-        self.failed.is_empty()
+        self.failed.is_empty() && self.extension_errors.is_empty()
     }
 
     pub fn summary(&self) -> String {
@@ -60,6 +64,13 @@ impl RevertReport {
             text.push_str(&format!(", {} failed", self.failed.len()));
         }
         text.push('.');
+        for note in &self.extension_notes {
+            text.push(' ');
+            text.push_str(note);
+        }
+        for error in &self.extension_errors {
+            text.push_str(&format!(" Could not undo: {error}."));
+        }
         text
     }
 }
@@ -232,6 +243,7 @@ pub fn has_checkpoint_tree(workspace_root: &Path, run_id: &str) -> bool {
         || descendant_checkpoints(workspace_root, run_id)
             .iter()
             .any(|id| has_checkpoint(workspace_root, id))
+        || crate::run_ext::extensions_have_undo(run_id)
 }
 
 /// Revert the run and every run below it, children before parents.
@@ -246,6 +258,13 @@ pub fn revert_checkpoint_tree(workspace_root: &Path, run_id: &str) -> Result<Rev
             report.failed.extend(part.failed);
         }
     }
+    // Run extensions (scene edits) undo the whole tree themselves.
+    let had_extension_undo = crate::run_ext::extensions_have_undo(run_id);
+    if had_extension_undo {
+        let (notes, errors) = crate::run_ext::revert_extensions(run_id);
+        report.extension_notes = notes;
+        report.extension_errors = errors;
+    }
     match revert_checkpoint(workspace_root, run_id) {
         Ok(part) => {
             report.restored.extend(part.restored);
@@ -253,7 +272,7 @@ pub fn revert_checkpoint_tree(workspace_root: &Path, run_id: &str) -> Result<Rev
             report.failed.extend(part.failed);
             Ok(report)
         }
-        Err(_) if any => Ok(report),
+        Err(_) if any || had_extension_undo => Ok(report),
         Err(err) => Err(err),
     }
 }

@@ -156,6 +156,10 @@ impl ToolClassifier {
         if READ_TOOLS.contains(&name) || FILE_READ_TOOLS.contains(&name) {
             return ToolClass::Read;
         }
+        // Tools owned by a registered run extension (the scene tools).
+        if let Some(class) = crate::run_ext::classify(name) {
+            return class;
+        }
         // `call_plugin_tool` / `execute_plugin_tool` run arbitrary plugin
         // code, so they fall through to Write like every unknown tool.
         ToolClass::Write

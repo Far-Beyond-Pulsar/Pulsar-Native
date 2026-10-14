@@ -728,7 +728,16 @@ fn make_context(config: &RunConfig, sink: &EventSink) -> ToolContext {
         }
     }));
 
-    agent_chat_tools::make_tool_context(config.workspace_root.clone(), None, extras)
+    let mut ctx = agent_chat_tools::make_tool_context(config.workspace_root.clone(), None, extras);
+    // Domain tools attribute their work to the run and honour its sandbox.
+    agent_chat_tools::set_run_scope(
+        &mut ctx,
+        agent_chat_tools::AgentRunScope {
+            run_id: config.safety.run_id.clone(),
+            sandbox: config.safety.sandbox,
+        },
+    );
+    ctx
 }
 
 /// One thread per call so they run concurrently; results come back in call
@@ -772,6 +781,7 @@ fn run_tools(
                         let result =
                             registry.execute(&call.name, call.arguments_json.clone(), &ctx);
                         safety.observe(&call, &workspace_root);
+                        safety.after_call(&call, &sink);
                         result.map_err(|err| err.to_string())
                     }
                     Err(refusal) => Err(refusal),

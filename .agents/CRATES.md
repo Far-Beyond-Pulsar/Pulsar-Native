@@ -176,6 +176,15 @@ cascade). A foreground report is a tool result; an unawaited background report
 is a `SubagentReport` ledger entry that the projector renders as a synthetic
 `check_subagent` exchange (data envelope for tool-less profiles).
 
+`agent_scene_tools` holds the engine-native scene tools (`scene_*` reads,
+`scene_write_*` edits) over SceneDB. Each edit is one transaction journaled
+under `agent:<run_id>` with its inverse, so a run's revert undoes it; a harness
+with `sandbox: true` (built-in `scene-sandbox`) edits a forked copy of the
+scene and returns a diff that the user applies (one transaction) or discards.
+It plugs into the runtime through `agent_runtime::RunExtension` (`run_ext.rs`),
+so `agent_runtime` itself knows nothing about scene types. `ui_core` wires it in
+`agent_chat_panel/scene_tools.rs`.
+
 22 providers: anthropic, aws_bedrock, azure_openai, cohere, deepseek,
 demo_random, docker_model_runner, fireworks, gemini, github_copilot, groq,
 llama_cpp, lmstudio, mistral, ollama, openai, openrouter, perplexity,
