@@ -14,9 +14,10 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::ops::{self, ComponentEdit, ComponentSpec, ObjectEdit, QueryFilter, SpawnSpec, TransformEdit};
+use crate::ops::{self, ComponentSpec, ObjectEdit, QueryFilter, SpawnSpec, TransformEdit};
 use crate::snapshot::SceneIndex;
 use crate::toolbox::SceneToolbox;
+use crate::write_op::WriteOp;
 
 pub const READ_TOOLS: [&str; 4] = [
     "scene_query",
@@ -298,6 +299,12 @@ impl SceneToolbox {
         ops::describe_class(&args.class_name)
     }
 
+    /// Run one parsed write for `scope` and attach the transaction note.
+    fn run_write(&self, scope: &AgentRunScope, op: WriteOp) -> Result<Value> {
+        let (value, note) = self.write_op(scope, op)?;
+        Ok(with_note(value, &note))
+    }
+
     pub fn tool_spawn(&self, scope: &AgentRunScope, args: Value) -> Result<Value> {
         let args: SpawnArgs = parse_args(
             "scene_write_spawn_object",
@@ -315,13 +322,7 @@ impl SceneToolbox {
             visible: args.visible,
             components: args.components,
         };
-        let (id, note) = self.write(scope, "scene_write_spawn_object", |world, rec, rules| {
-            let name = spec.name.clone();
-            let id = ops::spawn(world, rec, rules, spec)?;
-            let summary = format!("spawned '{id}' (\"{name}\")");
-            Ok((id, summary))
-        })?;
-        Ok(with_note(json!({ "id": id }), &note))
+        self.run_write(scope, WriteOp::Spawn(spec))
     }
 
     pub fn tool_set_object(&self, scope: &AgentRunScope, args: Value) -> Result<Value> {
@@ -330,18 +331,13 @@ impl SceneToolbox {
             args,
             "id (required), name, visible, locked, parent_id (null or \"\" = move to the root)",
         )?;
-        let id = args.id.clone();
         let edit = ObjectEdit {
             name: args.name,
             visible: args.visible,
             locked: args.locked,
             parent: args.parent_id.map(|p| p.filter(|s| !s.is_empty())),
         };
-        let (_, note) = self.write(scope, "scene_write_set_object", |world, rec, _| {
-            ops::edit_object(world, rec, &args.id, edit)?;
-            Ok(((), format!("edited object '{}'", args.id)))
-        })?;
-        Ok(with_note(json!({ "id": id }), &note))
+        self.run_write(scope, WriteOp::SetObject { id: args.id, edit })
     }
 
     pub fn tool_transform(&self, scope: &AgentRunScope, args: Value) -> Result<Value> {
@@ -360,12 +356,7 @@ impl SceneToolbox {
             include_children: args.include_children.unwrap_or(false),
         };
         let ids = id_list(args.id, args.ids);
-        let (changed, note) = self.write(scope, "scene_write_transform", |world, rec, _| {
-            let changed = ops::transform_objects(world, rec, &ids, &edit)?;
-            let summary = format!("transformed {}", changed.join(", "));
-            Ok((changed, summary))
-        })?;
-        Ok(with_note(json!({ "changed": changed }), &note))
+        self.run_write(scope, WriteOp::Transform { ids, edit })
     }
 
     pub fn tool_add_component(&self, scope: &AgentRunScope, args: Value) -> Result<Value> {
@@ -375,18 +366,11 @@ impl SceneToolbox {
             "id, class_name (both required), properties {field.path: value}, enabled",
         )?;
         let spec = ComponentSpec {
-            class_name: args.class_name.clone(),
+            class_name: args.class_name,
             properties: args.properties,
             enabled: args.enabled,
         };
-        let (index, note) = self.write(scope, "scene_write_add_component", |world, rec, rules| {
-            let index = ops::add_component(world, rec, rules, &args.id, &spec)?;
-            Ok((index, format!("added {} to '{}'", spec.class_name, args.id)))
-        })?;
-        Ok(with_note(
-            json!({ "id": args.id, "class_name": args.class_name, "component_index": index }),
-            &note,
-        ))
+        self.run_write(scope, WriteOp::AddComponent { id: args.id, spec })
     }
 
     pub fn tool_set_component(&self, scope: &AgentRunScope, args: Value) -> Result<Value> {
@@ -395,27 +379,16 @@ impl SceneToolbox {
             args,
             "id (required), component_index or class_name (the first of that class), properties {field.path: value} (only named fields change), enabled",
         )?;
-        let ((index, class), note) =
-            self.write(scope, "scene_write_set_component", |world, rec, rules| {
-                let (index, class) = ops::edit_component(
-                    world,
-                    rec,
-                    rules,
-                    &args.id,
-                    ComponentEdit {
-                        component_index: args.component_index,
-                        class_name: args.class_name.as_deref(),
-                        properties: args.properties.as_ref(),
-                        enabled: args.enabled,
-                    },
-                )?;
-                let summary = format!("edited {class} on '{}'", args.id);
-                Ok(((index, class), summary))
-            })?;
-        Ok(with_note(
-            json!({ "id": args.id, "class_name": class, "component_index": index }),
-            &note,
-        ))
+        self.run_write(
+            scope,
+            WriteOp::SetComponent {
+                id: args.id,
+                component_index: args.component_index,
+                class_name: args.class_name,
+                properties: args.properties,
+                enabled: args.enabled,
+            },
+        )
     }
 
     pub fn tool_remove_component(&self, scope: &AgentRunScope, args: Value) -> Result<Value> {
@@ -424,31 +397,20 @@ impl SceneToolbox {
             args,
             "id (required), component_index or class_name",
         )?;
-        let (class, note) = self.write(scope, "scene_write_remove_component", |world, rec, _| {
-            let class = ops::remove_component(
-                world,
-                rec,
-                &args.id,
-                args.component_index,
-                args.class_name.as_deref(),
-            )?;
-            let summary = format!("removed {class} from '{}'", args.id);
-            Ok((class, summary))
-        })?;
-        Ok(with_note(json!({ "id": args.id, "removed": class }), &note))
+        self.run_write(
+            scope,
+            WriteOp::RemoveComponent {
+                id: args.id,
+                component_index: args.component_index,
+                class_name: args.class_name,
+            },
+        )
     }
 
     pub fn tool_delete(&self, scope: &AgentRunScope, args: Value) -> Result<Value> {
         let args: DeleteArgs = parse_args("scene_write_delete_object", args, "id or ids")?;
         let ids = id_list(args.id, args.ids);
-        let (removed, note) = self.write(scope, "scene_write_delete_object", |world, rec, _| {
-            let removed = ops::delete_objects(world, rec, &ids)?;
-            Ok((removed, format!("deleted {} (with descendants: {removed} object(s))", ids.join(", "))))
-        })?;
-        Ok(with_note(
-            json!({ "deleted": ids, "objects_removed": removed }),
-            &note,
-        ))
+        self.run_write(scope, WriteOp::Delete { ids })
     }
 
     pub fn tool_apply_sandbox(&self, args: Value) -> Result<Value> {

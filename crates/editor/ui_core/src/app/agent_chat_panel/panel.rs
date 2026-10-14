@@ -91,6 +91,11 @@ pub struct AgentChatPanel {
     pub(crate) cascade_settings: agent_runtime::CascadeSettings,
     /// Header badge set when the current run escalated.
     pub(crate) cascade_badge: Option<String>,
+    /// Scene sandbox mode and copy cap (.pulsar/agent_scene.json).
+    pub(crate) scene_settings: agent_scene_tools::SceneSettings,
+    /// Run whose revert skipped objects the user edited since; the safety bar
+    /// offers Revert anyway for it.
+    pub(crate) revert_conflict_run: Option<String>,
     /// External MCP servers (.pulsar/mcp.json); `None` when none are configured.
     pub(crate) mcp: Option<Arc<agent_mcp::McpManager>>,
     pub(crate) mcp_open: bool,

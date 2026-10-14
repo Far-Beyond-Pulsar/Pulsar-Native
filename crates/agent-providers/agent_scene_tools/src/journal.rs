@@ -85,6 +85,22 @@ impl Recorder {
         restore_before(world, &self.before)
     }
 
+    /// What was recorded: the state each touched object had before the first
+    /// write (`None` for an object the call created), in first-touch order.
+    pub(crate) fn entries(&self) -> &[(String, Option<ObjectSnapshot>)] {
+        &self.before
+    }
+
+    /// Take over the entries of `other` for objects not recorded yet (the
+    /// first capture wins, as within one recorder).
+    pub(crate) fn absorb(&mut self, other: Recorder) {
+        for (id, snapshot) in other.before {
+            if self.seen.insert(id.clone()) {
+                self.before.push((id, snapshot));
+            }
+        }
+    }
+
     pub(crate) fn into_before(self) -> Vec<(String, Option<ObjectSnapshot>)> {
         self.before
     }
@@ -116,6 +132,26 @@ pub(crate) fn restore_before(
     Ok(())
 }
 
+/// Ids among `expected` whose live state differs from the recorded one.
+pub(crate) fn changed_since(
+    world: &World,
+    expected: &[(String, Option<ObjectSnapshot>)],
+) -> Vec<String> {
+    let index = SceneIndex::build(world);
+    expected
+        .iter()
+        .filter(|(id, want)| {
+            let now = index.entity(id).and_then(|e| snapshot_object(world, &index, e));
+            match (&now, want) {
+                (None, None) => false,
+                (Some(a), Some(b)) => !crate::snapshot::snapshots_equal(a, b),
+                _ => true,
+            }
+        })
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
 /// One committed agent edit.
 pub struct SceneTransaction {
     pub seq: u64,
@@ -131,6 +167,9 @@ pub struct SceneTransaction {
     /// Identity of the scene it ran against (see [`TransactionLog::record`]).
     scene_key: usize,
     before: Vec<(String, Option<ObjectSnapshot>)>,
+    /// The touched objects as the transaction left them (`None`: gone), to
+    /// tell later edits by someone else from the agent's own.
+    after: Vec<(String, Option<ObjectSnapshot>)>,
 }
 
 /// What [`TransactionLog::revert_tree`] did.
@@ -140,6 +179,9 @@ pub struct RevertOutcome {
     pub objects: usize,
     /// Transactions that could not be undone and why.
     pub failed: Vec<String>,
+    /// Transactions left applied because an object they touched was changed
+    /// by someone else afterwards, with the objects.
+    pub conflicts: Vec<String>,
 }
 
 const MAX_TRANSACTIONS: usize = 1_000;
@@ -176,12 +218,21 @@ impl TransactionLog {
         tool: &str,
         summary: String,
         scene_key: usize,
+        world: &World,
         recorder: Recorder,
     ) -> Option<u64> {
         if recorder.is_empty() {
             return None;
         }
         let touched = recorder.touched();
+        let index = SceneIndex::build(world);
+        let after = touched
+            .iter()
+            .map(|id| {
+                let snapshot = index.entity(id).and_then(|e| snapshot_object(world, &index, e));
+                (id.clone(), snapshot)
+            })
+            .collect();
         let seq = self.next.fetch_add(1, Ordering::SeqCst) + 1;
         let mut items = self.items.lock();
         items.push(SceneTransaction {
@@ -195,6 +246,7 @@ impl TransactionLog {
             reverted: false,
             scene_key,
             before: recorder.into_before(),
+            after,
         });
         if items.len() > MAX_TRANSACTIONS {
             let overflow = items.len() - MAX_TRANSACTIONS;
@@ -225,7 +277,19 @@ impl TransactionLog {
     /// Undo the applied transactions of `root` and the runs below it, newest
     /// first, against `world` (the scene identified by `scene_key`).
     /// Transactions recorded against another scene are skipped and reported.
-    pub fn revert_tree(&self, root: &str, world: &mut World, scene_key: usize) -> RevertOutcome {
+    ///
+    /// A transaction whose objects were changed by someone else since (the
+    /// live state no longer equals what the transaction left) is skipped as a
+    /// whole and listed in [`RevertOutcome::conflicts`], so the user's later
+    /// edits are not clobbered; it stays applied and a retry with `force`
+    /// restores it anyway.
+    pub fn revert_tree(
+        &self,
+        root: &str,
+        world: &mut World,
+        scene_key: usize,
+        force: bool,
+    ) -> RevertOutcome {
         let mut items = self.items.lock();
         let mut outcome = RevertOutcome::default();
         for tx in items.iter_mut().rev() {
@@ -238,6 +302,24 @@ impl TransactionLog {
                     tx.seq, tx.tool
                 ));
                 continue;
+            }
+            if !force {
+                let changed = changed_since(world, &tx.after);
+                if !changed.is_empty() {
+                    outcome.conflicts.push(format!(
+                        "#{} ({}) not undone: {} changed since the agent's edit",
+                        tx.seq,
+                        tx.tool,
+                        changed
+                            .iter()
+                            .take(6)
+                            .map(|id| format!("'{id}'"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                            + if changed.len() > 6 { ", ..." } else { "" },
+                    ));
+                    continue;
+                }
             }
             match restore_before(world, &tx.before) {
                 Ok(()) => {

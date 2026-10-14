@@ -63,6 +63,13 @@ pub trait RunExtension: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// [`Self::revert`], optionally overwriting what someone else changed
+    /// since the run's edits. The default ignores `force`.
+    fn revert_with(&self, run_id: &str, force: bool) -> Result<Vec<String>, String> {
+        let _ = force;
+        self.revert(run_id)
+    }
+
     /// `(section name, body)` pairs appended to the report of the finished
     /// child run `run_id`.
     fn report_sections(&self, _run_id: &str) -> Vec<(String, String)> {
@@ -119,13 +126,19 @@ pub fn extensions_have_undo(run_id: &str) -> bool {
 /// Revert the run tree in every extension. Returns the notes of what was
 /// undone and the errors, so one failing extension does not hide the rest.
 pub fn revert_extensions(run_id: &str) -> (Vec<String>, Vec<String>) {
+    revert_extensions_with(run_id, false)
+}
+
+/// [`revert_extensions`]; with `force` an extension overwrites changes made
+/// by someone else since the run's edits instead of reporting them.
+pub fn revert_extensions_with(run_id: &str, force: bool) -> (Vec<String>, Vec<String>) {
     let mut notes = Vec::new();
     let mut errors = Vec::new();
     for extension in snapshot() {
         if !extension.has_undo(run_id) {
             continue;
         }
-        match extension.revert(run_id) {
+        match extension.revert_with(run_id, force) {
             Ok(mut part) => notes.append(&mut part),
             Err(err) => errors.push(format!("{}: {err}", extension.name())),
         }

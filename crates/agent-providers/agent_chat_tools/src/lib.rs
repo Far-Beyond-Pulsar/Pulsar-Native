@@ -30,6 +30,10 @@ pub struct AgentRunScope {
     /// The run edits a private fork instead of the live project; its changes
     /// come back as a diff for review.
     pub sandbox: bool,
+    /// The harness's own choice of sandbox mode (`overlay`, `copy` or `off`),
+    /// as written in its `sandbox:` frontmatter; `None` uses the project
+    /// default. The scene tools interpret it, this crate only carries it.
+    pub sandbox_mode: Option<String>,
 }
 
 const RUN_SCOPE_KEY: &str = "agent_run_scope";

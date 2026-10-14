@@ -156,6 +156,7 @@ Ranked by value over effort. Each is independent.
 3. **Branching scene sandboxes** (ground-breaking): a child run edits a *forked* SceneDB world
    (journals make this cheap), returns a diff, and the parent or user merges it like a PR.
    Parallel sub-agents then cannot conflict.
+   Modes (.pulsar/agent_scene.json, harness sandbox: overrides): overlay (default; recorded ops over a read-through view of the live scene, no copy, apply replays the diff as one transaction with the conflict check), copy (full fork, capped by copy_max_objects), off (writes go live). Agent scene edits mark the level dirty; editor undo-stack integration is deferred (whole-scene history snapshots per entry; the run Revert is conflict-aware and skips objects the user edited since, orce overrides).
 4. **Closed visual loop**: `run_and_observe` tool builds and runs the game or renders a Helio frame,
    returns a screenshot plus log tail to a vision-capable model, so agents verify their own changes.
 5. **Cascade routing**: tiny local model first; escalate to a larger model on tool-call failure,

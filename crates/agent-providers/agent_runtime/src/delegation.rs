@@ -578,6 +578,11 @@ impl ChildJob {
             permissions == HarnessPermissions::ReadOnly,
         );
         config.safety.sandbox |= self.harness.sandbox;
+        // A harness's own mode choice applies to its run (and below); a
+        // harness that says nothing keeps what the parent run set.
+        if self.harness.sandbox_mode.is_some() {
+            config.safety.sandbox_mode = self.harness.sandbox_mode.clone();
+        }
 
         // Small-context (Lite) children do not delegate further.
         let child_budget = if profile.is_lite() {

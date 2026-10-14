@@ -1483,6 +1483,7 @@ impl Render for AgentChatPanel {
                             .child(self.render_plan_memory_controls(cx))
                             .child(self.render_steward_controls(cx))
                             .child(self.render_cascade_controls(cx))
+                            .child(self.render_scene_sandbox_controls(cx))
                             .children(self.render_mcp_button(cx))
                             .child(self.render_confirm_policy_button(cx))
                             .child(

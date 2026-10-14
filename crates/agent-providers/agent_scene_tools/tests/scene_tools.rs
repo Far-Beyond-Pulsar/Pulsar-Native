@@ -321,7 +321,7 @@ fn each_call_is_one_attributed_transaction_and_a_run_reverts_exactly() {
 
     let outcome = {
         let mut db = r.scene.write();
-        r.tb.log().revert_tree("run-1", &mut db.world, scene_key(&r))
+        r.tb.log().revert_tree("run-1", &mut db.world, scene_key(&r), false)
     };
     assert_eq!(outcome.reverted, 5, "{outcome:?}");
     assert!(outcome.failed.is_empty());
@@ -330,7 +330,7 @@ fn each_call_is_one_attributed_transaction_and_a_run_reverts_exactly() {
     // Reverting twice does nothing more.
     let again = {
         let mut db = r.scene.write();
-        r.tb.log().revert_tree("run-1", &mut db.world, scene_key(&r))
+        r.tb.log().revert_tree("run-1", &mut db.world, scene_key(&r), false)
     };
     assert_eq!(again.reverted, 0);
 }
@@ -364,7 +364,7 @@ fn revert_refuses_a_scene_that_is_no_longer_open() {
     let r = rig();
     r.ok("scene_write_spawn_object", json!({"name": "A", "id": "a"}), "run-1");
     let mut other = pulsar_scenedb::SceneDb::new();
-    let outcome = r.tb.log().revert_tree("run-1", &mut other.world, 12345);
+    let outcome = r.tb.log().revert_tree("run-1", &mut other.world, 12345, false);
     assert_eq!(outcome.reverted, 0);
     assert_eq!(outcome.failed.len(), 1);
     assert!(outcome.failed[0].contains("no longer open"));

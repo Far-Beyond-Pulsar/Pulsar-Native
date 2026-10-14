@@ -93,6 +93,9 @@ pub struct SafetyConfig {
     /// run below one): domain tools keep its changes away from the live
     /// project and return them as a diff. Stamped on the tool context.
     pub sandbox: bool,
+    /// The harness's `sandbox:` mode choice (`overlay`, `copy`, `off`), passed
+    /// on as written; `None` leaves it to the project's setting.
+    pub sandbox_mode: Option<String>,
 }
 
 impl SafetyConfig {
@@ -109,6 +112,7 @@ impl SafetyConfig {
             taint: TaintTracker::new(parent_tainted),
             read_only: self.read_only || read_only,
             sandbox: self.sandbox,
+            sandbox_mode: self.sandbox_mode.clone(),
         }
     }
 
@@ -133,6 +137,7 @@ impl Default for SafetyConfig {
             taint: TaintTracker::default(),
             read_only: false,
             sandbox: false,
+            sandbox_mode: None,
         }
     }
 }

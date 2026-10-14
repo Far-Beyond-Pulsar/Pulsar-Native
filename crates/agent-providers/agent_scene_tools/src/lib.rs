@@ -13,9 +13,13 @@
 //!   replaced under the author `agent:<run_id>`, and rolled back as a whole
 //!   when it fails. The run's revert button (and `revert_checkpoint_tree`)
 //!   undoes a run's transactions, children's included.
-//! - **Sandboxes** ([`sandbox`]): a run marked `sandbox` edits a private fork
-//!   of the scene and returns a diff in its report; applying it replays the
-//!   diff into the live scene as one transaction.
+//! - **Sandboxes** ([`sandbox`], [`overlay`]): a run marked `sandbox` edits
+//!   without touching the live scene and returns a diff in its report;
+//!   applying it replays the diff into the live scene as one transaction.
+//!   [`SandboxMode`] picks how: `overlay` (default; recorded ops over a
+//!   read-through view, no copy), `copy` (a full private copy of the scene)
+//!   or `off` (writes go live). Resolution: harness `sandbox:` value, then
+//!   `.pulsar/agent_scene.json` ([`SceneSettings`]), then the default.
 //!
 //! Scene knowledge lives here and in the scene crates; `agent_runtime` only
 //! knows the [`agent_runtime::RunExtension`] trait this crate implements.
@@ -30,11 +34,14 @@
 mod ext;
 pub mod journal;
 pub mod ops;
+pub mod overlay;
 pub mod sandbox;
+pub mod settings;
 pub mod snapshot;
 pub mod source;
 mod toolbox;
 mod tools;
+pub mod write_op;
 
 use std::sync::{Arc, OnceLock};
 
@@ -43,6 +50,7 @@ pub use ext::SceneExtension;
 pub use pulsar_scenedb::{Entity, World};
 pub use journal::{author_of, Recorder, SceneTransaction, TransactionLog};
 pub use sandbox::{ApplyReport, Fork, SceneDiff, SceneImage};
+pub use settings::{resolve_mode, SandboxMode, SceneSettings, DEFAULT_COPY_MAX_OBJECTS};
 pub use source::{FixedScene, SceneSource, SharedScene};
 pub use toolbox::{SceneToolbox, WriteNote};
 pub use tools::{register_tools, READ_TOOLS, WRITE_TOOLS};

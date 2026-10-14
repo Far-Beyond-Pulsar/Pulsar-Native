@@ -42,6 +42,10 @@ impl RunExtension for SceneExtension {
         self.toolbox.revert_tree(run_id)
     }
 
+    fn revert_with(&self, run_id: &str, force: bool) -> Result<Vec<String>, String> {
+        self.toolbox.revert_tree_with(run_id, force)
+    }
+
     fn report_sections(&self, run_id: &str) -> Vec<(String, String)> {
         self.toolbox.finish_sandbox(run_id)
     }

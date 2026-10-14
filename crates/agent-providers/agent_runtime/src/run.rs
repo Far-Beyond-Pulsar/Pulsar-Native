@@ -903,6 +903,7 @@ fn make_context(config: &RunConfig, sink: &EventSink) -> ToolContext {
         agent_chat_tools::AgentRunScope {
             run_id: config.safety.run_id.clone(),
             sandbox: config.safety.sandbox,
+            sandbox_mode: config.safety.sandbox_mode.clone(),
         },
     );
     ctx

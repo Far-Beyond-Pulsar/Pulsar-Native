@@ -2,7 +2,11 @@
 //! come back as a diff, applied (or discarded) by the user like a pull
 //! request.
 //!
-//! # How the fork works, and what SceneDB offers
+//! Two modes share the review flow (diff, apply, discard): the **copy** fork
+//! described below, and the **overlay** ([`crate::overlay`]), which records
+//! the run's validated operations over the live scene instead of copying it.
+//!
+//! # How the copy fork works, and what SceneDB offers
 //!
 //! SceneDB has no world fork or snapshot-for-merge: `World` is not `Clone`,
 //! its replication `Snapshot` is a network resync format that needs a
@@ -33,13 +37,15 @@ use pulsar_scenedb::World;
 use serde_json::{json, Value};
 
 use crate::journal::Recorder;
+use crate::overlay::Overlay;
+use crate::settings::SandboxMode;
 use crate::snapshot::{
     apply_snapshot, apply_snapshots, capture_all, instance_equal, instance_json, snapshots_equal,
     ObjectSnapshot, SceneIndex,
 };
 
-/// Largest scene a sandbox will fork.
-pub const MAX_FORK_OBJECTS: usize = 50_000;
+/// Largest scene a copy sandbox forks by default.
+pub const MAX_FORK_OBJECTS: usize = crate::settings::DEFAULT_COPY_MAX_OBJECTS;
 
 /// The objects of a world at one moment, parents first.
 #[derive(Clone, Default)]
@@ -68,10 +74,21 @@ impl SceneImage {
 
 // ── Fork ─────────────────────────────────────────────────────────────────────
 
-/// A private copy of the scene and the record of what its run did to it.
+/// Where a sandbox keeps the run's edits.
+pub enum ForkState {
+    /// A private copy of the whole scene.
+    Copy(World),
+    /// Recorded operations over the live scene; no copy.
+    Overlay(Overlay),
+}
+
+/// A sandbox: a private copy of the scene (`copy` mode) or a recorded-ops
+/// overlay (`overlay` mode), and the record of what its run did.
 pub struct Fork {
     pub key: String,
-    pub world: World,
+    pub state: ForkState,
+    /// `copy`: the scene as forked. `overlay`: the objects the run touched,
+    /// as they were when first touched (set when the run finishes).
     pub base: SceneImage,
     /// One line per write the run made.
     pub ops: Vec<String>,
@@ -83,16 +100,38 @@ pub struct Fork {
 }
 
 impl Fork {
-    /// Copy `live` into a fresh world.
-    pub fn create(key: &str, live: &World) -> Result<Self, String> {
-        let base = SceneImage::capture(live);
-        if base.order.len() > MAX_FORK_OBJECTS {
+    pub fn mode(&self) -> SandboxMode {
+        match self.state {
+            ForkState::Copy(_) => SandboxMode::Copy,
+            ForkState::Overlay(_) => SandboxMode::Overlay,
+        }
+    }
+
+    /// An overlay sandbox: nothing is copied.
+    pub fn overlay(key: &str) -> Self {
+        Self {
+            key: key.to_string(),
+            state: ForkState::Overlay(Overlay::new()),
+            base: SceneImage::default(),
+            ops: Vec::new(),
+            finished: false,
+            diff: None,
+            review: None,
+        }
+    }
+
+    /// Copy `live` into a fresh world. `max_objects` caps the scene size
+    /// (0 = unlimited); a larger scene is refused before anything is copied.
+    pub fn create(key: &str, live: &World, max_objects: usize) -> Result<Self, String> {
+        let count = SceneIndex::build(live).len();
+        if max_objects != 0 && count > max_objects {
             return Err(format!(
-                "The scene has {} objects; a sandbox copies the scene and is limited to {MAX_FORK_OBJECTS}. \
-                 Edit the live scene instead, or work on a smaller level.",
-                base.order.len()
+                "The scene has {count} objects; a copy sandbox duplicates the whole scene and is limited \
+                 to {max_objects} (copy_max_objects in .pulsar/agent_scene.json, 0 = unlimited). \
+                 Use the overlay sandbox mode, which copies nothing, or edit the live scene directly.",
             ));
         }
+        let base = SceneImage::capture(live);
         let mut world = World::new();
         let mut ids = HashMap::with_capacity(base.order.len());
         let snapshots: Vec<ObjectSnapshot> = base.ordered().cloned().collect();
@@ -100,7 +139,7 @@ impl Fork {
             .map_err(|e| format!("Could not fork the scene: {e}"))?;
         Ok(Self {
             key: key.to_string(),
-            world,
+            state: ForkState::Copy(world),
             base,
             ops: Vec::new(),
             finished: false,
@@ -109,9 +148,14 @@ impl Fork {
         })
     }
 
-    /// Compare the fork's current state with the image it started from.
+    /// Compare a copy fork's current state with the image it started from.
+    /// (An overlay computes its diff against the live scene, see
+    /// [`Overlay::finish`].)
     pub fn compute_diff(&self) -> SceneDiff {
-        SceneDiff::compute(&self.base, &SceneImage::capture(&self.world))
+        match &self.state {
+            ForkState::Copy(world) => SceneDiff::compute(&self.base, &SceneImage::capture(world)),
+            ForkState::Overlay(_) => SceneDiff::default(),
+        }
     }
 }
 

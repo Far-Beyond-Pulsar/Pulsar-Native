@@ -329,8 +329,19 @@ pub fn snapshots_equal(a: &ObjectSnapshot, b: &ObjectSnapshot) -> bool {
             .all(|(x, y)| instances_equal(x, y))
 }
 
+thread_local! {
+    static FULL_CAPTURES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many whole-scene snapshots the calling thread has taken. Only a copy
+/// sandbox takes them; tests use it to show an overlay does not.
+pub fn full_capture_count() -> usize {
+    FULL_CAPTURES.with(|c| c.get())
+}
+
 /// Every object in the world, parents first.
 pub fn capture_all(world: &World) -> Vec<ObjectSnapshot> {
+    FULL_CAPTURES.with(|c| c.set(c.get() + 1));
     let index = SceneIndex::build(world);
     index
         .all_ordered()
