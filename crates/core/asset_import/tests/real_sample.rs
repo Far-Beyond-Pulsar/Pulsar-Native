@@ -24,7 +24,10 @@ fn run(source: &Path, out: &Path, previous: &[asset_import::ImportOutput]) -> Im
             source,
             &out.join("BrainStem.mesh"),
             &OptionValues::new(),
-            &Previous { project_root: out, outputs: previous },
+            &Previous {
+                project_root: out,
+                outputs: previous,
+            },
         )
         .expect("imports")
 }
@@ -42,13 +45,24 @@ fn a_real_rigged_model_imports_consistently() {
     std::fs::create_dir_all(&out).unwrap();
 
     let first = run(&source, &out, &[]);
-    let skeleton_path = out.join(&first.outputs.iter().find(|o| o.kind == "skeleton").unwrap().path);
+    let skeleton_path = out.join(
+        &first
+            .outputs
+            .iter()
+            .find(|o| o.kind == "skeleton")
+            .unwrap()
+            .path,
+    );
     let skeleton = load_skeleton_asset(&skeleton_path).unwrap();
     let mesh = load_skmesh_asset(&first.asset).unwrap();
     assert_eq!(mesh.skeleton, Some(skeleton.id.clone()));
     let issues = validate_mesh(&mesh, Some(&skeleton.skeleton()));
     assert!(issues.is_empty(), "{issues:?}");
-    let anims: Vec<_> = first.outputs.iter().filter(|o| o.kind == "animseq").collect();
+    let anims: Vec<_> = first
+        .outputs
+        .iter()
+        .filter(|o| o.kind == "animseq")
+        .collect();
     assert!(!anims.is_empty());
     for a in &anims {
         let seq = load_animseq_asset(&out.join(&a.path)).unwrap();
@@ -59,7 +73,12 @@ fn a_real_rigged_model_imports_consistently() {
     let s = mesh.stats();
     eprintln!(
         "bones {} joints {} verts {} tris {} maxinf {} anims {}",
-        skeleton.bones.len(), s.joints, s.vertices, s.triangles, s.max_influences, anims.len()
+        skeleton.bones.len(),
+        s.joints,
+        s.vertices,
+        s.triangles,
+        s.max_influences,
+        anims.len()
     );
 
     let second = run(&source, &out, &first.outputs);

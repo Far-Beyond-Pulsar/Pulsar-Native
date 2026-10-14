@@ -297,8 +297,9 @@ fn properties_panel_layout_budget(cx: &mut TestAppContext) {
     );
 }
 
-/// Placeholder until measured; tightened to the post-fix number.
-const PROPERTIES_PANEL_TAFFY_NODE_BUDGET: u64 = u64::MAX;
+/// Measured at 73 nodes per dirty frame for the five heaviest classes; the
+/// headroom absorbs a field or two, not a card that rebuilds its subtree.
+const PROPERTIES_PANEL_TAFFY_NODE_BUDGET: u64 = 90;
 
 // ── Per-widget layout cost bisect ───────────────────────────────────────────
 

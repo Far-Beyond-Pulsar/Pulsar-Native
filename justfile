@@ -47,8 +47,9 @@ test-crate name:
 clippy:
     cargo clippy --workspace -- -D warnings
 
+# Pulsar-Native's own crates; submodules format in their own repos (#1375).
 fmt:
-    cargo fmt --all
+    scripts/fmt-check.sh --fix
 
 # ── Codegen drift guard (#652) ────────────────────────────────────────────────
 # Fast always-on probes: PBGC-generated blueprint actors compiled against the

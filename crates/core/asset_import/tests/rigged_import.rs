@@ -8,10 +8,14 @@ use asset_import::{importer_for, ImportDb, ImportMode, Imported, OptionValues, P
 use editor_task_queue::{TaskId, TaskStatus};
 use parking_lot::Mutex;
 use skeletal_assets::animation::{evaluate_world_transforms, AnimationClip};
-use skeletal_assets::assets::{load_animseq_asset, load_skeleton_asset, AnimSeqAsset, SkeletonAsset};
+use skeletal_assets::assets::{
+    load_animseq_asset, load_skeleton_asset, AnimSeqAsset, SkeletonAsset,
+};
 use skeletal_assets::math::Vec3;
 use skeletal_assets::skinning::{joint_matrices, skin_lod};
-use skeletal_assets::skmesh::{load_skmesh_asset, save_skmesh_asset, validate_mesh, SkeletalMeshAsset};
+use skeletal_assets::skmesh::{
+    load_skmesh_asset, save_skmesh_asset, validate_mesh, SkeletalMeshAsset,
+};
 
 // ── The model ──────────────────────────────────────────────────────────────
 
@@ -27,7 +31,10 @@ fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     for chunk in bytes.chunks(3) {
-        let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
         for i in 0..4 {
             if i <= chunk.len() {
                 out.push(ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -57,7 +64,9 @@ fn rigged_gltf() -> String {
         // 1: joints
         u16s(&[0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0]),
         // 2: weights
-        f32s(&[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.25, 0.75, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]),
+        f32s(&[
+            1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.25, 0.75, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+        ]),
         // 3: indices
         u16s(&[0, 1, 2, 2, 1, 3]),
         // 4: inverse bind matrices (Root: identity, Arm: translate -1 in X)
@@ -88,7 +97,13 @@ fn rigged_gltf() -> String {
         )
     };
     let accessors = [
-        accessor(0, 5126, 4, "VEC3", r#", "min": [0, 0, 0], "max": [2, 1, 0]"#),
+        accessor(
+            0,
+            5126,
+            4,
+            "VEC3",
+            r#", "min": [0, 0, 0], "max": [2, 1, 0]"#,
+        ),
         accessor(1, 5123, 4, "VEC4", ""),
         accessor(2, 5126, 4, "VEC4", ""),
         accessor(3, 5123, 6, "SCALAR", ""),
@@ -139,7 +154,9 @@ struct Project {
 
 impl Project {
     fn new() -> Self {
-        Self { dir: tempfile::tempdir().unwrap() }
+        Self {
+            dir: tempfile::tempdir().unwrap(),
+        }
     }
 
     fn root(&self) -> &Path {
@@ -160,14 +177,21 @@ impl Project {
                 &source,
                 &self.root().join("rig.mesh"),
                 &OptionValues::new(),
-                &Previous { project_root: self.root(), outputs: previous },
+                &Previous {
+                    project_root: self.root(),
+                    outputs: previous,
+                },
             )
             .expect("the rigged model imports")
     }
 }
 
 fn path_of(imported: &Imported, root: &Path, kind: &str) -> PathBuf {
-    let output = imported.outputs.iter().find(|o| o.kind == kind).unwrap_or_else(|| panic!("no {kind} output"));
+    let output = imported
+        .outputs
+        .iter()
+        .find(|o| o.kind == kind)
+        .unwrap_or_else(|| panic!("no {kind} output"));
     root.join(&output.path)
 }
 
@@ -177,7 +201,11 @@ fn near(a: Vec3, b: Vec3) {
 
 fn wait(id: TaskId) -> (TaskStatus, Option<String>) {
     for _ in 0..1200 {
-        if let Some(snapshot) = editor_task_queue::global().snapshots().into_iter().find(|s| s.id == id) {
+        if let Some(snapshot) = editor_task_queue::global()
+            .snapshots()
+            .into_iter()
+            .find(|s| s.id == id)
+        {
             if !matches!(snapshot.status, TaskStatus::Queued | TaskStatus::Running) {
                 return (snapshot.status, snapshot.error);
             }
@@ -195,8 +223,15 @@ fn a_rigged_model_imports_to_a_skeleton_a_mesh_and_animations_linked_by_id() {
     let imported = project.import(&[]);
     let root = project.root();
 
-    assert_eq!(imported.asset, root.join("rig.skmesh"), "the skeletal mesh is the primary asset");
-    assert!(!root.join("rig.mesh").exists(), "no static mesh is written for a rigged model");
+    assert_eq!(
+        imported.asset,
+        root.join("rig.skmesh"),
+        "the skeletal mesh is the primary asset"
+    );
+    assert!(
+        !root.join("rig.mesh").exists(),
+        "no static mesh is written for a rigged model"
+    );
     let kinds: Vec<&str> = imported.outputs.iter().map(|o| o.kind.as_str()).collect();
     assert_eq!(kinds, ["skeleton", "skmesh", "animseq", "animseq"]);
 
@@ -205,8 +240,14 @@ fn a_rigged_model_imports_to_a_skeleton_a_mesh_and_animations_linked_by_id() {
     let ids: Vec<&str> = skeleton.bones.iter().map(|b| b.id.as_str()).collect();
     assert_eq!(ids, ["Root", "Arm"]);
     assert_eq!(skeleton.bones[1].parent.as_deref(), Some("Root"));
-    near(skeleton.bones[1].bind_transform.translation, Vec3::new(1.0, 0.0, 0.0));
-    assert_eq!(imported.outputs[0].id.as_deref(), Some(skeleton.id.as_str()));
+    near(
+        skeleton.bones[1].bind_transform.translation,
+        Vec3::new(1.0, 0.0, 0.0),
+    );
+    assert_eq!(
+        imported.outputs[0].id.as_deref(),
+        Some(skeleton.id.as_str())
+    );
 
     // Skeletal mesh: refers to that skeleton by id, and is consistent with it.
     let mesh = load_skmesh_asset(&imported.asset).unwrap();
@@ -217,7 +258,10 @@ fn a_rigged_model_imports_to_a_skeleton_a_mesh_and_animations_linked_by_id() {
     assert_eq!(mesh.joints[1].inverse_bind[12], -1.0);
     assert!(validate_mesh(&mesh, Some(&skeleton.skeleton())).is_empty());
     let stats = mesh.stats();
-    assert_eq!((stats.vertices, stats.triangles, stats.max_influences), (4, 2, 2));
+    assert_eq!(
+        (stats.vertices, stats.triangles, stats.max_influences),
+        (4, 2, 2)
+    );
     assert_eq!(mesh.material_slots.len(), 1);
     assert_eq!(mesh.material_slots[0].name, "Skin");
     assert_eq!(mesh.lods[0].sections.len(), 1);
@@ -226,11 +270,19 @@ fn a_rigged_model_imports_to_a_skeleton_a_mesh_and_animations_linked_by_id() {
     assert_eq!(skeleton.preview_mesh, Some(mesh.id.clone()));
 
     // Skinned at the bind pose, every vertex is where the source put it.
-    let bind = AnimationClip { name: "Bind".into(), duration: 1.0, fps: 30.0, tracks: Vec::new() };
+    let bind = AnimationClip {
+        name: "Bind".into(),
+        duration: 1.0,
+        fps: 30.0,
+        tracks: Vec::new(),
+    };
     let world = evaluate_world_transforms(&skeleton.skeleton(), &bind, 0.0);
     let posed = skin_lod(&mesh.lods[0], &joint_matrices(&mesh, &world));
     for (posed, vertex) in posed.iter().zip(&mesh.lods[0].vertices) {
-        near(posed.position, Vec3::new(vertex.position[0], vertex.position[1], vertex.position[2]));
+        near(
+            posed.position,
+            Vec3::new(vertex.position[0], vertex.position[1], vertex.position[2]),
+        );
     }
     near(posed[2].position, Vec3::new(1.0, 1.0, 0.0));
 
@@ -292,7 +344,10 @@ fn reimporting_keeps_every_id_and_the_edits_made_since() {
     let again = load_skmesh_asset(&second.asset).unwrap();
     assert_eq!(again.id, mesh.id);
     assert_eq!(again.skeleton, Some(skeleton.id.clone()));
-    assert_eq!(again.material_slots[0].material.as_deref(), Some("materials/Skin.mat"));
+    assert_eq!(
+        again.material_slots[0].material.as_deref(),
+        Some("materials/Skin.mat")
+    );
     let skeleton_again = load_skeleton_asset(&skeleton_path).unwrap();
     assert_eq!(skeleton_again.id, skeleton.id);
     assert_eq!(skeleton_again.preview_mesh, Some(other));
@@ -306,7 +361,9 @@ fn a_moved_output_is_found_by_its_id_and_a_deleted_one_comes_back_with_it() {
     let project = Project::new();
     let root = project.root();
     let first = project.import(&[]);
-    let skeleton_id = load_skeleton_asset(&path_of(&first, root, "skeleton")).unwrap().id;
+    let skeleton_id = load_skeleton_asset(&path_of(&first, root, "skeleton"))
+        .unwrap()
+        .id;
     let mesh_id = load_skmesh_asset(&first.asset).unwrap().id;
 
     // Moved and renamed in the file manager.
@@ -317,8 +374,15 @@ fn a_moved_output_is_found_by_its_id_and_a_deleted_one_comes_back_with_it() {
     std::fs::remove_file(&first.asset).unwrap();
 
     let second = project.import(&first.outputs);
-    assert_eq!(path_of(&second, root, "skeleton"), moved, "rewritten where it now is");
-    assert!(!root.join("rig.skeleton").exists(), "not recreated beside the moved one");
+    assert_eq!(
+        path_of(&second, root, "skeleton"),
+        moved,
+        "rewritten where it now is"
+    );
+    assert!(
+        !root.join("rig.skeleton").exists(),
+        "not recreated beside the moved one"
+    );
     assert_eq!(load_skeleton_asset(&moved).unwrap().id, skeleton_id);
     let mesh = load_skmesh_asset(&second.asset).unwrap();
     assert_eq!(mesh.id, mesh_id, "recreated with the id it had");
@@ -331,11 +395,22 @@ fn a_new_import_never_overwrites_an_unrelated_file() {
     let root = project.root();
     std::fs::write(root.join("rig.skeleton"), "mine").unwrap();
     let imported = project.import(&[]);
-    assert_eq!(std::fs::read_to_string(root.join("rig.skeleton")).unwrap(), "mine");
-    assert_eq!(path_of(&imported, root, "skeleton"), root.join("rig 2.skeleton"));
+    assert_eq!(
+        std::fs::read_to_string(root.join("rig.skeleton")).unwrap(),
+        "mine"
+    );
+    assert_eq!(
+        path_of(&imported, root, "skeleton"),
+        root.join("rig 2.skeleton")
+    );
     // The mesh still refers to the skeleton that was written.
-    let skeleton = SkeletonAsset::parse(&std::fs::read_to_string(root.join("rig 2.skeleton")).unwrap()).unwrap();
-    assert_eq!(load_skmesh_asset(&imported.asset).unwrap().skeleton, Some(skeleton.id));
+    let skeleton =
+        SkeletonAsset::parse(&std::fs::read_to_string(root.join("rig 2.skeleton")).unwrap())
+            .unwrap();
+    assert_eq!(
+        load_skmesh_asset(&imported.asset).unwrap().skeleton,
+        Some(skeleton.id)
+    );
 }
 
 #[test]
@@ -355,7 +430,10 @@ fn an_animation_the_source_lost_stays_on_disk_and_in_the_record() {
     });
     let second = project.import(&earlier);
     assert!(gone.exists());
-    assert!(second.outputs.iter().any(|o| o.source_name.as_deref() == Some("Gone")));
+    assert!(second
+        .outputs
+        .iter()
+        .any(|o| o.source_name.as_deref() == Some("Gone")));
 }
 
 #[test]
@@ -371,8 +449,19 @@ fn linked_import_records_every_output_and_reimport_keeps_the_ids() {
     let record = db.find_source("rig.gltf").expect("linked");
     assert_eq!(record.asset, "rig.skmesh");
     let paths: Vec<&str> = record.outputs.iter().map(|o| o.path.as_str()).collect();
-    assert_eq!(paths, ["rig.skeleton", "rig.skmesh", "rig_Wave.animseq", "rig_Bob.animseq"]);
-    assert!(db.find_asset("rig.skeleton").is_some(), "every output is linked to the source");
+    assert_eq!(
+        paths,
+        [
+            "rig.skeleton",
+            "rig.skmesh",
+            "rig_Wave.animseq",
+            "rig_Bob.animseq"
+        ]
+    );
+    assert!(
+        db.find_asset("rig.skeleton").is_some(),
+        "every output is linked to the source"
+    );
     assert!(db.find_asset("rig_Bob.animseq").is_some());
     let before = record.outputs.clone();
 
@@ -389,7 +478,8 @@ fn a_static_model_still_imports_to_a_plain_mesh_with_no_extra_outputs() {
     let project = Project::new();
     let root = project.root().to_path_buf();
     let source = root.join("cube.fbx");
-    let cube = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/meshes/primitives/SM_Cube.fbx");
+    let cube =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/meshes/primitives/SM_Cube.fbx");
     std::fs::copy(cube, &source).unwrap();
     let options = Arc::new(Mutex::new(OptionValues::new()));
 

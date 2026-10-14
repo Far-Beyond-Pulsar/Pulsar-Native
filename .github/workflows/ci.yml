@@ -61,16 +61,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # The workspace manifest names members inside submodules, so cargo
+      # cannot load it without them.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          submodules: recursive
 
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           cache: false
 
+      # Pulsar-Native's own crates; the submodules' code is checked by their
+      # own repositories (#1375).
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: scripts/fmt-check.sh
 
   # Workflow files are code: lint them so a typo fails here, not at 3am.
   workflows:
@@ -116,10 +121,16 @@ jobs:
 
       # clippy is a superset of `cargo check`, so it replaces it here: one
       # compile of the workspace instead of two. The allow-list is the one the
-      # release gate has always used.
+      # release gate has always used. The crates under crates/third-party are
+      # members only because they are path dependencies under the workspace
+      # root; they are submodules, linted by their own repositories (#1375).
+      # They are still compiled here as dependencies.
       - name: clippy (includes cargo check)
         run: |
-          cargo clippy --workspace --exclude pulsar_docs --all-targets -- \
+          third_party=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.manifest_path | contains("/crates/third-party/")) | "--exclude=" + .name')
+          # shellcheck disable=SC2086 # one --exclude per word
+          cargo clippy --workspace --exclude pulsar_docs $third_party --all-targets -- \
             -A warnings \
             -A dead_code \
             -A clippy::too_many_arguments \
