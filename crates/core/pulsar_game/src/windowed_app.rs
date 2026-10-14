@@ -46,6 +46,8 @@ struct GameWindow {
     /// cannot present (occluded, minimised) and, with several game copies
     /// running, the ones nobody is looking at.
     next_redraw: Instant,
+    /// Built with the editor's overlays (kept to rebuild it on a new device).
+    editor_mode: bool,
 }
 
 /// Frame interval of an unfocused window when several game copies are running.
@@ -70,7 +72,7 @@ impl GameWindow {
         adapter: &wgpu::Adapter,
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
-        desc: &WindowDescriptor,
+        editor_mode: bool,
         scene_store: &engine_backend::scene::SharedScene,
     ) -> Self {
         let surface = instance
@@ -120,7 +122,7 @@ impl GameWindow {
                 surface_config.height,
                 surface_format,
             ),
-            desc.editor_mode,
+            editor_mode,
             crate::game_renderer::DeviceOwner::Game,
         );
 
@@ -135,6 +137,7 @@ impl GameWindow {
             freecam: FreeCam::default(),
             focused: true,
             next_redraw: Instant::now(),
+            editor_mode,
         }
     }
 
@@ -248,6 +251,8 @@ struct GpuContext {
     adapter: Option<wgpu::Adapter>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
+    /// Whether `device` was lost (`PulsarApp::recover_lost_device`).
+    device_loss: Option<engine_backend::services::device_loss::DeviceLoss>,
     power_preference: wgpu::PowerPreference,
     hardware_ray_queries: bool,
 }
@@ -291,6 +296,7 @@ impl GpuContext {
             adapter: None,
             device: None,
             queue: None,
+            device_loss: None,
             power_preference,
             hardware_ray_queries,
         }
@@ -344,6 +350,9 @@ impl GpuContext {
             "GPU initialised"
         );
 
+        self.device_loss = Some(engine_backend::services::device_loss::DeviceLoss::watch(
+            &device,
+        ));
         self.adapter = Some(adapter);
         self.device = Some(Arc::new(device));
         self.queue = Some(Arc::new(queue));
@@ -458,6 +467,60 @@ impl PulsarApp {
         self.cursor_captured = false;
     }
 
+    // ── Device loss ───────────────────────────────────────────────────────────
+
+    /// After the GPU device is lost (a driver reset, a removed GPU): make a
+    /// new one and rebuild every window's surface and renderer on it. The
+    /// shared world's GPU copy moves to the new device as the first renderer
+    /// is built (`ensure_gpu_mirror`), uploading the scene again from the
+    /// data SceneDB holds. Each window keeps its camera and focus.
+    fn recover_lost_device(&mut self) {
+        tracing::warn!("GPU device lost; recreating it and rebuilding the game's windows");
+        let old: Vec<GameWindow> = self.windows.drain().map(|(_, window)| window).collect();
+        let Some(first) = old.first() else {
+            self.gpu.device = None;
+            self.gpu.queue = None;
+            self.gpu.adapter = None;
+            self.gpu.device_loss = None;
+            return;
+        };
+        let probe_window = first.window.clone();
+        // Surfaces and renderers on the dead device go first.
+        let kept: Vec<(WindowHandle, Arc<Window>, FreeCam, bool, bool)> = old
+            .into_iter()
+            .map(|gw| (gw.handle, gw.window, gw.freecam, gw.focused, gw.editor_mode))
+            .collect();
+        self.gpu.device = None;
+        self.gpu.queue = None;
+        self.gpu.adapter = None;
+        self.gpu.device_loss = None;
+        let probe = match self.gpu.instance.create_surface(probe_window) {
+            Ok(surface) => surface,
+            Err(error) => {
+                tracing::error!("Could not make a surface to find a new GPU: {error}");
+                return;
+            }
+        };
+        self.gpu.ensure_device(&probe);
+        drop(probe);
+        for (handle, window, freecam, focused, editor_mode) in kept {
+            let mut game_window = GameWindow::new(
+                handle,
+                window,
+                &self.gpu.instance,
+                self.gpu.adapter(),
+                self.gpu.device(),
+                self.gpu.queue(),
+                editor_mode,
+                &self.scene_store,
+            );
+            game_window.freecam = freecam;
+            game_window.focused = focused;
+            game_window.window.request_redraw();
+            self.windows.insert(handle, game_window);
+        }
+    }
+
     // ── Window lifecycle ──────────────────────────────────────────────────────
 
     fn open_window(
@@ -505,7 +568,7 @@ impl PulsarApp {
             self.gpu.adapter(),
             self.gpu.device(),
             self.gpu.queue(),
-            &desc,
+            desc.editor_mode,
             &self.scene_store,
         );
 
@@ -824,6 +887,14 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self
+            .gpu
+            .device_loss
+            .as_ref()
+            .is_some_and(engine_backend::services::device_loss::DeviceLoss::is_lost)
+        {
+            self.recover_lost_device();
+        }
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;

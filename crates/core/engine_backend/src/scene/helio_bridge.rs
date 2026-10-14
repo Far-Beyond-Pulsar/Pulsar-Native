@@ -105,9 +105,13 @@ pub fn environment_join(device: &wgpu::Device) -> Box<EnvironmentJoin> {
 /// after attachment are mirrored by SceneDB itself; this helper does not keep
 /// a second world representation or perform per-frame synchronization.
 ///
-/// When a world already has a mirror, the existing handle is returned without
-/// replacing its device, queue, pools, or residency state. This is required
-/// when multiple renderer views share one SceneDB world.
+/// When a world already has a mirror on `device`, the existing handle is
+/// returned without replacing its queue, pools, or residency state. This is
+/// required when multiple renderer views share one SceneDB world. A mirror on
+/// another device (the previous one was lost and a renderer is being rebuilt
+/// on a new one) is replaced: attaching the new mirror writes every
+/// GPU-bearing component into it, and the assets the world bound are
+/// uploaded again from SceneDB's CPU copies.
 ///
 /// A world populated before GPU initialization needs nothing further: SceneDB
 /// writes every existing GPU-bearing component into the mirror when it is
@@ -119,7 +123,10 @@ pub fn ensure_gpu_mirror(
     queue: Arc<wgpu::Queue>,
 ) -> GpuMirrorHandle {
     if let Some(existing) = scene_db.world.gpu_mirror() {
-        return existing.clone();
+        if existing.store().device_arc().as_ref() == device.as_ref() {
+            return existing.clone();
+        }
+        tracing::warn!("SceneDB GPU mirror is on another device; rebuilding it on the new one");
     }
 
     let ctx = EngineGpuContext::new(device.clone(), queue.clone());

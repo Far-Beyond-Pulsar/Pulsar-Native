@@ -7,6 +7,8 @@
 
 pub mod core_project_builder;
 #[cfg(feature = "render")]
+pub mod device_loss;
+#[cfg(feature = "render")]
 pub mod gpu_renderer;
 #[cfg(feature = "editor-ui")]
 pub mod lsp_completion_provider;

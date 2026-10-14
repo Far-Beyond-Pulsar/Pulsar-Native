@@ -748,6 +748,13 @@ pub struct HelioRenderer {
     // ── TAA reset ──
     pub reset_taa_next_frame: bool,
 
+    // ── Device loss ──
+    /// Whether the device the renderer was built on was lost; a lost device
+    /// is not drawn on again. A frame for another device rebuilds the
+    /// renderer, and the scene's GPU copy, on it.
+    device_loss: Option<crate::services::device_loss::DeviceLoss>,
+    reported_device_loss: bool,
+
     // ── Metrics ──
     pub metrics: Arc<Mutex<RenderMetrics>>,
     pub gpu_profiler: GpuProfilerData,
@@ -801,6 +808,8 @@ pub struct HelioRenderer {
 
 struct HelioInner {
     renderer: Renderer,
+    /// The device it was built on.
+    device: wgpu::Device,
     queue: Arc<wgpu::Queue>,
     interaction: SceneInteraction,
     /// Frame-pacing revision; never used as a renderer-side world mirror.
@@ -900,6 +909,8 @@ impl HelioRenderer {
             static_drag_warning: Arc::new(Mutex::new(None)),
             completed_drags: Arc::new(Mutex::new(Vec::new())),
             reset_taa_next_frame: false,
+            device_loss: None,
+            reported_device_loss: false,
             inner: None,
             applied_graph_settings: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -1071,6 +1082,34 @@ impl HelioRenderer {
             self.reset_taa_next_frame = true;
         }
 
+        // A frame for another device (the old one was lost and a new one
+        // made) rebuilds the renderer there; `ensure_gpu_mirror` moves the
+        // scene's GPU copy along. On a lost device nothing is drawn: every
+        // call would fail.
+        if self
+            .inner
+            .as_ref()
+            .is_some_and(|inner| inner.device != *_device)
+        {
+            tracing::warn!("Viewport device changed; rebuilding the Helio renderer on it");
+            self.inner = None;
+            self.applied_graph_settings = None;
+            self.reset_taa_next_frame = true;
+            self.reported_device_loss = false;
+        } else if self
+            .device_loss
+            .as_ref()
+            .is_some_and(crate::services::device_loss::DeviceLoss::is_lost)
+        {
+            if !self.reported_device_loss {
+                self.reported_device_loss = true;
+                tracing::error!(
+                    "GPU device lost; the viewport stops drawing until it has a new one"
+                );
+            }
+            return None;
+        }
+
         // ── Lazy init (first frame only) ────────────────────────────────────────
         if self.inner.is_none() {
             #[cfg(feature = "editor-ui")]
@@ -1079,6 +1118,7 @@ impl HelioRenderer {
 
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
+            self.device_loss = Some(crate::services::device_loss::DeviceLoss::watch(_device));
             let voxel_quality = {
                 let store = self.scene_store.read();
                 let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
@@ -1213,6 +1253,7 @@ impl HelioRenderer {
 
             let inner = HelioInner {
                 renderer: r,
+                device: _device.clone(),
                 queue: queue_arc.clone(),
                 interaction: SceneInteraction::default(),
                 last_scene_revision: 0,
