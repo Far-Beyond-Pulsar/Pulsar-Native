@@ -83,6 +83,12 @@ struct Frame {
 }
 
 /// How a frame differs from the empty-scene reference.
+/// Whether two depth texels differ: relative, as reversed depth (near /
+/// distance) is as precise a kilometre away as a metre away.
+fn depth_differs(a: f32, b: f32) -> bool {
+    (a - b).abs() > 1e-4 * a.abs().max(b.abs())
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Difference {
     color_pixels: usize,
@@ -103,7 +109,7 @@ impl Frame {
             .depth
             .iter()
             .zip(&self.depth)
-            .filter(|(a, b)| (*a - *b).abs() > 1e-6)
+            .filter(|(a, b)| depth_differs(**a, **b))
             .count();
         Difference {
             color_pixels,
@@ -1474,7 +1480,7 @@ fn splines_reach_the_frame() {
 fn depth_by_half(frame: &Frame, reference: &Frame) -> (usize, usize) {
     let mut halves = (0, 0);
     for (index, (a, b)) in reference.depth.iter().zip(&frame.depth).enumerate() {
-        if (a - b).abs() > 1e-6 {
+        if depth_differs(*a, *b) {
             if (index as u32 % frame.depth_width) < frame.depth_width / 2 {
                 halves.0 += 1;
             } else {
@@ -1494,7 +1500,7 @@ fn coverage(frame: &Frame, reference: &Frame, left: bool) -> Vec<bool> {
         .zip(&frame.depth)
         .enumerate()
         .filter(|(index, _)| ((*index as u32 % frame.depth_width) < frame.depth_width / 2) == left)
-        .map(|(_, (a, b))| (a - b).abs() > 1e-6)
+        .map(|(_, (a, b))| depth_differs(*a, *b))
         .collect()
 }
 
