@@ -33,6 +33,7 @@ mod run_store;
 mod time_travel;
 pub mod testing;
 mod run_ext;
+mod report_verify;
 
 #[cfg(test)]
 mod persist_tests;
@@ -136,3 +137,4 @@ pub use run_ext::{
     extension_report_sections, extensions_have_undo, pending_reviews, register_run_extension,
     resolve_review, revert_extensions, run_in_tree, Review, ReviewDecision, RunExtension,
 };
+pub use report_verify::{NonEmptyVerifier, ReportSchemaVerifier, KNOWN as REPORT_VERIFIERS};

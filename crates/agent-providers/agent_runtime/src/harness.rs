@@ -13,6 +13,7 @@
 //! max_steps: 24
 //! max_depth: 0            # how many levels of sub-agents this one may start
 //! permissions: read-only  # read-only | edit-with-checkpoint | engine-scene-write
+//! verify: [refs_exist]    # optional: refs_exist | schema | nonempty | default
 //! result: [summary, findings, refs, open_questions]
 //! ---
 //! Prompt body. Placeholders: {workspace} {task} {pinned}
@@ -112,6 +113,11 @@ pub struct Harness {
     /// returns its changes as a diff for review instead of applying them.
     /// Only meaningful with `permissions: engine-scene-write`.
     pub sandbox: bool,
+    /// Named checks run on the final report before it is returned (see
+    /// [`crate::report_verify`]): `refs_exist`, `schema`, `nonempty`. A
+    /// failure is fed back to the child once; if it fails again the report is
+    /// returned flagged `unverified`.
+    pub verify: Vec<String>,
     pub origin: HarnessOrigin,
 }
 
@@ -240,6 +246,7 @@ impl Harness {
             result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
             permissions: HarnessPermissions::ReadOnly,
             sandbox: false,
+            verify: Vec::new(),
             origin,
         };
         let mut tools_set = false;
@@ -288,6 +295,18 @@ impl Harness {
                 "permissions" => {
                     harness.permissions = HarnessPermissions::parse(&value.scalar())
                         .ok_or_else(|| format!("unknown permissions `{}`", value.scalar()))?
+                }
+                "verify" => {
+                    let names = value.list();
+                    if let Some(unknown) =
+                        names.iter().find(|name| !crate::report_verify::is_known(name))
+                    {
+                        return Err(format!(
+                            "unknown verifier `{unknown}` (known: {})",
+                            crate::report_verify::KNOWN.join(", ")
+                        ));
+                    }
+                    harness.verify = names;
                 }
                 "sandbox" => {
                     harness.sandbox = matches!(
@@ -453,6 +472,7 @@ fn builtin(
         result_schema: DEFAULT_RESULT_FIELDS.iter().map(|s| s.to_string()).collect(),
         permissions,
         sandbox: false,
+        verify: Vec::new(),
         origin: HarnessOrigin::Builtin,
     }
 }

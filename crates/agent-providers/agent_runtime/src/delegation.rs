@@ -667,12 +667,50 @@ impl ChildJob {
             })
         };
 
-        let final_ledger = run_loop(config, ledger, self.cancel.clone(), sink);
+        // The harness `verify:` checks: a failing report goes back to the
+        // child once; a second failure returns it flagged `unverified`.
+        let verifier = crate::report_verify::build(
+            &self.harness.verify,
+            &self.harness.result_schema,
+            &config.workspace_root,
+        );
+        let retry_config = verifier.is_some().then(|| config.clone());
+        let mut final_ledger = run_loop(config, ledger, self.cancel.clone(), sink.clone());
+        let mut unverified: Option<String> = None;
+        if let (Some(verifier), Some(retry_config)) = (&verifier, retry_config) {
+            let report_text = |ledger: &Ledger,
+                               finished: &Mutex<Option<Result<Option<String>, String>>>| {
+                let guard = finished.lock().unwrap_or_else(|p| p.into_inner());
+                match guard.as_ref() {
+                    Some(Ok(message)) => message
+                        .clone()
+                        .filter(|m| !m.trim().is_empty())
+                        .or_else(|| last_assistant_text(ledger)),
+                    _ => None,
+                }
+            };
+            if let Some(text) = report_text(&final_ledger, &finished) {
+                if let Err(reason) =
+                    crate::report_verify::check(verifier.as_ref(), &text, &self.harness.result_schema)
+                {
+                    progress(host, &self.id, "report failed verification; retrying".to_string());
+                    final_ledger.push(LedgerEntry::user(crate::report_verify::retry_message(&reason)));
+                    *finished.lock().unwrap_or_else(|p| p.into_inner()) = None;
+                    final_ledger = run_loop(retry_config, final_ledger, self.cancel.clone(), sink);
+                    if let Some(text) = report_text(&final_ledger, &finished) {
+                        if let Err(reason) = crate::report_verify::check(
+                            verifier.as_ref(),
+                            &text,
+                            &self.harness.result_schema,
+                        ) {
+                            unverified = Some(reason);
+                        }
+                    }
+                }
+            }
+        }
         let transcript = render_transcript(&final_ledger);
-        let last_text = final_ledger.entries.iter().rev().find_map(|entry| match &entry.kind {
-            EntryKind::AssistantTurn { text } if !text.trim().is_empty() => Some(text.clone()),
-            _ => None,
-        });
+        let last_text = last_assistant_text(&final_ledger);
         let result = finished
             .lock()
             .unwrap_or_else(|p| p.into_inner())
@@ -683,6 +721,7 @@ impl ChildJob {
             Ok(message) => Outcome::Done {
                 text: message.filter(|m| !m.trim().is_empty()).or(last_text),
                 transcript,
+                unverified,
             },
             Err(err) if err == CANCELLED_MESSAGE || self.cancel.is_cancelled() => {
                 Outcome::Cancelled(Some(transcript))
@@ -694,14 +733,15 @@ impl ChildJob {
     fn finish(&self, outcome: Outcome) {
         let host = &self.parent.host;
         let (status, report, error, transcript) = match outcome {
-            Outcome::Done { text, transcript } => {
-                let report = match text {
+            Outcome::Done { text, transcript, unverified } => {
+                let mut report = match text {
                     Some(text) => parse_report(&text, &self.harness.result_schema),
                     None => ChildReport {
                         summary: "The run ended without an answer.".to_string(),
                         ..ChildReport::default()
                     },
                 };
+                report.unverified = unverified;
                 (RunStatus::Success, report, None, transcript)
             }
             Outcome::Failed { err, transcript } => (
@@ -749,7 +789,12 @@ impl ChildJob {
 }
 
 enum Outcome {
-    Done { text: Option<String>, transcript: Vec<String> },
+    Done {
+        text: Option<String>,
+        transcript: Vec<String>,
+        /// Why the report failed its harness's `verify:` checks, after one retry.
+        unverified: Option<String>,
+    },
     Failed { err: String, transcript: Vec<String> },
     Cancelled(Option<Vec<String>>),
 }
@@ -816,7 +861,7 @@ pub fn parse_report(text: &str, schema: &[String]) -> ChildReport {
     report
 }
 
-fn heading_name(line: &str, schema: &[String]) -> Option<String> {
+pub(crate) fn heading_name(line: &str, schema: &[String]) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() || trimmed.len() > 48 || trimmed.starts_with("- ") {
         return None;
@@ -887,7 +932,17 @@ pub fn report_value(run: &RunRecord) -> Value {
             .collect::<serde_json::Map<_, _>>()
             .into();
     }
+    if let Some(reason) = &report.unverified {
+        value["unverified"] = Value::String(reason.clone());
+    }
     value
+}
+
+fn last_assistant_text(ledger: &Ledger) -> Option<String> {
+    ledger.entries.iter().rev().find_map(|entry| match &entry.kind {
+        EntryKind::AssistantTurn { text } if !text.trim().is_empty() => Some(text.clone()),
+        _ => None,
+    })
 }
 
 /// The ledger form of a finished run: findings and open questions are folded
@@ -900,6 +955,9 @@ pub fn subagent_report_for(run: &RunRecord) -> SubagentReport {
         run.status.as_str(),
         report.summary
     );
+    if let Some(reason) = &report.unverified {
+        summary.push_str(&format!("\n\n[unverified: {reason}]"));
+    }
     if !report.findings.is_empty() {
         summary.push_str("\n\nFindings:");
         for finding in &report.findings {

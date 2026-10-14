@@ -67,6 +67,10 @@ pub struct ChildReport {
     /// Sections of a custom `result_schema` beyond the four standard ones.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra: Vec<(String, String)>,
+    /// Set when the report still failed its harness's `verify:` checks after
+    /// one retry; holds the reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unverified: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
