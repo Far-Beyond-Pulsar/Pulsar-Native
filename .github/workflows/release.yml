@@ -615,7 +615,7 @@ jobs:
 
       - name: Upload native artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-native-${{ matrix.target }}
           path: release-artifacts/
@@ -641,7 +641,7 @@ jobs:
 
       - name: Upload macOS .app artifact
         if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-macos-app
           path: ${{ env.APP_ZIP_PATH }}
@@ -714,7 +714,7 @@ jobs:
 
       - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-examples-${{ matrix.target }}
           path: ${{ env.EXAMPLES_ARCHIVE }}
@@ -830,7 +830,7 @@ jobs:
 
       - name: Upload cross-build artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-cross-${{ matrix.target }}
           path: release-artifacts/
@@ -898,7 +898,7 @@ jobs:
 
       - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-examples-cross-${{ matrix.target }}
           path: ${{ env.EXAMPLES_ARCHIVE }}
