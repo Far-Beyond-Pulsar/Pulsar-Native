@@ -87,6 +87,10 @@ pub struct AgentChatPanel {
     pub(crate) drift_warning: Option<agent_runtime::DriftWarning>,
     /// Audit trail of what the steward and the engine did to the context.
     pub(crate) steward_log: Vec<String>,
+    /// "Cascade routing" (.pulsar/agent_cascade.json).
+    pub(crate) cascade_settings: agent_runtime::CascadeSettings,
+    /// Header badge set when the current run escalated.
+    pub(crate) cascade_badge: Option<String>,
     /// Detected pin candidates the user dismissed (by text).
     pub(crate) dismissed_pin_candidates: Vec<String>,
     /// The pin or proposal being edited in the Pinned context strip.

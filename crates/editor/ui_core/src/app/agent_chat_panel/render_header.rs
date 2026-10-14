@@ -163,6 +163,7 @@ impl AgentChatPanel {
                     .items_center()
                     .gap_2()
                     .child(self.render_context_meter(cx))
+                    .children(self.render_cascade_badge(cx))
                     .flex_1()
                     .child(more_menu),
             )

@@ -296,6 +296,8 @@ impl AgentChatPanel {
             activate_open_editor_request: None,
         };
         config.safety.policy = self.confirm_policy;
+        config.cascade = self.cascade_policy();
+        self.cascade_badge = None;
 
         // "Use AI to keep long chats on track": with it off no steward exists
         // and no extra request is made. The steward model is the setting's
@@ -485,6 +487,12 @@ impl AgentChatPanel {
 
                             RunEvent::ContextNotice(line) => {
                                 panel.note_context_event(line, cx);
+                            }
+                            RunEvent::Escalated(escalation) => {
+                                panel.note_escalation(escalation, cx);
+                            }
+                            RunEvent::BestOf(report) => {
+                                panel.note_best_of(report, cx);
                             }
                             RunEvent::FilesTouched(paths) => {
                                 panel.note_files_touched(paths, cx);

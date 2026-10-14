@@ -1,6 +1,7 @@
 mod auth;
 mod builder;
 mod chat_history;
+mod cascade;
 mod chat_storage;
 mod context;
 mod custom_provider_wizard;
@@ -1477,6 +1478,7 @@ impl Render for AgentChatPanel {
                             })
                             .child(self.render_plan_memory_controls(cx))
                             .child(self.render_steward_controls(cx))
+                            .child(self.render_cascade_controls(cx))
                             .child(self.render_confirm_policy_button(cx))
                             .child(
                                 Button::new("agent-chat-send")
