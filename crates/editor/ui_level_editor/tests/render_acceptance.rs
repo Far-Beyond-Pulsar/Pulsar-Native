@@ -2855,7 +2855,7 @@ fn full_coverage(frame: &Frame, reference: &Frame) -> Vec<bool> {
 /// removing the component restores the empty frame, and it casts shadows.
 #[test]
 fn voxel_objects_reach_the_frame_as_meshes() {
-    use engine_backend::scene::voxel_source::{VoxelSourceKind, VoxelSourceSession};
+    use engine_backend::scene::voxel_source::VoxelSourceSession;
     use helio_component::components::LightType as Kind;
     use helio_voxel_data::{VoxelEditTicketState, VoxelInboxClose, VoxelSampleEdit, VoxelSourceId};
     let _ = tracing_subscriber::fmt()
@@ -2931,7 +2931,6 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     let session = VoxelSourceSession::open(
         state.scene.shared_scene(),
         instance,
-        VoxelSourceKind::Object,
         VoxelSourceId(7),
         Default::default(),
     )

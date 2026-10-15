@@ -97,25 +97,19 @@
           "enabled": true,
           "shape": "Sphere",
           "planet_radius": 6371000.0,
-          "domain_mode": 1,
-          "bounds_min_x": 0.0,
-          "bounds_min_y": 0.0,
-          "bounds_min_z": 0.0,
-          "bounds_max_x": 0.0,
-          "bounds_max_y": 0.0,
-          "bounds_max_z": 0.0,
           "voxel_size": 0.1,
-          "chunk_edge_voxels": 32,
-          "max_chunk_lod": 20,
-          "lod_scale": 2,
-          "renderer_id": "helio.voxel-terrain",
           "generator_id": "helio.terrain",
           "generator_version": 1,
           "seed": 75,
           "generator_parameters": "",
-          "material_ids": [
-            0
+          "air": "Earthlike",
+          "air_density": 1.0,
+          "air_tint": [
+            1.0,
+            1.0,
+            1.0
           ],
+          "air_haze": 1.0,
           "editable": true,
           "source_revision": 0,
           "edits": {

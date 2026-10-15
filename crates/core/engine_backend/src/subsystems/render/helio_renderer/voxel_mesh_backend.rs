@@ -38,7 +38,7 @@ use helio_voxel_data::{
 use pulsar_scenedb::Entity;
 
 use super::voxel_backend::{VoxelRenderBackend, VoxelView};
-use crate::scene::voxel_frame::{initial_cube_chunks, VoxelCubeInit, VoxelEntryId, VoxelSceneEntry};
+use crate::scene::voxel_frame::{initial_cube_chunks, VoxelCubeInit, VoxelEntryId, VoxelObjectChunks, VoxelSceneEntry};
 use crate::scene::SharedScene;
 
 /// Chunks re-meshed in one frame on the render thread; a larger batch
@@ -262,23 +262,23 @@ impl MeshVoxelBackend {
     /// Read `entry`'s chunks when its store changed and mark what must be
     /// re-meshed. Returns those meshing tasks and any chunks it cannot draw
     /// (which are left out).
-    fn refresh(&mut self, entry: &VoxelSceneEntry) -> (Vec<MeshTask>, Vec<String>) {
+    fn refresh(&mut self, entry: &VoxelSceneEntry, chunks: &VoxelObjectChunks) -> (Vec<MeshTask>, Vec<String>) {
         let object = self
             .objects
             .entry(entry.id)
-            .or_insert_with(|| VoxelObject::new(entry.store.clone()));
-        if !Arc::ptr_eq(&object.store, &entry.store) {
+            .or_insert_with(|| VoxelObject::new(chunks.store.clone()));
+        if !Arc::ptr_eq(&object.store, &chunks.store) {
             // A replaced component value: start over (the rows are
             // overwritten by the next upload).
-            *object = VoxelObject::new(entry.store.clone());
+            *object = VoxelObject::new(chunks.store.clone());
         }
         object.drawn = true;
-        if object.voxel_size != entry.voxel_size || object.material_ids != entry.material_ids {
+        if object.voxel_size != entry.voxel_size || object.material_ids != chunks.material_ids {
             object.voxel_size = entry.voxel_size;
-            object.material_ids = entry.material_ids.clone();
+            object.material_ids = chunks.material_ids.clone();
             object.geometry_changed = true;
         }
-        let state = match entry.store.try_read() {
+        let state = match chunks.store.try_read() {
             Ok(state) => state,
             // A writer holds it: read it next frame.
             Err(std::sync::TryLockError::WouldBlock) => return (Vec::new(), Vec::new()),
@@ -289,14 +289,14 @@ impl MeshVoxelBackend {
         let revision = state.0;
         let uninitialized = revision == 0 && state.1.is_empty();
         let virtual_changed = uninitialized
-            && object.virtual_cube.as_ref().map(|(init, _)| *init) != entry.initial_cube;
+            && object.virtual_cube.as_ref().map(|(init, _)| *init) != Some(chunks.initial_cube);
         if object.seen_revision == Some(revision) && !virtual_changed {
             return (Vec::new(), Vec::new());
         }
         let mut errors = Vec::new();
         let mut current: HashMap<VoxelChunkKey, Arc<[u8]>> = if uninitialized {
             drop(state);
-            object.virtual_cube = entry.initial_cube.map(|init| {
+            object.virtual_cube = Some(chunks.initial_cube).map(|init| {
                 let chunks = initial_cube_chunks(init)
                     .into_iter()
                     .map(|(key, samples)| (key, Arc::from(samples.as_slice())))
@@ -570,15 +570,15 @@ impl VoxelRenderBackend for MeshVoxelBackend {
         let mut tasks = Vec::new();
         let mut present = HashSet::new();
         for entry in sources {
-            if !entry.is_object() || entry.chunk_edge_voxels != 8 {
+            let Some(chunks) = entry.chunks.as_ref().filter(|_| entry.is_object()) else {
                 errors.push(format!(
-                    "voxel source {:?}: the voxel mesh renderer draws free-standing voxel objects of 8³ chunks",
+                    "voxel source {:?}: the voxel mesh renderer draws free-standing voxel objects",
                     entry.id
                 ));
                 continue;
-            }
+            };
             present.insert(entry.id);
-            let (new, problems) = self.refresh(entry);
+            let (new, problems) = self.refresh(entry, chunks);
             tasks.extend(new);
             // What it can draw is drawn; the rest is reported.
             errors.extend(
@@ -665,15 +665,16 @@ mod tests {
     }
 
     fn set(entry: &VoxelSceneEntry, xyz: [i64; 3], material_slot: u8) {
-        VoxelSourceWriter::new(VoxelTerrainId(1), VoxelSourceId(1), entry.store.clone())
+        let chunks = entry.chunks.as_ref().unwrap();
+        VoxelSourceWriter::new(VoxelTerrainId(1), VoxelSourceId(1), chunks.store.clone())
             .publish_sample_edits(
                 &[VoxelSampleEdit {
                     xyz,
                     lod: 0,
                     material_slot,
                 }],
-                entry.domain,
-                &entry.material_ids,
+                chunks.domain,
+                &chunks.material_ids,
             )
             .unwrap();
     }
@@ -761,12 +762,12 @@ mod tests {
             serde_json::from_value(serde_json::to_value(VoxelComponent::default()).unwrap())
                 .unwrap();
         let (_world, entry) = object(restored, Transform::default());
-        assert!(entry.store.read().unwrap().1.is_empty());
+        assert!(entry.chunks.as_ref().unwrap().store.read().unwrap().1.is_empty());
         let mut backend = MeshVoxelBackend::new(None);
         settle(&mut backend, &entry);
         let virtual_cube = backend.geometry(entry.id).unwrap();
         assert_eq!(virtual_cube.quad_count(), 24);
-        assert!(entry.store.read().unwrap().1.is_empty(), "drawing writes nothing");
+        assert!(entry.chunks.as_ref().unwrap().store.read().unwrap().1.is_empty(), "drawing writes nothing");
         // Initializing the store publishes the same cube: same geometry.
         crate::scene::voxel_frame::initialize_empty_cube(&entry).unwrap();
         settle(&mut backend, &entry);
@@ -793,7 +794,7 @@ mod tests {
         assert_eq!(geometry.quad_count(), 6 * 64 + 6);
         let ids = backend.chunk_ids(entry.id);
         let origin = VoxelChunkKey::new(0, 0, 0, 0);
-        let snapshot = entry.store.read().unwrap().1[&[0, 0, 0, 0]].bytes.clone();
+        let snapshot = entry.chunks.as_ref().unwrap().store.read().unwrap().1[&[0, 0, 0, 0]].bytes.clone();
         let samples = *VoxelMaterialChunk::decode(&snapshot).unwrap().samples();
         // The drawn chunk is the edited one.
         let neighbours = [Some(&samples), None, Some(&samples), None, Some(&samples), None];

@@ -469,7 +469,7 @@ impl VoxelBackendRegistry {
                 [index] => selected[*index].push(entry),
                 [] if entry.renderer_id.is_empty()
                     && entry.generator.is_none()
-                    && entry.initial_cube.is_none() => {}
+                    && entry.chunks.is_none() => {}
                 [] => errors.push(format!(
                     "No compatible voxel renderer for source {:?} (requested '{}')",
                     entry.id, entry.renderer_id
@@ -1110,23 +1110,6 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             self.clear()?;
             return Err("the voxel planet renders one terrain source at a time".into());
         };
-        // Generic live chunk payloads are not interpreted by this backend yet;
-        // they must not be silently ignored.
-        match entry.store.try_read() {
-            Ok(state) if !state.1.is_empty() => {
-                self.clear()?;
-                return Err(
-                    "the voxel planet does not consume live sample chunks yet; edit with brushes"
-                        .into(),
-                );
-            }
-            Ok(_) => {}
-            Err(std::sync::TryLockError::WouldBlock) => return Ok(()),
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                self.clear()?;
-                return Err("voxel source payload store was poisoned".into());
-            }
-        }
         let (planet, error) = match self.world_for(entry) {
             Ok(Some(planet)) => (planet, None),
             Ok(None) => {
@@ -1171,7 +1154,6 @@ mod tests {
     use super::*;
     use crate::scene::Visibility;
     use helio_component::VoxelTerrainComponent;
-    use helio_voxel_data::VoxelStoredPayload;
     use pulsar_scenedb::{Entity, World};
 
     /// Attach `value` to `owner` as a component instance; returns it.
@@ -1186,7 +1168,6 @@ mod tests {
     fn planet_terrain() -> VoxelTerrainComponent {
         let mut terrain = VoxelTerrainComponent::default();
         terrain.shape = VoxelWorldShape::Sphere;
-        terrain.renderer_id = VOXEL_TERRAIN_RENDERER.into();
         terrain.generator.id = VOXEL_TERRAIN_GENERATOR.into();
         terrain.generator.version = VOXEL_TERRAIN_GENERATOR_VERSION;
         terrain.generator_parameters = String::new();
@@ -1330,26 +1311,15 @@ mod tests {
         backend.publish_frame(&[&revised], view(eye)).unwrap();
         assert!(Arc::ptr_eq(&coarse, &frame_planet(&backend)));
 
-        revised
-            .store
-            .write()
-            .unwrap()
-            .1
-            .insert([0; 4], VoxelStoredPayload::raw_material(vec![1u8; 512]));
-        assert!(backend.publish_frame(&[&revised], view(eye)).is_err());
-        assert!(backend.frame.lock().unwrap().is_none());
-
         backend.publish_frame(&[], view(eye)).unwrap();
         assert!(backend.frame.lock().unwrap().is_none());
     }
 
     #[test]
-    fn empty_renderer_id_selects_a_unique_compatible_backend() {
+    fn a_world_selects_the_renderer_of_its_generator() {
         let mut scene = World::new();
         let owner = scene.spawn();
-        let mut terrain = planet_terrain();
-        terrain.renderer_id.clear();
-        attach(&mut scene, owner, terrain);
+        attach(&mut scene, owner, planet_terrain());
         let (entries, projection_errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(projection_errors.is_empty());
 

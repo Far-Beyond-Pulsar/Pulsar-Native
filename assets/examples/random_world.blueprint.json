@@ -476,7 +476,9 @@
             "name": "exec_out",
             "pin_type": "Output",
             "data_type": "Execution",
-            "connected_to": []
+            "connected_to": [
+              "moon_air.exec"
+            ]
           }
         ]
       },
@@ -533,7 +535,9 @@
             "name": "exec_out",
             "pin_type": "Output",
             "data_type": "Execution",
-            "connected_to": []
+            "connected_to": [
+              "desert_air.exec"
+            ]
           }
         ]
       },
@@ -590,7 +594,9 @@
             "name": "exec_out",
             "pin_type": "Output",
             "data_type": "Execution",
-            "connected_to": []
+            "connected_to": [
+              "earth_air.exec"
+            ]
           }
         ]
       },
@@ -1379,6 +1385,177 @@
             "connected_to": []
           }
         ]
+      },
+      "moon_air": {
+        "id": "moon_air",
+        "node_type": "native::VoxelTerrainComponent::set_air",
+        "position": {
+          "x": 2340.0,
+          "y": 200.0
+        },
+        "properties": {
+          "air": "none"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "moon.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "air",
+            "name": "air",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "desert_air": {
+        "id": "desert_air",
+        "node_type": "native::VoxelTerrainComponent::set_air",
+        "position": {
+          "x": 2600.0,
+          "y": 200.0
+        },
+        "properties": {
+          "air": "thin"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "desert.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "air",
+            "name": "air",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "earth_air": {
+        "id": "earth_air",
+        "node_type": "native::VoxelTerrainComponent::set_air",
+        "position": {
+          "x": 2860.0,
+          "y": 200.0
+        },
+        "properties": {
+          "air": "earthlike"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "earth.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "air",
+            "name": "air",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
       }
     },
     "connections": [
@@ -1613,6 +1790,30 @@
         "target_node": "hill_scale_set",
         "target_pin": "exec",
         "connection_type": "Execution"
+      },
+      {
+        "id": "c_moon_air",
+        "source_node": "moon",
+        "source_pin": "exec_out",
+        "target_node": "moon_air",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c_desert_air",
+        "source_node": "desert",
+        "source_pin": "exec_out",
+        "target_node": "desert_air",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c_earth_air",
+        "source_node": "earth",
+        "source_pin": "exec_out",
+        "target_node": "earth_air",
+        "target_pin": "exec",
+        "connection_type": "Execution"
       }
     ],
     "metadata": {
@@ -1665,7 +1866,7 @@
   "blueprint_metadata": {
     "blueprint_type": "Generic",
     "parent_class": null,
-    "description": "Builds a random planet, moon or desert world from a seed (No Man's Sky style) by shaping the entity's terrain layer stack through its natives.",
+    "description": "Builds a random planet, moon or desert world from a seed (No Man's Sky style) through the entity's natives: the terrain layer stack's shape and the world's air (a moon has none).",
     "category": "Examples",
     "tags": [
       "voxel",

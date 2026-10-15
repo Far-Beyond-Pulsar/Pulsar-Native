@@ -1,14 +1,16 @@
 //! SceneDB voxel row projection for renderer-independent voxel sources.
 //!
-//! This copies configuration and Arc capabilities only. Canonical payload
-//! bytes remain in component rows and are selected by the consuming backend.
+//! A voxel world (`VoxelTerrainComponent`) projects its description: form,
+//! generator and edit journal. A voxel object (`VoxelComponent`) projects
+//! its live sample chunks too ([`VoxelObjectChunks`]): Arc capabilities
+//! only; canonical payload bytes remain in the component row.
 
 use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelWorldShape};
 use helio_voxel_data::VoxelEditJournal;
 use helio_voxel_data::{
     VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
-    VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
-    VoxelSourceWriter, VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
+    VoxelChunkUpdate, VoxelDomain, VoxelPayloadStore, VoxelSourceId, VoxelSourceWriter,
+    VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
 };
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
@@ -30,8 +32,6 @@ pub struct VoxelSceneEntry {
     /// Editor visibility is independent of whether this source owns the
     /// camera environment (for example a planet's atmosphere).
     pub visible: bool,
-    pub store: VoxelPayloadStore,
-    pub domain: VoxelDomain,
     pub source_revision: u64,
     pub editable: bool,
     /// World position of the source's sample origin. A terrain must sit
@@ -42,19 +42,27 @@ pub struct VoxelSceneEntry {
     /// local space.
     pub origin: [f64; 3],
     pub voxel_size: f64,
-    /// Logical width of a chunk address at LOD zero, in base voxel units.
-    /// The payload format determines how that region is represented.
-    pub chunk_edge_voxels: u32,
-    pub lod_scale: u32,
-    /// Opaque renderer selection, independent of the generation recipe.
+    /// Opaque renderer selection of a voxel object; empty picks the one
+    /// compatible renderer (a world's is its generator's).
     pub renderer_id: String,
-    pub material_ids: Vec<u32>,
+    /// A voxel object's live sample chunks; `None` for a world.
+    pub chunks: Option<VoxelObjectChunks>,
     pub generator: Option<VoxelGeneratorConfig>,
-    pub initial_cube: Option<VoxelCubeInit>,
     /// Form and size of a terrain world (scaled with the entity).
     pub world: VoxelWorldForm,
     /// The terrain's ordered brush journal.
     pub edits: VoxelEditJournal,
+}
+
+/// The live sample chunks of a voxel object: the canonical store, its
+/// chunk domain (8³ chunks), the material palette and the cube a new
+/// object starts as.
+#[derive(Clone)]
+pub struct VoxelObjectChunks {
+    pub store: VoxelPayloadStore,
+    pub domain: VoxelDomain,
+    pub material_ids: Vec<u32>,
+    pub initial_cube: VoxelCubeInit,
 }
 
 /// Authored form of a voxel world: shape and size in metres.
@@ -93,23 +101,6 @@ impl VoxelSceneEntry {
         self.id.kind == 0
     }
 
-    /// Build the CPU generator input from the reflected terrain configuration.
-    /// The registered generator interprets `parameters` and produces a
-    /// format-tagged payload; no engine-side material-cell conversion occurs.
-    pub fn generator_descriptor(&self) -> Option<VoxelGeneratorDescriptor> {
-        let generator = self.generator.as_ref()?;
-        Some(VoxelGeneratorDescriptor {
-            id: generator.id.clone(),
-            version: generator.version,
-            seed: generator.seed,
-            domain: self.domain,
-            origin: self.origin,
-            voxel_size: self.voxel_size,
-            chunk_edge_voxels: self.chunk_edge_voxels,
-            lod_scale: self.lod_scale,
-            parameters: generator.parameters.clone(),
-        })
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -150,10 +141,11 @@ pub fn initial_cube_chunks(init: VoxelCubeInit) -> Vec<(VoxelChunkKey, [u8; 512]
 
 /// Initialize a deserialized object before source edits. This runs off-frame.
 pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
-    let Some(init) = entry.initial_cube else {
+    let Some(chunks) = &entry.chunks else {
         return Ok(false);
     };
-    let state = entry
+    let init = chunks.initial_cube;
+    let state = chunks
         .store
         .read()
         .map_err(|_| "voxel store lock poisoned".to_string())?;
@@ -165,16 +157,16 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
     let writer = VoxelSourceWriter::new(
         VoxelTerrainId(u128::from(entry.id.entity_bits)),
         VoxelSourceId(0),
-        entry.store.clone(),
+        chunks.store.clone(),
     );
     if init.dimensions.iter().any(|&size| size == 0 || size > 256)
         || init.material_slot == 0
-        || usize::from(init.material_slot) > entry.material_ids.len()
+        || usize::from(init.material_slot) > chunks.material_ids.len()
     {
         return Err("initial cube dimensions or material slot are invalid".into());
     }
-    let chunks = initial_cube_chunks(init);
-    let ops: Vec<_> = chunks
+    let cube = initial_cube_chunks(init);
+    let ops: Vec<_> = cube
         .iter()
         .map(|(key, samples)| {
             VoxelChunkOp::Upsert(VoxelChunkUpdate {
@@ -194,12 +186,12 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
             expected: 0,
             publish: 1,
         },
-        domain: entry.domain,
+        domain: chunks.domain,
         ops: &ops,
     }) {
         Ok(_) => Ok(true),
         Err(error) => {
-            let state = entry
+            let state = chunks
                 .store
                 .read()
                 .map_err(|_| "voxel store lock poisoned".to_string())?;
@@ -259,17 +251,21 @@ pub fn sync_edit_journals(world: &mut World) -> usize {
 /// terrain sits on that terrain's ground, so resizing the planet or turning
 /// it into a plane takes the sky along. A sphere's atmosphere is centred on
 /// it at its radius; a plane's is flat ground at the origin, at the Earth's
-/// radius unless it was already flat (its curvature is the author's).
-/// Returns how many atmospheres moved.
+/// radius unless it was already flat (its curvature is the author's). A
+/// world whose `air` is a preset (not `Custom`) derives the rest of the sky
+/// from it too ([`AtmosphereComponent::for_air`]): an airless moon has
+/// none. Returns how many atmospheres changed.
+///
+/// [`AtmosphereComponent::for_air`]: helio_component::AtmosphereComponent::for_air
 pub fn sync_skies_to_terrains(world: &mut World) -> usize {
     use helio_component::{AtmosphereComponent, AtmospherePlacement};
     let world_ref: &World = world;
-    let moved: Vec<(Entity, AtmospherePlacement, f32)> =
+    let changed: Vec<(Entity, AtmosphereComponent)> =
         attachments::enabled_components::<VoxelTerrainComponent>(world_ref)
             .filter_map(|(instance, owner, component)| {
-                Some((owner, terrain_entry(world_ref, instance, component).ok()?.world))
+                Some((owner, component, terrain_entry(world_ref, instance, component).ok()?.world))
             })
-            .flat_map(|(owner, form)| {
+            .flat_map(|(owner, terrain, form)| {
                 attachments::enabled_components_of::<AtmosphereComponent>(world_ref, owner)
                     .into_iter()
                     .filter_map(move |(sky, atmosphere)| {
@@ -285,18 +281,25 @@ pub fn sync_skies_to_terrains(world: &mut World) -> usize {
                                 AtmosphereComponent::default().planet_radius_km,
                             ),
                         };
-                        (atmosphere.placement != placement || atmosphere.planet_radius_km != radius_km)
-                            .then_some((sky, placement, radius_km))
+                        let placed = AtmosphereComponent { placement, planet_radius_km: radius_km, ..atmosphere.clone() };
+                        let wanted = placed
+                            .for_air(terrain.air, terrain.air_density, terrain.air_tint, terrain.air_haze)
+                            .unwrap_or(placed);
+                        (!same_sky(atmosphere, &wanted)).then_some((sky, wanted))
                     })
             })
             .collect();
-    for &(sky, placement, radius_km) in &moved {
-        if let Some(mut atmosphere) = world.get_mut::<AtmosphereComponent>(sky) {
-            atmosphere.placement = placement;
-            atmosphere.planet_radius_km = radius_km;
+    for (sky, wanted) in &changed {
+        if let Some(mut atmosphere) = world.get_mut::<helio_component::AtmosphereComponent>(*sky) {
+            *atmosphere = wanted.clone();
         }
     }
-    moved.len()
+    changed.len()
+}
+
+/// Whether two skies are the same air (every property).
+fn same_sky(a: &helio_component::AtmosphereComponent, b: &helio_component::AtmosphereComponent) -> bool {
+    a.enabled == b.enabled && a.placement == b.placement && a.to_row() == b.to_row()
 }
 
 /// Keeps voxel worlds' dependents in step with them when a terrain, its
@@ -462,26 +465,26 @@ pub(super) fn object_entry(
             kind: 0,
         },
         visible: true,
-        store: component.payload_store(),
-        domain: VoxelDomain::Bounded {
-            min: [0; 3],
-            max,
-            max_lod: 0,
-        },
         source_revision: 0,
         editable: component.editable,
         origin,
         voxel_size: component.voxel_size,
-        chunk_edge_voxels: 8,
-        lod_scale: 1,
         renderer_id: component.renderer_id.clone(),
-        material_ids: component.material_ids.clone(),
-        generator: None,
-        initial_cube: Some(VoxelCubeInit {
-            dimensions: component.dimensions,
-            material_slot: u8::try_from(component.default_material_slot)
-                .map_err(|_| "default_material_slot must fit in one byte")?,
+        chunks: Some(VoxelObjectChunks {
+            store: component.payload_store(),
+            domain: VoxelDomain::Bounded {
+                min: [0; 3],
+                max,
+                max_lod: 0,
+            },
+            material_ids: component.material_ids.clone(),
+            initial_cube: VoxelCubeInit {
+                dimensions: component.dimensions,
+                material_slot: u8::try_from(component.default_material_slot)
+                    .map_err(|_| "default_material_slot must fit in one byte")?,
+            },
         }),
+        generator: None,
         world: VoxelWorldForm::default(),
         appearance_parameters: String::new(),
         edits: VoxelEditJournal::default(),
@@ -497,77 +500,25 @@ pub(super) fn terrain_entry(
     if !component.voxel_size.is_finite() || component.voxel_size <= 0.0 {
         return Err("voxel_size must be finite and positive");
     }
-    if component.chunk_edge_voxels == 0 {
-        return Err("chunk_edge_voxels must be positive");
-    }
-    if component.lod_scale == 0 {
-        return Err("lod_scale must be positive");
-    }
-    let max_lod = u8::try_from(component.max_chunk_lod)
-        .map_err(|_| "max_chunk_lod must fit in a chunk key")?;
     let voxel_size = component.voxel_size * scale;
-    let chunk_size = voxel_size * f64::from(component.chunk_edge_voxels);
-    if !chunk_size.is_finite() || chunk_size <= 0.0 {
-        return Err("chunk span must be finite and positive");
-    }
-    let domain = match component.domain_mode {
-        0 => {
-            let min_world = [
-                component.bounds_min_x,
-                component.bounds_min_y,
-                component.bounds_min_z,
-            ];
-            let max_world = [
-                component.bounds_max_x,
-                component.bounds_max_y,
-                component.bounds_max_z,
-            ];
-            if (0..3).any(|axis| {
-                !min_world[axis].is_finite()
-                    || !max_world[axis].is_finite()
-                    || min_world[axis] >= max_world[axis]
-            }) {
-                return Err("bounded terrain requires finite increasing bounds");
-            }
-            let min = std::array::from_fn(|axis| {
-                ((min_world[axis] - origin[axis]) / chunk_size).floor() as i64
-            });
-            let max = std::array::from_fn(|axis| {
-                (((max_world[axis] - origin[axis]) / chunk_size).ceil() as i64).saturating_sub(1)
-            });
-            VoxelDomain::BoundedBase {
-                min,
-                max,
-                max_lod,
-                lod_scale: component.lod_scale,
-            }
-        }
-        1 => VoxelDomain::Unbounded { max_lod },
-        _ => return Err("domain_mode must be bounded (0) or unbounded (1)"),
-    };
     Ok(VoxelSceneEntry {
         id: VoxelEntryId {
             entity_bits: entity.bits(),
             kind: 1,
         },
         visible: true,
-        store: component.payload_store(),
-        domain,
         source_revision: component.source_revision,
         editable: component.editable,
         origin,
         voxel_size,
-        chunk_edge_voxels: component.chunk_edge_voxels,
-        lod_scale: component.lod_scale,
-        renderer_id: component.renderer_id.clone(),
-        material_ids: component.material_ids.clone(),
+        renderer_id: String::new(),
+        chunks: None,
         generator: (!component.generator.id.is_empty()).then(|| VoxelGeneratorConfig {
             id: component.generator.id.clone(),
             version: component.generator.version,
             seed: component.seed,
             parameters: helio_component::voxel_world::generator_settings(world, entity, component),
         }),
-        initial_cube: None,
         world: VoxelWorldForm {
             shape: component.shape,
             planet_radius: component.planet_radius * scale,
@@ -606,46 +557,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn terrain_projection_preserves_source_contract_and_uses_authored_chunk_span() {
+    fn a_world_projects_its_description() {
         let mut world = World::new();
         let entity = world.spawn();
-        let mut component = VoxelTerrainComponent::default();
-        component.domain_mode = 0;
-        component.bounds_max_x = 64.0;
-        component.bounds_max_y = 64.0;
-        component.bounds_max_z = 64.0;
-        component.voxel_size = 1.0;
-        component.chunk_edge_voxels = 32;
-        component.max_chunk_lod = 4;
-        component.lod_scale = 3;
-        component.renderer_id = "test.renderer".into();
+        let mut component = VoxelTerrainComponent::planet(1_000.0);
+        component.voxel_size = 0.5;
         component.generator.id = "test.world".into();
         component.generator.version = 7;
         component.seed = 42;
         component.generator_parameters = "{\"biome\":1}".into();
-        component.material_ids = vec![0; 300];
         world.insert(entity, component);
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
-        assert_eq!(entry.chunk_edge_voxels, 32);
-        assert_eq!(entry.renderer_id, "test.renderer");
-        assert_eq!(
-            entry.domain,
-            VoxelDomain::BoundedBase {
-                min: [0; 3],
-                max: [1; 3],
-                max_lod: 4,
-                lod_scale: 3,
-            }
-        );
-        assert!(entry
-            .domain
-            .validate_key(VoxelChunkKey::new(0, 0, 0, 1))
-            .is_ok());
-        assert!(entry
-            .domain
-            .validate_key(VoxelChunkKey::new(1, 0, 0, 1))
-            .is_err());
+        assert!(entry.chunks.is_none() && !entry.is_object(), "a world has no live chunks");
+        assert!(entry.renderer_id.is_empty(), "its generator picks its renderer");
         assert_eq!(
             entry.generator,
             Some(VoxelGeneratorConfig {
@@ -655,32 +580,12 @@ mod tests {
                 parameters: "{\"biome\":1}".into(),
             })
         );
-        let descriptor = entry.generator_descriptor().unwrap();
-        assert_eq!(descriptor.id, "test.world");
-        assert_eq!(descriptor.chunk_edge_voxels, 32);
-        assert_eq!(descriptor.lod_scale, 3);
-        assert_eq!(descriptor.parameters, "{\"biome\":1}");
-
-        {
-            let mut component = world.get_mut::<VoxelTerrainComponent>(entity).unwrap();
-            component.chunk_edge_voxels = 2;
-            component.max_chunk_lod = 0;
-        }
-        let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
-        assert_eq!(entry.chunk_edge_voxels, 2);
-        assert_eq!(
-            entry.domain,
-            VoxelDomain::BoundedBase {
-                min: [0; 3],
-                max: [31; 3],
-                max_lod: 0,
-                lod_scale: 3,
-            }
-        );
+        assert_eq!(entry.voxel_size, 0.5);
+        assert_eq!((entry.world.shape, entry.world.planet_radius), (VoxelWorldShape::Sphere, 1_000.0));
     }
 
     #[test]
-    fn projects_multiple_rows_with_generation_identity_and_rejects_bad_domains() {
+    fn projects_objects_and_worlds_and_reports_bad_rows() {
         let mut world = World::new();
         let object = spawn_test_instance(&mut world, "VoxelComponent");
         world.insert(object, VoxelComponent::default());
@@ -689,11 +594,8 @@ mod tests {
         let (entries, errors) = project_voxel_entries(&world);
         assert!(errors.is_empty());
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().any(|entry| entry.id
-            == VoxelEntryId {
-                entity_bits: object.bits(),
-                kind: 0
-            }));
+        let object_entry = entries.iter().find(|entry| entry.id == VoxelEntryId { entity_bits: object.bits(), kind: 0 }).unwrap();
+        assert_eq!(object_entry.chunks.as_ref().unwrap().domain, VoxelDomain::Bounded { min: [0; 3], max: [1; 3], max_lod: 0 });
         assert!(entries.iter().any(|entry| entry.id
             == VoxelEntryId {
                 entity_bits: terrain.bits(),
@@ -702,14 +604,14 @@ mod tests {
         world
             .get_mut::<VoxelTerrainComponent>(terrain)
             .unwrap()
-            .domain_mode = 99;
+            .voxel_size = f64::NAN;
         let (entries, errors) = project_voxel_entries(&world);
         assert_eq!(entries.len(), 1);
         assert_eq!(errors.len(), 1);
         world
             .get_mut::<VoxelTerrainComponent>(terrain)
             .unwrap()
-            .domain_mode = 1;
+            .voxel_size = 0.1;
         world
             .get_mut::<VoxelComponent>(object)
             .unwrap()
@@ -795,6 +697,39 @@ mod tests {
     }
 
     #[test]
+    fn a_worlds_air_preset_makes_its_sky() {
+        use helio_component::{AtmosphereComponent, VoxelAir};
+        let mut world = World::new();
+        let object = world.spawn();
+        let terrain =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_737_400.0))
+                .unwrap();
+        let mut authored = AtmosphereComponent::default();
+        authored.mie_anisotropy = 0.1;
+        let sky = pulsar_world_registry::attach_value(&mut world, object, authored).unwrap();
+        let mut sync = VoxelWorldSync::new(&world);
+        let sky_of = |world: &World| world.get::<AtmosphereComponent>(sky).unwrap().clone();
+        sync.poll(&mut world);
+        assert_eq!(sky_of(&world).mie_anisotropy, 0.1, "custom air keeps the authored sky");
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air = VoxelAir::None;
+        sync.poll(&mut world);
+        assert!(!sky_of(&world).enabled, "a moon has no sky");
+        assert_eq!(sky_of(&world).planet_radius_km, 1_737.4);
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air = VoxelAir::Thin;
+        sync.poll(&mut world);
+        let thin = sky_of(&world);
+        assert!(thin.enabled && thin.rayleigh_scattering[2] < AtmosphereComponent::default().rayleigh_scattering[2]);
+        // Hand edits to a derived sky go back to the air's.
+        world.get_mut::<AtmosphereComponent>(sky).unwrap().mie_anisotropy = 0.2;
+        sync.poll(&mut world);
+        assert_eq!(sky_of(&world).mie_anisotropy, thin.mie_anisotropy);
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air_density = 2.0;
+        sync.poll(&mut world);
+        assert!((sky_of(&world).rayleigh_scattering[0] - thin.rayleigh_scattering[0] * 2.0).abs() < 1e-9);
+        assert_eq!(sync_skies_to_terrains(&mut world), 0);
+    }
+
+    #[test]
     fn journals_are_checked_only_when_a_terrain_or_its_layers_change() {
         use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
         let mut world = World::new();
@@ -834,10 +769,10 @@ mod tests {
         world.insert(entity, VoxelTerrainComponent::default());
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
-        let descriptor = entry.generator_descriptor().unwrap();
-        assert_eq!(descriptor.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+        let generator = entry.generator.unwrap();
+        assert_eq!(generator.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
         assert_eq!(
-            descriptor.version,
+            generator.version,
             helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION
         );
         assert_eq!(entry.world.shape, VoxelWorldShape::Plane);
@@ -863,7 +798,7 @@ mod tests {
             let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
             assert_eq!(entry.world.shape, shape);
             assert_eq!(
-                entry.generator_descriptor().unwrap().id,
+                entry.generator.unwrap().id,
                 helio_voxel_data::VOXEL_TERRAIN_GENERATOR
             );
         }

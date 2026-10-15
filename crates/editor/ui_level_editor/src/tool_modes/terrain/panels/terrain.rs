@@ -104,9 +104,12 @@ fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
             rows.push(BodyRow {
                 hex: format!("{:016x}", entity.bits()),
                 is_planet: true,
-                size_m: component.voxel_size * f64::from(component.chunk_edge_voxels),
-                material: component.material_ids.first().copied().unwrap_or(0) as u8,
-                material_slots: component.material_ids.len().min(u8::MAX as usize) as u32,
+                size_m: match component.shape {
+                    helio_component::VoxelWorldShape::Sphere => component.planet_radius,
+                    _ => component.plane_size,
+                },
+                material: 0,
+                material_slots: 0,
             });
         }
     }

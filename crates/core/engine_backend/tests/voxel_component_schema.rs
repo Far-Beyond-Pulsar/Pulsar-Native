@@ -21,7 +21,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 
     let terrain = VoxelTerrainComponent::default();
     assert!(terrain.appearance_parameters.is_empty());
-    assert_eq!(terrain.domain_mode, 1);
+    assert_eq!(terrain.air, helio_component::VoxelAir::Custom);
     // New terrain rows start as a 4 km plane of Helio's terrain generator.
     assert_eq!(
         terrain.generator.id,
@@ -33,9 +33,6 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         serde_json::from_value(terrain_json).expect("restore terrain component");
     assert_eq!(terrain_restored.generator.id, terrain.generator.id);
     assert_eq!(terrain_restored.generator.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
-    assert_eq!(terrain_restored.chunk_edge_voxels, 8);
-    assert_eq!(terrain_restored.max_chunk_lod, 16);
-    assert_eq!(terrain_restored.lod_scale, 2);
     assert_eq!(terrain_restored.source_revision, terrain.source_revision);
     let mut older_json = serde_json::to_value(&terrain).unwrap();
     older_json
@@ -50,7 +47,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 }
 
 #[test]
-fn the_inspector_shows_world_generation_and_editing_only() {
+fn the_inspector_shows_the_whole_world_description() {
     let terrain = VoxelTerrainComponent::default();
     let names: Vec<_> = terrain
         .get_properties()
@@ -67,21 +64,22 @@ fn the_inspector_shows_world_generation_and_editing_only() {
             "voxel_size",
             "generator",
             "seed",
+            "air",
+            "air_density",
+            "air_tint",
+            "air_haze",
             "appearance_parameters",
             "editable"
         ]
     );
-    // Chunk layout, LOD and bookkeeping stay serialized but internal.
+    // Bookkeeping stays serialized but internal; a world has no chunk
+    // layout of its own.
     let json = serde_json::to_value(&terrain).unwrap();
-    for key in [
-        "generator_id",
-        "generator_version",
-        "chunk_edge_voxels",
-        "max_chunk_lod",
-        "lod_scale",
-        "source_revision",
-    ] {
+    for key in ["generator_id", "generator_version", "source_revision"] {
         assert!(json.get(key).is_some(), "{key} is serialized");
+    }
+    for key in ["chunk_edge_voxels", "max_chunk_lod", "lod_scale", "domain_mode", "renderer_id", "material_ids"] {
+        assert!(json.get(key).is_none(), "{key} is gone");
     }
     assert!(
         json.get("generator").is_none(),
@@ -93,7 +91,9 @@ fn the_inspector_shows_world_generation_and_editing_only() {
 fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
     use helio_voxel_data::VoxelStoredPayload;
 
-    let terrain = VoxelTerrainComponent::default();
+    // A voxel object's live chunks (a world has a brush journal instead).
+    let terrain = VoxelComponent::default();
+    let chunks = terrain.payload_store().read().unwrap().1.len();
     let properties = terrain.get_properties();
     assert!(properties
         .iter()
@@ -136,7 +136,7 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
         .unwrap()
         .1
         .remove(&[u64::MAX, 0, 7, 2]);
-    assert_eq!(terrain.payload_store().read().unwrap().1.len(), 1);
+    assert_eq!(terrain.payload_store().read().unwrap().1.len(), chunks + 1);
 
     serialized = serde_json::to_value(&terrain).expect("payload remains caller-owned");
     assert!(serialized.get("payloads").is_none());
@@ -190,18 +190,18 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
     let mut world = pulsar_scenedb::World::new();
     let source_entity = world.spawn();
     assert!(pulsar_world_registry::hydrate_world_component_for_class(
-        "VoxelTerrainComponent",
+        "VoxelComponent",
         &mut world,
         source_entity,
-        &serde_json::to_value(VoxelTerrainComponent::default()).unwrap(),
+        &serde_json::to_value(VoxelComponent::default()).unwrap(),
     )
     .unwrap());
 
     let terrain_id = VoxelTerrainId(77);
     let source_id = VoxelSourceId(12);
     let source_store = world
-        .get::<VoxelTerrainComponent>(source_entity)
-        .expect("hydrated SceneDB terrain row")
+        .get::<VoxelComponent>(source_entity)
+        .expect("hydrated SceneDB voxel row")
         .payload_store();
     let writer = VoxelSourceWriter::new(terrain_id, source_id, source_store);
 
@@ -241,7 +241,7 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
         .unwrap();
 
     let live = world
-        .get::<VoxelTerrainComponent>(source_entity)
+        .get::<VoxelComponent>(source_entity)
         .unwrap()
         .payload_store();
     let published = writer.snapshot().unwrap();
@@ -253,14 +253,14 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
     // script still chooses whether/how to serialize it durably.
     let target_entity = world.spawn();
     assert!(pulsar_world_registry::hydrate_world_component_for_class(
-        "VoxelTerrainComponent",
+        "VoxelComponent",
         &mut world,
         target_entity,
-        &serde_json::to_value(VoxelTerrainComponent::default()).unwrap(),
+        &serde_json::to_value(VoxelComponent::default()).unwrap(),
     )
     .unwrap());
     let target_store = world
-        .get::<VoxelTerrainComponent>(target_entity)
+        .get::<VoxelComponent>(target_entity)
         .unwrap()
         .payload_store();
     let target_writer = VoxelSourceWriter::new(VoxelTerrainId(78), source_id, target_store);
