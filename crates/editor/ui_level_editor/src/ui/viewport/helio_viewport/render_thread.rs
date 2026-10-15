@@ -39,6 +39,7 @@ impl HelioViewport {
                     // with the GPU idle most of the frame, and on a 144 Hz display
                     // it was leaving more than half the refresh rate on the table.
                     let mut pacer = FramePacer::new(refresh_hz);
+                    let mut ui_frame_seen = gpui::ui_frame_signal::ui_frame_seq();
                     tracing::info!(
                         "[VIEWPORT PACER] starting at {:.0} Hz{}",
                         pacer.target_hz,
@@ -66,7 +67,7 @@ impl HelioViewport {
                             if profiling::uncap_frame_rate() {
                                 pacer.skip_wait();
                             } else {
-                                pacer.wait_for_next_frame();
+                                pacer.wait_for_next_frame_aligned(&mut ui_frame_seen);
                             }
                         }
 

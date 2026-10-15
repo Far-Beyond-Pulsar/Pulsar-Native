@@ -7,7 +7,7 @@
 use crate::history::{self, COMMIT_PAGE, DiffTarget, DiffTexts};
 use crate::tree::{TreeItem, build_tree};
 use crate::{
-    BranchRow, ChangeRow, DetailFocus, DiffViewMode, GitLayout, GitManager, PendingAuth,
+    BranchRow, ChangeRow, DetailFocus, DiffViewMode, GitLayout, GitManager, ListState, PendingAuth,
     PendingAuthOp, RepoPhase, git_operations::*, models::*,
 };
 use gpui::*;
@@ -92,20 +92,20 @@ impl GitManager {
         self.refreshing = false;
         self.history_fingerprint = 0;
         self.changes_rows = Rc::new(Vec::new());
-        self.changes_list.reset(0);
+        self.changes_list = ListState::default();
         self.collapsed_changes.clear();
         self.commits.clear();
         self.graph = history::GraphBuilder::default();
         self.graph_lanes = 1;
         self.commits_loading = false;
         self.commits_exhausted = false;
-        self.commit_list.reset(0);
+        self.commit_list = ListState::default();
         self.commit_matches = None;
         self.selected_commit = None;
         self.commit_detail = None;
         self.commit_detail_error = None;
         self.commit_file_rows = Rc::new(Vec::new());
-        self.commit_files_list.reset(0);
+        self.commit_files_list = ListState::default();
         self.collapsed_commit_files.clear();
         self.avatar_cache.clear();
         self.target = None;
@@ -115,11 +115,11 @@ impl GitManager {
         self.diff_message = None;
         self.diff.clear(cx);
         self.branch_rows = Rc::new(Vec::new());
-        self.branch_list.reset(0);
+        self.branch_list = ListState::default();
         self.collapsed_branches.clear();
         self.branch_menu_open = false;
         self.menu_rows = Rc::new(Vec::new());
-        self.menu_list.reset(0);
+        self.menu_list = ListState::default();
         self.op_error = None;
         self.pending_auth = None;
         self.remote_busy = None;
