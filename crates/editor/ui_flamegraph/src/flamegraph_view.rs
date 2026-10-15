@@ -829,3 +829,48 @@ impl Render for FlamegraphView {
             )
     }
 }
+
+#[cfg(test)]
+mod device_loss_tests {
+    use super::{FlamegraphView, TraceData};
+    use gpui::{TestAppContext, VisualTestContext};
+    use std::sync::Arc;
+
+    fn draw(cx: &mut VisualTestContext) {
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+    }
+
+    /// On a test window with a real GPU device (skipped where there is
+    /// none): after the device is lost the view keeps no surface, and once
+    /// the window has a new device it draws on a surface there.
+    #[test]
+    fn the_view_moves_onto_the_new_device_after_a_loss() {
+        let mut cx = TestAppContext::single();
+        cx.update(ui::init);
+        let (view, cx) = cx.add_window_view(|_, _| FlamegraphView::new(TraceData::new()));
+        if !cx.update(|window, _| window.use_test_gpu_device()) {
+            return;
+        }
+        draw(cx);
+        let first = view.read_with(cx, |view, _| view.surface.clone());
+        let first = first.expect("a surface on the test device");
+
+        assert!(cx.update(|window, _| window.lose_test_gpu_device()));
+        draw(cx);
+        assert!(
+            view.read_with(cx, |view, _| view.surface.is_none()),
+            "no surface is kept while the device is lost"
+        );
+
+        assert!(cx.update(|window, cx| window.replace_test_gpu_device(cx)));
+        draw(cx);
+        let second = view.read_with(cx, |view, _| view.surface.clone());
+        let second = second.expect("a surface on the new device");
+        assert!(!second.is_device_lost());
+        assert!(!Arc::ptr_eq(
+            &first.device_lost_flag(),
+            &second.device_lost_flag()
+        ));
+    }
+}
