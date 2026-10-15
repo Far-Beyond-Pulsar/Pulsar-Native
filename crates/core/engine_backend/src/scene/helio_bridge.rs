@@ -84,6 +84,7 @@ pub fn environment_join_keys() -> EnvironmentJoinKeys {
         local_fog: BufferKey::of(LOCAL_FOG_SOURCES_BUFFER),
         post_process_volumes: BufferKey::of(POST_PROCESS_VOLUME_SOURCES_BUFFER),
         camera_post_process: BufferKey::of(CAMERA_POST_PROCESS_SOURCES_BUFFER),
+        camera_lens: BufferKey::of(helio_component::components::CAMERA_LENS_SOURCES_BUFFER),
         water_volumes: BufferKey::of(WATER_VOLUME_SOURCES_BUFFER),
         foliage: BufferKey::of(FOLIAGE_SOURCES_BUFFER),
         atmospheres: BufferKey::of(ATMOSPHERE_SOURCES_BUFFER),
@@ -164,6 +165,10 @@ pub fn ensure_gpu_mirror(
     LocalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     PostProcessVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     CameraPostProcessSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
+    // The camera lens: the authored `CameraLensComponent` derives its source
+    // row (the environment join publishes it as `camera_lenses`) and the
+    // lens pass's `lens_elements` rows.
+    helio_component::components::register_lens_gpu_columns(&mut gpu_store, &device);
     WaterVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
     FoliageSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
     AtmosphereSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
@@ -284,6 +289,10 @@ mod tests {
         assert_eq!(
             size_of::<CameraPostProcessSourceRow>() as u64,
             env::CAMERA_POST_PROCESS_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<helio_component::components::CameraLensSourceRow>() as u64,
+            env::CAMERA_LENS_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<WaterVolumeSourceRow>() as u64,

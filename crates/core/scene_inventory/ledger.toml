@@ -95,6 +95,17 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor
 status = "verified"
 
 [[class]]
+name = "CameraLensComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::camera_lens_component"
+disposition = "render. The camera's lens as authored (optics, focus, focal surface, element stack, presets). Its derived rows are written on every insert, write, removal and replay: the LensComponent row at the instance row of camera_lenses, and its LensElementComponent rows in a compact per-lens block of lens_elements; removal zeroes both"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/renderer/helio/crates/helio-component/src/components/camera_lens_component.rs (tests)"
+status = "verified"
+
+[[class]]
 name = "ClassInstance"
 category = "Scripting"
 world_registered = true
@@ -899,6 +910,34 @@ test = "tracked in #1055"
 status = "unfinished"
 
 [[schema]]
+type = "LensComponent"
+path = "helio_pass_lens::components::LensComponent"
+buffers = ["camera_lenses"]
+clears_on_remove = true
+releases_var_len = true
+registered = false
+writer = "none: the environment join places CameraLensComponent's CameraLensSourceRow into camera_lenses; no longer registered as a column"
+owner = "helio_pass_lens::components"
+disposition = "keep: the camera's lens row (optics, focus, tilt, field curvature, element range)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-lens/src/tests.rs (component_rows_have_the_wgsl_strides)"
+status = "verified"
+
+[[schema]]
+type = "LensElementComponent"
+path = "helio_pass_lens::components::LensElementComponent"
+buffers = ["lens_elements"]
+clears_on_remove = true
+releases_var_len = true
+registered = true
+writer = "the host, through helio_component register_lens_gpu_columns (LensComponent::register_gpu_columns_growable); the rows are derived from the authored CameraLensComponent"
+owner = "helio_pass_lens::components"
+disposition = "keep: an optical element (kind, region, feather, parameters) of a lens stack"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-lens/src/tests.rs (component_rows_have_the_wgsl_strides; every_region_kind_covers_what_it_describes)"
+status = "verified"
+
+[[schema]]
 type = "CameraPostProcessComponent"
 path = "helio_pass_postprocess::components::CameraPostProcessComponent"
 buffers = ["camera_postprocess"]
@@ -1625,6 +1664,20 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs"
 status = "verified"
 
 [[schema]]
+type = "CameraLensSourceRow"
+path = "helio_component::components::camera_lens_component::CameraLensSourceRow"
+buffers = ["camera_lens_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "CameraLensComponent's derived GPU registration (the pass lens row, enabled from the authored flag), on every insert, write, removal and replay"
+owner = "helio_component::components::camera_lens_component"
+disposition = "keep: the environment join's camera_lenses input"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs"
+status = "verified"
+
+[[schema]]
 type = "CameraPostProcessSourceRow"
 path = "helio_component::components::environment_rows::CameraPostProcessSourceRow"
 buffers = ["camera_postprocess_sources"]
@@ -1838,6 +1891,26 @@ owner = "helio-default-graphs environment join (execution output, one row per co
 disposition = "keep: the join copies each placed, enabled CameraPostProcessComponent row; the editor baseline is the resolver's defaults (EditorPostProcess), not a scene row"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/editor_bloom_toggle.rs"
+status = "verified"
+
+[[buffer]]
+key = "camera_lenses"
+producers = ["CameraLensComponent"]
+consumers = ["helio-pass-lens"]
+owner = "helio-default-graphs environment join (execution output, one row per component instance)"
+disposition = "keep: the camera's lens, matched to its view by view_id; the first enabled row wins and none disables the lens. The join copies each placed, enabled CameraLensComponent row, so the instance switch turns the lens off"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/renderer/helio/crates/passes/3d/helio-pass-lens/src/tests.rs (resolve_matches_the_first_enabled_row_of_the_view)"
+status = "verified"
+
+[[buffer]]
+key = "lens_elements"
+producers = ["LensElementComponent"]
+consumers = ["helio-pass-lens"]
+owner = "helio-pass-lens (the packed LensElementComponent column)"
+disposition = "keep: the optical elements a lens stacks, addressed by the lens's element_first and element_count; rows of kind NONE are inert"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-lens/src/tests.rs (split_diopter_focuses_each_half_and_the_seam_follows_the_aperture; diopters_stack_across_many_regions)"
 status = "verified"
 
 [[buffer]]
@@ -2185,6 +2258,16 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_f
 status = "verified"
 
 [[buffer]]
+key = "camera_lens_sources"
+producers = ["CameraLensSourceRow"]
+consumers = []
+owner = "helio_component::components::camera_lens_component"
+disposition = "keep: CameraLensComponent's pass row, derived on every write; the environment join reads it into camera_lenses"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs"
+status = "verified"
+
+[[buffer]]
 key = "camera_postprocess_sources"
 producers = ["CameraPostProcessSourceRow"]
 consumers = []
@@ -2325,13 +2408,13 @@ test = "none: not in a production graph"
 status = "out-of-scope"
 
 [[pass]]
-crate = "helio-pass-dof"
+crate = "helio-pass-lens"
 in_default_graph = true
-reads = []
-owner = "helio-pass-dof"
-disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+reads = ["camera_lenses", "lens_elements"]
+owner = "helio-pass-lens"
+disposition = "keep: reads the camera's lens rows and their elements (SceneDB-owned, matched by view id) and the scene depth; resolves focus on the GPU and publishes lens_color and lens_resolved. The camera owns the lens: post-process volumes do not blend it. Hosts register the columns; nothing authors the rows in the editor yet"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-lens/src/tests.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[pass]]

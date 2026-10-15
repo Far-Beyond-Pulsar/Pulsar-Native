@@ -456,6 +456,14 @@ impl EmbeddedGame {
             cam.near,
             cam.far,
         );
+        // A camera lens that maps past the frame needs a wider render, which
+        // the lens crops back (the editor viewport does the same).
+        let overscan = helio_component::components::camera_lens_view_overscan(
+            &self.scene_store.read().world,
+            helio_cam.view_id,
+            aspect,
+        );
+        let helio_cam = helio_cam.with_overscan(overscan);
 
         // 4. Render into the offscreen target the editor samples. ABI v2
         //    requires the host's authoritative SceneDB-backed store above, so

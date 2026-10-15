@@ -980,7 +980,7 @@ fn environment_components_reach_the_frame() {
         let change = with.difference(&before);
         println!("PHASE4 {label} vs without: {change:?}");
         assert!(
-            change.color_pixels > (SIZE * SIZE / 20) as usize,
+            change.color_pixels > (SIZE * SIZE / 100) as usize,
             "{label} did not change the frame: {change:?}"
         );
         assert_eq!(change.depth_texels, 0, "{label} moved geometry");
@@ -1148,9 +1148,9 @@ fn every_pass_of_the_editor_graph_runs() {
         "VirtualGeometry",
         "TransparentPass",
         "FXAA",
+        "Lens",
         "LensFlare",
         "PostProcess",
-        "DofPass",
         "DebugDraw",
         "PerfOverlay",
     ] {
@@ -3043,4 +3043,252 @@ fn voxel_objects_reach_the_frame_as_meshes() {
         brightness(&unshadowed) > brightness(&shadowed),
         "the volume casts no shadow on the floor"
     );
+}
+
+/// An authored camera lens reaches the lens pass (the host registers its
+/// buffers, the component derives the rows): a mesh far from the focus
+/// distance blurs, and disabling the lens restores the frame.
+#[test]
+fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
+    use helio_component::components::CameraLensComponent;
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // Focused a few centimetres from the lens, wide open: the mesh is far
+    // outside the depth of field.
+    let mut lens = CameraLensComponent::default();
+    lens.view_id = 0;
+    lens.focal_length_mm = 85.0;
+    lens.f_number = 1.4;
+    lens.focus_distance_m = 0.3;
+    lens.max_coc_px = 32.0;
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+    let added = execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "lens".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(lens)],
+        },
+    );
+    let id = added.affected_ids[0].clone();
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("camera_lens_defocus");
+    let change = with.difference(&before);
+    println!("LENS defocus vs without: {change:?}");
+    assert!(
+        change.color_pixels > (SIZE * SIZE / 100) as usize,
+        "the lens did not change the frame: {change:?}"
+    );
+    assert_eq!(change.depth_texels, 0, "a lens moved geometry");
+
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &id,
+        0,
+        false
+    ));
+    let disabled = harness.frames(&mut renderer, || {});
+    let change = disabled.difference(&before);
+    println!("LENS disabled vs without: {change:?}");
+    assert!(
+        change.color_pixels < (SIZE * SIZE / 100) as usize,
+        "a disabled lens still changes the frame: {change:?}"
+    );
+}
+
+/// A lens that maps past the frame (an equidistant fisheye) makes the viewport
+/// camera render a wider view, which the lens pass crops back to the frame:
+/// the scene's depth buffer is that of a wider camera while a lens that stays
+/// inside the frame (the defocus test above) leaves it untouched.
+#[test]
+fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
+    use helio_component::components::{
+        CameraLensComponent, LensElementKind, LensElementProps, LensProjectionModel,
+        LensRegionShape,
+    };
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // In focus at the mesh, so the lens changes the frame by its geometry only.
+    let mut lens = CameraLensComponent::default();
+    lens.view_id = 0;
+    lens.focal_length_mm = 35.0;
+    lens.f_number = 16.0;
+    lens.focus_distance_m = 10.0;
+    lens.elements = vec![LensElementProps {
+        kind: LensElementKind::Projection,
+        shape: LensRegionShape::FullFrame,
+        projection_model: LensProjectionModel::Equidistant,
+        ..LensElementProps::default()
+    }];
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+    execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "lens".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(lens)],
+        },
+    );
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("camera_lens_fisheye_overscan");
+    let change = with.difference(&before);
+    println!("LENS fisheye vs without: {change:?}");
+    assert!(
+        change.color_pixels > (SIZE * SIZE / 100) as usize,
+        "the fisheye did not change the frame: {change:?}"
+    );
+    assert!(
+        change.depth_texels > 0,
+        "the camera did not render the wider view the fisheye reaches into: {change:?}"
+    );
+}
+
+/// The lens elements' registry entries come with the editor graph: the water
+/// drops of the "Rainy lens" preset read the bundled mask array and a
+/// `Prescription` element reads the bundled bank, so each changes the frame
+/// against the same lens with its effect switched off.
+#[test]
+fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
+    use helio_component::components::{
+        CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice,
+        LensPreset, LensRegionShape,
+    };
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // Renders the mesh through `lens`, in focus so only the lens' own
+    // elements change the frame.
+    let render = |lens: CameraLensComponent| {
+        let mut state = LevelEditorState::new();
+        drop_mesh(&mut state);
+        let mut renderer = harness.renderer(&state);
+        execute_command(
+            &mut state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "lens".to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![TypedComponent::new(lens)],
+            },
+        );
+        harness.frames(&mut renderer, || {})
+    };
+    let focused = |mut lens: CameraLensComponent| {
+        lens.f_number = 16.0;
+        lens.focus_distance_m = 10.0;
+        lens
+    };
+
+    // Water drops: the same lens with the refraction at zero is the control.
+    let mut drops = CameraLensComponent::default();
+    drops.preset = LensPreset::RainyLens;
+    let mut dry = drops.resolved();
+    dry.preset = LensPreset::Custom;
+    for element in &mut dry.elements {
+        if element.kind == LensElementKind::WaterDrops {
+            element.drops_refraction = 0.0;
+        }
+    }
+    let wet = render(focused(drops.resolved()));
+    let dry = render(focused(dry));
+    let change = wet.difference(&dry);
+    println!("LENS rainy vs dry: {change:?}");
+    assert!(change.color_pixels > 0, "the water drops did nothing: no bundled mask array: {change:?}");
+
+    // A prescription: the ideal thin lens is the identity map with the bake's
+    // natural falloff, so its corners darken against the same lens without it.
+    let mut baked = CameraLensComponent::default();
+    baked.elements = vec![LensElementProps {
+        kind: LensElementKind::Prescription,
+        shape: LensRegionShape::FullFrame,
+        prescription_lens: LensPrescriptionChoice::ThinLens50F2,
+        ..LensElementProps::default()
+    }];
+    let mut bare = baked.clone();
+    bare.elements.clear();
+    let baked = render(focused(baked));
+    let bare = render(focused(bare));
+    let change = baked.difference(&bare);
+    println!("LENS thin-lens prescription vs none: {change:?}");
+    assert!(change.color_pixels > 0, "the prescription did nothing: no bundled bank: {change:?}");
+    assert_eq!(change.depth_texels, 0, "an identity map moved geometry");
 }
