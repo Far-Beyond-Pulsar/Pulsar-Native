@@ -1,21 +1,15 @@
-use crate::{
-    FlamegraphPanel, FlamegraphView, InstrumentationCollector, ScriptsPanel, StatisticsPanel,
-    TraceData,
-};
+use crate::{FlamegraphView, InstrumentationCollector, TraceData};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use profiling::remote::{TargetConnection, TargetInfo};
 use rust_i18n::t;
 use std::sync::Arc;
-use ui::{
-    button::Button,
-    checkbox::Checkbox,
-    h_flex,
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    v_flex, ActiveTheme, Icon, IconName, TitleBar,
-};
+use ui::{button::Button, checkbox::Checkbox, h_flex, v_flex, ActiveTheme, Icon, IconName, TitleBar};
 
+mod session;
 mod start_screen;
+
+use session::SessionUi;
 
 use start_screen::{KindFilter, SessionFile};
 
@@ -26,10 +20,12 @@ pub struct FlamegraphWindow {
     is_profiling: bool,
     current_db_path: Option<std::path::PathBuf>,
     db_connection: Option<rusqlite::Connection>,
-    flamegraph_panel: Option<Entity<FlamegraphPanel>>,
-    statistics_panel: Option<Entity<StatisticsPanel>>,
-    scripts_panel: Option<Entity<ScriptsPanel>>,
-    resizable_state: Entity<ResizableState>,
+    /// The docked session layout, built when a session first has data.
+    session_ui: Option<SessionUi>,
+    /// Pending debounced save of the dock layout.
+    layout_save: Option<Task<()>>,
+    /// Outcome of the last export, shown in the toolbar.
+    export_status: Option<String>,
     /// "Uncap frame rate while recording": lifts the engine's frame-rate target and
     /// vsync for the duration of the next recording.
     uncap_frame_rate: bool,
@@ -75,7 +71,6 @@ impl FlamegraphWindow {
         let view = cx.new(move |_cx| FlamegraphView::new((*view_trace_data).clone()));
 
         cx.new(|cx| {
-            let resizable_state = ResizableState::new(cx);
             let refresh = cx.spawn(async move |this, cx| loop {
                 cx.background_executor().timer(TARGET_REFRESH).await;
                 let listing = cx
@@ -105,10 +100,9 @@ impl FlamegraphWindow {
                 is_profiling: false,
                 current_db_path: None,
                 db_connection: None,
-                flamegraph_panel: None,
-                statistics_panel: None,
-                scripts_panel: None,
-                resizable_state,
+                session_ui: None,
+                layout_save: None,
+                export_status: None,
                 uncap_frame_rate: false,
                 targets,
                 selected_target: None,
@@ -499,22 +493,20 @@ impl FlamegraphWindow {
 }
 
 impl Render for FlamegraphWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_profiling = self.is_profiling;
         let frame = self.trace_data.get_frame();
         // Only show data when NOT profiling - during profiling, data is being collected but not displayed
         let has_data = !is_profiling && !frame.spans.is_empty();
 
-        // Initialize panels on first render with data (when profiling stops)
-        if has_data && self.flamegraph_panel.is_none() {
-            self.flamegraph_panel = Some(cx.new(|cx| FlamegraphPanel::new(self.view.clone(), cx)));
-            self.statistics_panel =
-                Some(cx.new(|cx| StatisticsPanel::new(self.trace_data.clone(), cx)));
-            self.scripts_panel = Some(cx.new(|cx| ScriptsPanel::new(self.trace_data.clone(), cx)));
+        // Build the docked layout the first time a session has data.
+        if has_data && self.session_ui.is_none() {
+            self.build_session_ui(window, cx);
         }
+        let toolbar = has_data.then(|| self.render_session_toolbar(cx));
 
         let theme = cx.theme();
-        let summary_bar = if has_data || is_profiling {
+        let summary_bar = if is_profiling {
             Some(
                 div()
                     .w_full()
@@ -658,6 +650,7 @@ impl Render for FlamegraphWindow {
                 ),
             )
             .when_some(summary_bar, |this, bar| this.child(bar))
+            .when_some(toolbar, |this, bar| this.child(bar))
             .child(
                 div()
                     .flex_1()
@@ -671,28 +664,17 @@ impl Render for FlamegraphWindow {
                         // Show overlay when profiling (whether or not there's data from previous sessions)
                         this.child(self.render_profiling_overlay(cx))
                     })
-                    .when(has_data && !is_profiling, |this| {
-                        // Show flamegraph viewer only when not profiling and data exists
-                        this.child(
-                            h_resizable("flamegraph-resizable")
-                                .state(self.resizable_state.clone())
-                                .child(resizable_panel().child(self.view.clone()).size(px(800.0)))
-                                .child(
-                                    resizable_panel()
-                                        .when_some(self.statistics_panel.clone(), |panel, stats| {
-                                            panel.child(stats)
-                                        })
-                                        .size(px(400.0)),
-                                )
-                                .child(
-                                    resizable_panel()
-                                        .when_some(self.scripts_panel.clone(), |panel, scripts| {
-                                            panel.child(scripts)
-                                        })
-                                        .size(px(400.0)),
-                                ),
-                        )
-                    }),
+                    .when_some(
+                        self.session_ui.as_ref().filter(|_| has_data && !is_profiling),
+                        |this, ui| {
+                            this.child(
+                                v_flex()
+                                    .size_full()
+                                    .child(div().flex_1().min_h_0().child(ui.dock.clone()))
+                                    .child(ui.status_bar.clone()),
+                            )
+                        },
+                    ),
             )
     }
 }

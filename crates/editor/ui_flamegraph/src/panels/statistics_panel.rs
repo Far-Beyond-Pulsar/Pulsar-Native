@@ -1,110 +1,138 @@
-use crate::trace_data::TraceData;
-use gpui::prelude::FluentBuilder;
+//! Per-function statistics: a sortable, filterable table that windows its rows
+//! so any number of functions stays cheap.
+
+use crate::analysis::{FunctionStats, aggregate, compute_self_times};
+use crate::format::format_duration;
+use crate::trace_data::{TraceData, TraceFrame};
 use gpui::*;
-use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
     dock::{Panel, PanelEvent},
-    h_flex, v_flex, ActiveTheme,
+    h_flex,
+    input::{InputEvent, InputState, TextInput},
+    scroll::{Scrollbar, ScrollbarState},
+    v_flex, ActiveTheme,
 };
 
-#[derive(Clone, Debug)]
-pub struct FunctionStats {
-    pub name: String,
-    pub call_count: usize,
-    pub total_duration_ns: u64,
-    pub avg_duration_ns: u64,
-    pub min_duration_ns: u64,
-    pub max_duration_ns: u64,
+const ROW_HEIGHT: f32 = 24.0;
+const NUMBER_WIDTH: f32 = 74.0;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SortColumn {
+    Name,
+    Calls,
+    Total,
+    SelfTime,
+    SelfPercent,
+    Avg,
+    Max,
 }
 
 pub struct StatisticsPanel {
     trace_data: Arc<TraceData>,
-    stats: Vec<FunctionStats>,
+    /// The frame `all` was computed from.
+    frame: Option<Arc<TraceFrame>>,
+    all: Vec<FunctionStats>,
+    /// Sum of all self time: the denominator of the "Self %" column.
+    total_self_ns: u64,
+    /// Indices into `all`: filtered, then sorted.
+    rows: Rc<Vec<usize>>,
     sort_by: SortColumn,
     sort_ascending: bool,
+    filter_input: Entity<InputState>,
+    filter: String,
+    selected: Option<String>,
+    scroll: UniformListScrollHandle,
+    scrollbar: ScrollbarState,
     focus_handle: FocusHandle,
-    last_span_count: usize,
-    stats_dirty: bool,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum SortColumn {
-    Name,
-    Calls,
-    TotalTime,
-    AvgTime,
+    _subscription: Subscription,
 }
 
 impl StatisticsPanel {
-    pub fn new(trace_data: Arc<TraceData>, cx: &mut Context<Self>) -> Self {
+    pub fn new(trace_data: Arc<TraceData>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let filter_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Filter functions"));
+        let subscription = cx.subscribe(
+            &filter_input,
+            |this, input, event: &InputEvent, cx| {
+                if let InputEvent::Change = event {
+                    this.filter = input.read(cx).text().to_string();
+                    this.rebuild_rows();
+                    cx.notify();
+                }
+            },
+        );
         Self {
             trace_data,
-            stats: Vec::new(),
-            sort_by: SortColumn::TotalTime,
+            frame: None,
+            all: Vec::new(),
+            total_self_ns: 0,
+            rows: Rc::new(Vec::new()),
+            sort_by: SortColumn::Total,
             sort_ascending: false,
+            filter_input,
+            filter: String::new(),
+            selected: None,
+            scroll: UniformListScrollHandle::new(),
+            scrollbar: ScrollbarState::default(),
             focus_handle: cx.focus_handle(),
-            last_span_count: 0,
-            stats_dirty: true,
+            _subscription: subscription,
         }
     }
 
-    fn compute_statistics(&mut self) {
+    /// Recompute the table when a different session has been loaded.
+    fn refresh(&mut self) {
         let frame = self.trace_data.get_frame();
-
-        // Only recompute if span count changed
-        if frame.spans.len() == self.last_span_count && !self.stats_dirty {
+        if self
+            .frame
+            .as_ref()
+            .is_some_and(|known| Arc::ptr_eq(known, &frame))
+        {
             return;
         }
+        let self_ns = compute_self_times(&frame);
+        self.total_self_ns = self_ns.iter().sum();
+        self.all = aggregate(&frame, &self_ns);
+        self.frame = Some(frame);
+        self.selected = None;
+        self.rebuild_rows();
+    }
 
-        self.last_span_count = frame.spans.len();
-        self.stats_dirty = false;
-        let mut function_map: HashMap<String, (usize, u64, u64, u64)> = HashMap::new();
-
-        // Aggregate statistics by function name
-        for span in &frame.spans {
-            let entry = function_map
-                .entry(span.name.clone())
-                .or_insert((0, 0, u64::MAX, 0));
-
-            entry.0 += 1; // call count
-            entry.1 += span.duration_ns; // total duration
-            entry.2 = entry.2.min(span.duration_ns); // min duration
-            entry.3 = entry.3.max(span.duration_ns); // max duration
-        }
-
-        // Convert to FunctionStats vec
-        self.stats = function_map
-            .into_iter()
-            .map(|(name, (count, total, min, max))| FunctionStats {
-                name,
-                call_count: count,
-                total_duration_ns: total,
-                avg_duration_ns: total / count as u64,
-                min_duration_ns: min,
-                max_duration_ns: max,
+    fn rebuild_rows(&mut self) {
+        let words: Vec<String> = self
+            .filter
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        let mut rows: Vec<usize> = (0..self.all.len())
+            .filter(|&index| {
+                let name = self.all[index].name.to_lowercase();
+                words.iter().all(|word| name.contains(word))
             })
             .collect();
 
-        // Sort by current column
-        self.sort_statistics();
-    }
-
-    fn sort_statistics(&mut self) {
-        self.stats.sort_by(|a, b| {
-            let cmp = match self.sort_by {
-                SortColumn::Name => a.name.cmp(&b.name),
-                SortColumn::Calls => a.call_count.cmp(&b.call_count),
-                SortColumn::TotalTime => a.total_duration_ns.cmp(&b.total_duration_ns),
-                SortColumn::AvgTime => a.avg_duration_ns.cmp(&b.avg_duration_ns),
-            };
-
-            if self.sort_ascending {
-                cmp
-            } else {
-                cmp.reverse()
+        let all = &self.all;
+        let key = |index: &usize| -> u64 {
+            let stat = &all[*index];
+            match self.sort_by {
+                SortColumn::Name => 0,
+                SortColumn::Calls => stat.calls as u64,
+                SortColumn::Total => stat.total_ns,
+                SortColumn::SelfTime | SortColumn::SelfPercent => stat.self_ns,
+                SortColumn::Avg => stat.avg_ns(),
+                SortColumn::Max => stat.max_ns,
             }
-        });
+        };
+        if self.sort_by == SortColumn::Name {
+            rows.sort_by_key(|&index| all[index].name.to_lowercase());
+        } else {
+            rows.sort_by(|a, b| key(b).cmp(&key(a)).then_with(|| all[*a].name.cmp(&all[*b].name)));
+        }
+        if self.sort_ascending {
+            rows.reverse();
+        }
+        self.rows = Rc::new(rows);
     }
 
     fn set_sort(&mut self, column: SortColumn, cx: &mut Context<Self>) {
@@ -112,126 +140,111 @@ impl StatisticsPanel {
             self.sort_ascending = !self.sort_ascending;
         } else {
             self.sort_by = column;
-            self.sort_ascending = false;
+            // Names read best A to Z; every number starts with the biggest.
+            self.sort_ascending = column == SortColumn::Name;
         }
-        self.stats_dirty = true; // Mark for re-sort
-        self.sort_statistics();
+        self.rebuild_rows();
         cx.notify();
     }
 
-    fn format_duration(ns: u64) -> String {
-        if ns < 1_000 {
-            format!("{}ns", ns)
-        } else if ns < 1_000_000 {
-            format!("{:.2}µs", ns as f64 / 1_000.0)
-        } else if ns < 1_000_000_000 {
-            format!("{:.2}ms", ns as f64 / 1_000_000.0)
-        } else {
-            format!("{:.2}s", ns as f64 / 1_000_000_000.0)
-        }
-    }
-
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-
-        h_flex()
-            .w_full()
-            .h(px(32.0))
-            .px_3()
-            .items_center()
-            .gap_2()
-            .bg(theme.sidebar)
-            .border_b_1()
-            .border_color(theme.border)
-            .child(self.render_header_cell("Function", SortColumn::Name, true, cx))
-            .child(self.render_header_cell("Calls", SortColumn::Calls, false, cx))
-            .child(self.render_header_cell("Total", SortColumn::TotalTime, false, cx))
-            .child(self.render_header_cell("Avg", SortColumn::AvgTime, false, cx))
-    }
-
-    fn render_header_cell(
+    fn header_cell(
         &self,
-        label: &str,
+        label: &'static str,
         column: SortColumn,
-        flex_grow: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        let is_active = self.sort_by == column;
-        let label_owned = label.to_string();
-
-        let mut el = div();
-        if flex_grow {
-            el = el.flex_grow().flex_basis(relative(0.0));
+        let active = self.sort_by == column;
+        let (accent, muted, foreground) = (theme.accent, theme.muted_foreground, theme.foreground);
+        let arrow = match (active, self.sort_ascending) {
+            (false, _) => "",
+            (true, true) => " ▲",
+            (true, false) => " ▼",
+        };
+        let cell = if column == SortColumn::Name {
+            div().flex_1().min_w_0()
         } else {
-            el = el.w(px(80.0));
-        }
-
-        el.text_xs()
+            div().w(px(NUMBER_WIDTH)).flex_shrink_0().text_right()
+        };
+        cell.id(label)
+            .text_xs()
             .font_weight(FontWeight::SEMIBOLD)
-            .text_color(if is_active {
-                theme.accent
-            } else {
-                theme.muted_foreground
-            })
+            .text_color(if active { accent } else { muted })
             .cursor_pointer()
-            .hover(|style| style.text_color(theme.foreground))
+            .hover(move |style| style.text_color(foreground))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |this, _event, _window, cx| {
-                    this.set_sort(column, cx);
-                }),
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| this.set_sort(column, cx)),
             )
-            .child(label_owned)
+            .child(format!("{}{}", label, arrow))
     }
 
-    fn render_row(&self, index: usize, cx: &mut Context<Self>) -> impl IntoElement {
+    fn row(&self, row: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let stat = self.all.get(*self.rows.get(row)?)?;
         let theme = cx.theme();
-        let stats = &self.stats[index];
+        let (foreground, muted, border, selected_bg, hover_bg) = (
+            theme.foreground,
+            theme.muted_foreground,
+            theme.border,
+            theme.list_active,
+            theme.list_hover,
+        );
+        let is_selected = self.selected.as_deref() == Some(stat.name.as_str());
+        let percent = if self.total_self_ns == 0 {
+            0.0
+        } else {
+            stat.self_ns as f64 * 100.0 / self.total_self_ns as f64
+        };
+        let name = stat.name.clone();
+        let number = move |text: String| {
+            div()
+                .w(px(NUMBER_WIDTH))
+                .flex_shrink_0()
+                .text_right()
+                .text_xs()
+                .font_family("monospace")
+                .text_color(muted)
+                .child(text)
+        };
 
-        h_flex()
-            .w_full()
-            .h(px(28.0))
-            .px_3()
-            .items_center()
-            .gap_2()
-            .border_b_1()
-            .border_color(theme.border.opacity(0.3))
-            .hover(|style| style.bg(theme.muted.opacity(0.2)))
-            .child(
-                div()
-                    .flex_grow()
-                    .flex_basis(relative(0.0))
-                    .text_sm()
-                    .text_color(theme.foreground)
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(stats.name.clone()),
-            )
-            .child(
-                div()
-                    .w(px(80.0))
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .font_family("monospace")
-                    .child(format!("{}", stats.call_count)),
-            )
-            .child(
-                div()
-                    .w(px(80.0))
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .font_family("monospace")
-                    .child(Self::format_duration(stats.total_duration_ns)),
-            )
-            .child(
-                div()
-                    .w(px(80.0))
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .font_family("monospace")
-                    .child(Self::format_duration(stats.avg_duration_ns)),
-            )
+        Some(
+            h_flex()
+                .id(SharedString::from(format!("stat-{}", stat.name)))
+                .w_full()
+                .h(px(ROW_HEIGHT))
+                .px_3()
+                .gap_2()
+                .items_center()
+                .border_b_1()
+                .border_color(border.opacity(0.25))
+                .cursor_pointer()
+                .bg(if is_selected { selected_bg } else { transparent_black() })
+                .hover(move |style| style.bg(if is_selected { selected_bg } else { hover_bg }))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.selected = Some(name.clone());
+                        cx.notify();
+                    }),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_xs()
+                        .text_color(foreground)
+                        .child(stat.name.clone()),
+                )
+                .child(number(stat.calls.to_string()))
+                .child(number(format_duration(stat.total_ns)))
+                .child(number(format_duration(stat.self_ns)))
+                .child(number(format!("{:.1}%", percent)))
+                .child(number(format_duration(stat.avg_ns())))
+                .child(number(format_duration(stat.max_ns)))
+                .into_any_element(),
+        )
     }
 }
 
@@ -251,37 +264,92 @@ impl Panel for StatisticsPanel {
 
 impl Render for StatisticsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Only recompute if needed
-        self.compute_statistics();
-
-        // Limit to top 100 items for performance
-        let item_count = self.stats.len().min(100);
-        let total_count = self.stats.len();
-
+        self.refresh();
         let theme = cx.theme();
+        let (background, sidebar, border, muted) = (
+            theme.background,
+            theme.sidebar,
+            theme.border,
+            theme.muted_foreground,
+        );
+        let shown = self.rows.len();
+        let total = self.all.len();
+
+        let header = h_flex()
+            .w_full()
+            .h(px(28.0))
+            .flex_shrink_0()
+            .px_3()
+            .gap_2()
+            .items_center()
+            .bg(sidebar)
+            .border_b_1()
+            .border_color(border)
+            .child(self.header_cell("Function", SortColumn::Name, cx))
+            .child(self.header_cell("Calls", SortColumn::Calls, cx))
+            .child(self.header_cell("Total", SortColumn::Total, cx))
+            .child(self.header_cell("Self", SortColumn::SelfTime, cx))
+            .child(self.header_cell("Self %", SortColumn::SelfPercent, cx))
+            .child(self.header_cell("Avg", SortColumn::Avg, cx))
+            .child(self.header_cell("Max", SortColumn::Max, cx));
+
+        let body: AnyElement = if shown == 0 {
+            div()
+                .flex_1()
+                .p_3()
+                .text_xs()
+                .text_color(muted)
+                .child(if total == 0 {
+                    "No spans in this session."
+                } else {
+                    "No functions match the filter."
+                })
+                .into_any_element()
+        } else {
+            let list = uniform_list(
+                "flamegraph-statistics-rows",
+                shown,
+                cx.processor(|panel, range: std::ops::Range<usize>, _window, cx| {
+                    range
+                        .filter_map(|row| panel.row(row, cx))
+                        .collect::<Vec<AnyElement>>()
+                }),
+            )
+            .track_scroll(&self.scroll)
+            .size_full();
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .overflow_hidden()
+                .child(list)
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .child(Scrollbar::vertical(&self.scrollbar, &self.scroll)),
+                )
+                .into_any_element()
+        };
 
         v_flex()
             .size_full()
-            .bg(theme.background)
-            .child(self.render_header(cx))
+            .bg(background)
             .child(
-                div()
-                    .id("stats-scroll")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .children((0..item_count).map(|index| self.render_row(index, cx))),
+                h_flex()
+                    .flex_shrink_0()
+                    .p_2()
+                    .gap_2()
+                    .items_center()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(div().flex_1().child(TextInput::new(&self.filter_input)))
+                    .child(div().text_xs().text_color(muted).child(format!(
+                        "{} of {} functions",
+                        shown, total
+                    ))),
             )
-            .when(total_count > 100, |this| {
-                let theme = cx.theme();
-                this.child(
-                    div()
-                        .w_full()
-                        .px_3()
-                        .py_2()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child(format!("Showing top 100 of {} functions", total_count)),
-                )
-            })
+            .child(header)
+            .child(body)
     }
 }

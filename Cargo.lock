@@ -14205,6 +14205,7 @@ dependencies = [
  "rusqlite",
  "rust-i18n",
  "serde",
+ "serde_json",
  "tracing",
  "ui",
  "ui_common",
