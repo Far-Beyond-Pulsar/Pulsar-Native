@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 /// Repository state snapshot (everything except the commit history, which is
 /// loaded in pages — see [`crate::history`]).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct RepositoryState {
     pub current_branch: String,
     /// HEAD points at a commit instead of a branch.
@@ -22,7 +22,7 @@ pub struct RepositoryState {
 }
 
 /// Branch information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Branch {
     pub name: String,
     pub is_current: bool,
@@ -31,7 +31,7 @@ pub struct Branch {
 }
 
 /// File change information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileChange {
     pub path: String,
     /// The path before a rename or copy.

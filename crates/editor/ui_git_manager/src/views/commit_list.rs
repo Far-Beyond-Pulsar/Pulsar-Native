@@ -5,7 +5,7 @@ use super::common::{FONT_MONO, avatar, lane_color, pill, placeholder, relative_t
 use crate::models::*;
 use crate::{GitManager, manager::GRAPH_ROW_HEIGHT};
 use gpui::{prelude::FluentBuilder as _, *};
-use ui::{ActiveTheme as _, IconName, h_flex, v_flex, v_virtual_list};
+use ui::{ActiveTheme as _, IconName, h_flex, input::TextInput, v_flex};
 
 const LANE_WIDTH: f32 = 14.0;
 const MAX_LANES: usize = 12;
@@ -28,40 +28,73 @@ pub(crate) fn render_commit_list(
         return placeholder(IconName::GitCommit, message, cx).into_any_element();
     }
 
-    let sizes = if graph {
-        gm.commit_sizes_graph.clone()
-    } else {
-        gm.commit_sizes_compact.clone()
-    };
-    let entity = cx.entity().clone();
-    let list = v_virtual_list(
-        entity,
-        if graph { "commit-graph-list" } else { "commit-compact-list" },
-        sizes,
-        move |gm: &mut GitManager, range: std::ops::Range<usize>, _window, cx| {
-            if range.end + PREFETCH_ROWS >= gm.commits.len() {
-                gm.load_more_commits(cx);
-            }
-            let rows: Vec<GraphCommit> = range
-                .filter_map(|index| gm.commits.get(index).cloned())
-                .collect();
-            rows.into_iter()
-                .map(|commit| {
-                    if graph {
-                        graph_row(gm, commit, cx)
-                    } else {
-                        compact_row(gm, commit, cx)
-                    }
-                })
-                .collect::<Vec<AnyElement>>()
-        },
-    )
-    .track_scroll(&gm.commit_list.scroll);
+    let border = cx.theme().border;
+    let muted = cx.theme().muted_foreground;
+    let matches = gm.commit_matches.clone();
+    let shown = matches.as_ref().map_or(gm.commits.len(), |m| m.len());
+    let searching = matches.is_some() && !gm.commits_exhausted;
 
-    let footer = gm.commits_loading;
+    let filter_bar = v_flex()
+        .flex_shrink_0()
+        .p_2()
+        .gap_1()
+        .border_b_1()
+        .border_color(border)
+        .child(TextInput::new(&gm.commit_filter_input))
+        .when(matches.is_some(), |this| {
+            this.child(div().text_size(px(10.)).text_color(muted).child(format!(
+                "{} matching commit{}{}",
+                shown,
+                if shown == 1 { "" } else { "s" },
+                if searching { " so far, searching history…" } else { "" }
+            )))
+        });
+
+    let body: AnyElement = if shown == 0 {
+        placeholder(
+            IconName::Search,
+            if searching { "Searching history…" } else { "No commits match the filter" },
+            cx,
+        )
+        .into_any_element()
+    } else {
+        let list = uniform_list(
+            if graph { "commit-graph-list" } else { "commit-compact-list" },
+            shown,
+            cx.processor(move |gm, range: std::ops::Range<usize>, _window, cx| {
+                // Start the next page well before the end is reached.
+                if gm.commit_matches.is_none() && range.end + PREFETCH_ROWS >= gm.commits.len() {
+                    gm.load_more_commits(cx);
+                }
+                let matches = gm.commit_matches.clone();
+                let rows: Vec<GraphCommit> = range
+                    .filter_map(|row| {
+                        let index = match &matches {
+                            Some(m) => *m.get(row)?,
+                            None => row,
+                        };
+                        gm.commits.get(index).cloned()
+                    })
+                    .collect();
+                rows.into_iter()
+                    .map(|commit| {
+                        if graph {
+                            graph_row(gm, commit, cx)
+                        } else {
+                            compact_row(gm, commit, cx)
+                        }
+                    })
+                    .collect::<Vec<AnyElement>>()
+            }),
+        );
+        virtual_panel(list, &gm.commit_list).into_any_element()
+    };
+
+    let footer = gm.commits_loading && matches.is_none();
     v_flex()
         .size_full()
-        .child(virtual_panel(list, &gm.commit_list))
+        .child(filter_bar)
+        .child(body)
         .when(footer, |this| {
             this.child(
                 div()
@@ -69,7 +102,7 @@ pub(crate) fn render_commit_list(
                     .flex_shrink_0()
                     .px_3()
                     .text_size(px(10.))
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(muted)
                     .child("Loading more commits…"),
             )
         })

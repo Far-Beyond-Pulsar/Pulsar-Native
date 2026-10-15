@@ -4,7 +4,6 @@ use super::common::{file_menu, placeholder, status_color, virtual_panel};
 use crate::history::DiffTarget;
 use crate::{ChangeRow, GitLayout, GitManager};
 use gpui::{prelude::FluentBuilder as _, *};
-use std::rc::Rc;
 use ui::{
     ActiveTheme as _, Disableable as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
@@ -12,7 +11,7 @@ use ui::{
     h_flex,
     input::TextInput,
     menu::context_menu::ContextMenuExt as _,
-    v_flex, v_virtual_list,
+    v_flex,
 };
 
 const ROW_HEIGHT: f32 = 28.0;
@@ -29,30 +28,29 @@ pub(crate) fn render_changes_panel(
     let staged_count = gm.repo_state.staged_files.len();
     let changed_count = gm.changes_rows.len();
 
+    let total = gm.repo_state.staged_files.len()
+        + gm.repo_state.unstaged_files.len()
+        + gm.repo_state.untracked_files.len();
     let body: AnyElement = if gm.changes_rows.is_empty() {
-        placeholder(IconName::Check, "No local changes", cx).into_any_element()
+        if total > 0 {
+            placeholder(IconName::Search, "No changed files match the filter", cx).into_any_element()
+        } else {
+            placeholder(IconName::Check, "No local changes", cx).into_any_element()
+        }
     } else {
-        let sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
-            gm.changes_rows
-                .iter()
-                .map(|_| size(px(0.0), px(ROW_HEIGHT)))
-                .collect(),
-        );
-        let entity = cx.entity().clone();
-        let list = v_virtual_list(
-            entity,
+        // Only the rows in view are built; the row list itself is shared and
+        // rebuilt only when the repository changes.
+        let list = uniform_list(
             "git-changes-list",
-            sizes,
-            move |gm: &mut GitManager, range: std::ops::Range<usize>, _window, cx| {
-                let rows: Vec<ChangeRow> = range
-                    .filter_map(|index| gm.changes_rows.get(index).cloned())
-                    .collect();
-                rows.into_iter()
+            gm.changes_rows.len(),
+            cx.processor(|gm, range: std::ops::Range<usize>, _window, cx| {
+                let rows = gm.changes_rows.clone();
+                range
+                    .filter_map(|index| rows.get(index).cloned())
                     .map(|row| render_row(gm, row, cx))
                     .collect::<Vec<AnyElement>>()
-            },
-        )
-        .track_scroll(&gm.changes_list.scroll);
+            }),
+        );
         virtual_panel(list, &gm.changes_list).into_any_element()
     };
 
@@ -92,8 +90,18 @@ pub(crate) fn render_changes_panel(
             )
     });
 
+    let filter_bar = (total > 0).then(|| {
+        div()
+            .flex_shrink_0()
+            .p_2()
+            .border_b_1()
+            .border_color(border)
+            .child(TextInput::new(&gm.changes_filter_input))
+    });
+
     v_flex()
         .size_full()
+        .children(filter_bar)
         .children(select_all)
         .child(body)
         .child(render_commit_box(gm, staged_count, cx))

@@ -4,9 +4,8 @@ use super::chrome::TOP_BAR_HEIGHT;
 use super::common::{pill, placeholder, virtual_panel};
 use crate::{BranchRow, GitManager, ListState};
 use gpui::{prelude::FluentBuilder as _, *};
-use std::rc::Rc;
 use ui::{
-    ActiveTheme as _, Icon, IconName, input::TextInput, h_flex, v_flex, v_virtual_list,
+    ActiveTheme as _, Icon, IconName, input::TextInput, h_flex, v_flex,
 };
 
 const ROW_HEIGHT: f32 = 26.0;
@@ -14,32 +13,22 @@ const INDENT: f32 = 12.0;
 
 fn virtual_rows(
     id: &'static str,
-    rows_of: fn(&GitManager) -> &Vec<BranchRow>,
+    rows_of: fn(&GitManager) -> &std::rc::Rc<Vec<BranchRow>>,
     list_of: fn(&GitManager) -> &ListState,
     gm: &mut GitManager,
     cx: &mut Context<GitManager>,
 ) -> Div {
-    let sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
-        rows_of(gm)
-            .iter()
-            .map(|_| size(px(0.0), px(ROW_HEIGHT)))
-            .collect(),
-    );
-    let entity = cx.entity().clone();
-    let list = v_virtual_list(
-        entity,
+    let list = uniform_list(
         id,
-        sizes,
-        move |gm: &mut GitManager, range: std::ops::Range<usize>, _window, cx| {
-            let rows: Vec<BranchRow> = range
-                .filter_map(|index| rows_of(gm).get(index).cloned())
-                .collect();
-            rows.into_iter()
+        rows_of(gm).len(),
+        cx.processor(move |gm, range: std::ops::Range<usize>, _window, cx| {
+            let rows = rows_of(gm).clone();
+            range
+                .filter_map(|index| rows.get(index).cloned())
                 .map(|row| render_row(row, cx))
                 .collect::<Vec<AnyElement>>()
-        },
-    )
-    .track_scroll(&list_of(gm).scroll);
+        }),
+    );
     virtual_panel(list, list_of(gm))
 }
 

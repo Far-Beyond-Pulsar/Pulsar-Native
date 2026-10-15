@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use gpui::*;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme as _, Icon, IconName, VirtualList, h_flex,
+    ActiveTheme as _, Icon, IconName, h_flex,
     menu::popup_menu::PopupMenu,
     scroll::Scrollbar,
     v_flex,
@@ -16,14 +16,16 @@ use ui::{
 
 pub(crate) const FONT_MONO: &str = "JetBrains Mono";
 
-/// A virtualized list with its scrollbar, filling the space it is given.
-pub(crate) fn virtual_panel(list: VirtualList, state: &ListState) -> Div {
+/// A windowed list with its scrollbar, filling the space it is given. Rows
+/// have one fixed height, so nothing is measured or allocated per row: the
+/// list only asks for the rows in view (the same way the nav sidebar does).
+pub(crate) fn virtual_panel(list: UniformList, state: &ListState) -> Div {
     div()
         .relative()
         .flex_1()
         .min_h_0()
         .overflow_hidden()
-        .child(list)
+        .child(list.track_scroll(&state.scroll).size_full())
         .child(
             div()
                 .absolute()

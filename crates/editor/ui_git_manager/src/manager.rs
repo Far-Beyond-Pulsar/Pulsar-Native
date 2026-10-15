@@ -93,8 +93,9 @@ impl GitManager {
                         return;
                     }
                     gm.refreshing = false;
-                    gm.apply_probe(probe, force_diff, cx);
-                    cx.notify();
+                    if gm.apply_probe(probe, force_diff, cx) {
+                        cx.notify();
+                    }
                 });
             });
         })
@@ -110,10 +111,16 @@ impl GitManager {
         probe: Result<RepositoryProbe, git2::Error>,
         force_diff: bool,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         match probe {
             Ok(RepositoryProbe::Repository(state)) => {
                 let first_load = !matches!(self.phase, RepoPhase::Ready);
+                // The timer re-reads the repository; when nothing changed the
+                // rows built last time are still right, so nothing is rebuilt.
+                if !first_load && state == self.repo_state {
+                    self.retarget_selection(force_diff, cx);
+                    return false;
+                }
                 let print = fingerprint(&state);
                 let history_changed = print != self.history_fingerprint;
                 self.phase = RepoPhase::Ready;
@@ -125,13 +132,15 @@ impl GitManager {
                     self.reload_history(cx);
                 }
                 self.retarget_selection(force_diff, cx);
+                true
             }
             Ok(RepositoryProbe::NotARepository) => {
                 self.phase = RepoPhase::NotARepository;
                 self.repo_state = RepositoryState::default();
                 self.commits.clear();
-                self.changes_rows.clear();
-                self.branch_rows.clear();
+                self.changes_rows = Rc::new(Vec::new());
+                self.branch_rows = Rc::new(Vec::new());
+                true
             }
             Err(error) => {
                 let message = format!(
@@ -144,6 +153,7 @@ impl GitManager {
                 } else {
                     self.phase = RepoPhase::Failed(message);
                 }
+                true
             }
         }
     }
@@ -195,10 +205,9 @@ impl GitManager {
     pub(crate) fn reload_history(&mut self, cx: &mut Context<Self>) {
         self.history_generation = self.history_generation.wrapping_add(1);
         self.commits.clear();
-        self.commit_sizes_graph = Rc::new(Vec::new());
-        self.commit_sizes_compact = Rc::new(Vec::new());
         self.graph = history::GraphBuilder::default();
         self.graph_lanes = 1;
+        self.commit_matches = self.commit_matches.as_ref().map(|_| Rc::new(Vec::new()));
         self.commits_loading = false;
         self.commits_exhausted = false;
         self.load_more_commits(cx);
@@ -230,6 +239,9 @@ impl GitManager {
                             gm.append_commits(page.commits);
                             gm.graph = page.graph;
                             gm.commits_exhausted = page.exhausted;
+                            if gm.commit_matches.is_some() {
+                                gm.load_more_commits(cx);
+                            }
                         }
                         Err(error) => {
                             gm.commits_exhausted = true;
@@ -244,14 +256,56 @@ impl GitManager {
     }
 
     fn append_commits(&mut self, commits: Vec<GraphCommit>) {
-        let graph_sizes = Rc::make_mut(&mut self.commit_sizes_graph);
-        let compact_sizes = Rc::make_mut(&mut self.commit_sizes_compact);
         for commit in &commits {
-            graph_sizes.push(size(px(0.0), px(GRAPH_ROW_HEIGHT)));
-            compact_sizes.push(size(px(0.0), px(COMPACT_ROW_HEIGHT)));
             self.graph_lanes = self.graph_lanes.max(commit.graph.lane_count);
         }
         self.commits.extend(commits);
+        self.rebuild_commit_matches();
+    }
+
+    /// Commits matching every word of the filter, as indices into `commits`.
+    pub(crate) fn rebuild_commit_matches(&mut self) {
+        let words: Vec<String> = self
+            .commit_filter
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        if words.is_empty() {
+            self.commit_matches = None;
+            return;
+        }
+        let matches = self
+            .commits
+            .iter()
+            .enumerate()
+            .filter(|(_, commit)| {
+                let haystack = format!(
+                    "{} {} {} {} {}",
+                    commit.summary,
+                    commit.author,
+                    commit.email,
+                    commit.hash,
+                    commit.refs.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(" ")
+                )
+                .to_lowercase();
+                words.iter().all(|word| haystack.contains(word))
+            })
+            .map(|(index, _)| index)
+            .collect();
+        self.commit_matches = Some(Rc::new(matches));
+    }
+
+    pub(crate) fn set_commit_filter(&mut self, text: String, cx: &mut Context<Self>) {
+        if self.commit_filter == text {
+            return;
+        }
+        self.commit_filter = text;
+        self.rebuild_commit_matches();
+        // A filter searches the whole history, not only the pages read so far.
+        if self.commit_matches.is_some() {
+            self.load_more_commits(cx);
+        }
+        cx.notify();
     }
 
     /// Ensure the GitHub avatar for a commit author is loaded.
@@ -299,7 +353,22 @@ impl GitManager {
                 .iter()
                 .map(|path| FileChange::new(path.clone(), ChangeStatus::Untracked)),
         );
-        let staged = state.staged_files.clone();
+        let mut staged = state.staged_files.clone();
+
+        // The filter narrows both lists by path, case-insensitively.
+        let words: Vec<String> = self
+            .changes_filter
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        if !words.is_empty() {
+            let keep = |change: &FileChange| {
+                let path = change.path.to_lowercase();
+                words.iter().all(|word| path.contains(word))
+            };
+            unstaged.retain(keep);
+            staged.retain(keep);
+        }
 
         if self.layout == GitLayout::Desktop {
             // One row per file; the checkbox shows whether it is staged.
@@ -326,14 +395,16 @@ impl GitManager {
                 }
             }
             merged.sort_by_key(|entry| entry.0.to_lowercase());
-            self.changes_rows = merged
-                .into_iter()
-                .map(|(_, (change, staged, unstaged))| ChangeRow::Flat {
-                    change,
-                    staged,
-                    unstaged,
-                })
-                .collect();
+            self.changes_rows = Rc::new(
+                merged
+                    .into_iter()
+                    .map(|(_, (change, staged, unstaged))| ChangeRow::Flat {
+                        change,
+                        staged,
+                        unstaged,
+                    })
+                    .collect(),
+            );
             return;
         }
 
@@ -380,7 +451,7 @@ impl GitManager {
                 });
             }
         }
-        self.changes_rows = rows;
+        self.changes_rows = Rc::new(rows);
     }
 
     pub(crate) fn rebuild_branch_rows(&mut self) {
@@ -429,7 +500,7 @@ impl GitManager {
                 });
             }
         }
-        self.branch_rows = rows;
+        self.branch_rows = Rc::new(rows);
 
         // Menu: filtered, flat, with a "create" entry for a new name.
         let filter = self.branch_filter.trim().to_lowercase();
@@ -467,12 +538,12 @@ impl GitManager {
                 });
             }
         }
-        self.menu_rows = menu;
+        self.menu_rows = Rc::new(menu);
     }
 
     pub(crate) fn rebuild_commit_file_rows(&mut self) {
         let Some(detail) = &self.commit_detail else {
-            self.commit_file_rows.clear();
+            self.commit_file_rows = Rc::new(Vec::new());
             return;
         };
         let items: Vec<(String, FileChange)> = detail
@@ -480,12 +551,12 @@ impl GitManager {
             .iter()
             .map(|file| (file.path.clone(), file.clone()))
             .collect();
-        self.commit_file_rows = build_tree(
+        self.commit_file_rows = Rc::new(build_tree(
             &items,
             "commit",
             &self.collapsed_commit_files,
             self.layout == GitLayout::Tree,
-        );
+        ));
     }
 
     pub(crate) fn toggle_collapsed(&mut self, key: &str, cx: &mut Context<Self>) {
@@ -566,7 +637,7 @@ impl GitManager {
         self.selected_commit = Some(hash.clone());
         self.commit_detail = None;
         self.commit_detail_error = None;
-        self.commit_file_rows.clear();
+        self.commit_file_rows = Rc::new(Vec::new());
         self.collapsed_commit_files.clear();
         self.target = None;
         self.diff_message = None;

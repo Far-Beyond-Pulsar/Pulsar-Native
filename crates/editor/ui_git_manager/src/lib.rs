@@ -32,7 +32,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme as _, TitleBar, VirtualListScrollHandle,
+    ActiveTheme as _, TitleBar,
     input::{InputEvent, InputState},
     scroll::ScrollbarState,
     v_flex,
@@ -182,14 +182,14 @@ pub(crate) enum RepoPhase {
 /// Scroll handle + scrollbar of a virtualized list.
 #[derive(Clone)]
 pub(crate) struct ListState {
-    pub(crate) scroll: VirtualListScrollHandle,
+    pub(crate) scroll: UniformListScrollHandle,
     pub(crate) bar: ScrollbarState,
 }
 
 impl Default for ListState {
     fn default() -> Self {
         Self {
-            scroll: VirtualListScrollHandle::new(),
+            scroll: UniformListScrollHandle::new(),
             bar: ScrollbarState::default(),
         }
     }
@@ -262,9 +262,11 @@ pub struct GitManager {
     refresh_generation: u64,
 
     // ── Changes ──────────────────────────────────────────────────────────
-    pub(crate) changes_rows: Vec<ChangeRow>,
+    pub(crate) changes_rows: Rc<Vec<ChangeRow>>,
     pub(crate) changes_list: ListState,
     pub(crate) collapsed_changes: HashSet<String>,
+    pub(crate) changes_filter_input: Entity<InputState>,
+    pub(crate) changes_filter: String,
     pub(crate) commit_message_input: Entity<InputState>,
     pub(crate) commit_description_input: Entity<InputState>,
     pub(crate) commit_busy: bool,
@@ -272,8 +274,6 @@ pub struct GitManager {
 
     // ── History ──────────────────────────────────────────────────────────
     pub(crate) commits: Vec<GraphCommit>,
-    pub(crate) commit_sizes_graph: Rc<Vec<Size<Pixels>>>,
-    pub(crate) commit_sizes_compact: Rc<Vec<Size<Pixels>>>,
     pub(crate) graph: GraphBuilder,
     pub(crate) graph_lanes: usize,
     pub(crate) commits_loading: bool,
@@ -281,10 +281,15 @@ pub struct GitManager {
     history_generation: u64,
     history_fingerprint: u64,
     pub(crate) commit_list: ListState,
+    pub(crate) commit_filter_input: Entity<InputState>,
+    pub(crate) commit_filter: String,
+    /// Indices into `commits` of the commits matching the filter; `None`
+    /// while no filter is typed.
+    pub(crate) commit_matches: Option<Rc<Vec<usize>>>,
     pub(crate) selected_commit: Option<String>,
     pub(crate) commit_detail: Option<CommitDetail>,
     pub(crate) commit_detail_error: Option<String>,
-    pub(crate) commit_file_rows: Vec<TreeItem<FileChange>>,
+    pub(crate) commit_file_rows: Rc<Vec<TreeItem<FileChange>>>,
     pub(crate) commit_files_list: ListState,
     pub(crate) collapsed_commit_files: HashSet<String>,
     /// Avatar image cache keyed by commit email. `None` = fetch in-flight.
@@ -301,13 +306,13 @@ pub struct GitManager {
     diff_stamp: Option<(std::time::SystemTime, u64)>,
 
     // ── Branches ─────────────────────────────────────────────────────────
-    pub(crate) branch_rows: Vec<BranchRow>,
+    pub(crate) branch_rows: Rc<Vec<BranchRow>>,
     pub(crate) branch_list: ListState,
     pub(crate) collapsed_branches: HashSet<String>,
     pub(crate) branch_menu_open: bool,
     pub(crate) branch_filter_input: Entity<InputState>,
     branch_filter: String,
-    pub(crate) menu_rows: Vec<BranchRow>,
+    pub(crate) menu_rows: Rc<Vec<BranchRow>>,
     pub(crate) menu_list: ListState,
 
     // ── Remote operations ────────────────────────────────────────────────
@@ -364,6 +369,39 @@ impl GitManager {
         )
         .detach();
 
+        let changes_filter_input = cx.new(|cx| {
+            let mut input = InputState::new(window, cx);
+            input.set_placeholder("Filter changed files", window, cx);
+            input
+        });
+        cx.subscribe(
+            &changes_filter_input,
+            |this, input, event: &InputEvent, cx| {
+                if let InputEvent::Change = event {
+                    this.changes_filter = input.read(cx).text().to_string();
+                    this.rebuild_changes_rows();
+                    cx.notify();
+                }
+            },
+        )
+        .detach();
+
+        let commit_filter_input = cx.new(|cx| {
+            let mut input = InputState::new(window, cx);
+            input.set_placeholder("Filter commits by message, author, hash or branch", window, cx);
+            input
+        });
+        cx.subscribe(
+            &commit_filter_input,
+            |this, input, event: &InputEvent, cx| {
+                if let InputEvent::Change = event {
+                    let text = input.read(cx).text().to_string();
+                    this.set_commit_filter(text, cx);
+                }
+            },
+        )
+        .detach();
+
         let auth_username_input = cx.new(|cx| {
             let mut input = InputState::new(window, cx);
             input.set_placeholder("Username", window, cx);
@@ -388,16 +426,16 @@ impl GitManager {
             diff_mode: DiffViewMode::SideBySide,
             refreshing: false,
             refresh_generation: 0,
-            changes_rows: Vec::new(),
+            changes_rows: Rc::new(Vec::new()),
             changes_list: ListState::default(),
             collapsed_changes: HashSet::new(),
+            changes_filter_input,
+            changes_filter: String::new(),
             commit_message_input,
             commit_description_input,
             commit_busy: false,
             clear_commit_inputs: false,
             commits: Vec::new(),
-            commit_sizes_graph: Rc::new(Vec::new()),
-            commit_sizes_compact: Rc::new(Vec::new()),
             graph: GraphBuilder::default(),
             graph_lanes: 1,
             commits_loading: false,
@@ -405,10 +443,13 @@ impl GitManager {
             history_generation: 0,
             history_fingerprint: 0,
             commit_list: ListState::default(),
+            commit_filter_input,
+            commit_filter: String::new(),
+            commit_matches: None,
             selected_commit: None,
             commit_detail: None,
             commit_detail_error: None,
-            commit_file_rows: Vec::new(),
+            commit_file_rows: Rc::new(Vec::new()),
             commit_files_list: ListState::default(),
             collapsed_commit_files: HashSet::new(),
             avatar_cache: HashMap::new(),
@@ -419,13 +460,13 @@ impl GitManager {
             diff_loading: false,
             diff_generation: 0,
             diff_stamp: None,
-            branch_rows: Vec::new(),
+            branch_rows: Rc::new(Vec::new()),
             branch_list: ListState::default(),
             collapsed_branches: HashSet::new(),
             branch_menu_open: false,
             branch_filter_input,
             branch_filter: String::new(),
-            menu_rows: Vec::new(),
+            menu_rows: Rc::new(Vec::new()),
             menu_list: ListState::default(),
             op_error: None,
             pending_auth: None,

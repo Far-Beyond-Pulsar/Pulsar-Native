@@ -6,11 +6,10 @@ use crate::history::DiffTarget;
 use crate::tree::TreeItem;
 use crate::{GitLayout, GitManager};
 use gpui::{prelude::FluentBuilder as _, *};
-use std::rc::Rc;
 use ui::{
     ActiveTheme as _, Icon, IconName,
     menu::context_menu::ContextMenuExt as _,
-    h_flex, v_flex, v_virtual_list,
+    h_flex, v_flex,
 };
 
 const ROW_HEIGHT: f32 = 26.0;
@@ -191,27 +190,17 @@ fn render_files(gm: &mut GitManager, cx: &mut Context<GitManager>) -> AnyElement
     let body: AnyElement = if gm.commit_file_rows.is_empty() {
         placeholder(IconName::Check, "No file changes", cx).into_any_element()
     } else {
-        let sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
-            gm.commit_file_rows
-                .iter()
-                .map(|_| size(px(0.0), px(ROW_HEIGHT)))
-                .collect(),
-        );
-        let entity = cx.entity().clone();
-        let list = v_virtual_list(
-            entity,
+        let list = uniform_list(
             "git-commit-files",
-            sizes,
-            move |gm: &mut GitManager, range: std::ops::Range<usize>, _window, cx| {
-                let rows: Vec<TreeItem<crate::FileChange>> = range
-                    .filter_map(|index| gm.commit_file_rows.get(index).cloned())
-                    .collect();
-                rows.into_iter()
+            gm.commit_file_rows.len(),
+            cx.processor(|gm, range: std::ops::Range<usize>, _window, cx| {
+                let rows = gm.commit_file_rows.clone();
+                range
+                    .filter_map(|index| rows.get(index).cloned())
                     .map(|row| render_file_row(gm, row, cx))
                     .collect::<Vec<AnyElement>>()
-            },
-        )
-        .track_scroll(&gm.commit_files_list.scroll);
+            }),
+        );
         virtual_panel(list, &gm.commit_files_list).into_any_element()
     };
 
