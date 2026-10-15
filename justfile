@@ -52,10 +52,9 @@ fmt:
     scripts/fmt-check.sh --fix
 
 # ── Codegen drift guard (#652) ────────────────────────────────────────────────
-# Fast always-on probes: PBGC-generated blueprint actors compiled against the
+# Fast always-on probe: generated blueprint actors compiled against the
 # pinned crates inside pulsar_game's own test binary.
 ci-drift-probe:
-    cargo test -p pbgc
     cargo test -p pulsar_game --lib blueprint_codegen_drift
 
 # Heavy end-to-end check: generate a full game project into a temp dir and

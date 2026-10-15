@@ -23,11 +23,7 @@ impl FileManagerDrawer {
             suffix += 1;
             np = cloud_join(f, &name);
         }
-        let r = if remote {
-            engine_fs::virtual_fs::write_file(&np, b"")
-        } else {
-            std::fs::write(&np, "").map_err(Into::into)
-        };
+        let r = engine_fs::virtual_fs::write_file(&np, b"");
         if let Err(e) = r {
             tracing::error!("Failed to create file: {}", e);
             return;

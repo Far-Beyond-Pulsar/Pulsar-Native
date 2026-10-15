@@ -98,7 +98,10 @@ fn relative_camera_source_schema_compatible(
         "corona_emitter_sources" => c::CoronaEmitterSourceRow::packed_gpu_component_id(),
         "wind_sources" => c::GlobalWindSourceRow::packed_gpu_component_id(),
         "sprite_sources" => c::SpriteSourceRow::packed_gpu_component_id(),
-        "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
+        "builtin_mesh_vertex::handles"
+        | "builtin_mesh_index::handles"
+        | "skeletal_skin_vertices::handles"
+        | "skeletal_bone_palette::handles" => {
             return store.buffer_registry().element_type(key)
                 == Some(Some(std::any::TypeId::of::<
                     pulsar_scenedb::gpu::VarLenHandle,
@@ -159,12 +162,19 @@ fn relative_camera_source_compatible(
         | "static_mesh_draw_flags"
         | "builtin_mesh_vertex::handles"
         | "builtin_mesh_index::handles"
-        | "static_mesh_draw_sections::handles" => {
+        | "static_mesh_draw_sections::handles"
+        | "skeletal_skin_vertices::handles"
+        | "skeletal_bone_palette::handles" => {
             kind == "row" && mode == Some(MirrorMode::DirtyTracked)
         }
-        "builtin_mesh_vertex" | "builtin_mesh_index" | "static_mesh_draw_sections" => {
-            kind == "resource" && mode.is_none()
-        }
+        // Skin weights carry no positions, and the bone palette is in the
+        // mesh's own space: passes apply it before the instance's model
+        // matrix, which is what a moved origin rebases.
+        "builtin_mesh_vertex"
+        | "builtin_mesh_index"
+        | "static_mesh_draw_sections"
+        | "skeletal_skin_vertices"
+        | "skeletal_bone_palette" => kind == "resource" && mode.is_none(),
         _ => false,
     }
 }

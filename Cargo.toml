@@ -256,7 +256,6 @@ glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------
 pulsar-config         = { path = "crates/third-party/pulsar-config" }
-pbgc                  = { path = "crates/third-party/pbgc" }
 graphy                = { path = "crates/third-party/graphy" }
 tool_registry         = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
 tool_registry_macros  = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
@@ -392,7 +391,7 @@ files.extend-exclude = ["**/fixtures/*"]
 # to local vendored copies so Cargo
 # resolves a single copy in-tree.
 #
-# External deps (plugin repos, PBGC,
+# External deps (plugin repos,
 # Graphy, etc.) reference Pulsar-Native
 # crates via git. Without patching,
 # Cargo compiles duplicate copies.
@@ -447,9 +446,6 @@ profiling         = { path = "crates/profiling" }
 # Same problem as above: unpatched, its scopes never reach the flamegraph.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling"]
 profiling = { path = "crates/profiling" }
-
-[patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
-pbgc = { path = "crates/third-party/pbgc" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Graphy"]
 graphy = { path = "crates/third-party/graphy" }

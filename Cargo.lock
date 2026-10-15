@@ -1176,12 +1176,12 @@ dependencies = [
  "graphy",
  "log",
  "parking_lot",
- "pbgc",
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_reflection",
  "pulsar_script_codegen",
  "pulsar_script_vm",
+ "pulsar_std",
  "rstar 0.12.2",
  "schemars",
  "serde",
@@ -6917,7 +6917,7 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=0fa73960f6c140dd35ceff35d0197023c8c795c3#0fa73960f6c140dd35ceff35d0197023c8c795c3"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
  "regex",
  "ropey 1.6.1",
@@ -6926,7 +6926,7 @@ dependencies = [
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=0fa73960f6c140dd35ceff35d0197023c8c795c3#0fa73960f6c140dd35ceff35d0197023c8c795c3"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
  "mockaco-core",
  "similar 3.2.0",
@@ -6935,7 +6935,7 @@ dependencies = [
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=0fa73960f6c140dd35ceff35d0197023c8c795c3#0fa73960f6c140dd35ceff35d0197023c8c795c3"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
  "gpui-ce",
  "mockaco-core",
@@ -6947,7 +6947,7 @@ dependencies = [
 [[package]]
 name = "mockaco-language"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=0fa73960f6c140dd35ceff35d0197023c8c795c3#0fa73960f6c140dd35ceff35d0197023c8c795c3"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
  "mockaco-core",
  "streaming-iterator",
@@ -6958,7 +6958,7 @@ dependencies = [
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=0fa73960f6c140dd35ceff35d0197023c8c795c3#0fa73960f6c140dd35ceff35d0197023c8c795c3"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
  "mockaco-core",
 ]
@@ -8443,15 +8443,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4500030c302e4af1d423f36f3b958d1aecb6c04184356ed5a833bf6b60435777"
 dependencies = [
  "rustc_version",
-]
-
-[[package]]
-name = "pbgc"
-version = "0.2.0"
-dependencies = [
- "graphy",
- "pulsar_std",
- "tracing",
 ]
 
 [[package]]

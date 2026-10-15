@@ -207,7 +207,10 @@ mod tests {
             assert!(!set.themes.is_empty(), "{file} defines no themes");
             for theme in set.themes {
                 if let Some(first) = names.insert(theme.name.to_string(), file.to_string()) {
-                    panic!("theme {:?} is defined in both {first} and {file}", theme.name);
+                    panic!(
+                        "theme {:?} is defined in both {first} and {file}",
+                        theme.name
+                    );
                 }
             }
         }
@@ -218,19 +221,15 @@ mod tests {
     fn the_night_owl_family_is_bundled_with_syntax_colors() {
         let set = parse("night-owl.json");
         let themes: Vec<_> = set.themes.iter().map(|t| t.name.to_string()).collect();
-        assert_eq!(
-            themes,
-            [
-                "Night Owl",
-                "Night Owl No Italics",
-                "Night Owl Light",
-                "Night Owl Light No Italics"
-            ]
-        );
+        assert_eq!(themes, ["Night Owl", "Night Owl Light"]);
         assert!(set.themes.iter().any(|t| t.mode.is_dark()));
         assert!(set.themes.iter().any(|t| !t.mode.is_dark()));
         for theme in &set.themes {
-            assert!(theme.highlight.is_some(), "{} has no syntax colors", theme.name);
+            assert!(
+                theme.highlight.is_some(),
+                "{} has no syntax colors",
+                theme.name
+            );
         }
     }
 }

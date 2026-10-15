@@ -12,7 +12,7 @@ crates/
   agent-providers/   AI provider backends — one crate per LLM provider
   ui/                Vendored GPUI repos (submodules with path deps)
   graphics/          Graphics-related docs and integration notes
-  third-party/       Vendored smaller deps (pbgc, graphy, pulsar-config)
+  third-party/       Vendored smaller deps (graphy, pulsar-config)
 ```
 
 ## core/ — Engine platform
@@ -197,7 +197,6 @@ pinned here (see "Submodule pins" below). They are not workspace members
 
 | Submodule | Path dep? | Notes |
 |---|---|---|
-| `pbgc/` | Yes | pulsar_std node catalogue as Graphy metadata (the old graph compiler, bytecode VM and graph-to-Rust backend were removed) |
 | `graphy/` | Yes | Graph data model and compiler types |
 | `pulsar-config/` | Yes | Configuration management |
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
