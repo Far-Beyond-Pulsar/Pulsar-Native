@@ -3206,8 +3206,8 @@ fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
 #[test]
 fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     use helio_component::components::{
-        CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice,
-        LensPreset, LensRegionShape,
+        CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice, LensPreset,
+        LensRegionShape,
     };
     use ui_level_editor::commands::TypedComponent;
 
@@ -3272,7 +3272,10 @@ fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     let dry = render(focused(dry));
     let change = wet.difference(&dry);
     println!("LENS rainy vs dry: {change:?}");
-    assert!(change.color_pixels > 0, "the water drops did nothing: no bundled mask array: {change:?}");
+    assert!(
+        change.color_pixels > 0,
+        "the water drops did nothing: no bundled mask array: {change:?}"
+    );
 
     // A prescription: the ideal thin lens is the identity map with the bake's
     // natural falloff, so its corners darken against the same lens without it.
@@ -3289,6 +3292,9 @@ fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     let bare = render(focused(bare));
     let change = baked.difference(&bare);
     println!("LENS thin-lens prescription vs none: {change:?}");
-    assert!(change.color_pixels > 0, "the prescription did nothing: no bundled bank: {change:?}");
+    assert!(
+        change.color_pixels > 0,
+        "the prescription did nothing: no bundled bank: {change:?}"
+    );
     assert_eq!(change.depth_texels, 0, "an identity map moved geometry");
 }

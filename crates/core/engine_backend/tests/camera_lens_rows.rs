@@ -85,7 +85,9 @@ impl Gpu {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, buffer.size());
         self.queue.submit([encoder.finish()]);
-        staging.slice(..).map_async(wgpu::MapMode::Read, |r| r.unwrap());
+        staging
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, |r| r.unwrap());
         self.device
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
@@ -243,7 +245,10 @@ fn the_cameras_overscan_is_the_one_the_lens_row_carries() {
     let overscan = camera_lens_view_overscan(&scene.world, 0, 1.5);
     assert!(overscan > 1.05 && overscan <= 2.0, "{overscan}");
     let row = gpu.lens(&mut scene, lens);
-    assert_eq!(row.overscan, overscan, "the pass crops by what the camera widened");
+    assert_eq!(
+        row.overscan, overscan,
+        "the pass crops by what the camera widened"
+    );
     // The camera widens its tangent extent by exactly that.
     let plain = helio::Camera::perspective_look_at(
         glam::Vec3::ZERO,
@@ -261,12 +266,23 @@ fn the_cameras_overscan_is_the_one_the_lens_row_carries() {
     let wider = camera_lens_view_overscan(&scene.world, 0, 16.0 / 9.0);
     assert_ne!(wider, overscan);
     assert_eq!(gpu.lens(&mut scene, lens).overscan, wider);
-    assert_eq!(camera_lens_view_overscan(&scene.world, 0, 16.0 / 9.0), wider, "cached");
+    assert_eq!(
+        camera_lens_view_overscan(&scene.world, 0, 16.0 / 9.0),
+        wider,
+        "cached"
+    );
 
     // An edit of the lens re-derives the row at the aspect last given.
-    scene.world.get_mut::<CameraLensComponent>(lens).unwrap().focal_length_mm = 50.0;
+    scene
+        .world
+        .get_mut::<CameraLensComponent>(lens)
+        .unwrap()
+        .focal_length_mm = 50.0;
     let edited = camera_lens_view_overscan(&scene.world, 0, 16.0 / 9.0);
-    assert!(edited < wider, "a longer lens looks less far past the frame");
+    assert!(
+        edited < wider,
+        "a longer lens looks less far past the frame"
+    );
     assert_eq!(gpu.lens(&mut scene, lens).overscan, edited);
 
     // A view without a lens, a disabled lens and a lens that is off: no overscan.
@@ -274,7 +290,11 @@ fn the_cameras_overscan_is_the_one_the_lens_row_carries() {
     attachments::set_enabled(&mut scene.world, lens, false);
     assert_eq!(camera_lens_view_overscan(&scene.world, 0, 1.5), 1.0);
     attachments::set_enabled(&mut scene.world, lens, true);
-    scene.world.get_mut::<CameraLensComponent>(lens).unwrap().enabled = false;
+    scene
+        .world
+        .get_mut::<CameraLensComponent>(lens)
+        .unwrap()
+        .enabled = false;
     assert_eq!(camera_lens_view_overscan(&scene.world, 0, 1.5), 1.0);
     // A world without a GPU mirror has no lens pass to crop.
     let mut bare = SceneDb::new();
