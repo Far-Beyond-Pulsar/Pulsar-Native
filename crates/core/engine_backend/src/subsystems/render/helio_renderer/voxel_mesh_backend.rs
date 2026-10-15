@@ -239,15 +239,18 @@ impl MeshVoxelBackend {
         }
     }
 
+    #[cfg(test)]
     pub fn stats(&self) -> VoxelMeshStats {
         self.stats
     }
 
+    #[cfg(test)]
     /// The last assembled mesh of an object, if it has one.
     pub fn geometry(&self, id: VoxelEntryId) -> Option<Arc<VoxelMeshGeometry>> {
         self.objects.get(&id)?.geometry.clone()
     }
 
+    #[cfg(test)]
     /// Geometry ids of an object's current chunk meshes.
     pub fn chunk_ids(&self, id: VoxelEntryId) -> HashMap<VoxelChunkKey, u64> {
         self.objects.get(&id).map_or_else(HashMap::new, |object| {
@@ -644,13 +647,6 @@ mod tests {
     fn view() -> VoxelView {
         VoxelView {
             position: [0.0, 0.0, 40.0],
-            right: [1.0, 0.0, 0.0],
-            up: [0.0, 1.0, 0.0],
-            forward: [0.0, 0.0, -1.0],
-            tan_half_fov_y: 0.41421357,
-            aspect: 1.0,
-            far: 1_000.0,
-            size: [256, 256],
             sun: None,
         }
     }
@@ -785,7 +781,7 @@ mod tests {
         assert_eq!(virtual_cube.quad_count(), 24);
         assert!(entry.chunks.as_ref().unwrap().store.read().unwrap().1.is_empty(), "drawing writes nothing");
         // Initializing the store publishes the same cube: same geometry.
-        crate::scene::voxel_frame::initialize_empty_cube(&entry).unwrap();
+        crate::scene::voxel_frame::initialize_empty_cube(entry.id.entity_bits, entry.chunks.as_ref().unwrap()).unwrap();
         settle(&mut backend, &entry);
         assert_eq!(backend.geometry(entry.id).unwrap().id, virtual_cube.id);
     }

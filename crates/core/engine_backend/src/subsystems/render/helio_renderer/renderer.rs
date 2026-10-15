@@ -398,98 +398,6 @@ const PICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
 /// under a millisecond, where a renderer pick takes frames.
 const INSTANT_STAMP_M: f64 = 40.0;
 
-/// Scripted sculpting through the editor's own brush queue: after 12 s to
-/// load, it looks down (`=1`) or keeps the view and strokes the distant
-/// terrain at the view's centre (`=far`), dragging a dig r1, a dig r4 and a
-/// build r1 stroke for 8 s each, logging `VOXEL_NATIVE_SCULPT`.
-struct NativeSculpt {
-    armed_at: Instant,
-    stage: Option<usize>,
-    far: bool,
-}
-
-impl NativeSculpt {
-    const LOAD_SECONDS: f32 = 12.0;
-    const STAGE_SECONDS: f32 = 8.0;
-
-    fn new(far: bool) -> Self {
-        Self {
-            armed_at: Instant::now(),
-            stage: None,
-            far,
-        }
-    }
-
-    /// The brush event for this frame and whether a stroke starts.
-    fn next(&mut self, now: Instant) -> Option<(PendingPointerEvent, bool)> {
-        use helio_voxel_data::{VoxelBrushOp, VoxelBrushShape};
-        let t = now.duration_since(self.armed_at).as_secs_f32() - Self::LOAD_SECONDS;
-        if t < 0.0 {
-            return None;
-        }
-        let stages = [
-            (
-                "dig_r1",
-                VoxelBrushOp::Remove,
-                VoxelBrushShape::Sphere,
-                1.0,
-                0,
-            ),
-            (
-                "dig_r4",
-                VoxelBrushOp::Remove,
-                VoxelBrushShape::Sphere,
-                4.0,
-                0,
-            ),
-            (
-                "build_r1",
-                VoxelBrushOp::Add,
-                VoxelBrushShape::Cube,
-                1.0,
-                helio_pass_voxel_planet::terrain::material::BRICK,
-            ),
-        ];
-        let index = (t / Self::STAGE_SECONDS) as usize;
-        if index >= stages.len() {
-            if self.stage.take().is_some() {
-                tracing::info!("VOXEL_NATIVE_SCULPT complete");
-            }
-            return None;
-        }
-        let started = self.stage != Some(index);
-        let (name, op, shape, radius, material) = stages[index];
-        if started {
-            tracing::info!("VOXEL_NATIVE_SCULPT stage={name}");
-            self.stage = Some(index);
-        }
-        let a = t * 1.3;
-        let request = VoxelBrushRequest {
-            op,
-            shape,
-            radius,
-            material,
-            single_block: false,
-            level: Default::default(),
-            tool: Default::default(),
-        };
-        let (x, y) = if self.far {
-            (0.5 + 0.3 * a.cos(), 0.5 + 0.02 * a.sin())
-        } else {
-            (0.5 + 0.18 * a.cos(), 0.55 + 0.12 * a.sin())
-        };
-        Some((
-            PendingPointerEvent::VoxelBrush {
-                norm_x: x,
-                norm_y: y,
-                request,
-                start: started,
-            },
-            started && !self.far,
-        ))
-    }
-}
-
 /// Where a frame's time went: milliseconds between successive marks, logged
 /// for slow frames (`VOXEL_FRAME_PHASES`).
 struct FramePhases {
@@ -908,9 +816,6 @@ pub struct HelioRenderer {
     /// Frames rendered since the last stats line and the slowest of them
     /// (ms): the viewport's own rate, beside the renderer's GPU time.
     voxel_stats_frames: (u32, f32),
-    native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight,
-    /// `PULSAR_VOXEL_NATIVE_SCULPT=1`: scripted sculpt strokes (diagnostic).
-    native_sculpt: Option<NativeSculpt>,
 }
 
 struct HelioInner {
@@ -1061,11 +966,6 @@ impl HelioRenderer {
             last_phases: Vec::new(),
             last_voxel_stats_log: Instant::now(),
             voxel_stats_frames: (0, 0.0),
-            native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight::new(),
-            native_sculpt: std::env::var("PULSAR_VOXEL_NATIVE_SCULPT")
-                .ok()
-                .filter(|v| v == "1" || v == "far")
-                .map(|v| NativeSculpt::new(v == "far")),
         }
     }
 
@@ -1184,7 +1084,6 @@ impl HelioRenderer {
             .lock()
             .ok()
             .and_then(|mut pending| pending.take());
-        let external_camera = pending_camera.is_some();
         if let Some(camera) = pending_camera {
             self.set_editor_camera_state(camera);
             self.reset_taa_next_frame = true;
@@ -1418,22 +1317,6 @@ impl HelioRenderer {
         // `handle_left_release` already set `self.gizmo_dirty = true`
         // internally, so processing them here needs no extra plumbing to keep
         // this frame from idling out on a drag-release commit.
-        if self
-            .inner
-            .as_ref()
-            .is_some_and(|inner| inner.has_rendered_frame)
-        {
-            if let Some(sculpt) = self.native_sculpt.as_mut() {
-                if let Some((event, look_down)) = sculpt.next(now) {
-                    if look_down {
-                        self.cam_pitch = -0.75;
-                    }
-                    if let Ok(mut events) = self.pending_pointer_events.lock() {
-                        events.push(event);
-                    }
-                }
-            }
-        }
         let pending_pointer_events = {
             profiling::profile_scope!("helio_take_pending_pointer_events");
             self.pending_pointer_events
@@ -1556,7 +1439,6 @@ impl HelioRenderer {
             && !self.had_camera_input;
         // The settling budget itself is not activity: it must eventually drain.
         let temporal_activity = !camera_stopped
-            || self.native_voxel_flight.force_frames()
             || has_pending_scene
             || has_pending_editor
             || self.voxel_backends.needs_frame(&inner.renderer)
@@ -1579,7 +1461,6 @@ impl HelioRenderer {
             self.last_activity_log = now;
             tracing::info!(
                 camera_moving = !camera_stopped,
-                flight = self.native_voxel_flight.force_frames(),
                 scene = has_pending_scene,
                 scene_revision,
                 editor = has_pending_editor,
@@ -1748,38 +1629,6 @@ impl HelioRenderer {
         }
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
         phases.mark("altitude");
-        if self.native_voxel_flight.force_frames() {
-            let flight_ready = inner.has_rendered_frame
-                && !self.voxel_backends.needs_frame(&inner.renderer)
-                && self.pending_view_direction.is_none()
-                && self.voxel_altitude.is_some();
-            let flight_interrupted =
-                had_input || (external_camera && self.native_voxel_flight.running());
-            if let Some(pose) = self.native_voxel_flight.advance(
-                now,
-                flight_ready,
-                flight_interrupted,
-                self.cam_pos,
-                self.voxel_altitude,
-                basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0,
-                self.cam_pitch,
-                |direction, clearance| {
-                    self.voxel_backends.diagnostic_surface_point(
-                        &voxel_entries,
-                        direction,
-                        clearance,
-                    )
-                },
-            ) {
-                self.cam_pos = self
-                    .voxel_backends
-                    .lift_out_of_ground(pose.eye)
-                    .unwrap_or(pose.eye);
-                self.cam_pitch = pose.pitch;
-                self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
-            }
-        }
-        phases.mark("flight");
         self.voxel_up = self.voxel_backends.local_up(&voxel_entries, self.cam_pos);
         phases.mark("up");
         let target = self
@@ -1843,7 +1692,7 @@ impl HelioRenderer {
             }
         }
         let t_prepare = Instant::now();
-        let (camera, lens_overscan) = {
+        let camera = {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
             profiling::profile_scope!("helio_frame_prepare");
@@ -1851,7 +1700,7 @@ impl HelioRenderer {
             let frame_up = self.cam_frame * Vec3::Y;
             let aspect = width as f32 / height.max(1) as f32;
             // Canonical voxel coordinates stay global (`self.cam_pos`,
-            // `VoxelView`); only the audited frame camera is origin-relative.
+            // `VoxelView`); only the frame camera is origin-relative.
             self.world_origin =
                 camera_relative.then(|| frame_world_origin(self.world_origin, self.cam_pos));
             inner.renderer.set_world_origin(self.world_origin);
@@ -1896,7 +1745,7 @@ impl HelioRenderer {
                     self.cam_pos.as_vec3(),
                 );
             }
-            (camera, lens_overscan)
+            camera
         };
 
         if self.reset_taa_next_frame {
@@ -1930,7 +1779,6 @@ impl HelioRenderer {
                 );
             }
         }
-        let (forward, right, up) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
         phases.mark("prepare");
         voxel_errors.extend(
             self.voxel_backends
@@ -1941,14 +1789,6 @@ impl HelioRenderer {
             &voxel_entries,
             VoxelView {
                 position: self.cam_pos.to_array(),
-                right: right.to_array(),
-                up: up.to_array(),
-                forward: forward.to_array(),
-                // The voxel terrain follows the camera's view, overscan included.
-                tan_half_fov_y: (std::f32::consts::FRAC_PI_4 * 0.5).tan() * lens_overscan,
-                aspect: width as f32 / height.max(1) as f32,
-                far,
-                size: [width, height],
                 sun,
             },
         ));

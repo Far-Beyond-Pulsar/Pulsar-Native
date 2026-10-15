@@ -42,8 +42,9 @@ pub struct VoxelSceneEntry {
     /// local space.
     pub origin: [f64; 3],
     pub voxel_size: f64,
-    /// Opaque renderer selection of a voxel object; empty picks the one
-    /// compatible renderer (a world's is its generator's).
+    /// A voxel object's renderer selection (`VoxelComponent::renderer_id`);
+    /// empty, as a world's always is, picks the one compatible renderer (a
+    /// world's: its generator's).
     pub renderer_id: String,
     /// A voxel object's live sample chunks; `None` for a world.
     pub chunks: Option<VoxelObjectChunks>,
@@ -139,11 +140,9 @@ pub fn initial_cube_chunks(init: VoxelCubeInit) -> Vec<(VoxelChunkKey, [u8; 512]
     chunks
 }
 
-/// Initialize a deserialized object before source edits. This runs off-frame.
-pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
-    let Some(chunks) = &entry.chunks else {
-        return Ok(false);
-    };
+/// Initialize a deserialized object's chunks (of entity `entity_bits`)
+/// before source edits. This runs off-frame.
+pub fn initialize_empty_cube(entity_bits: u64, chunks: &VoxelObjectChunks) -> Result<bool, String> {
     let init = chunks.initial_cube;
     let state = chunks
         .store
@@ -155,7 +154,7 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
         return Ok(false);
     }
     let writer = VoxelSourceWriter::new(
-        VoxelTerrainId(u128::from(entry.id.entity_bits)),
+        VoxelTerrainId(u128::from(entity_bits)),
         VoxelSourceId(0),
         chunks.store.clone(),
     );
@@ -180,7 +179,7 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
         })
         .collect();
     match writer.publish_batch(&VoxelChunkBatch {
-        terrain: VoxelTerrainId(u128::from(entry.id.entity_bits)),
+        terrain: VoxelTerrainId(u128::from(entity_bits)),
         source: VoxelSourceId(0),
         revision: VoxelBatchRevision {
             expected: 0,

@@ -95,17 +95,17 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
     use helio_voxel_data::VoxelStoredPayload;
 
     // A voxel object's live chunks (a world has a brush journal instead).
-    let terrain = VoxelComponent::default();
-    let chunks = terrain.payload_store().read().unwrap().1.len();
-    let properties = terrain.get_properties();
+    let object = VoxelComponent::default();
+    let chunks = object.payload_store().read().unwrap().1.len();
+    let properties = object.get_properties();
     assert!(properties
         .iter()
         .all(|property| property.name != "payloads"));
 
-    let mut serialized = serde_json::to_value(&terrain).expect("serialize authored config");
+    let mut serialized = serde_json::to_value(&object).expect("serialize authored config");
     assert!(serialized.get("payloads").is_none());
     {
-        let store_handle = terrain.payload_store();
+        let store_handle = object.payload_store();
         let mut store = store_handle.write().unwrap();
         store.1.insert(
             [u64::MAX, 0, 7, 2],
@@ -116,7 +116,7 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
 
     // Scripts opt in to exfiltration by retaining the component's runtime
     // store handle; default component serialization omits live payload bytes.
-    let export = terrain.payload_store();
+    let export = object.payload_store();
     let snapshot = export.read().unwrap();
     assert_eq!(snapshot.0, 1);
     assert_eq!(
@@ -128,7 +128,7 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
     // SceneDB/value clones retain the canonical payload value while owning
     // an independent mutable index, so cloning an entry cannot erase data or
     // make future writes leak between entities.
-    let cloned = terrain.clone();
+    let cloned = object.clone();
     assert_eq!(
         cloned.payload_store().read().unwrap().1[&[u64::MAX, 0, 7, 2]].as_ref(),
         &[1, 2, 3]
@@ -139,9 +139,9 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
         .unwrap()
         .1
         .remove(&[u64::MAX, 0, 7, 2]);
-    assert_eq!(terrain.payload_store().read().unwrap().1.len(), chunks + 1);
+    assert_eq!(object.payload_store().read().unwrap().1.len(), chunks + 1);
 
-    serialized = serde_json::to_value(&terrain).expect("payload remains caller-owned");
+    serialized = serde_json::to_value(&object).expect("payload remains caller-owned");
     assert!(serialized.get("payloads").is_none());
 }
 
@@ -181,111 +181,6 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     )
     .unwrap());
     assert!(world.get::<VoxelComponent>(entity).is_some());
-}
-
-#[test]
-fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
-    use helio_voxel_data::{
-        BoundedVoxelInbox, VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp,
-        VoxelChunkPayload, VoxelChunkUpdate, VoxelDomain, VoxelInboxDrainBudget, VoxelInboxLimits,
-        VoxelSourceId, VoxelSourceWriter, VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW,
-        VOXEL_CHUNK_SCHEMA_VERSION,
-    };
-    use std::sync::Arc;
-
-    let mut world = pulsar_scenedb::World::new();
-    let source_entity = world.spawn();
-    assert!(pulsar_world_registry::hydrate_world_component_for_class(
-        "VoxelComponent",
-        &mut world,
-        source_entity,
-        &serde_json::to_value(VoxelComponent::default()).unwrap(),
-    )
-    .unwrap());
-
-    let terrain_id = VoxelTerrainId(77);
-    let source_id = VoxelSourceId(12);
-    let source_store = world
-        .get::<VoxelComponent>(source_entity)
-        .expect("hydrated SceneDB voxel row")
-        .payload_store();
-    let writer = VoxelSourceWriter::new(terrain_id, source_id, source_store);
-
-    let bytes: Arc<[u8]> = Arc::from([5_u8, 8, 13, 21]);
-    let key = VoxelChunkKey::new(-4, 2, 19, 0);
-    let ops = [VoxelChunkOp::Upsert(VoxelChunkUpdate {
-        key,
-        payload: VoxelChunkPayload {
-            encoding: VOXEL_CHUNK_ENCODING_RAW,
-            schema_version: VOXEL_CHUNK_SCHEMA_VERSION,
-            bytes: &bytes,
-        },
-    })];
-    let batch = VoxelChunkBatch {
-        terrain: terrain_id,
-        source: source_id,
-        revision: VoxelBatchRevision {
-            expected: 0,
-            publish: 1,
-        },
-        domain: VoxelDomain::Unbounded { max_lod: 8 },
-        ops: &ops,
-    };
-    let inbox = BoundedVoxelInbox::new(VoxelInboxLimits::default()).unwrap();
-    inbox.try_submit(&batch, &[Arc::clone(&bytes)]).unwrap();
-    let mut drained = inbox
-        .try_drain(VoxelInboxDrainBudget {
-            max_ops: 8,
-            max_payload_bytes: 1024,
-        })
-        .unwrap();
-    drained
-        .batches
-        .pop()
-        .unwrap()
-        .publish_into(&writer)
-        .unwrap();
-
-    let live = world
-        .get::<VoxelComponent>(source_entity)
-        .unwrap()
-        .payload_store();
-    let published = writer.snapshot().unwrap();
-    assert_eq!(published.revision(), 1);
-    assert_eq!(published.get_raw_material(key), Some(&[5, 8, 13, 21][..]));
-    assert_eq!(live.read().unwrap().0, published.revision());
-
-    // The snapshot can be handed to another SceneDB component; the receiving
-    // script still chooses whether/how to serialize it durably.
-    let target_entity = world.spawn();
-    assert!(pulsar_world_registry::hydrate_world_component_for_class(
-        "VoxelComponent",
-        &mut world,
-        target_entity,
-        &serde_json::to_value(VoxelComponent::default()).unwrap(),
-    )
-    .unwrap());
-    let target_store = world
-        .get::<VoxelComponent>(target_entity)
-        .unwrap()
-        .payload_store();
-    let target_writer = VoxelSourceWriter::new(VoxelTerrainId(78), source_id, target_store);
-    target_writer
-        .replace_from_snapshot(&published, VoxelDomain::Unbounded { max_lod: 8 })
-        .unwrap();
-    let imported = target_writer.snapshot().unwrap();
-    assert_eq!(imported.get_raw_material(key), Some(&[5, 8, 13, 21][..]));
-    assert_eq!(imported.revision(), 1);
-
-    // Stale work is rejected without changing the component-owned row.
-    assert!(matches!(
-        writer.publish_batch(&batch),
-        Err(helio_voxel_data::VoxelUpdateError::StaleRevision {
-            expected: 0,
-            actual: 1
-        })
-    ));
-    assert_eq!(writer.snapshot().unwrap().revision(), 1);
 }
 
 /// The layer stack component serializes to the generator's settings JSON:

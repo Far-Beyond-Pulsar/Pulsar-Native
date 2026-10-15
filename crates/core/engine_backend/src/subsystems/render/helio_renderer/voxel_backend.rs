@@ -1,7 +1,8 @@
-//! Renderer registration for SceneDB voxel terrain sources.
-//!
-//! Source rows carry opaque renderer IDs and recipes. Each backend owns its
-//! pass and translates only the rows it understands into a frame snapshot.
+//! Voxel renderers for SceneDB voxel sources: the planet renderer draws
+//! worlds (`VoxelTerrainComponent`) from their generator and journal, the
+//! mesh renderer draws voxel objects (`VoxelComponent`). Each takes the rows
+//! it supports, or an object's explicit `renderer_id`, and translates them
+//! into its frame.
 
 use std::sync::{Arc, Mutex};
 
@@ -22,18 +23,12 @@ pub use helio_voxel_data::{
     VOXEL_TERRAIN_GENERATOR, VOXEL_TERRAIN_GENERATOR_VERSION, VOXEL_TERRAIN_RENDERER,
 };
 
-/// Camera coordinates here are f64 so backend recipes can preserve a fine
-/// world-space sample interval at planetary scale.
+/// What a backend needs of the frame's view. The eye is f64 so a planet's
+/// fine cells keep their precision at any distance; backends draw with the
+/// frame's own camera.
 #[derive(Clone, Copy)]
 pub struct VoxelView {
     pub position: [f64; 3],
-    pub right: [f32; 3],
-    pub up: [f32; 3],
-    pub forward: [f32; 3],
-    pub tan_half_fov_y: f32,
-    pub aspect: f32,
-    pub far: f32,
-    pub size: [u32; 2],
     /// Direction towards the scene's directional light, if it has one.
     pub sun: Option<[f32; 3]>,
 }
@@ -137,16 +132,6 @@ pub trait VoxelRenderBackend: Send {
     /// conservative distance to all terrain would be ~0 anywhere below the
     /// highest possible mountain.)
     fn altitude(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<f64> {
-        None
-    }
-    /// Canonical ground placement for the opt-in native flight diagnostic.
-    /// The returned point already includes the requested clearance.
-    fn diagnostic_surface_point(
-        &self,
-        _source: &VoxelSceneEntry,
-        _direction: DVec3,
-        _clearance: f64,
-    ) -> Option<DVec3> {
         None
     }
     /// Where an editor camera at `eye` should be instead, if `eye` is inside
@@ -312,28 +297,6 @@ impl VoxelBackendRegistry {
                     .find_map(|backend| backend.altitude(entry, eye))
             })
             .reduce(f64::min)
-    }
-
-    pub fn diagnostic_surface_point(
-        &self,
-        entries: &[VoxelSceneEntry],
-        direction: DVec3,
-        clearance: f64,
-    ) -> Option<DVec3> {
-        entries
-            .iter()
-            .filter(|entry| entry.visible)
-            .find_map(|entry| {
-                self.backends
-                    .iter()
-                    .filter(|backend| {
-                        entry.renderer_id == backend.renderer_id()
-                            || (entry.renderer_id.is_empty() && backend.supports(entry))
-                    })
-                    .find_map(|backend| {
-                        backend.diagnostic_surface_point(entry, direction, clearance)
-                    })
-            })
     }
 
     pub fn temporal_quality(
@@ -753,8 +716,6 @@ impl PlanetVoxelBackend {
         if !entry.voxel_size.is_finite() || !(0.1 - 1e-9..=1.0 + 1e-9).contains(&entry.voxel_size) {
             return Err("this backend supports base voxels from 0.1 to 1.0 metres".into());
         }
-        // The world owns its acceleration layout; component chunk/LOD
-        // metadata describes generic live payloads and does not apply.
         if entry.origin != [0.0; 3] {
             return Err(
                 "a voxel world is centred on the world origin; move the entity to (0, 0, 0)".into(),
@@ -945,23 +906,6 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             .map(|planet| planet.ground_height(eye))
     }
 
-    fn diagnostic_surface_point(
-        &self,
-        source: &VoxelSceneEntry,
-        direction: DVec3,
-        clearance: f64,
-    ) -> Option<DVec3> {
-        if !direction.is_finite()
-            || direction.length_squared() == 0.0
-            || !clearance.is_finite()
-            || clearance < 0.0
-        {
-            return None;
-        }
-        self.camera_planet(source)
-            .map(|planet| planet.surface_point(direction, clearance))
-    }
-
     fn local_up(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
         match source.world.shape {
             VoxelWorldShape::Sphere => eye.try_normalize(),
@@ -1142,7 +1086,6 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             eye,
             planet,
             sun,
-            shadows: view.sun.is_some(),
             picks: Some(self.picks.clone()),
         });
         error.map_or(Ok(()), Err)
@@ -1180,13 +1123,6 @@ mod tests {
     fn view(eye: DVec3) -> VoxelView {
         VoxelView {
             position: eye.to_array(),
-            right: [1.0, 0.0, 0.0],
-            up: [0.0, 0.0, -1.0],
-            forward: [0.0, -1.0, 0.0],
-            tan_half_fov_y: 0.41421357,
-            aspect: 16.0 / 9.0,
-            far: 10_000.0,
-            size: [1600, 900],
             sun: Some([0.3, 0.8, 0.5]),
         }
     }
@@ -1220,45 +1156,6 @@ mod tests {
             .unwrap()
             .planet
             .clone()
-    }
-
-    #[test]
-    fn native_flight_surface_is_unavailable_until_published_and_offsets_once() {
-        let mut scene = World::new();
-        let owner = scene.spawn();
-        attach(&mut scene, owner, planet_terrain());
-        let (mut entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
-        assert!(errors.is_empty());
-        let mut registry = VoxelBackendRegistry::new();
-        registry
-            .register(Box::new(PlanetVoxelBackend::blocking()))
-            .unwrap();
-        assert!(registry
-            .diagnostic_surface_point(&entries, DVec3::Y, 2.0)
-            .is_none());
-        assert!(registry
-            .publish_frame(&entries, view(DVec3::Y * 6_374_000.0))
-            .is_empty());
-        let ground = registry
-            .diagnostic_surface_point(&entries, DVec3::Y, 0.0)
-            .unwrap();
-        let lifted = registry
-            .diagnostic_surface_point(&entries, DVec3::Y, 32.0)
-            .unwrap();
-        assert!(
-            (lifted.distance(ground) - 32.0).abs() < 1e-7,
-            "clearance must be applied only by the canonical query"
-        );
-        assert!(registry
-            .diagnostic_surface_point(&entries, DVec3::ZERO, 2.0)
-            .is_none());
-        assert!(registry
-            .diagnostic_surface_point(&entries, DVec3::Y, f64::NAN)
-            .is_none());
-        entries[0].visible = false;
-        assert!(registry
-            .diagnostic_surface_point(&entries, DVec3::Y, 2.0)
-            .is_none());
     }
 
     #[test]

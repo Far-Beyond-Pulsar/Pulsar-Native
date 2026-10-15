@@ -2904,7 +2904,7 @@ fn full_coverage(frame: &Frame, reference: &Frame) -> Vec<bool> {
 fn voxel_objects_reach_the_frame_as_meshes() {
     use engine_backend::scene::voxel_source::VoxelSourceSession;
     use helio_component::components::LightType as Kind;
-    use helio_voxel_data::{VoxelEditTicketState, VoxelInboxClose, VoxelSampleEdit, VoxelSourceId};
+    use helio_voxel_data::{VoxelEditClose, VoxelEditTicketState, VoxelSampleEdit, VoxelSourceId};
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
@@ -2986,7 +2986,6 @@ fn voxel_objects_reach_the_frame_as_meshes() {
         state.scene.shared_scene(),
         instance,
         VoxelSourceId(7),
-        Default::default(),
     )
     .expect("open the volume's source");
     let edits: Vec<_> = (6..10)
@@ -3009,7 +3008,7 @@ fn voxel_objects_reach_the_frame_as_meshes() {
         change > noise + 50,
         "the edit did not change the frame ({change}, noise {noise})"
     );
-    let _ = session.finish(VoxelInboxClose::Drain);
+    let _ = session.finish(VoxelEditClose::Drain);
 
     // Removing the component restores the empty frame.
     assert!(components::remove_component(

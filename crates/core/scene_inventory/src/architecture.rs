@@ -121,6 +121,11 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "bake_scene_from_world: an explicit one-shot bake input, not the frame path",
     ),
     (
+        "crates/renderer/helio/crates/helio-component/src/components/voxel_world.rs",
+        1,
+        "journals_to_compact: the editor's level save folds long voxel edit journals, once per save, not the frame path",
+    ),
+    (
         "crates/renderer/helio/crates/helio-default-graphs/src/ray_tracing.rs",
         3,
         "HLFS acceleration structure: one full build, then change cursors",

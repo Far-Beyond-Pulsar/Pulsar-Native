@@ -242,7 +242,7 @@ fn components_json(world: &World, id: &str, include_data: bool) -> Value {
 ///
 /// Rendering, lighting, physics, audio, scripting and terrain are all
 /// components (e.g. StaticMeshComponent, LightComponent, RigidbodyComponent,
-/// PlanetTerrainComponent).
+/// VoxelTerrainComponent).
 ///
 /// # Arguments
 /// * `name_contains` - Case-insensitive filter on the class name.

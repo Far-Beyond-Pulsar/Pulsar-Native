@@ -123,7 +123,7 @@ camera to render a wider view or the corners clamp to the edge pixel.
    (`engine_backend` `helio_renderer/renderer.rs`), play-in-editor
    (`pulsar_game/src/embed.rs`) and the standalone game
    (`pulsar_game/src/windowed_app.rs`) each call both once per frame, before the
-   mirror flush. The editor's voxel terrain view gets the same widened tangent.
+   mirror flush. The voxel chunk pass draws with that widened frame camera.
 3. The pass treats its input as the frame widened by the row's factor
    (`frame_uv` / `image_uv` in `lens.wgsl`): the composite samples the map's
    result at `s / R`, and every scene-space quantity (regions, focus field, pupil,

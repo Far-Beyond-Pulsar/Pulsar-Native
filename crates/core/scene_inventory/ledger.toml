@@ -345,7 +345,7 @@ category = "Voxel"
 world_registered = true
 own_gpu_columns = false
 owner = "helio_component::components::voxel_component_runtime"
-disposition = "render, Phase 4 (#1056): the voxel mesh renderer (helio.voxel-mesh) greedy-meshes the payload store's 8³ chunks change-driven (a changed chunk and the neighbours whose border it changed; large batches on a worker thread, results of chunks changed meanwhile dropped by chunk revision) and writes the instance's mesh rows: a generated StaticMeshComponent's content-interned geometry and its StaticMeshDraw, one section per palette slot coloured from its material ID. The scene join draws them with the owner's whole transform (G-buffer, shadows, picking); removal or despawn clears them (a clear registration on VoxelComponent). An uninitialized store draws its initial cube. Live chunks on a terrain stay rejected by the planet renderer"
+disposition = "render, Phase 4 (#1056): the voxel mesh renderer (helio.voxel-mesh) greedy-meshes the payload store's 8³ chunks change-driven (a changed chunk and the neighbours whose border it changed; large batches on a worker thread, results of chunks changed meanwhile dropped by chunk revision) and writes the instance's mesh rows: a generated StaticMeshComponent's content-interned geometry and its StaticMeshDraw, one section per palette slot coloured from its material ID. The scene join draws them with the owner's whole transform (G-buffer, shadows, picking); removal or despawn clears them (a clear registration on VoxelComponent). An uninitialized store draws its initial cube. Voxel worlds (VoxelTerrainComponent) have no live chunks: a world is its recipe plus its edit journal"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (voxel_objects_reach_the_frame_as_meshes); crates/core/engine_backend/src/subsystems/render/helio_renderer/voxel_mesh_backend.rs (a_default_object_meshes_its_cube_and_edits_remesh_only_touched_chunks, large_volumes_mesh_off_thread_and_drop_results_of_chunks_edited_meanwhile); crates/renderer/helio/crates/helio-component/src/components/voxel_mesh.rs (a_cube_is_six_quads, an_l_shape_is_ten_quads, an_empty_chunk_has_no_quads)"
 status = "verified"
@@ -367,7 +367,7 @@ category = "Voxel/Terrain"
 world_registered = true
 own_gpu_columns = false
 owner = "helio_component::components::voxel_component_runtime"
-disposition = "voxel domain, audited Phase 4: voxel_frame reads terrain entries, the edit journal and the sun (the first enabled, visible directional light) when the world revision changes; the voxel-planet pass receives a CPU PlanetFrame (Arc<Planet>, sun) and syncs journal edits to the GPU change-driven. Generation and sculpting stay real work; the CPU planet rebuild is synchronous on the render thread, and renderer brush commits bypass append_edits' validation (recorded, not changed)"
+disposition = "voxel domain, audited Phase 4: voxel_frame reads terrain entries, the edit journal and the sun (the first enabled, visible directional light) when the world revision changes; the voxel-planet pass receives a CPU PlanetFrame (Arc<Planet>, sun) and syncs journal edits to the GPU change-driven. Generation and sculpting stay real work; the CPU planet rebuilds on the `voxel-world` builder thread (WorldBuilder; the render thread keeps the last world meanwhile), and renderer brush commits bypass append_edits' validation (recorded, not changed)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
 status = "out-of-scope"
@@ -935,6 +935,20 @@ test = "tracked in #1055"
 status = "unfinished"
 
 [[schema]]
+type = "CameraLensComponent"
+path = "helio_component::components::camera_lens_component::CameraLensComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "none: the authored component has no column of its own; on every insert, write, removal and replay it derives its CameraLensSourceRow (camera_lens_sources, which the environment join publishes as camera_lenses) and its block of LensElementComponent rows (lens_elements), zeroed and freed on removal"
+owner = "helio_component::components::camera_lens_component"
+disposition = "keep: the camera's lens as authored; its GPU rows are the derived ones above"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/renderer/helio/crates/helio-component/src/components/camera_lens_component.rs (tests)"
+status = "verified"
+
+[[schema]]
 type = "LensComponent"
 path = "helio_pass_lens::components::LensComponent"
 buffers = ["camera_lenses"]
@@ -1354,9 +1368,9 @@ status = "verified"
 [[site]]
 pattern = "change-cursor"
 file = "crates/core/engine_backend/src/scene/voxel_frame.rs"
-count = 3
-owner = "core::engine_backend::scene::voxel_frame (EditJournalSync)"
-disposition = "keep: independent VoxelTerrainComponent and VoxelTerrainLayersComponent cursors; the renderer's scene step re-checks edit journals against their ground only when a terrain or its layers changed (a replaced world reopens them)"
+count = 5
+owner = "core::engine_backend::scene::voxel_frame (VoxelWorldSync)"
+disposition = "keep: independent VoxelTerrainComponent, VoxelTerrainLayersComponent and AtmosphereComponent cursors, read in two places (the check and the drain after a replaced world); the renderer's scene step re-checks edit journals against their ground, and skies against their world's air, only when one of them changed (a replaced world reopens them)"
 target_contract = "Phase 5; 04-state-notifications.md"
 test = "crates/core/engine_backend/src/scene/voxel_frame.rs (journals_are_checked_only_when_a_terrain_or_its_layers_change, edits_are_dropped_when_the_ground_changes)"
 status = "verified"
@@ -1940,8 +1954,8 @@ status = "verified"
 
 [[buffer]]
 key = "camera_lenses"
-producers = ["CameraLensComponent"]
-consumers = ["helio-pass-lens"]
+producers = ["LensComponent"]
+consumers = ["helio-default-graphs", "helio-pass-lens"]
 owner = "helio-default-graphs environment join (execution output, one row per component instance)"
 disposition = "keep: the camera's lens, matched to its view by view_id; the first enabled row wins and none disables the lens. The join copies each placed, enabled CameraLensComponent row, so the instance switch turns the lens off"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
@@ -2453,6 +2467,16 @@ test = "none: not in a production graph"
 status = "out-of-scope"
 
 [[pass]]
+crate = "helio-pass-buffer-view"
+in_default_graph = true
+reads = []
+owner = "helio-pass-buffer-view"
+disposition = "keep: the viewport's Depth and Normals debug views; reads the depth and G-buffer normal textures after post-processing and draws them over the frame when its debug mode is on, else records nothing. Reads no SceneDB rows"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
+
+[[pass]]
 crate = "helio-pass-lens"
 in_default_graph = true
 reads = ["camera_lenses", "lens_elements"]
@@ -2798,7 +2822,7 @@ crate = "helio-pass-voxel-planet"
 in_default_graph = false
 reads = []
 owner = "helio-default-graphs"
-disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+disposition = "not in the default graph: the editor's graph adds its ChunkPass through the voxel pass factories (build_default_graph_external_with_voxel_passes); it reads the frame's camera and a CPU PlanetFrame, no SceneDB rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: not in a production graph"
 status = "out-of-scope"

@@ -5,17 +5,10 @@ pub mod panels;
 
 use std::sync::Arc;
 
-use engine_backend::scene::attachments;
-use engine_backend::{
-    scene::{
-        voxel_source::VoxelSourceSession,
-        Transform,
-    },
-    services::gpu_renderer::GpuRenderer,
-};
+use engine_backend::scene::{attachments, voxel_source::VoxelSourceSession, Transform};
 use gpui::{AppContext, MouseButton};
 use helio_component::{VoxelComponent, VoxelPayloadStore};
-use helio_voxel_data::{VoxelInboxClose, VoxelSampleEdit, VoxelSourceId, VOXEL_CHUNK_ENCODING_RAW};
+use helio_voxel_data::{VoxelEditClose, VoxelSampleEdit, VoxelSourceId, VOXEL_CHUNK_ENCODING_RAW};
 use parking_lot::Mutex;
 use pulsar_scenedb::Entity;
 use rust_i18n::t;
@@ -66,8 +59,6 @@ impl TerrainMode {
     ) -> Option<SourceBounds> {
         let id = match &state.editor.terrain.target {
             TerrainTarget::Volume(id) => id,
-            // A world is sculpted with brushes, not samples.
-            TerrainTarget::Planet(_) => return None,
             TerrainTarget::None => return bounds.first().cloned(),
         };
         let bits = u64::from_str_radix(id, 16).ok()?;
@@ -112,12 +103,7 @@ impl TerrainMode {
 
     fn begin_stroke(&mut self, source: &SourceBounds, ctx: &ToolModeContext) -> bool {
         let scene = ctx.state.scene.shared_scene();
-        match VoxelSourceSession::open(
-            scene,
-            source.entity,
-            SOURCE_ID,
-            Default::default(),
-        ) {
+        match VoxelSourceSession::open(scene, source.entity, SOURCE_ID) {
             Ok(session) => {
                 *self.active_source.lock() = Some(session);
                 self.stroke_source = Some(source.entity);
@@ -135,7 +121,7 @@ impl TerrainMode {
         self.flatten_plane = None;
         if let Some(session) = self.active_source.lock().take() {
             std::thread::spawn(move || {
-                let _ = session.finish(VoxelInboxClose::Drain);
+                let _ = session.finish(VoxelEditClose::Drain);
             });
         }
     }
@@ -347,13 +333,12 @@ impl ToolMode for TerrainMode {
     ) -> ToolPointerResult {
         match event.kind {
             PointerKind::Hover => {
-                if let Some((source, hit)) = self.hit(ctx, event) {
+                if let Some((_, hit)) = self.hit(ctx, event) {
                     self.cursor = Some(BrushCursor {
                         center: hit.to_array(),
                         radius: ctx.state.editor.terrain.sculpt.radius_m,
                         color: [0.35, 0.85, 0.95, 0.9],
                     });
-                    let _ = source;
                 } else {
                     self.cursor = None;
                 }

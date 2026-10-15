@@ -1,8 +1,9 @@
-//! Terrain Domain — sculpt brush, foliage brush, target, and stroke state
+//! Terrain Domain — sample sculpt brush, foliage brush and target
 //!
-//! Stores authoring configuration for voxel terrain sculpting and foliage painting.
-//! Actual voxel volume / planetary terrain data remains in engine/subsystem runtimes,
-//! while this domain tracks brush properties, active target, and active strokes.
+//! Authoring settings of the terrain tool: sample sculpting and material
+//! painting on voxel objects (`VoxelComponent`), and foliage painting. The
+//! voxel data stays in its component; voxel worlds are sculpted with brushes
+//! (the voxel sculpt tool, `super::voxel`).
 
 use serde::{Deserialize, Serialize};
 
@@ -20,8 +21,7 @@ pub enum SculptMode {
 
 // ── Brush Shape ────────────────────────────────────────────────────────────
 
-/// The shape a sculpt stamp is built from (the voxel planet's ball or
-/// flat-topped box brush).
+/// The shape a sculpt stamp's samples fill: a ball or a box.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum BrushShape {
     #[default]
@@ -140,27 +140,12 @@ impl Default for FoliageBrush {
 
 // ── Terrain Target ─────────────────────────────────────────────────────────
 
-/// Identifies which terrain surface or volume is being edited.
+/// The voxel object being edited (its instance entity's bits, hex).
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum TerrainTarget {
     #[default]
     None,
-    Planet(String),
     Volume(String),
-}
-
-// ── Stroke ─────────────────────────────────────────────────────────────────
-
-/// An active brush stroke capturing initial height and stroke identifier for undo coalescing.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Stroke {
-    pub id: u64,
-    /// Altitude the stroke was anchored to, in meters from the planet centre.
-    ///
-    /// `f64`, not `f32`: on an Earth-sized planet this is ~6.4e6, where an
-    /// `f32` step is around half a metre -- enough to make a Flatten stroke
-    /// visibly stair-step instead of levelling.
-    pub start_height: f64,
 }
 
 // ── Terrain Domain ─────────────────────────────────────────────────────────
@@ -171,14 +156,9 @@ pub struct TerrainDomain {
     pub sculpt: SculptBrush,
     pub foliage: FoliageBrush,
     pub target: TerrainTarget,
-    pub active_stroke: Option<Stroke>,
-    /// Whether Terrain mode's active brush is the foliage stamp rather than
-    /// the voxel sculpt brush.
-    ///
-    /// Design doc §6: foliage painting is a sub-tab/toggle of `TerrainMode`,
-    /// not a separate `ToolMode` -- this is that toggle's state, flipped by
-    /// the toolbar's `ToolWidget::Toggle` and read by
-    /// `TerrainMode::on_pointer` to pick which stamp a brush click produces.
+    /// Whether the terrain tool's live brush is the foliage stamp rather
+    /// than the sample sculpt brush: picking a foliage tool turns it on,
+    /// picking a sculpt tool or material off.
     pub paint_foliage: bool,
     /// The sets/members the foliage brush paints from. See
     /// [`super::foliage_sets`].
@@ -202,7 +182,6 @@ pub enum FoliageTool {
 }
 
 impl TerrainDomain {
-
     pub fn set_brush_radius(&mut self, radius: f32) {
         self.sculpt.radius_m = radius.clamp(1.0, 64.0);
     }
@@ -215,16 +194,8 @@ impl TerrainDomain {
         self.sculpt.falloff = falloff.clamp(0.0, 1.0);
     }
 
-    pub fn set_brush_material(&mut self, material: u32) {
-        self.sculpt.material = material;
-    }
-
     pub fn set_brush_shape(&mut self, shape: BrushShape) {
         self.sculpt.shape = shape;
-    }
-
-    pub fn set_paint_foliage(&mut self, on: bool) {
-        self.paint_foliage = on;
     }
 
     /// Choose a sculpt tool and make the *terrain* brush the live one (a
@@ -253,14 +224,6 @@ impl TerrainDomain {
 
     pub fn set_target(&mut self, target: TerrainTarget) {
         self.target = target;
-    }
-
-    pub fn begin_stroke(&mut self, id: u64, start_height: f64) {
-        self.active_stroke = Some(Stroke { id, start_height });
-    }
-
-    pub fn end_stroke(&mut self) -> Option<Stroke> {
-        self.active_stroke.take()
     }
 }
 

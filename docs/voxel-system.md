@@ -2,7 +2,7 @@
 
 Pulsar's voxel terrain: destructible planets and planes of real voxels
 (0.1 m to 1 m), authored as SceneDB components, edited in the level editor or
-from scripts, and rendered by a registered Helio backend. This document maps
+from scripts, and rendered by Helio's chunk pass. This document maps
 the Pulsar side end to end: data, flow, editor, scripting, rendering
 integration, decisions and pitfalls. The renderer itself (grid, generators,
 chunk trees: residency, drawing, lighting) is documented in Helio's
@@ -21,29 +21,39 @@ chunk trees: residency, drawing, lighting) is documented in Helio's
 8. [Decisions and pitfalls](#decisions-and-pitfalls)
 9. [Diagnostics and tests](#diagnostics-and-tests)
 10. [Extending](#extending)
-11. [Generic voxel data boundary](#generic-voxel-data-boundary)
+11. [Voxel object data](#voxel-object-data)
 
 ## Layers
 
 | Layer | Where | Owns |
 |---|---|---|
-| Components | Helio `helio-component` (`components/voxel_component.rs`) | `VoxelTerrainComponent`, generator settings components, `VoxelEditJournal` field, inspector metadata. |
+| Components | Helio `helio-component` (`components/voxel_component.rs`) | `VoxelTerrainComponent` (the world's description, air included), generator settings components, `VoxelEditJournal` field, inspector metadata. |
 | World queries | Helio `helio-component` (`components/voxel_world.rs`) | The CPU world of a terrain instance (cached), recipe/brush mapping, block API, scripting world methods, editor framing. |
 | Canonical world | Helio `helio-pass-voxel-planet` | Grid, terrain generators, edits, `Planet` queries and ray casts, the render pass. |
-| Scene projection | `engine_backend/src/scene/voxel_frame.rs` | Enabled SceneDB rows -> `VoxelSceneEntry` (configuration + shared capabilities, no payload copies). |
+| Scene projection | `engine_backend/src/scene/voxel_frame.rs` | Enabled SceneDB rows -> `VoxelSceneEntry` (configuration, and a voxel object's chunk store; no payload copies). `VoxelWorldSync`: journals and skies follow their world. |
 | Backend registry | `engine_backend/.../helio_renderer/voxel_backend.rs` | `VoxelRenderBackend` trait, `VoxelBackendRegistry`, the built-in `PlanetVoxelBackend` (`helio.voxel-terrain`). |
 | Voxel objects | `engine_backend/.../helio_renderer/voxel_mesh_backend.rs`, Helio `helio-component` (`components/voxel_mesh.rs`) | `MeshVoxelBackend` (`helio.voxel-mesh`): a free-standing `VoxelComponent` greedy-meshed into mesh rows the scene join draws. |
 | Viewport renderer | `engine_backend/.../helio_renderer/renderer.rs` | Camera (planet-aware frame, altitude speed, ground collision), camera-relative frames, publishing views, brush and pick rays. |
-| Editor | `ui_level_editor` (`state/voxel.rs`, `tool_modes/voxel_sculpt.rs`, dispatcher, panel handlers) | Sculpt tool, strokes and undo, focus, generator picker, settings components. |
+| Editor | `ui_level_editor` (`state/voxel.rs`, `tool_modes/voxel_sculpt/`, `ui/viewport/build_handlers.rs`, panel handlers) | Sculpt tool, strokes and undo, focus, generator picker, settings components. |
 
 ## Data: components and the edit journal
 
-**`VoxelTerrainComponent`** is the base of every voxel world. Inspector
-properties: enabled, shape (`Sphere`, `Plane`, `InfinitePlane`), planet
-radius or plane size, voxel size, generator (a `VoxelGeneratorRef` of id and
-version, serialized flat as `generator_id` / `generator_version`), seed,
-editable. The rest (renderer id, chunk layout, LOD, palette) stays serialized
-but hidden. Presets: `VoxelTerrainComponent::planet(radius)`, `::plane(size)`,
+**`VoxelTerrainComponent`** is the whole description of a voxel world, in
+five inspector categories:
+
+- **World:** enabled, shape (`Sphere`, `Plane`, `InfinitePlane`), planet
+  radius or plane size, voxel size.
+- **Generation:** generator (a `VoxelGeneratorRef` of id and version,
+  serialized flat as `generator_id` / `generator_version`), seed.
+- **Environment:** air (`VoxelAir`): `Custom` keeps the object's
+  `AtmosphereComponent` as authored; `None` (a moon), `Earthlike`, `Thin`
+  (Mars) and `Dense` (Titan) derive it, scaled by air density, sky tint and
+  haze.
+- **Appearance:** the terrain appearance JSON (below).
+- **Editing:** editable, and the edit journal.
+
+Levels saved with the old chunk-domain fields (renderer id, chunk layout,
+LOD, palette, bounds) still load; saving drops them. Presets: `VoxelTerrainComponent::planet(radius)`, `::plane(size)`,
 `::infinite_plane()`; a default component is a 4 km plane of the layered
 terrain generator (`helio.terrain`). The world is centred on its object,
 which must sit at the origin without rotation and with a uniform scale
@@ -70,7 +80,9 @@ sphere is a planet or a moon is the game's choice: the component's presets
 (`earth`, `moon`, `flat`) are just data, and a game can build or randomize
 its own stacks. Blueprints call `use_preset`, `add_layer`, `remove_layer`,
 `layer_count` and `set_layer_enabled` / `height` / `scale` / `coverage` on
-the component; the world rebuilds from the new settings.
+the settings component, and every setting of the world on the terrain
+component (see [Scripting](#scripting)); the world rebuilds from the new
+settings.
 
 In the inspector the whole stack is one property with its own editor: a
 preset picker, the layers and material rules as ordered lists (move, remove,
@@ -93,8 +105,8 @@ Blueprint that builds a planet, a moon or a desert world from its `seed`
 variable, No Man's Sky style: it rolls with the deterministic `Seeded
 Random` nodes (`seeded_random`, `seeded_random_range`, `seeded_random_int`:
 equal seed and index, equal number, on every run and machine), applies a
-preset, then adds a crater layer and hills of random size through the
-component's natives. `pulsar_game`'s `random_world_blueprint` test compiles
+preset and the world's air (none on a moon, thin on a desert), then adds a
+crater layer and hills of random size through the components' natives. `pulsar_game`'s `random_world_blueprint` test compiles
 the saved graph and runs it against a real terrain instance.
 
 **Composition.** Game-specific worlds are classes whose prefab combines these
@@ -113,9 +125,15 @@ Edits belong to the ground they were made on: the journal records that
 terrain's fingerprint (`PlanetRecipe::fingerprint`: form, voxel size,
 generator, seed and settings). When any of these change, the projection
 shows none of the old edits and the scene step drops them from the journal
-(`EditJournalSync`: change cursors over the terrain and layer components, so
-frames that change neither cost nothing), so they are not saved either. A journal with no
-terrain yet adopts the first one.
+(`VoxelWorldSync`: change cursors over the terrain, layer and atmosphere
+components, so frames that change none of them cost nothing), so they are
+not saved either. A journal with no terrain yet adopts the first one.
+
+**Sky.** The same sync keeps an `AtmosphereComponent` on a world's object on
+its ground: centred on a sphere at its radius, flat ground for a plane. A
+world whose air is a preset derives the rest of the sky from it
+(`AtmosphereComponent::for_air`), so hand edits to such a sky revert;
+`Custom` air leaves it as authored.
 
 **Sculpting.** A brush sample asks the renderer for the terrain hit under
 the pointer (`request_pick`); when the answer arrives (a few frames later)
@@ -129,8 +147,9 @@ reaches at most 500 m.
 
 1. **Projection.** `project_voxel_entries(world)` maps enabled terrain
    instances to `VoxelSceneEntry`: id, visibility, shape and size, voxel size,
-   generator config (id, version, seed, settings JSON), the edit journal and
-   shared stores. Nothing large is copied. The renderer reads it once per
+   generator config (id, version, seed, settings JSON) and the edit journal;
+   a voxel object adds its chunk store (`VoxelObjectChunks`). Nothing large
+   is copied. The renderer reads it once per
    world revision (`VoxelSceneRead`), with the sun and what keeps the scene
    out of camera-relative frames.
 2. **Environment.** The registry reports whether any active backend renders
@@ -141,7 +160,7 @@ reaches at most 500 m.
    coordinates and logs `VOXEL_CAMERA_SPACE`). The sky and the light the air
    casts come from an `AtmosphereComponent` through the environment join.
 3. **Publish.** `publish_frame(entries, VoxelView)` hands the backend the
-   f64 eye, camera basis, projection and sun. `PlanetVoxelBackend` resolves
+   f64 eye and the sun; it draws with the frame's own camera. `PlanetVoxelBackend` resolves
    the entry to a cached `Arc<Planet>`. Only appended edits extend the cached
    world in place, while other changes rebuild it. It then posts a
    `PlanetFrame` to its pass's mailbox.
@@ -152,9 +171,10 @@ reaches at most 500 m.
 
 ## Backends
 
-`VoxelRenderBackend` is the contract a renderer implements; a row names its
-backend by `renderer_id` (or leaves it empty for unique capability matching
-via `supports`; ambiguity is an error). Methods and why they exist:
+`VoxelRenderBackend` is the contract a renderer implements. A row is drawn
+by the one backend that `supports` it: a world by the renderer of its
+generator, a voxel object by the mesh renderer. A `VoxelComponent` may name
+its backend by `renderer_id` instead; ambiguity is an error. Methods and why they exist:
 
 | Method | Purpose |
 |---|---|
@@ -171,8 +191,7 @@ via `supports`; ambiguity is an error). Methods and why they exist:
 | `diagnostics` | One-line streaming state for logs (`PULSAR_VOXEL_STATS`). |
 
 `pass_factory` returns `None` for a backend that draws without a pass of
-its own. Register extra backends with `HelioRenderer::register_voxel_backend`
-before the first frame.
+its own. The renderer registers the two built-in backends.
 
 **Voxel objects** (`MeshVoxelBackend`, `helio.voxel-mesh`) draw a
 free-standing `VoxelComponent` (#1056) without a voxel pass: the selection
@@ -211,9 +230,9 @@ shadows (as a movable object) and picking.
 
 ## Editor
 
-- **Sculpt.** Tool menu -> **Voxel Sculpt**. The toolbar picks dig / build /
-  paint, sphere or cube, radius, material and **One block**; Shift swaps dig
-  and build. A press starts a stroke. While the pointer drags, stamps are
+- **Sculpt.** Tool menu -> **Voxel Sculpt**. Its dock panel picks dig /
+  build / paint / flatten / smooth, sphere or cube, radius, material and
+  **One block**; Shift swaps dig and build. A press starts a stroke. While the pointer drags, stamps are
   filled in between the previous and current hit (`stroke_fill`), so fast
   drags leave no gaps. Release ends the stroke. A whole stroke is one undo
   step (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y), settled 150 ms after the last stamp.
@@ -224,6 +243,8 @@ shadows (as a movable object) and picking.
   and is reported).
 - **Camera.** See below. The viewport's **Speed** setting multiplies the
   altitude speed.
+- **Voxel objects.** The **Terrain** tool sculpts and paints the samples of
+  a voxel object (`VoxelComponent`); its Manage tab lists and creates them.
 
 ## Scripting
 
@@ -238,6 +259,16 @@ positions in world metres, material ids from `terrain::material` (0 is air):
 | `fill_cube(x, y, z, half_size, material)` | The same for a ground-aligned cube. |
 | `raycast_distance(x, y, z, dx, dy, dz, max_distance)` | Distance to the first solid block, or -1. |
 | `voxel_size()` | Block edge in metres. |
+| `world_shape()`, `set_world_shape(shape)` | `"sphere"`, `"plane"` or `"infinite_plane"`. |
+| `planet_radius()`, `set_planet_radius(m)`; `plane_size()`, `set_plane_size(m)` | The world's size. |
+| `set_voxel_size(m)` | The base voxel edge (0.1 to 1 m). |
+| `seed()`, `set_seed(seed)` | The generator's seed. |
+| `air()`, `set_air(name)` | `"custom"`, `"none"`, `"earthlike"`, `"thin"` or `"dense"`. |
+| `air_density()`, `air_haze()`, `air_tint_red/green/blue()` and their `set_*` | How much air, its haze and the sky's tint. |
+| `is_editable()`, `set_editable(on)` | Whether the world can be dug and built. |
+
+Setters refuse invalid values (a negative radius, an unknown air) and leave
+the world unchanged.
 
 Script edits go into the same journal as the sculpt tool, so renderer, editor
 and gameplay agree on every block. On generated terrain the older
@@ -274,10 +305,10 @@ and gameplay agree on every block. On generated terrain the older
   Helio's grid and billboards (light icons) are rebased; **gizmos and
   authored meshes in a voxel world are not yet**. Meshes near a planet's
   surface also need f64 or tiled transforms (f32 at 6371 km is ~0.5 m).
-- **Far plane at f32 infinity.** With near 5 cm and far 40 000 km the far
-  plane unprojects to w = 0. Build rays toward it as `far.xyz - far.w * eye`,
-  never `far.xyz / far.w`. Clouds, TSR, fog, lens flare and shadow cascades
-  were fixed for this.
+- **Depth is reversed with no far plane.** Depth 0 is infinity, which
+  unprojects to w = 0. Build rays toward it as `far.xyz - far.w * eye`,
+  never `far.xyz / far.w`, and read depth through the prelude
+  (`helio_view_depth`, `helio_is_sky`, `helio_depth_nearest`).
 - **Altitude, not clearance, for speed.** `air_clearance` is a conservative
   bound (0 anywhere below the highest possible mountain), right for near
   planes but it made the camera crawl at 10 m/s kilometres above lowland.
@@ -292,10 +323,11 @@ and gameplay agree on every block. On generated terrain the older
   render exactly.
 - **The editor's default Sun points straight down (world -Y),** so the sun
   is overhead at the pole and lower elsewhere. A planet's air is an authored
-  `AtmosphereComponent` placed at its owner (the example level's planet):
-  the atmosphere pass rebases its centre by the frame's world origin, so the
-  horizon and aerial perspective follow the planet at any distance. Without
-  one there is no sky (space, a moon).
+  `AtmosphereComponent` placed at its owner (the example level's planet,
+  with Earthlike air): the atmosphere pass rebases its centre by the frame's
+  world origin, so the horizon and aerial perspective follow the planet at
+  any distance. Without one, or with `None` air, there is no sky (space, a
+  moon).
 
 ## Diagnostics and tests
 
@@ -332,12 +364,10 @@ and gameplay agree on every block. On generated terrain the older
   it, `HELIO_VOXEL_CHUNKS_ENGINE=1` through the chunk pass as the editor
   draws it, `HELIO_VOXEL_CHUNKS_FLY=descent|cruise` streams along a path),
   and `tests/chunks.rs` checks drawn hits against CPU ray casts.
-
-- `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s ascent/orbit/descent/cruise/arrival
-  diagnostic after residency settles and cancels on camera input. Use a copied
-  project with `PULSAR_VOXEL_STATS=1`. `PULSAR_VOXEL_NATIVE_SCULPT=1` (or
-  `far`) strokes a dig r1, a dig r4 and a build r1 through the editor's
-  brush queue and picks.
+- The editor's own renderer, driven headless:
+  `cargo run --release -p engine_backend --example voxel_editor_harness`
+  (views, flights, drag strokes, stress flights with a per-frame CSV,
+  per-pass GPU profiles; its module doc lists the steps).
 
 ## Extending
 
@@ -345,25 +375,24 @@ and gameplay agree on every block. On generated terrain the older
   README), give it a settings component registered in
   `voxel_component_runtime.rs`, and name that component in its info so the
   picker attaches it.
-- **A voxel renderer**: implement `VoxelRenderBackend`, register it before
-  the first frame, and select it by `renderer_id` on the component. A
-  renderer that produces geometry can write mesh rows like
-  `helio_component::voxel_mesh::write_voxel_mesh_rows` instead of a pass.
-- **A tool**: dispatch `VoxelBrushRequest`s through the editor dispatcher
-  like `tool_modes/voxel_sculpt.rs`; commits come back from `edit_ray` and
-  are appended to the journal with the scene history, so undo works.
+- **A voxel renderer**: implement `VoxelRenderBackend` and add it to the
+  registry the renderer builds (`VoxelBackendRegistry::register`); a voxel
+  object selects it by `renderer_id`. A renderer that produces geometry can
+  write mesh rows like `helio_component::voxel_mesh::write_voxel_mesh_rows`
+  instead of a pass.
+- **A tool**: return `ToolPointerResult::VoxelBrush` requests like
+  `tool_modes/voxel_sculpt/`; the viewport queues them, commits come back
+  from `edit_ray` and are appended to the journal with the scene history, so
+  undo works.
 
-## Generic voxel data boundary
+## Voxel object data
 
-SceneDB also owns generic voxel sample data for bounded objects
-(`VoxelComponent`) and external terrain sources. `helio-voxel-data` is the
-CPU-only contract: signed chunk keys, 8^3 material samples, bounded
-publication batches, revision checks, immutable snapshots, editing and
-generator worker APIs. `VoxelSourceWriter` publishes to a component-owned
-store; `VoxelSourceSession` (`scene/voxel_source.rs`) resolves a typed
-SceneDB row and owns its publication and edit workers. Component
-serialization contains authored configuration, not live payload bytes. A
-`VoxelComponent`'s live chunks are drawn by the voxel object renderer
-(see [Backends](#backends)). The `helio.voxel-terrain` backend does not
-consume live chunk payloads on a terrain; it reports an error rather than
-ignoring them. See [the source API example](voxel-component-api-example.md).
+A voxel object (`VoxelComponent`) keeps live sample data in SceneDB.
+`helio-voxel-data` is the CPU-only contract: signed chunk keys, 8^3
+material samples, revision checks, immutable snapshots and the sample edit
+worker. `VoxelSourceWriter` publishes to the component-owned store;
+`VoxelSourceSession` (`scene/voxel_source.rs`) resolves the object's row and
+owns its edit worker (the Terrain tool's strokes). Component serialization
+contains authored configuration, not live payload bytes. The voxel object
+renderer draws the chunks (see [Backends](#backends)). A voxel world has no
+sample data: it is its recipe plus the edit journal.
