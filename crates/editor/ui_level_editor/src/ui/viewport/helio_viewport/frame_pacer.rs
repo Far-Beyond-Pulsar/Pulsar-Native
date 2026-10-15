@@ -138,7 +138,10 @@ mod pacer_tests {
         let budget = Duration::from_millis(16);
         let start = Instant::now();
         // On time: the next refresh.
-        assert_eq!(FramePacer::next(start, budget, start + Duration::from_millis(5)), start + budget);
+        assert_eq!(
+            FramePacer::next(start, budget, start + Duration::from_millis(5)),
+            start + budget
+        );
         // Far behind: a budget from now, not the missed deadlines.
         let now = start + Duration::from_millis(100);
         assert_eq!(FramePacer::next(start, budget, now), now + budget);

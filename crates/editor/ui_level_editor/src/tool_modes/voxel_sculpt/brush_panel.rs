@@ -144,7 +144,11 @@ impl VoxelSculptPanel {
                 .update(cx, |input, cx| input.set_value(value, window, cx));
         }
         // A twentieth of each decade (0.1 m below 2 m, then 0.5, 5, 50, 500).
-        let step = if brush.radius_m < 2. { 0.1 } else { 10f32.powi(brush.radius_m.log10().floor() as i32) / 2. };
+        let step = if brush.radius_m < 2. {
+            0.1
+        } else {
+            10f32.powi(brush.radius_m.log10().floor() as i32) / 2.
+        };
         let decrease = self
             .button("voxel_radius_decrease", "−".into(), cx, move |v| {
                 v.set_radius(v.radius_m - step)
@@ -188,17 +192,14 @@ impl VoxelSculptPanel {
             .child(radius);
         if self.radius_error {
             settings = settings.child(
-                div()
-                    .text_xs()
-                    .text_color(theme.danger)
-                    .child(
-                        t!(
-                            "LevelEditor.VoxelPanel.InvalidRadius",
-                            min => format!("{MIN_RADIUS_M:.2}"),
-                            max => format!("{MAX_RADIUS_M:.2}")
-                        )
-                        .to_string(),
-                    ),
+                div().text_xs().text_color(theme.danger).child(
+                    t!(
+                        "LevelEditor.VoxelPanel.InvalidRadius",
+                        min => format!("{MIN_RADIUS_M:.2}"),
+                        max => format!("{MAX_RADIUS_M:.2}")
+                    )
+                    .to_string(),
+                ),
             );
         }
         let footprint = if brush.single_block {

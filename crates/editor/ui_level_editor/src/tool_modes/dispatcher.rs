@@ -65,10 +65,14 @@ impl ToolModeDispatcher {
     pub fn dispatch_widget_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) {
         let terrain = &mut state.editor.terrain;
         match edit {
-            ToolWidgetEdit::SetSlider { id: "radius", value } => terrain.set_brush_radius(*value),
-            ToolWidgetEdit::SetSlider { id: "strength", value } => {
-                terrain.set_brush_strength(*value)
-            }
+            ToolWidgetEdit::SetSlider {
+                id: "radius",
+                value,
+            } => terrain.set_brush_radius(*value),
+            ToolWidgetEdit::SetSlider {
+                id: "strength",
+                value,
+            } => terrain.set_brush_strength(*value),
             _ => {}
         }
     }

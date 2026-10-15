@@ -44,7 +44,9 @@
 //! Every frame's wall time (CPU and GPU, the queue drained) is written to
 //! `frames.csv`, and a summary per step to stdout.
 
-use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest, VoxelBrushTool};
+use engine_backend::subsystems::render::{
+    EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest, VoxelBrushTool,
+};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -78,10 +80,18 @@ impl Harness {
     fn frame(&mut self) -> Option<f64> {
         use std::sync::atomic::{AtomicBool, Ordering};
         let started = Instant::now();
-        let submitted = self.renderer.render_frame(&self.device, &self.queue, &self.view, self.size[0], self.size[1], FORMAT);
+        let submitted = self.renderer.render_frame(
+            &self.device,
+            &self.queue,
+            &self.view,
+            self.size[0],
+            self.size[1],
+            FORMAT,
+        );
         let done = std::sync::Arc::new(AtomicBool::new(false));
         let flag = done.clone();
-        self.queue.on_submitted_work_done(move || flag.store(true, Ordering::Release));
+        self.queue
+            .on_submitted_work_done(move || flag.store(true, Ordering::Release));
         self.in_flight.push_back(done);
         while self.in_flight.len() > FRAMES_IN_FLIGHT {
             let oldest = self.in_flight.pop_front().unwrap();
@@ -182,8 +192,12 @@ impl Harness {
         let (sy, cy) = yaw.sin_cos();
         let (sp, cp) = pitch.sin_cos();
         let local = glam::Vec3::new(sy * cp, sp, -cy * cp);
-        let forward = glam::Quat::from_rotation_arc(glam::Vec3::Y, direction.as_vec3().normalize()) * local;
-        let (yaw, pitch) = (forward.x.atan2(-forward.z), forward.y.clamp(-1.0, 1.0).asin());
+        let forward =
+            glam::Quat::from_rotation_arc(glam::Vec3::Y, direction.as_vec3().normalize()) * local;
+        let (yaw, pitch) = (
+            forward.x.atan2(-forward.z),
+            forward.y.clamp(-1.0, 1.0).asin(),
+        );
         let mailbox = self.renderer.editor_mailbox();
         let mut radius = self
             .camera()
@@ -264,7 +278,13 @@ impl Harness {
     fn look(&mut self, position: glam::DVec3, forward: glam::DVec3) {
         let f = forward.normalize().as_vec3();
         let (yaw, pitch) = (f.x.atan2(-f.z), f.y.clamp(-1.0, 1.0).asin());
-        self.renderer.editor_mailbox().queue_camera(EditorCameraState { position: position.to_array(), yaw, pitch });
+        self.renderer
+            .editor_mailbox()
+            .queue_camera(EditorCameraState {
+                position: position.to_array(),
+                yaw,
+                pitch,
+            });
     }
 
     fn edits(&self) -> usize {
@@ -348,7 +368,20 @@ fn main() {
     });
     let view = texture.create_view(&Default::default());
     let csv = std::fs::File::create(out.join("frames.csv")).expect("frames.csv");
-    let mut h = Harness { device, queue, renderer, scene, texture, view, size, out, csv, step: "start".into(), frame: 0, in_flight: Default::default() };
+    let mut h = Harness {
+        device,
+        queue,
+        renderer,
+        scene,
+        texture,
+        view,
+        size,
+        out,
+        csv,
+        step: "start".into(),
+        frame: 0,
+        in_flight: Default::default(),
+    };
     writeln!(h.csv, "frame,step,ms,rendered").ok();
 
     // Start: the level's own camera, as the editor opens it.
@@ -419,13 +452,25 @@ fn main() {
                     "build" => helio_voxel_data::VoxelBrushOp::Add,
                     _ => helio_voxel_data::VoxelBrushOp::Paint,
                 };
-                let (radius, frames, material) = (number(2, 1.0) as f32, number(3, 60.0) as usize, number(4, 3.0) as u32);
+                let (radius, frames, material) = (
+                    number(2, 1.0) as f32,
+                    number(3, 60.0) as usize,
+                    number(4, 3.0) as u32,
+                );
                 let tool = match parts.get(5).copied() {
                     Some("flatten") => VoxelBrushTool::Flatten,
                     Some("smooth") => VoxelBrushTool::Smooth,
                     _ => VoxelBrushTool::Stamp,
                 };
-                let request = VoxelBrushRequest { op, shape: helio_voxel_data::VoxelBrushShape::Sphere, radius, material, single_block: false, level: Default::default(), tool };
+                let request = VoxelBrushRequest {
+                    op,
+                    shape: helio_voxel_data::VoxelBrushShape::Sphere,
+                    radius,
+                    material,
+                    single_block: false,
+                    level: Default::default(),
+                    tool,
+                };
                 let before = h.edits();
                 let queue = h.renderer.pending_pointer_events.clone();
                 let mut times = Vec::new();
@@ -433,7 +478,15 @@ fn main() {
                     // Across the lower half of the view, as a hand would.
                     let t = f as f32 / frames.max(1) as f32;
                     let (x, y) = (0.2 + 0.6 * t, 0.7 + 0.08 * (t * 9.0).sin());
-                    queue.lock().expect("pointer queue").push(PendingPointerEvent::VoxelBrush { norm_x: x, norm_y: y, request, start: f == 0 });
+                    queue
+                        .lock()
+                        .expect("pointer queue")
+                        .push(PendingPointerEvent::VoxelBrush {
+                            norm_x: x,
+                            norm_y: y,
+                            request,
+                            start: f == 0,
+                        });
                     if let Some(ms) = h.frame() {
                         times.push(ms);
                     }
@@ -442,7 +495,10 @@ fn main() {
                         h.capture(&format!("drag_{n}_{f:03}"));
                     }
                 }
-                queue.lock().expect("pointer queue").push(PendingPointerEvent::LeftRelease);
+                queue
+                    .lock()
+                    .expect("pointer queue")
+                    .push(PendingPointerEvent::LeftRelease);
                 h.report(&format!("drag {:?} {:?} r {radius} m", op, tool), &times);
                 let times = h.settle(20_000);
                 h.report("drag settle", &times);
@@ -450,7 +506,8 @@ fn main() {
                 h.capture(&format!("drag_{n}"));
             }
             "at" => {
-                direction = glam::DVec3::new(number(1, 0.0), number(2, 1.0), number(3, 0.0)).normalize();
+                direction =
+                    glam::DVec3::new(number(1, 0.0), number(2, 1.0), number(3, 0.0)).normalize();
                 println!("HARNESS at {direction:?}");
             }
             "profile" => {
@@ -459,9 +516,14 @@ fn main() {
                 // The view, to hold the same one in Helio's harness
                 // (`HELIO_VOXEL_FLIGHT_EYE`).
                 let forward = h.renderer.camera_forward();
-                println!("HARNESS profile eye {:?} forward {:?}", camera.position, forward.to_array());
+                println!(
+                    "HARNESS profile eye {:?} forward {:?}",
+                    camera.position,
+                    forward.to_array()
+                );
                 let mailbox = h.renderer.editor_mailbox();
-                let mut passes: std::collections::BTreeMap<&'static str, (f64, u32)> = Default::default();
+                let mut passes: std::collections::BTreeMap<&'static str, (f64, u32)> =
+                    Default::default();
                 let mut totals = Vec::new();
                 let started = Instant::now();
                 let mut k = 0u32;
@@ -481,12 +543,20 @@ fn main() {
                     }
                 }
                 totals.sort_by(f64::total_cmp);
-                let mut by_pass: Vec<(&str, f64)> = passes.iter().map(|(name, (sum, n))| (*name, sum / f64::from((*n).max(1)))).collect();
+                let mut by_pass: Vec<(&str, f64)> = passes
+                    .iter()
+                    .map(|(name, (sum, n))| (*name, sum / f64::from((*n).max(1))))
+                    .collect();
                 by_pass.sort_by(|a, b| b.1.total_cmp(&a.1));
                 println!(
                     "HARNESS profile: graph gpu p50 {:.2} ms; by pass: {}",
                     totals.get(totals.len() / 2).copied().unwrap_or(f64::NAN),
-                    by_pass.iter().filter(|p| p.1 >= 0.05).map(|(n, ms)| format!("{n} {ms:.2}")).collect::<Vec<_>>().join(", ")
+                    by_pass
+                        .iter()
+                        .filter(|p| p.1 >= 0.05)
+                        .map(|(n, ms)| format!("{n} {ms:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
             }
             "stress" => {
@@ -508,7 +578,11 @@ fn main() {
                 let path = |t: f64| -> (glam::DVec3, glam::DVec3) {
                     let u = (t / seconds).clamp(0.0, 1.0);
                     // `turn`: the heading yaws about the start's up.
-                    let yaw = if mode == "turn" { speed.unwrap_or(180.0).to_radians() * t } else { 0.0 };
+                    let yaw = if mode == "turn" {
+                        speed.unwrap_or(180.0).to_radians() * t
+                    } else {
+                        0.0
+                    };
                     let ahead = ahead * yaw.cos() + up.cross(ahead) * yaw.sin();
                     let (altitude, along, pitch_down) = match mode.as_str() {
                         "turn" => (high.unwrap_or(40.0), 0.0, 0.15),
@@ -520,7 +594,8 @@ fn main() {
                             (top * (20_000.0 / top).powf(v), 0.0, 8.0)
                         }
                         m => {
-                            let altitude = 2.0 * 200_000.0f64.powf(if m == "ascent" { u } else { 1.0 - u });
+                            let altitude =
+                                2.0 * 200_000.0f64.powf(if m == "ascent" { u } else { 1.0 - u });
                             (altitude, altitude * 0.3, 0.6)
                         }
                     };
@@ -528,7 +603,10 @@ fn main() {
                     let angle = along / ground;
                     let local_up = up * angle.cos() + ahead * angle.sin();
                     let local_ahead = ahead * angle.cos() - up * angle.sin();
-                    (local_up * (ground + altitude), local_ahead - local_up * pitch_down)
+                    (
+                        local_up * (ground + altitude),
+                        local_ahead - local_up * pitch_down,
+                    )
                 };
                 // From the path's start, settled (a descent starts from a
                 // settled orbit, not a jump from the ground).
@@ -536,10 +614,12 @@ fn main() {
                 h.look(position, look);
                 h.settle(3000);
                 let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px,generated,budget,waiting,fading,plan_age,plan_ms,worst\n");
-                let (mut times, mut coarse, mut worst, mut switches) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+                let (mut times, mut coarse, mut worst, mut switches) =
+                    (Vec::new(), Vec::new(), Vec::new(), Vec::new());
                 let mut samples = Vec::new();
                 // The render thread's milliseconds by phase, over the flight.
-                let mut phases: std::collections::BTreeMap<&'static str, Vec<f64>> = Default::default();
+                let mut phases: std::collections::BTreeMap<&'static str, Vec<f64>> =
+                    Default::default();
                 let started = Instant::now();
                 let mut captured = false;
                 loop {
@@ -553,10 +633,32 @@ fn main() {
                     for &(name, phase_ms) in h.renderer.last_frame_phases() {
                         phases.entry(name).or_default().push(f64::from(phase_ms));
                     }
-                    let (c, w, sw) = (h.voxel_stat("coarse"), h.voxel_stat("worst_px"), h.voxel_stat("switch_px"));
-                    let work = ["generated", "budget", "waiting", "fading", "plan_age", "plan_ms"].map(|k| h.voxel_stat(k));
-                    csv += &format!("{t:.4},{:.1},{ms:.2},{c:.4},{w:.3},{sw:.3},{},{},{},{},{},{},{}
-", position.length() - ground, work[0], work[1], work[2], work[3], work[4], work[5], h.voxel_word("worst"));
+                    let (c, w, sw) = (
+                        h.voxel_stat("coarse"),
+                        h.voxel_stat("worst_px"),
+                        h.voxel_stat("switch_px"),
+                    );
+                    let work = [
+                        "generated",
+                        "budget",
+                        "waiting",
+                        "fading",
+                        "plan_age",
+                        "plan_ms",
+                    ]
+                    .map(|k| h.voxel_stat(k));
+                    csv += &format!(
+                        "{t:.4},{:.1},{ms:.2},{c:.4},{w:.3},{sw:.3},{},{},{},{},{},{},{}
+",
+                        position.length() - ground,
+                        work[0],
+                        work[1],
+                        work[2],
+                        work[3],
+                        work[4],
+                        work[5],
+                        h.voxel_word("worst")
+                    );
                     // A frame after a capture waited for its readback.
                     if !captured {
                         times.push(ms);
@@ -580,7 +682,11 @@ fn main() {
                     v
                 };
                 let (w, sw) = (sorted(&worst), sorted(&switches));
-                let at = |v: &[f64], q: f64| v.get(((v.len().max(1) - 1) as f64 * q).round() as usize).copied().unwrap_or(f64::NAN);
+                let at = |v: &[f64], q: f64| {
+                    v.get(((v.len().max(1) - 1) as f64 * q).round() as usize)
+                        .copied()
+                        .unwrap_or(f64::NAN)
+                };
                 println!(
                     "HARNESS stress {mode}: frames over 33 ms {} | coarse mean {:.4} | worst px p50 {:.2} p95 {:.2} max {:.2} | switches {}, px p95 {:.2} max {:.2}, over 1.5 px {}, over 3 px {}",
                     times.iter().filter(|&&ms| ms > 33.3).count(),
@@ -598,13 +704,22 @@ fn main() {
                     .iter_mut()
                     .map(|(name, v)| {
                         v.sort_by(f64::total_cmp);
-                        (*name, v.iter().sum::<f64>() / v.len().max(1) as f64, v[((v.len().max(1) - 1) as f64 * 0.95) as usize])
+                        (
+                            *name,
+                            v.iter().sum::<f64>() / v.len().max(1) as f64,
+                            v[((v.len().max(1) - 1) as f64 * 0.95) as usize],
+                        )
                     })
                     .collect();
                 by_phase.sort_by(|a, b| b.1.total_cmp(&a.1));
                 println!(
                     "HARNESS stress {mode} phases (mean/p95 ms): {}",
-                    by_phase.iter().filter(|p| p.1 >= 0.1).map(|(n, mean, p95)| format!("{n} {mean:.2}/{p95:.2}")).collect::<Vec<_>>().join(", ")
+                    by_phase
+                        .iter()
+                        .filter(|p| p.1 >= 0.1)
+                        .map(|(n, mean, p95)| format!("{n} {mean:.2}/{p95:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
                 for (k, (position, look)) in samples.iter().enumerate() {
                     h.look(*position, *look);
@@ -616,9 +731,19 @@ fn main() {
                 let camera = h.camera();
                 let position = glam::DVec3::from_array(camera.position);
                 let position = position - position.normalize() * number(1, 5.0);
-                h.renderer.editor_mailbox().queue_camera(EditorCameraState { position: position.to_array(), ..camera });
+                h.renderer.editor_mailbox().queue_camera(EditorCameraState {
+                    position: position.to_array(),
+                    ..camera
+                });
                 let times = h.settle(20_000);
-                h.report(&format!("down {} m, altitude {:?}", number(1, 5.0), h.renderer.voxel_altitude()), &times);
+                h.report(
+                    &format!(
+                        "down {} m, altitude {:?}",
+                        number(1, 5.0),
+                        h.renderer.voxel_altitude()
+                    ),
+                    &times,
+                );
                 h.capture(&format!("down_{n}"));
             }
             other => panic!("unknown step {other}"),

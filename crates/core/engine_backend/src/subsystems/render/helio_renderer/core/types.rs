@@ -93,11 +93,12 @@ impl GpuProfilerData {
         self.query_overflows = snapshot.query_overflows;
 
         self.render_metrics.clear();
-        self.render_metrics.extend(snapshot.passes.iter().map(|pass| DiagnosticMetric {
-            name: pass.name,
-            cpu_ms: pass.cpu_ms,
-            gpu_ms: pass.gpu_ms,
-        }));
+        self.render_metrics
+            .extend(snapshot.passes.iter().map(|pass| DiagnosticMetric {
+                name: pass.name,
+                cpu_ms: pass.cpu_ms,
+                gpu_ms: pass.gpu_ms,
+            }));
     }
 
     pub fn slowest_cpu_pass(&self) -> Option<(&'static str, f32)> {

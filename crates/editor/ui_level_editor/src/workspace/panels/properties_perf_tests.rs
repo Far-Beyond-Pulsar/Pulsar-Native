@@ -706,7 +706,9 @@ fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) 
         render_stats::snapshot()
             .counters
             .iter()
-            .filter(|(name, _)| name.starts_with("view cache: rebuilt") && name.contains("ObjectTypeFieldsSection"))
+            .filter(|(name, _)| {
+                name.starts_with("view cache: rebuilt") && name.contains("ObjectTypeFieldsSection")
+            })
             .map(|(_, n)| *n)
             .sum::<u64>()
     };

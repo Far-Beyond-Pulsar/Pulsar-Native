@@ -32,7 +32,10 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
     let terrain_restored: VoxelTerrainComponent =
         serde_json::from_value(terrain_json).expect("restore terrain component");
     assert_eq!(terrain_restored.generator.id, terrain.generator.id);
-    assert_eq!(terrain_restored.generator.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
+    assert_eq!(
+        terrain_restored.generator.version,
+        helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION
+    );
     assert_eq!(terrain_restored.source_revision, terrain.source_revision);
     let mut older_json = serde_json::to_value(&terrain).unwrap();
     older_json
@@ -81,7 +84,14 @@ fn the_inspector_shows_the_whole_world_description() {
     for key in ["generator_id", "generator_version", "source_revision"] {
         assert!(json.get(key).is_some(), "{key} is serialized");
     }
-    for key in ["chunk_edge_voxels", "max_chunk_lod", "lod_scale", "domain_mode", "renderer_id", "material_ids"] {
+    for key in [
+        "chunk_edge_voxels",
+        "max_chunk_lod",
+        "lod_scale",
+        "domain_mode",
+        "renderer_id",
+        "material_ids",
+    ] {
         assert!(json.get(key).is_none(), "{key} is gone");
     }
     assert!(

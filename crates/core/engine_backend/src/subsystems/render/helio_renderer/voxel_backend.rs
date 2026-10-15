@@ -512,7 +512,17 @@ fn level_stamp(
             let r = f64::from(request.radius) * 0.7;
             let mut sum = 0.0;
             let mut n = 0.0;
-            for (a, b) in [(0.0, 0.0), (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (0.7, 0.7), (-0.7, 0.7), (0.7, -0.7), (-0.7, -0.7)] {
+            for (a, b) in [
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (-1.0, 0.0),
+                (0.0, 1.0),
+                (0.0, -1.0),
+                (0.7, 0.7),
+                (-0.7, 0.7),
+                (0.7, -0.7),
+                (-0.7, -0.7),
+            ] {
                 let ground = planet.surface_point(centre + (side * a + ahead * b) * r, 0.0);
                 sum += layer_of(grid.radial(ground));
                 n += 1.0;
@@ -541,10 +551,21 @@ fn level_stamp(
         material: 0,
         height: half,
     };
-    let fill = VoxelBrushEdit { center: at(level - half), op: VoxelBrushOp::Add, material: fill_material, ..carve };
+    let fill = VoxelBrushEdit {
+        center: at(level - half),
+        op: VoxelBrushOp::Add,
+        material: fill_material,
+        ..carve
+    };
     planet_brush(&carve).resolve(grid)?;
     planet_brush(&fill).resolve(grid)?;
-    Ok(VoxelBrushCommit { id, distance: hit.distance, edit: carve, then: vec![fill], level })
+    Ok(VoxelBrushCommit {
+        id,
+        distance: hit.distance,
+        edit: carve,
+        then: vec![fill],
+        level,
+    })
 }
 
 /// Built planet for one source revision.
@@ -597,7 +618,8 @@ impl WorldBuilder {
             .spawn(move || {
                 while let Ok(request) = inbox.recv() {
                     profiling::profile_scope!("voxel_world_build");
-                    let built = build_world(&request.entry, &request.generator, request.base.as_ref());
+                    let built =
+                        build_world(&request.entry, &request.generator, request.base.as_ref());
                     let result = WorldResult {
                         id: request.entry.id,
                         revision: request.entry.source_revision,
@@ -610,25 +632,44 @@ impl WorldBuilder {
                 }
             })
             .expect("spawn the voxel world builder");
-        Self { requests, results, building: None }
+        Self {
+            requests,
+            results,
+            building: None,
+        }
     }
 }
 
 /// The world for `entry`: `base` extended by appended brushes, or with its
 /// latest brushes undone, or rebuilt from the recipe.
-fn build_world(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig, base: Option<&CachedPlanet>) -> Result<CachedPlanet, String> {
+fn build_world(
+    entry: &VoxelSceneEntry,
+    generator: &VoxelGeneratorConfig,
+    base: Option<&CachedPlanet>,
+) -> Result<CachedPlanet, String> {
     let started = std::time::Instant::now();
-    let base = base.filter(|c| c.id == entry.id && c.voxel_size == entry.voxel_size && c.world == entry.world && &c.generator == generator);
+    let base = base.filter(|c| {
+        c.id == entry.id
+            && c.voxel_size == entry.voxel_size
+            && c.world == entry.world
+            && &c.generator == generator
+    });
     let (planet, how) = match base {
         // A sculpt stroke appends brushes to an otherwise equal source.
         Some(base) if entry.edits.starts_with(&base.edits) => {
             let mut planet = (*base.planet).clone();
-            entry.edits.iter_from(base.edits.len()).try_for_each(|edit| planet.apply(planet_brush(edit)).map(|_| ()))?;
+            entry
+                .edits
+                .iter_from(base.edits.len())
+                .try_for_each(|edit| planet.apply(planet_brush(edit)).map(|_| ()))?;
             (planet, "extended")
         }
         // An undo removes the latest brushes: undone in the world when it
         // still can (`Edits::undoable`), not rebuilt from every edit.
-        Some(base) if base.edits.starts_with(&entry.edits) && base.edits.len() - entry.edits.len() <= base.planet.edits().undoable() => {
+        Some(base)
+            if base.edits.starts_with(&entry.edits)
+                && base.edits.len() - entry.edits.len() <= base.planet.edits().undoable() =>
+        {
             let mut planet = (*base.planet).clone();
             for _ in entry.edits.len()..base.edits.len() {
                 planet.undo().expect("within the undoable brushes");
@@ -639,7 +680,10 @@ fn build_world(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig, base: 
     };
     let ms = started.elapsed().as_secs_f64() * 1000.0;
     if ms >= 20.0 {
-        tracing::warn!("VOXEL_WORLD {how} in {ms:.1} ms ({} edits)", entry.edits.len());
+        tracing::warn!(
+            "VOXEL_WORLD {how} in {ms:.1} ms ({} edits)",
+            entry.edits.len()
+        );
     }
     Ok(CachedPlanet {
         id: entry.id,
@@ -686,7 +730,10 @@ impl PlanetVoxelBackend {
     /// A backend whose frames wait for their world's build (tests).
     #[cfg(test)]
     fn blocking() -> Self {
-        Self { blocking: true, ..Self::new() }
+        Self {
+            blocking: true,
+            ..Self::new()
+        }
     }
 
     fn clear(&mut self) -> Result<(), String> {
@@ -731,7 +778,11 @@ impl PlanetVoxelBackend {
     fn world_for(&mut self, entry: &VoxelSceneEntry) -> Result<Option<Arc<Planet>>, String> {
         let generator = Self::validate_source(entry)?.clone();
         let current = |c: &CachedPlanet| {
-            c.id == entry.id && c.revision == entry.source_revision && c.generator == generator && c.voxel_size == entry.voxel_size && c.world == entry.world
+            c.id == entry.id
+                && c.revision == entry.source_revision
+                && c.generator == generator
+                && c.voxel_size == entry.voxel_size
+                && c.world == entry.world
         };
         loop {
             self.receive_worlds();
@@ -748,7 +799,11 @@ impl PlanetVoxelBackend {
                 self.builder.building = Some((entry.id, entry.source_revision));
                 self.builder
                     .requests
-                    .send(WorldRequest { entry: entry.clone(), generator: generator.clone(), base })
+                    .send(WorldRequest {
+                        entry: entry.clone(),
+                        generator: generator.clone(),
+                        base,
+                    })
                     .map_err(|_| "the voxel world builder stopped")?;
             }
             // Only the first world of a source (nothing to show yet) and
@@ -762,7 +817,11 @@ impl PlanetVoxelBackend {
             };
             self.accept_world(result);
         }
-        Ok(self.cached.as_ref().filter(|c| c.id == entry.id).map(|c| Arc::clone(&c.planet)))
+        Ok(self
+            .cached
+            .as_ref()
+            .filter(|c| c.id == entry.id)
+            .map(|c| Arc::clone(&c.planet)))
     }
 
     /// Take the worlds the builder finished.
@@ -779,7 +838,9 @@ impl PlanetVoxelBackend {
                 self.rejected = None;
                 self.cached = Some(world);
             }
-            Err(error) => self.rejected = Some((result.id, result.revision, result.generator, error)),
+            Err(error) => {
+                self.rejected = Some((result.id, result.revision, result.generator, error))
+            }
         }
     }
 
@@ -941,7 +1002,10 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         picks
             .results
             .drain(..)
-            .map(|r| VoxelPick { id: r.id, hit: r.hit })
+            .map(|r| VoxelPick {
+                id: r.id,
+                hit: r.hit,
+            })
             .collect()
     }
 
@@ -961,7 +1025,14 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         };
         let d = direction.normalize();
         let hit = match hint {
-            VoxelRayHint::Drawn(pick) => Some(planet.drawn_hit(origin, d, pick.distance, pick.cell, pick.level, pick.entered)),
+            VoxelRayHint::Drawn(pick) => Some(planet.drawn_hit(
+                origin,
+                d,
+                pick.distance,
+                pick.cell,
+                pick.level,
+                pick.entered,
+            )),
             VoxelRayHint::Reach(reach) => planet.raycast(origin, d, reach),
         };
         let Some(hit) = hit else {
@@ -984,7 +1055,9 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         };
         let grid = planet.grid();
         if request.tool != VoxelBrushTool::Stamp {
-            return Ok(Some(level_stamp(planet, source.id, &hit, request, material)?));
+            return Ok(Some(level_stamp(
+                planet, source.id, &hit, request, material,
+            )?));
         }
         let (radius, shape) = if request.single_block {
             (grid.voxel_size() * 0.5, VoxelBrushShape::Cube)
@@ -1057,7 +1130,10 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         let (planet, error) = match self.world_for(entry) {
             Ok(Some(planet)) => (planet, None),
             Ok(None) => {
-                *self.frame.lock().map_err(|_| "frame mailbox was poisoned")? = None;
+                *self
+                    .frame
+                    .lock()
+                    .map_err(|_| "frame mailbox was poisoned")? = None;
                 return Ok(());
             }
             // An invalid change (a layer stack mid-edit, a brush off the
@@ -1262,12 +1338,24 @@ mod tests {
             .unwrap();
         // Brushes hit the world on screen.
         assert!(registry
-            .edit_ray(&entries, eye, down, VoxelRayHint::Reach(UNPICKED_REACH_M), dig(0.5))
+            .edit_ray(
+                &entries,
+                eye,
+                down,
+                VoxelRayHint::Reach(UNPICKED_REACH_M),
+                dig(0.5)
+            )
             .unwrap()
             .is_none());
         assert!(registry.publish_frame(&entries, view(eye)).is_empty());
         let commit = registry
-            .edit_ray(&entries, eye, down, VoxelRayHint::Reach(UNPICKED_REACH_M), dig(0.5))
+            .edit_ray(
+                &entries,
+                eye,
+                down,
+                VoxelRayHint::Reach(UNPICKED_REACH_M),
+                dig(0.5),
+            )
             .unwrap()
             .unwrap();
         assert_eq!(commit.id, entries[0].id);
@@ -1295,7 +1383,13 @@ mod tests {
                 entered: Some(4),
             };
             let remote = registry
-                .edit_ray(&entries, eye - down * distance, down, VoxelRayHint::Drawn(pick), dig(0.05))
+                .edit_ray(
+                    &entries,
+                    eye - down * distance,
+                    down,
+                    VoxelRayHint::Drawn(pick),
+                    dig(0.05),
+                )
                 .unwrap()
                 .unwrap_or_else(|| panic!("remote terrain remains editable from {distance} m"));
             assert_eq!(
@@ -1306,12 +1400,24 @@ mod tests {
         }
         // Without one, the walk is bounded instead of crossing the planet.
         assert!(registry
-            .edit_ray(&entries, eye - down * 2_000.0, down, VoxelRayHint::Reach(UNPICKED_REACH_M), dig(0.05))
+            .edit_ray(
+                &entries,
+                eye - down * 2_000.0,
+                down,
+                VoxelRayHint::Reach(UNPICKED_REACH_M),
+                dig(0.05)
+            )
             .unwrap()
             .is_none());
         // Building fills the empty cell in front of the hit.
         let build = registry
-            .edit_ray(&entries, eye, down, VoxelRayHint::Reach(UNPICKED_REACH_M), raise(0.05))
+            .edit_ray(
+                &entries,
+                eye,
+                down,
+                VoxelRayHint::Reach(UNPICKED_REACH_M),
+                raise(0.05),
+            )
             .unwrap()
             .unwrap();
         assert_eq!(build.edit.op, VoxelBrushOp::Add);
@@ -1327,7 +1433,13 @@ mod tests {
             ..raise(3.0)
         };
         let painted = registry
-            .edit_ray(&entries, eye, down, VoxelRayHint::Reach(UNPICKED_REACH_M), paint)
+            .edit_ray(
+                &entries,
+                eye,
+                down,
+                VoxelRayHint::Reach(UNPICKED_REACH_M),
+                paint,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -1345,7 +1457,13 @@ mod tests {
             ..raise(1.0)
         };
         assert!(registry
-            .edit_ray(&entries, eye, down, VoxelRayHint::Reach(UNPICKED_REACH_M), invalid)
+            .edit_ray(
+                &entries,
+                eye,
+                down,
+                VoxelRayHint::Reach(UNPICKED_REACH_M),
+                invalid
+            )
             .is_err());
 
         assert!(super::super::renderer::apply_voxel_brush_commit(
@@ -1422,7 +1540,10 @@ mod tests {
         let (grown, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert_eq!(registry.altitude(&grown, eye), Some(altitude));
         assert_eq!(registry.camera_clip_range(&grown, eye), Some(clip));
-        assert!(clip.0 > 1.0, "the near plane follows the clearance: {clip:?}");
+        assert!(
+            clip.0 > 1.0,
+            "the near plane follows the clearance: {clip:?}"
+        );
     }
 
     #[test]
@@ -1633,7 +1754,13 @@ mod tests {
             let ground = planet.surface_point(DVec3::new(10.0, 0.0, -20.0), 3.0);
             let target = planet.raycast(ground, -DVec3::Y, 100.0).unwrap().cell;
             let commit = registry
-                .edit_ray(&entries, ground, -DVec3::Y, VoxelRayHint::Reach(UNPICKED_REACH_M), dig(0.5))
+                .edit_ray(
+                    &entries,
+                    ground,
+                    -DVec3::Y,
+                    VoxelRayHint::Reach(UNPICKED_REACH_M),
+                    dig(0.5),
+                )
                 .unwrap()
                 .unwrap();
             assert!(super::super::renderer::apply_voxel_brush_commit(

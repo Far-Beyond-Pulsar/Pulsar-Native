@@ -398,13 +398,24 @@ mod tests {
             level: Default::default(),
             tool: Default::default(),
         };
-        let brush = |x: f32, start: bool| E::VoxelBrush { norm_x: x, norm_y: 0.5, request, start };
+        let brush = |x: f32, start: bool| E::VoxelBrush {
+            norm_x: x,
+            norm_y: 0.5,
+            request,
+            start,
+        };
         let mut queue = Vec::new();
         E::queue(&mut queue, brush(0.0, true));
         // A high-Hz drag between two frames: hover moves and brush samples
         // interleave.
         for n in 1..=50 {
-            E::queue(&mut queue, E::MouseMove { norm_x: n as f32, norm_y: 0.5 });
+            E::queue(
+                &mut queue,
+                E::MouseMove {
+                    norm_x: n as f32,
+                    norm_y: 0.5,
+                },
+            );
             E::queue(&mut queue, brush(n as f32, false));
         }
         assert_eq!(queue.len(), 3, "{queue:?}");
@@ -415,7 +426,13 @@ mod tests {
         E::queue(&mut queue, E::LeftRelease);
         E::queue(&mut queue, brush(60.0, true));
         E::queue(&mut queue, brush(61.0, false));
-        E::queue(&mut queue, E::MouseMove { norm_x: 61.0, norm_y: 0.5 });
+        E::queue(
+            &mut queue,
+            E::MouseMove {
+                norm_x: 61.0,
+                norm_y: 0.5,
+            },
+        );
         assert_eq!(queue.len(), 7, "{queue:?}");
         assert!(matches!(queue[3], E::LeftRelease));
         assert!(matches!(queue[5], E::VoxelBrush { start: false, norm_x, .. } if norm_x == 61.0));

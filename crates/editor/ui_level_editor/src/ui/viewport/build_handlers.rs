@@ -171,7 +171,10 @@ pub(super) fn handle_mouse_move(
         if let Ok(mut events) = events.lock() {
             engine_backend::subsystems::render::PendingPointerEvent::queue(
                 &mut events,
-                engine_backend::subsystems::render::PendingPointerEvent::MouseMove { norm_x, norm_y },
+                engine_backend::subsystems::render::PendingPointerEvent::MouseMove {
+                    norm_x,
+                    norm_y,
+                },
             );
         }
     }

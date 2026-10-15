@@ -12,7 +12,8 @@ use crate::scene::{GizmoType, SceneWorldExt};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 use super::voxel_backend::{
-    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelView, UNPICKED_REACH_M,
+    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelView,
+    UNPICKED_REACH_M,
 };
 use super::voxel_mesh_backend::MeshVoxelBackend;
 type GizmoMode = GizmoType;
@@ -1008,7 +1009,14 @@ impl HelioRenderer {
     /// harnesses.
     pub fn gpu_timings(&self) -> Option<(f32, Vec<(&'static str, f32)>)> {
         let snapshot = self.inner.as_ref()?.renderer.timing_snapshot();
-        Some((snapshot.total_gpu_ms?, snapshot.passes.iter().filter_map(|p| Some((p.name, p.gpu_ms?))).collect()))
+        Some((
+            snapshot.total_gpu_ms?,
+            snapshot
+                .passes
+                .iter()
+                .filter_map(|p| Some((p.name, p.gpu_ms?)))
+                .collect(),
+        ))
     }
 
     /// The last rendered frame's milliseconds by phase (pointer, scene,
@@ -1020,7 +1028,9 @@ impl HelioRenderer {
     /// The voxel backends' diagnostics lines (`PULSAR_VOXEL_STATS`), for
     /// harnesses.
     pub fn voxel_diagnostics(&self) -> Vec<String> {
-        self.inner.as_ref().map_or_else(Vec::new, |inner| self.voxel_backends.diagnostics(&inner.renderer))
+        self.inner.as_ref().map_or_else(Vec::new, |inner| {
+            self.voxel_backends.diagnostics(&inner.renderer)
+        })
     }
 
     /// The camera's view direction in world space.
@@ -1757,7 +1767,8 @@ impl HelioRenderer {
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         if self.voxel_stats_log && self.last_voxel_stats_log.elapsed().as_secs_f32() >= 0.5 {
-            let fps = self.voxel_stats_frames.0 as f32 / self.last_voxel_stats_log.elapsed().as_secs_f32();
+            let fps = self.voxel_stats_frames.0 as f32
+                / self.last_voxel_stats_log.elapsed().as_secs_f32();
             let slowest = self.voxel_stats_frames.1;
             self.voxel_stats_frames = (0, 0.0);
             self.last_voxel_stats_log = Instant::now();
@@ -1876,7 +1887,10 @@ impl HelioRenderer {
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         phases.mark("render");
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
-        self.voxel_stats_frames = (self.voxel_stats_frames.0 + 1, self.voxel_stats_frames.1.max(frame_ms));
+        self.voxel_stats_frames = (
+            self.voxel_stats_frames.0 + 1,
+            self.voxel_stats_frames.1.max(frame_ms),
+        );
         if frame_ms >= 50.0 {
             tracing::warn!(
                 "VOXEL_FRAME_PHASES frame_ms={frame_ms:.1} {}",
@@ -2216,7 +2230,13 @@ impl HelioRenderer {
     /// A brush sample under the pointer: it asks the renderer for the
     /// terrain hit there and is applied when the answer arrives (a few
     /// frames later), searched coarse to fine around it.
-    fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, request: VoxelBrushRequest, start: bool) {
+    fn handle_voxel_brush(
+        &mut self,
+        norm_x: f32,
+        norm_y: f32,
+        request: VoxelBrushRequest,
+        start: bool,
+    ) {
         profiling::profile_scope!("voxel_brush");
         if start {
             self.voxel_stroke += 1;
@@ -2257,7 +2277,9 @@ impl HelioRenderer {
             }
         }
         match self.voxel_backends.request_pick([norm_x, norm_y]) {
-            Some(pick) => self.voxel_brush_picks.push_back(PendingBrush { pick, ..brush }),
+            Some(pick) => self
+                .voxel_brush_picks
+                .push_back(PendingBrush { pick, ..brush }),
             // Nothing drawn to pick yet: a bounded exact walk.
             None => {
                 self.apply_voxel_brush(&brush, VoxelRayHint::Reach(UNPICKED_REACH_M));
@@ -2275,7 +2297,11 @@ impl HelioRenderer {
         }
         profiling::profile_scope!("voxel_resolve_brushes");
         for pick in self.voxel_backends.take_picks() {
-            if let Some(brush) = self.voxel_brush_picks.iter_mut().find(|b| b.pick == pick.id) {
+            if let Some(brush) = self
+                .voxel_brush_picks
+                .iter_mut()
+                .find(|b| b.pick == pick.id)
+            {
                 brush.answer = Some(pick.hit);
             }
         }
@@ -2283,10 +2309,15 @@ impl HelioRenderer {
             let hint = match front.answer {
                 Some(Some(hit)) => Some(VoxelRayHint::Drawn(hit)),
                 Some(None) => None,
-                None if front.requested.elapsed() >= PICK_TIMEOUT => Some(VoxelRayHint::Reach(UNPICKED_REACH_M)),
+                None if front.requested.elapsed() >= PICK_TIMEOUT => {
+                    Some(VoxelRayHint::Reach(UNPICKED_REACH_M))
+                }
                 None => break,
             };
-            let brush = self.voxel_brush_picks.pop_front().expect("front checked above");
+            let brush = self
+                .voxel_brush_picks
+                .pop_front()
+                .expect("front checked above");
             if let Some(hint) = hint {
                 self.apply_voxel_brush(&brush, hint);
             }
@@ -2313,7 +2344,8 @@ impl HelioRenderer {
         let projected = started.elapsed();
         let ray = {
             profiling::profile_scope!("voxel_edit_ray");
-            self.voxel_backends.edit_ray(&entries, brush.origin, brush.direction, hint, request)
+            self.voxel_backends
+                .edit_ray(&entries, brush.origin, brush.direction, hint, request)
         };
         let walked = started.elapsed();
         let slow = |hit: Option<f64>| {
@@ -2344,8 +2376,14 @@ impl HelioRenderer {
                 let fill = self
                     .voxel_stroke_last
                     .as_ref()
-                    .filter(|(stroke, last)| *stroke == brush.stroke && last.id == commit.id && request.tool == VoxelBrushTool::Stamp)
-                    .map(|(_, last)| super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel))
+                    .filter(|(stroke, last)| {
+                        *stroke == brush.stroke
+                            && last.id == commit.id
+                            && request.tool == VoxelBrushTool::Stamp
+                    })
+                    .map(|(_, last)| {
+                        super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel)
+                    })
                     .unwrap_or_default();
                 let mut scene = self.scene_store.write();
                 for edit in fill {
@@ -2483,7 +2521,9 @@ impl HelioRenderer {
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let tan = std::f32::consts::FRAC_PI_8.tan();
         let (forward, right, up) = self.camera_basis();
-        let direction = forward + right * ((norm_x * 2.0 - 1.0) * tan * aspect) + up * ((1.0 - norm_y * 2.0) * tan);
+        let direction = forward
+            + right * ((norm_x * 2.0 - 1.0) * tan * aspect)
+            + up * ((1.0 - norm_y * 2.0) * tan);
         (self.cam_pos.as_vec3(), direction.normalize_or_zero())
     }
 
@@ -2589,7 +2629,8 @@ impl HelioRenderer {
             10_000.0,
         );
         let camera_position = self.cam_pos.as_vec3();
-        let view = glam::camera::rh::view::look_at_mat4(camera_position, camera_position + forward, up);
+        let view =
+            glam::camera::rh::view::look_at_mat4(camera_position, camera_position + forward, up);
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
@@ -3135,7 +3176,10 @@ mod native_relative_camera_tests {
         let global_error = (reconstruct(global_vp) - surface).length();
         let local_error = (reconstruct(local_vp) + eye - surface).length();
         eprintln!("reconstruction error: global {global_error} m, local {local_error} m");
-        assert!(global_error > 0.1, "regression trigger must expose global-f32 cancellation");
+        assert!(
+            global_error > 0.1,
+            "regression trigger must expose global-f32 cancellation"
+        );
         assert!(local_error < 1.0e-4, "{local_error} m");
         // Express the current relative point in the previous frame's origin
         // exactly once; sub-voxel camera movement must survive Earth-scale

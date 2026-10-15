@@ -205,5 +205,4 @@ impl OverlayDomain {
     pub fn set_show_camera_mode_selector(&mut self, show: bool) {
         self.state.show_camera_mode_selector = show;
     }
-
 }

@@ -170,5 +170,4 @@ impl EditorDomain {
     pub fn toggle_lighting(&mut self) {
         self.show_lighting = !self.show_lighting;
     }
-
 }

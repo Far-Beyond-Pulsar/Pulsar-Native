@@ -10,7 +10,10 @@ use std::sync::Arc;
 use blueprint_compiler::{authored::expand_graph, compile, ClassSource, VariableSource};
 use blueprint_graph::codec::deserialize_blueprint;
 use helio_component::voxel_world::terrain_world;
-use helio_component::{VoxelAir, VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent, VoxelTerrainLayersComponent, VoxelTerrainStack};
+use helio_component::{
+    VoxelAir, VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent,
+    VoxelTerrainLayersComponent, VoxelTerrainStack,
+};
 use pulsar_scenedb::World;
 use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Value, Vm};
 
@@ -86,7 +89,14 @@ fn build(program: &Program, seed: i64) -> (VoxelTerrainStack, VoxelAir) {
     // The generator accepts it: the planet builds.
     terrain_world(&world, terrain).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
     let air = world.get::<VoxelTerrainComponent>(terrain).unwrap().air;
-    (world.get::<VoxelTerrainLayersComponent>(layers).unwrap().stack.clone(), air)
+    (
+        world
+            .get::<VoxelTerrainLayersComponent>(layers)
+            .unwrap()
+            .stack
+            .clone(),
+        air,
+    )
 }
 
 #[test]

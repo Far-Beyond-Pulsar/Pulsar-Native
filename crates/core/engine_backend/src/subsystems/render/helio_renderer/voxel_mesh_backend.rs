@@ -38,7 +38,9 @@ use helio_voxel_data::{
 use pulsar_scenedb::Entity;
 
 use super::voxel_backend::{VoxelRenderBackend, VoxelView};
-use crate::scene::voxel_frame::{initial_cube_chunks, VoxelCubeInit, VoxelEntryId, VoxelObjectChunks, VoxelSceneEntry};
+use crate::scene::voxel_frame::{
+    initial_cube_chunks, VoxelCubeInit, VoxelEntryId, VoxelObjectChunks, VoxelSceneEntry,
+};
 use crate::scene::SharedScene;
 
 /// Chunks re-meshed in one frame on the render thread; a larger batch
@@ -265,7 +267,11 @@ impl MeshVoxelBackend {
     /// Read `entry`'s chunks when its store changed and mark what must be
     /// re-meshed. Returns those meshing tasks and any chunks it cannot draw
     /// (which are left out).
-    fn refresh(&mut self, entry: &VoxelSceneEntry, chunks: &VoxelObjectChunks) -> (Vec<MeshTask>, Vec<String>) {
+    fn refresh(
+        &mut self,
+        entry: &VoxelSceneEntry,
+        chunks: &VoxelObjectChunks,
+    ) -> (Vec<MeshTask>, Vec<String>) {
         let object = self
             .objects
             .entry(entry.id)
@@ -774,14 +780,37 @@ mod tests {
             serde_json::from_value(serde_json::to_value(VoxelComponent::default()).unwrap())
                 .unwrap();
         let (_world, entry) = object(restored, Transform::default());
-        assert!(entry.chunks.as_ref().unwrap().store.read().unwrap().1.is_empty());
+        assert!(entry
+            .chunks
+            .as_ref()
+            .unwrap()
+            .store
+            .read()
+            .unwrap()
+            .1
+            .is_empty());
         let mut backend = MeshVoxelBackend::new(None);
         settle(&mut backend, &entry);
         let virtual_cube = backend.geometry(entry.id).unwrap();
         assert_eq!(virtual_cube.quad_count(), 24);
-        assert!(entry.chunks.as_ref().unwrap().store.read().unwrap().1.is_empty(), "drawing writes nothing");
+        assert!(
+            entry
+                .chunks
+                .as_ref()
+                .unwrap()
+                .store
+                .read()
+                .unwrap()
+                .1
+                .is_empty(),
+            "drawing writes nothing"
+        );
         // Initializing the store publishes the same cube: same geometry.
-        crate::scene::voxel_frame::initialize_empty_cube(entry.id.entity_bits, entry.chunks.as_ref().unwrap()).unwrap();
+        crate::scene::voxel_frame::initialize_empty_cube(
+            entry.id.entity_bits,
+            entry.chunks.as_ref().unwrap(),
+        )
+        .unwrap();
         settle(&mut backend, &entry);
         assert_eq!(backend.geometry(entry.id).unwrap().id, virtual_cube.id);
     }
@@ -809,7 +838,9 @@ mod tests {
         assert_eq!(geometry.quad_count(), 6 * 64 + 6);
         let ids = backend.chunk_ids(entry.id);
         let origin = VoxelChunkKey::new(0, 0, 0, 0);
-        let snapshot = entry.chunks.as_ref().unwrap().store.read().unwrap().1[&[0, 0, 0, 0]].bytes.clone();
+        let snapshot = entry.chunks.as_ref().unwrap().store.read().unwrap().1[&[0, 0, 0, 0]]
+            .bytes
+            .clone();
         let samples = *VoxelMaterialChunk::decode(&snapshot).unwrap().samples();
         // The drawn chunk is the edited one.
         let neighbours = [

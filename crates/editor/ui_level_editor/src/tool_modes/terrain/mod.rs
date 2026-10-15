@@ -269,7 +269,10 @@ impl ToolMode for TerrainMode {
                 ctx.state
                     .editor
                     .terrain
-                    .set_target(TerrainTarget::Volume(format!("{:016x}", source.entity.bits())));
+                    .set_target(TerrainTarget::Volume(format!(
+                        "{:016x}",
+                        source.entity.bits()
+                    )));
             }
         }
     }

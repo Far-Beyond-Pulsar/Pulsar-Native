@@ -403,17 +403,65 @@ fn scripts_shape_the_layer_stack() {
 fn scripts_read_and_set_every_world_setting() {
     use helio_component::{VoxelAir, VoxelWorldShape};
     let (mut world, entity) = flat_world();
-    let text = |world: &mut World, name: &str| *call(world, entity, name, vec![]).unwrap().unwrap().downcast::<String>().unwrap();
-    let number = |world: &mut World, name: &str| *call(world, entity, name, vec![]).unwrap().unwrap().downcast::<f64>().unwrap();
+    let text = |world: &mut World, name: &str| {
+        *call(world, entity, name, vec![])
+            .unwrap()
+            .unwrap()
+            .downcast::<String>()
+            .unwrap()
+    };
+    let number = |world: &mut World, name: &str| {
+        *call(world, entity, name, vec![])
+            .unwrap()
+            .unwrap()
+            .downcast::<f64>()
+            .unwrap()
+    };
     assert_eq!(text(&mut world, "world_shape"), "plane");
-    call(&mut world, entity, "set_world_shape", vec![Box::new(String::from("sphere"))]).unwrap();
-    call(&mut world, entity, "set_planet_radius", vec![Box::new(1_737_400.0f64)]).unwrap();
-    call(&mut world, entity, "set_plane_size", vec![Box::new(2048.0f64)]).unwrap();
+    call(
+        &mut world,
+        entity,
+        "set_world_shape",
+        vec![Box::new(String::from("sphere"))],
+    )
+    .unwrap();
+    call(
+        &mut world,
+        entity,
+        "set_planet_radius",
+        vec![Box::new(1_737_400.0f64)],
+    )
+    .unwrap();
+    call(
+        &mut world,
+        entity,
+        "set_plane_size",
+        vec![Box::new(2048.0f64)],
+    )
+    .unwrap();
     call(&mut world, entity, "set_voxel_size", vec![Box::new(0.5f64)]).unwrap();
     call(&mut world, entity, "set_seed", vec![Box::new(-3i64)]).unwrap();
-    call(&mut world, entity, "set_air", vec![Box::new(String::from("none"))]).unwrap();
-    call(&mut world, entity, "set_air_density", vec![Box::new(0.5f64)]).unwrap();
-    call(&mut world, entity, "set_air_tint", vec![Box::new(1.0f64), Box::new(0.8f64), Box::new(0.6f64)]).unwrap();
+    call(
+        &mut world,
+        entity,
+        "set_air",
+        vec![Box::new(String::from("none"))],
+    )
+    .unwrap();
+    call(
+        &mut world,
+        entity,
+        "set_air_density",
+        vec![Box::new(0.5f64)],
+    )
+    .unwrap();
+    call(
+        &mut world,
+        entity,
+        "set_air_tint",
+        vec![Box::new(1.0f64), Box::new(0.8f64), Box::new(0.6f64)],
+    )
+    .unwrap();
     call(&mut world, entity, "set_air_haze", vec![Box::new(3.0f64)]).unwrap();
     call(&mut world, entity, "set_editable", vec![Box::new(false)]).unwrap();
     assert_eq!(text(&mut world, "world_shape"), "sphere");
@@ -425,14 +473,43 @@ fn scripts_read_and_set_every_world_setting() {
     assert_eq!(number(&mut world, "air_haze"), 3.0);
     let seed = call(&mut world, entity, "seed", vec![]).unwrap().unwrap();
     assert_eq!(*seed.downcast::<i64>().unwrap(), -3);
-    let editable = call(&mut world, entity, "is_editable", vec![]).unwrap().unwrap();
+    let editable = call(&mut world, entity, "is_editable", vec![])
+        .unwrap()
+        .unwrap();
     assert!(!*editable.downcast::<bool>().unwrap());
     let terrain = world.get::<VoxelTerrainComponent>(entity).unwrap();
-    assert_eq!((terrain.shape, terrain.voxel_size, terrain.air), (VoxelWorldShape::Sphere, 0.5, VoxelAir::None));
+    assert_eq!(
+        (terrain.shape, terrain.voxel_size, terrain.air),
+        (VoxelWorldShape::Sphere, 0.5, VoxelAir::None)
+    );
     // Nonsense is refused, and changes nothing.
-    assert!(call(&mut world, entity, "set_world_shape", vec![Box::new(String::from("torus"))]).is_err());
-    assert!(call(&mut world, entity, "set_air", vec![Box::new(String::from("vacuum"))]).is_err());
-    assert!(call(&mut world, entity, "set_planet_radius", vec![Box::new(-1.0f64)]).is_err());
-    assert!(call(&mut world, entity, "set_air_density", vec![Box::new(f64::NAN)]).is_err());
+    assert!(call(
+        &mut world,
+        entity,
+        "set_world_shape",
+        vec![Box::new(String::from("torus"))]
+    )
+    .is_err());
+    assert!(call(
+        &mut world,
+        entity,
+        "set_air",
+        vec![Box::new(String::from("vacuum"))]
+    )
+    .is_err());
+    assert!(call(
+        &mut world,
+        entity,
+        "set_planet_radius",
+        vec![Box::new(-1.0f64)]
+    )
+    .is_err());
+    assert!(call(
+        &mut world,
+        entity,
+        "set_air_density",
+        vec![Box::new(f64::NAN)]
+    )
+    .is_err());
     assert_eq!(text(&mut world, "air"), "none");
 }

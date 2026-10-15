@@ -75,7 +75,9 @@ impl VoxelSculptDomain {
         VoxelBrushRequest {
             op: match mode {
                 VoxelSculptMode::Dig => VoxelBrushOp::Remove,
-                VoxelSculptMode::Build | VoxelSculptMode::Flatten | VoxelSculptMode::Smooth => VoxelBrushOp::Add,
+                VoxelSculptMode::Build | VoxelSculptMode::Flatten | VoxelSculptMode::Smooth => {
+                    VoxelBrushOp::Add
+                }
                 VoxelSculptMode::Paint => VoxelBrushOp::Paint,
             },
             shape: self.shape,
@@ -242,7 +244,11 @@ mod tests {
         sculpt.mode = VoxelSculptMode::Flatten;
         assert_eq!(sculpt.request(false).tool, VoxelBrushTool::Flatten);
         sculpt.mode = VoxelSculptMode::Smooth;
-        assert_eq!(sculpt.request(true).tool, VoxelBrushTool::Smooth, "Shift swaps only dig and build");
+        assert_eq!(
+            sculpt.request(true).tool,
+            VoxelBrushTool::Smooth,
+            "Shift swaps only dig and build"
+        );
         sculpt.mode = VoxelSculptMode::Paint;
         sculpt.set_radius(1.0e9);
         sculpt.set_material(0);

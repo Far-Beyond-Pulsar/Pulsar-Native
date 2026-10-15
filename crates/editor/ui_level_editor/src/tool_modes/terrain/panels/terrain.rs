@@ -382,9 +382,12 @@ impl TerrainPanel {
                     .child(
                         v_flex()
                             .flex_1()
-                            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).child(
-                                t!("LevelEditor.TerrainPanel.Kind.Volume").to_string(),
-                            ))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(t!("LevelEditor.TerrainPanel.Kind.Volume").to_string()),
+                            )
                             .child(
                                 div()
                                     .text_xs()

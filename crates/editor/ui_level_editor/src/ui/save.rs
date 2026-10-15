@@ -218,8 +218,9 @@ fn compact_voxel_journals(scene: &engine_backend::scene::SharedScene) {
         match voxel_world::compact_journal(recipe, &edits, voxel_world::LISTED_EDITS) {
             Ok(Some(base)) => {
                 let mut scene = scene.write();
-                let terrain =
-                    scene.world.get_mut::<helio_component::VoxelTerrainComponent>(entity);
+                let terrain = scene
+                    .world
+                    .get_mut::<helio_component::VoxelTerrainComponent>(entity);
                 if let Some(mut terrain) = terrain {
                     terrain.edits.compact(base);
                 }

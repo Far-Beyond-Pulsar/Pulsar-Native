@@ -101,7 +101,6 @@ impl VoxelSceneEntry {
     pub fn is_object(&self) -> bool {
         self.id.kind == 0
     }
-
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -265,27 +264,42 @@ pub fn sync_skies_to_terrains(world: &mut World) -> usize {
     let changed: Vec<(Entity, AtmosphereComponent)> =
         attachments::enabled_components::<VoxelTerrainComponent>(world_ref)
             .filter_map(|(instance, owner, component)| {
-                Some((owner, component, terrain_entry(world_ref, instance, component).ok()?.world))
+                Some((
+                    owner,
+                    component,
+                    terrain_entry(world_ref, instance, component).ok()?.world,
+                ))
             })
             .flat_map(|(owner, terrain, form)| {
                 attachments::enabled_components_of::<AtmosphereComponent>(world_ref, owner)
                     .into_iter()
                     .filter_map(move |(sky, atmosphere)| {
                         let (placement, radius_km) = match form.shape {
-                            VoxelWorldShape::Sphere => {
-                                (AtmospherePlacement::PlanetAtOwner, (form.planet_radius / 1000.0) as f32)
-                            }
-                            _ if atmosphere.placement == AtmospherePlacement::GroundAtOrigin => {
-                                (AtmospherePlacement::GroundAtOrigin, atmosphere.planet_radius_km)
-                            }
+                            VoxelWorldShape::Sphere => (
+                                AtmospherePlacement::PlanetAtOwner,
+                                (form.planet_radius / 1000.0) as f32,
+                            ),
+                            _ if atmosphere.placement == AtmospherePlacement::GroundAtOrigin => (
+                                AtmospherePlacement::GroundAtOrigin,
+                                atmosphere.planet_radius_km,
+                            ),
                             _ => (
                                 AtmospherePlacement::GroundAtOrigin,
                                 AtmosphereComponent::default().planet_radius_km,
                             ),
                         };
-                        let placed = AtmosphereComponent { placement, planet_radius_km: radius_km, ..atmosphere.clone() };
+                        let placed = AtmosphereComponent {
+                            placement,
+                            planet_radius_km: radius_km,
+                            ..atmosphere.clone()
+                        };
                         let wanted = placed
-                            .for_air(terrain.air, terrain.air_density, terrain.air_tint, terrain.air_haze)
+                            .for_air(
+                                terrain.air,
+                                terrain.air_density,
+                                terrain.air_tint,
+                                terrain.air_haze,
+                            )
                             .unwrap_or(placed);
                         (!same_sky(atmosphere, &wanted)).then_some((sky, wanted))
                     })
@@ -300,7 +314,10 @@ pub fn sync_skies_to_terrains(world: &mut World) -> usize {
 }
 
 /// Whether two skies are the same air (every property).
-fn same_sky(a: &helio_component::AtmosphereComponent, b: &helio_component::AtmosphereComponent) -> bool {
+fn same_sky(
+    a: &helio_component::AtmosphereComponent,
+    b: &helio_component::AtmosphereComponent,
+) -> bool {
     a.enabled == b.enabled && a.placement == b.placement && a.to_row() == b.to_row()
 }
 
@@ -571,8 +588,14 @@ mod tests {
         world.insert(entity, component);
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
-        assert!(entry.chunks.is_none() && !entry.is_object(), "a world has no live chunks");
-        assert!(entry.renderer_id.is_empty(), "its generator picks its renderer");
+        assert!(
+            entry.chunks.is_none() && !entry.is_object(),
+            "a world has no live chunks"
+        );
+        assert!(
+            entry.renderer_id.is_empty(),
+            "its generator picks its renderer"
+        );
         assert_eq!(
             entry.generator,
             Some(VoxelGeneratorConfig {
@@ -583,7 +606,10 @@ mod tests {
             })
         );
         assert_eq!(entry.voxel_size, 0.5);
-        assert_eq!((entry.world.shape, entry.world.planet_radius), (VoxelWorldShape::Sphere, 1_000.0));
+        assert_eq!(
+            (entry.world.shape, entry.world.planet_radius),
+            (VoxelWorldShape::Sphere, 1_000.0)
+        );
     }
 
     #[test]
@@ -596,8 +622,24 @@ mod tests {
         let (entries, errors) = project_voxel_entries(&world);
         assert!(errors.is_empty());
         assert_eq!(entries.len(), 2);
-        let object_entry = entries.iter().find(|entry| entry.id == VoxelEntryId { entity_bits: object.bits(), kind: 0 }).unwrap();
-        assert_eq!(object_entry.chunks.as_ref().unwrap().domain, VoxelDomain::Bounded { min: [0; 3], max: [1; 3], max_lod: 0 });
+        let object_entry = entries
+            .iter()
+            .find(|entry| {
+                entry.id
+                    == VoxelEntryId {
+                        entity_bits: object.bits(),
+                        kind: 0,
+                    }
+            })
+            .unwrap();
+        assert_eq!(
+            object_entry.chunks.as_ref().unwrap().domain,
+            VoxelDomain::Bounded {
+                min: [0; 3],
+                max: [1; 3],
+                max_lod: 0
+            }
+        );
         assert!(entries.iter().any(|entry| entry.id
             == VoxelEntryId {
                 entity_bits: terrain.bits(),
@@ -702,10 +744,15 @@ mod tests {
         use helio_component::{AtmosphereComponent, AtmospherePlacement};
         let mut world = World::new();
         let object = world.spawn();
-        let terrain =
-            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(250_000.0))
+        let terrain = pulsar_world_registry::attach_value(
+            &mut world,
+            object,
+            VoxelTerrainComponent::planet(250_000.0),
+        )
+        .unwrap();
+        let sky =
+            pulsar_world_registry::attach_value(&mut world, object, AtmosphereComponent::default())
                 .unwrap();
-        let sky = pulsar_world_registry::attach_value(&mut world, object, AtmosphereComponent::default()).unwrap();
         let mut sync = VoxelWorldSync::new(&world);
         let air = |world: &World| {
             let a = world.get::<AtmosphereComponent>(sky).unwrap();
@@ -713,18 +760,30 @@ mod tests {
         };
         sync.poll(&mut world);
         assert_eq!(air(&world), (AtmospherePlacement::PlanetAtOwner, 250.0));
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().planet_radius = 40_000.0;
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .planet_radius = 40_000.0;
         sync.poll(&mut world);
         assert_eq!(air(&world), (AtmospherePlacement::PlanetAtOwner, 40.0));
         // A plane's sky is flat ground: the Earth's curvature, not the old planet's.
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().shape = VoxelWorldShape::Plane;
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .shape = VoxelWorldShape::Plane;
         sync.poll(&mut world);
         let earth = AtmosphereComponent::default().planet_radius_km;
         assert_eq!(air(&world), (AtmospherePlacement::GroundAtOrigin, earth));
         // A sky edited by hand on a planet goes back onto it.
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().shape = VoxelWorldShape::Sphere;
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .shape = VoxelWorldShape::Sphere;
         sync.poll(&mut world);
-        world.get_mut::<AtmosphereComponent>(sky).unwrap().planet_radius_km = 9.0;
+        world
+            .get_mut::<AtmosphereComponent>(sky)
+            .unwrap()
+            .planet_radius_km = 9.0;
         sync.poll(&mut world);
         assert_eq!(air(&world), (AtmospherePlacement::PlanetAtOwner, 40.0));
         assert_eq!(sync_skies_to_terrains(&mut world), 0);
@@ -735,16 +794,23 @@ mod tests {
         use helio_component::{AtmosphereComponent, VoxelAir};
         let mut world = World::new();
         let object = world.spawn();
-        let terrain =
-            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_737_400.0))
-                .unwrap();
+        let terrain = pulsar_world_registry::attach_value(
+            &mut world,
+            object,
+            VoxelTerrainComponent::planet(1_737_400.0),
+        )
+        .unwrap();
         let mut authored = AtmosphereComponent::default();
         authored.mie_anisotropy = 0.1;
         let sky = pulsar_world_registry::attach_value(&mut world, object, authored).unwrap();
         let mut sync = VoxelWorldSync::new(&world);
         let sky_of = |world: &World| world.get::<AtmosphereComponent>(sky).unwrap().clone();
         sync.poll(&mut world);
-        assert_eq!(sky_of(&world).mie_anisotropy, 0.1, "custom air keeps the authored sky");
+        assert_eq!(
+            sky_of(&world).mie_anisotropy,
+            0.1,
+            "custom air keeps the authored sky"
+        );
         world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air = VoxelAir::None;
         sync.poll(&mut world);
         assert!(!sky_of(&world).enabled, "a moon has no sky");
@@ -752,14 +818,27 @@ mod tests {
         world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air = VoxelAir::Thin;
         sync.poll(&mut world);
         let thin = sky_of(&world);
-        assert!(thin.enabled && thin.rayleigh_scattering[2] < AtmosphereComponent::default().rayleigh_scattering[2]);
+        assert!(
+            thin.enabled
+                && thin.rayleigh_scattering[2]
+                    < AtmosphereComponent::default().rayleigh_scattering[2]
+        );
         // Hand edits to a derived sky go back to the air's.
-        world.get_mut::<AtmosphereComponent>(sky).unwrap().mie_anisotropy = 0.2;
+        world
+            .get_mut::<AtmosphereComponent>(sky)
+            .unwrap()
+            .mie_anisotropy = 0.2;
         sync.poll(&mut world);
         assert_eq!(sky_of(&world).mie_anisotropy, thin.mie_anisotropy);
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air_density = 2.0;
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .air_density = 2.0;
         sync.poll(&mut world);
-        assert!((sky_of(&world).rayleigh_scattering[0] - thin.rayleigh_scattering[0] * 2.0).abs() < 1e-9);
+        assert!(
+            (sky_of(&world).rayleigh_scattering[0] - thin.rayleigh_scattering[0] * 2.0).abs()
+                < 1e-9
+        );
         assert_eq!(sync_skies_to_terrains(&mut world), 0);
     }
 
@@ -768,12 +847,18 @@ mod tests {
         use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
         let mut world = World::new();
         let object = world.spawn();
-        let terrain =
-            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000.0))
-                .unwrap();
-        let layers =
-            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default())
-                .unwrap();
+        let terrain = pulsar_world_registry::attach_value(
+            &mut world,
+            object,
+            VoxelTerrainComponent::planet(1_000.0),
+        )
+        .unwrap();
+        let layers = pulsar_world_registry::attach_value(
+            &mut world,
+            object,
+            VoxelTerrainLayersComponent::default(),
+        )
+        .unwrap();
         let mut sync = VoxelWorldSync::new(&world);
         let edit = helio_voxel_data::VoxelBrushEdit {
             center: [0.0, 1_000.0, 0.0],

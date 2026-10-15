@@ -82,7 +82,9 @@ impl VoxelSourceSession {
         edits: Arc<[VoxelSampleEdit]>,
     ) -> Result<VoxelEditTicket, String> {
         if !self.is_attached()? {
-            return Err("voxel component was removed or replaced; open a new source session".into());
+            return Err(
+                "voxel component was removed or replaced; open a new source session".into(),
+            );
         }
         self.edits
             .try_submit(VoxelEditJob {
@@ -109,7 +111,10 @@ fn resolve(world: &World, entity: Entity) -> Result<(VoxelSceneEntry, VoxelObjec
         return Err("voxel object is disabled or not editable".into());
     }
     let entry = object_entry(world, entity, &component).map_err(str::to_string)?;
-    let chunks = entry.chunks.clone().expect("a voxel object projects its chunks");
+    let chunks = entry
+        .chunks
+        .clone()
+        .expect("a voxel object projects its chunks");
     Ok((entry, chunks))
 }
 
@@ -130,12 +135,7 @@ mod tests {
             scene.world.insert(entity, restored);
             entity
         };
-        let session = VoxelSourceSession::open(
-            scene.clone(),
-            entity,
-            VoxelSourceId(7),
-        )
-        .unwrap();
+        let session = VoxelSourceSession::open(scene.clone(), entity, VoxelSourceId(7)).unwrap();
         let ticket = session
             .try_submit_edits(Arc::from([VoxelSampleEdit {
                 xyz: [0, 0, 0],
@@ -147,9 +147,13 @@ mod tests {
             ticket.wait(),
             helio_voxel_data::VoxelEditTicketState::Published(_)
         ));
-        let snapshot = VoxelSourceWriter::new(VoxelTerrainId(1), VoxelSourceId(7), session.chunks.store.clone())
-            .snapshot()
-            .unwrap();
+        let snapshot = VoxelSourceWriter::new(
+            VoxelTerrainId(1),
+            VoxelSourceId(7),
+            session.chunks.store.clone(),
+        )
+        .snapshot()
+        .unwrap();
         let chunk = helio_voxel_data::VoxelMaterialChunk::decode(
             snapshot
                 .get_raw_material(helio_voxel_data::VoxelChunkKey::new(0, 0, 0, 0))
