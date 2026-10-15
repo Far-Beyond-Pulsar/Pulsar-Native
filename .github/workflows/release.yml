@@ -208,6 +208,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -230,6 +231,7 @@ jobs:
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
       - name: Run unit tests
+        timeout-minutes: 60
         run: cargo nextest run --profile ci --workspace --locked
 
   check-lockfile:
@@ -615,7 +617,7 @@ jobs:
 
       - name: Upload native artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-native-${{ matrix.target }}
           path: release-artifacts/
@@ -641,7 +643,7 @@ jobs:
 
       - name: Upload macOS .app artifact
         if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-macos-app
           path: ${{ env.APP_ZIP_PATH }}
@@ -714,7 +716,7 @@ jobs:
 
       - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-examples-${{ matrix.target }}
           path: ${{ env.EXAMPLES_ARCHIVE }}
@@ -830,7 +832,7 @@ jobs:
 
       - name: Upload cross-build artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-cross-${{ matrix.target }}
           path: release-artifacts/
@@ -898,7 +900,7 @@ jobs:
 
       - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-examples-cross-${{ matrix.target }}
           path: ${{ env.EXAMPLES_ARCHIVE }}
@@ -914,7 +916,7 @@ jobs:
       id-token: write
     steps:
       - name: Download all release artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: release-*
           path: all-artifacts
@@ -999,7 +1001,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU (for multi-arch builds)
-        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4

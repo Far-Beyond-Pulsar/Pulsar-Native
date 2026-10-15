@@ -14,14 +14,16 @@
 use std::sync::Arc;
 
 use helio_component::components::{
-    AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow, FoliageSourceRow, GlobalFogSourceRow, LightSourceRow,
-    LocalFogSourceRow, PostProcessVolumeSourceRow, StaticMeshComponent, StaticMeshDraw,
-    WaterVolumeSourceRow, CAMERA_POST_PROCESS_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER,
-    GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
-    MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
-    WATER_VOLUME_SOURCES_BUFFER, ATMOSPHERE_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER,
-    DECAL_SOURCES_BUFFER, GlobalWindSourceRow, WIND_SOURCES_BUFFER, SpriteSourceRow,
-    SPRITE_SOURCES_BUFFER,
+    AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow,
+    FoliageSourceRow, GlobalFogSourceRow, GlobalWindSourceRow, LightSourceRow, LocalFogSourceRow,
+    PostProcessVolumeSourceRow, SkeletalMeshComponent, SpriteSourceRow, StaticMeshComponent,
+    StaticMeshDraw, WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER,
+    CAMERA_POST_PROCESS_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER, DECAL_SOURCES_BUFFER,
+    FOLIAGE_SOURCES_BUFFER, GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER,
+    LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
+    POST_PROCESS_VOLUME_SOURCES_BUFFER, SKELETAL_PALETTE_HANDLES_BUFFER,
+    SKELETAL_SKIN_HANDLES_BUFFER, SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER,
+    WIND_SOURCES_BUFFER,
 };
 use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
@@ -50,6 +52,8 @@ pub fn scene_join_keys() -> SceneJoinKeys {
         mesh_bounds: BufferKey::of(MESH_BOUNDS_BUFFER),
         mesh_flags: BufferKey::of(MESH_FLAGS_BUFFER),
         section_handles: BufferKey::of("static_mesh_draw_sections::handles"),
+        skin_handles: BufferKey::of(SKELETAL_SKIN_HANDLES_BUFFER),
+        palette_handles: BufferKey::of(SKELETAL_PALETTE_HANDLES_BUFFER),
         mesh_sections: BufferKey::of(MESH_SECTIONS_BUFFER),
         light_sources: BufferKey::of(LIGHT_SOURCES_BUFFER),
     }
@@ -80,6 +84,7 @@ pub fn environment_join_keys() -> EnvironmentJoinKeys {
         local_fog: BufferKey::of(LOCAL_FOG_SOURCES_BUFFER),
         post_process_volumes: BufferKey::of(POST_PROCESS_VOLUME_SOURCES_BUFFER),
         camera_post_process: BufferKey::of(CAMERA_POST_PROCESS_SOURCES_BUFFER),
+        camera_lens: BufferKey::of(helio_component::components::CAMERA_LENS_SOURCES_BUFFER),
         water_volumes: BufferKey::of(WATER_VOLUME_SOURCES_BUFFER),
         foliage: BufferKey::of(FOLIAGE_SOURCES_BUFFER),
         atmospheres: BufferKey::of(ATMOSPHERE_SOURCES_BUFFER),
@@ -105,9 +110,13 @@ pub fn environment_join(device: &wgpu::Device) -> Box<EnvironmentJoin> {
 /// after attachment are mirrored by SceneDB itself; this helper does not keep
 /// a second world representation or perform per-frame synchronization.
 ///
-/// When a world already has a mirror, the existing handle is returned without
-/// replacing its device, queue, pools, or residency state. This is required
-/// when multiple renderer views share one SceneDB world.
+/// When a world already has a mirror on `device`, the existing handle is
+/// returned without replacing its queue, pools, or residency state. This is
+/// required when multiple renderer views share one SceneDB world. A mirror on
+/// another device (the previous one was lost and a renderer is being rebuilt
+/// on a new one) is replaced: attaching the new mirror writes every
+/// GPU-bearing component into it, and the assets the world bound are
+/// uploaded again from SceneDB's CPU copies.
 ///
 /// A world populated before GPU initialization needs nothing further: SceneDB
 /// writes every existing GPU-bearing component into the mirror when it is
@@ -119,7 +128,10 @@ pub fn ensure_gpu_mirror(
     queue: Arc<wgpu::Queue>,
 ) -> GpuMirrorHandle {
     if let Some(existing) = scene_db.world.gpu_mirror() {
-        return existing.clone();
+        if existing.store().device_arc().as_ref() == device.as_ref() {
+            return existing.clone();
+        }
+        tracing::warn!("SceneDB GPU mirror is on another device; rebuilding it on the new one");
     }
 
     let ctx = EngineGpuContext::new(device.clone(), queue.clone());
@@ -137,6 +149,7 @@ pub fn ensure_gpu_mirror(
     // only; growable registration remains the sole owner of GPU storage and
     // deduplication behavior.
     StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
+    SkeletalMeshComponent::register_gpu_columns_growable(&mut gpu_store, 128, &device);
     // The scene join's inputs (see `scene_join_keys`); the object, material
     // and light rows passes draw are the join's outputs, not SceneDB's.
     StaticMeshDraw::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
@@ -152,6 +165,10 @@ pub fn ensure_gpu_mirror(
     LocalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     PostProcessVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     CameraPostProcessSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
+    // The camera lens: the authored `CameraLensComponent` derives its source
+    // row (the environment join publishes it as `camera_lenses`) and the
+    // lens pass's `lens_elements` rows.
+    helio_component::components::register_lens_gpu_columns(&mut gpu_store, &device);
     WaterVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
     FoliageSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
     AtmosphereSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
@@ -272,6 +289,10 @@ mod tests {
         assert_eq!(
             size_of::<CameraPostProcessSourceRow>() as u64,
             env::CAMERA_POST_PROCESS_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<helio_component::components::CameraLensSourceRow>() as u64,
+            env::CAMERA_LENS_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<WaterVolumeSourceRow>() as u64,

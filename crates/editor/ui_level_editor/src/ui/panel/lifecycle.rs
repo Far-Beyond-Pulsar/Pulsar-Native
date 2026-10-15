@@ -81,7 +81,7 @@ impl LevelEditorPanel {
                 Ok((editor_state, world_settings)) => {
                     self.apply_editor_camera_state(editor_state.camera.as_ref());
                     let mut w = self.shared_state.write();
-                    w.scene.current_scene = Some(default_path);
+                    w.scene.set_current_scene(Some(default_path), false);
                     w.scene.world_settings = world_settings;
                     w.editor.terrain.foliage_sets = editor_state.foliage_sets;
                     w.scene.has_unsaved_changes = false;
@@ -145,7 +145,7 @@ impl LevelEditorPanel {
                         Err(e) => tracing::warn!("Seeded default level but reload failed: {e}"),
                     }
                     let mut w = self.shared_state.write();
-                    w.scene.current_scene = Some(default_path);
+                    w.scene.set_current_scene(Some(default_path), false);
                     w.scene.has_unsaved_changes = false;
                     w.scene.bump_revision(false);
                 }
@@ -181,7 +181,7 @@ impl LevelEditorPanel {
         panel.apply_editor_camera_state(editor_state.camera.as_ref());
         {
             let mut state = panel.shared_state.write();
-            state.scene.current_scene = Some(path);
+            state.scene.set_current_scene(Some(path), false);
             state.scene.world_settings = world_settings;
             state.editor.terrain.foliage_sets = editor_state.foliage_sets;
             state.scene.has_unsaved_changes = false;
@@ -303,10 +303,7 @@ impl LevelEditorPanel {
                     .timer(std::time::Duration::from_millis(50))
                     .await;
                 // Report Play-In-Editor status to the engine-global playback state.
-                super::playback_host::publish_playback_status(
-                    playback_host_id,
-                    &poll_state.read(),
-                );
+                super::playback_host::publish_playback_status(playback_host_id, &poll_state.read());
                 // A released sculpt stroke becomes one undo step once the
                 // render thread applied its last samples.
                 if poll_state.read().editor.voxel_stroke.is_some() {
@@ -326,6 +323,17 @@ impl LevelEditorPanel {
                     if let Ok(mut engine) = poll_gpu.try_lock() {
                         poll_state.write().scene.pending_selection_sync = false;
                         engine.sync_selection_to_helio();
+                    }
+                }
+                // Finished gizmo drags become undo steps (#931).
+                if let Some(drags) = poll_mailbox
+                    .as_ref()
+                    .map(|mailbox| mailbox.take_completed_drags())
+                    .filter(|drags| !drags.is_empty())
+                {
+                    let mut s = poll_state.write();
+                    for drag in drags {
+                        s.scene.record_gizmo_drag(drag.entity, drag.before);
                     }
                 }
                 // A gizmo drag on a Static/Stationary object (#837); the
@@ -407,7 +415,8 @@ impl LevelEditorPanel {
         });
         let class_updates =
             crate::core::asset_updates::subscribe_class_updates(shared_state.clone());
-        let mesh_updates = crate::core::asset_updates::subscribe_mesh_updates(shared_state.clone());
+        let asset_reloads =
+            crate::core::asset_updates::subscribe_asset_reloads(shared_state.clone());
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -417,7 +426,7 @@ impl LevelEditorPanel {
             helio_mailbox,
             render_enabled,
             _class_updates: class_updates,
-            _mesh_updates: mesh_updates,
+            _asset_reloads: asset_reloads,
             shared_state,
             workspace: None,
             viewport_panel: None,

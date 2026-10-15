@@ -186,3 +186,50 @@ fn sync_bundled_themes(themes_dir: &Path, manifest_path: &Path) {
         Err(e) => tracing::error!("Failed to serialize theme cache manifest: {e}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::BundledThemes;
+
+    fn parse(file: &str) -> ui::ThemeSet {
+        let data = BundledThemes::get(file).expect("bundled theme exists");
+        serde_json::from_slice(&data.data).unwrap_or_else(|error| panic!("{file}: {error}"))
+    }
+
+    /// An invalid theme file is only logged and skipped at runtime ("ignored
+    /// invalid theme file"), and the first theme with a name wins, so a typo
+    /// would make a theme silently vanish from the theme dropdown.
+    #[test]
+    fn every_bundled_theme_parses_and_names_are_unique() {
+        let mut names = std::collections::HashMap::new();
+        for file in BundledThemes::iter() {
+            let set = parse(&file);
+            assert!(!set.themes.is_empty(), "{file} defines no themes");
+            for theme in set.themes {
+                if let Some(first) = names.insert(theme.name.to_string(), file.to_string()) {
+                    panic!(
+                        "theme {:?} is defined in both {first} and {file}",
+                        theme.name
+                    );
+                }
+            }
+        }
+        assert!(!names.is_empty(), "no themes are bundled");
+    }
+
+    #[test]
+    fn the_night_owl_family_is_bundled_with_syntax_colors() {
+        let set = parse("night-owl.json");
+        let themes: Vec<_> = set.themes.iter().map(|t| t.name.to_string()).collect();
+        assert_eq!(themes, ["Night Owl", "Night Owl Light"]);
+        assert!(set.themes.iter().any(|t| t.mode.is_dark()));
+        assert!(set.themes.iter().any(|t| !t.mode.is_dark()));
+        for theme in &set.themes {
+            assert!(
+                theme.highlight.is_some(),
+                "{} has no syntax colors",
+                theme.name
+            );
+        }
+    }
+}

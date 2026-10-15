@@ -1,16 +1,16 @@
 //! Core application module
 
 mod agent_chat_panel;
+mod chrome;
 mod constructors;
 pub mod event_handlers;
-mod layout_persistence;
-pub(crate) use layout_persistence::saved_window_bounds;
+mod layout;
+pub(crate) use layout::saved_window_bounds;
 mod manual_tool_panel;
 mod menu_actions;
 mod nav_sidebar;
 mod navigation;
 mod open_editors;
-mod panel_window;
 mod radial_menu;
 mod render;
 mod script_problems;

@@ -3,7 +3,7 @@
 use once_cell::sync::OnceCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use std::thread;
 use std::time::Instant;
 
@@ -13,12 +13,95 @@ use crate::profiler::Profiler;
 static PROFILER: OnceCell<Profiler> = OnceCell::new();
 static NEXT_SCOPE_ID: AtomicU64 = AtomicU64::new(1);
 
+/// The host's profiler and scope-id allocator, once [`attach_host`] ran. A
+/// plugin library statically links its own copy of this crate, whose
+/// `PROFILER` the flamegraph never reads; attached, every scope the plugin
+/// records lands in the editor's profiler instead.
+static HOST_PROFILER: AtomicPtr<Profiler> = AtomicPtr::new(std::ptr::null_mut());
+static HOST_ALLOC: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
+
 pub fn allocate_scope_id() -> u64 {
+    let host = HOST_ALLOC.load(Ordering::Acquire);
+    if !host.is_null() {
+        // SAFETY: set by `attach_host` from the host's `allocate_scope_id`.
+        let alloc: fn() -> u64 = unsafe { std::mem::transmute(host) };
+        return alloc();
+    }
     NEXT_SCOPE_ID.fetch_add(1, Ordering::Relaxed)
 }
 
 pub fn init_profiler() -> &'static Profiler {
+    let host = HOST_PROFILER.load(Ordering::Acquire);
+    if !host.is_null() {
+        // SAFETY: set by `attach_host` to the host's process-lifetime profiler.
+        return unsafe { &*host };
+    }
     PROFILER.get_or_init(|| Profiler::new())
+}
+
+/// What a plugin library needs to share this copy's profiler; pass it to
+/// [`attach_host`] in the plugin. Valid for the life of the process.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HostProfiler {
+    pub profiler: *const Profiler,
+    pub profiler_size: usize,
+    pub allocate_scope_id: fn() -> u64,
+}
+
+/// The handle to pass to plugins.
+pub fn host_handle() -> HostProfiler {
+    HostProfiler {
+        profiler: init_profiler(),
+        profiler_size: std::mem::size_of::<Profiler>(),
+        allocate_scope_id,
+    }
+}
+
+/// Route this copy's scopes to the host's profiler. Refuses (`false`) a
+/// profiler of a different layout, i.e. one built from other sources. Call
+/// it before the plugin records anything.
+///
+/// # Safety
+///
+/// `host` must point to a [`host_handle`] of a copy of this crate built by
+/// the same compiler from the same sources, in this process.
+pub unsafe fn attach_host(host: *const HostProfiler) -> bool {
+    let host = unsafe { *host };
+    if host.profiler_size != std::mem::size_of::<Profiler>() || host.profiler.is_null() {
+        return false;
+    }
+    // The host passing its own handle back to itself: already shared.
+    if PROFILER
+        .get()
+        .is_some_and(|own| std::ptr::eq(own, host.profiler))
+    {
+        return true;
+    }
+    HOST_PROFILER.store(host.profiler as *mut Profiler, Ordering::Release);
+    HOST_ALLOC.store(host.allocate_scope_id as *mut (), Ordering::Release);
+    true
+}
+
+/// Symbol exported by [`export_profiler_attach!`].
+pub const ATTACH_SYMBOL: &str = "_plugin_attach_profiler";
+
+/// Export `_plugin_attach_profiler` from a plugin library so the plugin
+/// manager can share the editor's profiler with it.
+/// `plugin_editor_api::export_plugin!` invokes it.
+#[macro_export]
+macro_rules! export_profiler_attach {
+    () => {
+        /// Called by the plugin manager before `_plugin_create`.
+        ///
+        /// # Safety
+        ///
+        /// `host` is the host's `profiling::scope::HostProfiler`.
+        #[no_mangle]
+        pub unsafe extern "C" fn _plugin_attach_profiler(host: *const ::std::ffi::c_void) -> bool {
+            unsafe { $crate::scope::attach_host(host.cast()) }
+        }
+    };
 }
 
 /// Thread-local profiling state
@@ -312,4 +395,21 @@ pub fn record_elapsed(name: impl Into<String>, elapsed: std::time::Duration) {
         metadata: None,
         track_name: None,
     });
+}
+
+#[cfg(test)]
+mod attach_tests {
+    use super::*;
+
+    #[test]
+    fn a_handle_of_this_layout_attaches_and_a_wrong_one_is_refused() {
+        let mut handle = host_handle();
+        // Attaching a copy's own handle is a no-op round trip.
+        assert!(unsafe { attach_host(&handle) });
+        assert!(std::ptr::eq(init_profiler(), unsafe { &*handle.profiler }));
+        handle.profiler_size += 1;
+        assert!(!unsafe { attach_host(&handle) });
+        let id = allocate_scope_id();
+        assert!(allocate_scope_id() > id);
+    }
 }

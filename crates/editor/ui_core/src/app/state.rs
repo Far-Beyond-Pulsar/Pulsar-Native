@@ -2,8 +2,7 @@
 
 use gpui::{Entity, FocusHandle, Task};
 use std::path::PathBuf;
-use std::sync::Arc;
-use ui::dock::{DockArea, PanelView, TabPanel};
+use ui::dock::{DockArea, TabPanel};
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
 // use ui_level_editor::LevelEditorPanel;
@@ -27,18 +26,10 @@ pub struct AppState {
 
     // Drawers
     pub file_manager_drawer: Entity<FileManagerDrawer>,
-    pub drawer_open: bool,
-    pub drawer_docked: bool,
-    pub drawer_height: f32,
-    pub drawer_resizing: bool,
-    pub drawer_resize_start_y: f32,
-    pub drawer_resize_start_height: f32,
-    pub suppress_drawer_for_drag: bool, // Auto-close drawer during asset drag
+    pub chrome: super::chrome::ChromeState,
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
     pub mission_control: Entity<MissionControlPanel>,
-    pub mission_control_open: bool,
-    pub git_manager_open: bool,
     pub task_queue_refresh_task: Option<Task<()>>,
 
     // Editor tracking - commented out as these editors have been migrated to plugins
@@ -82,18 +73,17 @@ pub struct AppState {
     // Focus management
     pub focus_handle: FocusHandle,
 
-    // Popped out panels tracking (panel, source tab panel)
-    pub popped_out_panels: Vec<Arc<dyn PanelView>>,
-
     // Multiuser status refresh listener
     pub multiuser_refresh_task: Option<Task<()>>,
 
     // Git auto-fetch listener for the primary project window
     pub git_auto_fetch_task: Option<Task<()>>,
 
-    // Dock layout persistence (see `layout_persistence`)
+    // Dock layout persistence (see `layout`)
     /// This window saves and restores the project layout.
     pub layout_persist: bool,
+    /// The layout slot of this window within its project (see `layout::store`).
+    pub layout_slot: Option<u32>,
     /// Last known window geometry, saved with the layout.
     pub window_bounds: Option<gpui::WindowBounds>,
     /// The last windowed (not maximized / fullscreen) bounds: the size to
@@ -103,6 +93,20 @@ pub struct AppState {
     pub layout_ready: bool,
     /// Pending debounced save; dropping it cancels the save.
     pub layout_save_task: Option<Task<()>>,
+    /// Saved tabs this session could not rebuild (plugin not loaded); written
+    /// back on every save so they are not lost. See `layout::dormant`.
+    pub layout_dormant: Vec<super::layout::DormantLeaf>,
+    /// This window's handle, to tell which pop-outs it owns.
+    pub layout_window: Option<gpui::AnyWindowHandle>,
+    /// The window is closing: the final layout was written and nothing may
+    /// overwrite it (pop-outs close with it and must not be erased).
+    pub layout_closing: bool,
+    /// Pop-outs opened from this window, each with the last windowed bounds it
+    /// had (what a maximized one returns to).
+    pub layout_popouts: std::collections::HashMap<gpui::AnyWindowHandle, super::layout::PopoutNote>,
+    /// Saved pop-outs that opened nothing because all their tabs are dormant;
+    /// written back (empty) while a dormant tab still refers to them.
+    pub layout_ghosts: Vec<super::layout::SavedPopout>,
 
     // Navigation history
     pub navigation: super::navigation::NavigationHistory,

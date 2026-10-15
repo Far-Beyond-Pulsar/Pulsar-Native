@@ -126,7 +126,15 @@ pub fn descriptor_of(decl: &EventDecl) -> Result<EventDescriptor, String> {
                 })
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(EventDescriptor::dynamic(decl.name.clone(), fields))
+    // `namespace::Name` declares the event in that namespace (engine
+    // plugins, e.g. `physics::ColliderComponent.collision_enter`); a plain
+    // name is in the main namespace as before.
+    match decl.name.split_once("::") {
+        Some((namespace, name)) => {
+            EventDescriptor::dynamic_in(namespace, name, fields).map_err(|e| e.to_string())
+        }
+        None => Ok(EventDescriptor::dynamic(decl.name.clone(), fields)),
+    }
 }
 
 fn to_dyn_value(index: usize, value: &Value) -> Result<DynValue, String> {
@@ -904,4 +912,30 @@ fn resolve_component_target(
         return Ok(None);
     }
     Ok(Some(*target))
+}
+
+#[cfg(test)]
+mod namespace_tests {
+    use super::*;
+    use pulsar_script_vm::EventField;
+
+    fn decl(name: &str) -> EventDecl {
+        EventDecl {
+            name: name.to_owned(),
+            fields: vec![EventField::new("entity", Type::Entity)],
+        }
+    }
+
+    #[test]
+    fn a_qualified_declaration_registers_in_that_namespace() {
+        let d = descriptor_of(&decl("physics::Collider.hit")).unwrap();
+        assert_eq!(d.namespace.as_deref(), Some("physics"));
+        assert_eq!(d.name, "Collider.hit");
+        // Plain names are the main namespace, as before.
+        let plain = descriptor_of(&decl("Collider.hit")).unwrap();
+        assert_eq!(plain.namespace, None);
+        assert_ne!(plain.id, d.id);
+        // The main namespace cannot be declared explicitly.
+        assert!(descriptor_of(&decl("main::Collider.hit")).is_err());
+    }
 }

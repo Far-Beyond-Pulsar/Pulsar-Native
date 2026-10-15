@@ -28,6 +28,14 @@ pub trait PulsarWindowExt: PulsarWindow {
         if WindowManager::update_global(cx, |wm, cx| wm.focus_window_by_request(&request, cx)) {
             return;
         }
+        Self::open_additional(params, cx);
+    }
+
+    /// Like [`open`](Self::open) but never focuses an existing window of the
+    /// same kind: always opens a new one. For windows that may legitimately
+    /// exist several times (a second editor window of one project).
+    fn open_additional(params: Self::Params, cx: &mut App) {
+        let request = Self::window_request(&params);
 
         let profile = Self::window_profile(&params);
         let mut options = Self::window_options(&params);

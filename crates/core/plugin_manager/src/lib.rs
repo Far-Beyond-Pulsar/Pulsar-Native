@@ -175,6 +175,7 @@ impl PanelView for FileTypeDecoratedPanelView {
 pub mod builtin;
 mod permanent_library;
 mod registry;
+mod restorers;
 pub mod tool_bridge;
 
 /// Re-exported so a linked provider can `inventory::submit!` without its own
@@ -185,6 +186,7 @@ pub use builtin::{
 };
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
+pub use restorers::{panel_restorers, PanelRestorers, RestoreOutcome};
 pub use tool_bridge::PluginToolBridge;
 
 // ============================================================================
@@ -631,6 +633,15 @@ impl PluginManager {
             ),
         }
 
+        // Share the editor's profiler so the plugin's scopes reach the
+        // flamegraph; plugins built before this export nothing and keep a
+        // private (never-read) profiler.
+        match attach_profiler(&library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host profiler", path),
+            Some(false) => tracing::warn!("Plugin at {:?} refused the host profiler", path),
+            None => {}
+        }
+
         // Give the plugin the host's event bus before it runs any code of
         // its own, so its asset updates and events reach the editor (#930).
         match attach_event_bus(&library) {
@@ -807,6 +818,18 @@ impl PluginManager {
             );
         }
 
+        // Panel restorers ride the same registration call: merge them into the
+        // host's global set so layout restore can rebuild this plugin's panels.
+        for (kind, restorer) in editor_factories.take_restorers().take() {
+            if panel_restorers().register_shared(kind.clone(), restorer) {
+                tracing::warn!(
+                    "plugin {} replaced the panel restorer for kind '{}'",
+                    plugin_id,
+                    kind
+                );
+            }
+        }
+
         // Store the plugin
         // SAFETY: Both plugin reference and library handle have 'static lifetime
         // because the library is never unloaded
@@ -825,6 +848,51 @@ impl PluginManager {
     /// Get all loaded plugins.
     pub fn get_plugins(&self) -> Vec<&PluginMetadata> {
         self.plugins.values().map(|p| &p.metadata).collect()
+    }
+
+    /// Get metadata entries for all registered built-in editor providers.
+    ///
+    /// Built-in providers are compiled into the engine and do not have plugin
+    /// manifests, so their display metadata is derived from their editor and
+    /// file-type registrations.
+    pub fn get_builtin_plugins(&self) -> Vec<PluginMetadata> {
+        self.builtin_registry
+            .providers()
+            .iter()
+            .map(|provider| {
+                let editors = provider.editors();
+                let file_types = provider.file_types();
+                let name = editors
+                    .iter()
+                    .map(|editor| editor.display_name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                let description = if file_types.is_empty() {
+                    "Built-in editor provider".to_string()
+                } else {
+                    format!(
+                        "Built-in editor for {}",
+                        file_types
+                            .iter()
+                            .map(|file_type| file_type.display_name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+
+                PluginMetadata {
+                    id: PluginId::new(provider.provider_id()),
+                    name: if name.is_empty() {
+                        provider.provider_id().to_string()
+                    } else {
+                        name
+                    },
+                    version: String::new(),
+                    author: "Pulsar Team".to_string(),
+                    description,
+                }
+            })
+            .collect()
     }
 
     /// Load the plugin integrity manifest from a JSON file in the plugin directory.
@@ -1123,6 +1191,20 @@ impl PluginManager {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
+        let project_root = self.project_root.clone();
+        self.create_editor_for_file_with_project_root(file_path, project_root, window, cx)
+    }
+
+    /// Create an editor for a file while giving it an explicit tree root.
+    /// This is used by engine source browsing, where the editor must browse the
+    /// engine workspace even when a game project is currently open.
+    pub fn create_editor_for_file_with_project_root(
+        &mut self,
+        file_path: &Path,
+        project_root: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
         // Determine file type
         let file_type_id = self
             .file_type_registry
@@ -1151,8 +1233,8 @@ impl PluginManager {
         // Check if this is a built-in editor
         if plugin_id.as_str() == "builtin" {
             // Create editor context with project root
-            let editor_context = EditorContext::new(self.project_root.clone())
-                .with_services(self.editor_services());
+            let editor_context =
+                EditorContext::new(project_root).with_services(self.editor_services());
 
             // Create the editor directly using the provider
             return self
@@ -1529,15 +1611,26 @@ impl std::error::Error for PluginManagerError {}
 pub fn attach_world_runtime(library: &PermanentLibrary) -> Option<bool> {
     // SAFETY: the symbol is `pulsar_world_registry::runtime::AttachFn` in
     // every library exporting it (generated by `export_world_runtime_attach!`).
-    let attach: libloading::Symbol<pulsar_world_registry::runtime::AttachFn> = unsafe {
-        library.get(pulsar_world_registry::runtime::ATTACH_SYMBOL.as_bytes())
-    }
-    .ok()?;
+    let attach: libloading::Symbol<pulsar_world_registry::runtime::AttachFn> =
+        unsafe { library.get(pulsar_world_registry::runtime::ATTACH_SYMBOL.as_bytes()) }.ok()?;
     let host: *const pulsar_world_registry::runtime::WorldRuntimes =
         pulsar_world_registry::runtime::host();
     // SAFETY: `host` is this process's runtimes, which live for the process;
     // plugins are never unloaded.
     Some(unsafe { attach(host.cast()) })
+}
+
+/// Share this process's profiler with `library` through its
+/// [`ATTACH_SYMBOL`](profiling::scope::ATTACH_SYMBOL) entry point. `None` when it
+/// does not export it; `Some(false)` when it refused (different layout).
+pub fn attach_profiler(library: &PermanentLibrary) -> Option<bool> {
+    let attach: libloading::Symbol<unsafe extern "C" fn(*const std::ffi::c_void) -> bool> =
+        unsafe { library.get(profiling::scope::ATTACH_SYMBOL.as_bytes()) }.ok()?;
+    // Leaked: plugins are never unloaded, so the handle must outlive them.
+    let handle: &'static profiling::scope::HostProfiler =
+        Box::leak(Box::new(profiling::scope::host_handle()));
+    // SAFETY: `handle` is this process's profiler handle, valid for the process.
+    Some(unsafe { attach((handle as *const profiling::scope::HostProfiler).cast()) })
 }
 
 /// Hand `library` the host's Gamma event bus through its

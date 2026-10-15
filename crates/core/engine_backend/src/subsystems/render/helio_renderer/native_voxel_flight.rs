@@ -34,24 +34,51 @@ impl NativeVoxelFlight {
         Self {
             armed: std::env::var("PULSAR_VOXEL_NATIVE_FLIGHT").is_ok_and(|v| v == "1"),
             stress: std::env::var("PULSAR_VOXEL_NATIVE_FLIGHT_STRESS").is_ok_and(|v| v == "1"),
-            armed_at: now, flight: None, last_report: now,
+            armed_at: now,
+            flight: None,
+            last_report: now,
         }
     }
 
-    pub fn force_frames(&self) -> bool { self.armed || self.flight.is_some() }
-    pub fn running(&self) -> bool { self.flight.is_some() }
+    pub fn force_frames(&self) -> bool {
+        self.armed || self.flight.is_some()
+    }
+    pub fn running(&self) -> bool {
+        self.flight.is_some()
+    }
 
-    pub fn advance(&mut self, now: Instant, ready: bool, interrupted: bool,
-        eye: DVec3, clearance: Option<f64>, forward: Vec3, pitch: f32,
-        mut surface_point: impl FnMut(DVec3, f64) -> Option<DVec3>) -> Option<Pose> {
-        let protocol = if self.stress { STRESS_PROTOCOL } else { PROTOCOL };
-        let duration = if self.stress { STRESS_MOVING_SECONDS + STRESS_SETTLE_SECONDS } else { 27.0 };
+    pub fn advance(
+        &mut self,
+        now: Instant,
+        ready: bool,
+        interrupted: bool,
+        eye: DVec3,
+        clearance: Option<f64>,
+        forward: Vec3,
+        pitch: f32,
+        mut surface_point: impl FnMut(DVec3, f64) -> Option<DVec3>,
+    ) -> Option<Pose> {
+        let protocol = if self.stress {
+            STRESS_PROTOCOL
+        } else {
+            PROTOCOL
+        };
+        let duration = if self.stress {
+            STRESS_MOVING_SECONDS + STRESS_SETTLE_SECONDS
+        } else {
+            27.0
+        };
         let timeout = if self.stress { duration + 90.0 } else { 90.0 };
         // Readiness may take most of the armed allowance. A started flight
         // gets its full route duration independently of that startup wait.
-        let timeout_started = self.flight.as_ref().map_or(self.armed_at, |flight| flight.started);
+        let timeout_started = self
+            .flight
+            .as_ref()
+            .map_or(self.armed_at, |flight| flight.started);
         if interrupted || now.duration_since(timeout_started).as_secs_f64() > timeout {
-            if self.force_frames() { tracing::info!("VOXEL_NATIVE_FLIGHT cancelled protocol={protocol}"); }
+            if self.force_frames() {
+                tracing::info!("VOXEL_NATIVE_FLIGHT cancelled protocol={protocol}");
+            }
             self.armed = false;
             self.flight = None;
             return None;
@@ -61,7 +88,13 @@ impl NativeVoxelFlight {
                 let up = eye.normalize();
                 let f = forward.as_dvec3();
                 let tangent = (f - up * f.dot(up)).try_normalize()?;
-                self.flight = Some(Flight { started: now, eye, clearance: h, tangent, pitch });
+                self.flight = Some(Flight {
+                    started: now,
+                    eye,
+                    clearance: h,
+                    tangent,
+                    pitch,
+                });
                 self.armed = false;
                 tracing::info!("VOXEL_NATIVE_FLIGHT started protocol={protocol}");
             }
@@ -92,9 +125,12 @@ impl NativeVoxelFlight {
             // Follow the canonical surface at the changing direction. A
             // descent relative to the starting terrain can enter a distant
             // mountain and stop early at the production ground clamp.
-            let Some(point) = surface_point(direction, height).filter(|point| point.is_finite()) else {
+            let Some(point) = surface_point(direction, height).filter(|point| point.is_finite())
+            else {
                 self.flight = None;
-                tracing::info!("VOXEL_NATIVE_FLIGHT cancelled protocol={protocol} reason=surface_unavailable");
+                tracing::info!(
+                    "VOXEL_NATIVE_FLIGHT cancelled protocol={protocol} reason=surface_unavailable"
+                );
                 return None;
             };
             point
@@ -138,16 +174,31 @@ fn route(t: f64, start: f64, pitch: f32) -> (f64, f64, f32, &'static str) {
     let blend = |a: f64, b: f64, v: f64| a * (b / a).powf(v.clamp(0.0, 1.0));
     if t < 6.0 {
         let v = t / 6.0;
-        (blend(start, orbit, v), 0.0, pitch + (-1.2 - pitch) * v as f32, "ascent")
+        (
+            blend(start, orbit, v),
+            0.0,
+            pitch + (-1.2 - pitch) * v as f32,
+            "ascent",
+        )
     } else if t < 9.0 {
         (orbit, 0.0, -1.2, "orbit")
     } else if t < 15.0 {
         let v = (t - 9.0) / 6.0;
-        (blend(orbit, cruise, v), 0.0, -1.2 + (pitch + 1.2) * v as f32, "descent")
+        (
+            blend(orbit, cruise, v),
+            0.0,
+            -1.2 + (pitch + 1.2) * v as f32,
+            "descent",
+        )
     } else if t < 21.0 {
         (cruise, (t - 15.0) * 3_000.0, pitch, "cruise")
     } else {
-        (blend(cruise, start, (t - 21.0) / 6.0), (t - 15.0) * 3_000.0, pitch, "arrival")
+        (
+            blend(cruise, start, (t - 21.0) / 6.0),
+            (t - 15.0) * 3_000.0,
+            pitch,
+            "arrival",
+        )
     }
 }
 
@@ -162,15 +213,63 @@ mod tests {
     fn diagnostic_waits_for_residency_and_cancels_without_rearming() {
         let now = Instant::now();
         let mut driver = NativeVoxelFlight {
-            armed: true, stress: false, armed_at: now, flight: None, last_report: now,
+            armed: true,
+            stress: false,
+            armed_at: now,
+            flight: None,
+            last_report: now,
         };
         let eye = DVec3::Y * 6_371_730.0;
-        assert!(driver.advance(now, false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
-        let pose = driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).unwrap();
+        assert!(driver
+            .advance(
+                now,
+                false,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface
+            )
+            .is_none());
+        let pose = driver
+            .advance(
+                now,
+                true,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface,
+            )
+            .unwrap();
         assert!(pose.eye.distance(eye) < 1.0e-8);
-        assert!(driver.advance(now, true, true, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+        assert!(driver
+            .advance(
+                now,
+                true,
+                true,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface
+            )
+            .is_none());
         assert!(!driver.force_frames());
-        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+        assert!(driver
+            .advance(
+                now,
+                true,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface
+            )
+            .is_none());
     }
 
     #[test]
@@ -195,10 +294,20 @@ mod tests {
                 assert!((a.2 - b.2).abs() < 1.0e-5);
             }
             let surface_t = cycle as f64 * 60.0 + 30.0;
-            assert!((stress_route(surface_t + 1.0, 30.0, -0.15).1
-                - stress_route(surface_t, 30.0, -0.15).1 - 3_000.0).abs() < 1.0e-8);
-            assert!((stress_route(surface_t - 20.0 + 1.0, 30.0, -0.15).1
-                - stress_route(surface_t - 20.0, 30.0, -0.15).1 - 20_000.0).abs() < 1.0e-8);
+            assert!(
+                (stress_route(surface_t + 1.0, 30.0, -0.15).1
+                    - stress_route(surface_t, 30.0, -0.15).1
+                    - 3_000.0)
+                    .abs()
+                    < 1.0e-8
+            );
+            assert!(
+                (stress_route(surface_t - 20.0 + 1.0, 30.0, -0.15).1
+                    - stress_route(surface_t - 20.0, 30.0, -0.15).1
+                    - 20_000.0)
+                    .abs()
+                    < 1.0e-8
+            );
         }
         let stopped = stress_route(300.0, 30.0, -0.15);
         assert_eq!(stopped.0, 30.0);
@@ -211,15 +320,45 @@ mod tests {
         let now = Instant::now();
         let eye = DVec3::Y * 6_371_730.0;
         let mut driver = NativeVoxelFlight {
-            armed: true, stress: true, armed_at: now, flight: None, last_report: now,
+            armed: true,
+            stress: true,
+            armed_at: now,
+            flight: None,
+            last_report: now,
         };
-        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_some());
+        assert!(driver
+            .advance(
+                now,
+                true,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface
+            )
+            .is_some());
         let mut previous: Option<Pose> = None;
         for second in [94, 95, 299, 300, 310] {
-            let pose = driver.advance(now + std::time::Duration::from_secs(second),
-                false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).unwrap();
+            let pose = driver
+                .advance(
+                    now + std::time::Duration::from_secs(second),
+                    false,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface,
+                )
+                .unwrap();
             if second == 95 {
-                let angle = previous.as_ref().unwrap().eye.normalize().angle_between(pose.eye.normalize());
+                let angle = previous
+                    .as_ref()
+                    .unwrap()
+                    .eye
+                    .normalize()
+                    .angle_between(pose.eye.normalize());
                 assert!((angle * 6_371_700.0 - 3_000.0).abs() < 1.0e-4);
             }
             if second == 310 {
@@ -227,11 +366,32 @@ mod tests {
             }
             previous = Some(pose);
         }
-        assert!(driver.advance(now + std::time::Duration::from_millis(310_001),
-            false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+        assert!(driver
+            .advance(
+                now + std::time::Duration::from_millis(310_001),
+                false,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface
+            )
+            .is_none());
         assert!(!driver.force_frames());
         // The stress switch cannot arm a normal session by itself.
-        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+        assert!(driver
+            .advance(
+                now,
+                true,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface
+            )
+            .is_none());
     }
 
     #[test]
@@ -243,31 +403,105 @@ mod tests {
             let duration = if stress { 310 } else { 27 };
             let started = now + std::time::Duration::from_secs(wait);
             let driver = || NativeVoxelFlight {
-                armed: true, stress, armed_at: now, flight: None, last_report: now,
+                armed: true,
+                stress,
+                armed_at: now,
+                flight: None,
+                last_report: now,
             };
             let mut complete = driver();
-            assert!(complete.advance(started, false, false, eye, Some(30.0),
-                -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(complete
+                .advance(
+                    started,
+                    false,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface
+                )
+                .is_none());
             assert!(complete.force_frames());
-            assert!(complete.advance(started, true, false, eye, Some(30.0),
-                -Vec3::Z, -0.15, sphere_surface).is_some());
+            assert!(complete
+                .advance(
+                    started,
+                    true,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface
+                )
+                .is_some());
             for second in [1, duration - 10, duration] {
-                assert!(complete.advance(started + std::time::Duration::from_secs(second),
-                    false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_some());
+                assert!(complete
+                    .advance(
+                        started + std::time::Duration::from_secs(second),
+                        false,
+                        false,
+                        eye,
+                        Some(30.0),
+                        -Vec3::Z,
+                        -0.15,
+                        sphere_surface
+                    )
+                    .is_some());
             }
-            assert!(complete.advance(started + std::time::Duration::from_millis(duration * 1000 + 1),
-                false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(complete
+                .advance(
+                    started + std::time::Duration::from_millis(duration * 1000 + 1),
+                    false,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface
+                )
+                .is_none());
             assert!(!complete.force_frames());
 
             let mut interrupted = driver();
-            assert!(interrupted.advance(started, true, false, eye, Some(30.0),
-                -Vec3::Z, -0.15, sphere_surface).is_some());
+            assert!(interrupted
+                .advance(
+                    started,
+                    true,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface
+                )
+                .is_some());
             let stop = started + std::time::Duration::from_secs(1);
-            assert!(interrupted.advance(stop, false, true, eye, Some(30.0),
-                -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(interrupted
+                .advance(
+                    stop,
+                    false,
+                    true,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface
+                )
+                .is_none());
             assert!(!interrupted.force_frames());
-            assert!(interrupted.advance(stop, true, false, eye, Some(30.0),
-                -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(interrupted
+                .advance(
+                    stop,
+                    true,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface
+                )
+                .is_none());
         }
     }
 
@@ -277,15 +511,28 @@ mod tests {
         let eye = DVec3::Y * 6_371_730.0;
         for stress in [false, true] {
             let mut driver = NativeVoxelFlight {
-                armed: true, stress, armed_at: now, flight: None, last_report: now,
+                armed: true,
+                stress,
+                armed_at: now,
+                flight: None,
+                last_report: now,
             };
             let timeout = if stress { 400_001 } else { 90_001 };
-            assert!(driver.advance(now + std::time::Duration::from_millis(timeout),
-                true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(driver
+                .advance(
+                    now + std::time::Duration::from_millis(timeout),
+                    true,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    sphere_surface
+                )
+                .is_none());
             assert!(!driver.force_frames());
         }
     }
-
 
     #[test]
     fn arrival_keeps_moving_with_requested_clearance_over_uneven_ground() {
@@ -298,27 +545,59 @@ mod tests {
         };
         let eye = DVec3::Y * (ground_radius(DVec3::Y) + 30.0);
         let mut driver = NativeVoxelFlight {
-            armed: true, stress: false, armed_at: now, flight: None, last_report: now,
+            armed: true,
+            stress: false,
+            armed_at: now,
+            flight: None,
+            last_report: now,
         };
-        let start = driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, surface).unwrap();
+        let start = driver
+            .advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, surface)
+            .unwrap();
         assert!(start.eye.distance(eye) < 1e-8);
         let mut previous: Option<Pose> = None;
         for second in 21..=27 {
-            let pose = driver.advance(now + std::time::Duration::from_secs(second),
-                false, false, eye, Some(30.0), -Vec3::Z, -0.15, surface).unwrap();
+            let pose = driver
+                .advance(
+                    now + std::time::Duration::from_secs(second),
+                    false,
+                    false,
+                    eye,
+                    Some(30.0),
+                    -Vec3::Z,
+                    -0.15,
+                    surface,
+                )
+                .unwrap();
             let actual_clearance = pose.eye.length() - ground_radius(pose.eye);
-            let requested_clearance = 1000.0_f64 * (30.0_f64 / 1000.0).powf((second - 21) as f64 / 6.0);
-            assert!((actual_clearance - requested_clearance).abs() < 1e-7,
-                "the new local ground must determine clearance at second{second}");
+            let requested_clearance =
+                1000.0_f64 * (30.0_f64 / 1000.0).powf((second - 21) as f64 / 6.0);
+            assert!(
+                (actual_clearance - requested_clearance).abs() < 1e-7,
+                "the new local ground must determine clearance at second{second}"
+            );
             if let Some(previous) = previous {
-                let surface_travel = pose.eye.normalize().distance(previous.eye.normalize()) * 6_371_700.0;
-                assert!(surface_travel > 2990.0 && surface_travel < 3010.0,
-                    "arrival must keep translating rather than ground-clamping: {surface_travel}");
+                let surface_travel =
+                    pose.eye.normalize().distance(previous.eye.normalize()) * 6_371_700.0;
+                assert!(
+                    surface_travel > 2990.0 && surface_travel < 3010.0,
+                    "arrival must keep translating rather than ground-clamping: {surface_travel}"
+                );
             }
             previous = Some(pose);
         }
-        assert!(driver.advance(now + std::time::Duration::from_millis(27_001),
-            false, false, eye, Some(30.0), -Vec3::Z, -0.15, surface).is_none());
+        assert!(driver
+            .advance(
+                now + std::time::Duration::from_millis(27_001),
+                false,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                surface
+            )
+            .is_none());
         assert!(!driver.force_frames());
     }
 
@@ -327,11 +606,36 @@ mod tests {
         let now = Instant::now();
         let eye = DVec3::Y * 6_371_730.0;
         let mut driver = NativeVoxelFlight {
-            armed: true, stress: false, armed_at: now, flight: None, last_report: now,
+            armed: true,
+            stress: false,
+            armed_at: now,
+            flight: None,
+            last_report: now,
         };
-        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_some());
-        assert!(driver.advance(now + std::time::Duration::from_secs(15),
-            false, false, eye, Some(30.0), -Vec3::Z, -0.15, |_, _| None).is_none());
+        assert!(driver
+            .advance(
+                now,
+                true,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                sphere_surface
+            )
+            .is_some());
+        assert!(driver
+            .advance(
+                now + std::time::Duration::from_secs(15),
+                false,
+                false,
+                eye,
+                Some(30.0),
+                -Vec3::Z,
+                -0.15,
+                |_, _| None
+            )
+            .is_none());
         assert!(!driver.force_frames());
     }
 }

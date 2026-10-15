@@ -139,7 +139,6 @@ impl ContentList {
         self.len
     }
 
-
     /// Row `index`, made drawable.
     pub fn row(&self, index: usize) -> Option<ContentRow> {
         if index >= self.len {

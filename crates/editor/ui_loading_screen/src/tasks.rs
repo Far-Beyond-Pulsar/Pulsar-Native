@@ -28,8 +28,8 @@ pub(crate) type TaskFn = fn(&Path) -> TaskResult;
 /// Sequential loading tasks.  Each entry is `(display_label, task_fn)`.
 /// The background thread executes them in order and reports real elapsed times.
 pub(crate) const TASKS: &[(&str, TaskFn)] = &[
-    ("Pre-warming compiler cache", task_cargo_check),
     ("Verifying project structure", task_verify_project),
+    ("Indexing project files", task_index_project_files),
     ("Reading project configuration", task_read_config),
     ("Scanning workspace packages", task_scan_packages),
     ("Indexing source files", task_index_files),
@@ -64,34 +64,6 @@ pub(crate) enum LoadingEvent {
 
 // ── Task implementations ───────────────────────────────────────────────────
 
-fn task_cargo_check(project: &Path) -> TaskResult {
-    let t = Instant::now();
-    let output = std::process::Command::new("cargo")
-        .args(["check", "--quiet"])
-        .current_dir(project)
-        .output();
-    match output {
-        Ok(out) => {
-            let status = if out.status.success() { "ok" } else { "errors" };
-            let detail = format!(
-                "{status} ({} stderr)",
-                String::from_utf8_lossy(&out.stderr)
-                    .lines()
-                    .count()
-                    .saturating_sub(1)
-            );
-            TaskResult {
-                elapsed: t.elapsed(),
-                detail: Some(detail),
-            }
-        }
-        Err(e) => TaskResult {
-            elapsed: t.elapsed(),
-            detail: Some(format!("cargo not found: {e}")),
-        },
-    }
-}
-
 fn task_verify_project(project: &Path) -> TaskResult {
     let t = Instant::now();
     let exists = project.exists();
@@ -107,6 +79,28 @@ fn task_verify_project(project: &Path) -> TaskResult {
         },
         if has_src { " • src/ ✓" } else { "" },
     );
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
+    }
+}
+
+fn task_index_project_files(project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let detail = match engine_fs::open_project_file_index(project) {
+        Ok(Some(index)) => match index.query(&engine_fs::FileIndexQuery::default()) {
+            Ok(files) => format!("{} files", files.len()),
+            Err(error) => {
+                tracing::warn!(%error, project = %project.display(), "Failed to query project file index during startup");
+                "index opened; query failed".to_owned()
+            }
+        },
+        Ok(None) => "remote provider; using provider listings".to_owned(),
+        Err(error) => {
+            tracing::warn!(%error, project = %project.display(), "Failed to initialize project file index during startup");
+            "index unavailable; using filesystem listings".to_owned()
+        }
+    };
     TaskResult {
         elapsed: t.elapsed(),
         detail: Some(detail),

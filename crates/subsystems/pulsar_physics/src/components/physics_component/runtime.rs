@@ -1,4 +1,4 @@
-use engine_class_derive::{register_world_component};
+use engine_class_derive::register_world_component;
 
 use super::PhysicsComponent;
 

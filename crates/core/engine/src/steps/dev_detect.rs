@@ -1,7 +1,7 @@
 //! Dev/source detection step: must run before `set_global`.
 
-use crate::Assets;
 use crate::init::{InitContext, InitError};
+use crate::Assets;
 
 pub fn run(ctx: &mut InitContext) -> Result<(), InitError> {
     let engine_context = ctx

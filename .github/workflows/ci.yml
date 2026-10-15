@@ -1,50 +1,146 @@
 name: CI
 
+# Cost model
+#   Pull requests : the Linux lane only (fmt, clippy, guards, tests, packaging
+#                   smoke test). Draft PRs are skipped until marked ready, a
+#                   new push cancels the run it supersedes, and docs-only
+#                   changes skip CI entirely.
+#   main / nightly: additionally compile-check Windows and macOS and run the
+#                   packaging smoke test there. Trigger it by hand on any
+#                   branch with `gh workflow run CI --ref <branch> -f full=true`.
+# Branch pushes do not run CI on their own (the pull request covers them), and
+# tags are handled by release.yml.
+
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".agents/**"
+      - ".github/FUNDING.yml"
+      - "LICENSE*"
   push:
     branches:
-      - "*"
-    tags:
-      - "*"
+      - main
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".agents/**"
+      - ".github/FUNDING.yml"
+      - "LICENSE*"
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Also run the Windows and macOS lanes
+        type: boolean
+        default: true
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 env:
   RUSTFLAGS: ""
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  RUSTUP_MAX_RETRIES: "10"
 
 jobs:
-  check:
-    name: cargo check
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            run_on: macos-latest
-          - target: x86_64-linux-gnu
-            run_on: ubuntu-latest
-          - target: x86_64-windows-msvc
-            run_on: windows-latest
-    runs-on: ${{ matrix.run_on }}
+  # Fast, dependency-free gate: fails in seconds, before any compile minutes
+  # are spent.
+  fmt:
+    name: rustfmt
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The workspace manifest names members inside submodules, so cargo
+      # cannot load it without them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          cache: false
+
+      # Pulsar-Native's own crates; the submodules' code is checked by their
+      # own repositories (#1375).
+      - name: Check formatting
+        run: scripts/fmt-check.sh
+
+  # Workflow files are code: lint them so a typo fails here, not at 3am.
+  workflows:
+    name: workflow lint
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color \
+            -shellcheck= -pyflakes= \
+            .github/workflows/ci.yml .github/workflows/security.yml
+
+  # The one full build-and-test lane. Every PR gets this; nothing else is
+  # replicated per platform.
+  linux:
+    name: build, lint and test (linux)
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
+          persist-credentials: false
 
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
 
       - name: Install Linux system dependencies
-        if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             pkg-config libssl-dev libglib2.0-dev libgtk-3-dev \
             libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev \
+            libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev libudev-dev \
             clang libclang-dev \
             mesa-vulkan-drivers
 
-      - name: cargo check
-        run: cargo check --workspace --exclude pulsar_docs --all-targets
+      # clippy is a superset of `cargo check`, so it replaces it here: one
+      # compile of the workspace instead of two. The allow-list is the one the
+      # release gate has always used. The crates under crates/third-party are
+      # members only because they are path dependencies under the workspace
+      # root; they are submodules, linted by their own repositories (#1375).
+      # They are still compiled here as dependencies.
+      - name: clippy (includes cargo check)
+        run: |
+          third_party=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.manifest_path | contains("/crates/third-party/")) | "--exclude=" + .name')
+          # shellcheck disable=SC2086 # one --exclude per word
+          cargo clippy --workspace --exclude pulsar_docs $third_party --all-targets -- \
+            -A warnings \
+            -A dead_code \
+            -A clippy::too_many_arguments \
+            -A clippy::type_complexity \
+            -A clippy::match_like_matches_macro \
+            -A clippy::only_used_in_recursion \
+            -A improper_ctypes_definitions \
+            -A clippy::field_reassign_with_default \
+            -A clippy::result_large_err \
+            -A clippy::doc_overindented_list_items
 
       # The Blueprint editor is a plugin: the editor must still build, and its
       # shell must not have grown a dependency back, without it.
@@ -111,7 +207,11 @@ jobs:
           foreach ($plugin in @(
             "blueprint_editor_plugin",
             "script_editor_plugin",
-            "asset_viewer_plugin"
+            "asset_viewer_plugin",
+            "skeletal_animation_plugin",
+            "physics_plugin",
+            "ui_editor_plugin",
+            "input_plugin"
           )) {
             $node = Get-ResolvedPackage $plugin
             if ($node["features"] -notcontains "builtin") {
@@ -133,7 +233,7 @@ jobs:
           # These two are explicit root-workspace members: the built-in asset
           # viewer, and the GPUI-free Blueprint compiler and graph model tested
           # against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph")
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin", "input_plugin")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )
@@ -153,9 +253,13 @@ jobs:
           $expectedBuiltins = @(
             "asset_viewer_plugin",
             "editor_table_plugin",
+            "input_plugin",
+            "physics_plugin",
             "plugin_matter",
             "script_editor_plugin",
-            "shader_editor_plugin"
+            "shader_editor_plugin",
+            "skeletal_animation_plugin",
+            "ui_editor_plugin"
           )
           $missingBuiltins = @(
             $expectedBuiltins | Where-Object { $uiCoreDependencies -notcontains $_ }
@@ -262,30 +366,64 @@ jobs:
         shell: bash
         run: cargo check --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --features gpu --benches
 
+      # A prebuilt binary: compiling nextest from source cost minutes per run.
       - name: Install nextest
-        run: cargo nextest --version || cargo install cargo-nextest --locked
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: nextest
 
+      # Hard cap: testing never runs longer than an hour. Per-test limits live in
+      # .config/nextest.toml; this bounds the whole step.
       - name: Run tests
+        timeout-minutes: 60
         run: cargo nextest run --profile ci --all --no-fail-fast
 
-  # Packaging (#926, #889): package the smoke-test project, copy it away from
-  # the source tree, run it headless for a few frames and check that
-  # begin_play, a runtime spawn and an event handler ran, from game.pak and
-  # from loose files. Once per supported platform.
-  package-smoke:
-    name: packaging smoke test
+  # Windows and macOS: compile only, no tests. Runs on main, nightly and by
+  # hand, never per pull request: a Windows or macOS minute costs 2x or 10x a
+  # Linux minute, and a break caught on main or overnight is cheap to fix.
+  cross-platform:
+    name: cargo check (${{ matrix.target }})
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.full) }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - run_on: ubuntu-latest
-          - run_on: macos-latest
-          - run_on: windows-latest
+          - target: aarch64-apple-darwin
+            run_on: macos-latest
+          - target: x86_64-windows-msvc
+            run_on: windows-latest
     runs-on: ${{ matrix.run_on }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
+          persist-credentials: false
+
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+
+      - name: cargo check
+        run: cargo check --workspace --exclude pulsar_docs --all-targets
+
+  # Packaging (#926, #889): package the smoke-test project, copy it away from
+  # the source tree, run it headless for a few frames and check that
+  # begin_play, a runtime spawn and an event handler ran, from game.pak and
+  # from loose files. Linux on every pull request; every supported platform on
+  # main, nightly and by hand.
+  package-smoke:
+    name: packaging smoke test (${{ matrix.run_on }})
+    if: ${{ github.event.pull_request.draft != true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        run_on: ${{ fromJSON((github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.full)) && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
+    runs-on: ${{ matrix.run_on }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          persist-credentials: false
 
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
 
@@ -296,7 +434,7 @@ jobs:
           sudo apt-get install -y \
             pkg-config libssl-dev libglib2.0-dev libgtk-3-dev \
             libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev \
+            libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev libudev-dev \
             clang libclang-dev \
             mesa-vulkan-drivers
 
@@ -339,11 +477,13 @@ jobs:
   plugin-pins:
     name: plugin pins are ancestors of HEAD
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check plugin pins
         run: scripts/plugin-pins.sh check
@@ -355,11 +495,14 @@ jobs:
   submodule-pins:
     name: submodule pins are on upstream main
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # The script reads the pins from the HEAD tree and fetches each
       # upstream's commit graph itself, so the submodules need not be checked
       # out (or deep).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Check submodule pins
         run: scripts/submodule-pins.sh check

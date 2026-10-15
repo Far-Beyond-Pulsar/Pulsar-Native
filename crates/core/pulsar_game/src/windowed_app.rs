@@ -14,7 +14,7 @@ use std::time::Instant;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, ElementState, WindowEvent},
-    event_loop::ActiveEventLoop,
+    event_loop::{ActiveEventLoop, ControlFlow},
     window::{CursorGrabMode, Window, WindowId},
 };
 
@@ -40,6 +40,29 @@ struct GameWindow {
     renderer: Renderer,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
+    /// Whether the OS says this window has input focus.
+    focused: bool,
+    /// Earliest time the next frame may be requested. Holds back windows that
+    /// cannot present (occluded, minimised) and, with several game copies
+    /// running, the ones nobody is looking at.
+    next_redraw: Instant,
+    /// Built with the editor's overlays (kept to rebuild it on a new device).
+    editor_mode: bool,
+    /// The shared world, for the camera lens's overscan.
+    scene_store: engine_backend::scene::SharedScene,
+}
+
+/// Frame interval of an unfocused window when several game copies are running.
+const BACKGROUND_FRAME: std::time::Duration = std::time::Duration::from_millis(66);
+/// Retry interval of a window that could not present a frame.
+const BLOCKED_FRAME: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Whether this process is one of several game copies launched together.
+fn running_beside_copies() -> bool {
+    std::env::var("PULSAR_INSTANCE_COUNT")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .is_some_and(|n| n > 1)
 }
 
 impl GameWindow {
@@ -51,7 +74,7 @@ impl GameWindow {
         adapter: &wgpu::Adapter,
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
-        desc: &WindowDescriptor,
+        editor_mode: bool,
         scene_store: &engine_backend::scene::SharedScene,
     ) -> Self {
         let surface = instance
@@ -101,7 +124,7 @@ impl GameWindow {
                 surface_config.height,
                 surface_format,
             ),
-            desc.editor_mode,
+            editor_mode,
             crate::game_renderer::DeviceOwner::Game,
         );
 
@@ -114,6 +137,10 @@ impl GameWindow {
             queue,
             renderer,
             freecam: FreeCam::default(),
+            focused: true,
+            next_redraw: Instant::now(),
+            editor_mode,
+            scene_store: scene_store.clone(),
         }
     }
 
@@ -164,6 +191,14 @@ impl GameWindow {
             cam.near,
             cam.far,
         );
+        // A camera lens that maps past the frame needs a wider render, which
+        // the lens crops back (the editor viewport does the same).
+        let overscan = helio_component::components::camera_lens_view_overscan(
+            &self.scene_store.read().world,
+            helio_cam.view_id,
+            aspect,
+        );
+        let helio_cam = helio_cam.with_overscan(overscan);
 
         // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
         // `CurrentSurfaceTexture` enum (see wgpui's
@@ -186,14 +221,18 @@ impl GameWindow {
                 texture
             }
             wgpu::CurrentSurfaceTexture::Timeout => {
-                tracing::warn!(
+                tracing::debug!(
                     window = self.handle.id(),
                     "Skipping frame after surface acquisition timeout"
                 );
+                self.next_redraw = Instant::now() + BLOCKED_FRAME;
                 return;
             }
             wgpu::CurrentSurfaceTexture::Occluded => {
-                tracing::warn!(window = self.handle.id(), "Skipping frame: window occluded");
+                // Nothing can be shown: don't spin re-requesting frames (or
+                // log every one) until the window is visible again.
+                tracing::debug!(window = self.handle.id(), "Skipping frame: window occluded");
+                self.next_redraw = Instant::now() + BLOCKED_FRAME;
                 return;
             }
             wgpu::CurrentSurfaceTexture::Validation => {
@@ -223,6 +262,8 @@ struct GpuContext {
     adapter: Option<wgpu::Adapter>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
+    /// Whether `device` was lost (`PulsarApp::recover_lost_device`).
+    device_loss: Option<engine_backend::services::device_loss::DeviceLoss>,
     power_preference: wgpu::PowerPreference,
     hardware_ray_queries: bool,
 }
@@ -266,6 +307,7 @@ impl GpuContext {
             adapter: None,
             device: None,
             queue: None,
+            device_loss: None,
             power_preference,
             hardware_ray_queries,
         }
@@ -319,6 +361,9 @@ impl GpuContext {
             "GPU initialised"
         );
 
+        self.device_loss = Some(engine_backend::services::device_loss::DeviceLoss::watch(
+            &device,
+        ));
         self.adapter = Some(adapter);
         self.device = Some(Arc::new(device));
         self.queue = Some(Arc::new(queue));
@@ -361,10 +406,14 @@ pub struct PulsarApp {
     focused_window: Option<WindowHandle>,
     /// Whether the cursor is currently captured for mouse-look.
     cursor_captured: bool,
+    /// Where the cursor last was, in window pixels, for motion deltas.
+    last_cursor: Option<(f64, f64)>,
     /// Time of last `about_to_wait` — used to compute per-frame dt for freecam.
     last_frame: Instant,
     /// When the last frame was drawn, for the profiler's frame markers.
     last_redraw: Option<Instant>,
+    /// Several copies of the game are running; unfocused windows draw slowly.
+    throttle_background: bool,
 }
 
 impl PulsarApp {
@@ -393,8 +442,10 @@ impl PulsarApp {
             events,
             focused_window: None,
             cursor_captured: false,
+            last_cursor: None,
             last_frame: Instant::now(),
             last_redraw: None,
+            throttle_background: running_beside_copies(),
         }
     }
 
@@ -425,6 +476,60 @@ impl PulsarApp {
             }
         }
         self.cursor_captured = false;
+    }
+
+    // ── Device loss ───────────────────────────────────────────────────────────
+
+    /// After the GPU device is lost (a driver reset, a removed GPU): make a
+    /// new one and rebuild every window's surface and renderer on it. The
+    /// shared world's GPU copy moves to the new device as the first renderer
+    /// is built (`ensure_gpu_mirror`), uploading the scene again from the
+    /// data SceneDB holds. Each window keeps its camera and focus.
+    fn recover_lost_device(&mut self) {
+        tracing::warn!("GPU device lost; recreating it and rebuilding the game's windows");
+        let old: Vec<GameWindow> = self.windows.drain().map(|(_, window)| window).collect();
+        let Some(first) = old.first() else {
+            self.gpu.device = None;
+            self.gpu.queue = None;
+            self.gpu.adapter = None;
+            self.gpu.device_loss = None;
+            return;
+        };
+        let probe_window = first.window.clone();
+        // Surfaces and renderers on the dead device go first.
+        let kept: Vec<(WindowHandle, Arc<Window>, FreeCam, bool, bool)> = old
+            .into_iter()
+            .map(|gw| (gw.handle, gw.window, gw.freecam, gw.focused, gw.editor_mode))
+            .collect();
+        self.gpu.device = None;
+        self.gpu.queue = None;
+        self.gpu.adapter = None;
+        self.gpu.device_loss = None;
+        let probe = match self.gpu.instance.create_surface(probe_window) {
+            Ok(surface) => surface,
+            Err(error) => {
+                tracing::error!("Could not make a surface to find a new GPU: {error}");
+                return;
+            }
+        };
+        self.gpu.ensure_device(&probe);
+        drop(probe);
+        for (handle, window, freecam, focused, editor_mode) in kept {
+            let mut game_window = GameWindow::new(
+                handle,
+                window,
+                &self.gpu.instance,
+                self.gpu.adapter(),
+                self.gpu.device(),
+                self.gpu.queue(),
+                editor_mode,
+                &self.scene_store,
+            );
+            game_window.freecam = freecam;
+            game_window.focused = focused;
+            game_window.window.request_redraw();
+            self.windows.insert(handle, game_window);
+        }
     }
 
     // ── Window lifecycle ──────────────────────────────────────────────────────
@@ -474,7 +579,7 @@ impl PulsarApp {
             self.gpu.adapter(),
             self.gpu.device(),
             self.gpu.queue(),
-            &desc,
+            desc.editor_mode,
             &self.scene_store,
         );
 
@@ -603,6 +708,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         // when the cursor is captured.
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             if self.cursor_captured {
+                let (x, y) = self.last_cursor.unwrap_or((0.0, 0.0));
+                self.events.publish(
+                    pulsar_events::gamma::Channel::Global,
+                    pulsar_events::builtin::MouseMoved { x, y, dx, dy },
+                );
                 if let Some(handle) = self.focused_window {
                     if let Some(gw) = self.windows.get_mut(&handle) {
                         gw.freecam.on_mouse_delta(dx, dy);
@@ -642,6 +752,10 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
             // ── Focus ─────────────────────────────────────────────────────────
             WindowEvent::Focused(focused) => {
+                if let Some(gw) = self.windows.get_mut(&handle) {
+                    gw.focused = focused;
+                    gw.next_redraw = Instant::now();
+                }
                 if focused {
                     self.focused_window = Some(handle);
                     // Re-capture when regaining focus (if we were captured before).
@@ -686,6 +800,35 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.freecam.on_key(&key_event.physical_key, pressed);
                 }
+            }
+
+            // ── Cursor and wheel — published as input events. While the
+            //    cursor is captured the raw motion in `device_event` is used
+            //    instead, so the two never double up.
+            WindowEvent::CursorMoved { position, .. } => {
+                let (x, y) = (position.x, position.y);
+                let (dx, dy) = self
+                    .last_cursor
+                    .map_or((0.0, 0.0), |(lx, ly)| (x - lx, y - ly));
+                self.last_cursor = Some((x, y));
+                if !self.cursor_captured && (dx != 0.0 || dy != 0.0) {
+                    self.events.publish(
+                        pulsar_events::gamma::Channel::Global,
+                        pulsar_events::builtin::MouseMoved { x, y, dx, dy },
+                    );
+                }
+            }
+
+            WindowEvent::MouseWheel { delta, .. } => {
+                let (x, y) = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(x, y) => (f64::from(x), f64::from(y)),
+                    // About 40 pixels is a notch on a precision touchpad.
+                    winit::event::MouseScrollDelta::PixelDelta(p) => (p.x / 40.0, p.y / 40.0),
+                };
+                self.events.publish(
+                    pulsar_events::gamma::Channel::Global,
+                    pulsar_events::builtin::MouseWheel { x, y },
+                );
             }
 
             // ── Mouse buttons — published as input events; a left click
@@ -741,8 +884,12 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                     Some(cam) => Some(cam),
                     None => select_world_camera(&self.scene_store.read()),
                 };
+                let background = self.throttle_background;
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(ecs_camera);
+                    if background && !gw.focused {
+                        gw.next_redraw = gw.next_redraw.max(Instant::now() + BACKGROUND_FRAME);
+                    }
                 }
             }
 
@@ -750,16 +897,35 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self
+            .gpu
+            .device_loss
+            .as_ref()
+            .is_some_and(engine_backend::services::device_loss::DeviceLoss::is_lost)
+        {
+            self.recover_lost_device();
+        }
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
 
-        // Advance every window's freecam and request a redraw.
+        // Advance every window's freecam and request a redraw for the ones
+        // that are due; sleep until the earliest of the rest instead of
+        // spinning.
+        let mut wake: Option<Instant> = None;
         for gw in self.windows.values_mut() {
             gw.freecam.update(dt);
-            gw.window.request_redraw();
+            if now >= gw.next_redraw {
+                gw.window.request_redraw();
+            } else {
+                wake = Some(wake.map_or(gw.next_redraw, |w| w.min(gw.next_redraw)));
+            }
         }
+        event_loop.set_control_flow(match wake {
+            Some(at) => ControlFlow::WaitUntil(at),
+            None => ControlFlow::Wait,
+        });
     }
 }
 

@@ -103,6 +103,27 @@ pub struct MouseButtonUp {
     pub button: i64,
 }
 
+/// The mouse moved. `x` and `y` are the cursor in window pixels; `dx` and
+/// `dy` are how far it moved since the last report (raw motion while the
+/// cursor is captured).
+#[pulsar_event(dynamic, name = "MouseMoved", crate = gamma)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MouseMoved {
+    pub x: f64,
+    pub y: f64,
+    pub dx: f64,
+    pub dy: f64,
+}
+
+/// The mouse wheel turned. Positive `y` scrolls up (away from the user),
+/// positive `x` scrolls right; one notch of a wheel is 1.0.
+#[pulsar_event(dynamic, name = "MouseWheel", crate = gamma)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MouseWheel {
+    pub x: f64,
+    pub y: f64,
+}
+
 /// `entity` hit `other` (blocking contact). Published on `entity`'s channel.
 #[pulsar_event(dynamic, name = "Hit", crate = gamma)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -166,6 +187,8 @@ pub fn builtin_events() -> Vec<(EventDescriptor, EventCategory)> {
         d::<KeyUp>(C::Input),
         d::<MouseButtonDown>(C::Input),
         d::<MouseButtonUp>(C::Input),
+        d::<MouseMoved>(C::Input),
+        d::<MouseWheel>(C::Input),
         d::<Hit>(C::Physics),
         d::<BeginOverlap>(C::Physics),
         d::<EndOverlap>(C::Physics),
@@ -182,7 +205,7 @@ mod tests {
     #[test]
     fn descriptors_use_script_friendly_fields() {
         let events = builtin_events();
-        assert_eq!(events.len(), 14);
+        assert_eq!(events.len(), 16);
         let hit = &events.iter().find(|(d, _)| d.name == "Hit").unwrap().0;
         assert_eq!(hit.id, Hit::stable_type_id());
         assert_eq!(

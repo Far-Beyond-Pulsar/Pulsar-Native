@@ -293,21 +293,6 @@ impl FileManagerDrawer {
     pub fn update_file_types(&mut self, file_types: Vec<plugin_editor_api::FileTypeDefinition>) {
         self.registered_file_types = file_types;
     }
-
-    pub(crate) fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
-        std::fs::create_dir_all(dst)?;
-        for entry in std::fs::read_dir(src)? {
-            let e = entry?;
-            let sp = e.path();
-            let dp = dst.join(e.file_name());
-            if sp.is_dir() {
-                Self::copy_dir_recursive(&sp, &dp)?;
-            } else {
-                std::fs::copy(&sp, &dp)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 impl EventEmitter<FileSelected> for FileManagerDrawer {}

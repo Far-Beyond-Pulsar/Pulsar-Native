@@ -59,6 +59,10 @@ pub fn init(cx: &mut gpui::App) {
 
     root::register_window_wrappers(cx);
 
+    // Secondary windows made by dragging a tab out of a dock area wear the
+    // engine title bar.
+    ui_common::popout_decorations::install(cx);
+
     // The shader editor is linked as a built-in provider, so its dynamic
     // plugin `on_load` hook is never run. Register its format renderer before
     // the file drawer can request material previews.
@@ -80,6 +84,11 @@ pub fn init(cx: &mut gpui::App) {
         gpui::KeyBinding::new::<GoBack>("alt-left", GoBack {}, None),
         gpui::KeyBinding::new::<GoForward>("alt-right", GoForward {}, None),
     ]);
+
+    // Undo/Redo for whichever editor has focus, each on its own document's
+    // history (Pulsar-Native#931). Text fields keep their own, more
+    // specific bindings.
+    plugin_editor_api::bind_undo_keys(cx);
 
     // File-browser shortcuts (Ctrl/Cmd + C/X/V/A), scoped to the file manager focus.
     ui_file_manager::init(cx);

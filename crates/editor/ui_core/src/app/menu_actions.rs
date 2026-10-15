@@ -1,12 +1,16 @@
 //! Handlers for the global app-menu actions (View / Go / Search / Project /
-//! Tools).
+//! Tools), and the Assets actions editors' own menus dispatch.
 //!
 //! The menus themselves live in `ui_common::menu`, which cannot see the app;
 //! each action is handled here by calling the same methods the keyboard
 //! shortcuts and toolbar already use, so a menu entry is never a second
 //! implementation.
 
-use gpui::{Context, InteractiveElement, Window, px};
+use gpui::{px, Context, InteractiveElement, Window};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
+use std::path::PathBuf;
+use std::process::Command;
 use ui::{ActiveTheme as _, Theme};
 use ui_common::menu;
 
@@ -83,6 +87,13 @@ impl PulsarApp {
                     cx.reveal_path(root);
                 }
             }))
+            // Assets (dispatched from editors' own Assets menus)
+            .on_action(cx.listener(|this, action: &menu::NewAsset, window, cx| {
+                this.new_asset(&action.file_type_id, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &menu::ImportAssets, window, cx| {
+                this.import_assets(window, cx)
+            }))
             // Tools
             .on_action(cx.listener(|this, _: &menu::ToggleProfiler, window, cx| {
                 this.toggle_flamegraph(window, cx)
@@ -96,6 +107,65 @@ impl PulsarApp {
             .on_action(cx.listener(|this, _: &menu::ToggleNetwork, window, cx| {
                 this.toggle_multiplayer(window, cx)
             }))
+            .on_action(
+                cx.listener(|this, _: &menu::DevOpenEngineSource, window, cx| {
+                    let Some(source_root) = source_build_root() else {
+                        return;
+                    };
+                    let engine_entry = source_root.join("crates/core/engine/src/main.rs");
+                    if engine_entry.is_file() {
+                        this.open_path_with_project_root(engine_entry, source_root, window, cx);
+                    } else {
+                        tracing::error!(?source_root, "Engine source entry point was not found");
+                    }
+                }),
+            )
+            .on_action(cx.listener(|_, _: &menu::DevBootstrapEngine, _, cx| {
+                let Some(source_root) = source_build_root() else {
+                    return;
+                };
+                if let Err(error) = start_engine_bootstrap_sidecar(&source_root) {
+                    tracing::error!(%error, "Could not start engine bootstrap sidecar");
+                    return;
+                }
+                cx.quit();
+            }))
+    }
+
+    /// Create an asset of a registered file type in the file manager's
+    /// folder, showing the file manager so the new file is in view.
+    fn new_asset(&mut self, file_type_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let created = self.state.file_manager_drawer.update(cx, |drawer, cx| {
+            drawer.create_asset_of_type(file_type_id, cx)
+        });
+        if created {
+            self.open_drawer(window, cx);
+        } else {
+            tracing::warn!(file_type_id, "No registered file type to create");
+        }
+    }
+
+    /// Pick files and copy them into the file manager's folder; source
+    /// models among them are offered for import.
+    fn import_assets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut dialog = rfd::AsyncFileDialog::new().set_title("Import");
+        if let Some(root) = self.state.project_path.as_deref() {
+            dialog = dialog.set_directory(root);
+        }
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(handles) = dialog.pick_files().await else {
+                return;
+            };
+            let paths: Vec<PathBuf> = handles.iter().map(|h| h.path().to_path_buf()).collect();
+            this.update_in(cx, |this, window, cx| {
+                this.state
+                    .file_manager_drawer
+                    .update(cx, |drawer, cx| drawer.import_files(&paths, window, cx));
+                this.open_drawer(window, cx);
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Change the UI font size by `delta` px, within sensible limits.
@@ -111,5 +181,49 @@ impl PulsarApp {
             tracing::warn!(%error, "Could not persist appearance font size");
         }
         window.refresh();
+    }
+}
+
+fn source_build_root() -> Option<PathBuf> {
+    engine_state::EngineContext::global().and_then(|ctx| {
+        let dev_context = ctx.store.get_or_init::<engine_state::DevContext>();
+        let dev = dev_context.read();
+        dev.is_source_build
+            .then(|| dev.source_path.clone())
+            .flatten()
+    })
+}
+
+fn start_engine_bootstrap_sidecar(workspace: &std::path::Path) -> std::io::Result<()> {
+    const SIDECAR_ARG: &str = "--pulsar-bootstrap-sidecar-run";
+
+    let executable = std::env::current_exe()?;
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let sidecar = std::env::temp_dir().join(format!(
+        "pulsar-bootstrap-{}-{timestamp}{}",
+        std::process::id(),
+        std::env::consts::EXE_SUFFIX
+    ));
+    std::fs::copy(&executable, &sidecar)?;
+    let working_directory = std::env::current_dir().unwrap_or_else(|_| workspace.to_path_buf());
+    let mut command = Command::new(&sidecar);
+    command
+        .arg(SIDECAR_ARG)
+        .arg(std::process::id().to_string())
+        .arg(workspace)
+        .arg(&executable)
+        .arg(working_directory);
+    command.args(std::env::args_os().skip(1));
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    match command.spawn() {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = std::fs::remove_file(sidecar);
+            Err(error)
+        }
     }
 }

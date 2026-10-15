@@ -4,10 +4,33 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
+
 use helio_component::mesh_cache::{self, OptionsSchema};
+
+use crate::db::ImportOutput;
 
 /// Import option values by field key, as the configurator produces them.
 pub type OptionValues = HashMap<String, Box<dyn Any + Send>>;
+
+/// What an earlier import of the same source wrote, so a re-import can give
+/// each file the identity it had.
+pub struct Previous<'a> {
+    pub project_root: &'a Path,
+    pub outputs: &'a [ImportOutput],
+}
+
+/// What an import wrote.
+#[derive(Debug)]
+pub struct Imported {
+    /// The primary native asset: what [`crate::ImportRecord::asset`] records.
+    /// The path asked for, unless the source turned out to need another kind
+    /// of asset (a rigged model's is its skeletal mesh).
+    pub asset: PathBuf,
+    /// The other files written, or still belonging to this source. Empty for a
+    /// plain mesh.
+    pub outputs: Vec<ImportOutput>,
+}
 
 pub trait Importer: Send + Sync {
     /// Stable id stored in [`crate::ImportRecord::importer`].
@@ -18,10 +41,19 @@ pub trait Importer: Send + Sync {
     fn options_schema(&self, ext: &str) -> Option<OptionsSchema>;
     /// Where the native asset for `source` goes, in directory `dir`.
     fn asset_path(&self, dir: &Path, source: &Path) -> PathBuf;
-    /// Options stored by the previous import of `asset` (else schema defaults).
-    fn stored_options(&self, asset: &Path, ext: &str) -> OptionValues;
+    /// Decode saved options (falling back to legacy storage or schema defaults).
+    fn stored_options(&self, asset: &Path, ext: &str, saved: Option<&Value>) -> OptionValues;
+    /// Serialize runtime options for the import database.
+    fn serialize_options(&self, options: &OptionValues) -> Value;
     /// Convert `source` into the native asset at `asset`, overwriting it.
-    fn import(&self, source: &Path, asset: &Path, options: &OptionValues) -> Result<(), String>;
+    /// `previous` is what the last import of this source wrote, if any.
+    fn import(
+        &self,
+        source: &Path,
+        asset: &Path,
+        options: &OptionValues,
+        previous: &Previous,
+    ) -> Result<Imported, String>;
 }
 
 struct MeshImporter;
@@ -39,11 +71,31 @@ impl Importer for MeshImporter {
     fn asset_path(&self, dir: &Path, source: &Path) -> PathBuf {
         mesh_cache::native_mesh_path(dir, source)
     }
-    fn stored_options(&self, asset: &Path, ext: &str) -> OptionValues {
-        mesh_cache::resolve_options(asset, ext)
+    fn stored_options(&self, asset: &Path, ext: &str, saved: Option<&Value>) -> OptionValues {
+        saved
+            .and_then(mesh_cache::option_values_from_json)
+            .unwrap_or_else(|| mesh_cache::resolve_options(asset, ext))
     }
-    fn import(&self, source: &Path, asset: &Path, options: &OptionValues) -> Result<(), String> {
-        mesh_cache::import_model_to_native(source, asset, options).map(|_| ())
+    fn serialize_options(&self, options: &OptionValues) -> Value {
+        mesh_cache::option_values_to_json(options)
+    }
+    fn import(
+        &self,
+        source: &Path,
+        asset: &Path,
+        options: &OptionValues,
+        previous: &Previous,
+    ) -> Result<Imported, String> {
+        let mut scene = mesh_cache::load_model_scene(source, options)?;
+        // A rigged model becomes a linked skeleton, skeletal mesh and
+        // animations; anything else is the static mesh it always was.
+        match scene.rig.take() {
+            Some(rig) => crate::rig::import_rig(&rig, asset, previous),
+            None => mesh_cache::write_static_mesh(scene, asset).map(|asset| Imported {
+                asset,
+                outputs: Vec::new(),
+            }),
+        }
     }
 }
 

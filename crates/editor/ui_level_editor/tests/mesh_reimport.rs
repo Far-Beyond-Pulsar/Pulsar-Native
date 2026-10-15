@@ -63,7 +63,11 @@ fn loaded_vertices(path: &str) -> usize {
     let entity = world.spawn();
     world.insert(entity, StaticMeshComponent::for_mesh_asset(path));
     assert!(world.resolve_assets_blocking(std::time::Duration::from_secs(30)));
-    world.get::<StaticMeshComponent>(entity).unwrap().vertices.len()
+    world
+        .get::<StaticMeshComponent>(entity)
+        .unwrap()
+        .vertices
+        .len()
 }
 
 fn vertices(state: &LevelEditorState, id: &str) -> usize {
@@ -101,7 +105,7 @@ fn a_reimported_mesh_reloads_every_mesh_naming_it() {
         )
     };
     resolve(&state.read());
-    let _subscription = asset_updates::subscribe_mesh_updates(state.clone());
+    let _subscription = asset_updates::subscribe_asset_reloads(state.clone());
 
     // The asset is rewritten on disk (a re-import), then announced.
     std::fs::copy(primitive("SM_Sphere.fbx"), meshes.join("prop.fbx")).unwrap();

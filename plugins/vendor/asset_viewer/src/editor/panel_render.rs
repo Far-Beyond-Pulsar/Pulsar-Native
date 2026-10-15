@@ -31,6 +31,8 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) uv0: vec2<f32>,
     @location(3) uv1: vec2<f32>,
+    @location(4) tangent: vec3<f32>,
+    @location(5) bitangent_sign: f32,
     // DENSITY_VERTEX_INPUT
 };
 struct VertexOutput {
@@ -38,15 +40,28 @@ struct VertexOutput {
     @location(0) world_normal: vec3<f32>,
     @location(1) uv0: vec2<f32>,
     @location(2) uv1: vec2<f32>,
+    @location(3) tangent: vec3<f32>,
+    @location(4) bitangent_sign: f32,
     // DENSITY_VERTEX_OUTPUT
 };
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.position = uniforms.view_proj * vec4(input.position, 1.0);
+    var position = input.position;
+    if uniforms.render_mode.x >= 10u && uniforms.render_mode.x <= 12u && input.bitangent_sign > 0.5 {
+        var direction = input.normal;
+        if uniforms.render_mode.x == 11u { direction = input.tangent; }
+        if uniforms.render_mode.x == 12u {
+            direction = cross(normalize(input.normal), normalize(input.tangent)) * input.uv1.y;
+        }
+        position += normalize(direction) * uniforms.base_color.w;
+    }
+    out.position = uniforms.view_proj * vec4(position, 1.0);
     out.world_normal = input.normal;
     out.uv0 = input.uv0;
     out.uv1 = input.uv1;
+    out.tangent = input.tangent;
+    out.bitangent_sign = input.bitangent_sign;
     // DENSITY_VERTEX_TRANSFER
     return out;
 }
@@ -65,9 +80,23 @@ fn encode(c: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let world_normal = input.world_normal;
-    // Render modes 3-5 are diagnostic views and ignore materials.
+    // Diagnostic views ignore materials.
+    if uniforms.render_mode.x == 10u { return vec4(0.25, 0.55, 1.0, 1.0); }
+    if uniforms.render_mode.x == 11u { return vec4(1.0, 0.28, 0.18, 1.0); }
+    if uniforms.render_mode.x == 12u { return vec4(0.2, 1.0, 0.35, 1.0); }
+    if uniforms.render_mode.x == 13u { return vec4(1.0, 0.78, 0.2, 1.0); }
     if uniforms.render_mode.x == 3u {
         return vec4(normalize(world_normal) * 0.5 + vec3(0.5), 1.0);
+    }
+    if uniforms.render_mode.x == 7u {
+        return vec4(normalize(world_normal) * 0.5 + vec3(0.5), 1.0);
+    }
+    if uniforms.render_mode.x == 8u {
+        return vec4(normalize(input.tangent) * 0.5 + vec3(0.5), 1.0);
+    }
+    if uniforms.render_mode.x == 9u {
+        let bitangent = cross(normalize(world_normal), normalize(input.tangent)) * input.bitangent_sign;
+        return vec4(normalize(bitangent) * 0.5 + vec3(0.5), 1.0);
     }
     if uniforms.render_mode.x == 4u {
         return textureSample(uv_grid, uv_grid_sampler, input.uv0);
@@ -142,10 +171,10 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// Floats per vertex: position, normal, UV channel 0, UV channel 1.
-pub(crate) const VERTEX_FLOATS: usize = 10;
+/// Floats per vertex: position, normal, two UV channels, tangent, handedness.
+pub(crate) const VERTEX_FLOATS: usize = 14;
 
-const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
+const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 6] = [
     wgpu::VertexAttribute {
         format: wgpu::VertexFormat::Float32x3,
         offset: 0,
@@ -166,11 +195,21 @@ const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
         offset: 32,
         shader_location: 3,
     },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x3,
+        offset: 40,
+        shader_location: 4,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32,
+        offset: 52,
+        shader_location: 5,
+    },
 ];
 const DENSITY_ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
     format: wgpu::VertexFormat::Float32,
     offset: 0,
-    shader_location: 4,
+    shader_location: 6,
 }];
 
 /// Bind group 1 of the mesh pipeline: the texture the UV modes sample and its
@@ -217,8 +256,8 @@ fn density_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
 
 fn density_shader_source() -> String {
     MESH_VERTEX_SRC
-        .replace("// DENSITY_VERTEX_INPUT", "@location(4) density: f32,")
-        .replace("// DENSITY_VERTEX_OUTPUT", "@location(3) density: f32,")
+        .replace("// DENSITY_VERTEX_INPUT", "@location(6) density: f32,")
+        .replace("// DENSITY_VERTEX_OUTPUT", "@location(5) density: f32,")
         .replace("// DENSITY_VERTEX_TRANSFER", "out.density = input.density;")
         .replace(
             "// DENSITY_FRAGMENT",
@@ -276,7 +315,10 @@ fn local_vertex_density(
 
     let vertex_count = positions.len();
     if vertex_count == 0 {
-        return Some(VertexDensityResult { values: Vec::new(), band_ranges: [(0.0, 0.0); 7] });
+        return Some(VertexDensityResult {
+            values: Vec::new(),
+            band_ranges: [(0.0, 0.0); 7],
+        });
     }
 
     let mut dual_area = vec![0.0f32; vertex_count];
@@ -371,7 +413,10 @@ fn local_vertex_density(
         .unwrap_or(0.0);
     if positive_floor == 0.0 {
         progress.store(1000, Ordering::Relaxed);
-        return Some(VertexDensityResult { values: vec![0.0; vertex_count], band_ranges: [(0.0, 0.0); 7] });
+        return Some(VertexDensityResult {
+            values: vec![0.0; vertex_count],
+            band_ranges: [(0.0, 0.0); 7],
+        });
     }
     for value in &mut density {
         if *value <= 0.0 || !value.is_finite() {
@@ -400,10 +445,16 @@ fn local_vertex_density(
         .collect();
     let band_ranges = std::array::from_fn(|band| {
         let density_at = |t: f32| (log_low + log_span * t).exp();
-        (density_at(band as f32 / 7.0), density_at((band + 1) as f32 / 7.0))
+        (
+            density_at(band as f32 / 7.0),
+            density_at((band + 1) as f32 / 7.0),
+        )
     });
     progress.store(1000, Ordering::Relaxed);
-    Some(VertexDensityResult { values: normalized, band_ranges })
+    Some(VertexDensityResult {
+        values: normalized,
+        band_ranges,
+    })
 }
 
 /// The native `.mesh` a project source (an FBX, OBJ, …) is linked to by an
@@ -613,7 +664,61 @@ fn create_mesh_pipeline_with_density_stream(
 }
 
 impl AssetViewerPanel {
+    /// Drop everything made on the GPU device, after it was lost (a driver
+    /// reset, a removed GPU). [`Self::init_surface`] makes it all again on
+    /// the window's new device.
+    fn drop_gpu_state(&mut self) {
+        self.device = None;
+        self.queue = None;
+        self.surface_config = None;
+        self.surface_handle = None;
+        self.wire_index_buffer = None;
+        self.wire_pipeline = None;
+        self.diagnostic_vertex_buffer = None;
+        self.diagnostic_index_buffer = None;
+        self.uv_layout_vertex_buffer = None;
+        self.depth_texture = None;
+        self.depth_view = None;
+        self.mesh_vertex_buffer = None;
+        self.mesh_index_buffer = None;
+        self.mesh_pipeline = None;
+        self.density_pipeline = None;
+        self.density_vertex_buffer = None;
+        self.mesh_bind_group = None;
+        self.uv_grid_texture = None;
+        self.uv_grid_view = None;
+        self.uv_grid_sampler = None;
+        self.uv_grid_bind_group = None;
+        self.uv_grid_bgl = None;
+        self.mesh_uniform_buffer = None;
+        self.quad_pipeline = None;
+        self.quad_bind_group_layout = None;
+        self.quad_bind_group = None;
+        self.quad_texture = None;
+        self.quad_sampler = None;
+        self.quad_vertex_buffer = None;
+        self.checker_pipeline = None;
+        self.checker_bind_group_layout = None;
+        self.checker_bind_group = None;
+        self.checker_uniform_buffer = None;
+        self.mesh_bgl = None;
+        self.empty_bind_group = None;
+        self.globals_buffer = None;
+        self.globals_layout = None;
+        self.globals_bind_group = None;
+        self.graph_draws.clear();
+        self.needs_rebuild = true;
+    }
+
     pub(crate) fn init_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+        if self
+            .surface_handle
+            .as_ref()
+            .is_some_and(gpui::WgpuSurfaceHandle::is_device_lost)
+        {
+            tracing::warn!("Asset viewer: GPU device lost; rebuilding on the new device");
+            self.drop_gpu_state();
+        }
         if self.surface_handle.is_some() {
             return;
         }
@@ -622,8 +727,11 @@ impl AssetViewerPanel {
         let width = (size.width.to_f64() as u32).max(1);
         let height = (size.height.to_f64() as u32).max(1);
 
-        let Some(surface) =
-            window.create_wgpu_surface(width, height, wgpu::TextureFormat::Bgra8Unorm)
+        // Until the window has a new device after a loss, a new surface is on
+        // the lost one too; the window renders every view again once it has one.
+        let Some(surface) = window
+            .create_wgpu_surface(width, height, wgpu::TextureFormat::Bgra8Unorm)
+            .filter(|surface| !surface.is_device_lost())
         else {
             return;
         };
@@ -1176,6 +1284,8 @@ impl AssetViewerPanel {
             verts.extend(unpack(v.normal));
             verts.extend(v.tex_coords0);
             verts.extend(v.tex_coords1);
+            verts.extend(unpack(v.tangent));
+            verts.push(v.bitangent_sign);
         }
 
         let triangles = (asset.geometry.indices.len() / 3) as u32;
@@ -1233,7 +1343,9 @@ impl AssetViewerPanel {
             self.load_native_mesh(device, queue, &asset);
             self.scene_stats.generator = format!(
                 "Pulsar native mesh, imported from {}",
-                path.file_name().and_then(|n| n.to_str()).unwrap_or_default()
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
             );
             return;
         }
@@ -1382,7 +1494,7 @@ impl AssetViewerPanel {
             verts.push(mv.ny);
             verts.push(mv.nz);
             // FBX preview carries no UV layer through this path.
-            verts.extend([0.0; 4]);
+            verts.extend([0.0; 8]);
         }
 
         // Build per-mesh properties and scene stats
@@ -1478,6 +1590,20 @@ impl AssetViewerPanel {
         indices: &[u32],
     ) {
         let vertex_count = verts.len() / VERTEX_FLOATS;
+        let mut diagnostic_verts = Vec::with_capacity(verts.len() * 2);
+        let mut diagnostic_indices = Vec::with_capacity(vertex_count * 2);
+        for (index, vertex) in verts.chunks_exact(VERTEX_FLOATS).enumerate() {
+            let first = (index * 2) as u32;
+            for endpoint in [false, true] {
+                let mut line_vertex = vertex.to_vec();
+                // Preserve handedness in UV1.y; this buffer is used only by
+                // the line modes, where UV1 itself is never sampled.
+                line_vertex[9] = vertex[13];
+                line_vertex[13] = if endpoint { 1.0 } else { 0.0 };
+                diagnostic_verts.extend(line_vertex);
+            }
+            diagnostic_indices.extend([first, first + 1]);
+        }
         let wire_indices: Vec<u32> = indices
             .chunks_exact(3)
             .flat_map(|triangle| {
@@ -1522,6 +1648,45 @@ impl AssetViewerPanel {
         self.mesh_vertex_count = vertex_count as u32;
         self.wire_index_buffer = Some(wire_ib);
         self.wire_index_count = wire_indices.len() as u32;
+
+        let diagnostic_vb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh per-vertex diagnostic lines"),
+            size: (diagnostic_verts.len() * 4).max(4) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !diagnostic_verts.is_empty() {
+            queue.write_buffer(&diagnostic_vb, 0, bytemuck::cast_slice(&diagnostic_verts));
+        }
+        let diagnostic_ib = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh per-vertex diagnostic line indices"),
+            size: (diagnostic_indices.len() * 4).max(4) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !diagnostic_indices.is_empty() {
+            queue.write_buffer(&diagnostic_ib, 0, bytemuck::cast_slice(&diagnostic_indices));
+        }
+        self.diagnostic_vertex_buffer = Some(diagnostic_vb);
+        self.diagnostic_index_buffer = Some(diagnostic_ib);
+        self.diagnostic_index_count = diagnostic_indices.len() as u32;
+
+        let mut uv_layout_verts = verts.to_vec();
+        for vertex in uv_layout_verts.chunks_exact_mut(VERTEX_FLOATS) {
+            vertex[0] = vertex[6] * 2.0 - 1.0;
+            vertex[1] = 1.0 - vertex[7] * 2.0;
+            vertex[2] = 0.0;
+        }
+        let uv_layout_vb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh UV0 layout vertices"),
+            size: (uv_layout_verts.len() * 4).max(4) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !uv_layout_verts.is_empty() {
+            queue.write_buffer(&uv_layout_vb, 0, bytemuck::cast_slice(&uv_layout_verts));
+        }
+        self.uv_layout_vertex_buffer = Some(uv_layout_vb);
 
         log::info!(
             "Loaded mesh {:?}: {} verts, {} indices",
@@ -1790,7 +1955,38 @@ impl AssetViewerPanel {
         let density_ready = self.render_mode == MeshRenderMode::VertexDensity
             && self.density_pipeline.is_some()
             && self.density_vertex_buffer.is_some();
-        let (ib, index_count, pipeline) = if self.render_mode == MeshRenderMode::Wireframe {
+        let line_mode = matches!(
+            self.render_mode,
+            MeshRenderMode::NormalLines
+                | MeshRenderMode::TangentLines
+                | MeshRenderMode::BitangentLines
+        );
+        let uv_layout_mode = self.render_mode == MeshRenderMode::UvLayout0;
+        let render_vb = if uv_layout_mode {
+            let Some(vb) = &self.uv_layout_vertex_buffer else {
+                return;
+            };
+            vb
+        } else if line_mode {
+            let Some(vb) = &self.diagnostic_vertex_buffer else {
+                return;
+            };
+            vb
+        } else {
+            vb
+        };
+        let (ib, index_count, pipeline) = if uv_layout_mode {
+            let (Some(ib), Some(pipeline)) = (&self.wire_index_buffer, &self.wire_pipeline) else {
+                return;
+            };
+            (ib, self.wire_index_count, pipeline)
+        } else if line_mode {
+            let (Some(ib), Some(pipeline)) = (&self.diagnostic_index_buffer, &self.wire_pipeline)
+            else {
+                return;
+            };
+            (ib, self.diagnostic_index_count, pipeline)
+        } else if self.render_mode == MeshRenderMode::Wireframe {
             let (Some(ib), Some(pipeline)) = (&self.wire_index_buffer, &self.wire_pipeline) else {
                 return;
             };
@@ -1832,6 +2028,14 @@ impl AssetViewerPanel {
                 }
             }
         }
+        if uv_layout_mode {
+            view_proj = [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ];
+        }
 
         // One draw per material section (solid modes), each with its own
         // uniform slot; wireframe and section-less meshes are a single draw.
@@ -1843,6 +2047,13 @@ impl AssetViewerPanel {
             MeshRenderMode::Uv0 => 4,
             MeshRenderMode::Uv1 => 5,
             MeshRenderMode::VertexDensity => 6,
+            MeshRenderMode::WorldNormals => 7,
+            MeshRenderMode::Tangents => 8,
+            MeshRenderMode::Bitangents => 9,
+            MeshRenderMode::NormalLines => 10,
+            MeshRenderMode::TangentLines => 11,
+            MeshRenderMode::BitangentLines => 12,
+            MeshRenderMode::UvLayout0 => 13,
         };
         // `.mesh` sections carry linear material colours.
         let linear: u32 = u32::from(!self.mesh_sections.is_empty());
@@ -1872,8 +2083,17 @@ impl AssetViewerPanel {
                 let offset = draw.min(MAX_DRAW_SLOTS as usize - 1) as u64 * UNIFORM_SLOT_STRIDE;
                 queue.write_buffer(buf, offset, bytemuck::bytes_of(&view_proj));
                 let hovered_band = self.density_hover_band.map_or(0, |band| band + 1);
-                queue.write_buffer(buf, offset + 64, bytemuck::bytes_of(&[mode, linear, hovered_band, 0]));
-                queue.write_buffer(buf, offset + 80, bytemuck::bytes_of(color));
+                queue.write_buffer(
+                    buf,
+                    offset + 64,
+                    bytemuck::bytes_of(&[mode, linear, hovered_band, 0]),
+                );
+                let draw_color = if line_mode {
+                    [color[0], color[1], color[2], self.normal_line_length]
+                } else {
+                    *color
+                };
+                queue.write_buffer(buf, offset + 80, bytemuck::bytes_of(&draw_color));
             }
         }
 
@@ -1939,7 +2159,7 @@ impl AssetViewerPanel {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            rpass.set_vertex_buffer(0, vb.slice(..));
+            rpass.set_vertex_buffer(0, render_vb.slice(..));
             if density_ready {
                 if let Some(density_buffer) = density_buffer {
                     rpass.set_vertex_buffer(1, density_buffer.slice(..));
@@ -2344,9 +2564,7 @@ impl AssetViewerPanel {
 
 impl Render for AssetViewerPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.surface_handle.is_none() {
-            self.init_surface(window, cx);
-        }
+        self.init_surface(window, cx);
 
         if self.workspace.is_none() {
             self.initialize_workspace(window, cx);
@@ -2355,6 +2573,16 @@ impl Render for AssetViewerPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            // The host's shared Undo/Redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z,
+            // Ctrl+Y), from anywhere in the viewer (Pulsar-Native#931).
+            .on_action(cx.listener(|panel, _: &plugin_editor_api::Undo, _, cx| {
+                panel.undo();
+                cx.notify();
+            }))
+            .on_action(cx.listener(|panel, _: &plugin_editor_api::Redo, _, cx| {
+                panel.redo();
+                cx.notify();
+            }))
             .child(div().flex_1().min_h_0().map(|el| {
                 if let Some(workspace) = &self.workspace {
                     el.child(workspace.clone())

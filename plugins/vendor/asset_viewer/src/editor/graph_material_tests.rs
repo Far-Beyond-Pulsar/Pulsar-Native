@@ -6,9 +6,7 @@
 use helio_component::graph_preview::GraphPreview;
 use psgc::*;
 
-use super::graph_material::{
-    build, globals_layout, write_globals_at, GraphContext, GLOBALS_SIZE,
-};
+use super::graph_material::{build, globals_layout, write_globals_at, GraphContext, GLOBALS_SIZE};
 
 fn node(id: &str, kind: &str) -> NodeInstance {
     let meta = get_shader_nodes()
@@ -31,7 +29,13 @@ fn node(id: &str, kind: &str) -> NodeInstance {
 }
 
 fn link(graph: &mut GraphDescription, from: &str, to: &str, pin: &str) {
-    graph.add_connection(Connection::new(from, "result", to, pin, ConnectionType::Data));
+    graph.add_connection(Connection::new(
+        from,
+        "result",
+        to,
+        pin,
+        ConnectionType::Data,
+    ));
 }
 
 /// Write `graph` as a material asset in a temp project and compile it.
@@ -174,8 +178,13 @@ fn render_at(preview: &GraphPreview, time: f32) -> [u8; 4] {
         entries: &[],
     });
 
-    // One clockwise triangle covering the whole target; UV (0.25, 0.25) on both channels.
-    let vertex = |x: f32, y: f32| [x, y, 0.5, 0.0, 0.0, 1.0, 0.25, 0.25, 0.25, 0.25];
+    // One clockwise triangle; match the viewer's position, normal, two UVs,
+    // tangent and handedness vertex layout.
+    let vertex = |x: f32, y: f32| {
+        [
+            x, y, 0.5, 0.0, 0.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 0.0, 0.0, 1.0,
+        ]
+    };
     let vertices: Vec<f32> = [vertex(-1.0, -1.0), vertex(-1.0, 3.0), vertex(3.0, -1.0)]
         .into_iter()
         .flatten()
@@ -274,7 +283,12 @@ fn render_at(preview: &GraphPreview, time: f32) -> [u8; 4] {
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     let data = slice.get_mapped_range().expect("mapped");
     let offset = 4 * 256 + 4 * 4;
-    [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]
+    [
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ]
 }
 
 /// A `time` node drives the rainbow's shift: the picture must change with the
@@ -296,5 +310,8 @@ fn a_graph_material_animates_with_the_clock() {
     );
 
     let (at_zero, at_later) = (render_at(&preview, 0.0), render_at(&preview, 1.5));
-    assert_ne!(at_zero, at_later, "a time-driven graph must change with the clock");
+    assert_ne!(
+        at_zero, at_later,
+        "a time-driven graph must change with the clock"
+    );
 }

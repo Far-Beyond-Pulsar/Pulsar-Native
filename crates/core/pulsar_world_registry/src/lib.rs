@@ -57,12 +57,14 @@
 // crate without that crate needing its own direct `inventory` dependency --
 // the same pattern `pulsar_reflection` uses for its own registrations.
 pub use inventory;
-pub use unfinished::{unfinished_component, unfinished_components, UnfinishedComponentRegistration};
 /// Re-exported so generated component code can name the instance types
 /// (`ComponentOwner`) without its own dependency.
 pub use pulsar_scene_model;
 /// VM declarations/codecs referenced by generated component event metadata.
 pub use pulsar_script_vm;
+pub use unfinished::{
+    unfinished_component, unfinished_components, UnfinishedComponentRegistration,
+};
 
 mod component_lifecycle;
 pub use component_lifecycle::{
@@ -278,12 +280,12 @@ impl<'a> ComponentEventWriter<'a> {
 
 pub mod audit;
 pub mod change_watch;
-pub mod object_feed;
 pub mod dispatch;
 mod engine_class_mut;
 pub mod errors;
 pub mod instances;
 pub mod marshal;
+pub mod object_feed;
 pub mod runtime;
 pub mod type_shims;
 pub mod unfinished;
@@ -322,9 +324,9 @@ pub use values::{
 };
 // Metadata audit (#645): overload sweep + the deterministic registry
 // snapshot CI golden tests diff against.
+pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 pub use change_watch::ComponentWatch;
 pub use object_feed::{ObjectDelta, ObjectFeed, ObjectUpdate};
-pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 
 use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, World};
@@ -397,7 +399,9 @@ pub struct WorldComponentRegistration {
 inventory::collect!(WorldComponentRegistration);
 
 fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
-    crate::runtime::world_components().iter().copied()
+    crate::runtime::world_components()
+        .iter()
+        .copied()
         .into_iter()
         .find(|r| r.class_name == class_name)
 }
@@ -412,7 +416,9 @@ fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
 fn find_by_component_id(
     component_type: ComponentId,
 ) -> Option<&'static WorldComponentRegistration> {
-    crate::runtime::world_components().iter().copied()
+    crate::runtime::world_components()
+        .iter()
+        .copied()
         .into_iter()
         .find(|r| (r.component_type)() == component_type)
 }
@@ -496,7 +502,9 @@ pub fn get_world_component_as_engine_class_mut<'w>(
 /// Every currently-registered `World`-backed class name (the add-component
 /// menu, inventory checks).
 pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str> {
-    crate::runtime::world_components().iter().copied()
+    crate::runtime::world_components()
+        .iter()
+        .copied()
         .into_iter()
         .map(|r| r.class_name)
 }
@@ -823,7 +831,6 @@ mod tests {
             Some(&TestComponent { value: 42 })
         );
 
-
         assert!(remove_world_component_for_class(
             "TestComponent",
             &mut world,
@@ -920,7 +927,6 @@ mod tests {
             Some(&TestComponent { value: 99 })
         );
     }
-
 
     #[test]
     fn unregistered_class_is_a_clean_no_op_everywhere() {

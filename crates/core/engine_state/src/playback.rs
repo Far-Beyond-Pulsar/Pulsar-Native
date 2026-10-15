@@ -15,17 +15,20 @@
 //! others would overwrite its status with their own (#1009). See
 //! [`claim_playback_host`].
 
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 
 use crate::{EngineContext, ResourceHandle};
 
 // ── Multiplayer ───────────────────────────────────────────────────────────
 
 /// How a play session participates in the network.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MultiplayerMode {
     /// Single player, no networking.
     #[default]
@@ -56,7 +59,8 @@ impl MultiplayerMode {
 pub const MAX_PLAYERS: u8 = 16;
 
 /// Quick multiplayer configuration for Play-In-Editor.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MultiplayerSettings {
     pub mode: MultiplayerMode,
     /// Players in the session (1..=[`MAX_PLAYERS`]): host included for a listen
@@ -139,12 +143,132 @@ impl PlaybackState {
     }
 }
 
-/// The standalone game process started by Build + Run.
+/// The standalone game processes started by Build + Run: one per player the
+/// multiplayer settings ask for.
 ///
 /// A resource of its own because [`Child`] is neither `Clone` nor `PartialEq`;
-/// whether it is alive is mirrored in [`PlaybackState::game_running`].
+/// whether any is alive is mirrored in [`PlaybackState::game_running`].
 #[derive(Default)]
-pub struct GameProcess(pub Mutex<Option<Child>>);
+pub struct GameProcess(pub Mutex<Vec<Child>>);
+
+impl MultiplayerSettings {
+    /// How many copies of the built game a run starts: the player count where
+    /// it applies (listen / dedicated server), otherwise one.
+    pub fn instance_count(&self) -> u8 {
+        if self.mode.has_player_count() {
+            self.players.clamp(1, MAX_PLAYERS)
+        } else {
+            1
+        }
+    }
+
+    fn normalized(mut self) -> Self {
+        self.players = self.players.clamp(1, MAX_PLAYERS);
+        self.tick_rate_hz = match self.tick_rate_hz {
+            20 | 30 | 60 | 120 => self.tick_rate_hz,
+            _ => 60,
+        };
+        self.latency_ms = self.latency_ms.min(500);
+        self.packet_loss_pct = self.packet_loss_pct.min(30);
+        self
+    }
+}
+
+#[derive(Default)]
+struct MultiplayerSettingsProject {
+    loaded_path: Option<PathBuf>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MultiplayerSettingsFile {
+    version: u32,
+    #[serde(default)]
+    settings: MultiplayerSettings,
+}
+
+const MULTIPLAYER_SETTINGS_VERSION: u32 = 1;
+
+fn multiplayer_settings_path(project: &Path) -> PathBuf {
+    project.join(".pulsar").join("multiplayer_settings.toml")
+}
+
+/// Load this project's quick multiplayer setup into the engine-global toolbar
+/// state. Missing or malformed files fall back to the built-in defaults.
+///
+/// Project settings are shared with the project; the file is owned only by
+/// this setting and is never used to persist active session state.
+pub fn load_multiplayer_settings(project: &Path) {
+    let Some(ctx) = EngineContext::global() else {
+        return;
+    };
+    let project_resource = ctx.store.get_or_init::<MultiplayerSettingsProject>();
+    if project_resource.read().loaded_path.as_deref() == Some(project) {
+        return;
+    }
+
+    let path = multiplayer_settings_path(project);
+    let settings = match engine_fs::virtual_fs::read_file(&path) {
+        Ok(bytes) => match std::str::from_utf8(&bytes)
+            .map_err(anyhow::Error::from)
+            .and_then(|text| toml::from_str::<MultiplayerSettingsFile>(text).map_err(Into::into))
+        {
+            Ok(file) if file.version <= MULTIPLAYER_SETTINGS_VERSION => file.settings.normalized(),
+            Ok(file) => {
+                tracing::warn!(
+                    version = file.version,
+                    "multiplayer settings were saved by a newer version; using defaults"
+                );
+                MultiplayerSettings::default()
+            }
+            Err(error) => {
+                tracing::warn!("unreadable multiplayer settings ({error}); using defaults");
+                MultiplayerSettings::default()
+            }
+        },
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            MultiplayerSettings::default()
+        }
+        Err(error) => {
+            tracing::warn!("could not read multiplayer settings: {error}");
+            MultiplayerSettings::default()
+        }
+    };
+
+    playback().update(|state| state.multiplayer = settings);
+    project_resource.update(|state| state.loaded_path = Some(project.to_owned()));
+}
+
+/// Persist the current quick multiplayer setup for the active project.
+pub fn persist_multiplayer_settings() {
+    let Some(project) = crate::get_project_path().map(PathBuf::from) else {
+        return;
+    };
+    let file = MultiplayerSettingsFile {
+        version: MULTIPLAYER_SETTINGS_VERSION,
+        settings: playback().get().multiplayer.normalized(),
+    };
+    let path = multiplayer_settings_path(&project);
+    let text = match toml::to_string_pretty(&file) {
+        Ok(text) => text,
+        Err(error) => {
+            tracing::warn!("could not serialize multiplayer settings: {error}");
+            return;
+        }
+    };
+    if let Err(error) = engine_fs::virtual_fs::write_file_atomically(&path, text.as_bytes()) {
+        tracing::warn!(path = %path.display(), "could not save multiplayer settings: {error:#}");
+    }
+}
+
+/// Update the quick multiplayer setup and persist it for the active project.
+pub fn update_multiplayer_settings(f: impl FnOnce(&mut MultiplayerSettings)) {
+    playback().update(|state| f(&mut state.multiplayer));
+    persist_multiplayer_settings();
+}
 
 /// The engine's playback state resource.
 ///

@@ -11,6 +11,9 @@
 mod executor;
 mod types;
 
+#[cfg(test)]
+mod tests;
+
 pub use executor::execute_command;
 pub use types::{CommandResult, ComponentData, SceneCommand, TypedComponent};
 

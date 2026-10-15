@@ -2,6 +2,17 @@ use gpui::*;
 use rust_i18n::t;
 use std::path::PathBuf;
 
+use plugin_editor_api::undo::lock;
+
+/// One image edit: the image on the other side of it (before it, until it
+/// is undone; after it, until it is redone).
+#[derive(Debug)]
+pub struct ImageEdit {
+    other: (u32, u32, Vec<u8>),
+}
+
+impl plugin_editor_api::UndoEntry for ImageEdit {}
+
 #[derive(Debug, Clone, Default)]
 pub struct SceneStats {
     pub name: String,
@@ -49,10 +60,24 @@ pub enum MeshRenderMode {
     Wireframe,
     /// Object-space normals as colour.
     Normals,
+    /// World-space normals as colour (mesh preview transforms are baked on load).
+    WorldNormals,
+    /// Tangent vectors as colour.
+    Tangents,
+    /// Bitangent vectors reconstructed from tangent handedness.
+    Bitangents,
+    /// Per-vertex normal hedgehog lines.
+    NormalLines,
+    /// Per-vertex tangent hedgehog lines.
+    TangentLines,
+    /// Per-vertex bitangent hedgehog lines.
+    BitangentLines,
     /// UV channel 1 (`tex_coords0`) sampled against the embedded UV reference grid.
     Uv0,
     /// UV channel 2 (`tex_coords1`, the lightmap channel) sampled against the UV grid.
     Uv1,
+    /// UV0 islands drawn as a flat 0..1 layout.
+    UvLayout0,
     /// Relative local vertex packing, from green (sparse) to red (dense).
     VertexDensity,
 }
@@ -76,6 +101,11 @@ pub struct AssetViewerPanel {
     pub wire_index_buffer: Option<wgpu::Buffer>,
     pub wire_index_count: u32,
     pub wire_pipeline: Option<wgpu::RenderPipeline>,
+    pub diagnostic_vertex_buffer: Option<wgpu::Buffer>,
+    pub diagnostic_index_buffer: Option<wgpu::Buffer>,
+    pub diagnostic_index_count: u32,
+    pub normal_line_length: f32,
+    pub uv_layout_vertex_buffer: Option<wgpu::Buffer>,
 
     pub depth_texture: Option<wgpu::Texture>,
     pub depth_view: Option<wgpu::TextureView>,
@@ -136,8 +166,9 @@ pub struct AssetViewerPanel {
     pub panning: bool,
     pub last_pan_pos: Option<Point<Pixels>>,
 
-    pub undo_stack: Vec<(u32, u32, Vec<u8>)>,
-    pub redo_stack: Vec<(u32, u32, Vec<u8>)>,
+    /// The image's edit history: the host's for this file once
+    /// [`Self::set_undo_service`] gives it (Pulsar-Native#931).
+    pub history: plugin_editor_api::SharedHistory<ImageEdit>,
 
     /// Default-material pickers; set only for native `.mesh` files.
     pub mesh_materials: Option<super::materials::MeshMaterials>,
@@ -302,8 +333,9 @@ impl AssetViewerPanel {
 
     pub fn commit_edit(&mut self) {
         if let Some(d) = self.image_data.as_ref() {
-            self.undo_stack.push(d.clone());
-            self.redo_stack.clear();
+            let mut history = lock(&self.history);
+            history.push(ImageEdit { other: d.clone() });
+            history.seal();
             self.modified = true;
         }
     }
@@ -313,27 +345,46 @@ impl AssetViewerPanel {
     }
 
     pub fn undo(&mut self) {
-        let Some(d) = self.undo_stack.pop() else {
-            return;
-        };
-        if let Some(current) = self.image_data.take() {
-            self.redo_stack.push(current);
+        let history = self.history.clone();
+        if lock(&history).undo(|edit| self.swap_image(edit)).is_some() {
+            self.edit_apply();
         }
-        self.image_data = Some(d);
-        self.modified = true;
-        self.edit_apply();
     }
 
     pub fn redo(&mut self) {
-        let Some(d) = self.redo_stack.pop() else {
-            return;
-        };
-        if let Some(current) = self.image_data.take() {
-            self.undo_stack.push(current);
+        let history = self.history.clone();
+        if lock(&history).redo(|edit| self.swap_image(edit)).is_some() {
+            self.edit_apply();
         }
-        self.image_data = Some(d);
+    }
+
+    pub fn can_undo(&self) -> bool {
+        lock(&self.history).can_undo()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        lock(&self.history).can_redo()
+    }
+
+    /// Show the image `edit` holds and keep the one shown in its place, so
+    /// the same entry steps back the other way.
+    fn swap_image(&mut self, edit: &mut ImageEdit) -> bool {
+        let Some(current) = self.image_data.take() else {
+            return false;
+        };
+        self.image_data = Some(std::mem::replace(&mut edit.other, current));
         self.modified = true;
-        self.edit_apply();
+        true
+    }
+
+    /// Register this file's history with the host's undo histories.
+    pub fn set_undo_service(&mut self, service: plugin_editor_api::UndoService) {
+        if let Some(path) = &self.current_path {
+            service.adopt(
+                &plugin_editor_api::DocumentId::for_path(path),
+                &self.history,
+            );
+        }
     }
 
     pub fn rotate_ccw(&mut self) {
@@ -541,6 +592,11 @@ impl AssetViewerPanel {
             wire_index_buffer: None,
             wire_index_count: 0,
             wire_pipeline: None,
+            diagnostic_vertex_buffer: None,
+            diagnostic_index_buffer: None,
+            diagnostic_index_count: 0,
+            normal_line_length: 0.12,
+            uv_layout_vertex_buffer: None,
             depth_texture: None,
             depth_view: None,
             mesh_vertex_buffer: None,
@@ -593,8 +649,7 @@ impl AssetViewerPanel {
             zoom: 1.0,
             panning: false,
             last_pan_pos: None,
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
+            history: Default::default(),
             mesh_materials: None,
             mesh_sections: Vec::new(),
             slot_surfaces: Vec::new(),

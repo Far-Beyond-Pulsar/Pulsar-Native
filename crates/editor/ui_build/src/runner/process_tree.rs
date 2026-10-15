@@ -78,7 +78,12 @@ mod tests {
         // A zombie still has a /proc entry; a reaped or killed-and-gone one
         // doesn't, and a zombie's state is 'Z'.
         std::fs::read_to_string(format!("/proc/{pid}/stat"))
-            .map(|stat| !stat.split_whitespace().nth(2).is_some_and(|state| state == "Z"))
+            .map(|stat| {
+                !stat
+                    .split_whitespace()
+                    .nth(2)
+                    .is_some_and(|state| state == "Z")
+            })
             .unwrap_or(false)
     }
 

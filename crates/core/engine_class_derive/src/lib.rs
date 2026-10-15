@@ -269,8 +269,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     } else {
         gpu_leaf_fields
     };
-    let gpu_mirror_tokens =
-        gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields, gpu_rows);
+    let gpu_mirror_tokens = gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields, gpu_rows);
 
     // Generate auto-property methods (getters and setters). Their metadata
     // rides the property's own category so blueprint palette grouping keeps

@@ -51,11 +51,18 @@ pub struct ToolbarSignature {
     feature_bloom_enabled: bool,
     feature_materials_enabled: bool,
     realtime_viewport: bool,
+    viewport_debug_mode: u32,
     location_snap: u32,
     rotation_snap: u32,
     scale_snap: u32,
     // profiling button
     show_performance_overlay: bool,
+    // Edit menu: what Undo/Redo show and whether the selection items are
+    // enabled (Pulsar-Native#1012)
+    history_revision: u64,
+    has_selection: bool,
+    // Assets menu: one New item per creatable file type
+    creatable_file_types: usize,
 }
 
 impl ToolbarSignature {
@@ -68,10 +75,14 @@ impl ToolbarSignature {
             feature_bloom_enabled: state.editor.feature_bloom_enabled,
             feature_materials_enabled: state.editor.feature_materials_enabled,
             realtime_viewport: state.editor.realtime_viewport,
+            viewport_debug_mode: state.editor.viewport_debug_mode,
             location_snap: state.editor.location_snap.to_bits(),
             rotation_snap: state.editor.rotation_snap.to_bits(),
             scale_snap: state.editor.scale_snap.to_bits(),
             show_performance_overlay: state.overlays.state.show_performance_overlay,
+            history_revision: plugin_editor_api::undo::lock(state.scene.history()).revision(),
+            has_selection: state.scene.selected_object().is_some(),
+            creatable_file_types: super::level_editor_menus::creatable_file_type_count(),
         }
     }
 }
@@ -237,12 +248,13 @@ impl Render for ToolbarView {
         let state = self.state.read();
         drop(_state_scope);
         // The toolbar renders on every change to its state (see the pump), so
-        // this keeps the viewport's Bloom and Realtime in step with the
+        // this keeps the viewport's Bloom, Realtime and buffer view in step with the
         // toggles, including their initial values.
         let _mailbox_scope = gpui::render_stats::scope("toolbar: mailbox update");
         if let Some(mailbox) = &self.helio_mailbox {
             mailbox.set_viewport_bloom(state.editor.feature_bloom_enabled);
             mailbox.set_viewport_realtime(state.editor.realtime_viewport);
+            mailbox.set_viewport_debug_mode(state.editor.viewport_debug_mode);
         }
         drop(_mailbox_scope);
         let _panel_scope = gpui::render_stats::scope("toolbar: panel element build");

@@ -62,30 +62,35 @@ pub fn handle_asset_update(
     touched
 }
 
-/// Subscribe the editor at `state` to mesh asset updates (a re-import): every
-/// static mesh showing the updated file reloads it.
-pub fn subscribe_mesh_updates(state: Arc<RwLock<LevelEditorState>>) -> AssetSubscription {
-    plugin_editor_api::subscribe_asset_updates(Some(AssetKind::Mesh), move |event| {
-        let reloaded = handle_mesh_update(&state, event);
+/// Subscribe the editor at `state` to asset updates (a re-imported mesh, a
+/// changed image or material): every component in the editor's world showing
+/// the updated file reloads it. The world is the one the editor shows when
+/// the update arrives, so a level opened later is covered too.
+pub fn subscribe_asset_reloads(state: Arc<RwLock<LevelEditorState>>) -> AssetSubscription {
+    plugin_editor_api::subscribe_asset_updates(None, move |event| {
+        let reloaded = handle_asset_reload(&state, event);
         if reloaded > 0 {
             tracing::info!(
-                meshes = reloaded,
-                "Reloading meshes after a mesh asset update"
+                kind = ?event.kind,
+                assets = reloaded,
+                "Reloading assets after an asset update"
             );
         }
     })
 }
 
-/// Reload the mesh asset of the updated file in the editor's world
-/// (SceneDB#84): the world loads it again off the write path and rebinds
-/// every `StaticMeshComponent` showing it when the new data arrives.
-/// Returns how many assets were queued (0 or 1).
-pub fn handle_mesh_update(state: &Arc<RwLock<LevelEditorState>>, event: &AssetUpdated) -> usize {
-    let Some(path) = event.path.as_ref() else {
+/// Reload the updated file's assets in the editor's world (SceneDB#84), as
+/// every game loop does for the world it builds (see
+/// `engine_backend::scene::reload_updated_asset`): the world loads them
+/// again off the write path and rebinds every component showing them when
+/// the new data arrives. Returns how many assets were queued. Class updates
+/// are left to [`handle_asset_update`], which rebuilds the same instances
+/// and also does the editor's own bookkeeping.
+pub fn handle_asset_reload(state: &Arc<RwLock<LevelEditorState>>, event: &AssetUpdated) -> usize {
+    if event.kind == AssetKind::Blueprint {
         return 0;
-    };
-    let source = helio_component::components::mesh_source_for_file(path);
+    }
     let state = state.read();
     let mut world = state.scene.world_mut();
-    world.asset_source_changed(&source)
+    engine_backend::scene::reload_updated_asset(&mut world, event)
 }

@@ -47,9 +47,29 @@ pub fn emit_remote(path: impl Into<PathBuf>, kind: FsChangeKind) {
 }
 
 pub fn emit_with_source(path: impl Into<PathBuf>, kind: FsChangeKind, source: FsEventSource) {
-    let _ = bus().read().send(FsEvent {
-        path: path.into(),
-        kind,
+    let path = path.into();
+    #[cfg(feature = "editor")]
+    crate::file_index::update_open_project_file_indexes(&path, &kind, &source);
+    let _ = bus().read().send(FsEvent { path, kind, source });
+}
+
+/// Publish the conventional delete/create notifications for a move while
+/// preserving indexed rows and stable IDs for local projects.
+pub fn emit_move(from: impl Into<PathBuf>, to: impl Into<PathBuf>, source: FsEventSource) {
+    let from = from.into();
+    let to = to.into();
+    #[cfg(feature = "editor")]
+    crate::file_index::move_open_project_file_indexes(&from, &to, &source);
+    let bus = bus();
+    let sender = bus.read();
+    let _ = sender.send(FsEvent {
+        path: from,
+        kind: FsChangeKind::Deleted,
+        source: source.clone(),
+    });
+    let _ = sender.send(FsEvent {
+        path: to,
+        kind: FsChangeKind::Created,
         source,
     });
 }

@@ -108,17 +108,12 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
     (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/animated_content.rs",
         5,
-        "keep-awake: whether particles, foliage in a wind, water or time-reading graph materials are live, re-checked only when the world revision changes",
+        "keep-awake: whether particles, foliage in a wind, water or time-reading graph materials are live, re-checked only when a change cursor reports a change to one of those components",
     ),
     (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs",
         2,
         "voxel path: VoxelSceneRead runs when the world revision changes (enabled meshes; lights, for the sun and the camera-relative gate)",
-    ),
-    (
-        "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs",
-        1,
-        "editor spline debug lines: rebuilt only when a change cursor reports a spline change",
     ),
     (
         "crates/renderer/helio/crates/helio/src/lib.rs",

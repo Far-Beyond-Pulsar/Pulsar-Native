@@ -28,6 +28,11 @@ use super::{ObjectId, SceneObjectData};
 pub struct SceneHistorySnapshot {
     objects: Vec<SceneObjectData>,
     components: HashMap<ObjectId, Vec<InstanceSnapshot>>,
+    /// Placed classes in a scoped capture: each root's class and
+    /// overrides, live edits folded in. Their generated children are not
+    /// captured; a restore rebuilds them from the class as it is then, so
+    /// undo never brings back an older class definition (#931).
+    class_instances: HashMap<ObjectId, pulsar_class::ClassInstance>,
 }
 
 /// The before/after state of only the objects touched by one command.
@@ -35,6 +40,8 @@ pub struct SceneHistorySnapshot {
 pub struct SceneHistoryDelta {
     pub(crate) before: SceneHistorySnapshot,
     pub(crate) after: SceneHistorySnapshot,
+    /// Locale key naming the edit for the Edit menu ("Undo Move").
+    pub(crate) label: Option<&'static str>,
 }
 
 /// Compact journal for voxel authoring. A sculpt stroke appends to the terrain
@@ -89,24 +96,51 @@ pub fn capture_history_snapshot(world: &World) -> SceneHistorySnapshot {
     SceneHistorySnapshot {
         objects,
         components,
+        class_instances: HashMap::new(),
     }
 }
 
 /// Capture only the requested objects and their descendants. This is the edit
 /// history path; unlike the play-mode snapshot it never traverses unrelated
 /// scene branches.
+///
+/// A placed class is captured as its root with its class and overrides
+/// (live edits folded in), never its generated children: an id inside one
+/// stands for its root, and a restore rebuilds the instance from the class
+/// as it is then (#931).
 pub fn capture_history_subset(world: &World, ids: &[ObjectId]) -> SceneHistorySnapshot {
     let mut wanted = std::collections::HashSet::new();
     let mut entities = Vec::new();
+    let mut class_roots = Vec::new();
     for id in ids {
-        let Some(entity) = world.entity_for(id) else {
+        let Some(entity) =
+            super::classes::class_root_of(world, id).or_else(|| world.entity_for(id))
+        else {
             continue;
         };
         let mut subtree = vec![entity];
         collect_subtree(world, entity, &mut subtree);
         for entity in subtree {
+            if pulsar_class::world::is_generated_child(world, entity) {
+                continue;
+            }
             if wanted.insert(entity) {
+                if pulsar_class::world::is_class_root(world, entity) {
+                    class_roots.push(entity);
+                }
                 entities.push(entity);
+            }
+        }
+    }
+    let mut class_instances = HashMap::new();
+    if !class_roots.is_empty() {
+        let registry = super::classes::project_registry();
+        for root in class_roots {
+            let Some(id) = world.stable_id_of(root) else {
+                continue;
+            };
+            if let Some(instance) = super::classes::folded_class_instance(world, id, &registry) {
+                class_instances.insert(id.to_string(), instance);
             }
         }
     }
@@ -122,6 +156,7 @@ pub fn capture_history_subset(world: &World, ids: &[ObjectId]) -> SceneHistorySn
     SceneHistorySnapshot {
         objects,
         components,
+        class_instances,
     }
 }
 
@@ -184,6 +219,24 @@ pub fn restore_history_delta(
             .map(Vec::as_slice)
             .unwrap_or_default();
         restore_components(world, &object.id, components);
+    }
+
+    // Placed classes: their overrides as captured, built from the class as
+    // it is now.
+    if !snapshot.class_instances.is_empty() {
+        let registry = super::classes::project_registry();
+        for (id, instance) in &snapshot.class_instances {
+            let Some(root) = world.entity_for(id) else {
+                continue;
+            };
+            pulsar_class::world::store_class_instance(world, root, instance);
+            if super::classes::rebuild_instance(world, id, &registry).is_none() {
+                tracing::warn!(
+                    "Could not rebuild class instance '{id}' after undo: its class is not \
+                     in the project; its stored overrides are kept"
+                );
+            }
+        }
     }
     Ok(())
 }

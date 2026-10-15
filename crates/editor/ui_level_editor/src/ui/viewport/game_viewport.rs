@@ -34,6 +34,8 @@ pub struct GameViewport {
     focus_handle: FocusHandle,
     surface: Option<WgpuSurfaceHandle>,
     pie_host: Option<PieHost>,
+    /// What loaded the running game, to load it again on a new GPU device.
+    loaded: Option<crate::state::PieStartRequest>,
     pie_blit: Option<PieBlit>,
     last_frame: Instant,
     /// Whether this tab currently owns input (click to capture, Esc to release).
@@ -67,6 +69,7 @@ impl GameViewport {
             focus_handle: cx.focus_handle(),
             surface: None,
             pie_host: None,
+            loaded: None,
             pie_blit: None,
             last_frame: Instant::now(),
             captured: false,
@@ -175,13 +178,22 @@ impl GameViewport {
         }
     }
 
-    /// Map a GPUI key name to a rough code the game can key off. The embed layer
-    /// only consumes a subset today; this keeps the wire format stable.
+    /// Map a GPUI key name to the physical key code a standalone game window
+    /// would report (`pulsar_events::keycodes`), so input mappings and
+    /// scripts see the same key in Play-in-Editor. `u32::MAX` is a key the
+    /// engine has no name for; the game ignores it.
     fn key_code(key: &str) -> u32 {
-        let mut bytes = key.bytes();
-        match (bytes.next(), key.len()) {
-            (Some(b), 1) => b as u32,
-            _ => 0,
+        pulsar_events::keycodes::code_for_gpui_name(key).map_or(u32::MAX, |code| code as u32)
+    }
+
+    /// The `button_or_key` of a mouse button, as `MouseButtonDown` numbers it.
+    fn button_index(button: MouseButton) -> u32 {
+        match button {
+            MouseButton::Left => 0,
+            MouseButton::Right => 1,
+            MouseButton::Middle => 2,
+            MouseButton::Navigate(NavigationDirection::Back) => 3,
+            MouseButton::Navigate(NavigationDirection::Forward) => 4,
         }
     }
 
@@ -223,7 +235,7 @@ impl GameViewport {
 
     fn on_mouse_down(
         &mut self,
-        _event: &MouseDownEvent,
+        event: &MouseDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -236,7 +248,7 @@ impl GameViewport {
             kind: input_kind::MOUSE_BUTTON,
             x: 0.0,
             y: 0.0,
-            button_or_key: 0,
+            button_or_key: Self::button_index(event.button),
             pressed: 1,
             delta: 0.0,
         });
@@ -244,21 +256,39 @@ impl GameViewport {
         cx.notify();
     }
 
+    fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if !self.captured {
+            return;
+        }
+        self.forward(InputEvent {
+            kind: input_kind::MOUSE_BUTTON,
+            x: 0.0,
+            y: 0.0,
+            button_or_key: Self::button_index(event.button),
+            pressed: 0,
+            delta: 0.0,
+        });
+        cx.stop_propagation();
+    }
+
     fn on_mouse_move(
         &mut self,
-        _event: &MouseMoveEvent,
-        _window: &mut Window,
+        event: &MouseMoveEvent,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if !self.captured {
             return;
         }
-        // Forwarding pointer motion: the embed layer normalises against its own
-        // render size. Kept minimal until the game input model needs cursor pos.
+        // The pointer as a fraction of the window; the game scales it to its
+        // own render size.
+        let view = window.viewport_size();
+        let x = f32::from(event.position.x) / f32::from(view.width).max(1.0);
+        let y = f32::from(event.position.y) / f32::from(view.height).max(1.0);
         self.forward(InputEvent {
             kind: input_kind::MOUSE_MOVE,
-            x: 0.0,
-            y: 0.0,
+            x,
+            y,
             button_or_key: 0,
             pressed: 0,
             delta: 0.0,
@@ -277,7 +307,8 @@ impl GameViewport {
         }
         let delta = match event.delta {
             ScrollDelta::Lines(v) => v.y,
-            ScrollDelta::Pixels(p) => f32::from(p.y),
+            // About 40 pixels is a notch on a precision touchpad.
+            ScrollDelta::Pixels(p) => f32::from(p.y) / 40.0,
         };
         self.forward(InputEvent {
             kind: input_kind::MOUSE_WHEEL,
@@ -288,6 +319,32 @@ impl GameViewport {
             delta,
         });
         cx.stop_propagation();
+    }
+
+    /// The GPU device was lost (a driver reset, a removed GPU): everything on
+    /// it is gone, the running game's renderer included. Stop the game and
+    /// load it again once the window has a new device, the way a native hot
+    /// reload swaps it (#653): the world lives in the editor's store, and
+    /// the guest re-binds its actors to the entities already there.
+    fn restart_after_device_loss(&mut self) {
+        tracing::warn!("PiE: GPU device lost; the game restarts on the new device");
+        self.surface = None;
+        self.pie_blit = None;
+        let Some(mut host) = self.pie_host.take() else {
+            return;
+        };
+        host.stop();
+        if let Some(loaded) = self.loaded.take() {
+            let mut st = self.shared_state.write();
+            st.play
+                .pie
+                .pending_start
+                .get_or_insert(crate::state::PieStartRequest {
+                    reload: true,
+                    scripts_only: false,
+                    ..loaded
+                });
+        }
     }
 
     /// Load a pending game, honour a stop request, tick + blit the active game.
@@ -303,6 +360,7 @@ impl GameViewport {
             if let Some(mut host) = self.pie_host.take() {
                 host.stop();
             }
+            self.loaded = None;
             self.captured = false;
             let mut state = self.shared_state.write();
             state.play.pie.active = false;
@@ -377,6 +435,7 @@ impl GameViewport {
                             .map(|mtime| (req.dylib_path.clone(), mtime));
                     drop(st);
                     self.pie_host = Some(host);
+                    self.loaded = Some(req.clone());
                     self.last_frame = Instant::now();
                 }
                 Err(e) => {
@@ -520,8 +579,19 @@ impl Render for GameViewport {
         self.poll_status(window, cx);
 
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        if self
+            .surface
+            .as_ref()
+            .is_some_and(WgpuSurfaceHandle::is_device_lost)
+        {
+            self.restart_after_device_loss();
+        }
         if self.surface.is_none() {
-            self.surface = window.create_wgpu_surface(1280, 720, format);
+            // Until the window has rebuilt on a new device after a loss, a new
+            // surface is on the lost one too; the rebuild renders this again.
+            self.surface = window
+                .create_wgpu_surface(1280, 720, format)
+                .filter(|surface| !surface.is_device_lost());
         }
 
         // Load / tick / blit the game into the back buffer.
@@ -576,6 +646,11 @@ impl Render for GameViewport {
             .on_key_down(cx.listener(Self::on_key_down))
             .on_key_up(cx.listener(Self::on_key_up))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::on_mouse_down))
+            .on_mouse_down(MouseButton::Middle, cx.listener(Self::on_mouse_down))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+            .on_mouse_up(MouseButton::Right, cx.listener(Self::on_mouse_up))
+            .on_mouse_up(MouseButton::Middle, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .child(surface_el)

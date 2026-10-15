@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Keep every git submodule pinned to a commit on its upstream default branch.
 #
-# A Pulsar-Native PR that pins a dependency's feature branch (Helio, PBGC,
+# A Pulsar-Native PR that pins a dependency's feature branch (Helio,
 # PSGC, a plugin...) and merges before the dependency PR does leaves main
 # pinned to a commit that the dependency's main does not contain; if that
 # branch is later rebased or deleted, main stops building. The merge order is:

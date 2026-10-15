@@ -20,6 +20,9 @@ pub mod render_resources;
 // Helio Scene writes.
 pub mod runtime_level;
 
+/// Placed class instances follow class edits in every world (SceneDB#84).
+pub mod classes;
+
 // What a level may hold only one of (one sky, #1057), checked by editors
 // before an edit and repaired on load.
 pub mod level_rules;
@@ -121,6 +124,64 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     }
     profiling::profile_scope!("scene::pump_assets");
     scene.write().world.pump_assets()
+}
+
+/// Apply one asset update to `world` (SceneDB#84): a mesh, texture or
+/// material update reloads that file's assets, and the world rebinds every
+/// component showing them when the new data arrives. A texture is also
+/// reloaded as part of every shader-graph material that samples it. A class
+/// (Blueprint) update rebuilds every placed instance of the class from its
+/// new definition, keeping each instance's overrides (see [`classes`]).
+/// Returns how many assets were queued plus how many entities were rebuilt.
+/// Other kinds are not world assets yet and are left to their own handlers.
+pub fn reload_updated_asset(
+    world: &mut pulsar_scenedb::World,
+    event: &pulsar_events::AssetUpdated,
+) -> usize {
+    use helio_component::material_assets::material_sources_for_file;
+    match (&event.kind, event.path.as_deref()) {
+        (pulsar_events::AssetKind::Mesh, Some(path)) => {
+            world.asset_source_changed(&helio_component::components::mesh_source_for_file(path))
+        }
+        (pulsar_events::AssetKind::Texture, Some(path)) => {
+            world.asset_source_changed(&helio_component::texture_assets::texture_source_for_file(
+                path,
+            )) + reload_materials(world, material_sources_for_file(path))
+        }
+        (pulsar_events::AssetKind::Material, Some(path)) => {
+            reload_materials(world, material_sources_for_file(path))
+        }
+        (pulsar_events::AssetKind::Blueprint, _) => {
+            classes::reload_class_instances(world, event).len()
+        }
+        _ => 0,
+    }
+}
+
+fn reload_materials(world: &mut pulsar_scenedb::World, sources: Vec<String>) -> usize {
+    sources
+        .iter()
+        .map(|source| world.asset_source_changed(source))
+        .sum()
+}
+
+/// Keep `scene` current with updated assets for as long as the returned
+/// subscription lives: each [`AssetUpdated`](pulsar_events::AssetUpdated)
+/// on the host bus goes through [`reload_updated_asset`]. Whoever creates a
+/// world holds one for it (the editor for its level, a game loop for the
+/// world it builds), so a re-import reaches every world, headless ones
+/// included, without the editor. Holds the scene weakly.
+pub fn subscribe_asset_reloads(scene: &SharedScene) -> pulsar_events::AssetSubscription {
+    let scene = std::sync::Arc::downgrade(scene);
+    pulsar_events::subscribe_asset_updates(None, move |event| {
+        let Some(scene) = scene.upgrade() else {
+            return;
+        };
+        let queued = reload_updated_asset(&mut scene.write().world, event);
+        if queued > 0 {
+            tracing::info!(kind = ?event.kind, path = ?event.path, "Reloading an updated asset");
+        }
+    })
 }
 
 /// Close this frame's change window: drop everything the world's change

@@ -92,6 +92,10 @@ pub struct TickLoop {
     script_problems: Vec<pulsar_events::ScriptProblem>,
     collect_problems: bool,
     script_stats: ScriptStats,
+    /// Reloads updated assets in a world this loop built (SceneDB#84). A
+    /// loop over a host's world leaves that to the host, which keeps its
+    /// own world current.
+    _asset_reloads: Option<pulsar_events::AssetSubscription>,
 }
 
 /// Totals of what the script phase did since the loop was created.
@@ -193,8 +197,11 @@ impl TickLoop {
             TickMode::Variable { max_delta } => max_delta,
         };
         let running = Arc::new(AtomicBool::new(false));
+        let scene_store: engine_backend::scene::SharedScene =
+            Arc::new(RwLock::new(engine_backend::scene::new_scene()));
+        let asset_reloads = engine_backend::scene::subscribe_asset_reloads(&scene_store);
         Self {
-            scene_store: Arc::new(RwLock::new(engine_backend::scene::new_scene())),
+            scene_store,
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
@@ -220,6 +227,7 @@ impl TickLoop {
             script_problems: Vec::new(),
             collect_problems: false,
             script_stats: ScriptStats::default(),
+            _asset_reloads: Some(asset_reloads),
         }
     }
 
@@ -237,7 +245,7 @@ impl TickLoop {
             TickMode::Fixed { dt } => dt * 5,
             TickMode::Variable { max_delta } => max_delta,
         };
-        
+
         let running = Arc::new(AtomicBool::new(false));
         Self {
             scene_store,
@@ -266,6 +274,7 @@ impl TickLoop {
             script_problems: Vec::new(),
             collect_problems: false,
             script_stats: ScriptStats::default(),
+            _asset_reloads: None,
         }
     }
 

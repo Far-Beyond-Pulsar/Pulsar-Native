@@ -92,7 +92,15 @@ impl Harness {
         }
         let ms = started.elapsed().as_secs_f64() * 1e3;
         self.frame += 1;
-        writeln!(self.csv, "{},{},{:.3},{}", self.frame, self.step, ms, u8::from(submitted.is_some())).ok();
+        writeln!(
+            self.csv,
+            "{},{},{:.3},{}",
+            self.frame,
+            self.step,
+            ms,
+            u8::from(submitted.is_some())
+        )
+        .ok();
         submitted.map(|_| ms)
     }
 
@@ -106,7 +114,10 @@ impl Harness {
                 None => return times,
             }
         }
-        eprintln!("HARNESS {}: still rendering after {limit} frames", self.step);
+        eprintln!(
+            "HARNESS {}: still rendering after {limit} frames",
+            self.step
+        );
         times
     }
 
@@ -124,14 +135,30 @@ impl Harness {
             self.texture.as_image_copy(),
             wgpu::TexelCopyBufferInfo {
                 buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(h) },
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row),
+                    rows_per_image: Some(h),
+                },
             },
-            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
         );
         self.queue.submit([encoder.finish()]);
-        buffer.slice(..).map_async(wgpu::MapMode::Read, |r| r.expect("map capture"));
-        self.device.poll(wgpu::PollType::wait_indefinitely()).expect("poll");
-        let data = buffer.slice(..).get_mapped_range().expect("mapped").to_vec();
+        buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, |r| r.expect("map capture"));
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("poll");
+        let data = buffer
+            .slice(..)
+            .get_mapped_range()
+            .expect("mapped")
+            .to_vec();
         let mut pixels = Vec::with_capacity((w * h * 4) as usize);
         for y in 0..h {
             let start = (y * row) as usize;
@@ -158,19 +185,35 @@ impl Harness {
         let forward = glam::Quat::from_rotation_arc(glam::Vec3::Y, direction.as_vec3().normalize()) * local;
         let (yaw, pitch) = (forward.x.atan2(-forward.z), forward.y.clamp(-1.0, 1.0).asin());
         let mailbox = self.renderer.editor_mailbox();
-        let mut radius = self.camera().position.into_iter().map(|v| v * v).sum::<f64>().sqrt();
+        let mut radius = self
+            .camera()
+            .position
+            .into_iter()
+            .map(|v| v * v)
+            .sum::<f64>()
+            .sqrt();
         for _ in 0..4 {
             let position = (direction * radius).to_array();
-            mailbox.queue_camera(EditorCameraState { position, yaw, pitch });
+            mailbox.queue_camera(EditorCameraState {
+                position,
+                yaw,
+                pitch,
+            });
             self.frame();
             self.frame();
-            let Some(altitude) = self.renderer.voxel_altitude().filter(|a| a.is_finite()) else { continue };
+            let Some(altitude) = self.renderer.voxel_altitude().filter(|a| a.is_finite()) else {
+                continue;
+            };
             radius += height - altitude;
             if (height - altitude).abs() < 0.05 {
                 break;
             }
         }
-        mailbox.queue_camera(EditorCameraState { position: (direction * radius).to_array(), yaw, pitch });
+        mailbox.queue_camera(EditorCameraState {
+            position: (direction * radius).to_array(),
+            yaw,
+            pitch,
+        });
     }
 
     fn report(&self, label: &str, times: &[f64]) {
@@ -235,8 +278,10 @@ impl Harness {
 }
 
 fn device() -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
-    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).expect("a GPU adapter");
+    let instance =
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+    let adapter =
+        pollster::block_on(instance.request_adapter(&Default::default())).expect("a GPU adapter");
     // No ray queries on software adapters (#840): lavapipe loses the device on them.
     let features = helio::usable_adapter_features(&adapter);
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -250,7 +295,10 @@ fn device() -> (wgpu::Device, wgpu::Queue) {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let level = PathBuf::from(args.first().expect("<level> <out dir> [width height] [steps...]"));
+    let level = PathBuf::from(
+        args.first()
+            .expect("<level> <out dir> [width height] [steps...]"),
+    );
     let out = PathBuf::from(args.get(1).expect("<out dir>"));
     std::fs::create_dir_all(&out).expect("create the output directory");
     let numeric = |i: usize| args.get(i).and_then(|v| v.parse::<u32>().ok());
@@ -263,7 +311,9 @@ fn main() {
     // Engine logs (VOXEL_FRAME_PHASES, VOXEL_ACTIVITY, ...) to stderr;
     // RUST_LOG filters them (warnings by default).
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
+        )
         .with_writer(std::io::stderr)
         .init();
     let (device, queue) = device();
@@ -271,15 +321,24 @@ fn main() {
         std::sync::Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
     let extras = {
         let mut scene = scene.write();
-        engine_backend::scene::RuntimeLevel::load_into(Path::new(&level), &mut scene.world).expect("load the level")
+        engine_backend::scene::RuntimeLevel::load_into(Path::new(&level), &mut scene.world)
+            .expect("load the level")
     };
     let mut renderer = HelioRenderer::new(scene.clone());
     if let Some(camera) = extras.editor_camera {
-        renderer.set_editor_camera_state(EditorCameraState { position: camera.position.map(f64::from), yaw: camera.yaw, pitch: camera.pitch });
+        renderer.set_editor_camera_state(EditorCameraState {
+            position: camera.position.map(f64::from),
+            yaw: camera.yaw,
+            pitch: camera.pitch,
+        });
     }
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("harness viewport"),
-        size: wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: size[0],
+            height: size[1],
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -295,7 +354,10 @@ fn main() {
     // Start: the level's own camera, as the editor opens it.
     let started = Instant::now();
     let times = h.settle(20_000);
-    h.report(&format!("start ({:.1} s)", started.elapsed().as_secs_f64()), &times);
+    h.report(
+        &format!("start ({:.1} s)", started.elapsed().as_secs_f64()),
+        &times,
+    );
     h.capture("start");
     let home = h.camera();
     let mut direction = glam::DVec3::from_array(home.position).normalize();
@@ -303,10 +365,19 @@ fn main() {
     for (n, step) in steps.iter().enumerate() {
         let parts: Vec<&str> = step.split(':').collect();
         h.step = format!("{n}_{}", parts[0]);
-        let number = |i: usize, default: f64| parts.get(i).and_then(|v| v.parse::<f64>().ok()).unwrap_or(default);
+        let number = |i: usize, default: f64| {
+            parts
+                .get(i)
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(default)
+        };
         match parts[0] {
             "view" => {
-                let (height, pitch, yaw) = (number(1, 2.0), number(2, -10.0) as f32, number(3, home.yaw.to_degrees() as f64) as f32);
+                let (height, pitch, yaw) = (
+                    number(1, 2.0),
+                    number(2, -10.0) as f32,
+                    number(3, home.yaw.to_degrees() as f64) as f32,
+                );
                 h.place(direction, height, pitch.to_radians(), yaw.to_radians());
                 let times = h.settle(20_000);
                 h.report(&format!("view {height} m pitch {pitch}"), &times);
@@ -326,7 +397,10 @@ fn main() {
                     let t = f as f64 / frames as f64;
                     let position = start + ahead * metres * t;
                     let position = position.normalize() * start.length();
-                    mailbox.queue_camera(EditorCameraState { position: position.to_array(), ..camera });
+                    mailbox.queue_camera(EditorCameraState {
+                        position: position.to_array(),
+                        ..camera
+                    });
                     if let Some(ms) = h.frame() {
                         times.push(ms);
                     }

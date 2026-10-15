@@ -115,6 +115,13 @@ impl SceneInteraction {
         self.drag = None;
         self.hovered = None;
     }
+    /// End the drag in progress, if any: the object it moved and the
+    /// transform it started from, for undo (#931).
+    pub fn finish_drag(&mut self) -> Option<(Entity, Transform)> {
+        let drag = self.drag.take()?;
+        self.hovered = None;
+        Some((drag.entity, drag.initial))
+    }
     pub fn pick(&self, world: &World, origin: Vec3, direction: Vec3) -> Option<String> {
         let direction = direction.normalize_or_zero();
         if direction == Vec3::ZERO {

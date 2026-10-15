@@ -2155,15 +2155,24 @@ fn json_component_references_resolve_by_stable_id() {
         &entity_for,
     )
     .unwrap();
-    assert_eq!(value, Value::Component(pulsar_scenedb::ComponentRef::new(object, id)));
+    assert_eq!(
+        value,
+        Value::Component(pulsar_scenedb::ComponentRef::new(object, id))
+    );
     let none = value_from_json_with(&serde_json::Value::Null, &ty, &entity_for).unwrap();
-    assert_eq!(none, Value::Component(pulsar_scenedb::ComponentRef::new(Entity::DANGLING, id)));
+    assert_eq!(
+        none,
+        Value::Component(pulsar_scenedb::ComponentRef::new(Entity::DANGLING, id))
+    );
 
     for bad in [
         json!({ "entity": "lamp", "component": "Transform" }),
         json!({ "entity": "nobody" }),
         json!("lamp"),
     ] {
-        assert!(value_from_json_with(&bad, &ty, &entity_for).is_err(), "{bad}");
+        assert!(
+            value_from_json_with(&bad, &ty, &entity_for).is_err(),
+            "{bad}"
+        );
     }
 }

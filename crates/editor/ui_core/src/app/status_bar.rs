@@ -30,7 +30,7 @@ impl Render for StatusBar {
             return div().into_any_element();
         };
         app.update(cx, |app, cx| {
-            let drawer_shown = app.state.drawer_open || app.state.drawer_docked;
+            let drawer_shown = app.state.chrome.drawer_open || app.state.chrome.drawer_docked;
             div()
                 .child(app.render_footer(drawer_shown, cx))
                 .into_any_element()

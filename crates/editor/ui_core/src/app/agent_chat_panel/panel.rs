@@ -11,11 +11,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 use ui::{
-    VirtualListScrollHandle,
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     dropdown::{SearchableList, SearchableListItemAction, SearchableListItemState},
     input::InputState,
     scroll::ScrollbarState,
+    VirtualListScrollHandle,
 };
 
 use super::chat_storage;

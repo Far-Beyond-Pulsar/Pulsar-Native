@@ -92,3 +92,8 @@ blueprint_graph = { path = "../../../plugins/vendor/blueprint_editor/graph" }
 # `build.rs` generates the export probe actor (src/export_probe.rs).
 pulsar_script_codegen = { workspace = true }
 pulsar_script_vm = { workspace = true }
+
+[features]
+# Sampling heap profiler used as the global allocator, for leak hunting.
+# Off by default; see `alloc_profile`.
+alloc-profile = []

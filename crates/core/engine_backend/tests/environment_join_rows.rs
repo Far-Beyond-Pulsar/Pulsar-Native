@@ -526,7 +526,8 @@ fn atmospheres_follow_their_owner_and_their_enabled_state() {
         planet_radius_km: 1737.0,
         ..Default::default()
     };
-    let planet = pulsar_world_registry::attach_value(&mut scene.world, world_object, planet).unwrap();
+    let planet =
+        pulsar_world_registry::attach_value(&mut scene.world, world_object, planet).unwrap();
     let ground_object = place(&mut scene, "ground", at([5.0, 5.0, 5.0]));
     let ground = pulsar_world_registry::attach_value(
         &mut scene.world,
@@ -553,8 +554,16 @@ fn atmospheres_follow_their_owner_and_their_enabled_state() {
     assert_eq!(row.center, [0.0; 3], "the ground is at the world origin");
 
     // The air is not a visual of its owner: hiding the owner keeps it.
-    scene.world.get_mut::<Visibility>(world_object).unwrap().visible = false;
-    scene.world.get_mut::<Transform>(world_object).unwrap().position = [-1.0, 2.0, -3.0];
+    scene
+        .world
+        .get_mut::<Visibility>(world_object)
+        .unwrap()
+        .visible = false;
+    scene
+        .world
+        .get_mut::<Transform>(world_object)
+        .unwrap()
+        .position = [-1.0, 2.0, -3.0];
     let out = join.run(&mut scene);
     let row: AtmosphereRow = join.row(&out, "atmospheres", planet);
     assert_eq!(row.enabled, 1);
@@ -562,14 +571,30 @@ fn atmospheres_follow_their_owner_and_their_enabled_state() {
 
     // A disabled instance or component leaves an inert row; removal clears it.
     attachments::set_enabled(&mut scene.world, planet, false);
-    scene.world.get_mut::<AtmosphereComponent>(ground).unwrap().enabled = false;
+    scene
+        .world
+        .get_mut::<AtmosphereComponent>(ground)
+        .unwrap()
+        .enabled = false;
     let out = join.run(&mut scene);
-    assert_eq!(join.row::<AtmosphereRow>(&out, "atmospheres", planet).enabled, 0);
-    assert_eq!(join.row::<AtmosphereRow>(&out, "atmospheres", ground).enabled, 0);
+    assert_eq!(
+        join.row::<AtmosphereRow>(&out, "atmospheres", planet)
+            .enabled,
+        0
+    );
+    assert_eq!(
+        join.row::<AtmosphereRow>(&out, "atmospheres", ground)
+            .enabled,
+        0
+    );
     attachments::set_enabled(&mut scene.world, planet, true);
     attachments::detach(&mut scene.world, planet);
     let out = join.run(&mut scene);
-    assert_eq!(join.row::<AtmosphereRow>(&out, "atmospheres", planet).enabled, 0);
+    assert_eq!(
+        join.row::<AtmosphereRow>(&out, "atmospheres", planet)
+            .enabled,
+        0
+    );
 }
 
 /// Decals (#1058): an enabled decal of a visible owner becomes a decal pass

@@ -12,6 +12,7 @@
   ECS.md             Archetype ECS — World, Query, Schedule, Actor
   COMPONENT_RUNTIME_GAPS.md Current component runtime and proposed Rust lifecycle/events
   THEMING.md         Theme JSON schema, syntax highlighting, window backgrounds
+  LENS.md            Camera lens — pass, components, prescriptions, masks, overscan
 ```
 
 This directory contains detailed reference documentation for each major

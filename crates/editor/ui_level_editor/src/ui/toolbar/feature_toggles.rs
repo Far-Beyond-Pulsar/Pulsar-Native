@@ -67,6 +67,44 @@ impl FeatureToggles {
                 gpu_engine.clone(),
                 "realtime",
             ))
+            // Buffer views: the raw scene depth or G-buffer normals instead of
+            // the lit image. Exclusive; clicking the shown one returns to lit.
+            // Reaches the renderer through the toolbar's mailbox update.
+            .child(Self::render_view_button(
+                "view_depth",
+                "Show scene depth",
+                helio_pass_buffer_view::DEPTH_VIEW,
+                ui::IconName::Ruler,
+                state,
+                state_arc.clone(),
+            ))
+            .child(Self::render_view_button(
+                "view_normals",
+                "Show scene normals",
+                helio_pass_buffer_view::NORMALS_VIEW,
+                ui::IconName::Axes,
+                state,
+                state_arc,
+            ))
+    }
+
+    fn render_view_button(
+        id: &'static str,
+        tooltip: &'static str,
+        mode: u32,
+        icon: ui::IconName,
+        state: &LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    ) -> impl IntoElement {
+        Button::new(id)
+            .icon(icon)
+            .tooltip(tooltip)
+            .selected(state.editor.viewport_debug_mode == mode)
+            .on_click(move |_, _, _| {
+                let mut state = state_arc.write();
+                let current = &mut state.editor.viewport_debug_mode;
+                *current = if *current == mode { 0 } else { mode };
+            })
     }
 
     fn render_toggle_button(

@@ -316,9 +316,11 @@ impl PulsarApp {
         tracing::info!("[PulsarApp] plugin init start");
         let mut plugin_manager = PluginManager::new();
         // Every editor -- built-in or a plugin library -- is created with a handle
-        // to the engine's one language server.
+        // to the engine's one language server and its one set of undo
+        // histories (one per document, Pulsar-Native#931).
         plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
             language_server: Some(rust_analyzer.clone()),
+            undo: plugin_editor_api::UndoService::new(),
         });
 
         // Register built-in editors
@@ -459,18 +461,10 @@ impl PulsarApp {
                 dock_area,
                 project_path,
                 file_manager_drawer,
-                drawer_open: false,
-                drawer_docked: false,
-                drawer_height: 400.0,
-                drawer_resizing: false,
-                drawer_resize_start_y: 0.0,
-                drawer_resize_start_height: 400.0,
-                suppress_drawer_for_drag: false,
+                chrome: Default::default(),
                 problems_drawer,
                 type_debugger_drawer,
                 mission_control,
-                mission_control_open: false,
-                git_manager_open: false,
                 task_queue_refresh_task: None,
                 center_tabs,
                 // script_editor: None, // Migrated to plugins
@@ -495,7 +489,6 @@ impl PulsarApp {
                 project_switcher_view: None,
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
-                popped_out_panels: Vec::new(),
                 navigation: Default::default(),
                 nav_sidebar,
                 nav_overlay,
@@ -503,10 +496,16 @@ impl PulsarApp {
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
                 layout_persist: false,
+                layout_slot: None,
                 window_bounds: None,
                 window_restore_bounds: None,
                 layout_ready: false,
                 layout_save_task: None,
+                layout_dormant: Vec::new(),
+                layout_window: None,
+                layout_closing: false,
+                layout_popouts: Default::default(),
+                layout_ghosts: Vec::new(),
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };
@@ -771,7 +770,7 @@ impl PulsarApp {
         app.refresh_open_editor_snapshot(cx);
 
         // Restore the project's saved tab layout and keep saving it.
-        if has_project && create_level_editor {
+        if has_project {
             app.init_layout_persistence(window, cx);
         }
 

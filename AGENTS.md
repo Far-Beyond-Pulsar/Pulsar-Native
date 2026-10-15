@@ -8,6 +8,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | File | What |
 |---|---|
 | `.agents/ROADMAP.md` | Project philosophy, core insights, architecture overview |
+| `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend, Subsystem lifecycle |
 | `.agents/PLUGIN_SYSTEM.md` | Permanent DLL pattern, plugin SDK, loading, registries |
@@ -15,6 +16,8 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `.agents/ECS.md` | SceneDB's archetype ECS — `World`, queries, journals, `Schedule`, actors |
 | `.agents/SCENEDB_MIGRATION.md` | Scene data as built: SceneDB ownership, component instances, data flow, observers, renderer, architecture checks |
+| `.agents/LENS.md` | Camera lens — graph placement, components, element kinds, presets, prescription bank, masks, overscan, user WGSL hook |
+| `.agents/LAYOUT.md` | Layout persistence — `.pulsar/layout.json` v2 slots, resolve/validate/commit restore, restorers + dormant tabs, zoom, chrome, pop-outs |
 | `.agents/FILE_MANAGER.md` | `ui_file_manager` — flat crate layout, modules, conventions |
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
@@ -23,8 +26,9 @@ runtime is the editor. For the full context, see `.agents/`.
 
 | Path | What |
 |---|---|
-| `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer (`asset_import`) |
-| `.pulsar/import_options.json` | Import options per native asset (`engine_fs::import_options`) |
+| `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer, and for a rigged model the other files it made (`asset_import`) |
+| `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
+| `.pulsar/import_options.json` | Legacy import options; linked entries migrate into `.pulsar/import_db.json`, while convert-in-place entries remain a fallback |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
 
 ## Workspace

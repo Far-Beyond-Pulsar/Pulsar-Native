@@ -32,6 +32,7 @@ dashmap = { workspace = true, optional = true }
 plugin_manager = { workspace = true, optional = true }
 plugin_editor_api = { workspace = true, optional = true }
 anyhow = { workspace = true }
+rusqlite = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

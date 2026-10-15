@@ -113,7 +113,6 @@ impl CollisionPhysicsProps {
             };
         }
     }
-
 }
 
 /// Describes the collision response for a specific channel

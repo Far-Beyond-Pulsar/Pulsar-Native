@@ -58,9 +58,9 @@ impl NavSidebar {
             asset: None,
         });
         self.content_list = std::rc::Rc::new(match tree {
-            Some(root) => ContentList::build(&self.model, root, &|folder| {
-                drawer.files_in_shared(folder)
-            }),
+            Some(root) => {
+                ContentList::build(&self.model, root, &|folder| drawer.files_in_shared(folder))
+            }
             None => ContentList::default(),
         });
         self.content_key = Some(key);
@@ -111,16 +111,14 @@ impl NavSidebar {
             Some(ContentRow::File { file, depth }) => cell()
                 .child(self.render_file_row(&file, depth, cx))
                 .into_any_element(),
-            None => {
-                cell()
-                    .flex()
-                    .items_center()
-                    .px_3()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("No files yet")
-                    .into_any_element()
-            }
+            None => cell()
+                .flex()
+                .items_center()
+                .px_3()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("No files yet")
+                .into_any_element(),
         }
     }
 
@@ -289,13 +287,15 @@ impl NavSidebar {
         )
         .child(self.render_name(&file.path, &file.name))
         .child(self.reveal_button(&file.path, &file.name, Entry::File, selected, cx))
-        .on_click(cx.listener(move |sidebar, event: &gpui::ClickEvent, window, cx| {
-            if event.click_count() >= 2 {
-                sidebar.open_file(path.clone(), window, cx);
-            } else {
-                sidebar.select(path.clone(), cx);
-            }
-        }))
+        .on_click(
+            cx.listener(move |sidebar, event: &gpui::ClickEvent, window, cx| {
+                if event.click_count() >= 2 {
+                    sidebar.open_file(path.clone(), window, cx);
+                } else {
+                    sidebar.select(path.clone(), cx);
+                }
+            }),
+        )
         .context_menu(self.entry_menu(file.path.clone(), Entry::File, false, cx))
         .into_any_element()
     }

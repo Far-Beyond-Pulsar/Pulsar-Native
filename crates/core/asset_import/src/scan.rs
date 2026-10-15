@@ -78,14 +78,18 @@ impl OfferedOnce {
     /// Missing sources pass through; they are only logged.
     pub fn take_new(&mut self, project_root: &Path, mut report: ScanReport) -> ScanReport {
         for sources in report.unlinked.values_mut() {
-            sources.retain(|source| self.offered.insert(format!("unlinked:{}", source.display())));
+            sources.retain(|source| {
+                self.offered
+                    .insert(format!("unlinked:{}", source.display()))
+            });
         }
         report.unlinked.retain(|_, sources| !sources.is_empty());
         report.out_of_date.retain(|record| {
             let version = std::fs::metadata(project_root.join(&record.source))
                 .map(|meta| format!("{}:{:?}", meta.len(), meta.modified().ok()))
                 .unwrap_or_default();
-            self.offered.insert(format!("changed:{}:{version}", record.source))
+            self.offered
+                .insert(format!("changed:{}:{version}", record.source))
         });
         report
     }
@@ -155,6 +159,8 @@ mod tests {
             source_size: 1,
             asset: "models/linked.mesh".into(),
             importer: "mesh".into(),
+            options: None,
+            outputs: Vec::new(),
         });
         db.ignore("models/no.fbx");
         db.save(root).unwrap();
@@ -184,6 +190,8 @@ mod tests {
             source_size: 1,
             asset: "linked.mesh".into(),
             importer: "mesh".into(),
+            options: None,
+            outputs: Vec::new(),
         });
         db.save(root).unwrap();
 
@@ -197,7 +205,10 @@ mod tests {
         std::fs::write(root.join("b.fbx"), b"b").unwrap();
         std::fs::write(root.join("linked.fbx"), b"version 2").unwrap();
         let next = offered.take_new(root, scan_project(root));
-        let names: Vec<_> = next.unlinked["fbx"].iter().map(|p| p.file_name().unwrap()).collect();
+        let names: Vec<_> = next.unlinked["fbx"]
+            .iter()
+            .map(|p| p.file_name().unwrap())
+            .collect();
         assert_eq!(names, ["b.fbx"]);
         assert_eq!(next.out_of_date.len(), 1);
     }

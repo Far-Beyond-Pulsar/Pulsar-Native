@@ -8,6 +8,8 @@
 //! - [`db`] is the import database (`.pulsar/import_db.json`): for each *linked*
 //!   source, its path, content hash and the native asset it produced.
 //! - [`importer`] is the per-format conversion, selected by extension.
+//! - [`rig`] turns a rigged model into linked skeletal assets (a `.skeleton`, a
+//!   `.skmesh` and one `.animseq` per animation) in place of the static `.mesh`.
 //! - [`service`] runs conversions as tasks in the editor task queue, in one of
 //!   two modes: [`service::ImportMode::ConvertInPlace`] (the source is replaced
 //!   by the native asset and no record is kept) or [`service::ImportMode::Link`]
@@ -17,12 +19,13 @@
 
 pub mod db;
 pub mod importer;
+pub mod rig;
 pub mod scan;
 pub mod service;
 pub mod state;
 
-pub use db::{ImportDb, ImportRecord, LinkStatus};
-pub use importer::{importer_for, Importer, OptionValues};
+pub use db::{ImportDb, ImportOutput, ImportRecord, LinkStatus};
+pub use importer::{importer_for, Imported, Importer, OptionValues, Previous};
 pub use scan::{affects_scan, scan_project, OfferedOnce, ScanReport};
 pub use service::{
     ignore_sources, submit_import, submit_reimport, submit_scan, unignore_sources, unlink_source,

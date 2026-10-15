@@ -10,7 +10,12 @@ use super::panel_render::{
 
 /// The UV modes' test texture, row by row (RGBA): red, green / blue, white.
 /// UV (0.25, 0.25) falls in the red texel, (0.75, 0.25) in the green one.
-const GRID: [[u8; 4]; 4] = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255; 4]];
+const GRID: [[u8; 4]; 4] = [
+    [255, 0, 0, 255],
+    [0, 255, 0, 255],
+    [0, 0, 255, 255],
+    [255; 4],
+];
 
 const NORMALS: u32 = 3;
 const UV0: u32 = 4;
@@ -145,13 +150,17 @@ fn render_mode(mode: u32) -> [u8; 4] {
         ],
     });
 
-    // position, normal, uv0, uv1; one clockwise triangle covering the target.
-    let vertex = |x: f32, y: f32| [x, y, 0.5, 0.0, 0.0, 1.0, 0.25, 0.25, 0.75, 0.25];
+    // position, normal, uv0, uv1, tangent, handedness; one clockwise triangle.
+    let vertex = |x: f32, y: f32| {
+        [
+            x, y, 0.5, 0.0, 0.0, 1.0, 0.25, 0.25, 0.75, 0.25, 1.0, 0.0, 0.0, 1.0,
+        ]
+    };
     let vertices: Vec<f32> = [vertex(-1.0, -1.0), vertex(-1.0, 3.0), vertex(3.0, -1.0)]
         .into_iter()
         .flatten()
         .collect();
-    assert_eq!(vertices.len() % 3, 0);
+    assert_eq!(vertices.len() % super::panel_render::VERTEX_FLOATS, 0);
     let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: (vertices.len() * 4) as u64,
@@ -159,7 +168,10 @@ fn render_mode(mode: u32) -> [u8; 4] {
         mapped_at_creation: false,
     });
     queue.write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
-    assert_eq!(mesh_vertex_layout().array_stride, (vertices.len() / 3 * 4) as u64);
+    assert_eq!(
+        mesh_vertex_layout().array_stride,
+        (super::panel_render::VERTEX_FLOATS * 4) as u64
+    );
 
     let size = wgpu::Extent3d {
         width: 8,
@@ -245,7 +257,12 @@ fn render_mode(mode: u32) -> [u8; 4] {
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     let data = slice.get_mapped_range().expect("mapped");
     let offset = 4 * 256 + 4 * 4;
-    [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]
+    [
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ]
 }
 
 fn near(actual: u8, expected: u8) -> bool {
@@ -256,7 +273,10 @@ fn near(actual: u8, expected: u8) -> bool {
 #[test]
 fn normals_mode_shows_the_vertex_normal() {
     let [b, g, r, a] = render_mode(NORMALS);
-    assert!(near(b, 255) && near(g, 128) && near(r, 128) && a == 255, "{b} {g} {r} {a}");
+    assert!(
+        near(b, 255) && near(g, 128) && near(r, 128) && a == 255,
+        "{b} {g} {r} {a}"
+    );
 }
 
 /// UV channel 1 is (0.25, 0.25): the grid's red texel.

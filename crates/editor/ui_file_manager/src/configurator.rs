@@ -206,16 +206,13 @@ impl ImportConfigurator {
 
         let write_back = Arc::new(
             move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
-                {
-                    let mut v = vs.lock();
-                    v.insert(k.clone(), new_val);
-                    if let Some(stored) = v.get(&k) {
-                        if let Ok(json) =
-                            RUNTIME_TYPE_REGISTRY.serialize_json_for_any(stored.as_ref())
-                        {
-                            if let Ok(mut j) = fj.lock() {
-                                j.insert(k.clone(), json);
-                            }
+                let mut v = vs.lock();
+                v.insert(k.clone(), new_val);
+                if let Some(stored) = v.get(&k) {
+                    if let Ok(json) = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(stored.as_ref())
+                    {
+                        if let Ok(mut j) = fj.lock() {
+                            j.insert(k.clone(), json);
                         }
                     }
                 }

@@ -313,18 +313,24 @@ fn gpu_mirror_row_follows_a_plain_insert_and_removal() {
 
     let id = Mirror::packed_gpu_component_id();
     let handle = store
-        .resolve_buffer_handle(store.buffer_key_for(id).expect("the insert auto-registers it"))
+        .resolve_buffer_handle(
+            store
+                .buffer_key_for(id)
+                .expect("the insert auto-registers it"),
+        )
         .expect("resolvable");
     let row_start = (entity.index() as u64) * PACKED_ROW_BYTES;
     let bytes = readback(&ctx, &handle.buffer, row_start, PACKED_ROW_BYTES);
 
-    let f32_at =
-        |bytes: &[u8], off: u64| f32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap());
+    let f32_at = |bytes: &[u8], off: u64| {
+        f32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap())
+    };
     // `enabled` (bool, 1 byte, itself) still occupies a 4-byte-aligned slot
     // in the packed struct -- only byte 0 of that slot is meaningful.
     let bool_at = |bytes: &[u8], off: u64| bytes[off as usize] != 0;
-    let u32_at =
-        |bytes: &[u8], off: u64| u32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap());
+    let u32_at = |bytes: &[u8], off: u64| {
+        u32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap())
+    };
 
     assert_eq!(f32_at(&bytes, INTENSITY_OFFSET), 42.0);
     assert!(bool_at(&bytes, SUB_ENABLED_OFFSET));
@@ -341,16 +347,26 @@ fn gpu_mirror_row_follows_a_plain_insert_and_removal() {
     );
 
     // A write through the guard reaches the row with no refresh call.
-    world.get_mut::<ThrowawayMirroredComponent>(entity).unwrap().intensity = 3.0;
-    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    world
+        .get_mut::<ThrowawayMirroredComponent>(entity)
+        .unwrap()
+        .intensity = 3.0;
+    world
+        .flush_gpu_mirror(ctx.queue())
+        .expect("mirror attached");
     let bytes = readback(&ctx, &handle.buffer, row_start, PACKED_ROW_BYTES);
     assert_eq!(f32_at(&bytes, INTENSITY_OFFSET), 3.0);
 
     // Removal clears it.
     world.remove::<ThrowawayMirroredComponent>(entity);
-    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    world
+        .flush_gpu_mirror(ctx.queue())
+        .expect("mirror attached");
     let bytes = readback(&ctx, &handle.buffer, row_start, PACKED_ROW_BYTES);
-    assert!(bytes.iter().all(|b| *b == 0), "a removed component's row must be cleared");
+    assert!(
+        bytes.iter().all(|b| *b == 0),
+        "a removed component's row must be cleared"
+    );
 }
 
 /// A registered class with no hand-written storage code at all: proves the
@@ -375,7 +391,12 @@ pub struct ThrowawayRegisteredComponent {
 #[register_world_component]
 impl ThrowawayRegisteredComponent {}
 
-fn single_f32_row(ctx: &EngineGpuContext, store: &SceneGpuStore, id: pulsar_scenedb::ComponentId, row: u32) -> f32 {
+fn single_f32_row(
+    ctx: &EngineGpuContext,
+    store: &SceneGpuStore,
+    id: pulsar_scenedb::ComponentId,
+    row: u32,
+) -> f32 {
     let handle = store
         .resolve_buffer_handle(store.buffer_key_for(id).expect("registered"))
         .expect("resolvable");
@@ -402,13 +423,15 @@ fn erased_factory_decode_and_property_writes_reach_the_gpu_row() {
 
     // The same value through the boundary decoder + erased insert.
     let decoded = world.spawn();
-    assert!(pulsar_world_registry::hydrate_world_component_for_class(
-        "ThrowawayRegisteredComponent",
-        &mut world,
-        decoded,
-        &serde_json::json!({ "value": 13.0 }),
-    )
-    .unwrap());
+    assert!(
+        pulsar_world_registry::hydrate_world_component_for_class(
+            "ThrowawayRegisteredComponent",
+            &mut world,
+            decoded,
+            &serde_json::json!({ "value": 13.0 }),
+        )
+        .unwrap()
+    );
 
     // The generic factory, then a reflected property write.
     let factory = world.spawn();
@@ -429,11 +452,15 @@ fn erased_factory_decode_and_property_writes_reach_the_gpu_row() {
         Box::new(13.0_f32),
     )
     .unwrap();
-    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    world
+        .flush_gpu_mirror(ctx.queue())
+        .expect("mirror attached");
 
     for entity in [typed, decoded, factory] {
         assert_eq!(
-            world.get::<ThrowawayRegisteredComponent>(entity).map(|c| c.value),
+            world
+                .get::<ThrowawayRegisteredComponent>(entity)
+                .map(|c| c.value),
             Some(13.0)
         );
         assert_eq!(single_f32_row(&ctx, &store, id, entity.index()), 13.0);
@@ -447,7 +474,9 @@ fn erased_factory_decode_and_property_writes_reach_the_gpu_row() {
     )
     .expect("live value");
     assert_eq!(
-        clone.downcast_ref::<ThrowawayRegisteredComponent>().map(|c| c.value),
+        clone
+            .downcast_ref::<ThrowawayRegisteredComponent>()
+            .map(|c| c.value),
         Some(13.0)
     );
 
@@ -469,7 +498,9 @@ fn erased_factory_decode_and_property_writes_reach_the_gpu_row() {
         &mut world,
         factory,
     ));
-    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    world
+        .flush_gpu_mirror(ctx.queue())
+        .expect("mirror attached");
     assert_eq!(single_f32_row(&ctx, &store, id, factory.index()), 0.0);
 }
 
@@ -493,7 +524,10 @@ pub struct ThrowawayNormalizedComponent {
     pub doubled: f32,
 }
 
-fn throwaway_property_written(component: &mut ThrowawayNormalizedComponent, property: Option<&str>) {
+fn throwaway_property_written(
+    component: &mut ThrowawayNormalizedComponent,
+    property: Option<&str>,
+) {
     if matches!(property, None | Some("value")) {
         component.doubled = component.value * 2.0;
     }
@@ -524,10 +558,14 @@ fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {
         Box::new(21.0_f32),
     )
     .unwrap();
-    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    world
+        .flush_gpu_mirror(ctx.queue())
+        .expect("mirror attached");
 
     assert_eq!(
-        world.get::<ThrowawayNormalizedComponent>(entity).map(|c| c.doubled),
+        world
+            .get::<ThrowawayNormalizedComponent>(entity)
+            .map(|c| c.doubled),
         Some(42.0)
     );
     let mut changes = Vec::new();
@@ -539,7 +577,12 @@ fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {
     );
     type Mirror = <ThrowawayNormalizedComponent as GpuMirrored>::GpuMirror;
     assert_eq!(
-        single_f32_row(&ctx, &store, Mirror::packed_gpu_component_id(), entity.index()),
+        single_f32_row(
+            &ctx,
+            &store,
+            Mirror::packed_gpu_component_id(),
+            entity.index()
+        ),
         42.0
     );
 }
@@ -569,7 +612,11 @@ fn without_gpu_rows_the_companion_uploads_nothing() {
         .expect("mirror attached");
 
     type Mirror = <ThrowawayCpuOnlyComponent as GpuMirrored>::GpuMirror;
-    assert!(store.buffer_key_for(Mirror::packed_gpu_component_id()).is_none());
+    assert!(
+        store
+            .buffer_key_for(Mirror::packed_gpu_component_id())
+            .is_none()
+    );
     // The mapping itself is still there.
     let mirror = ThrowawayCpuOnlyComponent { intensity: 3.0 }.to_gpu_mirror();
     assert_eq!(mirror.intensity.0, 3.0);
@@ -680,7 +727,9 @@ fn nested_collection_and_method_writes_match_a_typed_insert() {
     )
     .unwrap();
     assert_eq!(
-        world.get::<ThrowawayEquivalenceComponent>(edited).map(|c| c.total),
+        world
+            .get::<ThrowawayEquivalenceComponent>(edited)
+            .map(|c| c.total),
         Some(6.0)
     );
     // Method: the script/Blueprint path for reflected methods.
@@ -692,7 +741,9 @@ fn nested_collection_and_method_writes_match_a_typed_insert() {
             &mut [Box::new(2.0_f32)],
         )
         .unwrap();
-    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    world
+        .flush_gpu_mirror(ctx.queue())
+        .expect("mirror attached");
 
     let (a, b) = (
         world.get::<ThrowawayEquivalenceComponent>(typed).unwrap(),
@@ -714,13 +765,21 @@ fn nested_collection_and_method_writes_match_a_typed_insert() {
         )
         .expect("resolvable");
     let row = |entity: pulsar_scenedb::Entity| {
-        readback(&ctx, &handle.buffer, entity.index() as u64 * ROW_BYTES, ROW_BYTES)
+        readback(
+            &ctx,
+            &handle.buffer,
+            entity.index() as u64 * ROW_BYTES,
+            ROW_BYTES,
+        )
     };
     // Bytes 5..8 are the padding after `enabled`'s one byte: `GpuRepr<bool>`
     // copies the value's own representation, so they carry no data.
     let meaningful = |bytes: Vec<u8>| [&bytes[..5], &bytes[8..]].concat();
     let (typed_row, edited_row) = (meaningful(row(typed)), meaningful(row(edited)));
     assert_eq!(typed_row, edited_row, "the GPU rows carry the same values");
-    assert_eq!(f32::from_ne_bytes(edited_row[..4].try_into().unwrap()), 12.0);
+    assert_eq!(
+        f32::from_ne_bytes(edited_row[..4].try_into().unwrap()),
+        12.0
+    );
     assert_eq!(edited_row[4], 1, "sub.enabled");
 }

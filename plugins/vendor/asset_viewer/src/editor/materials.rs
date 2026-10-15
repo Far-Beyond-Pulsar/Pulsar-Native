@@ -36,7 +36,16 @@ fn new_picker(
     cx: &mut Context<AssetViewerPanel>,
 ) -> Entity<MeshAssetPicker> {
     let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
-    cx.new(|cx| MeshAssetPicker::new(selected, Vec::new(), project_root, material_queries(), window, cx))
+    cx.new(|cx| {
+        MeshAssetPicker::new(
+            selected,
+            Vec::new(),
+            project_root,
+            material_queries(),
+            window,
+            cx,
+        )
+    })
 }
 
 impl AssetViewerPanel {
@@ -124,14 +133,22 @@ impl AssetViewerPanel {
     /// Needs the GPU device, so it is a no-op until the surface exists;
     /// `init_surface` calls it again once it does.
     pub(crate) fn rebuild_graph_draws(&mut self) {
-        let (Some(device), Some(queue), Some(config), Some(layout), Some(globals_layout), Some(materials)) = (
+        let (
+            Some(device),
+            Some(queue),
+            Some(config),
+            Some(layout),
+            Some(globals_layout),
+            Some(materials),
+        ) = (
             self.device.clone(),
             self.queue.clone(),
             self.surface_config.clone(),
             self.mesh_bgl.clone(),
             self.globals_layout.clone(),
             self.mesh_materials.as_ref(),
-        ) else {
+        )
+        else {
             return;
         };
         let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from) else {
@@ -195,22 +212,23 @@ impl AssetViewerPanel {
     /// Persist the assignments into the `.mesh`; placed meshes are told to
     /// reload by `set_default_materials`' asset-update event.
     fn save_mesh_materials(&self) {
-        let (Some(path), Some(materials)) = (self.current_path.as_ref(), self.mesh_materials.as_ref())
+        let (Some(path), Some(materials)) =
+            (self.current_path.as_ref(), self.mesh_materials.as_ref())
         else {
             return;
         };
-        let assignments: Vec<String> = materials.rows.iter().map(|row| row.material.clone()).collect();
+        let assignments: Vec<String> = materials
+            .rows
+            .iter()
+            .map(|row| row.material.clone())
+            .collect();
         if let Err(error) = helio_component::mesh_cache::set_default_materials(path, &assignments) {
             log::error!("Could not save default materials for {:?}: {error}", path);
         }
     }
 }
 
-fn picker_button(
-    id: String,
-    label: String,
-    picker: Entity<MeshAssetPicker>,
-) -> impl IntoElement {
+fn picker_button(id: String, label: String, picker: Entity<MeshAssetPicker>) -> impl IntoElement {
     use ui::button::{Button, ButtonVariants as _};
     use ui::{popover::Popover, Sizable};
     Popover::<MeshAssetPicker>::new(format!("{id}-popover"))
@@ -247,14 +265,23 @@ pub fn materials_section(cx: &App, panel: &Entity<AssetViewerPanel>) -> Option<A
     let none = t!("AssetViewer.NoMaterial").to_string();
     let mut column = v_flex()
         .gap_2()
-        .child(div().text_xs().text_color(muted).child(t!("AssetViewer.DefaultMaterials").to_string()))
+        .child(
+            div()
+                .text_xs()
+                .text_color(muted)
+                .child(t!("AssetViewer.DefaultMaterials").to_string()),
+        )
         .child(
             h_flex()
                 .w_full()
                 .justify_between()
                 .items_center()
                 .gap_2()
-                .child(div().text_xs().child(t!("AssetViewer.ApplyToAllSlots").to_string()))
+                .child(
+                    div()
+                        .text_xs()
+                        .child(t!("AssetViewer.ApplyToAllSlots").to_string()),
+                )
                 .child(picker_button(
                     "mesh-default-material-all".to_owned(),
                     t!("AssetViewer.ApplyToAllSlots").to_string(),
@@ -278,7 +305,12 @@ pub fn materials_section(cx: &App, panel: &Entity<AssetViewerPanel>) -> Option<A
     }
     Some(
         column
-            .child(div().text_xs().text_color(muted).child(t!("AssetViewer.MaterialsHint").to_string()))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(t!("AssetViewer.MaterialsHint").to_string()),
+            )
             .into_any_element(),
     )
 }

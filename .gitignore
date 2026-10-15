@@ -38,6 +38,7 @@ blueprint_graph_debug.json
 *.lg
 .env
 *.db
+/.pulsar/cache/
 
 # Local validation outputs and evidence archives.
 /docs/validation/
@@ -45,3 +46,4 @@ blueprint_graph_debug.json
 /target-perf-investigation
 /target-perf-investigation-o3
 docs/blog/helio-planet-scale-voxel-terrain.md
+/.claude/worktrees

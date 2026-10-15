@@ -694,7 +694,10 @@ mod tests {
         model.toggle_folder(Path::new("/p/Content/Characters"));
         model.toggle_folder(Path::new("/p/Content/Characters/Hero"));
         model.toggle_folder(Path::new("/p/Content/Maps"));
-        model.folder_moved(Path::new("/p/Content/Characters"), Path::new("/p/Content/Cast"));
+        model.folder_moved(
+            Path::new("/p/Content/Characters"),
+            Path::new("/p/Content/Cast"),
+        );
         assert!(model.folder_expanded(Path::new("/p/Content/Cast")));
         assert!(model.folder_expanded(Path::new("/p/Content/Cast/Hero")));
         assert!(!model.folder_expanded(Path::new("/p/Content/Characters")));

@@ -754,4 +754,72 @@ mod undo_redo_tests {
         assert_ne!(copy, source);
         assert_eq!(state.scene.selected_object(), Some(copy));
     }
+
+    /// A gizmo drag moves the object in the renderer, outside any command;
+    /// the editor records it when the mouse is released (#931).
+    #[test]
+    fn a_gizmo_drag_is_one_undo_step_named_move() {
+        use engine_backend::scene::SceneWorldExt;
+        use plugin_editor_api::undo::lock;
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Cube"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        let entity = state.scene.world().entity_for(&id).expect("the cube");
+        let before = *state
+            .scene
+            .world()
+            .get::<engine_backend::scene::Transform>(entity)
+            .unwrap();
+        // What the renderer does while dragging.
+        state
+            .scene
+            .world_mut()
+            .get_mut::<engine_backend::scene::Transform>(entity)
+            .unwrap()
+            .position = [4.0, 0.0, 0.0];
+        let position = |state: &LevelEditorState| {
+            state
+                .scene
+                .world()
+                .get::<engine_backend::scene::Transform>(entity)
+                .unwrap()
+                .position
+        };
+
+        assert!(state.scene.record_gizmo_drag(entity, before));
+        assert_eq!(
+            position(&state),
+            [4.0, 0.0, 0.0],
+            "recording leaves it moved"
+        );
+        assert_eq!(
+            lock(state.scene.history()).undo_label().as_deref(),
+            Some("Move")
+        );
+        let now = *state
+            .scene
+            .world()
+            .get::<engine_backend::scene::Transform>(entity)
+            .unwrap();
+        assert!(
+            !state.scene.record_gizmo_drag(entity, now),
+            "a drag that ended where it started is not recorded"
+        );
+
+        assert!(state.scene.undo());
+        assert_eq!(position(&state), before.position);
+        assert_eq!(
+            lock(state.scene.history()).undo_label().as_deref(),
+            Some("Add")
+        );
+        assert!(state.scene.redo());
+        assert_eq!(position(&state), [4.0, 0.0, 0.0]);
+    }
 }

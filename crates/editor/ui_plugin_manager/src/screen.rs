@@ -1,6 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use plugin_editor_api::PluginMetadata;
+use ui::scroll::ScrollbarAxis;
 use ui::Sizable;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -11,28 +12,56 @@ use crate::components::{render_empty_state, render_plugin_item};
 use crate::handlers;
 
 pub struct PluginManagerWindow {
-    pub(crate) plugins: Vec<PluginMetadata>,
+    pub(crate) plugins: Vec<PluginEntry>,
     pub(crate) focus_handle: FocusHandle,
+}
+
+pub(crate) struct PluginEntry {
+    pub(crate) metadata: PluginMetadata,
+    pub(crate) is_builtin: bool,
+}
+
+fn load_plugins() -> Vec<PluginEntry> {
+    let Some(pm_lock) = plugin_manager::global() else {
+        return Vec::new();
+    };
+    let manager = pm_lock.read();
+    let mut plugins: Vec<_> = manager
+        .get_plugins()
+        .into_iter()
+        .map(|plugin| PluginEntry {
+            metadata: plugin.clone(),
+            is_builtin: false,
+        })
+        .collect();
+    plugins.extend(
+        manager
+            .get_builtin_plugins()
+            .into_iter()
+            .map(|metadata| PluginEntry {
+                metadata,
+                is_builtin: true,
+            }),
+    );
+    plugins.sort_by(|a, b| {
+        a.metadata
+            .name
+            .to_lowercase()
+            .cmp(&b.metadata.name.to_lowercase())
+    });
+    plugins
 }
 
 impl PluginManagerWindow {
     pub fn new_global(cx: &mut Context<Self>) -> Self {
-        let plugins = if let Some(pm_lock) = plugin_manager::global() {
-            pm_lock.read().get_plugins().into_iter().cloned().collect()
-        } else {
-            Vec::new()
-        };
-
         Self {
-            plugins,
+            plugins: load_plugins(),
             focus_handle: cx.focus_handle(),
         }
     }
 
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
-        if let Some(pm_lock) = plugin_manager::global() {
-            self.plugins = pm_lock.read().get_plugins().into_iter().cloned().collect();
-        }
+        self.plugins = load_plugins();
         cx.notify();
     }
 }
@@ -46,6 +75,7 @@ impl Focusable for PluginManagerWindow {
 impl Render for PluginManagerWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let has_plugins = !self.plugins.is_empty();
+        let plugin_count = self.plugins.len();
 
         v_flex()
             .size_full()
@@ -63,10 +93,21 @@ impl Render for PluginManagerWindow {
                         )
                         .child(
                             div()
-                                .text_sm()
-                                .font_semibold()
+                                .text_base()
+                                .font_weight(FontWeight::BOLD)
                                 .text_color(cx.theme().foreground)
                                 .child("Plugin Manager"),
+                        )
+                        .child(
+                            div()
+                                .px_2()
+                                .py_0p5()
+                                .rounded_md()
+                                .bg(cx.theme().secondary.opacity(0.45))
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!("{plugin_count}")),
                         )
                         .child(div().flex_1())
                         .child(
@@ -80,16 +121,16 @@ impl Render for PluginManagerWindow {
                 ),
             )
             .child(if has_plugins {
-                v_flex()
+                div()
+                    .id("plugin-manager-list")
                     .flex_1()
                     .w_full()
-                    .p_6()
-                    .gap_3()
-                    .children(
-                        self.plugins
-                            .iter()
-                            .map(|plugin| render_plugin_item(plugin, cx)),
-                    )
+                    .scrollable(ScrollbarAxis::Vertical)
+                    .child(v_flex().w_full().p_4().gap_3().children(
+                        self.plugins.iter().map(|plugin| {
+                            render_plugin_item(&plugin.metadata, plugin.is_builtin, cx)
+                        }),
+                    ))
                     .into_any_element()
             } else {
                 render_empty_state(cx).into_any_element()

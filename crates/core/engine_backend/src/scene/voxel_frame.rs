@@ -207,7 +207,9 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
 /// Fingerprint of the ground a terrain entry's generator makes (0 without
 /// a generator): its edits belong to it (`VoxelEditJournal::made_on`).
 pub fn terrain_fingerprint(entry: &VoxelSceneEntry) -> u64 {
-    let Some(generator) = &entry.generator else { return 0 };
+    let Some(generator) = &entry.generator else {
+        return 0;
+    };
     helio_component::voxel_world::world_recipe(
         entry.world.shape,
         entry.world.planet_radius,
@@ -230,7 +232,8 @@ pub fn sync_edit_journals(world: &mut World) -> usize {
     let stale: Vec<(Entity, u64)> = attachments::enabled_components::<VoxelTerrainComponent>(world)
         .filter_map(|(instance, _, component)| {
             let fingerprint = terrain_fingerprint(&terrain_entry(world, instance, component).ok()?);
-            (fingerprint != 0 && component.edits.terrain() != fingerprint).then_some((instance, fingerprint))
+            (fingerprint != 0 && component.edits.terrain() != fingerprint)
+                .then_some((instance, fingerprint))
         })
         .collect();
     let mut dropped = 0;
@@ -628,12 +631,18 @@ mod tests {
         use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
         let mut world = World::new();
         let object = world.spawn();
-        let entity =
-            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000.0))
-                .unwrap();
-        let layers =
-            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default())
-                .unwrap();
+        let entity = pulsar_world_registry::attach_value(
+            &mut world,
+            object,
+            VoxelTerrainComponent::planet(1_000.0),
+        )
+        .unwrap();
+        let layers = pulsar_world_registry::attach_value(
+            &mut world,
+            object,
+            VoxelTerrainLayersComponent::default(),
+        )
+        .unwrap();
         let edit = helio_voxel_data::VoxelBrushEdit {
             center: [0.0, 1_000.0, 0.0],
             radius: 1.0,
@@ -642,23 +651,49 @@ mod tests {
             material: 0,
             height: Default::default(),
         };
-        let edits = |world: &World| world.get::<VoxelTerrainComponent>(entity).unwrap().edits.len();
+        let edits = |world: &World| {
+            world
+                .get::<VoxelTerrainComponent>(entity)
+                .unwrap()
+                .edits
+                .len()
+        };
         let projected = |world: &World| project_voxel_entries(world).0[0].edits.len();
-        world.get_mut::<VoxelTerrainComponent>(entity).unwrap().edits.push(edit);
+        world
+            .get_mut::<VoxelTerrainComponent>(entity)
+            .unwrap()
+            .edits
+            .push(edit);
         // A new journal adopts the terrain it is on.
         assert_eq!(sync_edit_journals(&mut world), 0);
         assert_eq!((edits(&world), projected(&world)), (1, 1));
-        world.get_mut::<VoxelTerrainComponent>(entity).unwrap().plane_size = 77.0;
-        assert_eq!(sync_edit_journals(&mut world), 0, "a planet does not use the plane size");
+        world
+            .get_mut::<VoxelTerrainComponent>(entity)
+            .unwrap()
+            .plane_size = 77.0;
+        assert_eq!(
+            sync_edit_journals(&mut world),
+            0,
+            "a planet does not use the plane size"
+        );
         // Another seed: other ground. The projection already shows none.
         world.get_mut::<VoxelTerrainComponent>(entity).unwrap().seed += 1;
         assert_eq!(projected(&world), 0);
         assert_eq!(sync_edit_journals(&mut world), 1);
         assert_eq!(edits(&world), 0);
         // So does another layer stack.
-        world.get_mut::<VoxelTerrainComponent>(entity).unwrap().edits.push(edit);
+        world
+            .get_mut::<VoxelTerrainComponent>(entity)
+            .unwrap()
+            .edits
+            .push(edit);
         assert_eq!(sync_edit_journals(&mut world), 0);
-        world.get_mut::<VoxelTerrainLayersComponent>(layers).unwrap().stack.layers.push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
+        world
+            .get_mut::<VoxelTerrainLayersComponent>(layers)
+            .unwrap()
+            .stack
+            .layers
+            .push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
         assert_eq!(sync_edit_journals(&mut world), 1);
         assert_eq!((edits(&world), projected(&world)), (0, 0));
     }
@@ -749,16 +784,36 @@ mod tests {
             material: 0,
             height: Default::default(),
         };
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .edits
+            .push(edit);
         assert_eq!(sync.poll(&mut world), 0, "the journal adopts its ground");
         assert_eq!(sync.poll(&mut world), 0);
         // Another stack is other ground: its edits go.
-        world.get_mut::<VoxelTerrainLayersComponent>(layers).unwrap().stack.layers.push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
+        world
+            .get_mut::<VoxelTerrainLayersComponent>(layers)
+            .unwrap()
+            .stack
+            .layers
+            .push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
         assert_eq!(sync.poll(&mut world), 1);
-        assert_eq!(world.get::<VoxelTerrainComponent>(terrain).unwrap().edits.len(), 0);
+        assert_eq!(
+            world
+                .get::<VoxelTerrainComponent>(terrain)
+                .unwrap()
+                .edits
+                .len(),
+            0
+        );
         // Dropping them wrote the terrain; the re-check finds nothing more.
         assert_eq!(sync.poll(&mut world), 0);
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .edits
+            .push(edit);
         assert_eq!(sync.poll(&mut world), 0, "edits on the current ground stay");
     }
 

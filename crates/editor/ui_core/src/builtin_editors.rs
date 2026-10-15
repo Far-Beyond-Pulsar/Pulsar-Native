@@ -110,18 +110,25 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let undo = editor_context.services.undo.clone();
         let panel = cx.new(|cx| {
-            match ui_level_editor::LevelEditorPanel::new_with_path(file_path.clone(), window, cx) {
+            let mut panel = match ui_level_editor::LevelEditorPanel::new_with_path(
+                file_path.clone(),
+                window,
+                cx,
+            ) {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!("Failed to load level {:?}: {}", file_path, e);
                     ui_level_editor::LevelEditorPanel::new(window, cx)
                 }
-            }
+            };
+            panel.set_undo_service(undo);
+            panel
         });
         Ok(Arc::new(panel))
     }
@@ -260,6 +267,7 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
         // The language server comes from the editor's context, exactly as it does
         // for a plugin library; there is no process-wide handle to fall back on.
         let services = editor_context.services.clone();
+        let project_root = editor_context.project_root.clone();
         if services.language_server.is_none() {
             tracing::warn!("No language server in the editor context; Script Editor LSP is off");
         }
@@ -268,6 +276,9 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
             script_editor_plugin::ScriptEditorPanel::new_with_settings(window, cx, settings)
         });
         panel.update(cx, |editor, ecx| {
+            if let Some(project_root) = project_root {
+                editor.set_project_path(project_root, window, ecx);
+            }
             editor.open_file(file_path.clone(), window, ecx);
         });
 
@@ -303,13 +314,218 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
         let panel =
             cx.new(|cx| asset_viewer_plugin::AssetViewerPanel::new(file_path.clone(), window, cx));
+        let undo = editor_context.services.undo.clone();
+        panel.update(cx, |panel, _| panel.set_undo_service(undo));
         Ok(Arc::new(panel))
+    }
+}
+
+/// Wraps the skeletal_animation_plugin crate as a built-in editor provider.
+/// Opens `.skeleton`, `.skmesh` and `.animseq` files (and old `.skelanim`
+/// folders, which are converted) in the Skeleton, Skeletal Mesh and Animation
+/// Sequence editors.
+pub struct SkeletalAnimationBuiltinProvider;
+
+impl BuiltinEditorProvider for SkeletalAnimationBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.skeletal-animation-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        skeletal_animation_plugin::SkeletalAnimationPlugin::default().file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        skeletal_animation_plugin::SkeletalAnimationPlugin::default().editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        skeletal_animation_plugin::provides_editor(editor_id.as_str())
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        skeletal_animation_plugin::SkeletalAnimationPlugin::create_editor(file_path, window, cx)
+    }
+}
+
+/// Wraps the physics_plugin crate as a built-in provider: the `.physmat` and
+/// `.physlayers` file types with their editors (Physics Material and Collision
+/// Layers), and the physics components. Linking the crate is what registers
+/// the components, their simulation behaviors and the `physics::` events, so
+/// the simulation runs in every build of the editor and engine.
+pub struct PhysicsBuiltinProvider;
+
+impl BuiltinEditorProvider for PhysicsBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.physics"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        physics_plugin::PhysicsPlugin::default().file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        physics_plugin::PhysicsPlugin::default().editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        physics_plugin::PhysicsPlugin::default()
+            .editors()
+            .iter()
+            .any(|editor| editor.id == *editor_id)
+    }
+
+    fn component_definitions(&self) -> Vec<ComponentDefinition> {
+        physics_plugin::PhysicsPlugin::default().component_definitions()
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        // Without an editor id, the file's type says which editor it opens in.
+        let Some(editor_id) = physics_plugin::PhysicsPlugin::editor_for_path(&file_path) else {
+            return Err(PluginError::Other {
+                message: format!(
+                    "the physics plugin has no editor for {}",
+                    file_path.display()
+                ),
+            });
+        };
+        self.create_editor_for(&editor_id, file_path, editor_context, window, cx)
+    }
+
+    fn create_editor_for(
+        &self,
+        editor_id: &EditorId,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        physics_plugin::PhysicsPlugin::create_editor(
+            editor_id,
+            file_path,
+            Some(&editor_context.services.undo),
+            window,
+            cx,
+        )
+    }
+}
+
+/// Wraps the input_plugin crate as a built-in provider: `.inputaction` and
+/// `.inputmap` with their editors, and the Player Input component. Linking the
+/// crate is what registers the component and the per-frame input runtime that
+/// publishes `input::` events.
+pub struct InputBuiltinProvider;
+
+impl BuiltinEditorProvider for InputBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.input"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        input_plugin::InputPlugin.file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        input_plugin::InputPlugin.editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        matches!(
+            editor_id.as_str(),
+            input_plugin::ACTION_EDITOR_ID | input_plugin::MAPPING_EDITOR_ID
+        )
+    }
+
+    fn component_definitions(&self) -> Vec<ComponentDefinition> {
+        input_plugin::InputPlugin.component_definitions()
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        // Without an editor id, the file's type says which editor it opens in.
+        let Some(editor_id) = input_plugin::InputPlugin::editor_for_path(&file_path) else {
+            return Err(PluginError::Other {
+                message: format!("the input plugin has no editor for {}", file_path.display()),
+            });
+        };
+        self.create_editor_for(&editor_id, file_path, editor_context, window, cx)
+    }
+
+    fn create_editor_for(
+        &self,
+        editor_id: &EditorId,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        input_plugin::InputPlugin::create_editor(
+            editor_id,
+            file_path,
+            Some(&editor_context.services.undo),
+            window,
+            cx,
+        )
+    }
+}
+
+/// Wraps the ui_editor_plugin crate as a built-in provider: the `.widget`
+/// file type and the WYSIWYG widget editor.
+pub struct WidgetEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for WidgetEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.ui-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        ui_editor_plugin::UiEditorPlugin.file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        ui_editor_plugin::UiEditorPlugin.editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == ui_editor_plugin::WIDGET_EDITOR_ID
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        ui_editor_plugin::UiEditorPlugin::create_editor(
+            file_path,
+            Some(&editor_context.services.undo),
+            window,
+            cx,
+        )
     }
 }
 
@@ -354,7 +570,7 @@ impl BuiltinEditorProvider for ShaderEditorBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
@@ -371,6 +587,9 @@ impl BuiltinEditorProvider for ShaderEditorBuiltinProvider {
                 }
             }
         });
+
+        let undo = editor_context.services.undo.clone();
+        panel.update(cx, |panel, cx| panel.set_undo_service(undo, cx));
 
         // Keep plugin AI tools aligned with the currently opened material's graph state.
         let graph_snapshot = panel.read(cx).graph.clone();
@@ -494,7 +713,7 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
@@ -558,6 +777,8 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
                 cx,
             )
         });
+        let undo = editor_context.services.undo.clone();
+        panel.update(cx, |panel, _| panel.set_undo_service(undo));
         Ok(Arc::new(panel))
     }
 }
@@ -590,6 +811,20 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Asset viewer (opens .fbx, .png files)
     registry.register_provider(Arc::new(AssetViewerBuiltinProvider));
+
+    // Skeleton and Animation Sequence editors (.skeleton, .animseq, old .skelanim)
+    registry.register_provider(Arc::new(SkeletalAnimationBuiltinProvider));
+
+    // Physics (file types and components; the simulation itself is
+    // registered by linking the crate)
+    registry.register_provider(Arc::new(PhysicsBuiltinProvider));
+
+    // Widget assets and the widget editor (opens .widget files)
+    registry.register_provider(Arc::new(WidgetEditorBuiltinProvider));
+
+    // Input actions and mappings (open .inputaction and .inputmap files); the
+    // runtime that publishes their events is registered by linking the crate
+    registry.register_provider(Arc::new(InputBuiltinProvider));
 
     // Editors that are part of the build but not of this crate (the Blueprint
     // editor, ..) register themselves at link time; see

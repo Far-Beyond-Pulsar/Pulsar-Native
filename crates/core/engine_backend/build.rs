@@ -75,7 +75,7 @@ fn main() {
     // Cargo.toml. Workspace-relative `path` deps are resolved to absolute paths
     // so the out-of-tree game project resolves them, and the full `[patch]`
     // table is carried over (paths absolutized) so the whole Pulsar ecosystem
-    // (pbgc, graphy, gpui, …) unifies to single local copies instead of being
+    // (graphy, gpui, …) unifies to single local copies instead of being
     // re-fetched at mismatched git commits.
     let manifest_deps = build_game_manifest_deps(&manifest, dependencies, &workspace_root);
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());

@@ -325,12 +325,29 @@ impl Render for FlamegraphView {
                     let sh = bounds.size.height.as_f32().max(1.0) as u32;
 
                     entity_pre.update(cx, |view, cx| {
+                        // The GPU device was lost: the surface and the
+                        // renderer's buffers are on it. Start over on the
+                        // window's new device.
+                        if view
+                            .surface
+                            .as_ref()
+                            .is_some_and(WgpuSurfaceHandle::is_device_lost)
+                        {
+                            view.surface = None;
+                            view.renderer = FlamegraphRenderer::new();
+                        }
                         if view.surface.is_none() {
-                            if let Some(s) = window.create_wgpu_surface(
-                                sw.max(64),
-                                sh.max(64),
-                                wgpu::TextureFormat::Bgra8UnormSrgb,
-                            ) {
+                            // Until the window has a new device, a new
+                            // surface is on the lost one too; the window
+                            // renders every view again once it has one.
+                            if let Some(s) = window
+                                .create_wgpu_surface(
+                                    sw.max(64),
+                                    sh.max(64),
+                                    wgpu::TextureFormat::Bgra8UnormSrgb,
+                                )
+                                .filter(|s| !s.is_device_lost())
+                            {
                                 view.surface = Some(s);
                                 cx.notify();
                             }
@@ -810,5 +827,50 @@ impl Render for FlamegraphView {
                         popup
                     }),
             )
+    }
+}
+
+#[cfg(test)]
+mod device_loss_tests {
+    use super::{FlamegraphView, TraceData};
+    use gpui::{TestAppContext, VisualTestContext};
+    use std::sync::Arc;
+
+    fn draw(cx: &mut VisualTestContext) {
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+    }
+
+    /// On a test window with a real GPU device (skipped where there is
+    /// none): after the device is lost the view keeps no surface, and once
+    /// the window has a new device it draws on a surface there.
+    #[test]
+    fn the_view_moves_onto_the_new_device_after_a_loss() {
+        let mut cx = TestAppContext::single();
+        cx.update(ui::init);
+        let (view, cx) = cx.add_window_view(|_, _| FlamegraphView::new(TraceData::new()));
+        if !cx.update(|window, _| window.use_test_gpu_device()) {
+            return;
+        }
+        draw(cx);
+        let first = view.read_with(cx, |view, _| view.surface.clone());
+        let first = first.expect("a surface on the test device");
+
+        assert!(cx.update(|window, _| window.lose_test_gpu_device()));
+        draw(cx);
+        assert!(
+            view.read_with(cx, |view, _| view.surface.is_none()),
+            "no surface is kept while the device is lost"
+        );
+
+        assert!(cx.update(|window, cx| window.replace_test_gpu_device(cx)));
+        draw(cx);
+        let second = view.read_with(cx, |view, _| view.surface.clone());
+        let second = second.expect("a surface on the new device");
+        assert!(!second.is_device_lost());
+        assert!(!Arc::ptr_eq(
+            &first.device_lost_flag(),
+            &second.device_lost_flag()
+        ));
     }
 }

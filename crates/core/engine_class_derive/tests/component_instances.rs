@@ -12,10 +12,10 @@
 use engine_class_derive::{engine_class, register_world_component};
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{ComponentChangeKind, World};
+use pulsar_world_registry::pulsar_scene_model::ComponentInstance as Record;
 use pulsar_world_registry::pulsar_scene_model::attachments::{
     self, NewInstance, UnresolvedComponent,
 };
-use pulsar_world_registry::pulsar_scene_model::ComponentInstance as Record;
 use pulsar_world_registry::{ComponentPayload, GpuMirrored};
 use std::sync::Arc;
 
@@ -106,9 +106,11 @@ fn factory_decode_and_typed_inserts_are_equivalent() {
     let mut changes = Vec::new();
     let _ = world.read_changes(&mut cursor, &mut changes);
     assert_eq!(changes.len(), 2);
-    assert!(changes
-        .iter()
-        .all(|c| c.kind == ComponentChangeKind::Mutated));
+    assert!(
+        changes
+            .iter()
+            .all(|c| c.kind == ComponentChangeKind::Mutated)
+    );
 
     // Detaching removes the value with the instance; the object stays.
     assert!(attachments::detach(&mut world, from_json));

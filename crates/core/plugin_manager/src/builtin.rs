@@ -84,6 +84,23 @@ pub trait BuiltinEditorProvider: Send + Sync {
         cx: &mut App,
     ) -> Result<std::sync::Arc<dyn PanelView>, PluginError>;
 
+    /// Create the editor named `editor_id`.
+    ///
+    /// The registry calls this one. A provider with a single editor needs no
+    /// more than [`Self::create_editor`], which this falls back to; a provider
+    /// with several overrides it to pick among them.
+    fn create_editor_for(
+        &self,
+        editor_id: &EditorId,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<std::sync::Arc<dyn PanelView>, PluginError> {
+        let _ = editor_id;
+        self.create_editor(file_path, editor_context, window, cx)
+    }
+
     /// Get component definitions provided by this provider (optional).
     /// Override this to register custom engine components.
     fn component_definitions(&self) -> Vec<ComponentDefinition> {
@@ -224,7 +241,13 @@ impl BuiltinEditorRegistry {
     ) -> Result<std::sync::Arc<dyn PanelView>, PluginError> {
         for provider in &self.providers {
             if provider.can_handle(editor_id) {
-                return provider.create_editor(file_path, editor_context, window, cx);
+                return provider.create_editor_for(
+                    editor_id,
+                    file_path,
+                    editor_context,
+                    window,
+                    cx,
+                );
             }
         }
 

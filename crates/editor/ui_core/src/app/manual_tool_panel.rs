@@ -1,25 +1,24 @@
 use agent_chat_tools::ToolRegistry;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyWindowHandle, App, AppContext, Context, Corner, Entity, EventEmitter, FocusHandle,
+    div, px, AnyWindowHandle, App, AppContext, Context, Corner, Entity, EventEmitter, FocusHandle,
     Focusable, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    StatefulInteractiveElement, Styled, Subscription, Window,
 };
-use serde_json::{Number, Value, json};
+use serde_json::{json, Number, Value};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{Arc, RwLock},
 };
 use ui::{
-    ActiveTheme as _, Disableable, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     dropdown::{SearchableList, SearchableListEvent},
     h_flex,
     input::{InputState, TextInput},
     popover::Popover,
-    v_flex,
+    v_flex, ActiveTheme as _, Disableable, IconName, Sizable,
 };
 
 /// A tool that can be called from the manual tool runner.
@@ -532,7 +531,11 @@ impl ManualToolPanel {
                     .map(PathBuf::from)
                     .unwrap_or_else(|| PathBuf::from("."));
                 let p = PathBuf::from(&file_path_raw);
-                if p.is_absolute() { p } else { root.join(p) }
+                if p.is_absolute() {
+                    p
+                } else {
+                    root.join(p)
+                }
             };
 
             let result = plugin_manager::global().map(|lock| {
@@ -558,7 +561,11 @@ impl ManualToolPanel {
         let file_path_raw = self.file_path_input.read(cx).text().to_string();
         let first_file_path = {
             let raw = file_path_raw.trim().to_string();
-            if raw.is_empty() { None } else { Some(raw) }
+            if raw.is_empty() {
+                None
+            } else {
+                Some(raw)
+            }
         };
 
         if tool_name == "open_file_in_default_editor" {

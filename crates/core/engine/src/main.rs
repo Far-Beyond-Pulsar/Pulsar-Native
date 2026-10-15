@@ -49,9 +49,9 @@ use ui_log_viewer::TrackingAllocator;
 use blueprint_editor_plugin as _;
 // Force-link the built-in Trait Editor so its `LinkedEditorProvider` inventory
 // registration is retained in the final binary, as with the Blueprint editor.
-use trait_editor_plugin as _;
 #[cfg(feature = "typescript")]
 use plugin_typescript as _;
+use trait_editor_plugin as _;
 
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
@@ -76,6 +76,7 @@ pub mod appdata; // App data and resource directory management
 pub mod args; // Command-line argument parsing
 pub mod assets; // Asset embedding and management
 pub mod consts; // Engine constants (name, version, authors, etc.)
+mod dev_bootstrap;
 pub mod discord; // Discord Rich Presence integration
 pub mod file_association;
 pub mod gpu_policy; // GPU detection and policy enforcement
@@ -95,7 +96,7 @@ pub use engine_state::{
     WindowRequest,
 };
 
-use init::{InitContext, InitGraph, init_task, task_ids::*};
+use init::{init_task, task_ids::*, InitContext, InitGraph};
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
@@ -135,6 +136,10 @@ fn check_debugger_attached() {
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
 fn main() {
+    if dev_bootstrap::run_if_requested() {
+        return;
+    }
+
     // Held for the entire function body so it dumps `dhat-heap.json` (via
     // Drop) on clean process exit — e.g. quitting the editor normally after
     // reproducing a leak. Only active with `--features dhat-heap`.

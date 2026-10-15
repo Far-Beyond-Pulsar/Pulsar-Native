@@ -25,6 +25,7 @@ pub fn set_locale(locale: &str) {
 
 pub mod asset_picker;
 pub mod asset_thumbnails;
+pub mod close_hooks;
 pub mod command_palette;
 pub mod file_utils;
 pub mod generic_window;
@@ -32,6 +33,7 @@ pub mod locale_picker;
 pub mod menu;
 pub mod open_window;
 pub mod panel;
+pub mod popout_decorations;
 pub mod profile_dropdown;
 pub mod properties_inspector;
 pub mod property_editor_registry;

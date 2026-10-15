@@ -15,80 +15,13 @@ use pulsar_class::{ClassDefinition, ClassInstance, ClassRegistry};
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
-use super::objects::remove_object;
 use super::{ObjectId, ObjectType, Transform};
 
-/// The current project's classes (scanned from `src/classes`). Empty when
-/// no project is open.
-pub fn project_registry() -> ClassRegistry {
-    match engine_state::get_project_path()
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            fallback_project_root()
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .clone()
-        }) {
-        Some(root) => ClassRegistry::scan(&root),
-        None => ClassRegistry::default(),
-    }
-}
-
-/// Project root used by [`project_registry`] when no engine context has
-/// one (command-line tools, tests).
-fn fallback_project_root() -> &'static std::sync::Mutex<Option<std::path::PathBuf>> {
-    static ROOT: std::sync::OnceLock<std::sync::Mutex<Option<std::path::PathBuf>>> =
-        std::sync::OnceLock::new();
-    ROOT.get_or_init(Default::default)
-}
-
-/// Set the project root [`project_registry`] falls back to when the engine
-/// context has none.
-pub fn set_fallback_project_root(root: Option<std::path::PathBuf>) {
-    *fallback_project_root()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner()) = root;
-}
-
-/// The registry for a class directory: every class of the project it
-/// lives in (`<project>/src/classes/<Name>` or a `<Name>.class/` folder
-/// anywhere in the project), else just its parent directory's classes.
-pub fn registry_for_class_dir(class_dir: &Path) -> ClassRegistry {
-    if let Some(root) = pulsar_class::project_root_of_class_dir(class_dir) {
-        let registry = ClassRegistry::scan(&root);
-        if registry
-            .entries()
-            .iter()
-            .any(|e| same_dir(&e.dir, class_dir))
-        {
-            return registry;
-        }
-    }
-    match class_dir.parent() {
-        Some(parent) => {
-            let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(parent)
-                .map(|entries| {
-                    entries
-                        .flatten()
-                        .map(|e| e.path())
-                        .filter(|p| pulsar_class::registry::is_class_dir(p))
-                        .collect()
-                })
-                .unwrap_or_default();
-            if !dirs.iter().any(|d| same_dir(d, class_dir))
-                && pulsar_class::registry::is_class_dir(class_dir)
-            {
-                dirs.push(class_dir.to_path_buf());
-            }
-            ClassRegistry::from_dirs(dirs)
-        }
-        None => ClassRegistry::default(),
-    }
-}
-
-fn same_dir(a: &Path, b: &Path) -> bool {
-    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
-}
+// The registries live in the engine, which rebuilds instances on class
+// updates in every world (SceneDB#84).
+pub use engine_backend::scene::classes::{
+    project_class_registry as project_registry, registry_for_class_dir, set_fallback_project_root,
+};
 
 /// The registry to resolve a legacy `script_asset` path with: the classes
 /// next to it when that directory exists here, else the current project's.
@@ -145,10 +78,7 @@ pub fn instantiate_class(
         object_type: ObjectType::Blueprint,
     };
     let root = match class_world::instantiate_class(world, def, instance, spawn) {
-        Ok(placement) => {
-            remember_built_definition(def);
-            placement.root()
-        }
+        Ok(placement) => placement.root(),
         Err(error) => {
             tracing::error!(class = %def.name, "Could not place class: {error}");
             return None;
@@ -234,25 +164,13 @@ pub fn rebuild_instance(
     registry: &ClassRegistry,
 ) -> Option<Vec<ObjectId>> {
     let root = entity(world, root_id)?;
-    let instance = class_world::class_instance_of(world, root)?;
-    let def = registry.definition_for(&instance)?;
-    for child in class_world::generated_children(world, root)
-        .into_iter()
-        .rev()
-    {
-        if let Some(id) = id_of(world, child) {
-            remove_object(world, &id);
-        }
-    }
-    if instance.class != def.id {
-        let mut fixed = instance;
-        fixed.class = def.id.clone();
-        fixed.class_name = def.name.clone();
-        class_world::store_class_instance(world, root, &fixed);
-    }
-    class_world::expand_class_instance(world, root, &def);
-    remember_built_definition(&def);
-    Some(instance_object_ids(world, root))
+    let rebuilt = engine_backend::scene::classes::rebuild_class_instance(world, root, registry)?;
+    Some(
+        rebuilt
+            .into_iter()
+            .filter_map(|e| id_of(world, e))
+            .collect(),
+    )
 }
 
 /// Rebuild every class instance in the world (after a level load). Returns
@@ -667,110 +585,41 @@ pub fn property_equals_default(current: &dyn std::any::Any, default: &dyn std::a
 
 // ── Asset updates: class edits reach placed instances ───────────────────────
 
-/// Whether `event` names the class `instance` refers to (by GUID, else by
-/// class directory name).
-fn event_names_class(
-    event: &plugin_editor_api::AssetUpdated,
-    instance: &ClassInstance,
-    registry: &ClassRegistry,
-) -> bool {
-    if let Some(id) = &event.id {
-        if instance.class.as_str() == id {
-            return true;
-        }
-    }
-    let Some(dir_name) = event
-        .path
-        .as_ref()
-        .and_then(|p| p.file_name())
-        .and_then(|n| n.to_str())
-    else {
-        return false;
-    };
-    registry
-        .resolve(instance)
-        .map(|entry| entry.name == dir_name)
-        .unwrap_or(instance.class_name == dir_name)
-}
-
 /// Rebuild every placed instance of the class an asset update names from
 /// the class's new definition, keeping each instance's overrides (current
-/// edits included). Returns the ids of the rebuilt objects (roots and their
-/// generated children). Events for other asset kinds are ignored.
+/// edits included); see `engine_backend::scene::classes`, which does the
+/// same for game and headless worlds. Returns the ids of the rebuilt objects
+/// (roots and their generated children) and tells the details panel to
+/// re-read class defaults. Events for other asset kinds are ignored.
 pub fn apply_class_asset_update(
     world: &mut World,
     event: &plugin_editor_api::AssetUpdated,
 ) -> Vec<ObjectId> {
-    if event.kind != plugin_editor_api::AssetKind::Blueprint {
-        return Vec::new();
-    }
-    let registry = match &event.path {
-        Some(dir) if dir.is_dir() => registry_for_class_dir(dir),
-        _ => project_registry(),
-    };
-    let roots: Vec<(ObjectId, Entity)> = world
-        .query::<&engine_backend::scene::StableId>()
-        .map(|(e, id)| (id.0.clone(), e))
-        .filter(|(_, e)| class_world::is_class_root(world, *e))
-        .collect();
-    // First fold every matching instance's live values into its overrides,
-    // diffed against the definition it was built from (the new one would
-    // turn every value it did not override into one); only then rebuild,
-    // which records the new definition as the one built from. Slot ids are
-    // stable across class edits, so the overrides apply to the new one.
-    let mut matching = Vec::new();
-    for (id, root) in roots {
-        let Some(stored) = class_world::class_instance_of(world, root) else {
-            continue;
-        };
-        if !event_names_class(event, &stored, &registry) {
-            continue;
-        }
-        let Some(entry) = registry.resolve(&stored) else {
-            continue;
-        };
-        if let Some(built_from) = built_definition(&entry.id) {
-            let current = class_world::collect_overrides(world, root, &built_from);
-            class_world::store_class_instance(world, root, &current);
-        }
-        matching.push(id);
-    }
-    let mut touched = Vec::new();
-    for id in matching {
-        if let Some(ids) = rebuild_instance(world, &id, &registry) {
-            touched.extend(ids);
-        }
-    }
+    let touched: Vec<ObjectId> =
+        engine_backend::scene::classes::reload_class_instances(world, event)
+            .into_iter()
+            .filter_map(|e| id_of(world, e))
+            .collect();
     if !touched.is_empty() {
         bump_class_defs_generation();
     }
     touched
 }
 
-/// Definitions instances were last built from, per class, so an asset
-/// update can tell the instance's own edits from old class defaults.
-fn built_definitions() -> &'static std::sync::Mutex<
-    std::collections::HashMap<pulsar_class::ClassId, pulsar_class::ClassDefinition>,
-> {
-    static BUILT: std::sync::OnceLock<
-        std::sync::Mutex<
-            std::collections::HashMap<pulsar_class::ClassId, pulsar_class::ClassDefinition>,
-        >,
-    > = std::sync::OnceLock::new();
-    BUILT.get_or_init(Default::default)
-}
-
-fn remember_built_definition(def: &pulsar_class::ClassDefinition) {
-    built_definitions()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .insert(def.id.clone(), def.clone());
-}
-
-fn built_definition(id: &pulsar_class::ClassId) -> Option<pulsar_class::ClassDefinition> {
-    built_definitions()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .get(id)
+/// The instance at `root_id`'s `ClassInstance` with its live edits folded
+/// into the overrides, diffed against the definition it was built from (or
+/// the class's current one when that is unknown). What undo stores for a
+/// placed class (#931): its class and overrides, never its built
+/// components, so a restore rebuilds from whatever the class is now.
+pub fn folded_class_instance(
+    world: &World,
+    root_id: &str,
+    registry: &ClassRegistry,
+) -> Option<ClassInstance> {
+    let root = entity(world, root_id)?;
+    let instance = class_world::class_instance_of(world, root)?;
+    let def = class_world::built_definition(world, root)
         .cloned()
+        .or_else(|| registry.definition_for(&instance))?;
+    Some(class_world::collect_overrides(world, root, &def))
 }

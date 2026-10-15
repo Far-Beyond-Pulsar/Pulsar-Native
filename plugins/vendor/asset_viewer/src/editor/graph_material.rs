@@ -280,4 +280,3 @@ pub fn build(
     }
     Ok(GraphDraw { pipeline, textures })
 }
-

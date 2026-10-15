@@ -19,9 +19,6 @@
 [submodule "crates/ui/wgpui-component"]
 	path = crates/ui/wgpui-component
 	url = https://github.com/Far-Beyond-Pulsar/WGPUI-Component.git
-[submodule "crates/third-party/pbgc"]
-	path = crates/third-party/pbgc
-	url = https://github.com/Far-Beyond-Pulsar/PBGC.git
 [submodule "crates/third-party/graphy"]
 	path = crates/third-party/graphy
 	url = https://github.com/Far-Beyond-Pulsar/Graphy.git
@@ -41,3 +38,15 @@
 [submodule "crates/external/pulsar-reflection"]
 	path = crates/external/pulsar-reflection
 	url = https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection.git
+[submodule "plugins/vendor/physics_plugin"]
+	path = plugins/vendor/physics_plugin
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Physics
+[submodule "plugins/vendor/skm_editor"]
+	path = plugins/vendor/skm_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_SKM
+[submodule "plugins/vendor/ui_editor"]
+	path = plugins/vendor/ui_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_UI
+[submodule "plugins/vendor/input_plugin"]
+	path = plugins/vendor/input_plugin
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Input

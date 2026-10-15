@@ -123,6 +123,9 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Per-user editor state (tabs, dock layout, window geometry)
+.pulsar/layout.json
 ";
                 virtual_fs::write_file(&gitignore_path, default_ignore.as_bytes());
             }

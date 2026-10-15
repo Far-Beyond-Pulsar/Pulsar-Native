@@ -213,6 +213,14 @@ fn merge_baked_patches(manifest: &str) -> String {
             let end = (start + 1..lines.len())
                 .find(|&index| lines[index].trim_start().starts_with('['))
                 .unwrap_or(lines.len());
+            let baked_value = |key: &str| {
+                entries.iter().find_map(|entry| {
+                    entry
+                        .split_once('=')
+                        .filter(|(k, _)| k.trim() == key)
+                        .map(|(_, v)| (entry, v.trim()))
+                })
+            };
             let existing_keys: Vec<&str> = lines[start + 1..end]
                 .iter()
                 .filter_map(|line| line.split_once('=').map(|(key, _)| key.trim()))
@@ -226,12 +234,30 @@ fn merge_baked_patches(manifest: &str) -> String {
                         .unwrap_or(false)
                 })
                 .collect();
-            if missing.is_empty() {
+            // Patch entries are engine-owned: a baked key whose value differs
+            // from the project's copy is stale (e.g. an old SceneDB rev), so it
+            // is replaced rather than kept.
+            let is_stale = |line: &str| {
+                line.split_once('=')
+                    .and_then(|(key, value)| {
+                        baked_value(key.trim()).map(|(_, baked)| baked != value.trim())
+                    })
+                    .unwrap_or(false)
+            };
+            if missing.is_empty() && !lines[start + 1..end].iter().any(|l| is_stale(l)) {
                 continue;
             }
 
             let mut merged = String::new();
-            for line in &lines[..end] {
+            for (index, line) in lines[..end].iter().enumerate() {
+                if index > start && is_stale(line) {
+                    let key = line.split_once('=').map(|(k, _)| k.trim()).unwrap_or("");
+                    if let Some((entry, _)) = baked_value(key) {
+                        merged.push_str(entry);
+                        merged.push('\n');
+                        continue;
+                    }
+                }
                 merged.push_str(line);
                 merged.push('\n');
             }
@@ -318,7 +344,7 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         let existing = existing_manifest.as_deref().unwrap_or_default();
         let updated = ensure_generated_dependencies(existing, &script_crates);
         if updated != existing {
-            virtual_fs::write_file(&cargo_toml_path, updated.as_bytes()).map_err(|e| {
+            write_if_changed(&cargo_toml_path, updated.as_bytes()).map_err(|e| {
                 format!("Failed to update generated source dependencies in Cargo.toml: {e}")
             })?;
         }
@@ -384,7 +410,7 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         workspace_block = workspace_block(&script_crates),
     );
 
-    virtual_fs::write_file(&cargo_toml_path, cargo_content.as_bytes())
+    write_if_changed(&cargo_toml_path, cargo_content.as_bytes())
         .map_err(|e| format!("Failed to write Cargo.toml: {e}"))?;
 
     Ok(())
@@ -392,7 +418,8 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
 
 /// Ensure the core project bootstrap files exist and are up to date.
 ///
-/// This is engine-owned project wiring. PBGC should only emit class files.
+/// This is engine-owned project wiring. The Blueprint compiler only writes
+/// class files.
 pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
     // ── scripts/ — user gameplay script crates (#653) ────────────────────────
     // Must run BEFORE manifest/engine_main generation so both can wire it.
@@ -433,7 +460,7 @@ pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
             }
         }
 
-        virtual_fs::write_file(&classes_mod, mod_content.as_bytes())
+        write_if_changed(&classes_mod, mod_content.as_bytes())
             .map_err(|e| format!("Failed to write classes/mod.rs: {e}"))?;
     }
 
@@ -447,7 +474,7 @@ pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
 
         let main_content = generated_main_rs(project_name);
 
-        virtual_fs::write_file(&main_rs, main_content.as_bytes())
+        write_if_changed(&main_rs, main_content.as_bytes())
             .map_err(|e| format!("Failed to write src/main.rs: {e}"))?;
     }
 
@@ -498,6 +525,19 @@ fn main() {{
 }}
 "#
     )
+}
+
+/// Write generated source only when its content changes. Build fast paths use
+/// source mtimes to decide whether a game artifact is stale, so rewriting
+/// identical scaffolding on every bootstrap would force an unnecessary build.
+fn write_if_changed(path: &Path, content: &[u8]) -> anyhow::Result<()> {
+    if virtual_fs::read_file(path)
+        .map(|existing| existing == content)
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+    virtual_fs::write_file(path, content)
 }
 
 /// Materialize engine meshes into `<project>/assets/meshes/`.
@@ -931,7 +971,7 @@ pub unsafe extern "C" fn pulsar_pie_event_bus(out: *mut std::ffi::c_void, out_si
     };
 
     if should_write {
-        virtual_fs::write_file(&lib_rs, content.as_bytes())
+        write_if_changed(&lib_rs, content.as_bytes())
             .map_err(|e| format!("Failed to write src/lib.rs: {e}"))?;
     }
 
@@ -1073,7 +1113,7 @@ pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
 "#,
     );
 
-    virtual_fs::write_file(&engine_main_rs, content.as_bytes())
+    write_if_changed(&engine_main_rs, content.as_bytes())
         .map_err(|e| format!("Failed to write src/engine_main.rs: {e}"))
 }
 
@@ -1267,6 +1307,31 @@ mod tests {
         // No crates → byte-identical passthrough.
         assert_eq!(splice_script_dependencies(baked, &[]), baked);
         assert!(workspace_block(&[]).is_empty());
+    }
+
+    /// A project generated by an older engine keeps its old `[patch]` revs
+    /// unless the merge replaces them; user-added keys must survive.
+    #[test]
+    fn merge_replaces_stale_baked_patch_entries() {
+        let first_patch = super::GAME_MANIFEST_DEPS
+            .lines()
+            .position(|l| l.trim().starts_with("[patch."))
+            .expect("baked patch table");
+        let header = super::GAME_MANIFEST_DEPS.lines().nth(first_patch).unwrap();
+        let entry = super::GAME_MANIFEST_DEPS
+            .lines()
+            .skip(first_patch + 1)
+            .take_while(|l| !l.trim().starts_with('['))
+            .find(|l| l.contains('='))
+            .expect("baked patch entry");
+        let key = entry.split_once('=').unwrap().0.trim();
+
+        let stale = format!("[package]\nname = \"p\"\n\n{header}\n{key} = {{ rev = \"stale\" }}\nmine = {{ path = \"x\" }}\n");
+        let merged = super::merge_baked_patches(&stale);
+        assert!(!merged.contains("rev = \"stale\""));
+        assert!(merged.contains(entry.trim()));
+        assert!(merged.contains("mine = { path = \"x\" }"));
+        assert_eq!(super::merge_baked_patches(&merged), merged);
     }
 
     #[test]

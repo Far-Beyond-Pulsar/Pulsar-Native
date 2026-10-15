@@ -40,6 +40,9 @@ pub struct EditorServices {
     /// The one rust-analyzer the engine runs for the project. Editors attach
     /// to it; they never start, restart or replace it.
     pub language_server: Option<Entity<RustAnalyzerManager>>,
+    /// The host's undo histories, one per document (Pulsar-Native#931).
+    /// The host makes one and hands the same to every editor.
+    pub undo: crate::undo::UndoService,
 }
 
 impl EditorServices {
@@ -47,6 +50,7 @@ impl EditorServices {
     pub fn downgrade(&self) -> WeakEditorServices {
         WeakEditorServices {
             language_server: self.language_server.as_ref().map(Entity::downgrade),
+            undo: self.undo.clone(),
         }
     }
 }
@@ -57,6 +61,8 @@ impl EditorServices {
 #[derive(Clone, Default)]
 pub struct WeakEditorServices {
     language_server: Option<WeakEntity<RustAnalyzerManager>>,
+    /// Holds only the registry; each history lives with its views.
+    undo: crate::undo::UndoService,
 }
 
 impl WeakEditorServices {
@@ -64,6 +70,7 @@ impl WeakEditorServices {
     pub fn upgrade(&self) -> EditorServices {
         EditorServices {
             language_server: self.language_server.as_ref().and_then(WeakEntity::upgrade),
+            undo: self.undo.clone(),
         }
     }
 }
@@ -172,9 +179,9 @@ impl EditorFactory {
     pub fn new(
         editor_id: EditorId,
         create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+            + 'static
+            + Send
+            + Sync,
     ) -> Self {
         Self {
             editor_id,
@@ -185,14 +192,14 @@ impl EditorFactory {
     pub fn new_with_settings(
         editor_id: EditorId,
         create: impl Fn(
-            PathBuf,
-            &EditorSettingsSnapshot,
-            &mut Window,
-            &mut App,
-        ) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+                PathBuf,
+                &EditorSettingsSnapshot,
+                &mut Window,
+                &mut App,
+            ) -> Result<Arc<dyn PanelView>, PluginError>
+            + 'static
+            + Send
+            + Sync,
     ) -> Self {
         Self {
             editor_id,
@@ -207,13 +214,35 @@ impl EditorFactory {
 /// dispatches editor creation requests to the appropriate factory.
 pub struct EditorFactoryRegistry {
     factories: Vec<EditorFactory>,
+    /// Panel restorers registered alongside the factories (see
+    /// [`crate::panel_restore`]). Empty for a plugin that registers none.
+    restorers: crate::panel_restore::PanelRestorerRegistry,
 }
 
 impl EditorFactoryRegistry {
     pub fn new() -> Self {
         Self {
             factories: Vec::new(),
+            restorers: Default::default(),
         }
+    }
+
+    /// Register a restorer that rebuilds panels saved with restore kind `kind`
+    /// (see [`crate::panel_restore`]).
+    pub fn register_restorer(
+        &mut self,
+        kind: impl Into<String>,
+        restorer: impl Fn(&serde_json::Value, &mut Window, &mut App) -> Option<Arc<dyn PanelView>>
+            + Send
+            + Sync
+            + 'static,
+    ) {
+        self.restorers.register(kind, restorer);
+    }
+
+    /// Take the registered restorers; the host merges them into its global set.
+    pub fn take_restorers(&mut self) -> crate::panel_restore::PanelRestorerRegistry {
+        std::mem::take(&mut self.restorers)
     }
 
     /// Register a single editor factory.
@@ -226,9 +255,9 @@ impl EditorFactoryRegistry {
         &mut self,
         editor_id: EditorId,
         create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+            + 'static
+            + Send
+            + Sync,
     ) {
         self.factories.push(EditorFactory::new(editor_id, create));
     }
@@ -237,14 +266,14 @@ impl EditorFactoryRegistry {
         &mut self,
         editor_id: EditorId,
         create: impl Fn(
-            PathBuf,
-            &EditorSettingsSnapshot,
-            &mut Window,
-            &mut App,
-        ) -> Result<Arc<dyn PanelView>, PluginError>
-        + 'static
-        + Send
-        + Sync,
+                PathBuf,
+                &EditorSettingsSnapshot,
+                &mut Window,
+                &mut App,
+            ) -> Result<Arc<dyn PanelView>, PluginError>
+            + 'static
+            + Send
+            + Sync,
     ) {
         self.factories
             .push(EditorFactory::new_with_settings(editor_id, create));

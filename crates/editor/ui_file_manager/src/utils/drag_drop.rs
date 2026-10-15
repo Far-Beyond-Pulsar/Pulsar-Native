@@ -58,6 +58,75 @@ impl FileManagerDrawer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.bring_external_files_in(target, paths, true, w, cx);
+    }
+
+    /// Copy files from outside the project into the folder being listed, as
+    /// a drop from the OS does but leaving the originals where they are. An
+    /// Assets menu's Import uses it.
+    ///
+    /// A file already in the project is not copied; if it is a source model
+    /// it is offered for import where it is. A file whose name is taken in
+    /// the folder is skipped rather than overwriting what is there.
+    pub fn import_files(&mut self, paths: &[PathBuf], w: &mut Window, cx: &mut Context<Self>) {
+        let Some(target) = self
+            .selected_folder
+            .clone()
+            .or_else(|| self.project_path.clone())
+        else {
+            return;
+        };
+        let in_project = |path: &Path| {
+            self.project_path
+                .as_deref()
+                .is_some_and(|root| path.starts_with(root))
+        };
+        let (inside, outside): (Vec<PathBuf>, Vec<PathBuf>) = paths
+            .iter()
+            .cloned()
+            .partition(|path| in_project(path.as_path()));
+        let (taken, outside): (Vec<PathBuf>, Vec<PathBuf>) =
+            outside.into_iter().partition(|path| {
+                path.file_name()
+                    .is_some_and(|name| target.join(name).exists())
+            });
+        for path in &taken {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+            w.push_notification(
+                Notification::warning(format!(
+                    "\"{name}\" was not imported: the folder already has a file with that name"
+                )),
+                cx,
+            );
+        }
+        let models: std::collections::BTreeMap<String, Vec<PathBuf>> = inside
+            .into_iter()
+            .filter_map(|path| {
+                let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+                helio_component::mesh_cache::is_importable_model(&ext).then_some((ext, path))
+            })
+            .fold(Default::default(), |mut by_ext, (ext, path)| {
+                by_ext.entry(ext).or_default().push(path);
+                by_ext
+            });
+        if let (Some(root), false) = (self.project_path.clone(), models.is_empty()) {
+            cx.defer(move |cx| crate::configurator::offer_import(root, models, cx));
+        }
+        if !outside.is_empty() {
+            self.bring_external_files_in(&target, &outside, false, w, cx);
+        }
+    }
+
+    /// Bring `paths` into `target`: other files moved (`move_others`) or
+    /// copied, source models copied and offered for import.
+    fn bring_external_files_in(
+        &mut self,
+        target: &Path,
+        paths: &[PathBuf],
+        move_others: bool,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.breadcrumb_hover_timer = None;
         self.breadcrumb_hover_path = None;
         let t = target.to_path_buf();
@@ -79,12 +148,16 @@ impl FileManagerDrawer {
 
         // Bring non-model files in unchanged.
         if !others.is_empty() {
-            let r = match self.operations.move_items(&others, &t) {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    tracing::warn!("External move failed: {}, fallback copy", e);
-                    FileOperations::copy_items(&others, &t)
+            let r = if move_others {
+                match self.operations.move_items(&others, &t) {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        tracing::warn!("External move failed: {}, fallback copy", e);
+                        FileOperations::copy_items(&others, &t)
+                    }
                 }
+            } else {
+                FileOperations::copy_items(&others, &t)
             };
             match r {
                 Ok(_) => {
@@ -119,10 +192,9 @@ impl FileManagerDrawer {
                         let mut by_ext: std::collections::BTreeMap<String, Vec<PathBuf>> =
                             Default::default();
                         for src in &models {
-                            let (Some(name), Some(ext)) = (
-                                src.file_name(),
-                                src.extension().and_then(|e| e.to_str()),
-                            ) else {
+                            let (Some(name), Some(ext)) =
+                                (src.file_name(), src.extension().and_then(|e| e.to_str()))
+                            else {
                                 continue;
                             };
                             by_ext

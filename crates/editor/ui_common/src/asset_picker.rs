@@ -38,6 +38,14 @@ impl AssetQuery {
         Self::FolderMarker(marker_file.into())
     }
 
+    /// Queries for every extension supported by a typed asset-reference kind.
+    pub fn for_kind<K: pulsar_reflection::AssetKind>() -> Vec<Self> {
+        K::EXTENSIONS
+            .iter()
+            .map(|extension| Self::extension(*extension))
+            .collect()
+    }
+
     /// Common raster and GPU texture formats offered by the texture picker.
     pub fn texture_images() -> Vec<Self> {
         [
@@ -51,6 +59,9 @@ impl AssetQuery {
 
 pub struct MeshAssetPicker {
     searchable_list: Entity<AssetSearchableList<AssetItem>>,
+    /// Loaded thumbnails by path. Shared with the list, which reads it per visible row.
+    thumbnails:
+        std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>>,
     /// Source-of-truth item list — thumbnails are written here as they load.
     items: Vec<AssetItem>,
     /// Tracks which paths have already had a thumbnail task spawned so we don't double-spawn.
@@ -125,6 +136,10 @@ impl MeshAssetPicker {
                 .unwrap_or_else(|| PathBuf::from("."))
         });
 
+        let thumbnails: std::rc::Rc<
+            std::cell::RefCell<std::collections::HashMap<String, Arc<gpui::RenderImage>>>,
+        > = Default::default();
+        let (image_map, picker) = (thumbnails.clone(), cx.weak_entity());
         let searchable_list = cx.new(|cx| {
             AssetSearchableList::new(
                 window,
@@ -133,7 +148,23 @@ impl MeshAssetPicker {
                 |item| item.display_name.clone(),
                 |item| item.path.clone(),
             )
-            .with_image_getter(|item| item.thumbnail.clone().map(ImageSource::Render))
+            .with_image_getter(move |item| {
+                image_map
+                    .borrow()
+                    .get(&item.path)
+                    .cloned()
+                    .map(ImageSource::Render)
+            })
+            // Thumbnails are only made for what is on screen: a project can hold
+            // thousands of images and rendering them all at once freezes the editor.
+            .with_visible_callback(move |visible, cx| {
+                for item in visible {
+                    let path = item.path.clone();
+                    picker
+                        .update(cx, |picker, cx| picker.ensure_thumbnail(path, cx))
+                        .ok();
+                }
+            })
             .with_empty_text("No matching assets")
             .with_max_width(px(360.0))
             .with_max_height(px(420.0))
@@ -156,6 +187,7 @@ impl MeshAssetPicker {
 
         let mut picker = Self {
             searchable_list,
+            thumbnails,
             items,
             thumbnail_requested: std::collections::HashSet::new(),
             project_root,
@@ -179,6 +211,63 @@ impl MeshAssetPicker {
         &self.selected_path
     }
 
+    /// Resolve the selected project's stable, kind-matched asset ID into a typed reference.
+    /// The owning asset loader is responsible for recording its embedded ID
+    /// in the project index before this is called.
+    pub fn selected_asset_ref<K: pulsar_reflection::AssetKind>(
+        &self,
+    ) -> Option<pulsar_reflection::AssetRef<K>> {
+        let root = self.project_root.as_ref()?;
+        let index = engine_fs::open_project_file_index(root).ok()??;
+        let path = Path::new(&self.selected_path);
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            root.join(path)
+        };
+        if !K::accepts_path(&path) {
+            return None;
+        }
+        let ids = index.asset_ids_for_path_kind(&path, K::KIND).ok()?;
+        ids.iter()
+            .find_map(|id| pulsar_reflection::AssetRef::parse(id))
+    }
+
+    /// Return the selected asset's typed reference, creating a durable ID for
+    /// plain file assets that do not embed one (for example PNG images).
+    pub fn selected_or_create_asset_ref<K: pulsar_reflection::AssetKind>(
+        &self,
+    ) -> Option<pulsar_reflection::AssetRef<K>> {
+        if let Some(reference) = self.selected_asset_ref::<K>() {
+            return Some(reference);
+        }
+        let root = self.project_root.as_ref()?;
+        let index = engine_fs::open_project_file_index(root).ok()??;
+        let path = Path::new(&self.selected_path);
+        if !K::accepts_path(path) {
+            return None;
+        }
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            root.join(path)
+        };
+        let id = index.ensure_typed_asset_id(K::KIND, &path).ok()?;
+        pulsar_reflection::AssetRef::parse(&id)
+    }
+
+    /// Resolve a typed reference through the project's file index.
+    pub fn resolve_asset_ref_path<K: pulsar_reflection::AssetKind>(
+        project_root: &Path,
+        reference: &pulsar_reflection::AssetRef<K>,
+    ) -> Option<PathBuf> {
+        let index = engine_fs::open_project_file_index(project_root).ok()??;
+        index
+            .path_for_asset_id_kind(K::KIND, reference.as_str())
+            .ok()
+            .flatten()
+    }
+
     /// Point the picker at a path chosen elsewhere, without emitting
     /// [`AssetPickedEvent`].
     ///
@@ -196,10 +285,7 @@ impl MeshAssetPicker {
     /// Return the cached thumbnail for `path` if one has already been loaded.
     /// Returns `None` while still loading or for unsupported file types.
     pub fn thumbnail_for_path(&self, path: &str) -> Option<Arc<gpui::RenderImage>> {
-        self.items
-            .iter()
-            .find(|item| item.path == path)
-            .and_then(|item| item.thumbnail.clone())
+        self.thumbnails.borrow().get(path).cloned()
     }
 
     /// Request a thumbnail for a palette tile without opening the picker.
@@ -277,13 +363,12 @@ impl MeshAssetPicker {
 
             let _ = cx.update(|cx| {
                 this.update(cx, |picker, cx| {
-                    if let Some(item) = picker.items.iter_mut().find(|i| i.path == path_key) {
-                        item.thumbnail = Some(render_image);
-                    }
-                    let updated = picker.items.clone();
-                    picker.searchable_list.update(cx, |list, cx| {
-                        list.set_items(updated, cx);
-                    });
+                    picker
+                        .thumbnails
+                        .borrow_mut()
+                        .insert(path_key, render_image);
+                    // Redraw the rows; the items themselves haven't changed.
+                    picker.searchable_list.update(cx, |_, cx| cx.notify());
                     cx.notify();
                 })
             });
@@ -293,19 +378,54 @@ impl MeshAssetPicker {
 }
 
 impl Render for MeshAssetPicker {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Mirror the file drawer: request thumbnails for each item as it becomes
-        // visible (i.e. when the picker is open and rendered). The
-        // thumbnail_requested set makes repeated render passes no-ops.
-        let paths: Vec<String> = self.items.iter().map(|i| i.path.clone()).collect();
-        for path in paths {
-            self.ensure_thumbnail(path, cx);
-        }
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         self.searchable_list.clone()
     }
 }
 
 fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
+    if let Ok(Some(index)) = engine_fs::open_project_file_index(project_root) {
+        let mut out = BTreeSet::new();
+        for query in queries {
+            let indexed = match query {
+                AssetQuery::Extension(extension) => index.query(&engine_fs::FileIndexQuery {
+                    extension: Some(extension.clone()),
+                    ..Default::default()
+                }),
+                AssetQuery::FileType(file_type_id) => index.query(&engine_fs::FileIndexQuery {
+                    file_type_id: Some(file_type_id.clone()),
+                    ..Default::default()
+                }),
+                AssetQuery::FolderMarker(marker_file) => index.query(&engine_fs::FileIndexQuery {
+                    name_equals: Some(marker_file.clone()),
+                    ..Default::default()
+                }),
+            };
+            let Ok(indexed) = indexed else {
+                continue;
+            };
+            match query {
+                AssetQuery::FolderMarker(_) => {
+                    for entry in indexed {
+                        if let Some(parent) = Path::new(&entry.path).parent() {
+                            if !parent.as_os_str().is_empty() {
+                                out.insert(normalize_asset_path(parent.to_string_lossy()));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    out.extend(
+                        indexed
+                            .into_iter()
+                            .map(|entry| normalize_asset_path(entry.path)),
+                    );
+                }
+            }
+        }
+        return out.into_iter().collect();
+    }
+
     let extensions: std::collections::HashSet<String> = queries
         .iter()
         .filter_map(|q| match q {

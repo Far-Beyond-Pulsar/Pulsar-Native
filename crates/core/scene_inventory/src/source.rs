@@ -146,6 +146,30 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
         regex: r"\bupdate_live_component_property\s*\(|\bupdate_component_property\s*\(|\bupdate_component\s*\(|\bSceneCommand::SetComponentData\b",
         meaning: "Editor component-edit producer",
     },
+    SitePattern {
+        id: "asset-kind",
+        needles: &["register_loader"],
+        regex: r"(?:^|[^.\w])register_loader\s*\(",
+        meaning: "Registers an asset kind's loader with SceneDB's asset table (SceneDB#84); a method of the same name (a format importer's registry) is not one",
+    },
+    SitePattern {
+        id: "asset-binding",
+        needles: &["register_binding"],
+        regex: r"(?:^|[^.\w])register_binding\s*::<",
+        meaning: "Binds a loaded asset kind into a component type",
+    },
+    SitePattern {
+        id: "asset-reload",
+        needles: &["asset_source_changed", "reload_asset"],
+        regex: r"\.asset_source_changed\s*\(|\.reload_asset\s*\(",
+        meaning: "Reloads an asset whose source changed; dependents rebind",
+    },
+    SitePattern {
+        id: "asset-pump",
+        needles: &["pump_assets", "resolve_assets_blocking"],
+        regex: r"\.pump_assets\s*\(|\.resolve_assets_blocking\s*\(",
+        meaning: "Starts asset loads and binds finished ones",
+    },
 ];
 
 const SCAN_ROOTS: &[&str] = &[

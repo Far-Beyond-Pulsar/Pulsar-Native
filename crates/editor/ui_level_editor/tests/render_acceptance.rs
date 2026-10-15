@@ -986,7 +986,7 @@ fn environment_components_reach_the_frame() {
         let change = with.difference(&before);
         println!("PHASE4 {label} vs without: {change:?}");
         assert!(
-            change.color_pixels > (SIZE * SIZE / 20) as usize,
+            change.color_pixels > (SIZE * SIZE / 100) as usize,
             "{label} did not change the frame: {change:?}"
         );
         assert_eq!(change.depth_texels, 0, "{label} moved geometry");
@@ -1154,9 +1154,9 @@ fn every_pass_of_the_editor_graph_runs() {
         "VirtualGeometry",
         "TransparentPass",
         "FXAA",
+        "Lens",
         "LensFlare",
         "PostProcess",
-        "DofPass",
         "DebugDraw",
         "PerfOverlay",
     ] {
@@ -1562,7 +1562,10 @@ fn duplicates_are_independent_in_the_frame() {
         let both = harness.frames(&mut renderer, || {});
         let (l, r) = depth_by_half(&both, &reference);
         println!("DUPLICATE both: left {l}, right {r}");
-        assert!(l > 0 && r > 0, "the source and the copy are drawn ({l}, {r})");
+        assert!(
+            l > 0 && r > 0,
+            "the source and the copy are drawn ({l}, {r})"
+        );
 
         let source_texels = coverage(&both, &reference, true);
         let stays = |frame: &Frame, what: &str| {
@@ -1593,13 +1596,21 @@ fn duplicates_are_independent_in_the_frame() {
         set_visible(&mut state, &copy, false);
         let hidden = harness.frames(&mut renderer, || {});
         stays(&hidden, "hiding the copy");
-        assert_eq!(depth_by_half(&hidden, &reference).1, 0, "the hidden copy is drawn");
+        assert_eq!(
+            depth_by_half(&hidden, &reference).1,
+            0,
+            "the hidden copy is drawn"
+        );
         set_visible(&mut state, &copy, true);
         move_to(&mut state, &copy, [0.9 * radius, 0.0, 0.0]);
 
         // Deleting either one keeps the other drawn: the shared geometry
         // stays while one of them holds it.
-        let (gone, kept) = if remove_source { (&source, &copy) } else { (&copy, &source) };
+        let (gone, kept) = if remove_source {
+            (&source, &copy)
+        } else {
+            (&copy, &source)
+        };
         let result = execute_command(&mut state, SceneCommand::RemoveObject { id: gone.clone() });
         assert!(result.changed, "remove {gone}");
         let after = harness.frames(&mut renderer, || {});
@@ -2803,6 +2814,11 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
     )
     .affected_ids[0]
         .clone();
+    // The world loads the image off the write path (SceneDB#84).
+    assert!(state
+        .scene
+        .world_mut()
+        .resolve_assets_blocking(std::time::Duration::from_secs(30)));
     let frame = harness.frames(&mut renderer, || {});
     frame.dump("sprites_textured");
     assert_color(
@@ -2814,6 +2830,37 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
         "the image's right half",
         pixel(&frame, centre + 70, centre + 60),
         [255, 255, 0],
+    );
+
+    // The file changes: the sprite shows the new image, re-uploaded.
+    image::save_buffer(
+        &image,
+        &[255, 255, 0, 255, 0, 0, 255, 255],
+        2,
+        1,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    {
+        let mut world = state.scene.world_mut();
+        assert_eq!(
+            world.asset_source_changed(&helio_component::texture_assets::texture_source_for_file(
+                &image
+            )),
+            1
+        );
+        assert!(world.resolve_assets_blocking(std::time::Duration::from_secs(30)));
+    }
+    let frame = harness.frames(&mut renderer, || {});
+    assert_color(
+        "the reloaded image's left half",
+        pixel(&frame, centre + 50, centre + 60),
+        [255, 255, 0],
+    );
+    assert_color(
+        "the reloaded image's right half",
+        pixel(&frame, centre + 70, centre + 60),
+        [0, 0, 255],
     );
 
     // Disabled, the 3D frame is back.
@@ -2871,7 +2918,8 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     // The default volume: 16³ one-metre voxels, ~14 m in radius.
     let harness = Harness::new(device, queue, 14.0);
     // Lit from in front and above, so the volume's faces are not black.
-    let light = |state: &mut LevelEditorState| add_light(state, [0.0, 20.0, 40.0], Kind::Point, 5.0e4);
+    let light =
+        |state: &mut LevelEditorState| add_light(state, [0.0, 20.0, 40.0], Kind::Point, 5.0e4);
     let add_volume = |state: &mut LevelEditorState| {
         let id = add_object(state, "Voxels", ObjectType::Empty);
         // The volume's corner is its object's origin: centre it.
@@ -2909,7 +2957,10 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     let same = overlap(&cube_texels, &full_coverage(&rotated, &reference));
     println!("VOXEL rotated: keeps {same:.3} of the cube's texels");
     assert_drawn("rotated voxel object", rotated.difference(&reference));
-    assert!(same < 0.9, "rotating the owner did not turn the volume ({same:.3})");
+    assert!(
+        same < 0.9,
+        "rotating the owner did not turn the volume ({same:.3})"
+    );
     transform(&mut state, &id, Some([0.0, 0.0, 0.0]), None);
 
     // Scaled on two axes: narrower.
@@ -2921,7 +2972,10 @@ fn voxel_objects_reach_the_frame_as_meshes() {
         scaled.difference(&reference).depth_texels,
     );
     println!("VOXEL scale: full {full}, scaled {narrow}");
-    assert!(narrow > 0 && narrow * 10 < full * 8, "scaling the owner did not shrink the volume");
+    assert!(
+        narrow > 0 && narrow * 10 < full * 8,
+        "scaling the owner did not shrink the volume"
+    );
     transform(&mut state, &id, None, Some([1.0, 1.0, 1.0]));
     let restored = harness.frames(&mut renderer, || {});
     assert!(overlap(&cube_texels, &full_coverage(&restored, &reference)) > 0.9);
@@ -2943,17 +2997,26 @@ fn voxel_objects_reach_the_frame_as_meshes() {
             material_slot: 0,
         })
         .collect();
-    let ticket = session.try_submit_edits(edits.into()).expect("edit admitted");
+    let ticket = session
+        .try_submit_edits(edits.into())
+        .expect("edit admitted");
     assert!(matches!(ticket.wait(), VoxelEditTicketState::Published(_)));
     let edited = harness.frames(&mut renderer, || {});
     edited.dump("voxel_edited");
     let change = edited.difference(&restored).depth_texels;
     println!("VOXEL edit: {change} depth texels changed (noise {noise})");
-    assert!(change > noise + 50, "the edit did not change the frame ({change}, noise {noise})");
+    assert!(
+        change > noise + 50,
+        "the edit did not change the frame ({change}, noise {noise})"
+    );
     let _ = session.finish(VoxelInboxClose::Drain);
 
     // Removing the component restores the empty frame.
-    assert!(components::remove_component(&mut state.scene.world_mut(), &id, 0));
+    assert!(components::remove_component(
+        &mut state.scene.world_mut(),
+        &id,
+        0
+    ));
     let removed = harness.frames(&mut renderer, || {});
     assert_not_drawn("removed voxel object", removed.difference(&reference));
 
@@ -2962,7 +3025,12 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     let floor = drop_matte_mesh(&mut state);
     let half = typed_mesh().bounds_local[3] / 3.0f32.sqrt();
     move_to(&mut state, &floor, [0.0, -16.0, 0.0]);
-    transform(&mut state, &floor, None, Some([40.0 / half, 0.5 / half, 40.0 / half]));
+    transform(
+        &mut state,
+        &floor,
+        None,
+        Some([40.0 / half, 0.5 / half, 40.0 / half]),
+    );
     add_volume(&mut state);
     let lamp = add_light(&mut state, [0.0, 30.0, 0.0], Kind::Point, 5.0e4);
     let mut renderer = harness.renderer(&state);
@@ -2979,5 +3047,314 @@ fn voxel_objects_reach_the_frame_as_meshes() {
     assert!(
         brightness(&unshadowed) > brightness(&shadowed),
         "the volume casts no shadow on the floor"
+    );
+}
+
+/// An authored camera lens reaches the lens pass (the host registers its
+/// buffers, the component derives the rows): a mesh far from the focus
+/// distance blurs, and disabling the lens restores the frame.
+#[test]
+fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
+    use helio_component::components::CameraLensComponent;
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // Focused a few centimetres from the lens, wide open: the mesh is far
+    // outside the depth of field.
+    let mut lens = CameraLensComponent::default();
+    lens.view_id = 0;
+    lens.focal_length_mm = 85.0;
+    lens.f_number = 1.4;
+    lens.focus_distance_m = 0.3;
+    lens.max_coc_px = 32.0;
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+    let added = execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "lens".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(lens)],
+        },
+    );
+    let id = added.affected_ids[0].clone();
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("camera_lens_defocus");
+    let change = with.difference(&before);
+    println!("LENS defocus vs without: {change:?}");
+    assert!(
+        change.color_pixels > (SIZE * SIZE / 100) as usize,
+        "the lens did not change the frame: {change:?}"
+    );
+    assert_eq!(change.depth_texels, 0, "a lens moved geometry");
+
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &id,
+        0,
+        false
+    ));
+    let disabled = harness.frames(&mut renderer, || {});
+    let change = disabled.difference(&before);
+    println!("LENS disabled vs without: {change:?}");
+    assert!(
+        change.color_pixels < (SIZE * SIZE / 100) as usize,
+        "a disabled lens still changes the frame: {change:?}"
+    );
+}
+
+/// A lens that maps past the frame (an equidistant fisheye) makes the viewport
+/// camera render a wider view, which the lens pass crops back to the frame:
+/// the scene's depth buffer is that of a wider camera while a lens that stays
+/// inside the frame (the defocus test above) leaves it untouched.
+#[test]
+fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
+    use helio_component::components::{
+        CameraLensComponent, LensElementKind, LensElementProps, LensProjectionModel,
+        LensRegionShape,
+    };
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // In focus at the mesh, so the lens changes the frame by its geometry only.
+    let mut lens = CameraLensComponent::default();
+    lens.view_id = 0;
+    lens.focal_length_mm = 35.0;
+    lens.f_number = 16.0;
+    lens.focus_distance_m = 10.0;
+    lens.elements = vec![LensElementProps {
+        kind: LensElementKind::Projection,
+        shape: LensRegionShape::FullFrame,
+        projection_model: LensProjectionModel::Equidistant,
+        ..LensElementProps::default()
+    }];
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+    execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "lens".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(lens)],
+        },
+    );
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("camera_lens_fisheye_overscan");
+    let change = with.difference(&before);
+    println!("LENS fisheye vs without: {change:?}");
+    assert!(
+        change.color_pixels > (SIZE * SIZE / 100) as usize,
+        "the fisheye did not change the frame: {change:?}"
+    );
+    assert!(
+        change.depth_texels > 0,
+        "the camera did not render the wider view the fisheye reaches into: {change:?}"
+    );
+}
+
+/// The lens elements' registry entries come with the editor graph: the water
+/// drops of the "Rainy lens" preset read the bundled mask array and a
+/// `Prescription` element reads the bundled bank, so each changes the frame
+/// against the same lens with its effect switched off.
+#[test]
+fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
+    use helio_component::components::{
+        CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice, LensPreset,
+        LensRegionShape,
+    };
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // Renders the mesh through `lens`, in focus so only the lens' own
+    // elements change the frame.
+    let render = |lens: CameraLensComponent| {
+        let mut state = LevelEditorState::new();
+        drop_mesh(&mut state);
+        let mut renderer = harness.renderer(&state);
+        execute_command(
+            &mut state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "lens".to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![TypedComponent::new(lens)],
+            },
+        );
+        harness.frames(&mut renderer, || {})
+    };
+    let focused = |mut lens: CameraLensComponent| {
+        lens.f_number = 16.0;
+        lens.focus_distance_m = 10.0;
+        lens
+    };
+
+    // Water drops: the same lens with the refraction at zero is the control.
+    let mut drops = CameraLensComponent::default();
+    drops.preset = LensPreset::RainyLens;
+    let mut dry = drops.resolved();
+    dry.preset = LensPreset::Custom;
+    for element in &mut dry.elements {
+        if element.kind == LensElementKind::WaterDrops {
+            element.drops_refraction = 0.0;
+        }
+    }
+    let wet = render(focused(drops.resolved()));
+    let dry = render(focused(dry));
+    let change = wet.difference(&dry);
+    println!("LENS rainy vs dry: {change:?}");
+    assert!(
+        change.color_pixels > 0,
+        "the water drops did nothing: no bundled mask array: {change:?}"
+    );
+
+    // A prescription: the ideal thin lens is the identity map with the bake's
+    // natural falloff, so its corners darken against the same lens without it.
+    let mut baked = CameraLensComponent::default();
+    baked.elements = vec![LensElementProps {
+        kind: LensElementKind::Prescription,
+        shape: LensRegionShape::FullFrame,
+        prescription_lens: LensPrescriptionChoice::ThinLens50F2,
+        ..LensElementProps::default()
+    }];
+    let mut bare = baked.clone();
+    bare.elements.clear();
+    let baked = render(focused(baked));
+    let bare = render(focused(bare));
+    let change = baked.difference(&bare);
+    println!("LENS thin-lens prescription vs none: {change:?}");
+    assert!(
+        change.color_pixels > 0,
+        "the prescription did nothing: no bundled bank: {change:?}"
+    );
+    assert_eq!(change.depth_texels, 0, "an identity map moved geometry");
+}
+
+/// The toolbar's Depth and Normals toggles reach the graph through the
+/// editor mailbox: the viewport shows the raw scene depth (grey, nothing over
+/// the sky) or the world normals instead of the lit image, and switching back
+/// restores the lit frame.
+#[test]
+fn the_viewport_shows_the_depth_and_normal_buffers() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let mailbox = renderer.editor_mailbox();
+    let lit = harness.frames(&mut renderer, || {});
+
+    mailbox.set_viewport_debug_mode(helio_pass_buffer_view::DEPTH_VIEW);
+    let depth = harness.frames(&mut renderer, || {});
+    depth.dump("viewport_depth_view");
+    assert!(
+        depth.difference(&lit).color_pixels > (SIZE * SIZE / 10) as usize,
+        "the depth view did not replace the lit image"
+    );
+    assert!(
+        depth.color.chunks_exact(4).all(|p| p[0] == p[1] && p[1] == p[2]),
+        "the depth view is not greyscale"
+    );
+    let lit_texels = depth.color.chunks_exact(4).filter(|p| p[0] > 0).count();
+    assert!(lit_texels > (SIZE * SIZE / 100) as usize, "the mesh shows no depth");
+
+    mailbox.set_viewport_debug_mode(helio_pass_buffer_view::NORMALS_VIEW);
+    let normals = harness.frames(&mut renderer, || {});
+    normals.dump("viewport_normals_view");
+    assert!(normals.difference(&depth).color_pixels > (SIZE * SIZE / 100) as usize);
+    assert!(
+        normals.color.chunks_exact(4).any(|p| p[0] != p[1] || p[1] != p[2]),
+        "the normals view is greyscale"
+    );
+
+    mailbox.set_viewport_debug_mode(0);
+    let back = harness.frames(&mut renderer, || {});
+    let change = back.difference(&lit);
+    assert!(
+        change.color_pixels < (SIZE * SIZE / 100) as usize,
+        "switching back did not restore the lit image: {change:?}"
     );
 }

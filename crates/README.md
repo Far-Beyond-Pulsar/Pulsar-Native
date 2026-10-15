@@ -8,5 +8,5 @@ crates/
   agent-providers/   AI provider crates — one per supported backend (OpenAI, Anthropic, etc.)
   ui/                Vendored WGPUI (gpui-ce) and WGPUI-Component as submodules with path deps
   graphics/          Graphics-related docs and integration notes
-  third-party/       Vendored smaller deps — pbgc, graphy, pulsar-config as path deps
+  third-party/       Vendored smaller deps — graphy, pulsar-config as path deps
 ```

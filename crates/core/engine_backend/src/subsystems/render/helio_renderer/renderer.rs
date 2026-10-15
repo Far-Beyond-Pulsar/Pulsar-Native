@@ -11,10 +11,10 @@ use crate::scene::{GizmoType, SceneWorldExt};
 
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
-use super::voxel_mesh_backend::MeshVoxelBackend;
 use super::voxel_backend::{
     PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelView, UNPICKED_REACH_M,
 };
+use super::voxel_mesh_backend::MeshVoxelBackend;
 type GizmoMode = GizmoType;
 
 // Camera-relative frames (the world origin at the eye) keep a planet's
@@ -37,10 +37,7 @@ impl RelativeCameraGate {
         };
         let store = mirror.store();
         // Registrations are append-only: a new one re-classifies.
-        let snapshot = (
-            store as *const _ as usize,
-            store.buffer_registry().len(),
-        );
+        let snapshot = (store as *const _ as usize, store.buffer_registry().len());
         if self.snapshot != Some(snapshot) {
             self.sources_compatible = relative_camera_incompatible_sources(world).is_empty();
             self.snapshot = Some(snapshot);
@@ -89,6 +86,11 @@ fn relative_camera_source_schema_compatible(
         "local_fog_sources" => c::LocalFogSourceRow::packed_gpu_component_id(),
         "post_process_volume_sources" => c::PostProcessVolumeSourceRow::packed_gpu_component_id(),
         "camera_postprocess_sources" => c::CameraPostProcessSourceRow::packed_gpu_component_id(),
+        "camera_lens_sources" | "lens_elements" => {
+            return c::lens_buffer_component_id(key.as_str()).is_some_and(|id| {
+                store.buffer_registry().element_type(key) == Some(Some(type_of(id)))
+            });
+        }
         "water_volume_sources" => c::WaterVolumeSourceRow::packed_gpu_component_id(),
         "foliage_sources" => c::FoliageSourceRow::packed_gpu_component_id(),
         "atmosphere_sources" => c::AtmosphereSourceRow::packed_gpu_component_id(),
@@ -96,9 +98,14 @@ fn relative_camera_source_schema_compatible(
         "corona_emitter_sources" => c::CoronaEmitterSourceRow::packed_gpu_component_id(),
         "wind_sources" => c::GlobalWindSourceRow::packed_gpu_component_id(),
         "sprite_sources" => c::SpriteSourceRow::packed_gpu_component_id(),
-        "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
+        "builtin_mesh_vertex::handles"
+        | "builtin_mesh_index::handles"
+        | "skeletal_skin_vertices::handles"
+        | "skeletal_bone_palette::handles" => {
             return store.buffer_registry().element_type(key)
-                == Some(Some(std::any::TypeId::of::<pulsar_scenedb::gpu::VarLenHandle>()));
+                == Some(Some(std::any::TypeId::of::<
+                    pulsar_scenedb::gpu::VarLenHandle,
+                >()));
         }
         // SceneDB's execution metadata and the mesh payload and draw fields
         // are checked by kind; their components are gated in the World.
@@ -128,20 +135,46 @@ fn relative_camera_source_compatible(
         return false;
     }
     match key {
-        "scenedb-instances" | "scenedb-instance-info" | "builtin_generation"
-        | "builtin_slot_mirror" | "builtin_cell_metadata" | "component_owners"
-        | "object_hidden" | "Transform::packed" | "light_sources" | "decal_sources"
-        | "water_hitbox_sources" | "global_fog_sources" | "local_fog_sources"
-        | "post_process_volume_sources" | "camera_postprocess_sources"
-        | "water_volume_sources" | "foliage_sources" | "atmosphere_sources"
-        | "corona_emitter_sources" | "wind_sources" | "sprite_sources" | "static_mesh_draw_bounds" | "static_mesh_draw_flags"
-        | "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles"
-        | "static_mesh_draw_sections::handles" => {
+        "scenedb-instances"
+        | "scenedb-instance-info"
+        | "builtin_generation"
+        | "builtin_slot_mirror"
+        | "builtin_cell_metadata"
+        | "component_owners"
+        | "object_hidden"
+        | "Transform::packed"
+        | "light_sources"
+        | "decal_sources"
+        | "water_hitbox_sources"
+        | "global_fog_sources"
+        | "local_fog_sources"
+        | "post_process_volume_sources"
+        | "camera_postprocess_sources"
+        | "camera_lens_sources"
+        | "lens_elements"
+        | "water_volume_sources"
+        | "foliage_sources"
+        | "atmosphere_sources"
+        | "corona_emitter_sources"
+        | "wind_sources"
+        | "sprite_sources"
+        | "static_mesh_draw_bounds"
+        | "static_mesh_draw_flags"
+        | "builtin_mesh_vertex::handles"
+        | "builtin_mesh_index::handles"
+        | "static_mesh_draw_sections::handles"
+        | "skeletal_skin_vertices::handles"
+        | "skeletal_bone_palette::handles" => {
             kind == "row" && mode == Some(MirrorMode::DirtyTracked)
         }
-        "builtin_mesh_vertex" | "builtin_mesh_index" | "static_mesh_draw_sections" => {
-            kind == "resource" && mode.is_none()
-        }
+        // Skin weights carry no positions, and the bone palette is in the
+        // mesh's own space: passes apply it before the instance's model
+        // matrix, which is what a moved origin rebases.
+        "builtin_mesh_vertex"
+        | "builtin_mesh_index"
+        | "static_mesh_draw_sections"
+        | "skeletal_skin_vertices"
+        | "skeletal_bone_palette" => kind == "resource" && mode.is_none(),
         _ => false,
     }
 }
@@ -194,6 +227,8 @@ fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec
         component_id::<helio_component::AtmosphereComponent>(),
         component_id::<helio_component::PostProcessVolumeComponent>(),
         component_id::<helio_component::CameraPostProcessComponent>(),
+        // A camera lens has no position.
+        component_id::<helio_component::CameraLensComponent>(),
         // The environment join places decals, particle emitters, water
         // volumes and the water bodies push relative to the world origin;
         // the Corona pass moves live particles, and the water simulation
@@ -393,8 +428,20 @@ impl NativeSculpt {
             return None;
         }
         let stages = [
-            ("dig_r1", VoxelBrushOp::Remove, VoxelBrushShape::Sphere, 1.0, 0),
-            ("dig_r4", VoxelBrushOp::Remove, VoxelBrushShape::Sphere, 4.0, 0),
+            (
+                "dig_r1",
+                VoxelBrushOp::Remove,
+                VoxelBrushShape::Sphere,
+                1.0,
+                0,
+            ),
+            (
+                "dig_r4",
+                VoxelBrushOp::Remove,
+                VoxelBrushShape::Sphere,
+                4.0,
+                0,
+            ),
             (
                 "build_r1",
                 VoxelBrushOp::Add,
@@ -489,7 +536,7 @@ pub struct EditorCameraState {
     pub pitch: f32,
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 /// A left-click or left-release event, queued by the UI thread and drained
 /// on the render thread at the top of [`HelioRenderer::render_frame`]
@@ -612,7 +659,18 @@ pub struct HelioEditorMailbox {
     pending_deselect: Arc<AtomicBool>,
     viewport_bloom: Arc<AtomicBool>,
     viewport_realtime: Arc<AtomicBool>,
+    viewport_debug_mode: Arc<AtomicU32>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
+    completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
+}
+
+/// A gizmo drag that moved its object, reported when the mouse is released
+/// so the editor can record it as one undo step (#931).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompletedDrag {
+    pub entity: pulsar_scenedb::Entity,
+    /// The transform the object had when the drag started.
+    pub before: crate::scene::Transform,
 }
 
 /// A gizmo drag started on an object whose authored movability promises a
@@ -637,6 +695,14 @@ impl HelioEditorMailbox {
     /// has not taken it yet.
     pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
         self.static_drag_warning.lock().ok()?.take()
+    }
+
+    /// The gizmo drags finished since the last call, oldest first.
+    pub fn take_completed_drags(&self) -> Vec<CompletedDrag> {
+        self.completed_drags
+            .lock()
+            .map(|mut drags| std::mem::take(&mut *drags))
+            .unwrap_or_default()
     }
 
     /// Queue the SceneDB interaction gizmo mode for the render thread to apply
@@ -670,6 +736,12 @@ impl HelioEditorMailbox {
     /// is frozen. See [`HelioRenderer::set_viewport_realtime`].
     pub fn set_viewport_realtime(&self, realtime: bool) {
         self.viewport_realtime.store(realtime, Ordering::Release);
+    }
+
+    /// The toolbar's view mode: the debug mode the viewport's graph renders
+    /// (one a pass advertises in its `debug_views`), or 0 for the lit image.
+    pub fn set_viewport_debug_mode(&self, mode: u32) {
+        self.viewport_debug_mode.store(mode, Ordering::Release);
     }
 }
 
@@ -725,6 +797,9 @@ pub struct HelioRenderer {
     pub viewport_bloom: Arc<AtomicBool>,
     /// The toolbar's Realtime toggle; see [`Self::set_viewport_realtime`].
     viewport_realtime: Arc<AtomicBool>,
+    /// The toolbar's view mode: the debug mode the graph renders (0 lit).
+    /// See [`HelioEditorMailbox::set_viewport_debug_mode`].
+    viewport_debug_mode: Arc<AtomicU32>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
     frame_delta_override: Option<f32>,
@@ -737,6 +812,8 @@ pub struct HelioRenderer {
     /// Written by the render thread when a gizmo drag starts on a fixed-
     /// movability object; taken by the UI (`HelioEditorMailbox`).
     pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
+    /// Gizmo drags that moved their object, taken by the UI for undo.
+    completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -767,6 +844,13 @@ pub struct HelioRenderer {
 
     // ── TAA reset ──
     pub reset_taa_next_frame: bool,
+
+    // ── Device loss ──
+    /// Whether the device the renderer was built on was lost; a lost device
+    /// is not drawn on again. A frame for another device rebuilds the
+    /// renderer, and the scene's GPU copy, on it.
+    device_loss: Option<crate::services::device_loss::DeviceLoss>,
+    reported_device_loss: bool,
 
     // ── Metrics ──
     pub metrics: Arc<Mutex<RenderMetrics>>,
@@ -831,6 +915,8 @@ pub struct HelioRenderer {
 
 struct HelioInner {
     renderer: Renderer,
+    /// The device it was built on.
+    device: wgpu::Device,
     queue: Arc<wgpu::Queue>,
     interaction: SceneInteraction,
     /// Frame-pacing revision; never used as a renderer-side world mirror.
@@ -838,6 +924,8 @@ struct HelioInner {
     has_rendered_frame: bool,
     /// The post-process baseline last set on this graph's resolver.
     applied_postprocess: Option<crate::scene::EditorPostProcess>,
+    /// The debug mode last handed to the graph (0: lit).
+    applied_debug_mode: u32,
     /// Watches the scene for spline changes; created with the first sync.
     spline_lines: Option<helio_component::components::SplineLines>,
     /// Drops voxel edits made on ground a terrain no longer has; created
@@ -924,11 +1012,15 @@ impl HelioRenderer {
             // Matches the toolbar's default until the UI reports its state.
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             viewport_realtime: Arc::new(AtomicBool::new(true)),
+            viewport_debug_mode: Arc::new(AtomicU32::new(0)),
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
             static_drag_warning: Arc::new(Mutex::new(None)),
+            completed_drags: Arc::new(Mutex::new(Vec::new())),
             reset_taa_next_frame: false,
+            device_loss: None,
+            reported_device_loss: false,
             inner: None,
             applied_graph_settings: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -1112,6 +1204,34 @@ impl HelioRenderer {
             self.reset_taa_next_frame = true;
         }
 
+        // A frame for another device (the old one was lost and a new one
+        // made) rebuilds the renderer there; `ensure_gpu_mirror` moves the
+        // scene's GPU copy along. On a lost device nothing is drawn: every
+        // call would fail.
+        if self
+            .inner
+            .as_ref()
+            .is_some_and(|inner| inner.device != *_device)
+        {
+            tracing::warn!("Viewport device changed; rebuilding the Helio renderer on it");
+            self.inner = None;
+            self.applied_graph_settings = None;
+            self.reset_taa_next_frame = true;
+            self.reported_device_loss = false;
+        } else if self
+            .device_loss
+            .as_ref()
+            .is_some_and(crate::services::device_loss::DeviceLoss::is_lost)
+        {
+            if !self.reported_device_loss {
+                self.reported_device_loss = true;
+                tracing::error!(
+                    "GPU device lost; the viewport stops drawing until it has a new one"
+                );
+            }
+            return None;
+        }
+
         // ── Lazy init (first frame only) ────────────────────────────────────────
         if self.inner.is_none() {
             #[cfg(feature = "editor-ui")]
@@ -1120,6 +1240,7 @@ impl HelioRenderer {
 
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
+            self.device_loss = Some(crate::services::device_loss::DeviceLoss::watch(_device));
             let voxel_quality = {
                 let store = self.scene_store.read();
                 let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
@@ -1254,11 +1375,13 @@ impl HelioRenderer {
 
             let inner = HelioInner {
                 renderer: r,
+                device: _device.clone(),
                 queue: queue_arc.clone(),
                 interaction: SceneInteraction::default(),
                 last_scene_revision: 0,
                 has_rendered_frame: false,
                 applied_postprocess: None,
+                applied_debug_mode: 0,
                 spline_lines: None,
                 voxel_world_sync: None,
             };
@@ -1395,6 +1518,7 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_apply_postprocess_baseline");
             self.apply_postprocess_baseline()
         };
+        let debug_view_changed = self.apply_viewport_debug_mode();
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -1443,6 +1567,7 @@ impl HelioRenderer {
             || self.gizmo_dirty
             || viewport_resized
             || postprocess_changed
+            || debug_view_changed
             // Realtime animation: wind, particles, shader-graph `time`.
             || animated
             || self.reset_taa_next_frame;
@@ -1639,8 +1764,11 @@ impl HelioRenderer {
                 basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0,
                 self.cam_pitch,
                 |direction, clearance| {
-                    self.voxel_backends
-                        .diagnostic_surface_point(&voxel_entries, direction, clearance)
+                    self.voxel_backends.diagnostic_surface_point(
+                        &voxel_entries,
+                        direction,
+                        clearance,
+                    )
                 },
             ) {
                 self.cam_pos = self
@@ -1715,7 +1843,7 @@ impl HelioRenderer {
             }
         }
         let t_prepare = Instant::now();
-        let camera = {
+        let (camera, lens_overscan) = {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
             profiling::profile_scope!("helio_frame_prepare");
@@ -1736,6 +1864,19 @@ impl HelioRenderer {
                 far,
                 self.world_origin.unwrap_or(DVec3::ZERO),
             );
+            // A lens that maps past the frame (fisheye, barrel distortion)
+            // needs a wider render than the frame, which it then crops back;
+            // the camera lens component owns how much, and tells the lens pass
+            // the same factor. TODO(review): this names one component's helper
+            // from the generic backend, like the lens GPU column registration
+            // in `helio_bridge`; it belongs behind a view-projection hook that
+            // helio components register, once one exists.
+            let lens_overscan = helio_component::components::camera_lens_view_overscan(
+                &self.scene_store.read().world,
+                camera.view_id,
+                aspect,
+            );
+            let camera = camera.with_overscan(lens_overscan);
 
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.
@@ -1755,7 +1896,7 @@ impl HelioRenderer {
                     self.cam_pos.as_vec3(),
                 );
             }
-            camera
+            (camera, lens_overscan)
         };
 
         if self.reset_taa_next_frame {
@@ -1803,7 +1944,8 @@ impl HelioRenderer {
                 right: right.to_array(),
                 up: up.to_array(),
                 forward: forward.to_array(),
-                tan_half_fov_y: (std::f32::consts::FRAC_PI_4 * 0.5).tan(),
+                // The voxel terrain follows the camera's view, overscan included.
+                tan_half_fov_y: (std::f32::consts::FRAC_PI_4 * 0.5).tan() * lens_overscan,
                 aspect: width as f32 / height.max(1) as f32,
                 far,
                 size: [width, height],
@@ -2064,7 +2206,11 @@ impl HelioRenderer {
         // axis of the move is kept only if it stays in air. Lifting to the
         // surface is only for a camera already buried (spawned or teleported
         // into rock): lifting on contact threw it out of caves.
-        if self.voxel_backends.lift_out_of_ground(self.cam_pos).is_some() {
+        if self
+            .voxel_backends
+            .lift_out_of_ground(self.cam_pos)
+            .is_some()
+        {
             if self.voxel_backends.lift_out_of_ground(before).is_none() {
                 let mut pos = before;
                 for step in steps {
@@ -2091,6 +2237,22 @@ impl HelioRenderer {
             self.cam_pos += (right * (-input.pan_delta_x) * pan_speed).as_dvec3();
             self.cam_pos += (screen_up * input.pan_delta_y * pan_speed).as_dvec3();
         }
+    }
+
+    /// Hand the graph the view mode the toolbar chose. Returns whether it
+    /// changed this frame.
+    fn apply_viewport_debug_mode(&mut self) -> bool {
+        let Some(inner) = self.inner.as_mut() else {
+            return false;
+        };
+        let mode = self.viewport_debug_mode.load(Ordering::Acquire);
+        if inner.applied_debug_mode == mode {
+            return false;
+        }
+        inner.renderer.set_debug_mode(mode);
+        inner.applied_debug_mode = mode;
+        tracing::info!(mode, "Editor viewport debug view changed");
+        true
     }
 
     /// Keep the post-process resolver's baseline in step with the toolbar's
@@ -2384,7 +2546,9 @@ impl HelioRenderer {
             pending_deselect: self.pending_deselect.clone(),
             viewport_bloom: self.viewport_bloom.clone(),
             viewport_realtime: self.viewport_realtime.clone(),
+            viewport_debug_mode: self.viewport_debug_mode.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
+            completed_drags: self.completed_drags.clone(),
         }
     }
 
@@ -2552,8 +2716,20 @@ impl HelioRenderer {
 
     pub fn handle_left_release(&mut self) {
         self.gizmo_dirty = true;
-        if let Some(inner) = &mut self.inner {
-            inner.interaction.cancel_drag();
+        let Some(inner) = &mut self.inner else { return };
+        let Some((entity, before)) = inner.interaction.finish_drag() else {
+            return;
+        };
+        let moved = self
+            .scene_store
+            .read()
+            .world
+            .get::<crate::scene::Transform>(entity)
+            .is_some_and(|now| *now != before);
+        if moved {
+            if let Ok(mut drags) = self.completed_drags.lock() {
+                drags.push(CompletedDrag { entity, before });
+            }
         }
     }
     fn configure_gizmo_view(&mut self) {
@@ -2822,16 +2998,36 @@ mod native_relative_camera_tests {
     fn planet_scene() -> (pulsar_scenedb::SceneDb, pulsar_scenedb::Entity) {
         let mut scene = pulsar_scenedb::SceneDb::new();
         let world = &mut scene.world;
-        let planet = world.spawn_object(SpawnObject::new("voxel_planet")).unwrap();
-        pulsar_world_registry::attach_value(world, planet, helio_component::VoxelTerrainComponent::default())
+        let planet = world
+            .spawn_object(SpawnObject::new("voxel_planet"))
             .unwrap();
-        pulsar_world_registry::attach_value(world, planet, helio_component::VoxelTerrainLayersComponent::default())
+        pulsar_world_registry::attach_value(
+            world,
+            planet,
+            helio_component::VoxelTerrainComponent::default(),
+        )
+        .unwrap();
+        pulsar_world_registry::attach_value(
+            world,
+            planet,
+            helio_component::VoxelTerrainLayersComponent::default(),
+        )
+        .unwrap();
+        pulsar_world_registry::attach_value(
+            world,
+            planet,
+            helio_component::AtmosphereComponent::default(),
+        )
+        .unwrap();
+        let volume = world
+            .spawn_object(SpawnObject::new("post_process"))
             .unwrap();
-        pulsar_world_registry::attach_value(world, planet, helio_component::AtmosphereComponent::default())
-            .unwrap();
-        let volume = world.spawn_object(SpawnObject::new("post_process")).unwrap();
-        pulsar_world_registry::attach_value(world, volume, helio_component::PostProcessVolumeComponent::default())
-            .unwrap();
+        pulsar_world_registry::attach_value(
+            world,
+            volume,
+            helio_component::PostProcessVolumeComponent::default(),
+        )
+        .unwrap();
         let sun_object = world.spawn_object(SpawnObject::new("sun")).unwrap();
         let mut sun = LightComponent::default();
         sun.general.enabled = true;
@@ -2844,7 +3040,11 @@ mod native_relative_camera_tests {
     fn the_example_planet_scene_renders_camera_relative() {
         let (mut scene, sun) = planet_scene();
         let read = VoxelSceneRead::of(&scene.world);
-        assert!(read.relative_camera_refusals.is_empty(), "{:?}", read.relative_camera_refusals);
+        assert!(
+            read.relative_camera_refusals.is_empty(),
+            "{:?}",
+            read.relative_camera_refusals
+        );
         assert!(read.sun.is_some(), "the directional light is the sun");
         assert_eq!(read.entries.len(), 1);
         // A new, unreviewed world-space consumer fails closed; retiring its
@@ -2852,9 +3052,13 @@ mod native_relative_camera_tests {
         struct UnknownWorldSpaceProvider;
         let entity = scene.world.spawn();
         scene.world.insert(entity, UnknownWorldSpaceProvider);
-        assert!(!VoxelSceneRead::of(&scene.world).relative_camera_refusals.is_empty());
+        assert!(!VoxelSceneRead::of(&scene.world)
+            .relative_camera_refusals
+            .is_empty());
         scene.world.despawn(entity);
-        assert!(VoxelSceneRead::of(&scene.world).relative_camera_refusals.is_empty());
+        assert!(VoxelSceneRead::of(&scene.world)
+            .relative_camera_refusals
+            .is_empty());
         // Meshes and positional lights are rebased by the scene join
         // (Pulsar-Native#1127): a tower and a lamp on the planet keep the
         // frame camera-relative.
@@ -2865,9 +3069,18 @@ mod native_relative_camera_tests {
             helio_component::components::StaticMeshComponent::default(),
         )
         .unwrap();
-        scene.world.get_mut::<LightComponent>(sun).unwrap().general.light_type = LightType::Point;
+        scene
+            .world
+            .get_mut::<LightComponent>(sun)
+            .unwrap()
+            .general
+            .light_type = LightType::Point;
         let read = VoxelSceneRead::of(&scene.world);
-        assert!(read.relative_camera_refusals.is_empty(), "{:?}", read.relative_camera_refusals);
+        assert!(
+            read.relative_camera_refusals.is_empty(),
+            "{:?}",
+            read.relative_camera_refusals
+        );
         assert!(read.authored_meshes);
         assert!(read.sun.is_none(), "a point light is not the sun");
 
@@ -2879,26 +3092,49 @@ mod native_relative_camera_tests {
         pulsar_world_registry::attach_value(world, props, c::DecalComponent::default()).unwrap();
         pulsar_world_registry::attach_value(world, props, c::ParticleEmitterComponent::default())
             .unwrap();
-        pulsar_world_registry::attach_value(world, props, helio_component::WaterVolumeComponent::default())
+        pulsar_world_registry::attach_value(
+            world,
+            props,
+            helio_component::WaterVolumeComponent::default(),
+        )
+        .unwrap();
+        pulsar_world_registry::attach_value(
+            world,
+            props,
+            pulsar_physics::PhysicsComponent::default(),
+        )
+        .unwrap();
+        pulsar_world_registry::attach_value(world, props, c::GlobalFogComponent::default())
             .unwrap();
-        pulsar_world_registry::attach_value(world, props, pulsar_physics::PhysicsComponent::default())
-            .unwrap();
-        pulsar_world_registry::attach_value(world, props, c::GlobalFogComponent::default()).unwrap();
         pulsar_world_registry::attach_value(world, props, c::LocalFogVolumeComponent::default())
             .unwrap();
         pulsar_world_registry::attach_value(world, props, c::SplineComponent::default()).unwrap();
         pulsar_world_registry::attach_value(world, props, c::LODComponent::default()).unwrap();
-        pulsar_world_registry::attach_value(world, props, helio_component::VoxelComponent::default())
-            .unwrap();
-        let read = VoxelSceneRead::of(&scene.world);
-        assert!(read.relative_camera_refusals.is_empty(), "{:?}", read.relative_camera_refusals);
-
-        // Foliage is grown in world tiles: it keeps frames in world space.
-        pulsar_world_registry::attach_value(&mut scene.world, props, c::FoliageComponent::default())
-            .unwrap();
+        pulsar_world_registry::attach_value(
+            world,
+            props,
+            helio_component::VoxelComponent::default(),
+        )
+        .unwrap();
         let read = VoxelSceneRead::of(&scene.world);
         assert!(
-            read.relative_camera_refusals.iter().any(|name| name.contains("Foliage")),
+            read.relative_camera_refusals.is_empty(),
+            "{:?}",
+            read.relative_camera_refusals
+        );
+
+        // Foliage is grown in world tiles: it keeps frames in world space.
+        pulsar_world_registry::attach_value(
+            &mut scene.world,
+            props,
+            c::FoliageComponent::default(),
+        )
+        .unwrap();
+        let read = VoxelSceneRead::of(&scene.world);
+        assert!(
+            read.relative_camera_refusals
+                .iter()
+                .any(|name| name.contains("Foliage")),
             "{:?}",
             read.relative_camera_refusals
         );
@@ -2927,7 +3163,11 @@ mod native_relative_camera_tests {
     /// a world-space frame got 0.5 m out (the jagged mesh in #1127).
     #[test]
     fn surface_geometry_projects_exactly_in_a_camera_relative_frame() {
-        let eye = DVec3::new(-3_426_954.099417845, 4_769_291.620032467, -2_476_450.5275892294);
+        let eye = DVec3::new(
+            -3_426_954.099417845,
+            4_769_291.620032467,
+            -2_476_450.5275892294,
+        );
         let forward = Vec3::new(0.9167773, 0.29777223, -0.2661786);
         let up = Vec3::new(-0.39032218, 0.8092439, -0.43905908);
         let origin = frame_world_origin(None, eye);
@@ -2946,8 +3186,14 @@ mod native_relative_camera_tests {
         };
         let rebased = ndc(&relative, (vertex - origin).as_vec3());
         let absolute = ndc(&world, vertex.as_vec3());
-        assert!((rebased - exact).truncate().length() < 1e-4, "{rebased} vs {exact}");
-        assert!((absolute - exact).truncate().length() > 1e-3, "the world-space frame snaps it");
+        assert!(
+            (rebased - exact).truncate().length() < 1e-4,
+            "{rebased} vs {exact}"
+        );
+        assert!(
+            (absolute - exact).truncate().length() > 1e-3,
+            "the world-space frame snaps it"
+        );
     }
 
     /// Every buffer this engine registers in the GPU mirror is reviewed:
@@ -2955,21 +3201,27 @@ mod native_relative_camera_tests {
     #[test]
     fn the_engines_gpu_sources_are_camera_relative_compatible() {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let Some(adapter) = pollster::block_on(instance.request_adapter(&Default::default())).ok() else {
+        let Some(adapter) = pollster::block_on(instance.request_adapter(&Default::default())).ok()
+        else {
             eprintln!("skipping: no GPU adapter available");
             return;
         };
-        let Ok((device, queue)) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_limits: helio::required_wgpu_limits(adapter.limits()),
-            ..Default::default()
-        })) else {
+        let Ok((device, queue)) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+                required_limits: helio::required_wgpu_limits(adapter.limits()),
+                ..Default::default()
+            }))
+        else {
             eprintln!("skipping: no GPU device available");
             return;
         };
         let (mut scene, _) = planet_scene();
         crate::scene::ensure_gpu_mirror(&mut scene, Arc::new(device), Arc::new(queue));
         scene.step();
-        assert_eq!(relative_camera_incompatible_sources(&scene.world), Vec::<String>::new());
+        assert_eq!(
+            relative_camera_incompatible_sources(&scene.world),
+            Vec::<String>::new()
+        );
         let read = VoxelSceneRead::of(&scene.world);
         let mut gate = RelativeCameraGate::default();
         assert!(gate.compatible(&scene.world, read.relative_camera_refusals.is_empty()));
@@ -2978,10 +3230,34 @@ mod native_relative_camera_tests {
     #[test]
     fn unknown_or_raw_render_sources_do_not_activate_relative_camera() {
         use pulsar_scenedb::{gpu::BufferAccess::ReadOnly, MirrorMode};
-        assert!(relative_camera_source_compatible("component_owners", "row", Some(MirrorMode::DirtyTracked), ReadOnly));
-        assert!(!relative_camera_source_compatible("component_owners", "resource", None, ReadOnly));
-        for key in ["reflection_captures", "portal_views", "corona_emitters", "foliage_layers", "custom_render_source"] {
-            assert!(!relative_camera_source_compatible(key, "row", Some(MirrorMode::DirtyTracked), ReadOnly), "{key}");
+        assert!(relative_camera_source_compatible(
+            "component_owners",
+            "row",
+            Some(MirrorMode::DirtyTracked),
+            ReadOnly
+        ));
+        assert!(!relative_camera_source_compatible(
+            "component_owners",
+            "resource",
+            None,
+            ReadOnly
+        ));
+        for key in [
+            "reflection_captures",
+            "portal_views",
+            "corona_emitters",
+            "foliage_layers",
+            "custom_render_source",
+        ] {
+            assert!(
+                !relative_camera_source_compatible(
+                    key,
+                    "row",
+                    Some(MirrorMode::DirtyTracked),
+                    ReadOnly
+                ),
+                "{key}"
+            );
         }
     }
 
@@ -2991,8 +3267,15 @@ mod native_relative_camera_tests {
         let forward = Vec3::new(0.9167773, 0.29777223, -0.2661786);
         let up = Vec3::new(-0.39032218, 0.8092439, -0.43905908);
         let local = native_frame_camera(eye, forward, up, 1196.0 / 729.0, 2.4, 46_371_000.0, eye);
-        let global =
-            native_frame_camera(eye, forward, up, 1196.0 / 729.0, 2.4, 46_371_000.0, DVec3::ZERO);
+        let global = native_frame_camera(
+            eye,
+            forward,
+            up,
+            1196.0 / 729.0,
+            2.4,
+            46_371_000.0,
+            DVec3::ZERO,
+        );
         assert_eq!(local.position, Vec3::ZERO);
         assert_eq!(global.position, eye.as_vec3());
         let local_vp = local.proj * local.view;
@@ -3019,7 +3302,8 @@ mod native_relative_camera_tests {
         // positions.
         let previous_eye = eye - DVec3::new(0.01, -0.03, 0.02);
         let shift = eye - previous_eye;
-        let previous_view = (local.view.as_dmat4() * glam::DMat4::from_translation(shift)).as_mat4();
+        let previous_view =
+            (local.view.as_dmat4() * glam::DMat4::from_translation(shift)).as_mat4();
         let expected = (local.view.as_dmat4() * (point.as_dvec4() + shift.extend(0.0))).as_vec4();
         assert!((previous_view * point - expected).length() < 0.00001);
     }

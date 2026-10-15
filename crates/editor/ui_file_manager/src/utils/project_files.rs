@@ -146,19 +146,15 @@ impl FileManagerDrawer {
                 continue;
             }
             let target = free_name_in(folder, &name);
+            // Through the virtual filesystem, or announced like its operations,
+            // so the project's file index lists the result at once.
             let result = if is_cut {
-                if remote(item) {
-                    engine_fs::virtual_fs::rename(item, &target)
-                } else {
-                    std::fs::rename(item, &target).map_err(Into::into)
-                }
+                engine_fs::virtual_fs::rename(item, &target)
             } else if remote(item) {
                 engine_fs::virtual_fs::read_file(item)
                     .and_then(|data| engine_fs::virtual_fs::write_file(&target, &data))
-            } else if item.is_dir() {
-                Self::copy_dir_recursive(item, &target).map_err(Into::into)
             } else {
-                std::fs::copy(item, &target).map(|_| ()).map_err(Into::into)
+                crate::utils::operations::copy_local(item, &target)
             };
             match result {
                 Ok(()) => pasted.push(target),
@@ -175,13 +171,7 @@ impl FileManagerDrawer {
     /// Delete `paths` from disk.
     pub fn delete_paths(&mut self, paths: &[PathBuf], cx: &mut Context<Self>) {
         for path in paths {
-            let result = if remote(path) {
-                engine_fs::virtual_fs::delete_path(path)
-            } else if path.is_dir() {
-                std::fs::remove_dir_all(path).map_err(Into::into)
-            } else {
-                std::fs::remove_file(path).map_err(Into::into)
-            };
+            let result = engine_fs::virtual_fs::delete_path(path);
             if let Err(error) = result {
                 tracing::error!("delete: {}", error);
             }
@@ -259,9 +249,15 @@ mod tests {
     fn a_taken_name_gets_a_copy_suffix_before_its_extension() {
         let dir = tempfile::tempdir().unwrap();
         let folder = dir.path();
-        assert_eq!(free_name_in(folder, "Hero.class"), folder.join("Hero.class"));
+        assert_eq!(
+            free_name_in(folder, "Hero.class"),
+            folder.join("Hero.class")
+        );
         std::fs::write(folder.join("Hero.class"), "").unwrap();
-        assert_eq!(free_name_in(folder, "Hero.class"), folder.join("Hero copy.class"));
+        assert_eq!(
+            free_name_in(folder, "Hero.class"),
+            folder.join("Hero copy.class")
+        );
         std::fs::write(folder.join("Hero copy.class"), "").unwrap();
         assert_eq!(
             free_name_in(folder, "Hero.class"),

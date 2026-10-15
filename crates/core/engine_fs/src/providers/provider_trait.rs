@@ -54,6 +54,17 @@ pub trait FsProvider: Send + Sync + 'static {
     /// Read the full contents of a file.
     fn read_file(&self, path: &Path) -> Result<Vec<u8>>;
 
+    /// Read up to `len` bytes from the beginning of a file.
+    ///
+    /// Providers with ranged reads should override this. The fallback keeps
+    /// older providers compatible, while local providers avoid loading large
+    /// payloads when an asset header is sufficient.
+    fn read_file_prefix(&self, path: &Path, len: usize) -> Result<Vec<u8>> {
+        let mut bytes = self.read_file(path)?;
+        bytes.truncate(len);
+        Ok(bytes)
+    }
+
     /// Overwrite (or create) a file with `content`.
     fn write_file(&self, path: &Path, content: &[u8]) -> Result<()>;
 
