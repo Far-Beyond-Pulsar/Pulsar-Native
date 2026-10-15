@@ -4,22 +4,21 @@ Print a concise orientation to every repository and crate in the Pulsar monorepo
 
 ---
 
-## The Five Repositories
+## The Repositories
 
 | Repo | GitHub | Local path | Role |
 |------|--------|-----------|------|
 | **Pulsar-Native** | `Far-Beyond-Pulsar/Pulsar-Native` | `~/Documents/GitHub/Pulsar-Native` | Main workspace — engine runtime, editor UI, build tooling |
 | **Plugin_Blueprints** | `Far-Beyond-Pulsar/Plugin_Blueprints` | `~/Documents/GitHub/Plugin_Blueprints` | Blueprint editor GPUI plugin |
-| **PBGC** | `Far-Beyond-Pulsar/PBGC` | `~/Documents/GitHub/PBGC` | Blueprint Graph Compiler — JSON graph → Rust codegen & bytecode |
 | **Graphy** | `Far-Beyond-Pulsar/Graphy` | `~/Documents/GitHub/Graphy` | Graph description types + AST transformation utilities |
 | **Helio** | `Far-Beyond-Pulsar/Helio` | (external) | Scene/ECS runtime used by game projects |
 
 ## Dependency Order (bottom → top)
 
 ```
-Graphy  ←  PBGC  ←  Pulsar-Native  ←  Plugin_Blueprints
-                          ↑
-                    (workspace root)
+Graphy  ←  Pulsar-Native  ←  Plugin_Blueprints
+               ↑
+         (workspace root)
 ```
 
 Changes cascade upward. Always push the lowest-level repo first, then update `rev =` pins going up.
@@ -35,7 +34,6 @@ Pulsar-Native/
 │   ├── engine_backend/        Editor services (project builder, LSP, GPU renderer)
 │   │   └── services/
 │   │       └── core_project_builder.rs   ← generates user project scaffolding
-│   ├── blueprint_compiler/    Drives PBGC from within the editor
 │   ├── pulsar_std/            Standard library of blueprint nodes (print_number, etc.)
 │   ├── pulsar_script_vm/      Engine script bytecode VM (every language compiles to it)
 │   ├── pulsar_script_runtime/ Script classes bound to entities
@@ -68,28 +66,12 @@ Plugin_Blueprints/src/
 ├── core/                      Shared types, definitions, errors
 ├── editor/                    Main BlueprintEditorPanel + panel.rs
 ├── features/
-│   ├── compilation/           compiler.rs — triggers PBGC, writes events.rs
+│   ├── compilation/           compiler.rs — compiles the graph to a script module (blueprint_compiler)
 │   ├── variables/             Variable list UI (hierarchy_item, rendering)
 │   ├── macros/                Local macro editor
 │   └── prefabs/               Component/prefab panel
 ├── rendering/                 Blueprint graph canvas rendering
 └── ui_components/             Reusable UI widgets for the editor
-```
-
-## PBGC Layout
-
-```
-PBGC/src/
-├── lib.rs
-├── compiler.rs                Top-level compile pipeline
-├── disk.rs                    Read/write blueprint JSON files
-├── metadata.rs                Node metadata registry (BlueprintMetadataProvider)
-├── project.rs                 gen_events_rs() — the events.rs template
-│                              mod logic { } template lives here
-├── bytecode/                  Bytecode instruction set + serialisation
-├── codegen/
-│   └── rust_codegen.rs        BlueprintCodeGenerator — graph → Rust function body
-└── vm/                        Bytecode VM executor
 ```
 
 ## Graphy Layout
@@ -108,7 +90,7 @@ Graphy/src/
 ## Key Cross-Cutting Patterns
 
 ### exec_output! macro
-Control-flow nodes (Sequence, Branch) declare outputs with `exec_output!("Label")` in their function template. PBGC's AST transformer (`ast_transform.rs`) replaces each label with the connected chain of compiled node calls.
+Control-flow nodes (Sequence, Branch) declare outputs with `exec_output!("Label")` in their `pulsar_std` function body; each label becomes an exec output pin.
 
 ### Generated project files
 `core_project_builder.rs::ensure_core_bootstrap()` regenerates on every Build Core press:

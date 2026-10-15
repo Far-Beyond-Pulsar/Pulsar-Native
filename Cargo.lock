@@ -1176,12 +1176,12 @@ dependencies = [
  "graphy",
  "log",
  "parking_lot",
- "pbgc",
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_reflection",
  "pulsar_script_codegen",
  "pulsar_script_vm",
+ "pulsar_std",
  "rstar 0.12.2",
  "schemars",
  "serde",
@@ -8427,15 +8427,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4500030c302e4af1d423f36f3b958d1aecb6c04184356ed5a833bf6b60435777"
 dependencies = [
  "rustc_version",
-]
-
-[[package]]
-name = "pbgc"
-version = "0.2.0"
-dependencies = [
- "graphy",
- "pulsar_std",
- "tracing",
 ]
 
 [[package]]
