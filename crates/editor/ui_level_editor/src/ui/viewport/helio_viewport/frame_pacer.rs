@@ -163,6 +163,9 @@ mod pacer_tests {
     use super::{FramePacer, FALLBACK_REFRESH_HZ};
     use std::time::{Duration, Instant};
 
+    /// The UI frame signal is process-global; tests that drive it take turns.
+    static SIGNAL_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn aims_at_the_display_refresh_rate() {
         assert_eq!(FramePacer::with_target(144.0).target_hz, 144.0);
@@ -217,6 +220,7 @@ mod pacer_tests {
 
     #[test]
     fn a_ui_frame_begin_starts_the_frame_ahead_of_the_deadline() {
+        let _serial = SIGNAL_TESTS.lock().unwrap_or_else(|e| e.into_inner());
         let mut pacer = FramePacer::with_target(10.0);
         pacer.last_start = Instant::now() - Duration::from_secs(1);
         pacer.next_deadline = Instant::now() + Duration::from_millis(400);
@@ -235,6 +239,7 @@ mod pacer_tests {
 
     #[test]
     fn an_idle_ui_leaves_the_timer_pacing_alone() {
+        let _serial = SIGNAL_TESTS.lock().unwrap_or_else(|e| e.into_inner());
         let mut pacer = FramePacer::with_target(50.0);
         pacer.last_start = Instant::now() - Duration::from_secs(1);
         pacer.next_deadline = Instant::now() + Duration::from_millis(40);
