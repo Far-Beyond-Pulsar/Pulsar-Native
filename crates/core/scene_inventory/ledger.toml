@@ -1563,6 +1563,20 @@ test = "crates/core/pulsar_world_registry/src/component_lifecycle.rs (a_removal_
 status = "verified"
 
 [[schema]]
+type = "CameraLensComponent"
+path = "helio_component::components::camera_lens_component::CameraLensComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived CameraLensSourceRow (camera_lens_sources) and its lens_elements block, on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::camera_lens_component"
+disposition = "keep: the authored lens's GPU rows are CameraLensSourceRow, the environment join's input (published as camera_lenses), and its lens_elements block"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state)"
+status = "verified"
+
+[[schema]]
 type = "CameraPostProcessComponent"
 path = "helio_component::components::camera_post_process_component::CameraPostProcessComponent"
 buffers = ["camera_postprocess"]
@@ -1940,10 +1954,10 @@ status = "verified"
 
 [[buffer]]
 key = "camera_lenses"
-producers = ["CameraLensComponent"]
-consumers = ["helio-pass-lens"]
+producers = ["LensComponent"]
+consumers = ["helio-default-graphs", "helio-pass-lens"]
 owner = "helio-default-graphs environment join (execution output, one row per component instance)"
-disposition = "keep: the camera's lens, matched to its view by view_id; the first enabled row wins and none disables the lens. The join copies each placed, enabled CameraLensComponent row, so the instance switch turns the lens off"
+disposition = "keep: the camera's lens, matched to its view by view_id; the first enabled row wins and none disables the lens. The join copies each placed, enabled lens's camera_lens_sources row (a LensComponent), so the instance switch turns the lens off"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/renderer/helio/crates/passes/3d/helio-pass-lens/src/tests.rs (resolve_matches_the_first_enabled_row_of_the_view)"
 status = "verified"
@@ -2391,6 +2405,16 @@ disposition = "runs in the editor graph, but nothing authored feeds it: sprites/
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "tracked in #1060; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "unfinished"
+
+[[pass]]
+crate = "helio-pass-buffer-view"
+in_default_graph = true
+reads = []
+owner = "helio-pass-buffer-view"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph after post-processing and, when the viewport's debug mode asks for it, draws the scene depth or the G-buffer normals over the final image"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (the_viewport_shows_the_depth_and_normal_buffers)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-corona"

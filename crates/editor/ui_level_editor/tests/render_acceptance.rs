@@ -3330,18 +3330,27 @@ fn the_viewport_shows_the_depth_and_normal_buffers() {
         "the depth view did not replace the lit image"
     );
     assert!(
-        depth.color.chunks_exact(4).all(|p| p[0] == p[1] && p[1] == p[2]),
+        depth
+            .color
+            .chunks_exact(4)
+            .all(|p| p[0] == p[1] && p[1] == p[2]),
         "the depth view is not greyscale"
     );
     let lit_texels = depth.color.chunks_exact(4).filter(|p| p[0] > 0).count();
-    assert!(lit_texels > (SIZE * SIZE / 100) as usize, "the mesh shows no depth");
+    assert!(
+        lit_texels > (SIZE * SIZE / 100) as usize,
+        "the mesh shows no depth"
+    );
 
     mailbox.set_viewport_debug_mode(helio_pass_buffer_view::NORMALS_VIEW);
     let normals = harness.frames(&mut renderer, || {});
     normals.dump("viewport_normals_view");
     assert!(normals.difference(&depth).color_pixels > (SIZE * SIZE / 100) as usize);
     assert!(
-        normals.color.chunks_exact(4).any(|p| p[0] != p[1] || p[1] != p[2]),
+        normals
+            .color
+            .chunks_exact(4)
+            .any(|p| p[0] != p[1] || p[1] != p[2]),
         "the normals view is greyscale"
     );
 
