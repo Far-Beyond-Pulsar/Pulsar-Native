@@ -76,6 +76,60 @@ fn file_stamp(path: &Path) -> Option<(std::time::SystemTime, u64)> {
 impl GitManager {
     // ── Loading ──────────────────────────────────────────────────────────
 
+    pub(crate) fn switch_repository(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.project_path == path {
+            return;
+        }
+
+        self.project_path = path;
+        self.refresh_generation = self.refresh_generation.wrapping_add(1);
+        self.history_generation = self.history_generation.wrapping_add(1);
+        self.diff_generation = self.diff_generation.wrapping_add(1);
+        self.remote_operation_generation = self.remote_operation_generation.wrapping_add(1);
+
+        self.phase = RepoPhase::Loading;
+        self.repo_state = RepositoryState::default();
+        self.refreshing = false;
+        self.history_fingerprint = 0;
+        self.changes_rows = Rc::new(Vec::new());
+        self.changes_list = ListState::default();
+        self.collapsed_changes.clear();
+        self.commits.clear();
+        self.graph = history::GraphBuilder::default();
+        self.graph_lanes = 1;
+        self.commits_loading = false;
+        self.commits_exhausted = false;
+        self.commit_list = ListState::default();
+        self.commit_matches = None;
+        self.selected_commit = None;
+        self.commit_detail = None;
+        self.commit_detail_error = None;
+        self.commit_file_rows = Rc::new(Vec::new());
+        self.commit_files_list = ListState::default();
+        self.collapsed_commit_files.clear();
+        self.avatar_cache.clear();
+        self.target = None;
+        self.detail_focus = DetailFocus::Working;
+        self.diff_loading = false;
+        self.diff_stamp = None;
+        self.diff_message = None;
+        self.diff.clear(cx);
+        self.branch_rows = Rc::new(Vec::new());
+        self.branch_list = ListState::default();
+        self.collapsed_branches.clear();
+        self.branch_menu_open = false;
+        self.menu_rows = Rc::new(Vec::new());
+        self.menu_list = ListState::default();
+        self.op_error = None;
+        self.pending_auth = None;
+        self.remote_busy = None;
+        self.commit_busy = false;
+        self.clear_commit_inputs = true;
+
+        self.refresh(true, cx);
+        cx.notify();
+    }
+
     /// Re-read the repository. `force_diff` also reloads the open diff.
     pub(crate) fn refresh(&mut self, force_diff: bool, cx: &mut Context<Self>) {
         self.refresh_generation = self.refresh_generation.wrapping_add(1);

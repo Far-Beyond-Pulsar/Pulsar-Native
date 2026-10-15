@@ -13,17 +13,14 @@ use ui::{
 
 pub(crate) const TOP_BAR_HEIGHT: f32 = 40.0;
 
-const ENGINE_REPOSITORY_URL: &str = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native";
-
-fn is_source_build() -> bool {
+fn source_build_root() -> Option<std::path::PathBuf> {
     engine_state::EngineContext::global()
         .map(|ctx| {
-            ctx.store
-                .get_or_init::<engine_state::DevContext>()
-                .read()
-                .is_source_build
+            let dev = ctx.store.get_or_init::<engine_state::DevContext>();
+            let dev = dev.read();
+            dev.is_source_build.then(|| dev.source_path.clone()).flatten()
         })
-        .unwrap_or(false)
+        .flatten()
 }
 
 pub(crate) fn render_top_bar(
@@ -199,15 +196,18 @@ pub(crate) fn render_top_bar(
         bar = bar.child(div().flex_1());
     }
 
-    bar = bar.when(is_source_build(), |bar| {
+    let engine_root = source_build_root().filter(|path| path != &gm.project_path);
+    bar = bar.when_some(engine_root, |bar, engine_root| {
         bar.child(
             Button::new("engine-repository")
                 .icon(IconName::Github)
-                .label("Engine Repository")
                 .ghost()
                 .compact()
-                .tooltip("Open the Pulsar-Native engine repository on GitHub")
-                .on_click(|_, _, cx| cx.open_url(ENGINE_REPOSITORY_URL)),
+                .disabled(gm.commit_busy || gm.remote_busy.is_some())
+                .tooltip("Switch to the local engine repository")
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.switch_repository(engine_root.clone(), cx)
+                })),
         )
     });
     bar
