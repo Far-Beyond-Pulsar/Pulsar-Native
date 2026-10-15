@@ -33,8 +33,8 @@ pub fn begin_play() {
     exec_output!("Body");
 }
 
-/// Legacy dispatch target of PBGC's bytecode backend for custom event
-/// dispatch nodes (`emit_custom_event`). It does nothing.
+/// Retired placeholder for custom event dispatch. It does nothing, and the
+/// Blueprint compiler rejects it (`RETIRED_EVENT_NODES`).
 ///
 /// Not offered in the Blueprint palette (#872): engine events are handled
 /// and sent with the "On <Event>", "Send <Event> to" and "Broadcast
@@ -44,7 +44,7 @@ pub fn begin_play() {
 /// a subscription ends when its instance despawns.
 ///
 /// # Emit Event (legacy)
-/// Legacy no-op kept for PBGC's bytecode backend.
+/// Retired no-op, replaced by the Send/Broadcast event nodes.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
 pub fn emit_event() {}
 

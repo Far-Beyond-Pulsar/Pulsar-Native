@@ -38,13 +38,13 @@ pub(crate) mod reference_actor {
     use crate::prelude::*;
     use engine_class_derive::EngineClass;
 
-    /// Mirrors the minimal component-less emission (`pub struct {Ty} {{}}`).
+    /// A minimal stand-in for an exported actor: only its `impl Actor`
+    /// signatures have to match what the exporter emits.
     #[derive(EngineClass, Clone)]
     pub struct DriftProbeReference {}
 
-    // Deliberately hand-written: PBGC emits exactly this Default shape (the
-    // EngineClass derive requires a `Default` constructor), and this twin
-    // must mirror the emission, not be idiomatic.
+    // Deliberately hand-written: the EngineClass derive requires a `Default`
+    // constructor, as the exporter's `impl Default` provides.
     #[allow(clippy::derivable_impls)]
     impl Default for DriftProbeReference {
         fn default() -> Self {

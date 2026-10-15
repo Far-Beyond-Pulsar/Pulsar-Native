@@ -75,7 +75,8 @@ pub struct NodeMetadata {
     pub category: &'static str,
     pub color: Option<&'static str>,
     pub imports: &'static [NodeImport],
-    /// Optional conversion metadata for PBGC codegen.
+    /// Optional conversion metadata, carried into the Blueprint editor's node
+    /// catalogue.
     /// Set via `conversion: "from_type -> to_type"` in the `#[blueprint]` attribute.
     pub conversion: Option<ConversionMetadata>,
 }
