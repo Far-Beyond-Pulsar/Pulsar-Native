@@ -315,12 +315,12 @@ and gameplay agree on every block. On generated terrain the older
 - **Edits are a journal, not voxel data.** The terrain is procedural, so a
   world is its recipe plus ordered brushes; that keeps saves small and CPU
   queries exact, and lets the GPU regenerate any chunk at any level. An
-  edit's tiles regenerate drawn first and nearest first within the frame's
-  generation budget (milliseconds against the measured cost of a tile and
-  of a chunk): a dig shows the frame it is made, a 500 m blast settles over
-  a few seconds without a frame over ~5 ms. Rock and hollows between a
-  tile's chunks take no chunk slots, so deep halls and hollowed cores
-  render exactly.
+  edit's chunks regenerate drawn first and nearest first within the frame's
+  generation budget (milliseconds against the measured cost of a footprint's
+  columns and of a chunk): a dig shows the frame it is made, a 500 m blast
+  settles over a few seconds. The chunks form an octree: rock and air a
+  brush leaves whole are Solid and Empty nodes that take no chunk slots, so
+  deep halls and hollowed cores render exactly.
 - **The editor's default Sun points straight down (world -Y),** so the sun
   is overhead at the pole and lower elsewhere. A planet's air is an authored
   `AtmosphereComponent` placed at its owner (the example level's planet,
@@ -335,14 +335,15 @@ and gameplay agree on every block. On generated terrain the older
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
   camera altitude, speed scale, eye/forward/up, viewport and each backend's
   `diagnostics` line. The chunk pass reports whether residency `settled`,
-  drawn tiles and chunks, resident chunks, `fading` level switches,
-  `waiting` tiles the plan wants, tiles `generated`, `regenerated` (more
-  layers needed) and `deep` (rays reached under them), the frame's tile
-  `budget`, `coarse` (the share of drawn tiles coarser than wanted),
-  `out_of_slots` / `out_of_leaves`, CPU milliseconds per update phase and
-  the last GPU draw, shadow and generation times. `waiting` that stays above
-  0 while the camera is still, or `coarse` near 1 while moving, point at
-  generation not keeping up.
+  drawn nodes and chunks, resident chunks, `fading` level switches,
+  `waiting` nodes the plan wants, `footprints` and `chunks` generated this
+  frame, `seen` (nodes rays reported) and `reached` (Buried nodes rays met,
+  generated next), the frame's chunk `budget`, `coarse` (the share of
+  drawn nodes coarser than wanted), `out_of_slots` / `out_of_leaves`, CPU
+  milliseconds per update phase and the last GPU draw, shadow and
+  generation times. `waiting` that stays above 0 while the camera is
+  still, or `coarse` near 1 while moving, point at generation not keeping
+  up.
 - Slow frames log `[HELIO FRAME SPIKE]` with CPU/GPU splits.
 - The Flamegraph profiler (status bar) records scopes including
   `voxel_brush`, `voxel_altitude`, `voxel_project_entries`; stop recordings
