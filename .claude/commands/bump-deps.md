@@ -1,73 +1,79 @@
 # Bump Dependency Chain
 
-Cascade a git rev update through the full Pulsar repo chain after pushing changes to any lower-level repo.
+Get a change in Graphy or Plugin_Blueprints into Pulsar-Native.
 
-## The Chain (always go bottom → top)
+Both are submodules of Pulsar-Native: Graphy at `crates/third-party/graphy`, Plugin_Blueprints at
+`plugins/vendor/blueprint_editor`. Pulsar-Native uses them by path (the root `Cargo.toml` has a
+path dependency and a `[patch]` entry for Graphy, and `crates/core/engine` /
+`crates/core/pulsar_package` depend on the plugin by path). So bumping one means moving the
+submodule pin, not editing a `rev =` in Pulsar-Native.
 
-```
-Graphy → Pulsar-Native → Plugin_Blueprints → Pulsar-Native (ui_core)
-```
+## The rule
 
-## Step-by-Step Procedure
+Merge the dependency's PR first, then re-pin the submodule to a commit on the dependency's default
+branch, then merge the Pulsar-Native PR. CI's "submodule pins are on upstream main" check
+(`just check-submodule-pins`) fails otherwise; `.github/submodule-pin-exceptions.txt` lists the
+rare allowed exceptions.
 
-### After pushing to Graphy:
+## After a Graphy change merges
+
 ```bash
-cd ~/Documents/GitHub/Graphy
-NEW_GRAPHY=$(git rev-parse HEAD)
-
-# 1. Update Pulsar-Native workspace
-#    Edit Cargo.toml: the `graphy` workspace dependency
-cd ~/Documents/GitHub/Pulsar-Native
-# graphy line: rev = "..." → $NEW_GRAPHY
-git add Cargo.toml && git commit -m "Bump Graphy ${NEW_GRAPHY:0:7}" && git push
-NEW_PN=$(git rev-parse HEAD)
-
-# 2. Update Plugin_Blueprints
-cd ~/Documents/GitHub/Plugin_Blueprints
-# Cargo.toml: all Pulsar-Native rev= lines → $NEW_PN
-#             graphy rev= line              → $NEW_GRAPHY
-git add Cargo.toml && git commit -m "Bump deps ..." && git push
-NEW_PB=$(git rev-parse HEAD)
-
-# 3. Update Pulsar-Native ui_core (points back to Plugin_Blueprints)
-cd ~/Documents/GitHub/Pulsar-Native
-# ui-crates/ui_core/Cargo.toml: blueprint_editor_plugin rev= → $NEW_PB
-git add ui-crates/ui_core/Cargo.toml && git commit -m "Bump Plugin_Blueprints rev to ${NEW_PB:0:7}" && git push
+git -C crates/third-party/graphy fetch origin main
+git -C crates/third-party/graphy checkout origin/main
+git add crates/third-party/graphy
 ```
 
-### After pushing to Plugin_Blueprints only:
-Skip steps 1-2. Just update `ui-crates/ui_core/Cargo.toml` in Pulsar-Native.
+The Blueprint plugin also names Graphy by git rev, in `plugins/vendor/blueprint_editor/Cargo.toml`
+and `plugins/vendor/blueprint_editor/compiler/Cargo.toml`. Inside Pulsar-Native the `[patch]`
+redirects them to the submodule, so they only matter for the plugin's own builds; when you change
+them, change both to the same rev in a Plugin_Blueprints PR.
 
-### After pushing to Pulsar-Native only:
-Update Plugin_Blueprints `Cargo.toml` (all Pulsar-Native `rev =` lines), push, then update `ui-crates/ui_core/Cargo.toml` in Pulsar-Native.
+## After a Plugin_Blueprints change merges
+
+```bash
+git -C plugins/vendor/blueprint_editor fetch origin main
+git -C plugins/vendor/blueprint_editor checkout origin/main
+git add plugins/vendor/blueprint_editor
+```
+
+## After a Pulsar-Native change a plugin needs
+
+The plugins pin Pulsar-Native crates by `rev =` (in the Blueprint plugin: `gpui-ce`, `ui`,
+`plugin_editor_api`, `plugin_manager`, `ui_common`, `engine_backend`, `engine_fs`,
+`ui_types_common`, `pulsar_reflection`, `pulsar_std`, `pulsar_script_vm`, `pulsar_script_codegen`;
+its `compiler/` crate pins `pulsar_script_vm` separately). Inside Pulsar-Native the root
+`[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]` points them at local paths.
+
+```bash
+just bump-plugin-pins <rev>   # rewrite every Pulsar-Native rev under plugins/vendor, refresh lockfiles
+just check-plugin-pins        # what CI runs: every pinned rev must be an ancestor of HEAD
+```
+
+Commit the rewritten manifests in each plugin repo, merge there, then re-pin the submodules as
+above.
 
 ---
 
 ## Rules
 
-1. **Always use `git rev-parse HEAD` immediately after push.** Never reconstruct a SHA from memory.
-2. **Never skip a level.** If Graphy changed, Pulsar-Native must pick up the new Graphy rev even if you only "care about" Plugin_Blueprints.
-3. **The `[patch]` sections in `Pulsar-Native/Cargo.toml`** redirect all `git = "...Pulsar-Native"` references to local paths. Don't remove them — they prevent duplicate-crate link errors.
-4. **Plugin_Blueprints `Cargo.toml`** must have matching revs for all five Pulsar-Native deps (`gpui-ce`, `ui`, `plugin_editor_api`, `ui_common`, `engine_backend`, `pulsar_reflection`, `pulsar_script_vm`) plus `graphy`.
+1. **Take SHAs from git, never from memory** (`git rev-parse HEAD`, `git -C <submodule> rev-parse HEAD`).
+2. **Don't remove the root `[patch]` sections.** They keep one copy of each shared crate in the graph.
+3. **Order matters:** dependency PR merged → submodule re-pinned → Pulsar-Native PR merged.
 
 ## Verifying a rev exists
 
 ```bash
-git -C ~/Documents/GitHub/Graphy cat-file -t <SHA>   # should print "commit"
+git -C crates/third-party/graphy cat-file -t <SHA>   # should print "commit"
 ```
 
-If it prints "missing", the SHA is wrong.
-
-## Common Error: duplicate crate versions
+## Common error: duplicate crate versions
 
 ```
 note: there are multiple different versions of crate `graphy` in the dependency graph
-  944b114 ... this is the expected type
-  d18837c ... this is the found type
 ```
 
-**Cause:** One of the repos still pins the old rev. Grep all Cargo.toml files:
+See `/debug-compile-errors`. Start with:
 ```bash
-grep -r "graphy" ~/Documents/GitHub/Pulsar-Native ~/Documents/GitHub/Plugin_Blueprints --include="Cargo.toml" | grep "rev ="
+grep -rn 'rev =' --include=Cargo.toml plugins/vendor
+cargo tree -i graphy -e normal
 ```
-Find the stale one and update it.

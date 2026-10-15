@@ -12,60 +12,40 @@ note: there are multiple different versions of crate `graphy` in the dependency 
   d18837c ... this is the found type
 ```
 
-**Cause:** One or more repos still pin the old rev of a shared dep.
+**Cause:** Two copies of a shared crate are in the graph: usually a git `rev =` dependency that the
+root `[patch]` tables don't redirect to the in-tree copy.
 
 **Fix:**
-```bash
-# Find every rev= pin for graphy and pbgc across all repos
-grep -r "graphy\|pbgc" \
-  ~/Documents/GitHub/Pulsar-Native \
-  ~/Documents/GitHub/Plugin_Blueprints \
-  --include="Cargo.toml" | grep "rev ="
-```
-
-Find the stale SHA and update it to match the current head. Then cascade up via `/bump-deps`.
-
-Also check the `[patch]` sections in `Pulsar-Native/Cargo.toml` — they redirect git refs to local paths. Without them, Cargo resolves a second copy of every Pulsar-Native crate.
+- Check the `[patch."https://github.com/Far-Beyond-Pulsar/<repo>"]` tables in the root
+  `Cargo.toml`. They point git references to Pulsar-Native, Graphy, Pulsar-Reflection, WGPUI and
+  others at the submodules; without them Cargo builds a second copy.
+- Find the git pins in the plugins:
+  ```bash
+  grep -rn 'rev =' --include=Cargo.toml plugins/vendor
+  ```
+  `just check-plugin-pins` checks the Pulsar-Native revs; `just bump-plugin-pins` rewrites them.
+- `cargo tree -i <crate> -e normal` shows which package pulls in each copy.
 
 ---
 
-## "cannot find function `X` in this scope" inside `mod logic`
+## Blueprint compile: "No event nodes found in graph"
 
-```
-error[E0425]: cannot find function `print_number` in this scope
-  --> src/classes/MyBP/events/events.rs:53:68
-```
+The Rust compile target (the default) needs at least one event node (Begin Play, Tick, a custom
+event…). Add one, or switch the toolbar to the VM target.
 
-**Cause:** The generated `mod logic { }` block inside `events.rs` is missing `use pulsar_std::*;`. Rust sub-modules don't inherit `use` statements from their parent module.
+## Blueprint compile: "… Use the VM compile target for this class."
 
-**Fix:** In `PBGC/src/project.rs`, the `mod logic { }` template must include:
-```rust
-mod logic {{
-    #[allow(unused_imports)]
-    use super::super::super::vars::*;
-    #[allow(unused_imports)]
-    use pulsar_std::*;
-    ...
-```
-After fixing, push PBGC and cascade revs. Also patch the already-generated `events.rs` in the project file directly for immediate testing.
+`pulsar_script_codegen::actor::generate_actor` refuses classes with component-scoped event
+subscriptions: an exported Rust actor has no runtime event context to resolve that component
+reference. Switch the class to the VM target.
 
----
+## Blueprint compile: "data flow analysis failed: …"
 
-## "the trait bound `&MyStruct: EngineClass` is not satisfied"
-
-```
-error[E0277]: the trait bound `&classes::MyBP::events::events::MyBP: EngineClass` is not satisfied
-   = note: required for the cast from `Box<&MyBP>` to `Box<(dyn EngineClass + 'static)>`
-```
-
-**Cause:** `clone_boxed(&self)` does `Box::new(self.clone())`. Without `#[derive(Clone)]`, `self.clone()` resolves to `<&T>::clone` which returns `&T`, not `T`. So `Box<&T>` doesn't satisfy `Box<dyn EngineClass>`.
-
-**Fix:** Add `Clone` to the derive in the generated struct:
-```rust
-#[derive(EngineClass, Clone)]
-pub struct MyBP {}
-```
-In the PBGC template (`project.rs`), the line should read `#[derive(EngineClass, Clone)]`.
+The validation stage (`run_validation_stage` in the plugin's
+`src/features/compilation/compiler.rs`) ran Graphy's data-flow analysis on the macro-expanded graph
+and found a broken connection or an unknown node type. A node type must exist in the `pulsar_std`
+catalogue (`pulsar_std::get_all_nodes()`), be a `native::<name>` native, or be one of the compiler's
+own node kinds.
 
 ---
 
@@ -76,24 +56,22 @@ error[E0583]: file not found for module `ExampleClass`
   --> src/classes/mod.rs:10:1
 ```
 
-**Cause:** `src/classes/mod.rs` declares a class that no longer has a directory. Happens when a class was deleted or renamed in the editor.
+**Cause:** `src/classes/mod.rs` declares a class that no longer has a directory with a `mod.rs`,
+e.g. after a class was deleted or renamed, or a Rust-target compile appended `pub mod <Name>;` for
+a class whose directory later moved.
 
-**Fix — for the project:** Delete the stale line from `src/classes/mod.rs`.
-
-**Fix — in the generator:** `ensure_core_bootstrap` in `core_project_builder.rs` now regenerates `classes/mod.rs` from disk on every Build Core press (scans which subdirectories have a `mod.rs`). The old code only created it if missing.
+**Fix:** Run Build Core (or PIE). `ensure_core_bootstrap` in
+`crates/core/engine_backend/src/services/core_project_builder.rs` rebuilds `src/classes/mod.rs`
+from the class directories on disk. Or delete the stale line by hand.
 
 ---
 
-## "unresolved import `pulsar_game::blueprint_runtime`"
+## Generated project fails against old engine crates
 
-```
-error[E0432]: unresolved import `pulsar_game::blueprint_runtime`
-  --> src/engine_main.rs:10:18
-```
-
-**Cause:** The project's `Cargo.lock` is pinned to an old Pulsar-Native commit that predates `blueprint_runtime` being added to `pulsar_game`.
-
-**Fix:** Run `cargo update` in the project root. Build Core now does this automatically before `cargo build`.
+A generated game's `Cargo.toml` takes its dependencies and the full `[patch]` table from the
+workspace (`crates/core/engine_backend/build.rs` bakes them in). If the project's `Cargo.lock`
+still holds older revisions, run `cargo update` in the project, or use the "Update, Build & Run"
+build configuration, the default configuration that includes the Update step.
 
 ---
 
@@ -138,11 +116,8 @@ error: failed to get `graphy` as a dependency of package `blueprint_compiler`
 
 **Cause:** A SHA was written incorrectly (truncated, wrong, or reconstructed from memory).
 
-**Rule:** Always use `git rev-parse HEAD` immediately after `git push`. Never type a SHA manually.
-
-```bash
-git push && git rev-parse HEAD   # copy this output into Cargo.toml
-```
+**Rule:** Take SHAs from git, never from memory: `git rev-parse HEAD` after pushing, or
+`git -C <submodule> rev-parse HEAD`.
 
 Verify a SHA exists:
 ```bash
@@ -155,12 +130,13 @@ git cat-file -t <SHA>   # prints "commit" if valid
 
 ```
 error[E0423]: expected function, found macro `println`
-  --> events.rs:59:68
 ```
 
-**Cause:** `pulsar_std` exports a function named `println` (not the std macro). Without `use pulsar_std::*;` in scope, the compiler sees the built-in `println!` macro instead and rejects the call-without-`!`.
+**Cause:** `pulsar_std` exports a function named `println` (a Blueprint node). Without
+`use pulsar_std::*;` (or `pulsar_std::println`) in scope, the compiler sees the built-in
+`println!` macro and rejects a call without `!`.
 
-**Fix:** Same as the missing `use pulsar_std::*;` fix above.
+**Fix:** Import it, or call it by path: `pulsar_std::println(message)`.
 
 ---
 
@@ -171,7 +147,9 @@ error[E0631]: type mismatch in function arguments
    cx.spawn(async move |cx: AsyncApp| {
 ```
 
-**Cause:** GPUI's `App::spawn` in this codebase takes `async move |cx: &mut AsyncApp|` (borrowed), not owned `AsyncApp`.
+**Cause:** GPUI's `App::spawn` takes `async move |cx: &mut AsyncApp|` (borrowed), not owned
+`AsyncApp`; `Context<T>::spawn` takes `async move |this: WeakEntity<T>, cx: &mut AsyncApp|`.
+(`TestAppContext::spawn` is the exception: it passes `AsyncApp` by value.)
 
 **Fix:**
 ```rust
