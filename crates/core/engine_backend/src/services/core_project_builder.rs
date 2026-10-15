@@ -418,7 +418,8 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
 
 /// Ensure the core project bootstrap files exist and are up to date.
 ///
-/// This is engine-owned project wiring. PBGC should only emit class files.
+/// This is engine-owned project wiring. The Blueprint compiler only writes
+/// class files.
 pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
     // ── scripts/ — user gameplay script crates (#653) ────────────────────────
     // Must run BEFORE manifest/engine_main generation so both can wire it.

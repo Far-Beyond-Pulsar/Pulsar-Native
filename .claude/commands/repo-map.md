@@ -1,27 +1,28 @@
 # Pulsar Engine — Repo Map
 
-Print a concise orientation to every repository and crate in the Pulsar monorepo ecosystem.
+A concise orientation to the Pulsar-Native workspace and the repositories it pulls in.
 
 ---
 
-## The Repositories
+## Repositories
 
-| Repo | GitHub | Local path | Role |
-|------|--------|-----------|------|
-| **Pulsar-Native** | `Far-Beyond-Pulsar/Pulsar-Native` | `~/Documents/GitHub/Pulsar-Native` | Main workspace — engine runtime, editor UI, build tooling |
-| **Plugin_Blueprints** | `Far-Beyond-Pulsar/Plugin_Blueprints` | `~/Documents/GitHub/Plugin_Blueprints` | Blueprint editor GPUI plugin |
-| **Graphy** | `Far-Beyond-Pulsar/Graphy` | `~/Documents/GitHub/Graphy` | Graph description types + AST transformation utilities |
-| **Helio** | `Far-Beyond-Pulsar/Helio` | (external) | Scene/ECS runtime used by game projects |
+Pulsar-Native is the workspace; most other repositories are git submodules inside it.
 
-## Dependency Order (bottom → top)
+| Repo | Where in Pulsar-Native | Role |
+|------|------------------------|------|
+| **Pulsar-Native** | (workspace root) | Engine runtime, editor, build tooling |
+| **Plugin_Blueprints** | `plugins/vendor/blueprint_editor` | Blueprint editor plugin, plus its `compiler/` and `graph/` crates |
+| **Graphy** | `crates/third-party/graphy` | Graph data model and data/exec-flow analysis |
+| **Helio** | `crates/renderer/helio` | GPU-driven renderer |
+| **WGPUI / WGPUI-Component** | `crates/ui/wgpui`, `crates/ui/wgpui-component` | UI framework (`gpui-ce`) and component library (`ui`) |
+| **Pulsar-Reflection** | `crates/external/pulsar-reflection` | `EngineClass` reflection and derives |
+| **SceneDB** | git dependency (`pulsar_scenedb`) | Entity/component world store |
 
-```
-Graphy  ←  Pulsar-Native  ←  Plugin_Blueprints
-               ↑
-         (workspace root)
-```
+Other editor plugins live beside the Blueprint editor in `plugins/vendor/`.
 
-Changes cascade upward. Always push the lowest-level repo first, then update `rev =` pins going up.
+Submodules are pinned to commits on their upstream default branch (`just check-submodule-pins`).
+To land a change in one: merge its PR, re-pin the submodule, then merge the Pulsar-Native PR. See
+`/bump-deps`.
 
 ---
 
@@ -29,83 +30,84 @@ Changes cascade upward. Always push the lowest-level repo first, then update `re
 
 ```
 Pulsar-Native/
-├── crates/                    Engine crates
-│   ├── pulsar_game/           ECS runtime (World, Actor, TickLoop, blueprint_runtime)
-│   ├── engine_backend/        Editor services (project builder, LSP, GPU renderer)
-│   │   └── services/
-│   │       └── core_project_builder.rs   ← generates user project scaffolding
-│   ├── pulsar_std/            Standard library of blueprint nodes (print_number, etc.)
-│   ├── pulsar_script_vm/      Engine script bytecode VM (every language compiles to it)
-│   ├── pulsar_script_runtime/ Script classes bound to entities
-│   ├── pulsar_reflection/     EngineClass trait + property reflection
-│   ├── pulsar_reflection_derive/  proc-macro: #[derive(EngineClass)]
-│   ├── engine_class_derive/   proc-macro: #[derive(EngineClass, Clone)]
-│   ├── pulsar_game/           Game runtime (ECS + blueprint dispatcher)
-│   ├── engine_state/          Global engine state, project path, settings
-│   ├── plugin_editor_api/     Trait API all editor plugins must implement
-│   ├── plugin_manager/        Loads/unloads editor plugins at runtime
-│   ├── ui/                    Core GPUI components (Button, Notification, theme…)
-│   └── …
-│
-├── ui-crates/                 Editor panel crates
-│   ├── ui_core/               Root window; loads all editor plugins
-│   ├── ui_level_editor/       Level editor panel + Build Core toolbar button
-│   ├── ui_file_manager/       File browser
-│   ├── ui_log_viewer/         Tracing log viewer
-│   └── …
-│
-├── tools/                     Standalone CLI tools
-└── Cargo.toml                 Workspace root — all [workspace.dependencies] live here
+├── crates/
+│   ├── core/                     Engine and editor-backend crates
+│   │   ├── pulsar_game/          Game runtime: TickLoop, scripting (ScriptDriver), standalone runner
+│   │   ├── pulsar_std/           Standard library of Blueprint nodes (#[blueprint] functions)
+│   │   ├── pulsar_macros/        #[blueprint] and the script-native generators
+│   │   ├── pulsar_script_vm/     Script module format + VM (every language compiles to it)
+│   │   ├── pulsar_script_runtime/ ScriptRuntime: script classes bound to entities
+│   │   ├── pulsar_script_codegen/ Exports a script module as a Rust actor
+│   │   ├── engine_backend/       Editor services; services/core_project_builder.rs scaffolds game projects
+│   │   ├── engine_class_derive/  proc-macro: #[derive(EngineClass)]
+│   │   ├── engine/               The editor binary (links the built-in plugins)
+│   │   ├── engine_state/         Global engine state, project path, build configurations
+│   │   ├── plugin_editor_api/    Trait API editor plugins implement
+│   │   ├── plugin_manager/       Loads editor plugins
+│   │   └── …
+│   ├── editor/                   Editor UI crates (ui_core, ui_level_editor, ui_build, ui_file_manager, …)
+│   ├── ui/                       wgpui (gpui-ce), wgpui-component (ui)
+│   ├── renderer/helio/           Renderer
+│   ├── external/pulsar-reflection/
+│   ├── third-party/              graphy, pulsar-config, psgc, toolbelt
+│   └── subsystems/, graphics/, profiling/, agent-providers/
+├── plugins/vendor/               Editor plugins (submodules)
+├── tools/                        Standalone CLI tools
+├── scripts/                      CI checks (fmt-check.sh, plugin-pins.sh, submodule-pins.sh, …)
+└── Cargo.toml                    Workspace root: [workspace.dependencies] and the [patch] tables
 ```
 
 ## Plugin_Blueprints Layout
 
 ```
-Plugin_Blueprints/src/
-├── lib.rs                     Plugin entry point
-├── core/                      Shared types, definitions, errors
-├── editor/                    Main BlueprintEditorPanel + panel.rs
-├── features/
-│   ├── compilation/           compiler.rs — compiles the graph to a script module (blueprint_compiler)
-│   ├── variables/             Variable list UI (hierarchy_item, rendering)
-│   ├── macros/                Local macro editor
-│   └── prefabs/               Component/prefab panel
-├── rendering/                 Blueprint graph canvas rendering
-└── ui_components/             Reusable UI widgets for the editor
+plugins/vendor/blueprint_editor/
+├── src/
+│   ├── lib.rs                    Plugin entry point
+│   ├── std_nodes.rs              pulsar_std node catalogue as Graphy metadata
+│   ├── core/                     Node definitions, graph types, events
+│   ├── editor/                   BlueprintEditorPanel
+│   ├── io/                       graph_save.json formats, save/load
+│   ├── features/
+│   │   ├── compilation/          compiler.rs: validation, VM and Rust compile targets
+│   │   ├── class_dirs.rs         Where classes live (src/classes/<Name>/, <Name>.class/)
+│   │   ├── variables/, macros/, events/, traits/, prefabs/, undo/, …
+│   ├── rendering/                Graph canvas
+│   └── ui_components/
+├── compiler/                     blueprint_compiler: graph → pulsar_script_vm::Module
+└── graph/                        blueprint_graph: the saved asset and authored graph types
 ```
 
 ## Graphy Layout
 
 ```
-Graphy/src/
-├── lib.rs
-├── core/                      GraphDescription, NodeInstance, DataResolver
-├── utils/
-│   └── ast_transform.rs       inline_control_flow_function + extract_exec_output_labels
-└── …
+crates/third-party/graphy/src/
+├── core/                         GraphDescription, NodeInstance, Connection, NodeMetadata
+├── analysis/                     data_flow.rs (DataResolver), exec_flow.rs (ExecutionRouting)
+└── utils/                        SubGraphExpander, …
 ```
 
 ---
 
 ## Key Cross-Cutting Patterns
 
+### Blueprint pipeline
+`graph_save.json` → validation → `blueprint_compiler` → a script module, either loaded by the
+`ScriptRuntime` (VM target) or exported to Rust by `pulsar_script_codegen` (Rust target). See
+`/blueprint-system`.
+
 ### exec_output! macro
-Control-flow nodes (Sequence, Branch) declare outputs with `exec_output!("Label")` in their `pulsar_std` function body; each label becomes an exec output pin.
+Control-flow nodes declare exec outputs with `exec_output!("Label")` in their `pulsar_std` body.
+`#[blueprint]` records the labels in the node registry (`exec_outputs`), which become the node's
+exec pins; non-intrinsic flow nodes run as selector natives that report which label fired.
 
 ### Generated project files
-`core_project_builder.rs::ensure_core_bootstrap()` regenerates on every Build Core press:
-- `Cargo.toml` — user project manifest (no rev pins; Build Core runs `cargo update` first)
-- `src/main.rs` — entry point
-- `src/engine_main.rs` — VM blueprint loader
-- `src/classes/mod.rs` — scanned from disk, one `pub mod X;` per class directory
+`ensure_core_bootstrap()` in `core_project_builder.rs` runs on Build Core, PIE and packaging:
+- `Cargo.toml`: dependencies and the `[patch]` tables baked from the workspace by
+  `crates/core/engine_backend/build.rs`
+- `src/main.rs`, `src/lib.rs` (PIE entry points), `src/engine_main.rs` (`setup()`, which calls
+  `enable_project_scripting()`)
+- `src/classes/mod.rs`: rebuilt from disk, one `pub mod X;` per class directory with a `mod.rs`
+- `Pulsar/level.json`, engine primitive meshes
 
-### Blueprint class files (written by Plugin_Blueprints compiler)
-```
-src/classes/<ClassName>/
-├── mod.rs           pub mod vars; pub mod events; pub use events::*;
-├── vars/mod.rs      Variable storage (Cell<T>, RefCell<T>)
-└── events/
-    ├── mod.rs       pub mod events; pub use events::*;
-    └── events.rs    #[derive(EngineClass, Clone)] struct + impl Actor
-                     mod logic { use pulsar_std::*; ... generated fn begin_play() }
-```
+### Blueprint class files
+Written by the Blueprint plugin's compiler; see the layout in `/blueprint-system`.

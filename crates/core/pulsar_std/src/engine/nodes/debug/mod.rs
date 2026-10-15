@@ -15,10 +15,10 @@
 
 use crate::blueprint;
 
-/// Convert a PBGC-VM-supplied `String` into a valid Rust `String`.
+/// Convert a possibly zero-initialised `String` into a valid Rust `String`.
 ///
-/// The PBGC VM allocates function arguments in a zero-initialised arena.
-/// A zero-initialised `String` has `ptr = null, len = 0, cap = 0`.
+/// A caller that builds arguments in zeroed memory hands over a `String`
+/// whose bytes are all zero: `ptr = null, len = 0, cap = 0`.
 /// Rust 1.79+ rejects `slice::from_raw_parts(null, 0)`, so *any* operation
 /// on such a value — including `{}` formatting — immediately panics.
 ///
