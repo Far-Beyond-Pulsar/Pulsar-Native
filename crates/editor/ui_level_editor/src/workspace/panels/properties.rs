@@ -35,6 +35,9 @@ pub struct PropertiesPanelWrapper {
     object_feed: Option<pulsar_world_registry::ObjectFeed>,
     /// Wakes the panel when `object_feed` queues an update.
     _object_feed_task: Option<Task<()>>,
+    /// Selected object last observed by the selection pump/render pair.
+    last_selected_object_id: Option<String>,
+    selection_pump_started: bool,
     // DEPRECATED: Old manual property editing (will be removed)
     editing_property: Option<String>,
     property_input: Entity<InputState>,
@@ -78,16 +81,40 @@ impl PropertiesPanelWrapper {
             current_object_id: None,
             object_feed: None,
             _object_feed_task: None,
+            last_selected_object_id: None,
+            selection_pump_started: false,
             editing_property: None,
             property_input,
             collapsed_sections,
         };
+        panel.last_selected_object_id = panel.selected_object_id();
         // Build the initial selection once. Selection changes are explicit
         // editor events; scene data reaches the panel through the selected
         // object's subscription. This panel never polls SceneDB/world
         // revisions.
         panel.sync_sections(window, cx);
         panel
+    }
+
+    fn selected_object_id(&self) -> Option<String> {
+        self.state.read().scene.selected_object()
+    }
+
+    /// Poll only the cheap selection ID so a cached properties panel can
+    /// notice hierarchy changes. Scene revisions are handled by the selected
+    /// object's feed and must not trigger a full panel refresh here.
+    fn start_selection_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.selection_pump_started {
+            return;
+        }
+        self.selection_pump_started = true;
+        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
+            let selected = this.selected_object_id();
+            if selected != this.last_selected_object_id {
+                this.last_selected_object_id = selected;
+                cx.notify();
+            }
+        });
     }
 
     pub fn toggle_section(&mut self, section: String, cx: &mut Context<Self>) {
@@ -347,10 +374,16 @@ impl Render for PropertiesPanelWrapper {
         gpui::render_stats::count("properties panel: render");
         let _t = gpui::render_stats::scope("properties panel: render");
 
+        self.start_selection_pump(window, cx);
+
+        // Record what we are about to paint so the pump does not notify again
+        // for a selection change this render has already picked up.
+        self.last_selected_object_id = self.selected_object_id();
+
         // Selection is an explicit invalidation, unlike scene revisions. Read
         // only the selected ID here so a selection notification can replace
-        // the three section entities. No polling, timer, or data refresh is
-        // allowed through this path.
+        // the three section entities. Data updates arrive through the selected
+        // object's feed.
         self.sync_sections(window, cx);
         self.apply_object_updates(window, cx);
         let _state_scope = gpui::render_stats::scope("properties: render state read");
