@@ -1,6 +1,7 @@
 //! The random world example (`assets/examples/random_world.blueprint.json`):
-//! a Blueprint graph that builds a planet, a moon or a desert world from a
-//! seed, No Man's Sky style, only through the terrain's script natives and
+//! a Blueprint graph that builds a planet, a moon or a desert world (its
+//! ground and its air) from a seed, No Man's Sky style, only through the
+//! terrain's script natives and
 //! the seeded random nodes. Compiled from the saved graph and run on the
 //! script VM against a real terrain entity: the blueprint path end to end.
 
@@ -10,8 +11,8 @@ use blueprint_compiler::{authored::expand_graph, compile, ClassSource, VariableS
 use blueprint_graph::codec::deserialize_blueprint;
 use helio_component::voxel_world::terrain_world;
 use helio_component::{
-    VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent, VoxelTerrainLayersComponent,
-    VoxelTerrainStack,
+    VoxelAir, VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent,
+    VoxelTerrainLayersComponent, VoxelTerrainStack,
 };
 use pulsar_scenedb::World;
 use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Value, Vm};
@@ -50,9 +51,9 @@ fn program() -> Program {
     Program::link(Arc::new(module), &natives).expect("the example links")
 }
 
-/// The stack the example builds for `seed` on a fresh object with an
-/// Earth-preset terrain and layer stack attached.
-fn build(program: &Program, seed: i64) -> VoxelTerrainStack {
+/// The stack and air the example builds for `seed` on a fresh object with
+/// an Earth-preset terrain and layer stack attached.
+fn build(program: &Program, seed: i64) -> (VoxelTerrainStack, VoxelAir) {
     let mut world = World::new();
     let object = world.spawn();
     let terrain = pulsar_world_registry::attach_value(
@@ -87,11 +88,15 @@ fn build(program: &Program, seed: i64) -> VoxelTerrainStack {
         .unwrap_or_else(|e| panic!("seed {seed}: begin_play failed: {e}"));
     // The generator accepts it: the planet builds.
     terrain_world(&world, terrain).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
-    world
-        .get::<VoxelTerrainLayersComponent>(layers)
-        .unwrap()
-        .stack
-        .clone()
+    let air = world.get::<VoxelTerrainComponent>(terrain).unwrap().air;
+    (
+        world
+            .get::<VoxelTerrainLayersComponent>(layers)
+            .unwrap()
+            .stack
+            .clone(),
+        air,
+    )
 }
 
 #[test]
@@ -100,8 +105,15 @@ fn the_random_world_example_builds_varied_reproducible_worlds() {
     let mut styles = std::collections::BTreeSet::new();
     let mut crater_sizes = Vec::new();
     for seed in 0..16 {
-        let stack = build(&program, seed);
+        let (stack, air) = build(&program, seed);
         styles.insert(format!("{:?}", stack.materials));
+        // Each kind of world has its air: none on a moon.
+        let expected = match stack.materials {
+            VoxelMaterialStyle::Lunar => VoxelAir::None,
+            VoxelMaterialStyle::Rules => VoxelAir::Thin,
+            _ => VoxelAir::Earthlike,
+        };
+        assert_eq!(air, expected, "seed {seed}");
         let n = stack.layers.len();
         assert_eq!(
             stack.layers[n - 2].kind,

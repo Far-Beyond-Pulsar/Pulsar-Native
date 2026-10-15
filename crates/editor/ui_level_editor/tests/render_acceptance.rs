@@ -83,6 +83,12 @@ struct Frame {
 }
 
 /// How a frame differs from the empty-scene reference.
+/// Whether two depth texels differ: relative, as reversed depth (near /
+/// distance) is as precise a kilometre away as a metre away.
+fn depth_differs(a: f32, b: f32) -> bool {
+    (a - b).abs() > 1e-4 * a.abs().max(b.abs())
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Difference {
     color_pixels: usize,
@@ -103,7 +109,7 @@ impl Frame {
             .depth
             .iter()
             .zip(&self.depth)
-            .filter(|(a, b)| (*a - *b).abs() > 1e-6)
+            .filter(|(a, b)| depth_differs(**a, **b))
             .count();
         Difference {
             color_pixels,
@@ -1474,7 +1480,7 @@ fn splines_reach_the_frame() {
 fn depth_by_half(frame: &Frame, reference: &Frame) -> (usize, usize) {
     let mut halves = (0, 0);
     for (index, (a, b)) in reference.depth.iter().zip(&frame.depth).enumerate() {
-        if (a - b).abs() > 1e-6 {
+        if depth_differs(*a, *b) {
             if (index as u32 % frame.depth_width) < frame.depth_width / 2 {
                 halves.0 += 1;
             } else {
@@ -1494,7 +1500,7 @@ fn coverage(frame: &Frame, reference: &Frame, left: bool) -> Vec<bool> {
         .zip(&frame.depth)
         .enumerate()
         .filter(|(index, _)| ((*index as u32 % frame.depth_width) < frame.depth_width / 2) == left)
-        .map(|(_, (a, b))| (a - b).abs() > 1e-6)
+        .map(|(_, (a, b))| depth_differs(*a, *b))
         .collect()
 }
 
@@ -2896,9 +2902,9 @@ fn full_coverage(frame: &Frame, reference: &Frame) -> Vec<bool> {
 /// removing the component restores the empty frame, and it casts shadows.
 #[test]
 fn voxel_objects_reach_the_frame_as_meshes() {
-    use engine_backend::scene::voxel_source::{VoxelSourceKind, VoxelSourceSession};
+    use engine_backend::scene::voxel_source::VoxelSourceSession;
     use helio_component::components::LightType as Kind;
-    use helio_voxel_data::{VoxelEditTicketState, VoxelInboxClose, VoxelSampleEdit, VoxelSourceId};
+    use helio_voxel_data::{VoxelEditClose, VoxelEditTicketState, VoxelSampleEdit, VoxelSourceId};
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
@@ -2976,14 +2982,8 @@ fn voxel_objects_reach_the_frame_as_meshes() {
 
     // An edit: clear a 4 x 4 x 2 notch in the middle of the front face.
     let instance = first_instance(&state, &id);
-    let session = VoxelSourceSession::open(
-        state.scene.shared_scene(),
-        instance,
-        VoxelSourceKind::Object,
-        VoxelSourceId(7),
-        Default::default(),
-    )
-    .expect("open the volume's source");
+    let session = VoxelSourceSession::open(state.scene.shared_scene(), instance, VoxelSourceId(7))
+        .expect("open the volume's source");
     let edits: Vec<_> = (6..10)
         .flat_map(|x| (6..10).flat_map(move |y| (14..16).map(move |z| [x, y, z])))
         .map(|xyz| VoxelSampleEdit {
@@ -3004,7 +3004,7 @@ fn voxel_objects_reach_the_frame_as_meshes() {
         change > noise + 50,
         "the edit did not change the frame ({change}, noise {noise})"
     );
-    let _ = session.finish(VoxelInboxClose::Drain);
+    let _ = session.finish(VoxelEditClose::Drain);
 
     // Removing the component restores the empty frame.
     assert!(components::remove_component(

@@ -459,7 +459,7 @@ mod voxel_example_tests {
         let (entries, errors) = engine_backend::scene::voxel_frame::project_voxel_entries(&world);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].renderer_id, "helio.voxel-terrain");
+        assert!(entries[0].chunks.is_none(), "a world, not a voxel object");
         assert_eq!(entries[0].generator.as_ref().unwrap().version, 1);
         // The Earth preset (seed 75: foothills at the pole, a range 23 km away).
         let stacks: Vec<_> = engine_backend::scene::attachments::enabled_components::<

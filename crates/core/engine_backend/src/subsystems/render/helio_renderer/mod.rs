@@ -5,7 +5,6 @@ pub mod core;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
-mod native_voxel_flight;
 pub mod renderer;
 pub mod voxel_backend;
 pub mod voxel_mesh_backend;
@@ -16,8 +15,5 @@ pub use core::{
 };
 pub use renderer::{
     CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer, PendingPointerEvent,
-    RendererCommand, StaticDragWarning, VoxelBrushRequest,
+    RendererCommand, StaticDragWarning, VoxelBrushRequest, VoxelBrushTool,
 };
-
-pub const RENDER_WIDTH: u32 = 1600;
-pub const RENDER_HEIGHT: u32 = 900;

@@ -1,8 +1,9 @@
 //! Terrain dock panel — one panel, three tabs, modelled on Unreal's
 //! Landscape mode:
 //!
-//! - **Manage** — the terrain actors in the level (planets, flat worlds):
-//!   create, pick the one being edited, inspect it.
+//! - **Manage** — the voxel objects in the level (`VoxelComponent`): create
+//!   one, pick the one being edited, inspect it. Voxel worlds are sculpted
+//!   with brushes (the voxel sculpt tool).
 //! - **Sculpt** — Raise / Lower / Flatten tool grid plus brush options.
 //! - **Paint**  — the Paint tool, brush options, and the material palette.
 //!
@@ -16,7 +17,7 @@ use std::collections::HashSet;
 use engine_backend::scene::attachments;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use helio_component::{VoxelComponent, VoxelTerrainComponent};
+use helio_component::VoxelComponent;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
@@ -31,7 +32,6 @@ use super::widgets::{
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::state::terrain::{BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget};
-use crate::tool_modes::dispatcher::ToolModeDispatcher;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
@@ -41,12 +41,11 @@ enum Tab {
     Foliage,
 }
 
-/// One terrain actor as the Manage tab shows it.
+/// One voxel object as the Manage tab shows it.
 #[derive(Clone, Debug, PartialEq)]
 struct BodyRow {
     hex: String,
-    is_planet: bool,
-    /// Planet radius or flat-world width, in meters.
+    /// The object's largest dimension, in metres.
     size_m: f64,
     material: u8,
     material_slots: u32,
@@ -58,19 +57,11 @@ impl BodyRow {
     }
 
     fn is_target(&self, target: &TerrainTarget) -> bool {
-        match target {
-            TerrainTarget::Planet(id) => self.is_planet && *id == self.hex,
-            TerrainTarget::Volume(id) => !self.is_planet && *id == self.hex,
-            TerrainTarget::None => false,
-        }
+        matches!(target, TerrainTarget::Volume(id) if *id == self.hex)
     }
 
     fn as_target(&self) -> TerrainTarget {
-        if self.is_planet {
-            TerrainTarget::Planet(self.hex.clone())
-        } else {
-            TerrainTarget::Volume(self.hex.clone())
-        }
+        TerrainTarget::Volume(self.hex.clone())
     }
 }
 
@@ -99,22 +90,10 @@ impl Signature {
 fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
     let world = state.scene.world();
     let mut rows = Vec::new();
-    for (entity, _, component) in attachments::enabled_components::<VoxelTerrainComponent>(&world) {
-        if component.enabled {
-            rows.push(BodyRow {
-                hex: format!("{:016x}", entity.bits()),
-                is_planet: true,
-                size_m: component.voxel_size * f64::from(component.chunk_edge_voxels),
-                material: component.material_ids.first().copied().unwrap_or(0) as u8,
-                material_slots: component.material_ids.len().min(u8::MAX as usize) as u32,
-            });
-        }
-    }
     for (entity, _, component) in attachments::enabled_components::<VoxelComponent>(&world) {
         if component.enabled {
             rows.push(BodyRow {
                 hex: format!("{:016x}", entity.bits()),
-                is_planet: false,
                 size_m: f64::from(*component.dimensions.iter().max().unwrap_or(&0))
                     * component.voxel_size,
                 material: component.default_material_slot as u8,
@@ -219,11 +198,7 @@ impl Render for TerrainPanel {
             .map(|b| {
                 format!(
                     "{} {}",
-                    if b.is_planet {
-                        t!("LevelEditor.TerrainPanel.Kind.Planet").to_string()
-                    } else {
-                        t!("LevelEditor.TerrainPanel.Kind.FlatWorld").to_string()
-                    },
+                    t!("LevelEditor.TerrainPanel.Kind.Volume"),
                     b.short_id()
                 )
             })
@@ -337,14 +312,14 @@ impl TerrainPanel {
         let state = self.state.clone();
         let create = Button::new("terrain_create_voxel_source")
             .icon(IconName::Plus)
-            .label(t!("LevelEditor.Terrain.CreateFlatWorld"))
+            .label(t!("LevelEditor.Terrain.CreateVolume"))
             .xsmall()
             .primary()
             .on_click(move |_, _, _cx| {
                 let mut st = state.write();
                 let data = SceneObjectData {
                     id: String::new(),
-                    name: "Voxel Terrain".into(),
+                    name: "Voxel Volume".into(),
                     object_type: ObjectType::Empty,
                     transform: Transform::default(),
                     visible: true,
@@ -360,7 +335,7 @@ impl TerrainPanel {
                     SceneCommand::AddObjectWithComponents {
                         data,
                         parent_id: None,
-                        components: vec![TypedComponent::new(VoxelTerrainComponent::default())],
+                        components: vec![TypedComponent::new(VoxelComponent::default())],
                     },
                 );
             })
@@ -403,21 +378,16 @@ impl TerrainPanel {
                     .on_click(move |_, _, _| {
                         state.write().editor.terrain.set_target(target.clone());
                     })
-                    .child(Icon::new(if body.is_planet {
-                        IconName::Globe
-                    } else {
-                        IconName::Square
-                    }))
+                    .child(Icon::new(IconName::Square))
                     .child(
                         v_flex()
                             .flex_1()
-                            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).child(
-                                if body.is_planet {
-                                    t!("LevelEditor.TerrainPanel.Kind.Planet").to_string()
-                                } else {
-                                    t!("LevelEditor.TerrainPanel.Kind.FlatWorld").to_string()
-                                },
-                            ))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(t!("LevelEditor.TerrainPanel.Kind.Volume").to_string()),
+                            )
                             .child(
                                 div()
                                     .text_xs()
@@ -439,11 +409,7 @@ impl TerrainPanel {
                     .child(info_row(
                         theme,
                         t!("LevelEditor.TerrainPanel.Detail.Type").to_string(),
-                        if b.is_planet {
-                            t!("LevelEditor.TerrainPanel.Kind.Planet").to_string()
-                        } else {
-                            t!("LevelEditor.TerrainPanel.Kind.FlatWorld").to_string()
-                        },
+                        t!("LevelEditor.TerrainPanel.Kind.Volume").to_string(),
                     ))
                     .child(info_row(
                         theme,
@@ -452,11 +418,7 @@ impl TerrainPanel {
                     ))
                     .child(info_row(
                         theme,
-                        if b.is_planet {
-                            t!("LevelEditor.TerrainPanel.Detail.Radius").to_string()
-                        } else {
-                            t!("LevelEditor.TerrainPanel.Detail.Width").to_string()
-                        },
+                        t!("LevelEditor.TerrainPanel.Detail.Width").to_string(),
                         format!("{:.1} m", b.size_m),
                     ))
                     .child(info_row(

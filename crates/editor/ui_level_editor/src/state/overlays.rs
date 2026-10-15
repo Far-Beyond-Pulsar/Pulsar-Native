@@ -9,8 +9,6 @@
 //! rendering preferences (grid, wireframe, lighting) distinct from overlay
 //! chrome, making both easier to reason about.
 
-use std::collections::HashSet;
-
 /// Viewport overlay positions and drag state.
 #[derive(Clone, Debug)]
 pub struct OverlayPositions {
@@ -150,10 +148,6 @@ impl OverlayDomain {
         self.state.performance_overlay_collapsed = collapsed;
     }
 
-    pub fn set_gpu_pipeline_overlay_collapsed(&mut self, collapsed: bool) {
-        self.state.gpu_pipeline_overlay_collapsed = collapsed;
-    }
-
     // ── FPS graph type ────────────────────────────────────────────────────
 
     pub fn toggle_fps_graph_type(&mut self) {
@@ -210,9 +204,5 @@ impl OverlayDomain {
 
     pub fn set_show_camera_mode_selector(&mut self, show: bool) {
         self.state.show_camera_mode_selector = show;
-    }
-
-    pub fn set_show_viewport_options(&mut self, show: bool) {
-        self.state.show_viewport_options = show;
     }
 }

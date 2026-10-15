@@ -60,88 +60,21 @@ impl ToolModeDispatcher {
         result
     }
 
-    /// Route the terrain mode's declarative controls into its persistent
-    /// authoring settings. Keeping this in one place lets both the toolbar
-    /// and the contributed dock panels use the same control identifiers.
+    /// Route a mode's toolbar controls into its persistent authoring
+    /// settings: the terrain mode's brush radius and strength.
     pub fn dispatch_widget_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) {
-        if Self::dispatch_voxel_edit(state, edit) {
-            return;
-        }
-        use crate::state::terrain::{BrushShape, SculptMode};
         let terrain = &mut state.editor.terrain;
         match edit {
-            ToolWidgetEdit::SetSegmented { id, value } => match (*id, *value) {
-                ("sculpt_mode" | "mode", "raise") => {
-                    terrain.activate_sculpt_tool(SculptMode::Raise)
-                }
-                ("sculpt_mode" | "mode", "lower") => {
-                    terrain.activate_sculpt_tool(SculptMode::Lower)
-                }
-                ("sculpt_mode" | "mode", "flatten") => {
-                    terrain.activate_sculpt_tool(SculptMode::Flatten)
-                }
-                ("sculpt_mode" | "mode", "paint") => {
-                    terrain.activate_sculpt_tool(SculptMode::Paint)
-                }
-                ("brush_shape", "sphere") => terrain.set_brush_shape(BrushShape::Sphere),
-                ("brush_shape", "box") => terrain.set_brush_shape(BrushShape::Box),
-                _ => {}
-            },
-            ToolWidgetEdit::SetSlider { id, value } => match *id {
-                "radius" => terrain.set_brush_radius(*value),
-                "strength" => terrain.set_brush_strength(*value),
-                "falloff" => terrain.set_brush_falloff(*value),
-                "material" => terrain.set_brush_material(value.round().max(1.0) as u32),
-                _ => {}
-            },
-            ToolWidgetEdit::SetToggle { id, on } if *id == "paint_foliage" => {
-                terrain.set_paint_foliage(*on)
-            }
-            ToolWidgetEdit::Invoke { .. } | ToolWidgetEdit::SetToggle { .. } => {}
-        }
-    }
-
-    /// The voxel sculpt tool's controls (`voxel_*` ids).
-    fn dispatch_voxel_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) -> bool {
-        use crate::state::voxel::VoxelSculptMode;
-        use helio_voxel_data::VoxelBrushShape;
-        let voxel = &mut state.editor.voxel;
-        match edit {
-            ToolWidgetEdit::SetSegmented {
-                id: "voxel_mode",
-                value,
-            } => {
-                voxel.mode = match *value {
-                    "build" => VoxelSculptMode::Build,
-                    "paint" => VoxelSculptMode::Paint,
-                    _ => VoxelSculptMode::Dig,
-                }
-            }
-            ToolWidgetEdit::SetSegmented {
-                id: "voxel_shape",
-                value,
-            } => {
-                voxel.shape = if *value == "cube" {
-                    VoxelBrushShape::Cube
-                } else {
-                    VoxelBrushShape::Sphere
-                }
-            }
             ToolWidgetEdit::SetSlider {
-                id: "voxel_radius",
+                id: "radius",
                 value,
-            } => voxel.set_radius(*value),
+            } => terrain.set_brush_radius(*value),
             ToolWidgetEdit::SetSlider {
-                id: "voxel_material",
+                id: "strength",
                 value,
-            } => voxel.set_material(value.round() as u32),
-            ToolWidgetEdit::SetToggle {
-                id: "voxel_block",
-                on,
-            } => voxel.single_block = *on,
-            _ => return false,
+            } => terrain.set_brush_strength(*value),
+            _ => {}
         }
-        true
     }
 
     pub fn select_tool_mode(

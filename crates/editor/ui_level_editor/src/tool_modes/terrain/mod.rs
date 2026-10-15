@@ -1,20 +1,14 @@
-//! Terrain sculpt and material-paint mode backed by SceneDB voxel sources.
+//! Sample sculpt and material-paint mode for voxel objects (SceneDB voxel
+//! sources). Voxel worlds are sculpted with brushes (the voxel sculpt mode).
 
 pub mod panels;
 
 use std::sync::Arc;
 
-use engine_backend::scene::attachments;
-use engine_backend::{
-    scene::{
-        voxel_source::{VoxelSourceKind, VoxelSourceSession},
-        Transform,
-    },
-    services::gpu_renderer::GpuRenderer,
-};
+use engine_backend::scene::{attachments, voxel_source::VoxelSourceSession, Transform};
 use gpui::{AppContext, MouseButton};
-use helio_component::{VoxelComponent, VoxelPayloadStore, VoxelTerrainComponent};
-use helio_voxel_data::{VoxelInboxClose, VoxelSampleEdit, VoxelSourceId, VOXEL_CHUNK_ENCODING_RAW};
+use helio_component::{VoxelComponent, VoxelPayloadStore};
+use helio_voxel_data::{VoxelEditClose, VoxelSampleEdit, VoxelSourceId, VOXEL_CHUNK_ENCODING_RAW};
 use parking_lot::Mutex;
 use pulsar_scenedb::Entity;
 use rust_i18n::t;
@@ -34,7 +28,6 @@ const MAX_BRUSH_RADIUS_SAMPLES: i64 = 19;
 #[derive(Clone)]
 struct SourceBounds {
     entity: Entity,
-    kind: VoxelSourceKind,
     origin: [f32; 3],
     voxel_size: f32,
     material_slots: u8,
@@ -55,7 +48,7 @@ struct Ray {
 pub struct TerrainMode {
     cursor: Option<BrushCursor>,
     active_source: Arc<Mutex<Option<VoxelSourceSession>>>,
-    stroke_source: Option<(Entity, VoxelSourceKind)>,
+    stroke_source: Option<Entity>,
     flatten_plane: Option<i64>,
 }
 
@@ -64,16 +57,14 @@ impl TerrainMode {
         state: &LevelEditorState,
         bounds: &[SourceBounds],
     ) -> Option<SourceBounds> {
-        let target = &state.editor.terrain.target;
-        let (id, kind) = match target {
-            TerrainTarget::Planet(id) => (id, VoxelSourceKind::Terrain),
-            TerrainTarget::Volume(id) => (id, VoxelSourceKind::Object),
+        let id = match &state.editor.terrain.target {
+            TerrainTarget::Volume(id) => id,
             TerrainTarget::None => return bounds.first().cloned(),
         };
         let bits = u64::from_str_radix(id, 16).ok()?;
         bounds
             .iter()
-            .find(|source| source.entity.bits() == bits && source.kind == kind)
+            .find(|source| source.entity.bits() == bits)
             .cloned()
     }
 
@@ -83,15 +74,6 @@ impl TerrainMode {
         for (entity, _, component) in attachments::enabled_components::<VoxelComponent>(&world) {
             if component.enabled && component.editable {
                 if let Some(source) = object_bounds(&world, entity, component) {
-                    sources.push(source);
-                }
-            }
-        }
-        for (entity, _, component) in
-            attachments::enabled_components::<VoxelTerrainComponent>(&world)
-        {
-            if component.enabled && component.editable {
-                if let Some(source) = terrain_bounds(&world, entity, component) {
                     sources.push(source);
                 }
             }
@@ -121,16 +103,10 @@ impl TerrainMode {
 
     fn begin_stroke(&mut self, source: &SourceBounds, ctx: &ToolModeContext) -> bool {
         let scene = ctx.state.scene.shared_scene();
-        match VoxelSourceSession::open(
-            scene,
-            source.entity,
-            source.kind,
-            SOURCE_ID,
-            Default::default(),
-        ) {
+        match VoxelSourceSession::open(scene, source.entity, SOURCE_ID) {
             Ok(session) => {
                 *self.active_source.lock() = Some(session);
-                self.stroke_source = Some((source.entity, source.kind));
+                self.stroke_source = Some(source.entity);
                 true
             }
             Err(error) => {
@@ -145,7 +121,7 @@ impl TerrainMode {
         self.flatten_plane = None;
         if let Some(session) = self.active_source.lock().take() {
             std::thread::spawn(move || {
-                let _ = session.finish(VoxelInboxClose::Drain);
+                let _ = session.finish(VoxelEditClose::Drain);
             });
         }
     }
@@ -290,14 +266,13 @@ impl ToolMode for TerrainMode {
     fn on_mode_entered(&mut self, ctx: &mut ToolModeContext) {
         if matches!(ctx.state.editor.terrain.target, TerrainTarget::None) {
             if let Some(source) = Self::sources(ctx.state).first() {
-                ctx.state.editor.terrain.set_target(match source.kind {
-                    VoxelSourceKind::Object => {
-                        TerrainTarget::Volume(format!("{:016x}", source.entity.bits()))
-                    }
-                    VoxelSourceKind::Terrain => {
-                        TerrainTarget::Planet(format!("{:016x}", source.entity.bits()))
-                    }
-                });
+                ctx.state
+                    .editor
+                    .terrain
+                    .set_target(TerrainTarget::Volume(format!(
+                        "{:016x}",
+                        source.entity.bits()
+                    )));
             }
         }
     }
@@ -361,13 +336,12 @@ impl ToolMode for TerrainMode {
     ) -> ToolPointerResult {
         match event.kind {
             PointerKind::Hover => {
-                if let Some((source, hit)) = self.hit(ctx, event) {
+                if let Some((_, hit)) = self.hit(ctx, event) {
                     self.cursor = Some(BrushCursor {
                         center: hit.to_array(),
                         radius: ctx.state.editor.terrain.sculpt.radius_m,
                         color: [0.35, 0.85, 0.95, 0.9],
                     });
-                    let _ = source;
                 } else {
                     self.cursor = None;
                 }
@@ -449,98 +423,12 @@ fn object_bounds(
     let voxel_size = component.voxel_size as f32 * scale;
     Some(SourceBounds {
         entity,
-        kind: VoxelSourceKind::Object,
         origin: transform.position,
         voxel_size,
         material_slots: component.material_ids.len().min(usize::from(u8::MAX)) as u8,
         payloads: component.payload_store(),
         min_sample: [0; 3],
         max_sample: component.dimensions.map(|n| i64::from(n) - 1),
-    })
-}
-
-fn terrain_bounds(
-    world: &pulsar_scenedb::World,
-    entity: Entity,
-    component: &VoxelTerrainComponent,
-) -> Option<SourceBounds> {
-    if component.chunk_edge_voxels != 8 || !matches!(component.domain_mode, 0 | 1) {
-        return None;
-    }
-    // A voxel source instance is placed by its object's transform.
-    let transform = attachments::owner_component::<Transform>(world, entity)
-        .copied()
-        .unwrap_or_default();
-    if transform
-        .rotation
-        .iter()
-        .any(|v| !v.is_finite() || v.abs() > 1e-5)
-        || transform.position.iter().any(|v| !v.is_finite())
-        || !component.voxel_size.is_finite()
-        || component.voxel_size <= 0.0
-    {
-        return None;
-    }
-    let scale = transform.scale[0];
-    if !scale.is_finite()
-        || scale <= 0.0
-        || !transform.scale[1].is_finite()
-        || !transform.scale[2].is_finite()
-        || (transform.scale[1] - scale).abs() > 1e-5
-        || (transform.scale[2] - scale).abs() > 1e-5
-    {
-        return None;
-    }
-    let voxel_size = component.voxel_size as f32 * scale;
-    let (min_sample, max_sample) = if component.domain_mode == 0 {
-        let min = [
-            component.bounds_min_x,
-            component.bounds_min_y,
-            component.bounds_min_z,
-        ];
-        let max = [
-            component.bounds_max_x,
-            component.bounds_max_y,
-            component.bounds_max_z,
-        ];
-        let chunk_span = f64::from(voxel_size) * f64::from(component.chunk_edge_voxels);
-        let min_chunk = std::array::from_fn(|axis| {
-            ((min[axis] - f64::from(transform.position[axis])) / chunk_span).floor() as i64
-        });
-        let max_chunk = std::array::from_fn(|axis| {
-            (((max[axis] - f64::from(transform.position[axis])) / chunk_span).ceil() as i64)
-                .saturating_sub(1)
-        });
-        (
-            min_chunk.map(|chunk| chunk * i64::from(component.chunk_edge_voxels)),
-            max_chunk.map(|chunk| (chunk + 1) * i64::from(component.chunk_edge_voxels) - 1),
-        )
-    } else {
-        let store = component.payload_store();
-        let data = store.read().ok()?;
-        let mut min = [i64::MAX; 3];
-        let mut max = [i64::MIN; 3];
-        for key in data.1.keys() {
-            for axis in 0..3 {
-                let chunk_sample = key[axis] as i64 * 8;
-                min[axis] = min[axis].min(chunk_sample);
-                max[axis] = max[axis].max(chunk_sample + 7);
-            }
-        }
-        if min[0] == i64::MAX {
-            return None;
-        }
-        (min, max)
-    };
-    Some(SourceBounds {
-        entity,
-        kind: VoxelSourceKind::Terrain,
-        origin: transform.position,
-        voxel_size,
-        material_slots: component.material_ids.len().min(usize::from(u8::MAX)) as u8,
-        payloads: component.payload_store(),
-        min_sample,
-        max_sample,
     })
 }
 

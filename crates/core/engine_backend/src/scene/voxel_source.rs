@@ -1,28 +1,21 @@
-//! Caller-facing SceneDB voxel source capability and worker ownership.
+//! Sample edits on a voxel object's live chunks (`VoxelComponent`), on a CPU
+//! worker. Voxel worlds are edited through their brush journal
+//! (`VoxelTerrainComponent` methods).
 
 use std::sync::Arc;
 
-use helio_component::{VoxelComponent, VoxelTerrainComponent};
+use helio_component::VoxelComponent;
 use helio_voxel_data::{
-    VoxelChunkBatch, VoxelChunkOp, VoxelEditClose, VoxelEditJob, VoxelEditTicket, VoxelEditWorker,
-    VoxelEditWorkerStatus, VoxelFormatRegistry, VoxelInboxBatch, VoxelInboxClose, VoxelInboxLimits,
-    VoxelPublicationOutcome, VoxelPublicationStatus, VoxelPublicationTicket,
-    VoxelPublicationWorker, VoxelSampleEdit, VoxelSourceId, VoxelSourceWriter, VoxelTerrainId,
-    VOXEL_CHUNK_ENCODING_RAW,
+    VoxelEditClose, VoxelEditJob, VoxelEditTicket, VoxelEditWorker, VoxelEditWorkerStatus,
+    VoxelSampleEdit, VoxelSourceId, VoxelSourceWriter, VoxelTerrainId,
 };
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
 
 use super::{
-    voxel_frame::{initialize_empty_cube, object_entry, terrain_entry, VoxelSceneEntry},
+    voxel_frame::{initialize_empty_cube, object_entry, VoxelObjectChunks, VoxelSceneEntry},
     SharedScene,
 };
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VoxelSourceKind {
-    Object,
-    Terrain,
-}
 
 /// A session is bound to one entity generation and one component store. New
 /// submissions fail after removal/replacement/configuration change. Accepted
@@ -31,171 +24,54 @@ pub enum VoxelSourceKind {
 pub struct VoxelSourceSession {
     scene: SharedScene,
     entity: Entity,
-    kind: VoxelSourceKind,
-    source: VoxelSourceId,
-    entry: VoxelSceneEntry,
+    origin: [f64; 3],
+    voxel_size: f64,
+    chunks: VoxelObjectChunks,
     material_ids: Arc<[u32]>,
-    writer: VoxelSourceWriter,
-    publication: VoxelPublicationWorker,
     edits: VoxelEditWorker,
 }
 
 impl VoxelSourceSession {
-    /// Immutable spatial and palette metadata captured when this source
-    /// session was opened. Brush tools use this to map world-space hits to
-    /// LOD-zero sample coordinates without reaching into component internals.
-    pub fn entry(&self) -> &VoxelSceneEntry {
-        &self.entry
-    }
-
-    pub fn entity(&self) -> Entity {
-        self.entity
-    }
-
-    pub fn kind(&self) -> VoxelSourceKind {
-        self.kind
-    }
-
     /// Open on a management/script thread, never in the renderer callback.
-    /// The two CPU workers share the canonical store's revision check.
-    pub fn open(
-        scene: SharedScene,
-        entity: Entity,
-        kind: VoxelSourceKind,
-        source: VoxelSourceId,
-        limits: VoxelInboxLimits,
-    ) -> Result<Self, String> {
-        Self::open_with_formats(
-            scene,
-            entity,
-            kind,
-            source,
-            limits,
-            Arc::new(VoxelFormatRegistry::default()),
-        )
-    }
-
-    /// Bind registered voxel payload formats to both queue admission and
-    /// SceneDB publication. The component and snapshots retain each payload's
-    /// encoding and schema version; consumers choose compatible decoders.
-    pub fn open_with_formats(
-        scene: SharedScene,
-        entity: Entity,
-        kind: VoxelSourceKind,
-        source: VoxelSourceId,
-        limits: VoxelInboxLimits,
-        formats: Arc<VoxelFormatRegistry>,
-    ) -> Result<Self, String> {
+    pub fn open(scene: SharedScene, entity: Entity, source: VoxelSourceId) -> Result<Self, String> {
         let guard = scene.try_read().ok_or("SceneDB is busy")?;
-        let entry = resolve(&guard.world, entity, kind)?;
+        let (entry, chunks) = resolve(&guard.world, entity)?;
         drop(guard);
         // A newly created or deserialized cube must exist in the canonical
         // store before edits can publish their first revision.
-        initialize_empty_cube(&entry)?;
-        let writer = VoxelSourceWriter::new_with_formats(
+        initialize_empty_cube(entity.bits(), &chunks)?;
+        let writer = VoxelSourceWriter::new(
             VoxelTerrainId(u128::from(entity.bits())),
             source,
-            entry.store.clone(),
-            formats,
+            chunks.store.clone(),
         );
-        let publication = VoxelPublicationWorker::start(writer.clone(), limits)
-            .map_err(|error| format!("start voxel publication worker: {error:?}"))?;
-        let edits = VoxelEditWorker::start(writer.clone())
+        let edits = VoxelEditWorker::start(writer)
             .map_err(|error| format!("start voxel edit worker: {error}"))?;
-        let material_ids = Arc::from(entry.material_ids.as_slice());
+        let material_ids = Arc::from(chunks.material_ids.as_slice());
         Ok(Self {
             scene,
             entity,
-            kind,
-            source,
-            entry,
+            origin: entry.origin,
+            voxel_size: entry.voxel_size,
+            chunks,
             material_ids,
-            writer,
-            publication,
             edits,
         })
     }
 
-    pub fn terrain_id(&self) -> VoxelTerrainId {
-        VoxelTerrainId(u128::from(self.entity.bits()))
-    }
-
     /// Identity/lifetime check takes only a try-read on the scene. Work
-    /// already accepted into a worker remains observable through its ticket.
+    /// already accepted into the worker remains observable through its ticket.
     pub fn is_attached(&self) -> Result<bool, String> {
         let scene = self.scene.try_read().ok_or("SceneDB is busy")?;
-        let Ok(current) = resolve(&scene.world, self.entity, self.kind) else {
+        let Ok((current, chunks)) = resolve(&scene.world, self.entity) else {
             return Ok(false);
         };
-        Ok(Arc::ptr_eq(&current.store, &self.entry.store)
-            && current.domain == self.entry.domain
-            && current.source_revision == self.entry.source_revision
-            && current.origin == self.entry.origin
-            && current.voxel_size == self.entry.voxel_size
-            && current.chunk_edge_voxels == self.entry.chunk_edge_voxels
-            && current.lod_scale == self.entry.lod_scale
-            && current.material_ids == self.entry.material_ids
-            && current.generator == self.entry.generator
-            && current.initial_cube == self.entry.initial_cube)
-    }
-
-    fn require_attached(&self) -> Result<(), String> {
-        if self.is_attached()? {
-            Ok(())
-        } else {
-            Err("voxel component was removed or replaced; open a new source session".into())
-        }
-    }
-
-    /// Nonblocking chunk-batch admission. The SceneDB component write lock is
-    /// taken only by the CPU publication worker. The returned ticket reports
-    /// success, failure with retained batch, or explicit discard.
-    pub fn try_submit_chunks(
-        &self,
-        batch: &VoxelChunkBatch<'_>,
-        payloads: &[Arc<[u8]>],
-    ) -> Result<VoxelPublicationTicket, String> {
-        self.require_attached()?;
-        if batch.domain != self.entry.domain {
-            return Err("chunk batch domain differs from its SceneDB component".into());
-        }
-        if self.entry.chunk_edge_voxels != 8
-            && batch.ops.iter().any(|op| {
-                matches!(op, VoxelChunkOp::Upsert(update) if update.payload.encoding == VOXEL_CHUNK_ENCODING_RAW)
-            })
-        {
-            return Err("raw material chunks require the built-in 8-voxel chunk layout".into());
-        }
-        self.publication
-            .try_submit(batch, payloads)
-            .map_err(|error| format!("voxel chunk admission: {error:?}"))
-    }
-
-    /// Requeue retained work after the caller reviews its revision and opens
-    /// a fresh session if the previous publisher stopped on an error.
-    pub fn try_retry_chunks(
-        &self,
-        batch: &VoxelInboxBatch,
-    ) -> Result<VoxelPublicationTicket, String> {
-        self.require_attached()?;
-        if batch.terrain != self.terrain_id()
-            || batch.source != self.source
-            || batch.domain != self.entry.domain
-        {
-            return Err("retained batch belongs to another voxel source configuration".into());
-        }
-        if self.entry.chunk_edge_voxels != 8
-            && batch.with_borrowed_batch(|borrowed| {
-                borrowed.ops.iter().any(|op| {
-                    matches!(op, VoxelChunkOp::Upsert(update) if update.payload.encoding == VOXEL_CHUNK_ENCODING_RAW)
-                })
-            })
-        {
-            return Err("raw material chunks require the built-in 8-voxel chunk layout".into());
-        }
-        self.publication
-            .try_retry(batch)
-            .map_err(|error| format!("voxel retry admission: {error:?}"))
+        Ok(Arc::ptr_eq(&chunks.store, &self.chunks.store)
+            && chunks.domain == self.chunks.domain
+            && current.origin == self.origin
+            && current.voxel_size == self.voxel_size
+            && chunks.material_ids == self.chunks.material_ids
+            && chunks.initial_cube == self.chunks.initial_cube)
     }
 
     /// Nonblocking sample-edit admission. Edits are grouped into touched
@@ -205,97 +81,47 @@ impl VoxelSourceSession {
         &self,
         edits: Arc<[VoxelSampleEdit]>,
     ) -> Result<VoxelEditTicket, String> {
-        self.require_attached()?;
-        if self.entry.chunk_edge_voxels != 8 {
-            return Err("sample edits require the built-in 8-voxel chunk layout".into());
+        if !self.is_attached()? {
+            return Err(
+                "voxel component was removed or replaced; open a new source session".into(),
+            );
         }
         self.edits
             .try_submit(VoxelEditJob {
                 edits,
                 material_ids: self.material_ids.clone(),
-                domain: self.entry.domain,
+                domain: self.chunks.domain,
             })
             .map_err(|error| format!("voxel edit admission: {error:?}"))
     }
 
-    pub fn publication_status(&self) -> Result<VoxelPublicationStatus, String> {
-        self.publication
-            .try_status()
-            .map_err(|error| format!("voxel publication status: {error:?}"))
-    }
-    pub fn edit_status(&self) -> VoxelEditWorkerStatus {
-        self.edits.status()
-    }
-    /// Caller-owned in-memory export; run off the frame thread for large maps.
-    pub fn snapshot(
-        &self,
-    ) -> Result<helio_voxel_data::VoxelTerrainSnapshot, helio_voxel_data::VoxelUpdateError> {
-        self.writer.snapshot()
-    }
-
-    /// Finish on a management thread. Drain processes queued work, while
+    /// Finish on a management thread. Drain processes queued edits, while
     /// Discard marks queued tickets discarded; an active write can finish.
-    pub fn finish(
-        self,
-        mode: VoxelInboxClose,
-    ) -> (VoxelPublicationOutcome, VoxelEditWorkerStatus, bool) {
-        let publication = self.publication.finish(mode);
-        let (edits, panicked) = self.edits.finish(match mode {
-            VoxelInboxClose::Drain => VoxelEditClose::Drain,
-            VoxelInboxClose::Discard => VoxelEditClose::Discard,
-        });
-        (publication, edits, panicked)
+    pub fn finish(self, mode: VoxelEditClose) -> (VoxelEditWorkerStatus, bool) {
+        self.edits.finish(mode)
     }
 }
 
-fn resolve(
-    world: &World,
-    entity: Entity,
-    kind: VoxelSourceKind,
-) -> Result<VoxelSceneEntry, String> {
-    match kind {
-        VoxelSourceKind::Object => {
-            let component = world
-                .get::<VoxelComponent>(entity)
-                .ok_or("voxel object component is absent")?;
-            if !component.enabled || !component.editable || !attachments::is_enabled(world, entity)
-            {
-                return Err("voxel object is disabled or not editable".into());
-            }
-            object_entry(world, entity, &component).map_err(str::to_string)
-        }
-        VoxelSourceKind::Terrain => {
-            let component = world
-                .get::<VoxelTerrainComponent>(entity)
-                .ok_or("voxel terrain component is absent")?;
-            if !component.enabled || !component.editable || !attachments::is_enabled(world, entity)
-            {
-                return Err("voxel terrain is disabled or not editable".into());
-            }
-            terrain_entry(world, entity, &component).map_err(str::to_string)
-        }
+/// The object's projection and its chunks.
+fn resolve(world: &World, entity: Entity) -> Result<(VoxelSceneEntry, VoxelObjectChunks), String> {
+    let component = world
+        .get::<VoxelComponent>(entity)
+        .ok_or("voxel object component is absent")?;
+    if !component.enabled || !component.editable || !attachments::is_enabled(world, entity) {
+        return Err("voxel object is disabled or not editable".into());
     }
+    let entry = object_entry(world, entity, &component).map_err(str::to_string)?;
+    let chunks = entry
+        .chunks
+        .clone()
+        .expect("a voxel object projects its chunks");
+    Ok((entry, chunks))
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::voxel_frame::spawn_test_instance;
     use super::*;
-
-    fn admit_when_ready(
-        mut submit: impl FnMut() -> Result<VoxelPublicationTicket, String>,
-    ) -> VoxelPublicationTicket {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
-        loop {
-            match submit() {
-                Ok(ticket) => return ticket,
-                Err(error) if error.ends_with(": Busy") && std::time::Instant::now() < deadline => {
-                    std::thread::yield_now();
-                }
-                Err(error) => panic!("voxel batch was not admitted: {error}"),
-            }
-        }
-    }
 
     #[test]
     fn session_submits_deformation_and_rejects_after_component_removal() {
@@ -309,14 +135,7 @@ mod tests {
             scene.world.insert(entity, restored);
             entity
         };
-        let session = VoxelSourceSession::open(
-            scene.clone(),
-            entity,
-            VoxelSourceKind::Object,
-            VoxelSourceId(7),
-            VoxelInboxLimits::default(),
-        )
-        .unwrap();
+        let session = VoxelSourceSession::open(scene.clone(), entity, VoxelSourceId(7)).unwrap();
         let ticket = session
             .try_submit_edits(Arc::from([VoxelSampleEdit {
                 xyz: [0, 0, 0],
@@ -328,7 +147,13 @@ mod tests {
             ticket.wait(),
             helio_voxel_data::VoxelEditTicketState::Published(_)
         ));
-        let snapshot = session.snapshot().unwrap();
+        let snapshot = VoxelSourceWriter::new(
+            VoxelTerrainId(1),
+            VoxelSourceId(7),
+            session.chunks.store.clone(),
+        )
+        .snapshot()
+        .unwrap();
         let chunk = helio_voxel_data::VoxelMaterialChunk::decode(
             snapshot
                 .get_raw_material(helio_voxel_data::VoxelChunkKey::new(0, 0, 0, 0))
@@ -346,266 +171,8 @@ mod tests {
                 material_slot: 1,
             }]))
             .is_err());
-        let (publication, edits, panicked) = session.finish(VoxelInboxClose::Drain);
-        assert!(!publication.worker_panicked && !panicked);
+        let (edits, panicked) = session.finish(VoxelEditClose::Drain);
+        assert!(!panicked);
         assert_eq!(edits.published_jobs, 1);
-    }
-
-    #[test]
-    fn accepted_batch_completes_in_old_store_after_row_replacement() {
-        use helio_voxel_data::{
-            VoxelBatchRevision, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload, VoxelChunkUpdate,
-            VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
-        };
-        let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
-        let entity = {
-            let mut scene = scene.write();
-            let entity = spawn_test_instance(&mut scene.world, "VoxelComponent");
-            scene.world.insert(entity, VoxelComponent::default());
-            entity
-        };
-        let session = VoxelSourceSession::open(
-            scene.clone(),
-            entity,
-            VoxelSourceKind::Object,
-            VoxelSourceId(4),
-            VoxelInboxLimits::default(),
-        )
-        .unwrap();
-        let old_store = session.entry.store.clone();
-        assert_eq!(old_store.read().unwrap().0, 0);
-        let held = old_store.write().unwrap();
-        let payload: Arc<[u8]> = Arc::from([0u8]);
-        let ops = [VoxelChunkOp::Upsert(VoxelChunkUpdate {
-            key: VoxelChunkKey::new(0, 0, 0, 0),
-            payload: VoxelChunkPayload {
-                encoding: VOXEL_CHUNK_ENCODING_RAW,
-                schema_version: VOXEL_CHUNK_SCHEMA_VERSION,
-                bytes: &payload,
-            },
-        })];
-        let ticket = admit_when_ready(|| {
-            session.try_submit_chunks(
-                &VoxelChunkBatch {
-                    terrain: session.terrain_id(),
-                    source: VoxelSourceId(4),
-                    revision: VoxelBatchRevision {
-                        expected: 0,
-                        publish: 1,
-                    },
-                    domain: session.entry.domain,
-                    ops: &ops,
-                },
-                &[payload.clone()],
-            )
-        });
-        {
-            let mut scene = scene.write();
-            scene.world.remove::<VoxelComponent>(entity);
-            scene.world.insert(entity, VoxelComponent::default());
-        }
-        let new_store = scene
-            .read()
-            .world
-            .get::<VoxelComponent>(entity)
-            .unwrap()
-            .payload_store();
-        assert!(!Arc::ptr_eq(&old_store, &new_store));
-        assert!(!session.is_attached().unwrap());
-        drop(held);
-        let state = ticket.wait();
-        assert!(
-            matches!(
-                state,
-                helio_voxel_data::VoxelPublicationTicketState::Published(_)
-            ),
-            "{state:?}"
-        );
-        assert_eq!(old_store.read().unwrap().0, 1);
-        assert_eq!(new_store.read().unwrap().0, 0);
-        session.finish(VoxelInboxClose::Drain);
-    }
-
-    #[test]
-    fn failed_batch_can_be_rebased_and_retried_from_new_session() {
-        use helio_voxel_data::{
-            VoxelBatchRevision, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload, VoxelChunkUpdate,
-            VoxelPublicationTicketState, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
-        };
-        let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
-        let entity = {
-            let mut scene = scene.write();
-            let entity = spawn_test_instance(&mut scene.world, "VoxelComponent");
-            scene.world.insert(entity, VoxelComponent::default());
-            entity
-        };
-        let open = || {
-            VoxelSourceSession::open(
-                scene.clone(),
-                entity,
-                VoxelSourceKind::Object,
-                VoxelSourceId(4),
-                VoxelInboxLimits::default(),
-            )
-            .unwrap()
-        };
-        let session = open();
-        let payload: Arc<[u8]> = Arc::from([0u8]);
-        let ops = [VoxelChunkOp::Upsert(VoxelChunkUpdate {
-            key: VoxelChunkKey::new(0, 0, 0, 0),
-            payload: VoxelChunkPayload {
-                encoding: VOXEL_CHUNK_ENCODING_RAW,
-                schema_version: VOXEL_CHUNK_SCHEMA_VERSION,
-                bytes: &payload,
-            },
-        })];
-        let ticket = admit_when_ready(|| {
-            session.try_submit_chunks(
-                &VoxelChunkBatch {
-                    terrain: session.terrain_id(),
-                    source: VoxelSourceId(4),
-                    revision: VoxelBatchRevision {
-                        expected: 1,
-                        publish: 2,
-                    },
-                    domain: session.entry.domain,
-                    ops: &ops,
-                },
-                &[payload.clone()],
-            )
-        });
-        assert!(matches!(
-            ticket.wait(),
-            VoxelPublicationTicketState::Failed(_)
-        ));
-        let (outcome, _, panicked) = session.finish(VoxelInboxClose::Drain);
-        assert!(!panicked);
-        let mut retained = outcome.failure.unwrap().batch;
-        retained.revision = VoxelBatchRevision {
-            expected: 0,
-            publish: 1,
-        };
-        let replacement = open();
-        let retry = admit_when_ready(|| replacement.try_retry_chunks(&retained));
-        assert!(matches!(
-            retry.wait(),
-            VoxelPublicationTicketState::Published(_)
-        ));
-        assert_eq!(replacement.snapshot().unwrap().revision(), 1);
-        let (outcome, _, panicked) = replacement.finish(VoxelInboxClose::Drain);
-        assert!(!panicked);
-        assert_eq!(outcome.retried_batches, 1);
-    }
-
-    #[test]
-    fn terrain_session_publishes_registered_format_into_scenedb() {
-        use helio_voxel_data::{
-            VoxelBatchRevision, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload, VoxelChunkUpdate,
-            VoxelFormatDescriptor, VoxelPublicationTicketState,
-        };
-        let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
-        let entity = {
-            let mut guard = scene.write();
-            let entity = spawn_test_instance(&mut guard.world, "VoxelTerrainComponent");
-            let mut component = VoxelTerrainComponent::default();
-            component.chunk_edge_voxels = 2;
-            component.max_chunk_lod = 4;
-            component.generator.id = "test.world".into();
-            guard.world.insert(entity, component);
-            entity
-        };
-        let mut formats = VoxelFormatRegistry::default();
-        formats
-            .register(VoxelFormatDescriptor {
-                encoding: 42,
-                schema_version: 2,
-                min_bytes: 4,
-                max_bytes: 4,
-                validate: |bytes| bytes[0] == 0xA5,
-            })
-            .unwrap();
-        let session = VoxelSourceSession::open_with_formats(
-            Arc::clone(&scene),
-            entity,
-            VoxelSourceKind::Terrain,
-            VoxelSourceId(5),
-            VoxelInboxLimits::default(),
-            Arc::new(formats),
-        )
-        .unwrap();
-        let bytes: Arc<[u8]> = Arc::from([0xA5, 1, 2, 3]);
-        let key = VoxelChunkKey::new(-2, 1, 4, 1);
-        let ops = [VoxelChunkOp::Upsert(VoxelChunkUpdate {
-            key,
-            payload: VoxelChunkPayload {
-                encoding: 42,
-                schema_version: 2,
-                bytes: &bytes,
-            },
-        })];
-        let ticket = admit_when_ready(|| {
-            session.try_submit_chunks(
-                &VoxelChunkBatch {
-                    terrain: session.terrain_id(),
-                    source: VoxelSourceId(5),
-                    revision: VoxelBatchRevision {
-                        expected: 0,
-                        publish: 1,
-                    },
-                    domain: session.entry.domain,
-                    ops: &ops,
-                },
-                &[bytes.clone()],
-            )
-        });
-        assert!(matches!(
-            ticket.wait(),
-            VoxelPublicationTicketState::Published(_)
-        ));
-        let snapshot = session.snapshot().unwrap();
-        let payload = snapshot.get(key).unwrap();
-        assert_eq!((payload.encoding, payload.schema_version), (42, 2));
-        assert_eq!(payload.bytes, bytes.as_ref());
-        assert_eq!(snapshot.get_raw_material(key), None);
-        let raw_bytes: Arc<[u8]> = Arc::from([1u8]);
-        let raw_ops = [VoxelChunkOp::Upsert(VoxelChunkUpdate {
-            key,
-            payload: VoxelChunkPayload {
-                encoding: VOXEL_CHUNK_ENCODING_RAW,
-                schema_version: helio_voxel_data::VOXEL_CHUNK_SCHEMA_VERSION,
-                bytes: &raw_bytes,
-            },
-        })];
-        assert!(session
-            .try_submit_chunks(
-                &VoxelChunkBatch {
-                    terrain: session.terrain_id(),
-                    source: VoxelSourceId(5),
-                    revision: VoxelBatchRevision {
-                        expected: 1,
-                        publish: 2,
-                    },
-                    domain: session.entry.domain,
-                    ops: &raw_ops,
-                },
-                &[Arc::clone(&raw_bytes)],
-            )
-            .is_err());
-        assert!(session
-            .try_submit_edits(Arc::from([VoxelSampleEdit {
-                xyz: [0, 0, 0],
-                lod: 0,
-                material_slot: 1,
-            }]))
-            .is_err());
-        scene
-            .write()
-            .world
-            .get_mut::<VoxelTerrainComponent>(entity)
-            .unwrap()
-            .generator_parameters = "changed".into();
-        assert!(!session.is_attached().unwrap());
-        let (outcome, _, panicked) = session.finish(VoxelInboxClose::Drain);
-        assert!(!outcome.worker_panicked && !panicked);
     }
 }

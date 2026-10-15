@@ -20,16 +20,32 @@
 //!   (`view_<n>.png`).
 //! - `fly:<metres>:<seconds>`: fly forward that far at the camera's height,
 //!   capturing every second (`fly_<n>_<t>.png`), then settle and capture.
-//! - `drag:<op>:<radius m>:<frames>[:<material>]`: a left-button drag
-//!   stroke across the view through the editor's pointer queue (op: dig,
-//!   build, paint), then release, settle and capture; logs per-frame
-//!   times and the edits the journal gained.
+//! - `drag:<op>:<radius m>:<frames>[:<material>[:<tool>]]`: a left-button
+//!   drag stroke across the view through the editor's pointer queue (op:
+//!   dig, build, paint; tool: stamp, flatten, smooth), then release, settle
+//!   and capture; logs per-frame times and the edits the journal gained.
+//! - `at:<x>:<y>:<z>`: later views are placed over this direction from the
+//!   planet's centre (an editor session's `eye` from its logs).
+//! - `down:<metres>`: move the camera that far down the local vertical (into
+//!   a pit just dug: no lift to the generated ground), settled, captured.
+//! - `profile:<seconds>`: the view held (the camera nudged a millimetre
+//!   every other frame, so the editor keeps rendering): the graph's GPU
+//!   time, and by pass.
+//! - `stress:<ascent|descent|cruise|orbit|dive|turn>:<seconds>[:<sample>[:<speed>[:<altitude>]]]`: a flight in real
+//!   time (the path follows the wall clock, as the editor's camera does:
+//!   a slow frame moves it further) from the camera's ground: from 2 m to
+//!   400 km or back, at 300 m/s 40 m over the ground, in orbit at 400 km
+//!   and 7.7 km/s, or turning on the spot 40 m over the ground at 180
+//!   degrees a second (`speed`: degrees a second). Every frame's time and the chunk pass's coarse share,
+//!   largest cell and level switches go to `stress_<n>.csv`; a frame a
+//!   second is captured (`stress_<n>_<s>.png`), then each view again once
+//!   settled (`stress_<n>_<s>_ref.png`).
 //!
 //! Every frame's wall time (CPU and GPU, the queue drained) is written to
 //! `frames.csv`, and a summary per step to stdout.
 
 use engine_backend::subsystems::render::{
-    EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest,
+    EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest, VoxelBrushTool,
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -37,6 +53,9 @@ use std::time::Instant;
 
 // The editor presents to an sRGB surface: the graph's final pass encodes into it.
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+/// Frames recorded ahead of the GPU, as a game loop keeps it fed (waiting
+/// for every frame lets the driver lower its clocks and inflates times).
+const FRAMES_IN_FLIGHT: usize = 2;
 
 struct Harness {
     device: wgpu::Device,
@@ -50,12 +69,16 @@ struct Harness {
     csv: std::fs::File,
     step: String,
     frame: u64,
+    /// Submitted frames not yet done on the GPU.
+    in_flight: std::collections::VecDeque<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Harness {
-    /// One editor frame; its wall time (queue drained), or `None` when the
-    /// editor was idle and rendered nothing.
+    /// One editor frame; its wall time (at most `FRAMES_IN_FLIGHT` frames
+    /// ahead of the GPU), or `None` when the editor was idle and rendered
+    /// nothing.
     fn frame(&mut self) -> Option<f64> {
+        use std::sync::atomic::{AtomicBool, Ordering};
         let started = Instant::now();
         let submitted = self.renderer.render_frame(
             &self.device,
@@ -65,7 +88,18 @@ impl Harness {
             self.size[1],
             FORMAT,
         );
-        self.device.poll(wgpu::PollType::wait_indefinitely()).ok();
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = done.clone();
+        self.queue
+            .on_submitted_work_done(move || flag.store(true, Ordering::Release));
+        self.in_flight.push_back(done);
+        while self.in_flight.len() > FRAMES_IN_FLIGHT {
+            let oldest = self.in_flight.pop_front().unwrap();
+            while !oldest.load(Ordering::Acquire) {
+                let _ = self.device.poll(wgpu::PollType::Poll);
+                std::thread::sleep(std::time::Duration::from_micros(50));
+            }
+        }
         let ms = started.elapsed().as_secs_f64() * 1e3;
         self.frame += 1;
         writeln!(
@@ -150,9 +184,20 @@ impl Harness {
     }
 
     /// Place the camera `height` above the ground below `direction` (from
-    /// the planet centre), looking at `pitch` / `yaw` in the editor's local
-    /// frame. The renderer reports the camera's altitude over the ground.
+    /// the planet centre), looking at `pitch` / `yaw` in the local frame
+    /// there (up the local vertical, as the editor's camera frame). The
+    /// renderer reports the camera's altitude over the ground.
     fn place(&mut self, direction: glam::DVec3, height: f64, pitch: f32, yaw: f32) {
+        // The camera state's yaw and pitch are world angles.
+        let (sy, cy) = yaw.sin_cos();
+        let (sp, cp) = pitch.sin_cos();
+        let local = glam::Vec3::new(sy * cp, sp, -cy * cp);
+        let forward =
+            glam::Quat::from_rotation_arc(glam::Vec3::Y, direction.as_vec3().normalize()) * local;
+        let (yaw, pitch) = (
+            forward.x.atan2(-forward.z),
+            forward.y.clamp(-1.0, 1.0).asin(),
+        );
         let mailbox = self.renderer.editor_mailbox();
         let mut radius = self
             .camera()
@@ -201,6 +246,45 @@ impl Harness {
             at(0.95),
             at(1.0)
         );
+    }
+
+    /// The chunk pass's `name=value` from its diagnostics (NaN: none).
+    /// A word of the chunk pass's diagnostics line (`name=word`).
+    fn voxel_word(&self, name: &str) -> String {
+        let key = format!(" {name}=");
+        self.renderer
+            .voxel_diagnostics()
+            .iter()
+            .find_map(|line| {
+                let at = line.find(&key)? + key.len();
+                line[at..].split(' ').next().map(str::to_string)
+            })
+            .unwrap_or_default()
+    }
+
+    fn voxel_stat(&self, name: &str) -> f64 {
+        let key = format!(" {name}=");
+        self.renderer
+            .voxel_diagnostics()
+            .iter()
+            .find_map(|line| {
+                let at = line.find(&key)? + key.len();
+                line[at..].split(' ').next()?.parse().ok()
+            })
+            .unwrap_or(f64::NAN)
+    }
+
+    /// The editor camera at `position` looking along `forward` (world).
+    fn look(&mut self, position: glam::DVec3, forward: glam::DVec3) {
+        let f = forward.normalize().as_vec3();
+        let (yaw, pitch) = (f.x.atan2(-f.z), f.y.clamp(-1.0, 1.0).asin());
+        self.renderer
+            .editor_mailbox()
+            .queue_camera(EditorCameraState {
+                position: position.to_array(),
+                yaw,
+                pitch,
+            });
     }
 
     fn edits(&self) -> usize {
@@ -296,6 +380,7 @@ fn main() {
         csv,
         step: "start".into(),
         frame: 0,
+        in_flight: Default::default(),
     };
     writeln!(h.csv, "frame,step,ms,rendered").ok();
 
@@ -308,7 +393,7 @@ fn main() {
     );
     h.capture("start");
     let home = h.camera();
-    let direction = glam::DVec3::from_array(home.position).normalize();
+    let mut direction = glam::DVec3::from_array(home.position).normalize();
 
     for (n, step) in steps.iter().enumerate() {
         let parts: Vec<&str> = step.split(':').collect();
@@ -372,12 +457,19 @@ fn main() {
                     number(3, 60.0) as usize,
                     number(4, 3.0) as u32,
                 );
+                let tool = match parts.get(5).copied() {
+                    Some("flatten") => VoxelBrushTool::Flatten,
+                    Some("smooth") => VoxelBrushTool::Smooth,
+                    _ => VoxelBrushTool::Stamp,
+                };
                 let request = VoxelBrushRequest {
                     op,
                     shape: helio_voxel_data::VoxelBrushShape::Sphere,
                     radius,
                     material,
                     single_block: false,
+                    level: Default::default(),
+                    tool,
                 };
                 let before = h.edits();
                 let queue = h.renderer.pending_pointer_events.clone();
@@ -393,20 +485,266 @@ fn main() {
                             norm_x: x,
                             norm_y: y,
                             request,
+                            start: f == 0,
                         });
                     if let Some(ms) = h.frame() {
                         times.push(ms);
+                    }
+                    // HARNESS_DRAG_FRAMES=1: every frame of the stroke (flicker).
+                    if std::env::var_os("HARNESS_DRAG_FRAMES").is_some() {
+                        h.capture(&format!("drag_{n}_{f:03}"));
                     }
                 }
                 queue
                     .lock()
                     .expect("pointer queue")
                     .push(PendingPointerEvent::LeftRelease);
-                h.report(&format!("drag {:?} r {radius} m", op), &times);
+                h.report(&format!("drag {:?} {:?} r {radius} m", op, tool), &times);
                 let times = h.settle(20_000);
                 h.report("drag settle", &times);
                 println!("HARNESS drag: journal {} -> {} edits", before, h.edits());
                 h.capture(&format!("drag_{n}"));
+            }
+            "at" => {
+                direction =
+                    glam::DVec3::new(number(1, 0.0), number(2, 1.0), number(3, 0.0)).normalize();
+                println!("HARNESS at {direction:?}");
+            }
+            "profile" => {
+                let seconds = number(1, 5.0);
+                let camera = h.camera();
+                // The view, to hold the same one in Helio's harness
+                // (`HELIO_VOXEL_FLIGHT_EYE`).
+                let forward = h.renderer.camera_forward();
+                println!(
+                    "HARNESS profile eye {:?} forward {:?}",
+                    camera.position,
+                    forward.to_array()
+                );
+                let mailbox = h.renderer.editor_mailbox();
+                let mut passes: std::collections::BTreeMap<&'static str, (f64, u32)> =
+                    Default::default();
+                let mut totals = Vec::new();
+                let started = Instant::now();
+                let mut k = 0u32;
+                while started.elapsed().as_secs_f64() < seconds {
+                    let mut nudged = camera;
+                    nudged.position[1] += f64::from(k % 2) * 1e-3;
+                    k += 1;
+                    mailbox.queue_camera(nudged);
+                    h.frame();
+                    if let Some((total, by)) = h.renderer.gpu_timings() {
+                        totals.push(f64::from(total));
+                        for (name, ms) in by {
+                            let entry = passes.entry(name).or_default();
+                            entry.0 += f64::from(ms);
+                            entry.1 += 1;
+                        }
+                    }
+                }
+                totals.sort_by(f64::total_cmp);
+                let mut by_pass: Vec<(&str, f64)> = passes
+                    .iter()
+                    .map(|(name, (sum, n))| (*name, sum / f64::from((*n).max(1))))
+                    .collect();
+                by_pass.sort_by(|a, b| b.1.total_cmp(&a.1));
+                println!(
+                    "HARNESS profile: graph gpu p50 {:.2} ms; by pass: {}",
+                    totals.get(totals.len() / 2).copied().unwrap_or(f64::NAN),
+                    by_pass
+                        .iter()
+                        .filter(|p| p.1 >= 0.05)
+                        .map(|(n, ms)| format!("{n} {ms:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+            "stress" => {
+                let mode = parts.get(1).copied().unwrap_or("descent").to_string();
+                let seconds = number(2, 20.0);
+                // A frame captured every `sample` seconds (1).
+                let sample = number(3, 1.0);
+                let camera = h.camera();
+                let start = glam::DVec3::from_array(camera.position);
+                let up = start.normalize();
+                let forward = h.renderer.camera_forward().as_dvec3();
+                let ahead = (forward - up * forward.dot(up)).normalize();
+                let ground = start.length() - h.renderer.voxel_altitude().unwrap_or(2.0);
+                // `cruise` and `orbit`: speed (m/s) and altitude (m) after the
+                // sample; `dive`: from altitude (15 000 km) to 20 km in half a
+                // second, a second in, then hovering looking down.
+                let speed = parts.get(4).and_then(|v| v.parse::<f64>().ok());
+                let high = parts.get(5).and_then(|v| v.parse::<f64>().ok());
+                let path = |t: f64| -> (glam::DVec3, glam::DVec3) {
+                    let u = (t / seconds).clamp(0.0, 1.0);
+                    // `turn`: the heading yaws about the start's up.
+                    let yaw = if mode == "turn" {
+                        speed.unwrap_or(180.0).to_radians() * t
+                    } else {
+                        0.0
+                    };
+                    let ahead = ahead * yaw.cos() + up.cross(ahead) * yaw.sin();
+                    let (altitude, along, pitch_down) = match mode.as_str() {
+                        "turn" => (high.unwrap_or(40.0), 0.0, 0.15),
+                        "cruise" => (high.unwrap_or(40.0), speed.unwrap_or(300.0) * t, 0.15),
+                        "orbit" => (high.unwrap_or(400_000.0), speed.unwrap_or(7_700.0) * t, 0.8),
+                        "dive" => {
+                            let top = high.unwrap_or(15_000_000.0);
+                            let v = ((t - 1.0) / 0.5).clamp(0.0, 1.0);
+                            (top * (20_000.0 / top).powf(v), 0.0, 8.0)
+                        }
+                        m => {
+                            let altitude =
+                                2.0 * 200_000.0f64.powf(if m == "ascent" { u } else { 1.0 - u });
+                            (altitude, altitude * 0.3, 0.6)
+                        }
+                    };
+                    // Along a great circle through the start.
+                    let angle = along / ground;
+                    let local_up = up * angle.cos() + ahead * angle.sin();
+                    let local_ahead = ahead * angle.cos() - up * angle.sin();
+                    (
+                        local_up * (ground + altitude),
+                        local_ahead - local_up * pitch_down,
+                    )
+                };
+                // From the path's start, settled (a descent starts from a
+                // settled orbit, not a jump from the ground).
+                let (position, look) = path(0.0);
+                h.look(position, look);
+                h.settle(3000);
+                let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px,generated,budget,waiting,fading,plan_age,plan_ms,worst\n");
+                let (mut times, mut coarse, mut worst, mut switches) =
+                    (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+                let mut samples = Vec::new();
+                // The render thread's milliseconds by phase, over the flight.
+                let mut phases: std::collections::BTreeMap<&'static str, Vec<f64>> =
+                    Default::default();
+                let started = Instant::now();
+                let mut captured = false;
+                loop {
+                    let t = started.elapsed().as_secs_f64();
+                    if t > seconds {
+                        break;
+                    }
+                    let (position, look) = path(t);
+                    h.look(position, look);
+                    let Some(ms) = h.frame() else { continue };
+                    for &(name, phase_ms) in h.renderer.last_frame_phases() {
+                        phases.entry(name).or_default().push(f64::from(phase_ms));
+                    }
+                    let (c, w, sw) = (
+                        h.voxel_stat("coarse"),
+                        h.voxel_stat("worst_px"),
+                        h.voxel_stat("switch_px"),
+                    );
+                    let work = [
+                        "generated",
+                        "budget",
+                        "waiting",
+                        "fading",
+                        "plan_age",
+                        "plan_ms",
+                    ]
+                    .map(|k| h.voxel_stat(k));
+                    csv += &format!(
+                        "{t:.4},{:.1},{ms:.2},{c:.4},{w:.3},{sw:.3},{},{},{},{},{},{},{}
+",
+                        position.length() - ground,
+                        work[0],
+                        work[1],
+                        work[2],
+                        work[3],
+                        work[4],
+                        work[5],
+                        h.voxel_word("worst")
+                    );
+                    // A frame after a capture waited for its readback.
+                    if !captured {
+                        times.push(ms);
+                    }
+                    coarse.push(c);
+                    worst.push(w);
+                    if sw > 0.0 {
+                        switches.push(sw);
+                    }
+                    captured = t >= samples.len() as f64 * sample;
+                    if captured {
+                        h.capture(&format!("stress_{n}_{:02}", samples.len()));
+                        samples.push((position, look));
+                    }
+                }
+                std::fs::write(h.out.join(format!("stress_{n}.csv")), csv).expect("stress csv");
+                h.report(&format!("stress {mode} {seconds} s"), &times);
+                let sorted = |v: &[f64]| {
+                    let mut v: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
+                    v.sort_by(f64::total_cmp);
+                    v
+                };
+                let (w, sw) = (sorted(&worst), sorted(&switches));
+                let at = |v: &[f64], q: f64| {
+                    v.get(((v.len().max(1) - 1) as f64 * q).round() as usize)
+                        .copied()
+                        .unwrap_or(f64::NAN)
+                };
+                println!(
+                    "HARNESS stress {mode}: frames over 33 ms {} | coarse mean {:.4} | worst px p50 {:.2} p95 {:.2} max {:.2} | switches {}, px p95 {:.2} max {:.2}, over 1.5 px {}, over 3 px {}",
+                    times.iter().filter(|&&ms| ms > 33.3).count(),
+                    coarse.iter().filter(|c| c.is_finite()).sum::<f64>() / coarse.len().max(1) as f64,
+                    at(&w, 0.5),
+                    at(&w, 0.95),
+                    at(&w, 1.0),
+                    sw.len(),
+                    at(&sw, 0.95),
+                    at(&sw, 1.0),
+                    sw.iter().filter(|&&x| x > 1.5).count(),
+                    sw.iter().filter(|&&x| x > 3.0).count()
+                );
+                let mut by_phase: Vec<(&str, f64, f64)> = phases
+                    .iter_mut()
+                    .map(|(name, v)| {
+                        v.sort_by(f64::total_cmp);
+                        (
+                            *name,
+                            v.iter().sum::<f64>() / v.len().max(1) as f64,
+                            v[((v.len().max(1) - 1) as f64 * 0.95) as usize],
+                        )
+                    })
+                    .collect();
+                by_phase.sort_by(|a, b| b.1.total_cmp(&a.1));
+                println!(
+                    "HARNESS stress {mode} phases (mean/p95 ms): {}",
+                    by_phase
+                        .iter()
+                        .filter(|p| p.1 >= 0.1)
+                        .map(|(n, mean, p95)| format!("{n} {mean:.2}/{p95:.2}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                for (k, (position, look)) in samples.iter().enumerate() {
+                    h.look(*position, *look);
+                    h.settle(20_000);
+                    h.capture(&format!("stress_{n}_{k:02}_ref"));
+                }
+            }
+            "down" => {
+                let camera = h.camera();
+                let position = glam::DVec3::from_array(camera.position);
+                let position = position - position.normalize() * number(1, 5.0);
+                h.renderer.editor_mailbox().queue_camera(EditorCameraState {
+                    position: position.to_array(),
+                    ..camera
+                });
+                let times = h.settle(20_000);
+                h.report(
+                    &format!(
+                        "down {} m, altitude {:?}",
+                        number(1, 5.0),
+                        h.renderer.voxel_altitude()
+                    ),
+                    &times,
+                );
+                h.capture(&format!("down_{n}"));
             }
             other => panic!("unknown step {other}"),
         }

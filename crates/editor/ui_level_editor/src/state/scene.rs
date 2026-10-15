@@ -10,8 +10,7 @@
 use crate::scene_edit::history::VoxelEditJournal;
 use crate::scene_edit::{self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData};
 use crate::world_settings_data::WorldSettingsData;
-use engine_backend::scene::SceneWorldExt;
-use engine_backend::scene::SharedScene;
+use engine_backend::scene::{SceneWorldExt as _, SharedScene};
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
@@ -208,10 +207,6 @@ impl SceneDomain {
     }
 
     // ── Scene traversal ───────────────────────────────────────────────────
-
-    pub fn scene_objects(&self) -> Vec<SceneObjectData> {
-        scene_edit::objects::get_root_objects(&self.world())
-    }
 
     // ── Editor mode helpers ──────────────────────────────────────────────
 
@@ -432,7 +427,11 @@ impl SceneDomain {
                 terrain.edits.extend(entry.edits.iter().cloned());
                 terrain.source_revision = entry.after_revision;
             } else {
-                if terrain.edits.len() < entry.before_len + entry.edits.len() {
+                // Edits folded into the journal's base (a save) are no
+                // longer undoable.
+                if terrain.edits.len() < entry.before_len + entry.edits.len()
+                    || terrain.edits.base_len() > entry.before_len
+                {
                     return false;
                 }
                 while terrain.edits.len() > entry.before_len {
