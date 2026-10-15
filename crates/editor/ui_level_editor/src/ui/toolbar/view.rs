@@ -51,6 +51,7 @@ pub struct ToolbarSignature {
     feature_bloom_enabled: bool,
     feature_materials_enabled: bool,
     realtime_viewport: bool,
+    viewport_debug_mode: u32,
     location_snap: u32,
     rotation_snap: u32,
     scale_snap: u32,
@@ -74,6 +75,7 @@ impl ToolbarSignature {
             feature_bloom_enabled: state.editor.feature_bloom_enabled,
             feature_materials_enabled: state.editor.feature_materials_enabled,
             realtime_viewport: state.editor.realtime_viewport,
+            viewport_debug_mode: state.editor.viewport_debug_mode,
             location_snap: state.editor.location_snap.to_bits(),
             rotation_snap: state.editor.rotation_snap.to_bits(),
             scale_snap: state.editor.scale_snap.to_bits(),
@@ -246,12 +248,13 @@ impl Render for ToolbarView {
         let state = self.state.read();
         drop(_state_scope);
         // The toolbar renders on every change to its state (see the pump), so
-        // this keeps the viewport's Bloom and Realtime in step with the
+        // this keeps the viewport's Bloom, Realtime and buffer view in step with the
         // toggles, including their initial values.
         let _mailbox_scope = gpui::render_stats::scope("toolbar: mailbox update");
         if let Some(mailbox) = &self.helio_mailbox {
             mailbox.set_viewport_bloom(state.editor.feature_bloom_enabled);
             mailbox.set_viewport_realtime(state.editor.realtime_viewport);
+            mailbox.set_viewport_debug_mode(state.editor.viewport_debug_mode);
         }
         drop(_mailbox_scope);
         let _panel_scope = gpui::render_stats::scope("toolbar: panel element build");

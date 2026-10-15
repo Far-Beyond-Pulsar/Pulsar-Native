@@ -247,6 +247,7 @@ helio-pass-sprite-cull = { path = "crates/renderer/helio/crates/passes/2d/helio-
 helio-pass-gbuffer = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-gbuffer" }
 helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-water-sim" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
+helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
 helio-pass-lens = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-lens" }
 helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-volumetric-fog" }
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }

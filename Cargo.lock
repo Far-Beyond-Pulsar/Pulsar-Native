@@ -4794,6 +4794,7 @@ dependencies = [
  "helio-core",
  "helio-mats",
  "helio-pass-billboard",
+ "helio-pass-buffer-view",
  "helio-pass-corona",
  "helio-pass-debug-overlay",
  "helio-pass-decal",
@@ -4865,6 +4866,14 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-buffer-view"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
  "wgpu",
 ]
 
@@ -14284,6 +14293,7 @@ dependencies = [
  "gpui-ce",
  "helio",
  "helio-asset-compat",
+ "helio-pass-buffer-view",
  "helio-voxel-data",
  "helio_component",
  "image",

@@ -3298,3 +3298,58 @@ fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     );
     assert_eq!(change.depth_texels, 0, "an identity map moved geometry");
 }
+
+/// The toolbar's Depth and Normals toggles reach the graph through the
+/// editor mailbox: the viewport shows the raw scene depth (grey, nothing over
+/// the sky) or the world normals instead of the lit image, and switching back
+/// restores the lit frame.
+#[test]
+fn the_viewport_shows_the_depth_and_normal_buffers() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let mailbox = renderer.editor_mailbox();
+    let lit = harness.frames(&mut renderer, || {});
+
+    mailbox.set_viewport_debug_mode(helio_pass_buffer_view::DEPTH_VIEW);
+    let depth = harness.frames(&mut renderer, || {});
+    depth.dump("viewport_depth_view");
+    assert!(
+        depth.difference(&lit).color_pixels > (SIZE * SIZE / 10) as usize,
+        "the depth view did not replace the lit image"
+    );
+    assert!(
+        depth.color.chunks_exact(4).all(|p| p[0] == p[1] && p[1] == p[2]),
+        "the depth view is not greyscale"
+    );
+    let lit_texels = depth.color.chunks_exact(4).filter(|p| p[0] > 0).count();
+    assert!(lit_texels > (SIZE * SIZE / 100) as usize, "the mesh shows no depth");
+
+    mailbox.set_viewport_debug_mode(helio_pass_buffer_view::NORMALS_VIEW);
+    let normals = harness.frames(&mut renderer, || {});
+    normals.dump("viewport_normals_view");
+    assert!(normals.difference(&depth).color_pixels > (SIZE * SIZE / 100) as usize);
+    assert!(
+        normals.color.chunks_exact(4).any(|p| p[0] != p[1] || p[1] != p[2]),
+        "the normals view is greyscale"
+    );
+
+    mailbox.set_viewport_debug_mode(0);
+    let back = harness.frames(&mut renderer, || {});
+    let change = back.difference(&lit);
+    assert!(
+        change.color_pixels < (SIZE * SIZE / 100) as usize,
+        "switching back did not restore the lit image: {change:?}"
+    );
+}

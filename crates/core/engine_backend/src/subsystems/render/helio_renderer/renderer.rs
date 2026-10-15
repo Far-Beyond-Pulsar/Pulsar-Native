@@ -519,7 +519,7 @@ pub struct EditorCameraState {
     pub pitch: f32,
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 /// A left-click or left-release event, queued by the UI thread and drained
 /// on the render thread at the top of [`HelioRenderer::render_frame`]
@@ -591,6 +591,7 @@ pub struct HelioEditorMailbox {
     pending_deselect: Arc<AtomicBool>,
     viewport_bloom: Arc<AtomicBool>,
     viewport_realtime: Arc<AtomicBool>,
+    viewport_debug_mode: Arc<AtomicU32>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
 }
@@ -668,6 +669,12 @@ impl HelioEditorMailbox {
     pub fn set_viewport_realtime(&self, realtime: bool) {
         self.viewport_realtime.store(realtime, Ordering::Release);
     }
+
+    /// The toolbar's view mode: the debug mode the viewport's graph renders
+    /// (one a pass advertises in its `debug_views`), or 0 for the lit image.
+    pub fn set_viewport_debug_mode(&self, mode: u32) {
+        self.viewport_debug_mode.store(mode, Ordering::Release);
+    }
 }
 
 /// Render-frame marker retained for the editor-ui integration point.
@@ -722,6 +729,9 @@ pub struct HelioRenderer {
     pub viewport_bloom: Arc<AtomicBool>,
     /// The toolbar's Realtime toggle; see [`Self::set_viewport_realtime`].
     viewport_realtime: Arc<AtomicBool>,
+    /// The toolbar's view mode: the debug mode the graph renders (0 lit).
+    /// See [`HelioEditorMailbox::set_viewport_debug_mode`].
+    viewport_debug_mode: Arc<AtomicU32>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
     frame_delta_override: Option<f32>,
@@ -836,6 +846,8 @@ struct HelioInner {
     has_rendered_frame: bool,
     /// The post-process baseline last set on this graph's resolver.
     applied_postprocess: Option<crate::scene::EditorPostProcess>,
+    /// The debug mode last handed to the graph (0: lit).
+    applied_debug_mode: u32,
     /// Watches the scene for spline changes; created with the first sync.
     spline_lines: Option<helio_component::components::SplineLines>,
     /// Drops voxel edits made on ground a terrain no longer has; created
@@ -922,6 +934,7 @@ impl HelioRenderer {
             // Matches the toolbar's default until the UI reports its state.
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             viewport_realtime: Arc::new(AtomicBool::new(true)),
+            viewport_debug_mode: Arc::new(AtomicU32::new(0)),
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
@@ -1278,6 +1291,7 @@ impl HelioRenderer {
                 last_scene_revision: 0,
                 has_rendered_frame: false,
                 applied_postprocess: None,
+                applied_debug_mode: 0,
                 spline_lines: None,
                 edit_journals: None,
             };
@@ -1414,6 +1428,7 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_apply_postprocess_baseline");
             self.apply_postprocess_baseline()
         };
+        let debug_view_changed = self.apply_viewport_debug_mode();
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -1462,6 +1477,7 @@ impl HelioRenderer {
             || self.gizmo_dirty
             || viewport_resized
             || postprocess_changed
+            || debug_view_changed
             // Realtime animation: wind, particles, shader-graph `time`.
             || animated
             || self.reset_taa_next_frame;
@@ -2128,6 +2144,22 @@ impl HelioRenderer {
         }
     }
 
+    /// Hand the graph the view mode the toolbar chose. Returns whether it
+    /// changed this frame.
+    fn apply_viewport_debug_mode(&mut self) -> bool {
+        let Some(inner) = self.inner.as_mut() else {
+            return false;
+        };
+        let mode = self.viewport_debug_mode.load(Ordering::Acquire);
+        if inner.applied_debug_mode == mode {
+            return false;
+        }
+        inner.renderer.set_debug_mode(mode);
+        inner.applied_debug_mode = mode;
+        tracing::info!(mode, "Editor viewport debug view changed");
+        true
+    }
+
     /// Keep the post-process resolver's baseline in step with the toolbar's
     /// Bloom toggle and the project's graphics settings: a renderer setting
     /// ([`crate::scene::EditorPostProcess`]), so nothing is written into the
@@ -2374,6 +2406,7 @@ impl HelioRenderer {
             pending_deselect: self.pending_deselect.clone(),
             viewport_bloom: self.viewport_bloom.clone(),
             viewport_realtime: self.viewport_realtime.clone(),
+            viewport_debug_mode: self.viewport_debug_mode.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
         }
