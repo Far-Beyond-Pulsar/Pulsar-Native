@@ -3112,6 +3112,7 @@ dependencies = [
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-lens",
  "helio-pass-postprocess",
  "helio-pass-sky",
  "helio-pass-tsr",
@@ -4797,7 +4798,6 @@ dependencies = [
  "helio-pass-debug-overlay",
  "helio-pass-decal",
  "helio-pass-deferred-light",
- "helio-pass-dof",
  "helio-pass-flare",
  "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
@@ -4807,6 +4807,7 @@ dependencies = [
  "helio-pass-hiz",
  "helio-pass-hlfs",
  "helio-pass-indirect-dispatch",
+ "helio-pass-lens",
  "helio-pass-light-cull",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
@@ -4834,6 +4835,15 @@ dependencies = [
  "pulsar_scenedb",
  "twox-hash",
  "wgpu",
+]
+
+[[package]]
+name = "helio-lens-optics"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4912,20 +4922,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "helio-pass-dof"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "helio-core",
- "wgpu",
-]
-
-[[package]]
 name = "helio-pass-flare"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-pass-lens",
  "helio-pass-shadow-matrix",
  "wgpu",
 ]
@@ -5030,6 +5032,19 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-pass-gbuffer",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-lens"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "helio-lens-optics",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5378,6 +5393,7 @@ dependencies = [
  "helio-pass-corona",
  "helio-pass-decal",
  "helio-pass-foliage-place",
+ "helio-pass-lens",
  "helio-pass-postprocess",
  "helio-pass-sky",
  "helio-pass-sprite-batch",

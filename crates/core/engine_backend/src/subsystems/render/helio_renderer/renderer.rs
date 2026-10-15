@@ -86,6 +86,11 @@ fn relative_camera_source_schema_compatible(
         "local_fog_sources" => c::LocalFogSourceRow::packed_gpu_component_id(),
         "post_process_volume_sources" => c::PostProcessVolumeSourceRow::packed_gpu_component_id(),
         "camera_postprocess_sources" => c::CameraPostProcessSourceRow::packed_gpu_component_id(),
+        "camera_lens_sources" | "lens_elements" => {
+            return c::lens_buffer_component_id(key.as_str()).is_some_and(|id| {
+                store.buffer_registry().element_type(key) == Some(Some(type_of(id)))
+            });
+        }
         "water_volume_sources" => c::WaterVolumeSourceRow::packed_gpu_component_id(),
         "foliage_sources" => c::FoliageSourceRow::packed_gpu_component_id(),
         "atmosphere_sources" => c::AtmosphereSourceRow::packed_gpu_component_id(),
@@ -145,6 +150,8 @@ fn relative_camera_source_compatible(
         | "local_fog_sources"
         | "post_process_volume_sources"
         | "camera_postprocess_sources"
+        | "camera_lens_sources"
+        | "lens_elements"
         | "water_volume_sources"
         | "foliage_sources"
         | "atmosphere_sources"
@@ -220,6 +227,8 @@ fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec
         component_id::<helio_component::AtmosphereComponent>(),
         component_id::<helio_component::PostProcessVolumeComponent>(),
         component_id::<helio_component::CameraPostProcessComponent>(),
+        // A camera lens has no position.
+        component_id::<helio_component::CameraLensComponent>(),
         // The environment join places decals, particle emitters, water
         // volumes and the water bodies push relative to the world origin;
         // the Corona pass moves live particles, and the water simulation
@@ -1728,7 +1737,7 @@ impl HelioRenderer {
             }
         }
         let t_prepare = Instant::now();
-        let camera = {
+        let (camera, lens_overscan) = {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
             profiling::profile_scope!("helio_frame_prepare");
@@ -1749,6 +1758,19 @@ impl HelioRenderer {
                 far,
                 self.world_origin.unwrap_or(DVec3::ZERO),
             );
+            // A lens that maps past the frame (fisheye, barrel distortion)
+            // needs a wider render than the frame, which it then crops back;
+            // the camera lens component owns how much, and tells the lens pass
+            // the same factor. TODO(review): this names one component's helper
+            // from the generic backend, like the lens GPU column registration
+            // in `helio_bridge`; it belongs behind a view-projection hook that
+            // helio components register, once one exists.
+            let lens_overscan = helio_component::components::camera_lens_view_overscan(
+                &self.scene_store.read().world,
+                camera.view_id,
+                aspect,
+            );
+            let camera = camera.with_overscan(lens_overscan);
 
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.
@@ -1768,7 +1790,7 @@ impl HelioRenderer {
                     self.cam_pos.as_vec3(),
                 );
             }
-            camera
+            (camera, lens_overscan)
         };
 
         if self.reset_taa_next_frame {
@@ -1813,7 +1835,8 @@ impl HelioRenderer {
                 right: right.to_array(),
                 up: up.to_array(),
                 forward: forward.to_array(),
-                tan_half_fov_y: (std::f32::consts::FRAC_PI_4 * 0.5).tan(),
+                // The voxel terrain follows the camera's view, overscan included.
+                tan_half_fov_y: (std::f32::consts::FRAC_PI_4 * 0.5).tan() * lens_overscan,
                 aspect: width as f32 / height.max(1) as f32,
                 far,
                 size: [width, height],

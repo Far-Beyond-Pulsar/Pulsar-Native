@@ -48,6 +48,8 @@ struct GameWindow {
     next_redraw: Instant,
     /// Built with the editor's overlays (kept to rebuild it on a new device).
     editor_mode: bool,
+    /// The shared world, for the camera lens's overscan.
+    scene_store: engine_backend::scene::SharedScene,
 }
 
 /// Frame interval of an unfocused window when several game copies are running.
@@ -138,6 +140,7 @@ impl GameWindow {
             focused: true,
             next_redraw: Instant::now(),
             editor_mode,
+            scene_store: scene_store.clone(),
         }
     }
 
@@ -188,6 +191,14 @@ impl GameWindow {
             cam.near,
             cam.far,
         );
+        // A camera lens that maps past the frame needs a wider render, which
+        // the lens crops back (the editor viewport does the same).
+        let overscan = helio_component::components::camera_lens_view_overscan(
+            &self.scene_store.read().world,
+            helio_cam.view_id,
+            aspect,
+        );
+        let helio_cam = helio_cam.with_overscan(overscan);
 
         // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
         // `CurrentSurfaceTexture` enum (see wgpui's

@@ -97,6 +97,9 @@ split-debuginfo = "unpacked"
 # Voxel terrain residency, ray casts and world builds run on the CPU every
 # frame; unoptimized they would misrepresent the editor viewport.
 helio-pass-voxel-planet = { opt-level = 3 }
+# The lens pass's bundled prescriptions are traced at renderer start-up
+# (about 2 s unoptimized, under 1 s optimized; see helio-pass-lens `bundled`).
+helio-lens-optics = { opt-level = 3 }
 resvg = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
@@ -244,6 +247,7 @@ helio-pass-sprite-cull = { path = "crates/renderer/helio/crates/passes/2d/helio-
 helio-pass-gbuffer = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-gbuffer" }
 helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-water-sim" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
+helio-pass-lens = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-lens" }
 helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-volumetric-fog" }
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
 helio-pass-foliage-place = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-foliage-place" }
