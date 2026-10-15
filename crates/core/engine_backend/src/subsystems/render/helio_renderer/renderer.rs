@@ -2997,18 +2997,23 @@ mod native_relative_camera_tests {
         assert_eq!(global.position, eye.as_vec3());
         let local_vp = local.proj * local.view;
         let global_vp = global.proj * global.view;
+        // A surface 10 m ahead, reconstructed from its depth texel (as TSR
+        // and the deferred pass do) in either frame.
         let point = (forward.normalize() * 10.0).extend(1.0);
         let clip = local_vp * point;
         let raster = clip / clip.w;
         let reconstruct = |vp: Mat4| {
             let h = vp.inverse() * raster;
-            (h.truncate() / h.w).extend(1.0)
+            (h.truncate() / h.w).as_dvec3()
         };
-        let local_reproject = local_vp * reconstruct(local_vp);
-        let global_reproject = global_vp * reconstruct(global_vp);
-        let uv_error = |q: glam::Vec4| ((q.truncate() / q.w) - raster.truncate()).truncate().length();
-        assert!(uv_error(global_reproject) > 0.1, "regression trigger must expose global-f32 cancellation");
-        assert!(uv_error(local_reproject) < 0.000001);
+        let surface = eye + point.truncate().as_dvec3();
+        // Global f32 frames at Earth radius step by half a metre: the
+        // surface lands metres away. The camera's own frame is exact.
+        let global_error = (reconstruct(global_vp) - surface).length();
+        let local_error = (reconstruct(local_vp) + eye - surface).length();
+        eprintln!("reconstruction error: global {global_error} m, local {local_error} m");
+        assert!(global_error > 0.1, "regression trigger must expose global-f32 cancellation");
+        assert!(local_error < 1.0e-4, "{local_error} m");
         // Express the current relative point in the previous frame's origin
         // exactly once; sub-voxel camera movement must survive Earth-scale
         // positions.
