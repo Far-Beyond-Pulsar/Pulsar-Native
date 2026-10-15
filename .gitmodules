@@ -19,9 +19,6 @@
 [submodule "crates/ui/wgpui-component"]
 	path = crates/ui/wgpui-component
 	url = https://github.com/Far-Beyond-Pulsar/WGPUI-Component.git
-[submodule "crates/third-party/pbgc"]
-	path = crates/third-party/pbgc
-	url = https://github.com/Far-Beyond-Pulsar/PBGC.git
 [submodule "crates/third-party/graphy"]
 	path = crates/third-party/graphy
 	url = https://github.com/Far-Beyond-Pulsar/Graphy.git
