@@ -34,11 +34,12 @@ impl ViewModeDropdown {
             .ghost()
             .tooltip(tooltip)
             .popup_menu(move |menu, _, _| {
-                let mut menu = menu.label("View Mode").separator().menu_with_check(
-                    "Lit",
-                    selected_mode == 0,
-                    Box::new(SetViewportDebugMode(0)),
-                );
+                let mut menu = menu
+                    .label("View Mode")
+                    .separator()
+                    .max_h(px(400.))
+                    .scrollable()
+                    .menu_with_check("Lit", selected_mode == 0, Box::new(SetViewportDebugMode(0)));
                 for view in &debug_views {
                     menu = menu.menu_with_check(
                         view.name,
