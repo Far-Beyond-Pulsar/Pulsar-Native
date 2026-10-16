@@ -17,6 +17,10 @@ pub struct ViewportPanelWrapper {
 }
 
 impl ViewportPanelWrapper {
+    pub(crate) fn is_camera_navigating(&self) -> bool {
+        self.viewport_panel.is_camera_navigating()
+    }
+
     pub fn new(
         viewport_panel: ViewportPanel,
         state: Arc<parking_lot::RwLock<LevelEditorState>>,

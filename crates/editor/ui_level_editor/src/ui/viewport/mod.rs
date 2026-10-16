@@ -204,6 +204,11 @@ pub struct ViewportPanel {
 }
 
 impl ViewportPanel {
+    pub(crate) fn is_camera_navigating(&self) -> bool {
+        ViewportCursorCapture::load(&self.mouse_right_captured, &self.mouse_middle_captured)
+            .is_active()
+    }
+
     /// Create a new viewport panel.
     pub fn new<V>(
         viewport: Entity<HelioViewport>,

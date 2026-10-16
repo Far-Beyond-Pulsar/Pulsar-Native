@@ -5,16 +5,13 @@ use super::*;
 
 /// Keys the viewport camera reads, with their Windows virtual-key codes.
 #[cfg(target_os = "windows")]
-const CAMERA_KEYS: [(i32, Keycode); 11] = [
+const CAMERA_KEYS: [(i32, Keycode); 8] = [
     (0x57, Keycode::W),
     (0x41, Keycode::A),
     (0x53, Keycode::S),
     (0x44, Keycode::D),
     (0x45, Keycode::E),
     (0x51, Keycode::Q),
-    (0x20, Keycode::Space),
-    (0xA2, Keycode::LControl),
-    (0xA3, Keycode::RControl),
     (0xA0, Keycode::LShift),
     (0xA1, Keycode::RShift),
 ];
@@ -23,7 +20,7 @@ const CAMERA_KEYS: [(i32, Keycode); 11] = [
 ///
 /// `DeviceState::get_keys()` on Windows queries all 256 virtual keys with a
 /// `GetAsyncKeyState` syscall each (plus two `Vec` allocations), every poll. The
-/// camera only needs eleven. The syscalls go into win32k, which the UI thread
+/// camera only needs eight. The syscalls go into win32k, which the UI thread
 /// shares, so the full sweep made this poll bimodal: ~0.1 ms usually but 2-6 ms
 /// on a fifth of polls, on a thread that runs every ~2 ms while the camera is
 /// captured -- each slow poll delays key state reaching the camera.
@@ -159,7 +156,13 @@ impl ViewportPanel {
                 // Poll keyboard
                 {
                     profiling::profile_scope!("keyboard_poll");
-                    let keys: Vec<Keycode> = held_camera_keys(device_state.as_ref());
+                    // Fly only during RMB look. Middle-mouse / Shift+RMB pan
+                    // must not also translate from the keyboard.
+                    let keys = if is_rotating {
+                        held_camera_keys(device_state.as_ref())
+                    } else {
+                        Vec::new()
+                    };
                     let forward = if keys.contains(&Keycode::W) {
                         1
                     } else if keys.contains(&Keycode::S) {
@@ -174,12 +177,9 @@ impl ViewportPanel {
                     } else {
                         0
                     };
-                    let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) {
+                    let up = if keys.contains(&Keycode::E) {
                         1
-                    } else if keys.contains(&Keycode::Q)
-                        || keys.contains(&Keycode::LControl)
-                        || keys.contains(&Keycode::RControl)
-                    {
+                    } else if keys.contains(&Keycode::Q) {
                         -1
                     } else {
                         0
