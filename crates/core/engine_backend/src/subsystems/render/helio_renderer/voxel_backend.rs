@@ -1381,6 +1381,8 @@ mod tests {
                 level: 0,
                 // Stepping down the radial axis.
                 entered: Some(4),
+                // An edit ray takes the cell, not the drawn material.
+                material: 0,
             };
             let remote = registry
                 .edit_ray(
