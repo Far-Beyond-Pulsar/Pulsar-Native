@@ -217,51 +217,70 @@ impl ViewportPanel {
                     profiling::profile_scope!("mouse_poll");
                     #[cfg(target_os = "windows")]
                     {
-                        let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
-                        let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
-
-                        if locked_screen_x > 0 && locked_screen_y > 0 {
-                            use winapi::shared::windef::POINT;
-                            use winapi::um::winuser::GetCursorPos;
-
-                            unsafe {
-                                let mut point = POINT { x: 0, y: 0 };
-                                GetCursorPos(&mut point);
-
-                                // Calculate delta from locked position (not last position)
-                                let dx = point.x - locked_screen_x;
-                                let dy = point.y - locked_screen_y;
-
-                                if dx != 0 || dy != 0 {
-                                    // On the first captured frame, discard the delta
-                                    // (`just_activated`) to avoid a stale jump, but still
-                                    // reset the cursor so the next delta is relative.
-                                    if !just_activated {
-                                        // Accumulate deltas so multiple input samples between render frames
-                                        // are preserved instead of being overwritten.
-                                        if let Some(cam) = &camera_input {
-                                            if let Ok(mut input) = cam.lock() {
-                                                if is_rotating {
-                                                    input.accumulate_look_delta(
-                                                        dx as f32, dy as f32,
-                                                    );
-                                                } else if is_panning {
-                                                    input
-                                                        .accumulate_pan_delta(dx as f32, dy as f32);
-                                                }
-                                            }
-                                        }
-
-                                        // Also update atomics for UI feedback (optional)
+                        if cursor::uses_raw_mouse_input() {
+                            // Raw Input delivers device-relative reports without
+                            // cursor acceleration or recentering. Deltas are
+                            // accumulated until this poll, then forwarded to the
+                            // same render-thread camera accumulator as other OSes.
+                            let (dx, dy) = cursor::take_mouse_delta();
+                            if dx != 0.0 || dy != 0.0 {
+                                if let Some(cam) = &camera_input {
+                                    if let Ok(mut input) = cam.lock() {
                                         if is_rotating {
-                                            input_state.set_mouse_delta(dx as f32, dy as f32);
+                                            input.accumulate_look_delta(dx, dy);
                                         } else if is_panning {
-                                            input_state.set_pan_delta(dx as f32, dy as f32);
+                                            input.accumulate_pan_delta(dx, dy);
                                         }
                                     }
+                                }
+                                if is_rotating {
+                                    input_state.set_mouse_delta(dx, dy);
+                                } else if is_panning {
+                                    input_state.set_pan_delta(dx, dy);
+                                }
+                            }
+                        } else {
+                            // Fallback for systems where Raw Input registration
+                            // fails: derive deltas from the confined cursor.
+                            let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                            let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
-                                    // Reset cursor to locked position
-                                    cursor::set_cursor_position(locked_screen_x, locked_screen_y);
+                            if locked_screen_x > 0 && locked_screen_y > 0 {
+                                use winapi::shared::windef::POINT;
+                                use winapi::um::winuser::GetCursorPos;
+
+                                unsafe {
+                                    let mut point = POINT { x: 0, y: 0 };
+                                    GetCursorPos(&mut point);
+                                    let dx = point.x - locked_screen_x;
+                                    let dy = point.y - locked_screen_y;
+
+                                    if dx != 0 || dy != 0 {
+                                        if !just_activated {
+                                            if let Some(cam) = &camera_input {
+                                                if let Ok(mut input) = cam.lock() {
+                                                    if is_rotating {
+                                                        input.accumulate_look_delta(
+                                                            dx as f32, dy as f32,
+                                                        );
+                                                    } else if is_panning {
+                                                        input.accumulate_pan_delta(
+                                                            dx as f32, dy as f32,
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            if is_rotating {
+                                                input_state.set_mouse_delta(dx as f32, dy as f32);
+                                            } else if is_panning {
+                                                input_state.set_pan_delta(dx as f32, dy as f32);
+                                            }
+                                        }
+                                        cursor::set_cursor_position(
+                                            locked_screen_x,
+                                            locked_screen_y,
+                                        );
+                                    }
                                 }
                             }
                         }

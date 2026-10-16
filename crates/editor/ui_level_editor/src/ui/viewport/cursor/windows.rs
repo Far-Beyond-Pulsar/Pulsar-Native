@@ -1,4 +1,208 @@
 use gpui::Window;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::OnceLock;
+
+static RAW_MOUSE_READY: OnceLock<bool> = OnceLock::new();
+static RAW_MOUSE_CAPTURED: AtomicBool = AtomicBool::new(false);
+static RAW_MOUSE_DELTA_X: AtomicI64 = AtomicI64::new(0);
+static RAW_MOUSE_DELTA_Y: AtomicI64 = AtomicI64::new(0);
+
+/// Start a message-only window that receives unaccelerated relative mouse
+/// reports. Cursor-position polling remains available as a fallback if Windows
+/// cannot register Raw Input on this machine.
+#[cfg(target_os = "windows")]
+pub fn prepare_relative_mouse_mode() -> bool {
+    let _ = RAW_MOUSE_READY.get_or_init(|| {
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || unsafe {
+            use std::mem::{size_of, zeroed};
+            use std::ptr::{null, null_mut};
+            use winapi::shared::minwindef::{ATOM, LPARAM, LRESULT, UINT, WPARAM};
+            use winapi::shared::windef::HWND;
+            use winapi::um::libloaderapi::GetModuleHandleW;
+            use winapi::um::winuser::{
+                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
+                RegisterRawInputDevices, TranslateMessage, HWND_MESSAGE, MSG, RAWINPUTDEVICE,
+                RIDEV_INPUTSINK, WM_INPUT, WNDCLASSW,
+            };
+
+            const CLASS_NAME: &[u16] = &[
+                b'P' as u16,
+                b'u' as u16,
+                b'l' as u16,
+                b's' as u16,
+                b'a' as u16,
+                b'r' as u16,
+                b'R' as u16,
+                b'a' as u16,
+                b'w' as u16,
+                b'M' as u16,
+                b'o' as u16,
+                b'u' as u16,
+                b's' as u16,
+                b'e' as u16,
+                0,
+            ];
+
+            unsafe extern "system" fn raw_mouse_window_proc(
+                hwnd: HWND,
+                message: UINT,
+                wparam: WPARAM,
+                lparam: LPARAM,
+            ) -> LRESULT {
+                if message == WM_INPUT {
+                    read_raw_mouse_input(lparam as winapi::um::winuser::HRAWINPUT);
+                }
+                DefWindowProcW(hwnd, message, wparam, lparam)
+            }
+
+            let instance = GetModuleHandleW(null());
+            let class = WNDCLASSW {
+                style: 0,
+                lpfnWndProc: Some(raw_mouse_window_proc),
+                cbClsExtra: 0,
+                cbWndExtra: 0,
+                hInstance: instance,
+                hIcon: null_mut(),
+                hCursor: null_mut(),
+                hbrBackground: null_mut(),
+                lpszMenuName: null(),
+                lpszClassName: CLASS_NAME.as_ptr(),
+            };
+            let atom: ATOM = RegisterClassW(&class);
+            if atom == 0 {
+                let _ = ready_tx.send(false);
+                return;
+            }
+
+            let hwnd = CreateWindowExW(
+                0,
+                CLASS_NAME.as_ptr(),
+                CLASS_NAME.as_ptr(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                HWND_MESSAGE,
+                null_mut(),
+                instance,
+                null_mut(),
+            );
+            if hwnd.is_null() {
+                let _ = ready_tx.send(false);
+                return;
+            }
+
+            let device = RAWINPUTDEVICE {
+                usUsagePage: 0x01,
+                usUsage: 0x02,
+                dwFlags: RIDEV_INPUTSINK,
+                hwndTarget: hwnd,
+            };
+            if RegisterRawInputDevices(&device, 1, size_of::<RAWINPUTDEVICE>() as UINT) == 0 {
+                let _ = ready_tx.send(false);
+                return;
+            }
+
+            if ready_tx.send(true).is_err() {
+                return;
+            }
+
+            let mut message: MSG = zeroed();
+            while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+        });
+
+        ready_rx.recv().unwrap_or(false)
+    });
+    // Preserve the confined-cursor fallback if Raw Input is unavailable.
+    true
+}
+
+#[cfg(target_os = "windows")]
+pub fn begin_relative_mouse_mode() {
+    RAW_MOUSE_DELTA_X.store(0, Ordering::Release);
+    RAW_MOUSE_DELTA_Y.store(0, Ordering::Release);
+    RAW_MOUSE_CAPTURED.store(true, Ordering::Release);
+    if uses_raw_mouse_input() {
+        hide_cursor();
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn end_relative_mouse_mode() {
+    RAW_MOUSE_CAPTURED.store(false, Ordering::Release);
+    RAW_MOUSE_DELTA_X.store(0, Ordering::Release);
+    RAW_MOUSE_DELTA_Y.store(0, Ordering::Release);
+    if uses_raw_mouse_input() {
+        show_cursor();
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn uses_raw_mouse_input() -> bool {
+    RAW_MOUSE_READY.get().copied().unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+pub fn take_mouse_delta() -> (f32, f32) {
+    let x = RAW_MOUSE_DELTA_X.swap(0, Ordering::AcqRel) as f32;
+    let y = RAW_MOUSE_DELTA_Y.swap(0, Ordering::AcqRel) as f32;
+    (x, y)
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn read_raw_mouse_input(input: winapi::um::winuser::HRAWINPUT) {
+    use std::mem::size_of;
+    use winapi::shared::minwindef::UINT;
+    use winapi::um::winuser::{
+        GetRawInputData, MOUSE_MOVE_ABSOLUTE, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEMOUSE,
+    };
+
+    if !RAW_MOUSE_CAPTURED.load(Ordering::Acquire) {
+        return;
+    }
+
+    let mut byte_count: UINT = 0;
+    let header_size = size_of::<RAWINPUTHEADER>() as UINT;
+    if GetRawInputData(
+        input,
+        RID_INPUT,
+        std::ptr::null_mut(),
+        &mut byte_count,
+        header_size,
+    ) == u32::MAX
+        || byte_count < size_of::<RAWINPUT>() as UINT
+    {
+        return;
+    }
+
+    // Vec<u64> provides the alignment required by RAWINPUT while allowing the
+    // OS-reported size to include any trailing device-specific data.
+    let mut storage = vec![0u64; (byte_count as usize).div_ceil(size_of::<u64>())];
+    let read = GetRawInputData(
+        input,
+        RID_INPUT,
+        storage.as_mut_ptr().cast(),
+        &mut byte_count,
+        header_size,
+    );
+    if read == u32::MAX {
+        return;
+    }
+
+    let raw = &*(storage.as_ptr().cast::<RAWINPUT>());
+    let mouse = raw.data.mouse();
+    if raw.header.dwType != RIM_TYPEMOUSE || mouse.usFlags & MOUSE_MOVE_ABSOLUTE != 0 {
+        return;
+    }
+
+    RAW_MOUSE_DELTA_X.fetch_add(mouse.lLastX as i64, Ordering::Relaxed);
+    RAW_MOUSE_DELTA_Y.fetch_add(mouse.lLastY as i64, Ordering::Relaxed);
+}
 
 /// Lock cursor to window bounds (prevents cursor from leaving the window).
 ///

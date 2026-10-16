@@ -26,16 +26,25 @@ pub use linux::*;
 
 #[cfg(target_os = "windows")]
 pub fn prepare_relative_mouse_mode() -> bool {
-    true
+    windows::prepare_relative_mouse_mode()
 }
 
 #[cfg(target_os = "windows")]
-pub fn begin_relative_mouse_mode() {}
+pub fn begin_relative_mouse_mode() {
+    windows::begin_relative_mouse_mode();
+}
 
 #[cfg(target_os = "windows")]
-pub fn end_relative_mouse_mode() {}
+pub fn end_relative_mouse_mode() {
+    windows::end_relative_mouse_mode();
+}
 
 #[cfg(target_os = "windows")]
 pub fn take_mouse_delta() -> (f32, f32) {
-    (0.0, 0.0)
+    windows::take_mouse_delta()
+}
+
+#[cfg(target_os = "windows")]
+pub fn uses_raw_mouse_input() -> bool {
+    windows::uses_raw_mouse_input()
 }
