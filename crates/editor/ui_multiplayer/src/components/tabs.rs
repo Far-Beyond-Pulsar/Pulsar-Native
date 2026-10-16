@@ -77,7 +77,6 @@ fn render_session_workspace(
                     div()
                         .flex_1()
                         .min_h_0()
-                        .overflow_y_scroll()
                         .child(render_presence_tab(this, cx)),
                 ),
         )
