@@ -143,4 +143,14 @@ impl LevelEditorPanel {
         drop(state);
         cx.notify();
     }
+
+    pub(in crate::ui::panel) fn on_set_viewport_debug_mode(
+        &mut self,
+        action: &toolbar::SetViewportDebugMode,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.shared_state.write().editor.viewport_debug_mode = action.0;
+        cx.notify();
+    }
 }

@@ -569,8 +569,17 @@ pub struct HelioEditorMailbox {
     viewport_bloom: Arc<AtomicBool>,
     viewport_realtime: Arc<AtomicBool>,
     viewport_debug_mode: Arc<AtomicU32>,
+    viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
+}
+
+/// A debug view advertised by a pass in the editor viewport's render graph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ViewportDebugView {
+    pub name: &'static str,
+    pub debug_mode: u32,
+    pub description: &'static str,
 }
 
 /// A gizmo drag that moved its object, reported when the mouse is released
@@ -652,6 +661,14 @@ impl HelioEditorMailbox {
     pub fn set_viewport_debug_mode(&self, mode: u32) {
         self.viewport_debug_mode.store(mode, Ordering::Release);
     }
+
+    /// Snapshot the debug views advertised by the current editor render graph.
+    pub fn viewport_debug_views(&self) -> Vec<ViewportDebugView> {
+        self.viewport_debug_views
+            .lock()
+            .map(|views| views.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// Render-frame marker retained for the editor-ui integration point.
@@ -709,6 +726,8 @@ pub struct HelioRenderer {
     /// The toolbar's view mode: the debug mode the graph renders (0 lit).
     /// See [`HelioEditorMailbox::set_viewport_debug_mode`].
     viewport_debug_mode: Arc<AtomicU32>,
+    /// Debug views advertised by the active render graph, exposed to editor UI.
+    viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
     frame_delta_override: Option<f32>,
@@ -919,6 +938,7 @@ impl HelioRenderer {
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             viewport_realtime: Arc::new(AtomicBool::new(true)),
             viewport_debug_mode: Arc::new(AtomicU32::new(0)),
+            viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
@@ -1281,6 +1301,18 @@ impl HelioRenderer {
                     )
                 }))
                 .build(device_arc.clone(), queue_arc.clone(), width, height, format);
+
+            if let Ok(mut views) = self.viewport_debug_views.lock() {
+                *views = r
+                    .available_debug_views()
+                    .into_iter()
+                    .map(|view| ViewportDebugView {
+                        name: view.name,
+                        debug_mode: view.debug_mode,
+                        description: view.description,
+                    })
+                    .collect();
+            }
 
             let inner = HelioInner {
                 renderer: r,
@@ -2425,6 +2457,7 @@ impl HelioRenderer {
             viewport_bloom: self.viewport_bloom.clone(),
             viewport_realtime: self.viewport_realtime.clone(),
             viewport_debug_mode: self.viewport_debug_mode.clone(),
+            viewport_debug_views: self.viewport_debug_views.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
         }
