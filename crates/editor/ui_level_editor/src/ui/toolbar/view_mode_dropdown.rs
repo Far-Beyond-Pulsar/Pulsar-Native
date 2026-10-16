@@ -1,53 +1,79 @@
 use gpui::*;
 use ui::{
-    button::{Button, ButtonVariants as _},
-    popup_menu::PopupMenuExt,
-    IconName, Sizable,
+    IndexPath, Sizable,
+    dropdown::{Dropdown, DropdownItem, DropdownState, SearchableVec},
 };
 
-use super::actions::SetViewportDebugMode;
-use crate::state::LevelEditorState;
+/// A searchable option for the viewport view-mode picker.
+#[derive(Clone)]
+pub struct ViewModeOption {
+    pub debug_mode: u32,
+    pub name: SharedString,
+}
+
+impl DropdownItem for ViewModeOption {
+    type Value = u32;
+
+    fn title(&self) -> SharedString {
+        self.name.clone()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.debug_mode
+    }
+}
+
+pub type ViewModePickerState = DropdownState<SearchableVec<ViewModeOption>>;
 
 /// Selects the lit viewport image or a debug view registered by a Helio pass.
 pub struct ViewModeDropdown;
 
 impl ViewModeDropdown {
-    pub fn render(
-        state: &LevelEditorState,
+    pub fn options(
         debug_views: &[engine_backend::subsystems::render::ViewportDebugView],
-    ) -> impl IntoElement {
-        let selected_mode = state.editor.viewport_debug_mode;
-        let selected_view = debug_views
-            .iter()
-            .find(|view| view.debug_mode == selected_mode);
-        let label = selected_view.map_or("Lit", |view| view.name);
-        let tooltip = selected_view.map_or("Show the scene with materials and lighting", |view| {
-            view.description
-        });
-        let debug_views = debug_views.to_vec();
+    ) -> Vec<ViewModeOption> {
+        let mut options = vec![ViewModeOption {
+            debug_mode: 0,
+            name: "Lit".into(),
+        }];
+        options.extend(debug_views.iter().map(|view| ViewModeOption {
+            debug_mode: view.debug_mode,
+            name: view.name.into(),
+        }));
+        options
+    }
 
-        Button::new("viewport_view_mode")
-            .label(label)
-            .icon(IconName::ChevronDown)
-            .dropdown_caret(true)
+    pub fn new_state(
+        window: &mut Window,
+        cx: &mut App,
+        debug_views: &[engine_backend::subsystems::render::ViewportDebugView],
+        selected_mode: u32,
+    ) -> Entity<ViewModePickerState> {
+        let options = Self::options(debug_views);
+        let selected_index = options
+            .iter()
+            .position(|option| option.debug_mode == selected_mode)
+            .unwrap_or(0);
+
+        cx.new(|cx| {
+            DropdownState::new(
+                SearchableVec::new(options),
+                Some(IndexPath::new(selected_index)),
+                window,
+                cx,
+            )
+        })
+    }
+
+    pub fn render(state: &Entity<ViewModePickerState>) -> impl IntoElement {
+        Dropdown::new(state)
+            .placeholder("Lit")
+            .menu_width(px(280.))
+            .appearance(false)
+            .focus_outline(false)
+            .centered_trigger(true)
             .small()
-            .ghost()
-            .tooltip(tooltip)
-            .popup_menu(move |menu, _, _| {
-                let mut menu = menu
-                    .label("View Mode")
-                    .separator()
-                    .max_h(px(400.))
-                    .scrollable()
-                    .menu_with_check("Lit", selected_mode == 0, Box::new(SetViewportDebugMode(0)));
-                for view in &debug_views {
-                    menu = menu.menu_with_check(
-                        view.name,
-                        selected_mode == view.debug_mode,
-                        Box::new(SetViewportDebugMode(view.debug_mode)),
-                    );
-                }
-                menu
-            })
+            .w(px(150.))
+            .h(px(28.))
     }
 }
