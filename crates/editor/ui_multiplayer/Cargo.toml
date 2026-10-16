@@ -18,6 +18,8 @@ futures = { workspace = true }
 tracing.workspace = true
 tokio = { workspace = true, features = ["full"] }
 similar = { workspace = true }
+mockaco-gpui = { git = "https://github.com/Far-Beyond-Pulsar/Mockaco", rev = "e36ce16e76716b7494a7388e3ba51505111246b8", features = ["native-wgpui"] }
+mockaco-language = { git = "https://github.com/Far-Beyond-Pulsar/Mockaco", rev = "e36ce16e76716b7494a7388e3ba51505111246b8" }
 
 [lints]
 workspace = true

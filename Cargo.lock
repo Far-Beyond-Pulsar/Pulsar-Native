@@ -14398,6 +14398,8 @@ dependencies = [
  "engine_state",
  "futures",
  "gpui-ce",
+ "mockaco-gpui",
+ "mockaco-language",
  "serde_json",
  "similar 3.2.0",
  "tokio",
