@@ -195,6 +195,7 @@ where
         .child(
             Button::new("collapse_camera_mode")
                 .icon(IconName::Close)
+                .small()
                 .ghost()
                 .on_click(move |_, _, _| {
                     collapse_state
@@ -206,7 +207,6 @@ where
 
     h_flex()
         .gap_0()
-        .h(px(42.0))
         .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
         .child(toolbar_with_drag_handle(
             drag_handle,

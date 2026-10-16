@@ -112,7 +112,9 @@ where
 
     // Match the actual child order to the anchored edge; do not depend on
     // reversed flex layout to move the interactive handle.
-    let toolbar = h_flex().gap_0();
+    // Set the painted bar's height here, not only on an outer wrapper whose
+    // centered children can still shrink to their individual control heights.
+    let toolbar = h_flex().gap_0().h(px(42.0)).items_stretch();
     match side {
         HandleSide::Left => toolbar.child(drag_handle_content).child(content),
         HandleSide::Right => toolbar.child(content).child(drag_handle_content),

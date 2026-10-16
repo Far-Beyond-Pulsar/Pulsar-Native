@@ -178,7 +178,6 @@ where
 
     h_flex()
         .gap_0()
-        .h(px(42.0))
         .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
         .child(toolbar_with_drag_handle(
             drag_handle,
