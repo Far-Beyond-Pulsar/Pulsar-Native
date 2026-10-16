@@ -25,7 +25,7 @@ impl MultiplayerWindow {
                         this.client = None;
                         this.current_peer_id = None;
                         this.chat_messages.clear();
-                        this.current_tab = SessionTab::Info;
+                        this.current_tab = SessionTab::Session;
                         this.sync_engine_multiuser_disconnected();
                         cx.notify();
                     });
@@ -38,7 +38,7 @@ impl MultiplayerWindow {
             self.client = None;
             self.current_peer_id = None;
             self.chat_messages.clear();
-            self.current_tab = SessionTab::Info;
+            self.current_tab = SessionTab::Session;
             self.sync_engine_multiuser_disconnected();
             cx.notify();
         }
@@ -64,7 +64,7 @@ impl MultiplayerWindow {
                     this.current_peer_id = None;
                     this.chat_messages.clear();
                     this.user_presences.clear();
-                    this.current_tab = SessionTab::Info;
+                    this.current_tab = SessionTab::Session;
                     this.file_sync_in_progress = false;
                     this.sync_progress_message = None;
                     this.sync_progress_percent = None;

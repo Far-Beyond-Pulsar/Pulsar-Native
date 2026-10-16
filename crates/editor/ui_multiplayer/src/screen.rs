@@ -20,7 +20,7 @@ use engine_fs::{
 };
 use engine_state::{EngineContext, MultiuserContext, MultiuserParticipant, MultiuserStatus};
 
-use crate::components::{render_active_session, render_chat_tab, render_connection_form};
+use crate::components::{render_active_session, render_connection_form};
 
 pub struct MultiplayerWindow {
     pub(crate) server_address_input: Entity<InputState>,
@@ -89,7 +89,7 @@ impl MultiplayerWindow {
             active_session: None,
             client: None,
             current_peer_id: None,
-            current_tab: SessionTab::Info,
+            current_tab: SessionTab::Session,
             chat_messages: Vec::new(),
             file_assets: Vec::new(),
             user_presences: Vec::new(),
@@ -119,7 +119,7 @@ impl MultiplayerWindow {
             server_address: "Local source-build preview".to_string(),
             connected_users: vec![local_peer.clone(), preview_peer.clone()],
         });
-        self.current_tab = SessionTab::Info;
+        self.current_tab = SessionTab::Session;
         self.chat_messages = vec![ChatMessage {
             peer_id: preview_peer.clone(),
             message: "You're in the local collaboration preview. No relay connection is used."
@@ -698,7 +698,7 @@ impl window_manager::PulsarWindow for MultiplayerWindow {
     }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
-        window_manager::default_window_options(720.0, 700.0)
+        window_manager::default_window_options(1280.0, 820.0)
     }
 
     fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {

@@ -63,11 +63,9 @@ pub fn on_kick_user(
 
 pub fn on_tab_click(this: &mut MultiplayerWindow, ix: &usize, cx: &mut Context<MultiplayerWindow>) {
     this.current_tab = match ix {
-        0 => SessionTab::Info,
-        1 => SessionTab::Presence,
-        2 => SessionTab::FileSync,
-        3 => SessionTab::Chat,
-        _ => SessionTab::Info,
+        0 => SessionTab::Session,
+        1 => SessionTab::FileSync,
+        _ => SessionTab::Session,
     };
     cx.notify();
 }

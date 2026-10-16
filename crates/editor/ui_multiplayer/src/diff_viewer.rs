@@ -670,6 +670,7 @@ impl Render for DiffViewer {
             .child(
                 div()
                     .flex_1()
+                    .h_full()
                     .min_w_0()
                     .min_h_0()
                     .overflow_hidden()
