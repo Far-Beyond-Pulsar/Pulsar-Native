@@ -1,342 +1,419 @@
-//! Changes view: staged / unstaged file lists + commit section
+//! Working-tree changes: the virtualized file list and the commit box.
 
-use super::toolbar::render_toolbar;
-use crate::{
-    ChangesRow, CopyFullPath, CopyRelativePath, DiscardFileChanges, GitManager, IgnoreExtension,
-    IgnoreFile, IgnoreFolder, OpenInExplorer, models::*,
-};
-use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use std::rc::Rc;
+use super::common::{file_menu, placeholder, status_color, virtual_panel};
+use crate::history::DiffTarget;
+use crate::{ChangeRow, GitLayout, GitManager};
+use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
-    ActiveTheme as _, Icon, IconName, StyledExt, VirtualListScrollHandle,
+    ActiveTheme as _, Disableable as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
+    checkbox::Checkbox,
     h_flex,
     input::TextInput,
     menu::context_menu::ContextMenuExt as _,
-    scroll::{Scrollbar, ScrollbarAxis},
-    v_flex, v_virtual_list,
+    v_flex,
 };
 
-/// Fixed row heights used for item_sizes pre-computation.
-const HEADER_ROW_HEIGHT: f32 = 28.0;
-const FILE_ROW_HEIGHT: f32 = 32.0;
+const ROW_HEIGHT: f32 = 28.0;
+const INDENT: f32 = 12.0;
 
-pub fn render_changes_view(
-    git_manager: &mut GitManager,
+pub(crate) fn render_changes_panel(
+    gm: &mut GitManager,
     cx: &mut Context<GitManager>,
-) -> impl IntoElement {
-    let has_no_changes = git_manager.changes_rows.is_empty();
+) -> impl IntoElement + use<> {
+    let theme = cx.theme();
+    let (border, muted_fg) = (theme.border, theme.muted_foreground);
+    let flat = gm.layout == GitLayout::Desktop;
 
-    let border = cx.theme().border;
-    let muted_fg = cx.theme().muted_foreground;
+    let staged_count = gm.repo_state.staged_files.len();
+    let changed_count = gm.changes_rows.len();
 
-    let has_staged = git_manager.changes_rows.iter().any(|r| {
-        matches!(
-            r,
-            ChangesRow::File {
-                is_staged: true,
-                ..
-            }
-        )
+    let total = gm.repo_state.staged_files.len()
+        + gm.repo_state.unstaged_files.len()
+        + gm.repo_state.untracked_files.len();
+    let body: AnyElement = if gm.changes_rows.is_empty() {
+        if total > 0 {
+            placeholder(IconName::Search, "No changed files match the filter", cx).into_any_element()
+        } else {
+            placeholder(IconName::Check, "No local changes", cx).into_any_element()
+        }
+    } else {
+        // Only the rows in view are built; the row list itself is shared and
+        // rebuilt only when the repository changes.
+        let list = uniform_list(
+            "git-changes-list",
+            gm.changes_rows.len(),
+            cx.processor(|gm, range: std::ops::Range<usize>, _window, cx| {
+                let rows = gm.changes_rows.clone();
+                range
+                    .filter_map(|index| rows.get(index).cloned())
+                    .map(|row| render_row(gm, row, cx))
+                    .collect::<Vec<AnyElement>>()
+            }),
+        );
+        virtual_panel(list, &gm.changes_list).into_any_element()
+    };
+
+    let select_all = flat.then(|| {
+        let all_staged = changed_count > 0 && gm.changes_rows.iter().all(|row| {
+            matches!(row, ChangeRow::Flat { staged: true, unstaged: false, .. })
+        });
+        h_flex()
+            .h(px(30.))
+            .flex_shrink_0()
+            .px_2()
+            .gap_2()
+            .items_center()
+            .border_b_1()
+            .border_color(border)
+            .child(
+                Checkbox::new("select-all-changes")
+                    .checked(all_staged)
+                    .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                        if *checked {
+                            this.stage_all(cx);
+                        } else {
+                            this.unstage_all(cx);
+                        }
+                    })),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(muted_fg)
+                    .child(format!(
+                        "{} changed file{}",
+                        changed_count,
+                        if changed_count == 1 { "" } else { "s" }
+                    )),
+            )
     });
 
-    // Build item_sizes for the virtual list (one entry per row).
-    let item_sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
-        git_manager
-            .changes_rows
-            .iter()
-            .map(|r| match r {
-                ChangesRow::Header { .. } => size(px(0.0), px(HEADER_ROW_HEIGHT)),
-                ChangesRow::File { .. } => size(px(0.0), px(FILE_ROW_HEIGHT)),
-            })
-            .collect(),
-    );
-
-    let entity = cx.entity().clone();
-    let scroll_handle = git_manager.changes_scroll.clone();
-    let scrollbar_state = git_manager.changes_scrollbar_state.clone();
-
-    let list = v_virtual_list(entity, "git-changes-list", item_sizes, {
-        move |git_manager: &mut GitManager,
-              range: std::ops::Range<usize>,
-              _window: &mut Window,
-              cx: &mut Context<GitManager>| {
-            let radius = cx.theme().radius;
-            let muted_fg = cx.theme().muted_foreground;
-            let foreground = cx.theme().foreground;
-            let muted_bg = cx.theme().muted;
-            let success = cx.theme().success;
-            let danger = cx.theme().danger;
-            let warning = cx.theme().warning;
-
-            range
-                .map(|i| -> AnyElement {
-                    match &git_manager.changes_rows[i].clone() {
-                        ChangesRow::Header {
-                            title,
-                            count,
-                            is_staged,
-                        } => {
-                            let title = title.clone();
-                            let count = *count;
-                            let is_staged = *is_staged;
-                            h_flex()
-                                .px_1()
-                                .h(px(HEADER_ROW_HEIGHT))
-                                .items_center()
-                                .w_full()
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .text_xs()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(muted_fg)
-                                        .child(format!("{} ({})", title, count)),
-                                )
-                                .when(is_staged, |this| {
-                                    this.child(
-                                        Button::new("unstage-all-button")
-                                            .icon(Icon::new(IconName::Minus).text_color(warning))
-                                            .ghost()
-                                            .compact()
-                                            .tooltip("Unstage All".to_string())
-                                            .on_click(
-                                                cx.listener(|this, _, _, cx| this.unstage_all(cx)),
-                                            ),
-                                    )
-                                })
-                                .when(!is_staged, |this| {
-                                    this.child(
-                                        Button::new("stage-all-button")
-                                            .icon(Icon::new(IconName::Plus).text_color(warning))
-                                            .ghost()
-                                            .compact()
-                                            .tooltip("Stage All".to_string())
-                                            .on_click(
-                                                cx.listener(|this, _, _, cx| this.stage_all(cx)),
-                                            ),
-                                    )
-                                })
-                                .into_any_element()
-                        }
-                        ChangesRow::File { change, is_staged } => {
-                            let file = change.clone();
-                            let is_staged = *is_staged;
-                            let file_path = file.path.clone();
-                            let file_path_for_select = file.path.clone();
-                            let file_path_for_ctx = file.path.clone();
-                            let file_path_for_stage = file.path.clone();
-                            let file_status = file.status.short_str();
-                            let display_name = file
-                                .path
-                                .rsplit('/')
-                                .next()
-                                .or_else(|| file.path.rsplit('\\').next())
-                                .unwrap_or(file.path.as_str())
-                                .to_string();
-                            let status_color = match file.status {
-                                ChangeStatus::Added | ChangeStatus::Untracked => success,
-                                ChangeStatus::Deleted => danger,
-                                _ => warning,
-                            };
-                            let muted_hover = muted_bg.opacity(0.3);
-                            let ext = std::path::Path::new(&file_path_for_ctx)
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let folder_paths: Vec<String> = {
-                                let norm = file_path_for_ctx.replace('\\', "/");
-                                let mut parts: Vec<&str> = norm.split('/').collect();
-                                parts.pop();
-                                let mut folders = Vec::new();
-                                while !parts.is_empty() {
-                                    folders.push(parts.join("/"));
-                                    parts.pop();
-                                }
-                                folders
-                            };
-                            let has_folders = !folder_paths.is_empty();
-                            let row_id = SharedString::from(format!("git-file-{}", file.path));
-
-                            h_flex()
-                                .id(row_id)
-                                .px_1()
-                                .w_full()
-                                .h(px(FILE_ROW_HEIGHT))
-                                .rounded(radius)
-                                .gap_1()
-                                .items_center()
-                                .hover(move |s| s.bg(muted_hover))
-                                .cursor_pointer()
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                                        this.select_file(file_path_for_select.clone(), cx);
-                                    }),
-                                )
-                                .context_menu(move |menu, window, cx| {
-                                    let fp = file_path_for_ctx.clone();
-                                    let menu = menu
-                                        .menu(
-                                            "Discard File Changes",
-                                            Box::new(DiscardFileChanges { path: fp.clone() }),
-                                        )
-                                        .separator()
-                                        .menu(
-                                            "Ignore File",
-                                            Box::new(IgnoreFile { path: fp.clone() }),
-                                        );
-                                    let menu = if has_folders {
-                                        let folders_for_sub = folder_paths.clone();
-                                        menu.submenu(
-                                            "Ignore Folder",
-                                            window,
-                                            cx,
-                                            move |mut sub, _w, _c| {
-                                                for folder in &folders_for_sub {
-                                                    sub = sub.menu(
-                                                        SharedString::from(folder.clone()),
-                                                        Box::new(IgnoreFolder {
-                                                            folder: folder.clone(),
-                                                        }),
-                                                    );
-                                                }
-                                                sub
-                                            },
-                                        )
-                                    } else {
-                                        menu
-                                    };
-                                    let menu = if !ext.is_empty() {
-                                        menu.menu(
-                                            SharedString::from(format!("Ignore *.{}", ext)),
-                                            Box::new(IgnoreExtension { path: fp.clone() }),
-                                        )
-                                    } else {
-                                        menu
-                                    };
-                                    menu.separator()
-                                        .menu(
-                                            "Copy Relative Path",
-                                            Box::new(CopyRelativePath { path: fp.clone() }),
-                                        )
-                                        .menu(
-                                            "Copy Full Path",
-                                            Box::new(CopyFullPath { path: fp.clone() }),
-                                        )
-                                        .separator()
-                                        .menu(
-                                            "Show in Explorer",
-                                            Box::new(OpenInExplorer { path: fp }),
-                                        )
-                                })
-                                .child(
-                                    div()
-                                        .w(px(14.))
-                                        .h(px(14.))
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .rounded(radius)
-                                        .text_xs()
-                                        .font_weight(FontWeight::BOLD)
-                                        .text_color(status_color)
-                                        .child(file_status),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .text_xs()
-                                        .text_color(foreground)
-                                        .overflow_hidden()
-                                        .child(display_name),
-                                )
-                                .child(
-                                    Button::new(SharedString::from(format!("stg-{}", file_path)))
-                                        .icon(if is_staged {
-                                            IconName::Minus
-                                        } else {
-                                            IconName::Plus
-                                        })
-                                        .ghost()
-                                        .compact()
-                                        .tooltip(if is_staged {
-                                            "Unstage".to_string()
-                                        } else {
-                                            "Stage".to_string()
-                                        })
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            if is_staged {
-                                                this.unstage_file(file_path_for_stage.clone(), cx);
-                                            } else {
-                                                this.stage_file(file_path_for_stage.clone(), cx);
-                                            }
-                                        })),
-                                )
-                                .into_any_element()
-                        }
-                    }
-                })
-                .collect()
-        }
-    })
-    .track_scroll(&scroll_handle);
-
-    let changes_container = div()
-        .relative()
-        .flex_1()
-        .overflow_hidden()
-        .child(list)
-        .child(
-            div()
-                .absolute()
-                .inset_0()
-                .child(Scrollbar::vertical(&scrollbar_state, &scroll_handle)),
-        );
-
-    let commit_section = v_flex()
-        .px_2()
-        .py_2()
-        .gap_1()
-        .border_t_1()
-        .border_color(border)
-        .child(TextInput::new(&git_manager.commit_message_input))
-        .child(TextInput::new(&git_manager.commit_description_input))
-        .when(has_staged, |this| {
-            this.child(
-                Button::new("commit-button")
-                    .label("Commit to branch")
-                    .primary()
-                    .on_click(cx.listener(|this, _, _, cx| this.commit_changes(cx))),
-            )
-        });
+    let filter_bar = (total > 0).then(|| {
+        div()
+            .flex_shrink_0()
+            .p_2()
+            .border_b_1()
+            .border_color(border)
+            .child(TextInput::new(&gm.changes_filter_input))
+    });
 
     v_flex()
         .size_full()
-        .child(render_toolbar(git_manager, cx))
-        .when(has_no_changes, |this| {
+        .children(filter_bar)
+        .children(select_all)
+        .child(body)
+        .child(render_commit_box(gm, staged_count, cx))
+}
+
+fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>) -> AnyElement {
+    let theme = cx.theme();
+    let (foreground, muted_fg, list_active, list_hover, accent, radius, warning) = (
+        theme.foreground,
+        theme.muted_foreground,
+        theme.list_active,
+        theme.list_hover,
+        theme.list_active_border,
+        theme.radius,
+        theme.warning,
+    );
+
+    match row {
+        ChangeRow::Section {
+            staged,
+            count,
+            collapsed,
+        } => {
+            let key = if staged { "section:staged" } else { "section:changes" };
+            h_flex()
+                .id(SharedString::from(key))
+                .w_full()
+                .h(px(ROW_HEIGHT))
+                .px_1()
+                .gap_1()
+                .items_center()
+                .cursor_pointer()
+                .hover(move |s| s.bg(list_hover))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.toggle_collapsed(key, cx);
+                    }),
+                )
+                .child(
+                    Icon::new(if collapsed { IconName::ChevronRight } else { IconName::ChevronDown })
+                        .size(px(12.))
+                        .text_color(muted_fg),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(muted_fg)
+                        .child(format!("{} ({})", if staged { "Staged" } else { "Changes" }, count)),
+                )
+                .child(
+                    Button::new(SharedString::from(format!("section-action-{}", staged)))
+                        .icon(Icon::new(if staged { IconName::Minus } else { IconName::Plus }).text_color(warning))
+                        .ghost()
+                        .compact()
+                        .tooltip(if staged { "Unstage all" } else { "Stage all" })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if staged {
+                                this.unstage_all(cx);
+                            } else {
+                                this.stage_all(cx);
+                            }
+                        })),
+                )
+                .into_any_element()
+        }
+        ChangeRow::Folder {
+            key,
+            name,
+            depth,
+            count,
+            collapsed,
+        } => {
+            let toggle = key.clone();
+            h_flex()
+                .id(SharedString::from(format!("folder-{}", key)))
+                .w_full()
+                .h(px(ROW_HEIGHT))
+                .pl(px(4.0 + INDENT * depth as f32))
+                .pr_2()
+                .gap_1()
+                .items_center()
+                .cursor_pointer()
+                .hover(move |s| s.bg(list_hover))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.toggle_collapsed(&toggle, cx);
+                    }),
+                )
+                .child(
+                    Icon::new(if collapsed { IconName::ChevronRight } else { IconName::ChevronDown })
+                        .size(px(12.))
+                        .text_color(muted_fg),
+                )
+                .child(
+                    Icon::new(if collapsed { IconName::Folder } else { IconName::FolderOpen })
+                        .size(px(13.))
+                        .text_color(muted_fg),
+                )
+                .child(div().flex_1().text_xs().text_color(foreground).child(name))
+                .child(div().text_size(px(10.)).text_color(muted_fg).child(count.to_string()))
+                .into_any_element()
+        }
+        ChangeRow::File {
+            change,
+            staged,
+            depth,
+        } => {
+            let selected = match &gm.target {
+                Some(DiffTarget::Staged { path, .. }) => staged && *path == change.path,
+                Some(DiffTarget::Unstaged { path }) => !staged && *path == change.path,
+                _ => false,
+            };
+            let status_fg = status_color(change.status, cx);
+            let path = change.path.clone();
+            let for_select = change.clone();
+            let for_stage = change.path.clone();
+            h_flex()
+                .id(SharedString::from(format!("file-{}-{}", staged, change.path)))
+                .w_full()
+                .h(px(ROW_HEIGHT))
+                .pl(px(4.0 + INDENT * depth as f32 + 16.0))
+                .pr_1()
+                .gap_1p5()
+                .items_center()
+                .rounded(radius)
+                .cursor_pointer()
+                .bg(if selected { list_active } else { transparent_black() })
+                .hover(move |s| s.bg(if selected { list_active } else { list_hover }))
+                .when(selected, |this| this.border_l_2().border_color(accent))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.select_working_file(&for_select, staged, cx);
+                    }),
+                )
+                .context_menu(file_menu(path))
+                .child(
+                    div()
+                        .w(px(14.))
+                        .text_xs()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(status_fg)
+                        .child(change.status.short_str()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_xs()
+                        .text_color(foreground)
+                        .child(match &change.old_path {
+                            Some(old) => format!("{} → {}", old.rsplit('/').next().unwrap_or(old), change.file_name()),
+                            None => change.file_name().to_string(),
+                        }),
+                )
+                .child(
+                    Button::new(SharedString::from(format!("stage-{}-{}", staged, change.path)))
+                        .icon(if staged { IconName::Minus } else { IconName::Plus })
+                        .ghost()
+                        .compact()
+                        .tooltip(if staged { "Unstage" } else { "Stage" })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if staged {
+                                this.unstage_file(for_stage.clone(), cx);
+                            } else {
+                                this.stage_file(for_stage.clone(), cx);
+                            }
+                        })),
+                )
+                .into_any_element()
+        }
+        ChangeRow::Flat {
+            change,
+            staged,
+            unstaged,
+        } => {
+            let selected = match &gm.target {
+                Some(DiffTarget::Staged { path, .. }) | Some(DiffTarget::Unstaged { path }) => {
+                    *path == change.path
+                }
+                _ => false,
+            };
+            let status_fg = status_color(change.status, cx);
+            let path = change.path.clone();
+            let for_select = change.clone();
+            let for_toggle = change.path.clone();
+            let directory = change.directory().to_string();
+            h_flex()
+                .id(SharedString::from(format!("flat-{}", change.path)))
+                .w_full()
+                .h(px(ROW_HEIGHT))
+                .px_2()
+                .gap_2()
+                .items_center()
+                .rounded(radius)
+                .cursor_pointer()
+                .bg(if selected { list_active } else { transparent_black() })
+                .hover(move |s| s.bg(if selected { list_active } else { list_hover }))
+                .when(selected, |this| this.border_l_2().border_color(accent))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        // A file with unstaged edits is diffed against the
+                        // index; a fully staged one against HEAD.
+                        this.select_working_file(&for_select, staged && !unstaged, cx);
+                    }),
+                )
+                .context_menu(file_menu(path))
+                .child(
+                    Checkbox::new(SharedString::from(format!("check-{}", change.path)))
+                        .checked(staged)
+                        .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                            if *checked {
+                                this.stage_file(for_toggle.clone(), cx);
+                            } else {
+                                this.unstage_file(for_toggle.clone(), cx);
+                            }
+                        })),
+                )
+                .child(
+                    h_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_1p5()
+                        .items_baseline()
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .text_xs()
+                                .text_color(foreground)
+                                .child(change.file_name().to_string()),
+                        )
+                        .child(
+                            div()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_size(px(10.))
+                                .text_color(muted_fg)
+                                .child(directory),
+                        ),
+                )
+                .child(
+                    div()
+                        .w(px(14.))
+                        .text_xs()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(status_fg)
+                        .child(change.status.short_str()),
+                )
+                .into_any_element()
+        }
+    }
+}
+
+/// Summary + description inputs and the commit button.
+fn render_commit_box(
+    gm: &mut GitManager,
+    staged_count: usize,
+    cx: &mut Context<GitManager>,
+) -> impl IntoElement + use<> {
+    let border = cx.theme().border;
+    let muted_fg = cx.theme().muted_foreground;
+    let branch = gm.repo_state.current_branch.clone();
+    let busy = gm.commit_busy;
+    let merging = gm.repo_state.operation.is_some();
+    let can_commit = (staged_count > 0 || merging) && !busy;
+
+    let label = if busy {
+        "Committing…".to_string()
+    } else if merging {
+        format!("Complete merge on {}", branch)
+    } else if staged_count > 0 {
+        format!(
+            "Commit {} file{} to {}",
+            staged_count,
+            if staged_count == 1 { "" } else { "s" },
+            branch
+        )
+    } else {
+        format!("Commit to {}", branch)
+    };
+
+    v_flex()
+        .flex_shrink_0()
+        .p_2()
+        .gap_1p5()
+        .border_t_1()
+        .border_color(border)
+        .child(TextInput::new(&gm.commit_message_input))
+        .child(TextInput::new(&gm.commit_description_input))
+        .child(
+            Button::new("commit-button")
+                .label(label)
+                .primary()
+                .w_full()
+                .disabled(!can_commit)
+                .on_click(cx.listener(|this, _, _, cx| this.commit_changes(cx))),
+        )
+        .when(staged_count == 0 && !merging, |this| {
             this.child(
-                v_flex()
-                    .flex_1()
-                    .py_8()
-                    .items_center()
-                    .justify_center()
-                    .gap_2()
-                    .child(
-                        Icon::new(IconName::Check)
-                            .size(px(24.))
-                            .text_color(muted_fg),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted_fg)
-                            .child("Working directory clean"),
-                    ),
+                div()
+                    .text_size(px(10.))
+                    .text_color(muted_fg)
+                    .child("Stage files to commit them."),
             )
         })
-        .when(!has_no_changes, |this| this.child(changes_container))
-        .child(commit_section)
 }

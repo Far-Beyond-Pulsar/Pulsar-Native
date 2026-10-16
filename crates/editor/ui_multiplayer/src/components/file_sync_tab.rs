@@ -17,6 +17,7 @@ pub fn render_file_sync_tab(
 
         return v_flex()
             .size_full()
+            .min_h_0()
             .items_center()
             .justify_center()
             .gap_4()
@@ -68,6 +69,7 @@ pub fn render_file_sync_tab(
 
         v_flex()
             .size_full()
+            .min_h_0()
             .child(
                 div()
                     .p_3()
@@ -121,12 +123,20 @@ pub fn render_file_sync_tab(
                             ),
                     ),
             )
-            .child(div().flex_1().child(this.diff_viewer.clone()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(this.diff_viewer.clone()),
+            )
             .into_any_element()
     } else {
         tracing::debug!("Rendering FileSync tab - no pending sync");
         v_flex()
             .size_full()
+            .min_h_0()
             .items_center()
             .justify_center()
             .gap_4()

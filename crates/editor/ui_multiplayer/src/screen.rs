@@ -20,7 +20,7 @@ use engine_fs::{
 };
 use engine_state::{EngineContext, MultiuserContext, MultiuserParticipant, MultiuserStatus};
 
-use crate::components::{render_active_session, render_chat_tab, render_connection_form};
+use crate::components::{render_active_session, render_connection_form};
 
 pub struct MultiplayerWindow {
     pub(crate) server_address_input: Entity<InputState>,
@@ -89,7 +89,7 @@ impl MultiplayerWindow {
             active_session: None,
             client: None,
             current_peer_id: None,
-            current_tab: SessionTab::Info,
+            current_tab: SessionTab::Session,
             chat_messages: Vec::new(),
             file_assets: Vec::new(),
             user_presences: Vec::new(),
@@ -104,6 +104,45 @@ impl MultiplayerWindow {
             pending_file_updates: Vec::new(),
             fs_event_forwarder: None,
         }
+    }
+
+    pub(crate) fn join_source_preview(&mut self, cx: &mut Context<Self>) {
+        let session_id = "source-preview".to_string();
+        let local_peer = "local-preview-peer".to_string();
+        let preview_peer = "preview-teammate".to_string();
+        self.client = None;
+        self.current_peer_id = Some(local_peer.clone());
+        self.connection_status = ConnectionStatus::Connected;
+        self.active_session = Some(ActiveSession {
+            session_id: session_id.clone(),
+            join_token: "preview-only".to_string(),
+            server_address: "Local source-build preview".to_string(),
+            connected_users: vec![local_peer.clone(), preview_peer.clone()],
+        });
+        self.current_tab = SessionTab::Session;
+        self.chat_messages = vec![ChatMessage {
+            peer_id: preview_peer.clone(),
+            message: "You're in the local collaboration preview. No relay connection is used."
+                .to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            is_self: false,
+        }];
+        self.user_presences.clear();
+        self.update_presence_from_participants(cx);
+        if let Some(presence) = self.get_presence_mut(&preview_peer) {
+            presence.current_tab = Some("Level Editor".to_string());
+            presence.editing_file = Some("src/preview.rs".to_string());
+        }
+        self.sync_engine_multiuser_connected(
+            "local-preview",
+            &session_id,
+            &local_peer,
+            &[local_peer.clone(), preview_peer.clone()],
+        );
+        cx.notify();
     }
 
     pub(crate) fn sync_engine_multiuser_connecting(&self, server_url: &str, session_id: &str) {
@@ -546,23 +585,39 @@ impl Render for MultiplayerWindow {
                     h_flex()
                         .w_full()
                         .items_center()
-                        .justify_between()
-                        .child(div().text_sm().child("Multiplayer"))
+                        .gap_2()
+                        .child(
+                            Icon::new(IconName::User)
+                                .size(px(14.))
+                                .text_color(cx.theme().primary),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(cx.theme().foreground)
+                                .child("COLLABORATION"),
+                        )
+                        .child(div().flex_1())
                         .when_some(self.active_session.as_ref(), |this, session| {
                             this.child(
                                 h_flex()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(6.))
+                                    .bg(cx.theme().success.opacity(0.1))
                                     .gap_2()
                                     .items_center()
                                     .child(
                                         div()
                                             .w(px(6.))
                                             .h(px(6.))
-                                            .rounded(px(3.))
+                                            .rounded_full()
                                             .bg(cx.theme().success),
                                     )
                                     .child(
                                         div().text_xs().text_color(cx.theme().foreground).child(
-                                            format!("{} users", session.connected_users.len()),
+                                            format!("{} connected", session.connected_users.len()),
                                         ),
                                     ),
                             )
@@ -643,7 +698,7 @@ impl window_manager::PulsarWindow for MultiplayerWindow {
     }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
-        window_manager::default_window_options(500.0, 600.0)
+        window_manager::default_window_options(1280.0, 820.0)
     }
 
     fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {

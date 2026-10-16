@@ -10,10 +10,8 @@ pub enum ConnectionStatus {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SessionTab {
-    Info,
-    Chat,
+    Session,
     FileSync,
-    Presence,
 }
 
 #[derive(Clone, Debug)]

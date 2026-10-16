@@ -36,30 +36,93 @@ pub(crate) struct RemoteOperationAttempt {
     pub(crate) context: Option<RemoteOperationContext>,
 }
 
+/// Result of looking for a repository at a path.
+pub enum RepositoryProbe {
+    /// The path is not inside a git repository.
+    NotARepository,
+    Repository(RepositoryState),
+}
+
+/// Load the repository state, telling "no repository here" apart from a real
+/// failure (blocking — run on background executor).
+pub fn probe_repository(path: &Path) -> Result<RepositoryProbe, git2::Error> {
+    if path.as_os_str().is_empty() {
+        return Ok(RepositoryProbe::NotARepository);
+    }
+    match Repository::discover(path).or_else(|_| Repository::open(path)) {
+        Ok(repo) => Ok(RepositoryProbe::Repository(read_repository_state(&repo)?)),
+        Err(e) if e.code() == ErrorCode::NotFound => Ok(RepositoryProbe::NotARepository),
+        Err(e) => Err(e),
+    }
+}
+
+/// Initialise a repository at `path` (blocking — run on background executor).
+pub fn init_repository(path: &Path) -> Result<(), git2::Error> {
+    let mut options = git2::RepositoryInitOptions::new();
+    options.initial_head("main");
+    Repository::init_opts(path, &options).map(|_| ())
+}
+
 /// Load the complete repository state (blocking — run on background executor)
 pub fn load_repository_state(path: &Path) -> Result<RepositoryState, git2::Error> {
     let repo = open_repo(path)?;
+    read_repository_state(&repo)
+}
 
-    let current_branch = repo
-        .head()
-        .ok()
-        .and_then(|h| h.shorthand().ok().map(|s| s.to_string()))
-        .unwrap_or_else(|| "HEAD".to_string());
+fn read_repository_state(repo: &Repository) -> Result<RepositoryState, git2::Error> {
+    let (current_branch, detached, has_commits) = match repo.head() {
+        Ok(head) => {
+            if head.is_branch() {
+                (head.shorthand().unwrap_or("HEAD").to_string(), false, true)
+            } else {
+                let short = head
+                    .target()
+                    .map(|oid| format!("{:.7}", oid))
+                    .unwrap_or_else(|| "HEAD".to_string());
+                (short, true, true)
+            }
+        }
+        // Unborn branch: HEAD names a branch with no commits yet.
+        Err(_) => {
+            let name = repo
+                .find_reference("HEAD")
+                .ok()
+                .and_then(|r| r.symbolic_target().ok().flatten().map(str::to_string))
+                .map(|t| t.trim_start_matches("refs/heads/").to_string())
+                .unwrap_or_else(|| "main".to_string());
+            (name, false, false)
+        }
+    };
 
-    let branches = load_branches(&repo).unwrap_or_default();
-    let commits = load_commits(&repo, 100).unwrap_or_default();
-    let (staged_files, unstaged_files, untracked_files) = load_file_changes(&repo)?;
-    let (ahead, behind) = get_ahead_behind(&repo).unwrap_or((0, 0));
+    let branches = load_branches(repo).unwrap_or_default();
+    let (staged_files, unstaged_files, untracked_files) = load_file_changes(repo)?;
+    let (ahead, behind) = get_ahead_behind(repo).unwrap_or((0, 0));
+    let operation = match repo.state() {
+        git2::RepositoryState::Clean => None,
+        git2::RepositoryState::Merge => Some("Merge in progress"),
+        git2::RepositoryState::Revert | git2::RepositoryState::RevertSequence => {
+            Some("Revert in progress")
+        }
+        git2::RepositoryState::CherryPick | git2::RepositoryState::CherryPickSequence => {
+            Some("Cherry-pick in progress")
+        }
+        git2::RepositoryState::Rebase
+        | git2::RepositoryState::RebaseInteractive
+        | git2::RepositoryState::RebaseMerge => Some("Rebase in progress"),
+        _ => Some("Operation in progress"),
+    };
 
     Ok(RepositoryState {
         current_branch,
+        detached,
+        has_commits,
         branches,
-        commits,
         staged_files,
         unstaged_files,
         untracked_files,
         ahead,
         behind,
+        operation,
     })
 }
 
@@ -106,45 +169,6 @@ fn load_branches(repo: &Repository) -> Result<Vec<Branch>, git2::Error> {
     Ok(branches)
 }
 
-fn load_commits(repo: &Repository, limit: usize) -> Result<Vec<Commit>, git2::Error> {
-    let mut commits = Vec::new();
-    let mut revwalk = repo.revwalk()?;
-    revwalk.push_head()?;
-    revwalk.set_sorting(git2::Sort::TIME)?;
-
-    for oid in revwalk.take(limit) {
-        let oid = oid?;
-        let commit = repo.find_commit(oid)?;
-
-        let author = commit.author();
-        let message = commit.message().unwrap_or("").to_string();
-        let timestamp = chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
-            .unwrap_or_else(chrono::Utc::now);
-
-        // Count files changed (simplified)
-        let tree = commit.tree()?;
-        let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
-        let files_changed = if let Some(parent_tree) = parent_tree {
-            let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)?;
-            diff.deltas().len()
-        } else {
-            tree.len()
-        };
-
-        commits.push(Commit {
-            hash: oid.to_string(),
-            short_hash: format!("{:.7}", oid),
-            author: author.name().unwrap_or("Unknown").to_string(),
-            email: author.email().unwrap_or("").to_string(),
-            message,
-            timestamp,
-            files_changed,
-        });
-    }
-
-    Ok(commits)
-}
-
 fn load_file_changes(
     repo: &Repository,
 ) -> Result<(Vec<FileChange>, Vec<FileChange>, Vec<String>), git2::Error> {
@@ -155,15 +179,24 @@ fn load_file_changes(
     let mut opts = StatusOptions::new();
     opts.include_untracked(true);
     opts.recurse_untracked_dirs(true);
+    opts.renames_head_to_index(true);
 
     let statuses = repo.statuses(Some(&mut opts))?;
 
     for entry in statuses.iter() {
         let path = entry.path().unwrap_or("").to_string();
+        if path.is_empty() {
+            continue;
+        }
         let status = entry.status();
 
         // Staged changes
-        if status.is_index_new() || status.is_index_modified() || status.is_index_deleted() {
+        if status.is_index_new()
+            || status.is_index_modified()
+            || status.is_index_deleted()
+            || status.is_index_renamed()
+            || status.is_index_typechange()
+        {
             let change_status = if status.is_index_new() {
                 ChangeStatus::Added
             } else if status.is_index_deleted() {
@@ -174,28 +207,26 @@ fn load_file_changes(
                 ChangeStatus::Modified
             };
 
-            staged.push(FileChange {
-                path: path.clone(),
-                status: change_status,
-                additions: 0, // Would need diff to calculate
-                deletions: 0,
-            });
+            let mut change = FileChange::new(path.clone(), change_status);
+            if status.is_index_renamed() {
+                change.old_path = entry.head_to_index().and_then(|d| {
+                    d.old_file()
+                        .path()
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                });
+            }
+            staged.push(change);
         }
 
         // Unstaged changes
-        if status.is_wt_modified() || status.is_wt_deleted() {
+        if status.is_wt_modified() || status.is_wt_deleted() || status.is_wt_typechange() {
             let change_status = if status.is_wt_deleted() {
                 ChangeStatus::Deleted
             } else {
                 ChangeStatus::Modified
             };
 
-            unstaged.push(FileChange {
-                path: path.clone(),
-                status: change_status,
-                additions: 0,
-                deletions: 0,
-            });
+            unstaged.push(FileChange::new(path.clone(), change_status));
         }
 
         // Untracked files
@@ -235,16 +266,26 @@ pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> 
     let repo = open_repo(repo_path)?;
     let mut index = repo.index()?;
     let git_path = file_path.replace('\\', "/");
-    index.add_path(Path::new(&git_path))?;
+    let workdir_file = repo
+        .workdir()
+        .map(|dir| dir.join(&git_path))
+        .unwrap_or_else(|| repo_path.join(&git_path));
+    if workdir_file.exists() {
+        index.add_path(Path::new(&git_path))?;
+    } else {
+        // A deleted file is staged by removing it from the index.
+        index.remove_path(Path::new(&git_path))?;
+    }
     index.write()?;
     Ok(())
 }
 
-/// Stage all modified/untracked files (blocking — run on background executor)
+/// Stage all modified/untracked/deleted files (blocking — run on background executor)
 pub fn stage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
     let repo = open_repo(repo_path)?;
     let mut index = repo.index()?;
     index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+    index.update_all(["*"].iter(), None)?;
     index.write()?;
     Ok(())
 }
@@ -280,7 +321,7 @@ pub fn discard_file_changes(repo_path: &Path, file_path: &str) -> Result<(), git
         index.remove_path(std::path::Path::new(&git_path))?;
         index.write()?;
         let full_path = repo_path.join(file_path);
-        std::fs::remove_file(&full_path);
+        let _ = std::fs::remove_file(&full_path);
         return Ok(());
     }
 
@@ -396,22 +437,44 @@ pub fn unstage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
 /// Commit staged changes (blocking — run on background executor)
 pub fn commit_staged_changes(repo_path: &Path, message: &str) -> Result<(), git2::Error> {
     let _guard = RemoteOperationGuard::acquire(repo_path)?;
-    let repo = open_repo(repo_path)?;
+    let mut repo = open_repo(repo_path)?;
+    let mut merge_heads: Vec<Oid> = Vec::new();
+    if repo.state() == git2::RepositoryState::Merge {
+        let _ = repo.mergehead_foreach(|oid| {
+            merge_heads.push(*oid);
+            true
+        });
+    }
     let mut index = repo.index()?;
     let tree_id = index.write_tree()?;
     let tree = repo.find_tree(tree_id)?;
 
-    let signature = repo.signature()?;
-    let parent_commit = repo.head()?.peel_to_commit()?;
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("Pulsar", "pulsar@local"))?;
 
-    repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        message,
-        &tree,
-        &[&parent_commit],
-    )?;
+    // The first commit of a repository has no parent; a merge in progress adds
+    // MERGE_HEAD as a second one.
+    let mut parents: Vec<git2::Commit> = Vec::new();
+    match repo.head() {
+        Ok(head) => parents.push(head.peel_to_commit()?),
+        Err(e) if e.code() == ErrorCode::UnbornBranch || e.code() == ErrorCode::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    if let Some(parent) = parents.first() {
+        if parent.tree_id() == tree_id && repo.state() == git2::RepositoryState::Clean {
+            return Err(git2::Error::from_str("Nothing staged to commit"));
+        }
+    }
+    for oid in merge_heads {
+        parents.push(repo.find_commit(oid)?);
+    }
+    let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+
+    repo.commit(Some("HEAD"), &signature, &signature, message, &tree, &parent_refs)?;
+    if repo.state() == git2::RepositoryState::Merge {
+        repo.cleanup_state()?;
+    }
 
     Ok(())
 }
@@ -970,6 +1033,24 @@ pub fn switch_branch(repo_path: &Path, branch_name: &str) -> Result<(), git2::Er
 
     // Resolve branch ref — handles both local names and remote tracking names.
     // We drop object + reference BEFORE stash_pop to release the immutable borrow on repo.
+    // Checking out a remote branch ("origin/feature") lands on a local branch
+    // that tracks it instead of a detached HEAD.
+    let local_target: Option<String> = match repo.find_branch(branch_name, BranchType::Remote) {
+        Ok(remote_branch) => {
+            let short = branch_name
+                .split_once('/')
+                .map(|(_, rest)| rest.to_string())
+                .unwrap_or_else(|| branch_name.to_string());
+            if repo.find_branch(&short, BranchType::Local).is_err() {
+                let commit = remote_branch.get().peel_to_commit()?;
+                let mut local = repo.branch(&short, &commit, false)?;
+                let _ = local.set_upstream(Some(branch_name));
+            }
+            Some(short)
+        }
+        Err(_) => None,
+    };
+    let branch_name = local_target.as_deref().unwrap_or(branch_name);
     {
         let (object, reference) = repo.revparse_ext(branch_name)?;
         let mut checkout = git2::build::CheckoutBuilder::default();
@@ -990,388 +1071,6 @@ pub fn switch_branch(repo_path: &Path, branch_name: &str) -> Result<(), git2::Er
     }
 
     Ok(())
-}
-
-/// Load the content of a file for display (blocking — run on background executor).
-/// Returns `None` if the file is binary, or the line count exceeds `limit`.
-pub fn load_file_content(
-    repo_path: &Path,
-    file_path: &str,
-    line_limit: usize,
-) -> FileContentResult {
-    let full_path = repo_path.join(file_path);
-    let bytes = match std::fs::read(&full_path) {
-        Ok(b) => b,
-        Err(e) => return FileContentResult::Error(e.to_string()),
-    };
-    // Heuristic: if any null bytes appear in the first 8 KiB, treat as binary
-    let probe = &bytes[..bytes.len().min(8192)];
-    if probe.contains(&0u8) {
-        return FileContentResult::Binary;
-    }
-    match String::from_utf8(bytes) {
-        Err(_) => FileContentResult::Binary,
-        Ok(text) => {
-            let line_count = text.lines().count();
-            if line_count > line_limit {
-                FileContentResult::TooLong(line_count)
-            } else {
-                FileContentResult::Text(text)
-            }
-        }
-    }
-}
-
-/// Result of attempting to load a file for display
-#[derive(Debug, Clone)]
-pub enum FileContentResult {
-    Text(String),
-    Binary,
-    TooLong(usize),
-    Error(String),
-}
-
-/// Kind of diff line
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiffLineKind {
-    Added,
-    Removed,
-    Context,
-}
-
-/// A single line in a diff view
-#[derive(Debug, Clone)]
-pub struct DiffLine {
-    pub kind: DiffLineKind,
-    pub content: String,
-    /// Line number in the new file (None for removed lines)
-    pub new_line_num: Option<usize>,
-    /// Line number in the old file (None for added lines)
-    pub old_line_num: Option<usize>,
-}
-
-/// A segment in a diff view — either visible lines or a collapsible unchanged region
-#[derive(Debug, Clone)]
-pub enum DiffSegment {
-    /// Lines that should always be shown (changed + their context)
-    Hunk(Vec<DiffLine>),
-    /// Unchanged lines that are collapsed by default; user can expand them
-    Collapsed {
-        lines: Vec<DiffLine>,
-        region_idx: usize,
-    },
-}
-
-/// Full diff result — ready for direct rendering
-#[derive(Debug, Clone)]
-pub struct DiffResult {
-    pub segments: Vec<DiffSegment>,
-    /// Full old-text lines indexed by line number (1-based: lines[0] = line 1).
-    pub old_lines: Vec<String>,
-    /// Full new-text lines indexed by line number (1-based: lines[0] = line 1).
-    pub new_lines: Vec<String>,
-}
-
-/// A single flat row used by the virtualized diff viewer.
-#[derive(Debug, Clone)]
-pub enum DiffRow {
-    /// A source code line (added / removed / context).
-    Line {
-        kind: DiffLineKind,
-        content: String,
-        /// Pre-formatted line number string, e.g. `"  42 "`.
-        line_num_str: String,
-    },
-    /// A collapsed-region button row.
-    Collapse { region_idx: usize, count: usize },
-}
-
-/// Flatten a `DiffResult` + expanded-region set into a flat `Vec<DiffRow>` that the
-/// virtual diff list can render directly.
-pub fn flatten_diff(
-    diff: &DiffResult,
-    expanded: &std::collections::HashSet<usize>,
-) -> Vec<DiffRow> {
-    let mut rows = Vec::new();
-    for segment in &diff.segments {
-        match segment {
-            DiffSegment::Hunk(lines) => {
-                for line in lines {
-                    let line_num_str = line
-                        .new_line_num
-                        .or(line.old_line_num)
-                        .map(|n| format!("{:>5}", n))
-                        .unwrap_or_else(|| "     ".to_string());
-                    rows.push(DiffRow::Line {
-                        kind: line.kind,
-                        content: line.content.clone(),
-                        line_num_str,
-                    });
-                }
-            }
-            DiffSegment::Collapsed { lines, region_idx } => {
-                if expanded.contains(region_idx) {
-                    for line in lines {
-                        let line_num_str = line
-                            .new_line_num
-                            .or(line.old_line_num)
-                            .map(|n| format!("{:>5}", n))
-                            .unwrap_or_else(|| "     ".to_string());
-                        rows.push(DiffRow::Line {
-                            kind: DiffLineKind::Context,
-                            content: line.content.clone(),
-                            line_num_str,
-                        });
-                    }
-                } else {
-                    rows.push(DiffRow::Collapse {
-                        region_idx: *region_idx,
-                        count: lines.len(),
-                    });
-                }
-            }
-        }
-    }
-    rows
-}
-
-/// Get the list of files changed in a specific commit (blocking — run on background executor)
-pub fn get_commit_files(
-    repo_path: &Path,
-    commit_hash: &str,
-) -> Result<Vec<FileChange>, git2::Error> {
-    let repo = open_repo(repo_path)?;
-    let oid = git2::Oid::from_str(commit_hash)?;
-    let commit = repo.find_commit(oid)?;
-
-    let tree = commit.tree()?;
-    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
-
-    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
-
-    let mut files = Vec::new();
-    for delta in diff.deltas() {
-        let path = delta
-            .new_file()
-            .path()
-            .or_else(|| delta.old_file().path())
-            .and_then(|p| p.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        let status = match delta.status() {
-            git2::Delta::Added => ChangeStatus::Added,
-            git2::Delta::Deleted => ChangeStatus::Deleted,
-            git2::Delta::Renamed => ChangeStatus::Renamed,
-            git2::Delta::Copied => ChangeStatus::Copied,
-            _ => ChangeStatus::Modified,
-        };
-
-        files.push(FileChange {
-            path,
-            status,
-            additions: 0,
-            deletions: 0,
-        });
-    }
-    Ok(files)
-}
-
-/// Load file content at a specific commit (blocking — run on background executor)
-pub fn load_file_at_commit(
-    repo_path: &Path,
-    commit_hash: &str,
-    file_path: &str,
-    line_limit: usize,
-) -> FileContentResult {
-    let repo = match open_repo(repo_path) {
-        Ok(r) => r,
-        Err(e) => return FileContentResult::Error(e.to_string()),
-    };
-    let oid = match git2::Oid::from_str(commit_hash) {
-        Ok(o) => o,
-        Err(e) => return FileContentResult::Error(e.to_string()),
-    };
-    let commit = match repo.find_commit(oid) {
-        Ok(c) => c,
-        Err(e) => return FileContentResult::Error(e.to_string()),
-    };
-    let tree = match commit.tree() {
-        Ok(t) => t,
-        Err(e) => return FileContentResult::Error(e.to_string()),
-    };
-    let entry = match tree.get_path(Path::new(file_path)) {
-        Ok(e) => e,
-        Err(e) => return FileContentResult::Error(format!("File not found in commit: {}", e)),
-    };
-    let blob = match repo.find_blob(entry.id()) {
-        Ok(b) => b,
-        Err(e) => return FileContentResult::Error(e.to_string()),
-    };
-    let bytes = blob.content();
-    let probe = &bytes[..bytes.len().min(8192)];
-    if probe.contains(&0u8) {
-        return FileContentResult::Binary;
-    }
-    match String::from_utf8(bytes.to_vec()) {
-        Err(_) => FileContentResult::Binary,
-        Ok(text) => {
-            let line_count = text.lines().count();
-            if line_count > line_limit {
-                FileContentResult::TooLong(line_count)
-            } else {
-                FileContentResult::Text(text)
-            }
-        }
-    }
-}
-
-// ── Diff helpers ─────────────────────────────────────────────────────────────
-
-const CONTEXT_LINES: usize = 3;
-
-/// Run a Myers line-level diff and produce collapsible segments (Monaco/GitHub style).
-fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
-    let old_lines: Vec<String> = old_text.lines().map(String::from).collect();
-    let new_lines: Vec<String> = new_text.lines().map(String::from).collect();
-    use similar::{ChangeTag, TextDiff};
-
-    let diff = TextDiff::from_lines(old_text, new_text);
-    let mut all_lines: Vec<DiffLine> = Vec::new();
-
-    for change in diff.iter_all_changes() {
-        let content = change.value().trim_end_matches('\n').to_string();
-        let (kind, new_num, old_num) = match change.tag() {
-            ChangeTag::Insert => (DiffLineKind::Added, change.new_index().map(|i| i + 1), None),
-            ChangeTag::Delete => (
-                DiffLineKind::Removed,
-                None,
-                change.old_index().map(|i| i + 1),
-            ),
-            ChangeTag::Equal => (
-                DiffLineKind::Context,
-                change.new_index().map(|i| i + 1),
-                change.old_index().map(|i| i + 1),
-            ),
-        };
-        all_lines.push(DiffLine {
-            kind,
-            content,
-            new_line_num: new_num,
-            old_line_num: old_num,
-        });
-    }
-
-    let n = all_lines.len();
-    let has_changes = all_lines.iter().any(|l| l.kind != DiffLineKind::Context);
-
-    // No changes — return whole file as a single hunk (no collapse bars)
-    if !has_changes || n == 0 {
-        return DiffResult {
-            segments: vec![DiffSegment::Hunk(all_lines)],
-            old_lines,
-            new_lines,
-        };
-    }
-
-    // Mark lines within CONTEXT_LINES of any change as visible
-    let mut visible = vec![false; n];
-    for i in 0..n {
-        if all_lines[i].kind != DiffLineKind::Context {
-            let lo = i.saturating_sub(CONTEXT_LINES);
-            let hi = (i + CONTEXT_LINES + 1).min(n);
-            for j in lo..hi {
-                visible[j] = true;
-            }
-        }
-    }
-
-    // Build segments
-    let mut segments: Vec<DiffSegment> = Vec::new();
-    let mut region_idx = 0usize;
-    let mut i = 0;
-    while i < n {
-        if visible[i] {
-            let start = i;
-            while i < n && visible[i] {
-                i += 1;
-            }
-            segments.push(DiffSegment::Hunk(all_lines[start..i].to_vec()));
-        } else {
-            let start = i;
-            while i < n && !visible[i] {
-                i += 1;
-            }
-            segments.push(DiffSegment::Collapsed {
-                lines: all_lines[start..i].to_vec(),
-                region_idx,
-            });
-            region_idx += 1;
-        }
-    }
-
-    DiffResult {
-        segments,
-        old_lines,
-        new_lines,
-    }
-}
-
-/// Load old blob content for a file from HEAD (empty string for new files).
-fn load_blob_from_head(repo: &Repository, file_path: &str) -> String {
-    let normalized = file_path.replace('\\', "/");
-    repo.head()
-        .ok()
-        .and_then(|h| h.peel_to_tree().ok())
-        .and_then(|t| t.get_path(Path::new(&normalized)).ok())
-        .and_then(|e| repo.find_blob(e.id()).ok())
-        .and_then(|b| String::from_utf8(b.content().to_vec()).ok())
-        .unwrap_or_default()
-}
-
-/// Load old blob content from a commit's parent (empty string for added files).
-fn load_blob_from_parent(repo: &Repository, commit: &git2::Commit, file_path: &str) -> String {
-    let normalized = file_path.replace('\\', "/");
-    commit
-        .parent(0)
-        .ok()
-        .and_then(|p| p.tree().ok())
-        .and_then(|t| t.get_path(Path::new(&normalized)).ok())
-        .and_then(|e| repo.find_blob(e.id()).ok())
-        .and_then(|b| String::from_utf8(b.content().to_vec()).ok())
-        .unwrap_or_default()
-}
-
-/// Compute the working-tree diff for a single file vs HEAD (blocking).
-pub fn load_file_diff_working(repo_path: &Path, file_path: &str) -> Result<DiffResult, String> {
-    let repo = open_repo(repo_path).map_err(|e| e.message().to_string())?;
-    let new_text = std::fs::read_to_string(repo_path.join(file_path)).map_err(|e| e.to_string())?;
-    if new_text.contains('\0') {
-        return Err("Binary file".to_string());
-    }
-    let old_text = load_blob_from_head(&repo, file_path);
-    Ok(diff_lines(&old_text, &new_text))
-}
-
-/// Compute the diff for a single file in a commit vs its parent (blocking).
-pub fn load_file_diff_at_commit(
-    repo_path: &Path,
-    commit_hash: &str,
-    file_path: &str,
-) -> Result<DiffResult, String> {
-    let repo = open_repo(repo_path).map_err(|e| e.message().to_string())?;
-    let oid = git2::Oid::from_str(commit_hash).map_err(|e| e.message().to_string())?;
-    let commit = repo.find_commit(oid).map_err(|e| e.message().to_string())?;
-    let normalized = file_path.replace('\\', "/");
-    let new_text = commit
-        .tree()
-        .ok()
-        .and_then(|t| t.get_path(Path::new(&normalized)).ok())
-        .and_then(|e| repo.find_blob(e.id()).ok())
-        .and_then(|b| String::from_utf8(b.content().to_vec()).ok())
-        .ok_or_else(|| "File not found or binary in commit".to_string())?;
-    let old_text = load_blob_from_parent(&repo, &commit, file_path);
-    Ok(diff_lines(&old_text, &new_text))
 }
 
 #[cfg(test)]

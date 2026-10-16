@@ -56,7 +56,259 @@ pub struct FlamegraphView {
     lod_spans: Option<Arc<Vec<GpuSpan>>>,
 }
 
+/// A span as the inspector and status bar describe it. Times are relative to
+/// the start of the session.
+#[derive(Clone, Debug)]
+pub struct SpanInfo {
+    pub name: String,
+    pub thread: String,
+    pub start_ns: u64,
+    pub duration_ns: u64,
+    pub self_ns: u64,
+    pub depth: u32,
+}
+
+/// Emitted when a click picks a span.
+pub struct SpanSelected;
+
+impl EventEmitter<SpanSelected> for FlamegraphView {}
+
+/// How a frame of the call stack relates to the selected span.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameRole {
+    Ancestor,
+    Selected,
+    Child,
+}
+
+/// One entry of the call stack of the selected span.
+#[derive(Clone, Debug)]
+pub struct CallFrame {
+    /// Index into `TraceFrame::spans`.
+    pub index: usize,
+    pub info: SpanInfo,
+    pub role: FrameRole,
+}
+
+/// Where the view is looking, for the status bar and the toolbar.
+#[derive(Clone, Debug, Default)]
+pub struct ViewStatus {
+    pub session_ns: u64,
+    pub thread_count: usize,
+    /// Time under the pointer, when it is over the timeline.
+    pub cursor_ns: Option<u64>,
+    pub visible_start_ns: u64,
+    pub visible_end_ns: u64,
+    pub px_per_ms: f32,
+    /// Frame at the centre of the view, and how many frames the session has.
+    pub frame_index: Option<usize>,
+    pub frame_count: usize,
+    pub hovered: Option<SpanInfo>,
+    pub selected: Option<SpanInfo>,
+}
+
 impl FlamegraphView {
+    /// Current zoom in pixels per nanosecond, resolving the "fit" sentinel.
+    fn effective_zoom(&self, duration_ns: u64) -> f32 {
+        if self.view_state.zoom == 0.0 {
+            let width = (load_f32(&self.viewport_width) - THREAD_LABEL_WIDTH).max(1.0);
+            width / duration_ns.max(1) as f32
+        } else {
+            self.view_state.zoom
+        }
+    }
+
+    fn span_info(&self, frame: &TraceFrame, cache: &SpanCache, index: usize) -> Option<SpanInfo> {
+        let span = frame.spans.get(index)?;
+        Some(SpanInfo {
+            name: span.name.clone(),
+            thread: frame
+                .threads
+                .get(&span.thread_id)
+                .map(|t| t.name.clone())
+                .unwrap_or_else(|| format!("Thread {}", span.thread_id)),
+            start_ns: span.start_ns.saturating_sub(frame.min_time_ns),
+            duration_ns: span.duration_ns,
+            self_ns: cache.self_ns.get(index).copied().unwrap_or(span.duration_ns),
+            depth: span.depth,
+        })
+    }
+
+    /// A snapshot of the view for the status bar and inspector. Reads what the
+    /// last paint built; it never builds the cache itself.
+    pub fn status(&self) -> ViewStatus {
+        let Some((frame, cache)) = &self.cache else {
+            return ViewStatus::default();
+        };
+        let duration = frame.duration_ns();
+        let zoom = self.effective_zoom(duration).max(1e-12);
+        let width = (load_f32(&self.viewport_width) - THREAD_LABEL_WIDTH).max(1.0);
+        let vs = &self.view_state;
+        let to_ns = |px: f32| ((px / zoom).max(0.0) as u64).min(duration);
+
+        let cursor_ns = (vs.mouse_x >= THREAD_LABEL_WIDTH)
+            .then(|| to_ns(vs.mouse_x - THREAD_LABEL_WIDTH - vs.pan_x));
+        let visible_start_ns = to_ns(-vs.pan_x);
+        let visible_end_ns = to_ns(width - vs.pan_x);
+        let centre = frame.min_time_ns + (visible_start_ns + visible_end_ns) / 2;
+        let boundaries = &frame.frame_boundaries_ns;
+        let frame_index = boundaries
+            .partition_point(|b| *b <= centre)
+            .checked_sub(1);
+
+        ViewStatus {
+            session_ns: duration,
+            thread_count: cache.thread_rows.len(),
+            cursor_ns,
+            visible_start_ns,
+            visible_end_ns,
+            px_per_ms: zoom * 1_000_000.0,
+            frame_index,
+            frame_count: boundaries.len(),
+            hovered: vs.hovered_span.and_then(|i| self.span_info(frame, cache, i)),
+            selected: vs.selected_span.and_then(|i| self.span_info(frame, cache, i)),
+        }
+    }
+
+    /// Show the whole session.
+    pub fn fit_all(&mut self, cx: &mut Context<Self>) {
+        // Zoom 0 is "fit": the next paint derives it from the viewport.
+        self.view_state.zoom = 0.0;
+        self.view_state.pan_x = 0.0;
+        self.view_state.pan_y = 0.0;
+        cx.notify();
+    }
+
+    /// Zoom about the centre of the timeline.
+    pub fn zoom_by(&mut self, factor: f32, cx: &mut Context<Self>) {
+        let Some((frame, _)) = &self.cache else {
+            return;
+        };
+        let duration = frame.duration_ns();
+        if duration == 0 {
+            return;
+        }
+        let width = (load_f32(&self.viewport_width) - THREAD_LABEL_WIDTH).max(1.0);
+        let old_zoom = self.effective_zoom(duration);
+        let new_zoom = (old_zoom * factor).max(1e-12);
+        let centre = width * 0.5;
+        let world = (centre - self.view_state.pan_x) / old_zoom;
+        self.view_state.zoom = new_zoom;
+        self.view_state.pan_x = centre - world * new_zoom;
+        cx.notify();
+    }
+
+    /// Fit the previous (`-1`) or next (`1`) frame.
+    pub fn step_frame(&mut self, direction: i32, cx: &mut Context<Self>) {
+        let Some((frame, _)) = self.cache.clone() else {
+            return;
+        };
+        let boundaries = &frame.frame_boundaries_ns;
+        if boundaries.is_empty() {
+            return;
+        }
+        let status = self.status();
+        let current = status.frame_index;
+        let next = match (current, direction.signum()) {
+            (None, _) => 0,
+            (Some(i), d) => (i as i64 + d as i64).clamp(0, boundaries.len() as i64 - 1) as usize,
+        };
+        let start = boundaries[next];
+        let end = boundaries
+            .get(next + 1)
+            .copied()
+            .unwrap_or(frame.min_time_ns + frame.duration_ns());
+        self.fit_bottom_view_to_segment(&frame, start, end);
+        cx.notify();
+    }
+
+    /// The selected span with the spans that called it (outermost first) and
+    /// the spans it called directly. Empty while nothing is selected.
+    pub fn callstack(&self) -> Vec<CallFrame> {
+        const SCAN_LIMIT: usize = 8192;
+        const MAX_CHILDREN: usize = 200;
+        let (Some((frame, cache)), Some(selected)) = (&self.cache, self.view_state.selected_span)
+        else {
+            return Vec::new();
+        };
+        let Some(span) = frame.spans.get(selected) else {
+            return Vec::new();
+        };
+        let Some(&row_y) = cache.thread_offsets.get(&span.thread_id) else {
+            return Vec::new();
+        };
+        let row = cache.thread_rows.partition_point(|l| l.row.y < row_y);
+        let Some(layout) = cache.thread_rows.get(row) else {
+            return Vec::new();
+        };
+        let indices = &layout.span_indices;
+
+        // Ancestors: one enclosing span per shallower depth, found walking back
+        // from the selected span's start.
+        let at_or_before = indices.partition_point(|i| frame.spans[*i as usize].start_ns <= span.start_ns);
+        let mut ancestors: Vec<Option<usize>> = vec![None; span.depth as usize];
+        let mut missing = span.depth as usize;
+        for k in (at_or_before.saturating_sub(SCAN_LIMIT)..at_or_before).rev() {
+            if missing == 0 {
+                break;
+            }
+            let index = indices[k] as usize;
+            let candidate = &frame.spans[index];
+            let depth = candidate.depth as usize;
+            if index != selected
+                && depth < ancestors.len()
+                && ancestors[depth].is_none()
+                && candidate.start_ns <= span.start_ns
+                && candidate.end_ns() >= span.end_ns()
+            {
+                ancestors[depth] = Some(index);
+                missing -= 1;
+            }
+        }
+
+        let make = |index: usize, role: FrameRole| {
+            self.span_info(frame, cache, index)
+                .map(|info| CallFrame { index, info, role })
+        };
+        let mut stack: Vec<CallFrame> = ancestors
+            .into_iter()
+            .flatten()
+            .filter_map(|index| make(index, FrameRole::Ancestor))
+            .collect();
+        stack.extend(make(selected, FrameRole::Selected));
+
+        // Children: spans one level deeper that start inside the selected one.
+        let from = indices.partition_point(|i| frame.spans[*i as usize].start_ns < span.start_ns);
+        let mut children = 0;
+        for k in from..indices.len().min(from + SCAN_LIMIT) {
+            let index = indices[k] as usize;
+            let candidate = &frame.spans[index];
+            if candidate.start_ns >= span.end_ns() {
+                break;
+            }
+            if index != selected && candidate.depth == span.depth + 1 && candidate.end_ns() <= span.end_ns() {
+                stack.extend(make(index, FrameRole::Child));
+                children += 1;
+                if children == MAX_CHILDREN {
+                    break;
+                }
+            }
+        }
+        stack
+    }
+
+    /// Select a span by index (clicking a frame of the call stack).
+    pub fn select_span(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.view_state.selected_span = Some(index);
+        cx.emit(SpanSelected);
+        cx.notify();
+    }
+
+    pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
+        self.view_state.selected_span = None;
+        cx.notify();
+    }
+
     /// Compute the LOD level index from view state and viewport width.
     fn lod_level_for(&self, viewport_w: f32, frame: &TraceFrame) -> usize {
         let zoom = if self.view_state.zoom == 0.0 && frame.duration_ns() > 0 {
@@ -750,16 +1002,14 @@ impl Render for FlamegraphView {
                             let local_x = window_x - load_f32(&view.viewport_origin_x);
                             let local_y = window_y - load_f32(&view.viewport_origin_y);
 
-                            if event.click_count >= 2 {
-                                // Double-click a box → show cross-thread wait/block
-                                // dependency arrows to and from it. Single clicks
-                                // (including the first half of a double-click)
-                                // clear the selection.
-                                let (frame, cache) = view.get_or_build_cache();
-                                view.view_state.selected_span =
-                                    view.pick_span_at(&frame, &cache, local_x, local_y);
-                            } else {
-                                view.view_state.selected_span = None;
+                            // Clicking a box selects it: its call stack is shown and
+                            // the cross-thread wait/block dependency arrows to and
+                            // from it are drawn. Clicking empty space clears it.
+                            let (frame, cache) = view.get_or_build_cache();
+                            view.view_state.selected_span =
+                                view.pick_span_at(&frame, &cache, local_x, local_y);
+                            if view.view_state.selected_span.is_some() {
+                                cx.emit(SpanSelected);
                             }
                             cx.notify();
                         }),

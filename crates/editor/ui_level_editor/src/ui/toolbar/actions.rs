@@ -6,6 +6,10 @@ use gpui::*;
 #[action(namespace = level_editor_toolbar, no_json)]
 pub struct SetToolMode(pub ToolModeId);
 
+#[derive(Action, Clone, PartialEq)]
+#[action(namespace = level_editor_toolbar, no_json)]
+pub struct SetViewportDebugMode(pub u32);
+
 // Actions for toolbar dropdowns
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = level_editor_toolbar, no_json)]

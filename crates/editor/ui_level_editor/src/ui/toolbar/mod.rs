@@ -22,6 +22,7 @@ mod snap_controls;
 mod time_scale_dropdown;
 mod tool_mode_dropdown;
 mod view;
+mod view_mode_dropdown;
 
 pub use actions::*;
 use feature_toggles::FeatureToggles;
@@ -32,6 +33,7 @@ use snap_controls::SnapPanel;
 use snap_controls::TransformSnapControls;
 use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
+use view_mode_dropdown::{ViewModeDropdown, ViewModePickerState};
 
 use crate::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
 use crate::LevelEditorState;
@@ -66,6 +68,7 @@ impl ToolbarPanel {
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         snap_panels: &[Entity<SnapPanel>; 3],
+        view_mode_picker: &Entity<ViewModePickerState>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -92,6 +95,7 @@ impl ToolbarPanel {
             })
             .child(LevelEditorMenus::render(state))
             .child(TransformSnapControls::render(snap_panels, state))
+            .child(ViewModeDropdown::render(view_mode_picker))
             .child(self.render_separator(cx))
             .when(has_mode_controls, |el| {
                 el.child(render_mode_widgets(

@@ -47,3 +47,4 @@ blueprint_graph_debug.json
 /target-perf-investigation-o3
 docs/blog/helio-planet-scale-voxel-terrain.md
 /.claude/worktrees
+/.pulsar/flamegraph_layout.json

@@ -5,7 +5,10 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
+mod analysis;
+mod export;
 mod flamegraph_view;
+mod format;
 mod panels;
 mod trace_data;
 pub mod window;
@@ -23,7 +26,7 @@ mod state;
 mod profiler;
 
 pub use flamegraph_view::FlamegraphView;
-pub use panels::{FlamegraphPanel, ScriptsPanel, StatisticsPanel};
+pub use panels::{FlamegraphPanel, CallstackPanel, ScriptsPanel, StatisticsPanel};
 pub use profiler::{convert_profile_events_to_trace, InstrumentationCollector};
 pub use trace_data::{ThreadInfo, TraceData, TraceFrame, TraceSpan};
 pub use window::FlamegraphWindow;

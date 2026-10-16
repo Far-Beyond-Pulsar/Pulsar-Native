@@ -96,6 +96,8 @@ pub struct SpanCache {
     /// Span indices sorted by `end_ns`, for O(log n) window lookups when
     /// finding cross-thread wait/block dependencies on double-click.
     pub spans_sorted_by_end: Arc<Vec<u32>>,
+    /// Self time of every span (duration minus its direct children).
+    pub self_ns: Arc<Vec<u64>>,
 }
 
 impl SpanCache {
@@ -117,6 +119,7 @@ impl SpanCache {
             thread_rows: Arc::new(thread_rows),
             lod_tree: Arc::new(lod_tree),
             spans_sorted_by_end: Arc::new(sorted_by_end),
+            self_ns: Arc::new(crate::analysis::compute_self_times(frame)),
         }
     }
 }

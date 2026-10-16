@@ -83,10 +83,11 @@ impl MultiplayerWindow {
 
                 // Map tab name to SessionTab
                 let target_tab = match tab_name.as_str() {
-                    "Info" | "info" => Some(SessionTab::Info),
-                    "Chat" | "chat" => Some(SessionTab::Chat),
+                    "Info" | "info" | "Chat" | "chat" | "Session" | "session" => {
+                        Some(SessionTab::Session)
+                    }
                     "FileSync" | "file_sync" => Some(SessionTab::FileSync),
-                    "Presence" | "presence" => Some(SessionTab::Presence),
+                    "Presence" | "presence" => Some(SessionTab::Session),
                     _ => None,
                 };
 

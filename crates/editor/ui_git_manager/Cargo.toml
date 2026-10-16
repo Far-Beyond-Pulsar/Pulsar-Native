@@ -26,6 +26,11 @@ smallvec = { workspace = true }
 smol = { workspace = true }
 tracing = { workspace = true }
 
+# Read-only Mockaco editor surfaces, the same editor the code editor plugin uses.
+mockaco-gpui = { git = "https://github.com/Far-Beyond-Pulsar/Mockaco", rev = "e36ce16e76716b7494a7388e3ba51505111246b8", features = ["native-wgpui"] }
+mockaco-language = { git = "https://github.com/Far-Beyond-Pulsar/Mockaco", rev = "e36ce16e76716b7494a7388e3ba51505111246b8" }
+mockaco-core = { git = "https://github.com/Far-Beyond-Pulsar/Mockaco", rev = "e36ce16e76716b7494a7388e3ba51505111246b8" }
+
 [dev-dependencies]
 tempfile.workspace = true
 

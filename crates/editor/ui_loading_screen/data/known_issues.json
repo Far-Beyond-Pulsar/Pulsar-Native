@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "issues": [
+    {
+      "id": "vulkan-intermittent-render-target-writes",
+      "title": "Vulkan may intermittently lose render-target writes",
+      "description": "On Vulkan, render-target writes can intermittently be lost in scattered 8x8 or 4x8 pixel blocks, leaving earlier values in colour and depth targets. The issue has been reported across GPU vendors and all driver versions tested so far; the confirmed reproduction is on an NVIDIA GeForce RTX 3060 with driver 616.64. It occurs when frame recording overlaps GPU execution and has not reproduced on D3D12. Khronos synchronization validation reports no hazard. See https://forums.developer.nvidia.com/t/382912 for a related report.",
+      "manufacturer": "*",
+      "driver": "*",
+      "gpu_brand": "*",
+      "os": "*",
+      "backend": "Vulkan",
+      "engine_version": {}
+    }
+  ]
+}

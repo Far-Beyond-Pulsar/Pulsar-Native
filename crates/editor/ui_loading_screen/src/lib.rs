@@ -1,5 +1,6 @@
 //! Loading screen — runs background tasks, shows progress, then opens the editor.
 
+mod compatibility;
 mod preload;
 mod recent_projects;
 mod screen;
@@ -9,6 +10,7 @@ use gpui::AppContext;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use compatibility::{open_before_loading, HardwareProfile};
 pub use preload::{take_preloaded_files, PreloadedFileEntry};
 pub use screen::LoadingScreen;
 

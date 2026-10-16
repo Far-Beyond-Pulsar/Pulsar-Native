@@ -110,6 +110,8 @@ impl PropertiesPanelWrapper {
         self.selection_pump_started = true;
         crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
             let selected = this.selected_object_id();
+            // `None` is a meaningful selection state too: deselecting wakes
+            // the panel once so `sync_sections` can remove stale content.
             if selected != this.last_selected_object_id {
                 this.last_selected_object_id = selected;
                 cx.notify();
@@ -203,6 +205,7 @@ impl PropertiesPanelWrapper {
                 self.current_object_id = Some(object_id.clone());
                 self.follow_object(object_id, cx);
             } else {
+                // Clearing selection removes the old object's inspectors.
                 self.end_object_feed();
                 self.object_header_section = None;
                 self.transform_section = None;

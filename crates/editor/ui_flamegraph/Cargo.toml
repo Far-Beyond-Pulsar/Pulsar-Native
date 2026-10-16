@@ -24,6 +24,7 @@ parking_lot = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }
 engine_state = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 rand = { workspace = true }
 rfd = { workspace = true }
 rust-i18n.workspace = true

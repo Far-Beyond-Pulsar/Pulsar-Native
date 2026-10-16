@@ -26,6 +26,8 @@ pub(super) struct FramePacer {
     target_overridden: bool,
     /// When the next frame is due.
     next_deadline: Instant,
+    /// When the previous frame began; bounds how early a UI-aligned start may be.
+    last_start: Instant,
 }
 
 impl FramePacer {
@@ -67,6 +69,7 @@ impl FramePacer {
             target_hz,
             target_overridden: false,
             next_deadline: Instant::now(),
+            last_start: Instant::now(),
         }
     }
 
@@ -103,6 +106,45 @@ impl FramePacer {
         self.next_deadline = Self::next(self.next_deadline, budget, Instant::now());
     }
 
+    /// Like [`wait_for_next_frame`](Self::wait_for_next_frame), but begin the
+    /// frame when the UI thread begins its own.
+    ///
+    /// Helio publishes into a surface the UI composites at the *end* of its
+    /// frame. Started on a free-running timer, Helio's frame landed after the
+    /// UI had finished layout/prepaint/paint, so its CPU work and queue submit
+    /// contended with the UI's present instead of hiding under the UI's
+    /// CPU-bound phase. Starting on the UI's frame begin moves it there.
+    ///
+    /// `seen` is the UI frame count at the previous start. A UI frame that
+    /// began since then satisfies the wait at once. Never earlier than half a
+    /// period after the last start (so an uncapped UI cannot drive Helio past
+    /// twice the refresh), never later than the normal deadline (so an idle UI
+    /// leaves the timer pacing exactly as before). A start ahead of the
+    /// deadline re-anchors the cadence to the UI's phase.
+    pub(super) fn wait_for_next_frame_aligned(&mut self, seen: &mut u64) {
+        let Some(budget) = self.budget() else {
+            return;
+        };
+        let earliest = self.last_start + budget / 2;
+        let now = Instant::now();
+        if earliest > now {
+            std::thread::sleep(earliest - now);
+        }
+        let deadline = self.next_deadline;
+        let now = Instant::now();
+        if deadline > now && gpui::ui_frame_signal::ui_frame_seq() == *seen {
+            gpui::ui_frame_signal::wait_for_ui_frame_after(*seen, deadline - now);
+        }
+        *seen = gpui::ui_frame_signal::ui_frame_seq();
+        let start = Instant::now();
+        self.next_deadline = if start < deadline {
+            start + budget
+        } else {
+            Self::next(deadline, budget, start)
+        };
+        self.last_start = start;
+    }
+
     /// The deadline after `deadline` at `now`: a budget on, or a budget from
     /// now when the frame ran more than a budget late (resync instead of a
     /// burst of back-to-back frames).
@@ -120,6 +162,9 @@ impl FramePacer {
 mod pacer_tests {
     use super::{FramePacer, FALLBACK_REFRESH_HZ};
     use std::time::{Duration, Instant};
+
+    /// The UI frame signal is process-global; tests that drive it take turns.
+    static SIGNAL_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn aims_at_the_display_refresh_rate() {
@@ -171,6 +216,37 @@ mod pacer_tests {
         pacer.target_overridden = true;
         pacer.set_display_refresh(144.0);
         assert_eq!(pacer.target_hz, 30.0);
+    }
+
+    #[test]
+    fn a_ui_frame_begin_starts_the_frame_ahead_of_the_deadline() {
+        let _serial = SIGNAL_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut pacer = FramePacer::with_target(10.0);
+        pacer.last_start = Instant::now() - Duration::from_secs(1);
+        pacer.next_deadline = Instant::now() + Duration::from_millis(400);
+        let mut seen = gpui::ui_frame_signal::ui_frame_seq();
+        let ui = std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(30));
+            gpui::ui_frame_signal::mark_ui_frame_begin();
+        });
+        let t = Instant::now();
+        pacer.wait_for_next_frame_aligned(&mut seen);
+        ui.join().unwrap();
+        assert!(t.elapsed() < Duration::from_millis(250), "woke on the UI frame, not the deadline");
+        // The cadence follows the UI's phase from here.
+        assert!(pacer.next_deadline < Instant::now() + Duration::from_millis(150));
+    }
+
+    #[test]
+    fn an_idle_ui_leaves_the_timer_pacing_alone() {
+        let _serial = SIGNAL_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut pacer = FramePacer::with_target(50.0);
+        pacer.last_start = Instant::now() - Duration::from_secs(1);
+        pacer.next_deadline = Instant::now() + Duration::from_millis(40);
+        let mut seen = gpui::ui_frame_signal::ui_frame_seq();
+        let t = Instant::now();
+        pacer.wait_for_next_frame_aligned(&mut seen);
+        assert!(t.elapsed() >= Duration::from_millis(35));
     }
 
     #[test]
