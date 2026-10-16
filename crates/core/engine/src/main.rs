@@ -345,9 +345,8 @@ fn main() {
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
             display: None,
         });
-        let adapters = futures::executor::block_on(
-            instance.enumerate_adapters(wgpu::Backends::all()),
-        );
+        let adapters =
+            futures::executor::block_on(instance.enumerate_adapters(wgpu::Backends::all()));
         let mut seen = std::collections::HashSet::new();
         adapters
             .into_iter()
