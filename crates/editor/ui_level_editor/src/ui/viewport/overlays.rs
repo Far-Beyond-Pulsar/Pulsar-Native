@@ -1,8 +1,43 @@
-//! Viewport panel overlays: performance HUDs and debug-view legends.
+//! Floating viewport controls, performance HUDs and debug-view legends.
 
 use super::*;
 
 impl ViewportPanel {
+    /// Shared state changes must invalidate the floating controls even when
+    /// Helio only composites a new frame without rebuilding the UI.
+    pub(crate) fn controls_signature(&self, state: &LevelEditorState, cx: &App) -> impl PartialEq {
+        let editor = &state.editor;
+        let overlays = &state.overlays.state;
+        let positions = &state.overlays.positions;
+        (
+            (
+                editor.current_tool,
+                editor.camera_mode,
+                editor.viewport_debug_mode,
+                editor.location_snap.to_bits(),
+                editor.rotation_snap.to_bits(),
+                editor.scale_snap.to_bits(),
+                self.input_state.get_move_speed().to_bits(),
+            ),
+            (
+                overlays.show_viewport_options,
+                overlays.viewport_options_collapsed,
+                overlays.show_camera_mode_selector,
+                overlays.camera_mode_selector_collapsed,
+                overlays.show_performance_overlay,
+                overlays.show_gpu_pipeline_overlay,
+                overlays.show_nerds_overlay,
+            ),
+            (
+                positions.viewport,
+                positions.camera,
+                positions.is_dragging_viewport,
+                positions.is_dragging_camera,
+            ),
+            self.toolbar.read(cx).view_mode_picker.entity_id(),
+        )
+    }
+
     /// Render all viewport overlays.
     pub(super) fn render_overlays<V>(
         &self,
@@ -23,6 +58,51 @@ impl ViewportPanel {
             .left_0()
             .right(scrollbar_width)
             .bottom(scrollbar_width);
+
+        // The command toolbar owns the retained controls and their subscriptions.
+        let toolbar = self.toolbar.read(cx);
+        let picker = toolbar.view_mode_picker.clone();
+        let view_mode_label = toolbar.view_mode_label(cx);
+        let snaps = toolbar.snap_panels.clone();
+        if state.overlays.state.show_viewport_options {
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .top(px(state.overlays.positions.viewport.1))
+                    .left(px(state.overlays.positions.viewport.0))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+                    .child(components::viewport_options::render_viewport_options(
+                        state,
+                        state_arc.clone(),
+                        &snaps,
+                        state.overlays.positions.is_dragging_viewport,
+                        cx,
+                    )),
+            );
+        }
+        if state.overlays.state.show_camera_mode_selector {
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .top(px(state.overlays.positions.camera.1))
+                    .right(px(state.overlays.positions.camera.0))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+                    .child(components::camera_selector::render_camera_selector(
+                        state,
+                        state_arc.clone(),
+                        state.editor.camera_mode,
+                        self.input_state.clone(),
+                        &picker,
+                        view_mode_label,
+                        state.overlays.positions.is_dragging_camera,
+                        cx,
+                    )),
+            );
+        }
 
         // What the overlay samples, on its own timer: the renderer's statistics
         // and the input latency.

@@ -13,6 +13,7 @@ pub struct ViewportPanelWrapper {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
     focus_handle: FocusHandle,
+    pump_started: bool,
 }
 
 impl ViewportPanelWrapper {
@@ -27,6 +28,7 @@ impl ViewportPanelWrapper {
             state,
             gpu_engine,
             focus_handle: cx.focus_handle(),
+            pump_started: false,
         }
     }
 }
@@ -36,9 +38,25 @@ impl EventEmitter<PanelEvent> for ViewportPanelWrapper {}
 ui_common::panel_boilerplate!(ViewportPanelWrapper);
 
 impl Render for ViewportPanelWrapper {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         gpui::render_stats::count("viewport panel: render");
         let _t = gpui::render_stats::scope("viewport panel: render");
+
+        if !self.pump_started {
+            self.pump_started = true;
+            let mut last = self
+                .viewport_panel
+                .controls_signature(&self.state.read(), cx);
+            crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, move |this, _, cx| {
+                let next = this
+                    .viewport_panel
+                    .controls_signature(&this.state.read(), cx);
+                if next != last {
+                    last = next;
+                    cx.notify();
+                }
+            });
+        }
 
         let state = self.state.read();
         self.viewport_panel

@@ -80,15 +80,50 @@ impl ViewModeDropdown {
         })
     }
 
-    pub fn render(state: &Entity<ViewModePickerState>) -> impl IntoElement {
-        Dropdown::new(state)
-            .placeholder("Lit")
-            .menu_width(px(280.))
-            .appearance(false)
-            .focus_outline(false)
-            .centered_trigger(true)
-            .small()
-            .w(px(150.))
-            .h(px(28.))
+    pub fn render(state: &Entity<ViewModePickerState>, label: SharedString) -> impl IntoElement {
+        ViewModeTrigger {
+            state: state.clone(),
+            label,
+        }
+    }
+}
+
+#[derive(IntoElement)]
+struct ViewModeTrigger {
+    state: Entity<ViewModePickerState>,
+    label: SharedString,
+}
+
+impl RenderOnce for ViewModeTrigger {
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        let style = window.text_style();
+        let font_size = window.rem_size() * 0.875; // Dropdown's small text size.
+        let text = window.text_system().shape_line(
+            self.label.clone(),
+            font_size,
+            &[TextRun {
+                len: self.label.len(),
+                font: style.font(),
+                color: style.color,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+                letter_spacing: None,
+            }],
+            None,
+        );
+        // Two 8px insets, two 1px borders, a 1rem caret plus its gap.
+        let width = text.width.ceil() + px(18.) + window.rem_size();
+        div().w(width).h(px(28.)).flex_shrink_0().child(
+            Dropdown::new(&self.state)
+                .placeholder("Lit")
+                .menu_width(px(280.))
+                .appearance(false)
+                .focus_outline(false)
+                .centered_trigger(true)
+                .small()
+                .w(width)
+                .h(px(28.)),
+        )
     }
 }

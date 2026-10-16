@@ -114,12 +114,12 @@ pub struct ToolbarView {
     /// taking `gpu_engine`; see `HelioEditorMailbox`'s doc.
     helio_mailbox: Option<HelioEditorMailbox>,
     debug_views: Vec<ViewportDebugView>,
-    view_mode_picker: Entity<ViewModePickerState>,
+    pub(crate) view_mode_picker: Entity<ViewModePickerState>,
     input_state: Arc<crate::ui::viewport::input_state::InputState>,
     last_signature: ToolbarSignature,
     pump_started: bool,
     custom_snaps: [Entity<InputState>; 3],
-    snap_panels: [Entity<SnapPanel>; 3],
+    pub(crate) snap_panels: [Entity<SnapPanel>; 3],
     _custom_snap_subscriptions: Vec<Subscription>,
     _view_mode_picker_subscription: Subscription,
 }
@@ -245,6 +245,18 @@ impl ToolbarView {
         }
     }
 
+    pub(crate) fn view_mode_label(&self, cx: &App) -> SharedString {
+        match self.view_mode_picker.read(cx).selected_value() {
+            Some(ViewModeSelection::Debug(mode)) => self
+                .debug_views
+                .iter()
+                .find(|view| view.debug_mode == *mode)
+                .map(|view| view.name.into())
+                .unwrap_or_else(|| "Lit".into()),
+            _ => "Lit".into(),
+        }
+    }
+
     fn subscribe_view_mode_picker(
         state: &Arc<parking_lot::RwLock<LevelEditorState>>,
         picker: &Entity<ViewModePickerState>,
@@ -279,7 +291,7 @@ impl ToolbarView {
     /// of what `ToolbarPanel::render` produces: on a cache hit GPUI lays the
     /// view out from this refinement alone, without consulting its content.
     pub fn cache_style() -> StyleRefinement {
-        StyleRefinement::default().w_full().h(px(74.0))
+        StyleRefinement::default().w_full().h(px(36.0))
     }
 
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -375,14 +387,7 @@ impl Render for ToolbarView {
             });
         }
         let _panel_scope = gpui::render_stats::scope("toolbar: panel element build");
-        self.toolbar.render(
-            &state,
-            self.state.clone(),
-            self.gpu_engine.clone(),
-            &self.snap_panels,
-            &self.view_mode_picker,
-            self.input_state.clone(),
-            cx,
-        )
+        self.toolbar
+            .render(&state, self.state.clone(), self.gpu_engine.clone(), cx)
     }
 }

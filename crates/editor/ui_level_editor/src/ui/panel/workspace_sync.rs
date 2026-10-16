@@ -20,6 +20,7 @@ impl LevelEditorPanel {
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
         let viewport_input_state = self.viewport_input_state.clone();
+        let toolbar = self.toolbar.clone();
 
         let viewport_panel =
             workspace.update(cx, |workspace, cx| {
@@ -30,6 +31,7 @@ impl LevelEditorPanel {
                     viewport.clone(),
                     render_enabled.clone(),
                     viewport_input_state.clone(),
+                    toolbar.clone(),
                     window,
                     cx,
                 );

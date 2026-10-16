@@ -6,8 +6,14 @@
 
 use std::sync::Arc;
 
-use gpui::*;
+use gpui::{prelude::FluentBuilder as _, *};
 use ui::{h_flex, ActiveTheme};
+
+#[derive(Clone, Copy)]
+pub enum HandleSide {
+    Left,
+    Right,
+}
 
 /// Create a drag handle with mouse event handlers.
 ///
@@ -20,6 +26,7 @@ pub fn create_drag_handle<V, S>(
     state_arc: Arc<parking_lot::RwLock<S>>,
     drag_start_field: impl Fn(&mut S, Option<(f32, f32)>) + Clone + 'static,
     is_dragging_field: impl Fn(&mut S, bool) + Clone + 'static,
+    side: HandleSide,
     cx: &Context<V>,
 ) -> impl IntoElement
 where
@@ -32,7 +39,12 @@ where
         .h_full()
         .flex_shrink_0()
         .bg(cx.theme().background.opacity(0.9))
-        .rounded_l(cx.theme().radius)
+        .when(matches!(side, HandleSide::Left), |el| {
+            el.rounded_l(cx.theme().radius)
+        })
+        .when(matches!(side, HandleSide::Right), |el| {
+            el.rounded_r(cx.theme().radius)
+        })
         .border_1()
         .border_color(cx.theme().border)
         .cursor(CursorStyle::PointingHand)
@@ -76,22 +88,33 @@ where
 pub fn toolbar_with_drag_handle<V>(
     drag_handle_content: impl IntoElement,
     toolbar_content: impl IntoElement,
+    side: HandleSide,
     cx: &Context<V>,
 ) -> impl IntoElement
 where
     V: 'static + Render,
 {
-    h_flex().gap_0().child(drag_handle_content).child(
-        h_flex()
-            .h_full()
-            .gap_2()
-            .p_1()
-            .bg(cx.theme().background.opacity(0.9))
-            .rounded_r(cx.theme().radius)
-            .border_y_1()
-            .border_r_1()
-            .border_color(cx.theme().border)
-            .items_center()
-            .child(toolbar_content),
-    )
+    let content = h_flex()
+        .h_full()
+        .gap_2()
+        .p_1()
+        .bg(cx.theme().background.opacity(0.9))
+        .when(matches!(side, HandleSide::Left), |el| {
+            el.rounded_r(cx.theme().radius).border_r_1()
+        })
+        .when(matches!(side, HandleSide::Right), |el| {
+            el.rounded_l(cx.theme().radius).border_l_1()
+        })
+        .border_y_1()
+        .border_color(cx.theme().border)
+        .items_center()
+        .child(toolbar_content);
+
+    // Match the actual child order to the anchored edge; do not depend on
+    // reversed flex layout to move the interactive handle.
+    let toolbar = h_flex().gap_0();
+    match side {
+        HandleSide::Left => toolbar.child(drag_handle_content).child(content),
+        HandleSide::Right => toolbar.child(content).child(drag_handle_content),
+    }
 }

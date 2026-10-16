@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, ContextModal as _, Selectable as _, Sizable as _,
+    h_flex, v_flex, ActiveTheme, ContextModal as _, Sizable as _,
 };
 
 mod actions;
@@ -15,29 +15,23 @@ mod level_editor_menus;
 mod mode_indicator;
 mod multiplayer_panel;
 mod playback_controls;
-mod snap_controls;
+pub(crate) mod snap_controls;
 mod time_scale_dropdown;
 mod tool_mode_dropdown;
 mod view;
-mod view_mode_dropdown;
+pub(crate) mod view_mode_dropdown;
 
 pub use actions::*;
-use feature_toggles::FeatureToggles;
 pub use global_toolbar::{GlobalToolbarView, GLOBAL_TOOLBAR_HEIGHT};
 use level_editor_menus::LevelEditorMenus;
 use mode_indicator::ModeIndicator;
-use snap_controls::SnapPanel;
-use snap_controls::TransformSnapControls;
 use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
-use view_mode_dropdown::{ViewModeDropdown, ViewModePickerState};
 
-use crate::state::TransformTool;
 use crate::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
-use crate::ui::viewport::components::camera_selector::render_camera_controls;
 use crate::LevelEditorState;
 
-/// The editor command row and its docked viewport controls row.
+/// The editor command row. Viewport controls float inside the viewport.
 pub struct ToolbarPanel;
 
 impl ToolbarPanel {
@@ -50,9 +44,6 @@ impl ToolbarPanel {
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-        snap_panels: &[Entity<SnapPanel>; 3],
-        view_mode_picker: &Entity<ViewModePickerState>,
-        input_state: Arc<crate::ui::viewport::input_state::InputState>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -60,217 +51,49 @@ impl ToolbarPanel {
     {
         let _scope = gpui::render_stats::scope("toolbar: panel render");
         let background = cx.theme().background;
-        let border = cx.theme().border;
-        let muted_foreground = cx.theme().muted_foreground;
 
         let _mode_scope = gpui::render_stats::scope("toolbar: mode controls");
         let mode_controls = active_mode_widgets(state, &gpu_engine);
         drop(_mode_scope);
         let has_mode_controls = !mode_controls.is_empty();
 
-        v_flex()
-            .w_full()
-            .bg(background)
-            .child(
-                h_flex()
-                    .w_full()
-                    .h(px(36.0))
-                    .px_2()
-                    .gap_2()
-                    .items_center()
-                    .child({
-                        let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
-                        ToolModeDropdown::render(state, state_arc.clone(), cx)
-                    })
-                    .child(LevelEditorMenus::render(state))
-                    .when(has_mode_controls, |el| {
-                        el.child(self.render_separator(cx))
-                            .child(render_mode_widgets(
-                                mode_controls,
-                                state_arc.clone(),
-                                gpu_engine.clone(),
-                                cx,
-                            ))
-                    })
-                    .child(div().flex_1())
-                    .child({
-                        let _scope = gpui::render_stats::scope("toolbar: mode indicator");
-                        ModeIndicator::render(state, cx)
-                    })
-                    .child(self.render_separator(cx))
-                    .child({
-                        let _scope = gpui::render_stats::scope("toolbar: save button");
-                        self.render_save_button(state_arc.clone(), gpu_engine.clone())
-                    })
-                    .when(Self::is_source_build(), |el| {
-                        el.child(
-                            self.render_save_as_default_button(
-                                state_arc.clone(),
-                                gpu_engine.clone(),
-                            ),
-                        )
-                    }),
-            )
-            .child(
-                h_flex()
-                    .w_full()
-                    .h(px(38.0))
-                    .px_2()
-                    .gap_2()
-                    .items_center()
-                    .border_t_1()
-                    .border_color(border.opacity(0.45))
-                    .bg(background.opacity(0.55))
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(muted_foreground)
-                            .child("Viewport"),
+        v_flex().w_full().bg(background).child(
+            h_flex()
+                .w_full()
+                .h(px(36.0))
+                .px_2()
+                .gap_2()
+                .items_center()
+                .child({
+                    let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
+                    ToolModeDropdown::render(state, state_arc.clone(), cx)
+                })
+                .child(LevelEditorMenus::render(state))
+                .when(has_mode_controls, |el| {
+                    el.child(self.render_separator(cx))
+                        .child(render_mode_widgets(
+                            mode_controls,
+                            state_arc.clone(),
+                            gpu_engine.clone(),
+                            cx,
+                        ))
+                })
+                .child(div().flex_1())
+                .child({
+                    let _scope = gpui::render_stats::scope("toolbar: mode indicator");
+                    ModeIndicator::render(state, cx)
+                })
+                .child(self.render_separator(cx))
+                .child({
+                    let _scope = gpui::render_stats::scope("toolbar: save button");
+                    self.render_save_button(state_arc.clone(), gpu_engine.clone())
+                })
+                .when(Self::is_source_build(), |el| {
+                    el.child(
+                        self.render_save_as_default_button(state_arc.clone(), gpu_engine.clone()),
                     )
-                    .child(self.render_separator(cx))
-                    .child(div().text_xs().text_color(muted_foreground).child("Mode"))
-                    .child(ViewModeDropdown::render(view_mode_picker))
-                    .child(self.render_separator(cx))
-                    .child(render_camera_controls(
-                        state_arc.clone(),
-                        state.editor.camera_mode,
-                        input_state,
-                        cx,
-                    ))
-                    .child(self.render_separator(cx))
-                    .child(Self::render_transform_tools(state_arc.clone(), state))
-                    .child(self.render_separator(cx))
-                    .child(div().text_xs().text_color(muted_foreground).child("Snap"))
-                    .child(TransformSnapControls::render(snap_panels, state))
-                    .child(self.render_separator(cx))
-                    .child(div().text_xs().text_color(muted_foreground).child("Render"))
-                    .child({
-                        let _scope = gpui::render_stats::scope("toolbar: feature toggles");
-                        FeatureToggles::render(state, state_arc.clone(), gpu_engine, cx)
-                    })
-                    .child(self.render_separator(cx))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted_foreground)
-                            .child("Overlays"),
-                    )
-                    .child(Self::render_diagnostic_controls(state_arc.clone(), state))
-                    .child(div().flex_1()),
-            )
-    }
-
-    fn render_transform_tools(
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        state: &LevelEditorState,
-    ) -> impl IntoElement {
-        h_flex()
-            .gap_1()
-            .items_center()
-            .child(Self::transform_tool_button(
-                "select_tool",
-                "Select",
-                "Q",
-                ui::IconName::PcMouse,
-                TransformTool::Select,
-                state.editor.current_tool,
-                state_arc.clone(),
-            ))
-            .child(Self::transform_tool_button(
-                "move_tool",
-                "Move",
-                "W",
-                ui::IconName::ArrowUnion,
-                TransformTool::Move,
-                state.editor.current_tool,
-                state_arc.clone(),
-            ))
-            .child(Self::transform_tool_button(
-                "rotate_tool",
-                "Rotate",
-                "E",
-                ui::IconName::Refresh,
-                TransformTool::Rotate,
-                state.editor.current_tool,
-                state_arc.clone(),
-            ))
-            .child(Self::transform_tool_button(
-                "scale_tool",
-                "Scale",
-                "R",
-                ui::IconName::Maximize,
-                TransformTool::Scale,
-                state.editor.current_tool,
-                state_arc,
-            ))
-    }
-
-    fn transform_tool_button(
-        id: &'static str,
-        label: &'static str,
-        shortcut: &'static str,
-        icon: ui::IconName,
-        tool: TransformTool,
-        current: TransformTool,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-    ) -> impl IntoElement {
-        Button::new(id)
-            .icon(icon)
-            .label(label)
-            .small()
-            .ghost()
-            .selected(current == tool)
-            .tooltip(format!("{label} Tool ({shortcut})"))
-            .on_click(move |_, _, _| state_arc.write().editor.set_tool(tool))
-    }
-
-    fn render_diagnostic_controls(
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        state: &LevelEditorState,
-    ) -> impl IntoElement {
-        h_flex()
-            .gap_1()
-            .items_center()
-            .child(Self::diagnostic_button(
-                "viewport_perf_toggle",
-                "Perf",
-                state.overlays.state.show_performance_overlay,
-                state_arc.clone(),
-                |overlays, enabled| overlays.set_show_performance_overlay(enabled),
-            ))
-            .child(Self::diagnostic_button(
-                "viewport_gpu_toggle",
-                "GPU",
-                state.overlays.state.show_gpu_pipeline_overlay,
-                state_arc.clone(),
-                |overlays, enabled| overlays.set_show_gpu_pipeline_overlay(enabled),
-            ))
-            .child(Self::diagnostic_button(
-                "viewport_stats_toggle",
-                "Stats",
-                state.overlays.state.show_nerds_overlay,
-                state_arc,
-                |overlays, enabled| overlays.set_show_nerds_overlay(enabled),
-            ))
-    }
-
-    fn diagnostic_button(
-        id: &'static str,
-        label: &'static str,
-        enabled: bool,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        set_enabled: impl Fn(&mut crate::state::OverlayDomain, bool) + 'static,
-    ) -> impl IntoElement {
-        Button::new(id)
-            .label(label)
-            .small()
-            .ghost()
-            .selected(enabled)
-            .on_click(move |_, _, _| {
-                let mut state = state_arc.write();
-                set_enabled(&mut state.overlays, !enabled);
-            })
+                }),
+        )
     }
 
     fn default_level_path() -> Option<PathBuf> {

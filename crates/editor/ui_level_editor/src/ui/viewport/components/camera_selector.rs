@@ -13,33 +13,9 @@ use ui::{
     h_flex, ActiveTheme, IconName, Selectable, Sizable,
 };
 
-use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
+use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle, HandleSide};
 use crate::state::{CameraMode, LevelEditorState};
-
-/// Render the camera controls inline with the viewport toolbar.
-pub fn render_camera_controls<V, S>(
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-    camera_mode: CameraMode,
-    input_state: Arc<S>,
-    cx: &Context<V>,
-) -> impl IntoElement
-where
-    V: 'static + Render,
-    S: CameraSpeedControl + 'static,
-{
-    h_flex()
-        .gap_2()
-        .items_center()
-        .child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child("Camera"),
-        )
-        .child(camera_mode_buttons(state_arc, camera_mode))
-        .child(div().h(px(18.0)).w_px().bg(cx.theme().border))
-        .child(camera_speed_controls(input_state, cx))
-}
+use crate::ui::toolbar::view_mode_dropdown::{ViewModeDropdown, ViewModePickerState};
 
 /// Camera mode button configuration.
 struct CameraModeButton {
@@ -175,6 +151,8 @@ pub fn render_camera_selector<V, S>(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     camera_mode: CameraMode,
     input_state: Arc<S>,
+    view_mode_picker: &Entity<ViewModePickerState>,
+    view_mode_label: SharedString,
     is_dragging: bool,
     cx: &mut Context<V>,
 ) -> impl IntoElement
@@ -199,21 +177,27 @@ where
         state_arc.clone(),
         |s: &mut LevelEditorState, pos| s.overlays.positions.camera_drag_start = pos,
         |s: &mut LevelEditorState, dragging| s.overlays.positions.is_dragging_camera = dragging,
+        HandleSide::Right,
         cx,
     );
 
+    let collapse_state = state_arc.clone();
+    // Left-to-right child order keeps view mode at the left end and the
+    // collapse control next to the right-hand grip.
     let toolbar_content = h_flex()
         .gap_2()
         .items_center()
-        .child(camera_mode_buttons(state_arc.clone(), camera_mode))
+        .child(ViewModeDropdown::render(view_mode_picker, view_mode_label))
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
-        .child(camera_speed_controls(input_state.clone(), cx))
+        .child(camera_speed_controls(input_state, cx))
+        .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
+        .child(camera_mode_buttons(state_arc, camera_mode))
         .child(
             Button::new("collapse_camera_mode")
                 .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc
+                    collapse_state
                         .write()
                         .overlays
                         .set_camera_mode_selector_collapsed(true);
@@ -224,6 +208,11 @@ where
         .gap_0()
         .h(px(42.0))
         .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
-        .child(toolbar_with_drag_handle(drag_handle, toolbar_content, cx))
+        .child(toolbar_with_drag_handle(
+            drag_handle,
+            toolbar_content,
+            HandleSide::Right,
+            cx,
+        ))
         .into_any_element()
 }

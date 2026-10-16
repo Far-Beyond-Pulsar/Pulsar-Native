@@ -143,6 +143,7 @@ pub struct ViewportPanel {
     cached_frame_snapshot: EngineFrameSnapshot,
     /// Helio viewport entity for GPU rendering
     viewport: Entity<HelioViewport>,
+    toolbar: Entity<crate::ui::toolbar::ToolbarView>,
 
     /// Viewport controls state
     viewport_controls: ViewportControls,
@@ -208,6 +209,7 @@ impl ViewportPanel {
         viewport: Entity<HelioViewport>,
         render_enabled: Arc<AtomicBool>,
         input_state: Arc<InputState>,
+        toolbar: Entity<crate::ui::toolbar::ToolbarView>,
         _window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self
@@ -218,6 +220,7 @@ impl ViewportPanel {
 
         Self {
             viewport,
+            toolbar,
             cached_frame_snapshot: EngineFrameSnapshot::default(),
             viewport_controls: ViewportControls::new(),
             render_enabled,
