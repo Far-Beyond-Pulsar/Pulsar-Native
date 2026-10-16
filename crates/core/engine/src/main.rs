@@ -334,6 +334,16 @@ fn main() {
     })
     .with_assets(Assets);
 
+    // Reuse the system snapshot already used by Mission Control so startup
+    // compatibility checks and the diagnostics panel report the same device.
+    let system_info = ui_log_viewer::SystemInfo::gather();
+    let hardware_profile = ui_loading_screen::HardwareProfile {
+        manufacturer: system_info.gpu_vendor,
+        gpu_brand: system_info.gpu_name,
+        driver: system_info.gpu_driver_version,
+        os: format!("{} {}", system_info.os_name, system_info.os_version),
+    };
+
     gpui_app.run(move |cx: &mut gpui::App| {
         profiling_v1::scope!("pulsar: gpui app run");
         let t_gpui = std::time::Instant::now();
@@ -407,12 +417,12 @@ fn main() {
 
         if let Some(path) = uri_path {
             tracing::info!("Opening project splash from URI: {}", path.display());
-            open_via_loading_screen(path, cx);
+            open_via_loading_screen(path, &hardware_profile, cx);
         } else {
             match project_path {
                 Some(path) if path.is_dir() => {
                     tracing::info!("Opening project from --project-path: {}", path.display());
-                    open_via_loading_screen(path, cx);
+                    open_via_loading_screen(path, &hardware_profile, cx);
                 }
                 Some(path) => {
                     if path.exists() {
@@ -438,11 +448,21 @@ fn main() {
 ///
 /// Single canonical path for opening an editor window — URI-launch and entry-screen
 /// project-open both go through here.
-fn open_via_loading_screen(path: std::path::PathBuf, cx: &mut gpui::App) {
+fn open_via_loading_screen(
+    path: std::path::PathBuf,
+    hardware_profile: &ui_loading_screen::HardwareProfile,
+    cx: &mut gpui::App,
+) {
     use ui_common::PulsarWindowExt as _;
     let on_complete: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
         std::sync::Arc::new(|path, cx| {
             ui_core::PulsarRoot::open(path, cx);
         });
-    ui_loading_screen::LoadingScreen::open((path, on_complete), cx);
+    ui_loading_screen::open_before_loading(
+        path,
+        on_complete,
+        hardware_profile.clone(),
+        env!("CARGO_PKG_VERSION"),
+        cx,
+    );
 }
