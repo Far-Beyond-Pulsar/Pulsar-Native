@@ -575,11 +575,14 @@ pub struct HelioEditorMailbox {
 }
 
 /// A debug view advertised by a pass in the editor viewport's render graph.
+pub type ViewportDebugLegend = helio::DebugViewLegend;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ViewportDebugView {
     pub name: &'static str,
     pub debug_mode: u32,
     pub description: &'static str,
+    pub legend: Option<ViewportDebugLegend>,
 }
 
 /// A gizmo drag that moved its object, reported when the mouse is released
@@ -1303,6 +1306,7 @@ impl HelioRenderer {
                 .build(device_arc.clone(), queue_arc.clone(), width, height, format);
 
             if let Ok(mut views) = self.viewport_debug_views.lock() {
+                let legends = r.available_debug_view_legends();
                 *views = r
                     .available_debug_views()
                     .into_iter()
@@ -1310,6 +1314,10 @@ impl HelioRenderer {
                         name: view.name,
                         debug_mode: view.debug_mode,
                         description: view.description,
+                        legend: legends
+                            .iter()
+                            .find(|(mode, _)| *mode == view.debug_mode)
+                            .map(|(_, legend)| *legend),
                     })
                     .collect();
             }

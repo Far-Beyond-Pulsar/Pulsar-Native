@@ -1,6 +1,7 @@
 //! Reusable UI components for the viewport panel.
 
 pub mod camera_selector;
+pub mod debug_view_legend;
 pub mod floating_toolbar;
 pub mod gpu_pipeline_overlay;
 pub mod nerds_overlay;

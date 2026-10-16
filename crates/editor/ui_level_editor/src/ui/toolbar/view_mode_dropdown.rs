@@ -1,7 +1,7 @@
 use gpui::*;
 use ui::{
-    IndexPath, Sizable,
     dropdown::{Dropdown, DropdownItem, DropdownState, SearchableVec},
+    IndexPath, Sizable,
 };
 
 /// A searchable option for the viewport view-mode picker.

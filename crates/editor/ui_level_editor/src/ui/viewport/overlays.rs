@@ -164,6 +164,39 @@ impl ViewportPanel {
             self.nerds_overlay.borrow_mut().take();
         }
 
+        // Debug passes can advertise a floating scale for a mode. Query only
+        // while a debug mode is selected; lit view mode has no legend.
+        let active_legend = (state.editor.viewport_debug_mode != 0)
+            .then(|| {
+                gpu_engine
+                    .lock()
+                    .ok()
+                    .and_then(|engine| engine.editor_mailbox())
+                    .and_then(|mailbox| {
+                        mailbox
+                            .viewport_debug_views()
+                            .into_iter()
+                            .find(|view| view.debug_mode == state.editor.viewport_debug_mode)
+                            .and_then(|view| view.legend)
+                    })
+            })
+            .flatten();
+        if let Some(legend) = active_legend {
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .bottom_4()
+                    .left_0()
+                    .right_0()
+                    .flex()
+                    .justify_center()
+                    .child(components::debug_view_legend::render_debug_view_legend(
+                        &legend,
+                        cx.theme(),
+                    )),
+            );
+        }
+
         overlays
     }
 }

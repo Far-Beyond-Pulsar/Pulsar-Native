@@ -15,5 +15,6 @@ pub use core::{
 };
 pub use renderer::{
     CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer, PendingPointerEvent,
-    RendererCommand, StaticDragWarning, ViewportDebugView, VoxelBrushRequest, VoxelBrushTool,
+    RendererCommand, StaticDragWarning, ViewportDebugLegend, ViewportDebugView, VoxelBrushRequest,
+    VoxelBrushTool,
 };
