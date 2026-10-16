@@ -4,22 +4,29 @@ use ui::{
     IndexPath, Sizable,
 };
 
+/// The selected renderer view mode, either lit output or a registered debug view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewModeSelection {
+    Lit,
+    Debug(u32),
+}
+
 /// A searchable option for the viewport view-mode picker.
 #[derive(Clone)]
 pub struct ViewModeOption {
-    pub debug_mode: u32,
+    pub selection: ViewModeSelection,
     pub name: SharedString,
 }
 
 impl DropdownItem for ViewModeOption {
-    type Value = u32;
+    type Value = ViewModeSelection;
 
     fn title(&self) -> SharedString {
         self.name.clone()
     }
 
     fn value(&self) -> &Self::Value {
-        &self.debug_mode
+        &self.selection
     }
 }
 
@@ -33,26 +40,34 @@ impl ViewModeDropdown {
         debug_views: &[engine_backend::subsystems::render::ViewportDebugView],
     ) -> Vec<ViewModeOption> {
         let mut options = vec![ViewModeOption {
-            debug_mode: 0,
+            selection: ViewModeSelection::Lit,
             name: "Lit".into(),
         }];
         options.extend(debug_views.iter().map(|view| ViewModeOption {
-            debug_mode: view.debug_mode,
+            selection: ViewModeSelection::Debug(view.debug_mode),
             name: view.name.into(),
         }));
         options
+    }
+
+    pub fn selected(debug_mode: u32) -> ViewModeSelection {
+        if debug_mode == 0 {
+            ViewModeSelection::Lit
+        } else {
+            ViewModeSelection::Debug(debug_mode)
+        }
     }
 
     pub fn new_state(
         window: &mut Window,
         cx: &mut App,
         debug_views: &[engine_backend::subsystems::render::ViewportDebugView],
-        selected_mode: u32,
+        selected_mode: ViewModeSelection,
     ) -> Entity<ViewModePickerState> {
         let options = Self::options(debug_views);
         let selected_index = options
             .iter()
-            .position(|option| option.debug_mode == selected_mode)
+            .position(|option| option.selection == selected_mode)
             .unwrap_or(0);
 
         cx.new(|cx| {

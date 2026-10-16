@@ -37,11 +37,9 @@ use ui_common::ViewportControls;
 
 use crate::state::LevelEditorState;
 use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
-use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
 use components::nerds_overlay::{render_nerds_overlay, NerdsOverlay};
 use components::performance_overlay::{render_performance_overlay, PerformanceOverlay};
-use components::viewport_options::render_viewport_options;
 use input_state::InputState;
 use performance::*;
 
@@ -209,13 +207,13 @@ impl ViewportPanel {
     pub fn new<V>(
         viewport: Entity<HelioViewport>,
         render_enabled: Arc<AtomicBool>,
+        input_state: Arc<InputState>,
         _window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self
     where
         V: 'static,
     {
-        let input_state = Arc::new(InputState::new());
         let focus_handle = cx.focus_handle();
 
         Self {
@@ -279,33 +277,6 @@ impl Drop for ViewportPanel {
             let _ = handle.join();
         }
     }
-}
-
-/// Everything `render_viewport_options` reads out of [`LevelEditorState`].
-///
-/// This is a claim, and the failure mode of getting it wrong is a toolbar that
-/// stops updating — so it is derived by reading that function and its three
-/// helpers (`visual_toggles`, `gizmo_tool_buttons`, `overlay_toggles`) rather
-/// than by guessing, and it must be revisited whenever one of them starts
-/// reading something new. `WGPUI_LAYER_DEBUG=1` makes an omission visible: the
-/// layer fails to flash when the thing it forgot changes.
-///
-/// The theme is deliberately absent. It is a global rather than an entity, so
-/// nothing here could observe it — but changing it goes through
-/// `Window::refresh`, which is window-scope invalidation on every axis, and no
-/// layer composites through that.
-fn viewport_options_key(state: &LevelEditorState) -> impl std::hash::Hash {
-    (
-        state.overlays.state.viewport_options_collapsed,
-        state.overlays.state.show_performance_overlay,
-        state.overlays.state.show_gpu_pipeline_overlay,
-        state.overlays.state.show_nerds_overlay,
-        state.editor.show_grid,
-        state.editor.show_wireframe,
-        state.editor.show_lighting,
-        state.editor.current_tool as u8,
-        state.overlays.positions.is_dragging_viewport,
-    )
 }
 
 #[cfg(test)]

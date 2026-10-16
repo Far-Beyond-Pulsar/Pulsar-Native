@@ -404,6 +404,7 @@ impl LevelEditorPanel {
 
         let playback_host = Self::bind_playback_host(playback_host_id, window, cx);
 
+        let viewport_input_state = Arc::new(InputState::new());
         let toolbar = cx.new(|cx| {
             ToolbarView::new(
                 window,
@@ -411,6 +412,7 @@ impl LevelEditorPanel {
                 shared_state.clone(),
                 gpu_engine.clone(),
                 helio_mailbox.clone(),
+                viewport_input_state.clone(),
             )
         });
         let class_updates =
@@ -421,6 +423,7 @@ impl LevelEditorPanel {
         Self {
             focus_handle: cx.focus_handle(),
             toolbar,
+            viewport_input_state,
             viewport,
             gpu_engine: gpu_engine.clone(),
             helio_mailbox,

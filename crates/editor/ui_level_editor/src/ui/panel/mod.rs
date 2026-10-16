@@ -30,6 +30,7 @@ use ui::settings::EngineSettings;
 use ui::{notification::Notification, ContextModal as _};
 
 use super::actions::*;
+use super::viewport::input_state::InputState;
 use super::{ToolbarView, ViewportPanel};
 use crate::ai_sessions;
 use crate::scene_edit::LevelEditorCameraState;
@@ -51,6 +52,7 @@ pub struct LevelEditorPanel {
 
     // UI components are separate entities rendered with `AnyView::cached`.
     toolbar: Entity<ToolbarView>,
+    viewport_input_state: Arc<InputState>,
 
     // Helio viewport rendered via WgpuSurfaceHandle
     viewport: Entity<HelioViewport>,

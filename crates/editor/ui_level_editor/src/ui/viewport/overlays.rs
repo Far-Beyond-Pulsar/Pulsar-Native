@@ -1,4 +1,4 @@
-//! Viewport panel overlays: performance HUD, camera selector, and options.
+//! Viewport panel overlays: performance HUDs and debug-view legends.
 
 use super::*;
 
@@ -22,72 +22,7 @@ impl ViewportPanel {
             .top_0()
             .left_0()
             .right(scrollbar_width)
-            .bottom(scrollbar_width)
-            // Splines are not painted here: they are SceneDB components that
-            // Helio's editor debug pass draws in world space.
-            // Top-left: Viewport options
-            .child(
-                div()
-                    .absolute()
-                    .top(px(state.overlays.positions.viewport.1))
-                    .left(px(state.overlays.positions.viewport.0))
-                    .child(
-                        // Retained as a layer. The viewport panel is notified
-                        // several times a second so that `WgpuSurface::prepaint`
-                        // observes new bounds (see `helio_viewport`'s frame
-                        // pump), and every one of those notifies repaints this
-                        // toolbar even though none of them can change it. The
-                        // key below is its complete input set, so on those
-                        // frames it composites its recorded primitives instead.
-                        //
-                        // Geometry is not in the key and does not need to be:
-                        // dragging the overlay moves the positioning div above,
-                        // which changes the layer's bounds, and a layer whose
-                        // bounds changed re-renders regardless of its key.
-                        div()
-                            .id("viewport-options-layer")
-                            .layer_keyed(viewport_options_key(state))
-                            .child(render_viewport_options(
-                                state,
-                                state_arc.clone(),
-                                state.overlays.positions.is_dragging_viewport,
-                                cx,
-                            )),
-                    ),
-            );
-
-        // Top-right: Camera selector
-        if state.overlays.state.show_camera_mode_selector {
-            // Same reasoning as the viewport options above, with one extra
-            // input: the selector displays the live camera move speed, which
-            // lives in `input_state` rather than in `LevelEditorState` and so
-            // would be invisible to any state-derived key.
-            let camera_key = (
-                state.overlays.state.camera_mode_selector_collapsed,
-                state.editor.camera_mode as u8,
-                state.overlays.positions.is_dragging_camera,
-                self.input_state.get_move_speed().to_bits(),
-            );
-            overlays = overlays.child(
-                div()
-                    .absolute()
-                    .top(px(state.overlays.positions.camera.1))
-                    .right(px(state.overlays.positions.camera.0))
-                    .child(
-                        div()
-                            .id("camera-selector-layer")
-                            .layer_keyed(camera_key)
-                            .child(render_camera_selector(
-                                state,
-                                state_arc.clone(),
-                                state.editor.camera_mode,
-                                self.input_state.clone(),
-                                state.overlays.positions.is_dragging_camera,
-                                cx,
-                            )),
-                    ),
-            );
-        }
+            .bottom(scrollbar_width);
 
         // What the overlay samples, on its own timer: the renderer's statistics
         // and the input latency.

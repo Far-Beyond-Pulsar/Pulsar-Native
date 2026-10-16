@@ -16,6 +16,31 @@ use ui::{
 use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
 use crate::state::{CameraMode, LevelEditorState};
 
+/// Render the camera controls inline with the viewport toolbar.
+pub fn render_camera_controls<V, S>(
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    camera_mode: CameraMode,
+    input_state: Arc<S>,
+    cx: &Context<V>,
+) -> impl IntoElement
+where
+    V: 'static + Render,
+    S: CameraSpeedControl + 'static,
+{
+    h_flex()
+        .gap_2()
+        .items_center()
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("Camera"),
+        )
+        .child(camera_mode_buttons(state_arc, camera_mode))
+        .child(div().h(px(18.0)).w_px().bg(cx.theme().border))
+        .child(camera_speed_controls(input_state, cx))
+}
+
 /// Camera mode button configuration.
 struct CameraModeButton {
     id: &'static str,
@@ -81,6 +106,7 @@ fn camera_mode_buttons(
 
             Button::new(id)
                 .icon(icon)
+                .small()
                 .tooltip(tooltip)
                 .selected(matches!(current_mode, m if m == target_mode))
                 .on_click(move |_, _, _| {
