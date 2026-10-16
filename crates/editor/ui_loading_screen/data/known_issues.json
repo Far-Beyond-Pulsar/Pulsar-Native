@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "issues": [
-    {
-      "id": "test-wildcard-match",
-      "title": "Compatibility warning test",
-      "description": "This catch-all test record verifies the startup compatibility notice. Remove it after testing.",
-      "manufacturer": "*",
-      "driver": "*",
-      "gpu_brand": "*",
-      "os": "*",
-      "engine_version": {}
-    }
+    // {
+    //   "id": "test-wildcard-match",
+    //   "title": "Compatibility warning test",
+    //   "description": "This catch-all test record verifies the startup compatibility notice. Remove it after testing.",
+    //   "manufacturer": "*",
+    //   "driver": "*",
+    //   "gpu_brand": "*",
+    //   "os": "*",
+    //   "engine_version": {}
+    // }
   ]
 }
