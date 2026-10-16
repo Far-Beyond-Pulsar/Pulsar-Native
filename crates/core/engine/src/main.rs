@@ -338,6 +338,11 @@ fn main() {
     // compatibility checks and the diagnostics panel report the same device.
     let system_info = ui_log_viewer::SystemInfo::gather();
     let hardware_profile = ui_loading_screen::HardwareProfile {
+        backend: if renderer_backends == wgpu::Backends::VULKAN {
+            "Vulkan".to_owned()
+        } else {
+            format!("{renderer_backends:?}")
+        },
         manufacturer: system_info.gpu_vendor,
         gpu_brand: system_info.gpu_name,
         driver: system_info.gpu_driver_version,

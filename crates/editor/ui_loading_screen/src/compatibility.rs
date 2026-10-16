@@ -18,6 +18,8 @@ const ISSUE_DATABASE: &str = include_str!("../data/known_issues.json");
 /// Machine details used to match the compiled compatibility database.
 #[derive(Clone, Debug)]
 pub struct HardwareProfile {
+    /// Graphics API selected for wgpu (for example `Vulkan` or `DX12`).
+    pub backend: String,
     /// GPU vendor, e.g. `NVIDIA` or `AMD`.
     pub manufacturer: String,
     /// GPU model name reported by wgpu.
@@ -47,6 +49,8 @@ struct KnownIssue {
     gpu_brand: String,
     #[serde(default)]
     os: String,
+    #[serde(default)]
+    backend: String,
     engine_version: VersionRange,
 }
 
@@ -64,6 +68,7 @@ impl KnownIssue {
             && wildcard_matches(&self.driver, &profile.driver)
             && wildcard_matches(&self.gpu_brand, &profile.gpu_brand)
             && wildcard_matches(&self.os, &profile.os)
+            && wildcard_matches(&self.backend, &profile.backend)
             && self.engine_version.matches(engine_version)
     }
 }
