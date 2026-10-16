@@ -1,12 +1,18 @@
 //! Startup compatibility notices for known hardware/driver issues.
 
 use std::{path::PathBuf, sync::Arc};
+use std::process::Command;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
 
 use gpui::{prelude::*, *};
 use serde::Deserialize;
 use ui::{
     button::{Button, ButtonVariants as _},
+    dropdown::{Dropdown, DropdownState},
     h_flex, v_flex, ActiveTheme as _,
+    IndexPath,
 };
 use ui_common::PulsarWindowExt as _;
 use window_manager::{PulsarWindow, WindowConfig};
@@ -20,6 +26,8 @@ const ISSUE_DATABASE: &str = include_str!("../data/known_issues.json");
 pub struct HardwareProfile {
     /// Graphics API selected for wgpu (for example `Vulkan` or `DX12`).
     pub backend: String,
+    /// Other graphics backends with at least one enumerated adapter.
+    pub backend_alternatives: Vec<(String, String)>,
     /// GPU vendor, e.g. `NVIDIA` or `AMD`.
     pub manufacturer: String,
     /// GPU model name reported by wgpu.
@@ -184,7 +192,15 @@ pub fn open_before_loading(
     if issues.is_empty() {
         LoadingScreen::open((path, on_complete), cx);
     } else {
-        CompatibilityNotice::open((path, on_complete, issues), cx);
+        let backend_specific = issues
+            .iter()
+            .any(|issue| !issue.backend.trim().is_empty() && issue.backend.trim() != "*");
+        let alternatives = if backend_specific {
+            profile.backend_alternatives
+        } else {
+            Vec::new()
+        };
+        CompatibilityNotice::open((path, on_complete, issues, alternatives), cx);
     }
 }
 
@@ -192,6 +208,9 @@ struct CompatibilityNotice {
     project_path: PathBuf,
     on_complete: Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
     issues: Vec<KnownIssue>,
+    backend_alternatives: Vec<(String, String)>,
+    backend_dropdown: Entity<DropdownState<Vec<gpui::SharedString>>>,
+    switch_error: Option<String>,
 }
 
 #[window_manager::register_window]
@@ -200,6 +219,7 @@ impl PulsarWindow for CompatibilityNotice {
         PathBuf,
         Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
         Vec<KnownIssue>,
+        Vec<(String, String)>,
     );
 
     fn window_name() -> &'static str {
@@ -210,12 +230,23 @@ impl PulsarWindow for CompatibilityNotice {
         WindowConfig::dialog(620.0, 440.0)
     }
 
-    fn build(params: Self::Params, _: &mut Window, cx: &mut gpui::App) -> Entity<Self> {
-        let (project_path, on_complete, issues) = params;
+    fn build(params: Self::Params, window: &mut Window, cx: &mut gpui::App) -> Entity<Self> {
+        let (project_path, on_complete, issues, backend_alternatives) = params;
+        let backend_options = backend_alternatives
+            .iter()
+            .map(|(label, _)| gpui::SharedString::from(label.clone()))
+            .collect();
+        let initial_backend = (!backend_alternatives.is_empty())
+            .then(|| IndexPath::default().row(0));
+        let backend_dropdown =
+            cx.new(|cx| DropdownState::new(backend_options, initial_backend, window, cx));
         cx.new(|_| Self {
             project_path,
             on_complete,
             issues,
+            backend_alternatives,
+            backend_dropdown,
+            switch_error: None,
         })
     }
 }
@@ -223,6 +254,31 @@ impl PulsarWindow for CompatibilityNotice {
 impl Render for CompatibilityNotice {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
+        let backend_alternatives = self.backend_alternatives.clone();
+        let backend_dropdown = self.backend_dropdown.clone();
+        let switch_entity = entity.clone();
+        let switch_backend = Button::new("compatibility-switch-backend")
+            .primary()
+            .label("Switch and restart")
+            .on_click(move |_, _, cx| {
+                let selected = backend_dropdown
+                    .read(cx)
+                    .selected_value()
+                    .map(|value| value.to_string());
+                let Some((_, preference)) = backend_alternatives
+                    .iter()
+                    .find(|(label, _)| selected.as_deref() == Some(label.as_str()))
+                else {
+                    return;
+                };
+                match switch_backend_and_restart(preference) {
+                    Ok(()) => cx.quit(),
+                    Err(error) => switch_entity.update(cx, |this, cx| {
+                        this.switch_error = Some(error);
+                        cx.notify();
+                    }),
+                }
+            });
         let issue_cards = self.issues.iter().map(|issue| {
             v_flex()
                 .w_full()
@@ -259,17 +315,53 @@ impl Render for CompatibilityNotice {
             .child(div().text_xl().font_weight(FontWeight::BOLD).child("Known compatibility issue"))
             .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Pulsar found a known issue for this graphics setup and engine version. Review the notice before continuing."))
             .child(v_flex().flex_1().w_full().gap_3().children(issue_cards))
-            .child(h_flex().w_full().justify_end().child(
-                Button::new("compatibility-continue")
-                    .primary()
-                    .label("Continue to loading screen")
-                    .on_click(move |_, window, cx| {
-                        let (path, callback) = entity.update(cx, |this, _| {
-                            (this.project_path.clone(), this.on_complete.clone())
-                        });
-                        LoadingScreen::open((path, callback), cx);
-                        window.remove_window();
-                    }),
-            ))
+            .children(self.switch_error.iter().map(|error| {
+                div().text_sm().text_color(cx.theme().danger).child(error.clone())
+            }))
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_end()
+                    .gap_2()
+                    .when(!self.backend_alternatives.is_empty(), |row| {
+                        row.child(Dropdown::new(&self.backend_dropdown).placeholder("Select backend"))
+                            .child(switch_backend)
+                    })
+                    .child(
+                        Button::new("compatibility-continue")
+                            .primary()
+                            .label("Continue to loading screen")
+                            .on_click(move |_, window, cx| {
+                                let (path, callback) = entity.update(cx, |this, _| {
+                                    (this.project_path.clone(), this.on_complete.clone())
+                                });
+                                LoadingScreen::open((path, callback), cx);
+                                window.remove_window();
+                            }),
+                    ),
+            )
     }
+}
+
+fn switch_backend_and_restart(preference: &str) -> Result<(), String> {
+    engine_state::GlobalSettings::new()
+        .set_and_save(
+            "renderer",
+            "backend_preference",
+            engine_state::ConfigValue::String(preference.to_owned()),
+        )
+        .map_err(|error| format!("Could not save the graphics backend setting: {error}"))?;
+
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Could not locate the Pulsar executable: {error}"))?;
+    let mut command = Command::new(executable);
+    command
+        .args(std::env::args_os().skip(1))
+        .current_dir(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    command
+        .spawn()
+        .map_err(|error| format!("Could not restart Pulsar: {error}"))?;
+    Ok(())
 }

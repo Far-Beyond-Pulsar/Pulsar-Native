@@ -337,12 +337,41 @@ fn main() {
     // Reuse the system snapshot already used by Mission Control so startup
     // compatibility checks and the diagnostics panel report the same device.
     let system_info = ui_log_viewer::SystemInfo::gather();
+    let backend_alternatives = if renderer_backends == wgpu::Backends::VULKAN {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            flags: wgpu::InstanceFlags::default(),
+            backend_options: wgpu::BackendOptions::default(),
+            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+            display: None,
+        });
+        let adapters = futures::executor::block_on(
+            instance.enumerate_adapters(wgpu::Backends::all()),
+        );
+        let mut seen = std::collections::HashSet::new();
+        adapters
+            .into_iter()
+            .filter_map(|adapter| {
+                let (label, preference) = match adapter.get_info().backend {
+                    wgpu::Backend::Dx12 => ("Direct3D 12", "dx12"),
+                    wgpu::Backend::Metal => ("Metal", "metal"),
+                    wgpu::Backend::Gl => ("OpenGL", "gl"),
+                    _ => return None,
+                };
+                seen.insert(preference)
+                    .then(|| (label.to_owned(), preference.to_owned()))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let hardware_profile = ui_loading_screen::HardwareProfile {
         backend: if renderer_backends == wgpu::Backends::VULKAN {
             "Vulkan".to_owned()
         } else {
             format!("{renderer_backends:?}")
         },
+        backend_alternatives,
         manufacturer: system_info.gpu_vendor,
         gpu_brand: system_info.gpu_name,
         driver: system_info.gpu_driver_version,
