@@ -8900,6 +8900,7 @@ dependencies = [
 name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "engine_subsystems",
  "env_logger",
  "gpui-ce",
@@ -8915,6 +8916,7 @@ dependencies = [
  "pulsar_world_registry",
  "serde_json",
  "sha2 0.11.0",
+ "tempfile",
  "tracing",
  "ui",
  "walkdir",
