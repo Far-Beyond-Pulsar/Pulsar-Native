@@ -300,9 +300,13 @@ fn native_frame_camera(
 }
 
 /// An orthographic frame camera looking at `focus` along `forward`, in
-/// coordinates relative to `origin` like [`native_frame_camera`]. The eye
-/// sits [`ORTHO_STANDOFF`] behind the focus so the view volume reaches
-/// equally far to both sides of it.
+/// coordinates relative to `origin` like [`native_frame_camera`]. The eye is
+/// the focus itself and the view volume reaches [`ortho_depth_range`] to both
+/// sides of it (a near plane behind the eye).
+///
+/// The eye must stay at the focus: depth-based effects (volumetric fog,
+/// atmosphere) integrate along the distance from the eye, so an eye held far
+/// back would bury the scene in haze.
 fn ortho_frame_camera(
     focus: DVec3,
     forward: Vec3,
@@ -311,24 +315,29 @@ fn ortho_frame_camera(
     half_height: f32,
     origin: DVec3,
 ) -> Camera {
-    let near = 0.1;
-    let far = ORTHO_STANDOFF * 2.0;
+    let range = ortho_depth_range(half_height);
     let half_width = half_height * aspect;
     // The engine's reversed-Z convention (`helio_core::depth::orthographic`):
-    // `near` at depth 1, `far` at depth 0.
+    // the near plane at depth 1, the far plane at depth 0.
     let proj = glam::camera::rh::proj::directx::orthographic(
         -half_width,
         half_width,
         -half_height,
         half_height,
-        far,
-        near,
+        range,
+        -range,
     );
-    let eye = focus - forward.as_dvec3() * f64::from(ORTHO_STANDOFF);
-    let local = eye - origin;
+    let local = focus - origin;
     let rotation = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, up);
     let view = (rotation.as_dmat4() * glam::DMat4::from_translation(-local)).as_mat4();
-    Camera::from_matrices(view, proj, local.as_vec3(), near, far)
+    // `near` and `far` are for the passes that read them as distances from the
+    // eye (effect ranges, shadow splits), not the clip planes above.
+    Camera::from_matrices(view, proj, local.as_vec3(), 0.1, range)
+}
+
+/// How far an orthographic view reaches ahead of and behind its focus.
+fn ortho_depth_range(half_height: f32) -> f32 {
+    (half_height * 200.0).max(ORTHO_STANDOFF)
 }
 
 /// Side of the cells camera-relative frames snap their world origin to.
@@ -3060,6 +3069,7 @@ impl HelioRenderer {
             .filter(|size| size.x > 1.0 && size.y > 1.0)
             .unwrap_or(glam::Vec2::new(w.max(1) as f32, h.max(1) as f32));
         let aspect = w.max(1) as f32 / h.max(1) as f32;
+        let half_height_for_range = self.ortho_half_height();
         let ortho = self
             .active_view
             .is_orthographic()
@@ -3086,7 +3096,13 @@ impl HelioRenderer {
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
-                .set_view(camera_position, forward, projection * view, size, 10_000.0);
+                .set_view(
+                    camera_position,
+                    forward,
+                    projection * view,
+                    size,
+                    10_000.0f32.max(4.0 * ortho_depth_range(half_height_for_range)),
+                );
             inner.interaction.set_orthographic(ortho);
         }
     }
@@ -3095,8 +3111,11 @@ impl HelioRenderer {
     /// the point [`ORTHO_STANDOFF`] behind its focus.
     fn view_eye(&self) -> Vec3 {
         if self.active_view.is_orthographic() {
+            // Behind everything the view reaches, so picks and the gizmo see
+            // objects on both sides of the focus (this is not the render eye).
             let (forward, _, _) = self.camera_basis();
-            (self.cam_pos - forward.as_dvec3() * f64::from(ORTHO_STANDOFF)).as_vec3()
+            let range = ortho_depth_range(self.ortho_half_height());
+            (self.cam_pos - forward.as_dvec3() * f64::from(range)).as_vec3()
         } else {
             self.cam_pos.as_vec3()
         }

@@ -13,7 +13,10 @@
 
 use std::sync::Arc;
 
-use engine_backend::subsystems::render::{CameraSync, EditorCameraState, HelioEditorMailbox};
+use engine_backend::scene::SceneWorldExt;
+use engine_backend::subsystems::render::{
+    CameraSync, EditorCameraState, HelioEditorMailbox, CAMERA_PIVOT_DISTANCE,
+};
 use gpui::*;
 use ui::dock::{DockItem, PanelView};
 
@@ -138,16 +141,24 @@ impl LevelEditorPanel {
 
         // The viewports keep one camera position between them until the user
         // unlocks one.
-        // They centre on the point the perspective camera is looking at.
+        // They centre on the point the perspective camera is looking at, as
+        // far out as it is from what is selected: a scene built large needs
+        // long boom arms.
         let camera_group = Arc::new(match self.current_editor_camera_state() {
-            Some(camera) => CameraSync::at(
-                EditorCameraState {
-                    position: camera.position,
-                    yaw: camera.yaw,
-                    pitch: camera.pitch,
-                }
-                .focus_point(),
-            ),
+            Some(camera) => {
+                let distance = self
+                    .selection_distance(camera.position)
+                    .unwrap_or(CAMERA_PIVOT_DISTANCE);
+                CameraSync::at(
+                    EditorCameraState {
+                        position: camera.position,
+                        yaw: camera.yaw,
+                        pitch: camera.pitch,
+                    }
+                    .focus_point(distance),
+                    distance,
+                )
+            }
             None => CameraSync::default(),
         });
         if let Some(mailbox) = &self.helio_mailbox {
@@ -215,6 +226,22 @@ impl LevelEditorPanel {
         self.extra_viewports
             .replace(added.into_iter().map(|(_, extra)| extra).collect());
         cx.notify();
+    }
+
+    /// How far the selected object is from `eye`, when something is selected
+    /// and the camera is not on top of it.
+    fn selection_distance(&self, eye: [f64; 3]) -> Option<f64> {
+        let scene = self.shared_state.read().scene.shared_scene();
+        let scene = scene.read();
+        let id = scene.world.selected_id()?;
+        let position = crate::scene_edit::objects::get_object_transform(&scene.world, &id)?.position;
+        let distance = position
+            .iter()
+            .zip(eye)
+            .map(|(object, eye)| (f64::from(*object) - eye).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        (distance.is_finite() && distance >= 1.0).then_some(distance)
     }
 
     /// A new viewport looking through `mode`, over this editor's scene.
