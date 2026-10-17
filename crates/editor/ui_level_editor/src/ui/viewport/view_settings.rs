@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use engine_backend::subsystems::render::{HelioEditorMailbox, ViewKind, ViewportDebugView};
+use engine_backend::subsystems::render::{ViewKind, ViewportDebugView};
 use gpui::*;
 use ui::dropdown::{DropdownEvent, SearchableVec};
 

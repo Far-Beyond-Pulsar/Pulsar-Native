@@ -3458,3 +3458,71 @@ mod native_relative_camera_tests {
         assert!((previous_view * point - expected).length() < 0.00001);
     }
 }
+
+#[cfg(test)]
+mod view_kind_tests {
+    use super::*;
+
+    #[test]
+    fn axis_views_are_right_handed_orthonormal_bases() {
+        for kind in [ViewKind::Top, ViewKind::Front, ViewKind::Side] {
+            let (forward, right, up) = kind.axis_basis().expect("axis view");
+            assert!((forward.length() - 1.0).abs() < 1e-6);
+            assert!(forward.dot(right).abs() < 1e-6 && forward.dot(up).abs() < 1e-6);
+            // Camera right is forward x up, as in the perspective camera.
+            assert!(forward.cross(up).abs_diff_eq(right, 1e-6), "{kind:?}");
+        }
+        assert!(ViewKind::Perspective.axis_basis().is_none());
+        assert!(ViewKind::Orthographic.axis_basis().is_none());
+    }
+
+    #[test]
+    fn view_kind_survives_the_mailbox_encoding() {
+        for kind in [
+            ViewKind::Perspective,
+            ViewKind::Orthographic,
+            ViewKind::Top,
+            ViewKind::Front,
+            ViewKind::Side,
+        ] {
+            assert_eq!(ViewKind::from_u8(kind.to_u8()), kind);
+        }
+        assert_eq!(ViewKind::from_u8(200), ViewKind::Perspective);
+    }
+
+    #[test]
+    fn the_orthographic_camera_centres_its_focus_and_scales_by_half_height() {
+        let focus = DVec3::new(100.0, 5.0, -40.0);
+        let (forward, _, up) = ViewKind::Front.axis_basis().unwrap();
+        let camera = ortho_frame_camera(focus, forward, up, 2.0, 10.0, DVec3::ZERO);
+        let ndc = |p: Vec3| {
+            let clip = camera.proj * camera.view * p.extend(1.0);
+            clip.truncate() / clip.w
+        };
+
+        let centre = ndc(focus.as_vec3());
+        assert!(centre.x.abs() < 1e-4 && centre.y.abs() < 1e-4, "{centre:?}");
+        // Ten units up is the top edge; twenty to the right (aspect 2) the
+        // right edge, at the same depth as the focus.
+        let top = ndc(focus.as_vec3() + Vec3::Y * 10.0);
+        let right = ndc(focus.as_vec3() + Vec3::X * 20.0);
+        assert!((top.y - 1.0).abs() < 1e-4 && (right.x - 1.0).abs() < 1e-4);
+        // Geometry in front of and behind the focus is inside the depth range.
+        for depth in [-1000.0, 1000.0] {
+            let z = ndc(focus.as_vec3() + Vec3::Z * depth).z;
+            assert!((0.0..=1.0).contains(&z), "z {z} at {depth}");
+        }
+    }
+
+    #[test]
+    fn the_orthographic_projection_follows_the_reversed_depth_convention() {
+        let (forward, _, up) = ViewKind::Top.axis_basis().unwrap();
+        let camera = ortho_frame_camera(DVec3::ZERO, forward, up, 1.0, 5.0, DVec3::ZERO);
+        // Nearer to the eye (higher in a top view) gets the larger depth.
+        let depth = |y: f32| {
+            let clip = camera.proj * camera.view * Vec3::new(0.0, y, 0.0).extend(1.0);
+            clip.z / clip.w
+        };
+        assert!(depth(100.0) > depth(-100.0));
+    }
+}
