@@ -261,8 +261,8 @@ impl BuildProfile {
     }
 }
 
-/// Which steps a build goes through. They always run in this order: update,
-/// clean, check, build, run.
+/// Which steps a build goes through. Project regeneration runs first, followed
+/// by update, clean, check, build, and run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BuildSteps {
@@ -270,6 +270,9 @@ pub struct BuildSteps {
     pub update: bool,
     /// `cargo clean`: build from scratch.
     pub clean: bool,
+    /// Regenerate engine-owned project files before running Cargo.
+    #[serde(default = "default_true")]
+    pub regenerate_core_project_files: bool,
     /// `cargo check`: type-check without producing binaries.
     pub check: bool,
     /// `cargo build`.
@@ -283,6 +286,7 @@ impl BuildSteps {
         Self {
             update: false,
             clean: false,
+            regenerate_core_project_files: true,
             check: false,
             build: true,
             run: false,
@@ -291,7 +295,12 @@ impl BuildSteps {
 
     /// Whether anything would happen.
     pub fn any(self) -> bool {
-        self.update || self.clean || self.check || self.build || self.run
+        self.update
+            || self.clean
+            || self.regenerate_core_project_files
+            || self.check
+            || self.build
+            || self.run
     }
 
     /// Make the combination consistent: running needs a build.
@@ -302,9 +311,12 @@ impl BuildSteps {
         self
     }
 
-    /// `Update › Clean › Build › Run`, or `Nothing` when empty.
+    /// `Regenerate › Update › Clean › Check › Build › Run`, or `Nothing` when empty.
     pub fn summary(self) -> String {
         let mut parts = Vec::new();
+        if self.regenerate_core_project_files {
+            parts.push("Regenerate core files");
+        }
         if self.update {
             parts.push("Update");
         }
@@ -326,6 +338,10 @@ impl BuildSteps {
             parts.join(" › ")
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 // ── A configuration ──────────────────────────────────────────────────────────
@@ -428,6 +444,7 @@ impl BuildConfiguration {
         let steps = |update, clean, check, build, run| BuildSteps {
             update,
             clean,
+            regenerate_core_project_files: true,
             check,
             build,
             run,
@@ -793,6 +810,7 @@ mod tests {
             c.steps = BuildSteps {
                 update: true,
                 clean: true,
+                regenerate_core_project_files: true,
                 check: false,
                 build: true,
                 run: false,

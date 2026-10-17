@@ -28,6 +28,7 @@ toml = { workspace = true }
 workspace = true
 
 [dependencies]
+toml.workspace = true
 helio-voxel-data.workspace = true
 # Physics bodies on the WaterSim channel derive the water simulation's
 # hitbox source rows (Pulsar-Native#1080).
