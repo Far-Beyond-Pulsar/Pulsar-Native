@@ -28,6 +28,8 @@ pub struct F32BoundField {
     pub label: String,
     object_id: String,
     scene_db: SharedScene,
+    /// The user typed into the field since it last gained focus.
+    user_edited: bool,
     _subscription: Subscription,
     _step_subscription: Subscription,
 }
@@ -63,6 +65,16 @@ impl F32BoundField {
             move |this, _state, event: &InputEvent, window, cx| {
                 match event {
                     InputEvent::Change => {
+                        // `InputState::set_value` emits `Change` too, so a
+                        // value pushed in by `show`/`refresh` (a gizmo drag
+                        // streaming transforms) arrives here as if typed.
+                        // Writing that rounded, a-frame-stale text back
+                        // fights the drag and makes the object jump. Only a
+                        // focused field is being edited by the user.
+                        if !this.input.read(cx).focus_handle(cx).is_focused(window) {
+                            return;
+                        }
+                        this.user_edited = true;
                         // Parse and update on every keystroke, but don't reformat yet
                         this.input.update(cx, |state, _cx| {
                             let text = state.text().to_string();
@@ -88,6 +100,11 @@ impl F32BoundField {
                         });
                     }
                     InputEvent::Blur => {
+                        // Focusing and leaving without typing must not
+                        // write the displayed (rounded) text into the scene.
+                        if !std::mem::take(&mut this.user_edited) {
+                            return;
+                        }
                         // On blur, parse, update, and reformat to canonical form
                         this.input.update(cx, |state, cx| {
                             let text = state.text().to_string();
@@ -143,6 +160,7 @@ impl F32BoundField {
             label: label.into(),
             object_id,
             scene_db,
+            user_edited: false,
             _subscription: subscription,
             _step_subscription: step_subscription,
         }

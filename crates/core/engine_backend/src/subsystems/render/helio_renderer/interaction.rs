@@ -72,6 +72,8 @@ struct DragState {
     screen_axis: Vec2,
     plane_normal: Vec3,
     plane_start: Vec3,
+    /// Where on the axis line the cursor grabbed it (axis handles only).
+    axis_start: f32,
     previous_angle: f32,
     angle: f32,
 }
@@ -266,6 +268,12 @@ impl SceneInteraction {
             self.view.forward
         };
         let plane_start = ray_plane_intersection(o, d, pivot, plane_normal).unwrap_or(pivot);
+        let axis_start = match handle {
+            Handle::Axis(_) => {
+                axis_param(o, d, pivot, axis, self.view.forward).unwrap_or(0.0)
+            }
+            _ => 0.0,
+        };
         let previous_angle = if let Handle::Axis(i) = handle {
             projected_ring_initial_angle(
                 self.view,
@@ -290,6 +298,7 @@ impl SceneInteraction {
             screen_axis,
             plane_normal,
             plane_start,
+            axis_start,
             previous_angle,
             angle: 0.0,
         });
@@ -318,16 +327,23 @@ impl SceneInteraction {
         let delta = cursor - drag.start;
         let pivot = Vec3::from_array(drag.initial.position);
         let basis = rotation_matrix(drag.initial);
-        let amount = if drag.screen_axis.length_squared() > 16.0 {
-            delta.dot(drag.screen_axis) / drag.screen_axis.length_squared()
-        } else {
-            -delta.y / HANDLE_PIXELS
+        // World-space travel along the grabbed axis, from the ray/axis solve.
+        // Holds the last value (no update) when the axis is edge-on to the
+        // view instead of jumping.
+        let axis_travel = match drag.handle {
+            Handle::Axis(i) if drag.mode != GizmoType::Rotate => {
+                let Some(t) = axis_param(o, d, pivot, basis.col(i), drag.view.forward) else {
+                    return;
+                };
+                t - drag.axis_start
+            }
+            _ => 0.0,
         };
         let mut next = current;
         match drag.mode {
             GizmoType::Translate => {
                 let movement = match drag.handle {
-                    Handle::Axis(i) => basis.col(i) * amount * drag.length,
+                    Handle::Axis(i) => basis.col(i) * axis_travel,
                     _ => {
                         let Some(p) = ray_plane_intersection(o, d, pivot, drag.plane_normal) else {
                             return;
@@ -342,7 +358,7 @@ impl SceneInteraction {
                     + if drag.handle == Handle::Center {
                         (delta.x - delta.y) / HANDLE_PIXELS
                     } else {
-                        amount
+                        axis_travel / drag.length
                     })
                 .max(0.001);
                 next.scale = drag.initial.scale;
@@ -726,6 +742,20 @@ fn rotation_axis_highlight_color(axis: usize) -> [f32; 4] {
         1 => [0.62, 1.0, 0.58, 1.0],
         _ => [0.62, 0.78, 1.0, 1.0],
     }
+}
+/// Distance along the unit `axis` through `pivot` of the point on that line
+/// nearest the mouse ray. The ray is intersected with the plane that contains
+/// the axis and faces the camera most, then projected onto the axis. This is
+/// the standard editor gizmo solve: the grabbed point stays under the cursor
+/// exactly, in perspective, at any distance. `None` when the axis points
+/// nearly down the view direction, where the answer is ill-conditioned.
+fn axis_param(o: Vec3, d: Vec3, pivot: Vec3, axis: Vec3, view_forward: Vec3) -> Option<f32> {
+    let normal = view_forward - axis * axis.dot(view_forward);
+    if normal.length_squared() < 0.0025 {
+        return None;
+    }
+    let hit = ray_plane_intersection(o, d, pivot, normal.normalize())?;
+    Some((hit - pivot).dot(axis))
 }
 fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
     let denominator = d.dot(n);
