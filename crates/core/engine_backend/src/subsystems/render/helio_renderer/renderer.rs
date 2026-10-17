@@ -1679,6 +1679,7 @@ impl HelioRenderer {
             self.apply_postprocess_baseline()
         };
         let debug_view_changed = self.apply_viewport_debug_mode();
+        self.apply_view_fog();
         let view_eye = self.view_eye();
         let ortho_half_height = self.ortho_half_height();
 
@@ -2485,6 +2486,22 @@ impl HelioRenderer {
         // The temporal filters see a moving camera.
         self.had_camera_input = true;
         true
+    }
+
+    /// Orthographic views (top, front, side) never fog: fog is a function of
+    /// the distance from the eye, which means nothing in a parallel projection,
+    /// and a haze over a drawing meant for measuring defeats it. Set every
+    /// frame, since a rebuilt graph starts with the fog on.
+    fn apply_view_fog(&mut self) {
+        let fog = !self.active_view.is_orthographic();
+        if let Some(inner) = self.inner.as_mut() {
+            if let Some(pass) = inner
+                .renderer
+                .find_pass_mut::<helio_pass_volumetric_fog::VolumetricFogPass>()
+            {
+                pass.set_active(fog);
+            }
+        }
     }
 
     /// Adopt the view the editor asked for. Returns whether it changed.
