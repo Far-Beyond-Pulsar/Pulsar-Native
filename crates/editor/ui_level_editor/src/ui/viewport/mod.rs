@@ -245,8 +245,10 @@ impl ViewportPanel {
             mouse_middle_captured: Arc::new(AtomicBool::new(false)),
             locked_cursor_x: Arc::new(AtomicI32::new(0)),
             locked_cursor_y: Arc::new(AtomicI32::new(0)),
-            locked_cursor_screen_x: Arc::new(AtomicI32::new(0)),
-            locked_cursor_screen_y: Arc::new(AtomicI32::new(0)),
+            // MIN marks that the platform has no global cursor coordinate
+            // (Wayland); (0, 0) and negative multi-monitor coordinates are valid.
+            locked_cursor_screen_x: Arc::new(AtomicI32::new(i32::MIN)),
+            locked_cursor_screen_y: Arc::new(AtomicI32::new(i32::MIN)),
             keys_pressed: Rc::new(RefCell::new(HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle,

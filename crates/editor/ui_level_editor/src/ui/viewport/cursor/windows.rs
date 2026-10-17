@@ -1,6 +1,6 @@
 use gpui::Window;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 static RAW_MOUSE_READY: OnceLock<bool> = OnceLock::new();
 static RAW_MOUSE_CAPTURED: AtomicBool = AtomicBool::new(false);
@@ -21,9 +21,9 @@ pub fn prepare_relative_mouse_mode() -> bool {
             use winapi::shared::windef::HWND;
             use winapi::um::libloaderapi::GetModuleHandleW;
             use winapi::um::winuser::{
-                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
-                RegisterRawInputDevices, TranslateMessage, HWND_MESSAGE, MSG, RAWINPUTDEVICE,
-                RIDEV_INPUTSINK, WM_INPUT, WNDCLASSW,
+                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG,
+                RAWINPUTDEVICE, RIDEV_INPUTSINK, RegisterClassW, RegisterRawInputDevices,
+                TranslateMessage, WM_INPUT, WNDCLASSW,
             };
 
             const CLASS_NAME: &[u16] = &[
@@ -209,7 +209,7 @@ unsafe fn read_raw_mouse_input(input: winapi::um::winuser::HRAWINPUT) {
 /// This is used to keep the cursor confined during camera rotation to prevent
 /// accidental clicks outside the viewport.
 #[cfg(target_os = "windows")]
-pub fn lock_cursor_to_window(window: &Window) {
+pub fn lock_cursor_to_window(window: &Window) -> bool {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use winapi::shared::windef::{POINT, RECT};
     use winapi::um::winuser::{ClientToScreen, ClipCursor, GetClientRect};
@@ -246,8 +246,9 @@ pub fn lock_cursor_to_window(window: &Window) {
                         bottom: bottom_right.y,
                     };
 
-                    ClipCursor(&screen_rect);
+                    let locked = ClipCursor(&screen_rect) != 0;
                     tracing::debug!("[VIEWPORT] 🔒 Cursor locked to window bounds");
+                    return locked;
                 }
             },
             _ => {
@@ -258,6 +259,7 @@ pub fn lock_cursor_to_window(window: &Window) {
             tracing::error!("[VIEWPORT] Failed to get window handle: {:?}", e);
         }
     }
+    false
 }
 
 /// Lock cursor to a small area around a specific point.
@@ -270,24 +272,29 @@ pub fn lock_cursor_to_window(window: &Window) {
 /// * `screen_y` - Y coordinate in screen space
 /// * `radius` - Size of the confinement area in pixels
 #[cfg(target_os = "windows")]
-pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
+pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) -> bool {
     use winapi::shared::windef::RECT;
     use winapi::um::winuser::ClipCursor;
 
+    // RECT's right and bottom edges are exclusive. A zero radius still needs
+    // a 1x1 rectangle so ClipCursor anchors the pointer at this exact pixel.
+    let radius = radius.max(0);
     unsafe {
         let screen_rect = RECT {
             left: screen_x - radius,
             top: screen_y - radius,
-            right: screen_x + radius,
-            bottom: screen_y + radius,
+            right: screen_x + radius + 1,
+            bottom: screen_y + radius + 1,
         };
-        ClipCursor(&screen_rect);
+        let locked = ClipCursor(&screen_rect) != 0;
         tracing::debug!(
-            "[VIEWPORT] 🔒 Cursor confined to {}px radius around ({}, {})",
+            "[VIEWPORT] 🔒 Cursor confinement to {}px radius around ({}, {}): {}",
             radius,
             screen_x,
-            screen_y
+            screen_y,
+            locked
         );
+        locked
     }
 }
 

@@ -245,7 +245,7 @@ impl ViewportPanel {
                             let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
                             let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
-                            if locked_screen_x > 0 && locked_screen_y > 0 {
+                            if locked_screen_x != i32::MIN && locked_screen_y != i32::MIN {
                                 use winapi::shared::windef::POINT;
                                 use winapi::um::winuser::GetCursorPos;
 
@@ -344,7 +344,7 @@ impl ViewportPanel {
                         let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
                         let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
-                        if locked_screen_x > 0 && locked_screen_y > 0 {
+                        if locked_screen_x != i32::MIN && locked_screen_y != i32::MIN {
                             if let Some((cx, cy)) = cursor::get_cursor_position() {
                                 let dx = cx - locked_screen_x;
                                 let dy = cy - locked_screen_y;
