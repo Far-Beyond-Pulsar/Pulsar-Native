@@ -145,7 +145,13 @@ impl WorldSettingsPanelImpl {
                     .small()
                     .primary()
                     .on_click(cx.listener(move |panel, _event, _window, cx| {
-                        let result = sky::create_sky(&mut state.write());
+                        // An atmosphere without a directional sun has zero
+                        // illuminance and composites as a black sky. Start
+                        // with the same usable clear-day setup as the mixer.
+                        let result = crate::scene_edit::environment::apply_preset(
+                            &mut state.write(),
+                            crate::scene_edit::environment::EnvironmentPreset::ClearDay,
+                        );
                         panel.world_settings.sky_message =
                             (!result.changed).then(|| result.no_op_reason.to_string());
                         cx.notify();

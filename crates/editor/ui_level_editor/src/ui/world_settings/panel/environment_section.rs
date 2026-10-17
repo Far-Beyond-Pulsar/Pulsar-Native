@@ -221,8 +221,9 @@ impl super::WorldSettingsPanelImpl {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
+                        .track_scroll(&self.environment_detail_scroll)
                         .h_full()
-                        .child(div().w_full().px_4().py_3().child(detail)),
+                        .child(div().w_full().flex_shrink_0().px_4().py_3().child(detail)),
                 ),
             )
             .into_any_element()
@@ -342,25 +343,50 @@ impl super::WorldSettingsPanelImpl {
                             .small()
                             .primary()
                             .on_click(cx.listener(move |panel, _event, _window, cx| {
+                                let mut state = state.write();
                                 let result = match create_class.as_str() {
                                     "AtmosphereComponent" => {
-                                        crate::scene_edit::sky::create_sky(&mut state.write())
+                                        crate::scene_edit::environment::apply_preset(
+                                            &mut state,
+                                            crate::scene_edit::environment::EnvironmentPreset::ClearDay,
+                                        )
                                     }
                                     "WindComponent" => {
-                                        crate::scene_edit::wind::create_wind(&mut state.write())
+                                        crate::scene_edit::wind::create_wind(&mut state)
                                     }
                                     _ => crate::scene_edit::environment::create_component(
-                                        &mut state.write(),
+                                        &mut state,
                                         &create_class,
                                     ),
                                 };
-                                if let Some(id) = result.affected_ids.first() {
-                                    panel.world_settings.environment_selection =
-                                        Some(EnvironmentSelection::Component {
-                                            object_id: id.clone(),
+                                let selected = if create_class == "AtmosphereComponent" {
+                                    crate::scene_edit::sky::level_sky(&state.scene.world()).map(
+                                        |sky| EnvironmentSelection::Component {
+                                            object_id: sky.object_id,
                                             class_name: create_class.clone(),
+                                            component_index: sky.component_index,
+                                        },
+                                    )
+                                } else {
+                                    result.affected_ids.first().map(|id| {
+                                        EnvironmentSelection::Component {
+                                            object_id: id.clone(),
+                                            class_name: if matches!(
+                                                create_class.as_str(),
+                                                "DirectionalLight" | "SpotLight"
+                                            ) {
+                                                "LightComponent".to_string()
+                                            } else {
+                                                create_class.clone()
+                                            },
                                             component_index: 0,
-                                        });
+                                        }
+                                    })
+                                };
+                                drop(state);
+                                if let Some(selected) = selected {
+                                    panel.world_settings.environment_selection =
+                                        Some(selected);
                                 }
                                 cx.notify();
                             })),

@@ -57,6 +57,7 @@ pub struct WorldSettingsPanelImpl {
     environment_properties: HashMap<String, Arc<sky_section::ClassProperties>>,
     environment_selection: Option<environment_section::EnvironmentSelection>,
     environment_sidebar_scroll: gpui::UniformListScrollHandle,
+    environment_detail_scroll: gpui::ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -160,6 +161,7 @@ impl WorldSettingsPanelImpl {
             environment_properties: HashMap::new(),
             environment_selection: None,
             environment_sidebar_scroll: gpui::UniformListScrollHandle::new(),
+            environment_detail_scroll: gpui::ScrollHandle::new(),
             _subscriptions: subscriptions,
         };
         panel.load_blueprint_catalog(cx);
