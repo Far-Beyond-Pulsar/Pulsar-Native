@@ -10,8 +10,8 @@ use glam::{DVec3, Vec3};
 use helio_component::{voxel_world::planet_brush, VoxelWorldShape};
 use helio_default_graphs::VoxelPassFactory;
 use helio_pass_voxel_planet::{
-    chunks::pass::ChunkPass,
-    engine::{PlanetFrame, SharedPlanetFrame},
+    chunks::{pass::ChunkPass, KeptChunks},
+    engine::{PlanetFrame, SharedKeptExport, SharedPlanetFrame},
     terrain, Planet, PlanetRecipe, TerrainSource,
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
@@ -54,6 +54,72 @@ pub struct VoxelBrushCommit {
 pub struct VoxelPick {
     pub id: u64,
     pub hit: Option<helio_pass_voxel_planet::engine::PickHit>,
+}
+
+/// The renderer's chunks of a terrain's edits, for a save: the terrain,
+/// the journal they were made for, and the chunks (`KeptChunks::to_bytes`
+/// gives what the journal keeps, `VoxelEditJournal::keep_chunks`).
+#[derive(Clone, Debug)]
+pub struct VoxelSavedChunks {
+    pub id: VoxelEntryId,
+    pub edits: VoxelEditJournal,
+    pub chunks: KeptChunks,
+}
+
+/// Saves' requests for the shown terrain's chunks: a save asks
+/// ([`Self::kept_chunks`], off the render thread); the planet renderer has
+/// its pass pack the edited chunks and answers. Clones share the requests.
+#[derive(Clone, Default)]
+pub struct VoxelChunkSaves(Arc<(Mutex<ChunkSaves>, std::sync::Condvar)>);
+
+#[derive(Default)]
+struct ChunkSaves {
+    /// Requests made, and answered: an answer serves every request before it.
+    asked: u64,
+    answered: u64,
+    answer: Option<VoxelSavedChunks>,
+    /// Saves waiting: the last one out lets the answer go.
+    waiting: usize,
+}
+
+impl VoxelChunkSaves {
+    /// The shown terrain's chunks, waiting up to `timeout` for the
+    /// renderer: `None` when it draws no terrain or did not answer in time.
+    pub fn kept_chunks(&self, timeout: std::time::Duration) -> Option<VoxelSavedChunks> {
+        let (state, answered) = &*self.0;
+        let mut saves = state.lock().ok()?;
+        saves.asked += 1;
+        saves.waiting += 1;
+        let mine = saves.asked;
+        let (mut saves, _) = answered
+            .wait_timeout_while(saves, timeout, |s| s.answered < mine)
+            .ok()?;
+        saves.waiting -= 1;
+        let answer = if saves.answered >= mine {
+            saves.answer.clone()
+        } else {
+            None
+        };
+        if saves.waiting == 0 {
+            saves.answer = None;
+        }
+        answer
+    }
+
+    /// Whether a save waits for an answer.
+    fn pending(&self) -> bool {
+        self.0 .0.lock().is_ok_and(|s| s.answered < s.asked)
+    }
+
+    /// Answer every request so far.
+    fn answer(&self, answer: Option<VoxelSavedChunks>) {
+        let (state, answered) = &*self.0;
+        if let Ok(mut saves) = state.lock() {
+            saves.answered = saves.asked;
+            saves.answer = answer;
+            answered.notify_all();
+        }
+    }
 }
 
 /// Where a brush ray hits the terrain.
@@ -580,6 +646,9 @@ struct CachedPlanet {
     /// brushes extends a copy of it.
     edits: VoxelEditJournal,
     planet: Arc<Planet>,
+    /// The chunks a save kept of the journal's edits, for a new world of
+    /// `planet` (parsed with the planet, off the render thread).
+    kept: Option<Arc<KeptChunks>>,
 }
 
 /// A world to build: the source and its generator, and the world it may
@@ -654,7 +723,7 @@ fn build_world(
             && c.world == entry.world
             && &c.generator == generator
     });
-    let (planet, how) = match base {
+    let (planet, how, kept) = match base {
         // A sculpt stroke appends brushes to an otherwise equal source.
         Some(base) if entry.edits.starts_with(&base.edits) => {
             let mut planet = (*base.planet).clone();
@@ -662,7 +731,7 @@ fn build_world(
                 .edits
                 .iter_from(base.edits.len())
                 .try_for_each(|edit| planet.apply(planet_brush(edit)).map(|_| ()))?;
-            (planet, "extended")
+            (planet, "extended", None)
         }
         // An undo removes the latest brushes: undone in the world when it
         // still can (`Edits::undoable`), not rebuilt from every edit.
@@ -674,9 +743,22 @@ fn build_world(
             for _ in entry.edits.len()..base.edits.len() {
                 planet.undo().expect("within the undoable brushes");
             }
-            (planet, "undone")
+            (planet, "undone", None)
         }
-        _ => (build_planet(entry, generator)?, "rebuilt"),
+        // A new world: the chunks a save kept of these edits restore by
+        // copy (the renderer's world follows extended and undone ones).
+        _ => {
+            let kept = entry.edits.kept_chunks().and_then(|kept| {
+                KeptChunks::from_bytes(&kept.bytes)
+                    .map_err(|e| tracing::warn!("Voxel kept chunks not loaded: {e}"))
+                    .ok()
+            });
+            (
+                build_planet(entry, generator)?,
+                "rebuilt",
+                kept.map(Arc::new),
+            )
+        }
     };
     let ms = started.elapsed().as_secs_f64() * 1000.0;
     if ms >= 20.0 {
@@ -693,6 +775,7 @@ fn build_world(
         world: entry.world,
         edits: entry.edits.clone(),
         planet: Arc::new(planet),
+        kept,
     })
 }
 
@@ -706,6 +789,9 @@ pub struct PlanetVoxelBackend {
     /// Pick requests and answers shared with the pass through each frame.
     picks: helio_pass_voxel_planet::engine::SharedPicks,
     next_pick: std::sync::atomic::AtomicU64,
+    /// Saves' requests for the edited chunks, and the pass's export.
+    saves: VoxelChunkSaves,
+    export: SharedKeptExport,
     /// The last source that failed to build and why: it is not rebuilt
     /// every frame, and the last good world stays on screen meanwhile.
     rejected: Option<(VoxelEntryId, u64, VoxelGeneratorConfig, String)>,
@@ -715,12 +801,15 @@ pub struct PlanetVoxelBackend {
 }
 
 impl PlanetVoxelBackend {
-    pub fn new() -> Self {
+    /// Answering `saves`' requests for the edited chunks.
+    pub fn new(saves: VoxelChunkSaves) -> Self {
         Self {
             frame: Arc::new(Mutex::new(None)),
             cached: None,
             picks: Default::default(),
             next_pick: std::sync::atomic::AtomicU64::new(1),
+            saves,
+            export: Default::default(),
             rejected: None,
             builder: WorldBuilder::new(),
             blocking: false,
@@ -732,17 +821,55 @@ impl PlanetVoxelBackend {
     fn blocking() -> Self {
         Self {
             blocking: true,
-            ..Self::new()
+            ..Self::new(VoxelChunkSaves::default())
         }
     }
 
     fn clear(&mut self) -> Result<(), String> {
         self.cached = None;
         self.rejected = None;
+        self.unshown()
+    }
+
+    /// No world on screen: no frame, and no chunks for a save.
+    fn unshown(&mut self) -> Result<(), String> {
         *self
             .frame
             .lock()
             .map_err(|_| "frame mailbox was poisoned")? = None;
+        if self.saves.pending() {
+            self.saves.answer(None);
+        }
+        Ok(())
+    }
+
+    /// A save's request: the pass packs the edited chunks and answers
+    /// through the frame's export, for the planet it showed; the answer is
+    /// for the journal that planet was built from (another world since:
+    /// asked again).
+    fn serve_saves(&self) -> Result<(), String> {
+        if !self.saves.pending() {
+            return Ok(());
+        }
+        let mut export = self
+            .export
+            .lock()
+            .map_err(|_| "kept chunk export was poisoned")?;
+        let shown = export.answer.take().and_then(|(planet, chunks)| {
+            let cached = self
+                .cached
+                .as_ref()
+                .filter(|c| Arc::ptr_eq(&c.planet, &planet))?;
+            Some(VoxelSavedChunks {
+                id: cached.id,
+                edits: cached.edits.clone(),
+                chunks,
+            })
+        });
+        match shown {
+            Some(answer) => self.saves.answer(Some(answer)),
+            None => export.wanted = true,
+        }
         Ok(())
     }
 
@@ -904,7 +1031,7 @@ impl PlanetVoxelBackend {
 
 impl Default for PlanetVoxelBackend {
     fn default() -> Self {
-        Self::new()
+        Self::new(VoxelChunkSaves::default())
     }
 }
 
@@ -1105,6 +1232,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 
     fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
         self.builder.building.is_some()
+            || self.saves.pending()
             || renderer
                 .find_pass::<ChunkPass>()
                 .is_some_and(ChunkPass::needs_frame)
@@ -1129,13 +1257,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         };
         let (planet, error) = match self.world_for(entry) {
             Ok(Some(planet)) => (planet, None),
-            Ok(None) => {
-                *self
-                    .frame
-                    .lock()
-                    .map_err(|_| "frame mailbox was poisoned")? = None;
-                return Ok(());
-            }
+            Ok(None) => return self.unshown(),
             // An invalid change (a layer stack mid-edit, a brush off the
             // grid) keeps this entity's last good world on screen; the
             // error says what to fix.
@@ -1155,6 +1277,11 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             .map(Vec3::from_array)
             .and_then(Vec3::try_normalize)
             .unwrap_or(Vec3::new(0.35, 0.75, 0.45).normalize());
+        let kept = self
+            .cached
+            .as_ref()
+            .filter(|c| Arc::ptr_eq(&c.planet, &planet))
+            .and_then(|c| c.kept.clone());
         *self
             .frame
             .lock()
@@ -1163,7 +1290,10 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             planet,
             sun,
             picks: Some(self.picks.clone()),
+            kept,
+            export: Some(self.export.clone()),
         });
+        self.serve_saves()?;
         error.map_or(Ok(()), Err)
     }
 }

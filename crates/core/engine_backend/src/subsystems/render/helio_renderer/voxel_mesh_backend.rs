@@ -713,7 +713,7 @@ mod tests {
         let mut registry = super::super::voxel_backend::VoxelBackendRegistry::new();
         registry
             .register(Box::new(
-                super::super::voxel_backend::PlanetVoxelBackend::new(),
+                super::super::voxel_backend::PlanetVoxelBackend::default(),
             ))
             .unwrap();
         registry

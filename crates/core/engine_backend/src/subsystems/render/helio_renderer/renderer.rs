@@ -12,8 +12,8 @@ use crate::scene::{GizmoType, SceneWorldExt};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 use super::voxel_backend::{
-    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelView,
-    UNPICKED_REACH_M,
+    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint,
+    VoxelView, UNPICKED_REACH_M,
 };
 use super::voxel_mesh_backend::MeshVoxelBackend;
 type GizmoMode = GizmoType;
@@ -572,6 +572,7 @@ pub struct HelioEditorMailbox {
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
+    voxel_chunk_saves: VoxelChunkSaves,
 }
 
 /// A debug view advertised by a pass in the editor viewport's render graph.
@@ -616,6 +617,11 @@ impl HelioEditorMailbox {
     /// has not taken it yet.
     pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
         self.static_drag_warning.lock().ok()?.take()
+    }
+
+    /// Where saves ask the renderer for the voxel planet's edited chunks.
+    pub fn voxel_chunk_saves(&self) -> VoxelChunkSaves {
+        self.voxel_chunk_saves.clone()
     }
 
     /// The gizmo drags finished since the last call, oldest first.
@@ -745,6 +751,9 @@ pub struct HelioRenderer {
     pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     /// Gizmo drags that moved their object, taken by the UI for undo.
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
+    /// Saves' requests for the voxel planet's edited chunks (its backend
+    /// answers them).
+    voxel_chunk_saves: VoxelChunkSaves,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -921,8 +930,9 @@ impl HelioRenderer {
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         let mut voxel_backends = VoxelBackendRegistry::new();
+        let voxel_chunk_saves = VoxelChunkSaves::default();
         voxel_backends
-            .register(Box::new(PlanetVoxelBackend::new()))
+            .register(Box::new(PlanetVoxelBackend::new(voxel_chunk_saves.clone())))
             .expect("built-in voxel renderer ID must be unique");
         // Free-standing voxel objects: mesh rows in the shared scene.
         voxel_backends
@@ -947,6 +957,7 @@ impl HelioRenderer {
             animated_content: Default::default(),
             static_drag_warning: Arc::new(Mutex::new(None)),
             completed_drags: Arc::new(Mutex::new(Vec::new())),
+            voxel_chunk_saves,
             reset_taa_next_frame: false,
             device_loss: None,
             reported_device_loss: false,
@@ -2468,6 +2479,7 @@ impl HelioRenderer {
             viewport_debug_views: self.viewport_debug_views.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
+            voxel_chunk_saves: self.voxel_chunk_saves.clone(),
         }
     }
 
