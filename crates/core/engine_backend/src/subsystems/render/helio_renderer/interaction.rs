@@ -30,6 +30,9 @@ struct View {
     matrix: Mat4,
     size: Vec2,
     far: f32,
+    /// Half the visible world height of an orthographic view; `0` for a
+    /// perspective one.
+    ortho_half_height: f32,
 }
 impl Default for View {
     fn default() -> Self {
@@ -39,6 +42,7 @@ impl Default for View {
             matrix: Mat4::IDENTITY,
             size: Vec2::new(1600.0, 900.0),
             far: 10_000.0,
+            ortho_half_height: 0.0,
         }
     }
 }
@@ -55,9 +59,13 @@ impl View {
     }
     fn length(self, p: Vec3) -> Option<f32> {
         let depth = (p - self.position).dot(self.forward);
-        (depth > 0.1 && depth < self.far).then_some(
-            2.0 * depth * std::f32::consts::FRAC_PI_8.tan() * HANDLE_PIXELS / self.size.y,
-        )
+        // Orthographic: the same world height at every depth.
+        let world_height = if self.ortho_half_height > 0.0 {
+            2.0 * self.ortho_half_height
+        } else {
+            2.0 * depth * std::f32::consts::FRAC_PI_8.tan()
+        };
+        (depth > 0.1 && depth < self.far).then_some(world_height * HANDLE_PIXELS / self.size.y)
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -108,7 +116,13 @@ impl SceneInteraction {
             matrix,
             size: size.max(Vec2::ONE),
             far,
+            ortho_half_height: 0.0,
         };
+    }
+    /// Mark the view set by [`Self::set_view`] as orthographic, `half_height`
+    /// world units from the centre to the top edge (`None`: perspective).
+    pub fn set_orthographic(&mut self, half_height: Option<f32>) {
+        self.view.ortho_half_height = half_height.filter(|h| *h > 0.0).unwrap_or(0.0);
     }
     pub fn is_dragging(&self) -> bool {
         self.drag.is_some()

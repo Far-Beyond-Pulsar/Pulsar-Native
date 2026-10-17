@@ -9,7 +9,6 @@ use std::sync::Arc;
 use super::components::camera_selector::CameraSpeedControl;
 
 const MIN_MOVE_SPEED: f32 = 1.0;
-const MAX_MOVE_SPEED: f32 = 100.0;
 
 /// Lock-free input state using atomics - no mutex contention!
 pub struct InputState {
@@ -54,8 +53,8 @@ impl InputState {
             pan_delta_y: Arc::new(AtomicI32::new(0)),
             zoom_delta: Arc::new(AtomicI32::new(0)),
             input_latency_us: Arc::new(AtomicU64::new(0)),
-            move_speed: Arc::new(AtomicU32::new(
-                (engine_state::settings::global_config()
+            move_speed: Arc::new(AtomicU32::new({
+                let speed = engine_state::settings::global_config()
                     .get(
                         engine_state::settings::NS_EDITOR,
                         "viewport",
@@ -65,9 +64,14 @@ impl InputState {
                     .and_then(|value| value.as_float().ok())
                     .filter(|value| value.is_finite())
                     .unwrap_or(10.0)
-                    .clamp(1.0, 100.0) as f32)
-                    .to_bits(),
-            )),
+                    as f32;
+                (if speed.is_finite() {
+                    speed.max(MIN_MOVE_SPEED)
+                } else {
+                    f32::MAX
+                })
+                .to_bits()
+            })),
         }
     }
 
@@ -143,7 +147,21 @@ impl CameraSpeedControl for InputState {
 
     fn adjust_move_speed(&self, delta: f32) {
         let current = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
-        let new_speed = (current + delta).max(MIN_MOVE_SPEED).min(MAX_MOVE_SPEED);
+        if !delta.is_finite() || delta == 0.0 {
+            return;
+        }
+        let mut new_speed = (current + delta).max(MIN_MOVE_SPEED);
+        if !new_speed.is_finite() {
+            new_speed = f32::MAX;
+        } else if new_speed == current {
+            // Keep the +/- controls useful after the fixed step falls below
+            // the current f32 precision.
+            new_speed = (current + delta.signum() * current.abs().max(1.0) * f32::EPSILON)
+                .max(MIN_MOVE_SPEED);
+        }
+        if !new_speed.is_finite() {
+            new_speed = f32::MAX;
+        }
         self.move_speed
             .store(new_speed.to_bits(), Ordering::Relaxed);
         if let Err(error) = engine_state::GlobalSettings::new().set_and_save(

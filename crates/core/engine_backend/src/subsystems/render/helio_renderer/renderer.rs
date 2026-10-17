@@ -299,6 +299,38 @@ fn native_frame_camera(
     camera
 }
 
+/// An orthographic frame camera looking at `focus` along `forward`, in
+/// coordinates relative to `origin` like [`native_frame_camera`]. The eye
+/// sits [`ORTHO_STANDOFF`] behind the focus so the view volume reaches
+/// equally far to both sides of it.
+fn ortho_frame_camera(
+    focus: DVec3,
+    forward: Vec3,
+    up: Vec3,
+    aspect: f32,
+    half_height: f32,
+    origin: DVec3,
+) -> Camera {
+    let near = 0.1;
+    let far = ORTHO_STANDOFF * 2.0;
+    let half_width = half_height * aspect;
+    // The engine's reversed-Z convention (`helio_core::depth::orthographic`):
+    // `near` at depth 1, `far` at depth 0.
+    let proj = glam::camera::rh::proj::directx::orthographic(
+        -half_width,
+        half_width,
+        -half_height,
+        half_height,
+        far,
+        near,
+    );
+    let eye = focus - forward.as_dvec3() * f64::from(ORTHO_STANDOFF);
+    let local = eye - origin;
+    let rotation = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, up);
+    let view = (rotation.as_dmat4() * glam::DMat4::from_translation(-local)).as_mat4();
+    Camera::from_matrices(view, proj, local.as_vec3(), near, far)
+}
+
 /// Side of the cells camera-relative frames snap their world origin to.
 /// Within one cell of the origin, an f32 position steps by under 0.2 mm.
 const WORLD_ORIGIN_CELL: f64 = 1024.0;
@@ -445,7 +477,72 @@ pub struct EditorCameraState {
     pub pitch: f32,
 }
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+
+/// How a viewport looks at the scene: the free perspective camera, or an
+/// orthographic one. The axis views are fixed in orientation; the editor
+/// pans and zooms them instead of turning them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewKind {
+    #[default]
+    Perspective,
+    /// Orthographic projection from the free camera's orientation.
+    Orthographic,
+    /// Looking straight down (-Y), +X to the right.
+    Top,
+    /// Looking along -Z, +X to the right.
+    Front,
+    /// Looking along -X, -Z to the right.
+    Side,
+}
+
+impl ViewKind {
+    fn to_u8(self) -> u8 {
+        match self {
+            Self::Perspective => 0,
+            Self::Orthographic => 1,
+            Self::Top => 2,
+            Self::Front => 3,
+            Self::Side => 4,
+        }
+    }
+
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Orthographic,
+            2 => Self::Top,
+            3 => Self::Front,
+            4 => Self::Side,
+            _ => Self::Perspective,
+        }
+    }
+
+    pub fn is_orthographic(self) -> bool {
+        self != Self::Perspective
+    }
+
+    /// Whether the orientation is fixed by the view (and the mouse pans
+    /// instead of looking).
+    pub fn is_axis_aligned(self) -> bool {
+        matches!(self, Self::Top | Self::Front | Self::Side)
+    }
+
+    /// World-space forward, right and up of an axis view.
+    fn axis_basis(self) -> Option<(Vec3, Vec3, Vec3)> {
+        match self {
+            Self::Top => Some((Vec3::NEG_Y, Vec3::X, Vec3::NEG_Z)),
+            Self::Front => Some((Vec3::NEG_Z, Vec3::X, Vec3::Y)),
+            Self::Side => Some((Vec3::NEG_X, Vec3::NEG_Z, Vec3::Y)),
+            Self::Perspective | Self::Orthographic => None,
+        }
+    }
+}
+
+/// How far behind its focus point an orthographic camera sits, so geometry
+/// on both sides of the focus is in front of the near plane.
+const ORTHO_STANDOFF: f32 = 4096.0;
+const ORTHO_MIN_HALF_HEIGHT: f32 = 0.05;
+const ORTHO_MAX_HALF_HEIGHT: f32 = 100_000.0;
 
 /// A left-click or left-release event, queued by the UI thread and drained
 /// on the render thread at the top of [`HelioRenderer::render_frame`]
@@ -569,6 +666,7 @@ pub struct HelioEditorMailbox {
     viewport_bloom: Arc<AtomicBool>,
     viewport_realtime: Arc<AtomicBool>,
     viewport_debug_mode: Arc<AtomicU32>,
+    view_kind: Arc<AtomicU8>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
@@ -665,6 +763,17 @@ impl HelioEditorMailbox {
         self.viewport_debug_mode.store(mode, Ordering::Release);
     }
 
+    /// Choose how this viewport looks at the scene (perspective,
+    /// orthographic, or a fixed axis view). Applied at the next frame.
+    pub fn set_view_kind(&self, kind: ViewKind) {
+        self.view_kind.store(kind.to_u8(), Ordering::Release);
+    }
+
+    /// The view the viewport was last asked for.
+    pub fn view_kind(&self) -> ViewKind {
+        ViewKind::from_u8(self.view_kind.load(Ordering::Acquire))
+    }
+
     /// Snapshot the debug views advertised by the current editor render graph.
     pub fn viewport_debug_views(&self) -> Vec<ViewportDebugView> {
         self.viewport_debug_views
@@ -729,6 +838,13 @@ pub struct HelioRenderer {
     /// The toolbar's view mode: the debug mode the graph renders (0 lit).
     /// See [`HelioEditorMailbox::set_viewport_debug_mode`].
     viewport_debug_mode: Arc<AtomicU32>,
+    /// See [`HelioEditorMailbox::set_view_kind`].
+    view_kind: Arc<AtomicU8>,
+    /// The view the camera is currently built for (`view_kind` as of the last
+    /// frame), so a change can be noticed and drawn.
+    active_view: ViewKind,
+    /// Half the visible world height of an orthographic view.
+    ortho_half_height: f32,
     /// Debug views advertised by the active render graph, exposed to editor UI.
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     /// A fixed frame delta for deterministic captures; see
@@ -941,6 +1057,9 @@ impl HelioRenderer {
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             viewport_realtime: Arc::new(AtomicBool::new(true)),
             viewport_debug_mode: Arc::new(AtomicU32::new(0)),
+            view_kind: Arc::new(AtomicU8::new(ViewKind::Perspective.to_u8())),
+            active_view: ViewKind::Perspective,
+            ortho_half_height: 20.0,
             viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
             frame_delta_override: None,
             camera_jitter_override: None,
@@ -1063,7 +1182,9 @@ impl HelioRenderer {
 
     /// World-space forward, right and up of the editor camera.
     fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
-        basis(self.cam_frame, self.cam_yaw, self.cam_pitch)
+        self.active_view
+            .axis_basis()
+            .unwrap_or_else(|| basis(self.cam_frame, self.cam_yaw, self.cam_pitch))
     }
 
     /// Point the camera along a world-space direction within its frame.
@@ -1438,6 +1559,7 @@ impl HelioRenderer {
         #[cfg(feature = "editor-ui")]
         let _engine_frame_diagnostic = (self.frame_count, width, height);
 
+        let view_kind_changed = self.apply_view_kind();
         {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
@@ -1452,6 +1574,7 @@ impl HelioRenderer {
             self.apply_postprocess_baseline()
         };
         let debug_view_changed = self.apply_viewport_debug_mode();
+        let view_eye = self.view_eye();
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -1500,6 +1623,7 @@ impl HelioRenderer {
             || viewport_resized
             || postprocess_changed
             || debug_view_changed
+            || view_kind_changed
             // Realtime animation: wind, particles, shader-graph `time`.
             || animated
             || self.reset_taa_next_frame;
@@ -1746,23 +1870,39 @@ impl HelioRenderer {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
             profiling::profile_scope!("helio_frame_prepare");
-            let (fwd, _, _) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
-            let frame_up = self.cam_frame * Vec3::Y;
+            let (fwd, frame_up) = match self.active_view.axis_basis() {
+                Some((forward, _, up)) => (forward, up),
+                None => (
+                    basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0,
+                    self.cam_frame * Vec3::Y,
+                ),
+            };
             let aspect = width as f32 / height.max(1) as f32;
             // Canonical voxel coordinates stay global (`self.cam_pos`,
             // `VoxelView`); only the frame camera is origin-relative.
             self.world_origin =
                 camera_relative.then(|| frame_world_origin(self.world_origin, self.cam_pos));
             inner.renderer.set_world_origin(self.world_origin);
-            let camera = native_frame_camera(
-                self.cam_pos,
-                fwd,
-                frame_up,
-                aspect,
-                near,
-                far,
-                self.world_origin.unwrap_or(DVec3::ZERO),
-            );
+            let camera = if self.active_view.is_orthographic() {
+                ortho_frame_camera(
+                    self.cam_pos,
+                    fwd,
+                    frame_up,
+                    aspect,
+                    self.ortho_half_height,
+                    self.world_origin.unwrap_or(DVec3::ZERO),
+                )
+            } else {
+                native_frame_camera(
+                    self.cam_pos,
+                    fwd,
+                    frame_up,
+                    aspect,
+                    near,
+                    far,
+                    self.world_origin.unwrap_or(DVec3::ZERO),
+                )
+            };
             // A lens that maps past the frame (fisheye, barrel distortion)
             // needs a wider render than the frame, which it then crops back;
             // the camera lens component owns how much, and tells the lens pass
@@ -1792,7 +1932,7 @@ impl HelioRenderer {
                 inner.interaction.draw_gizmo(
                     &mut inner.renderer,
                     &store.world,
-                    self.cam_pos.as_vec3(),
+                    view_eye,
                 );
             }
             camera
@@ -2054,6 +2194,17 @@ impl HelioRenderer {
             Err(_) => return,
         };
 
+        if self.active_view.is_orthographic() {
+            if input.zoom_delta != 0.0 {
+                self.ortho_half_height = (self.ortho_half_height * (-input.zoom_delta * 0.1).exp())
+                    .clamp(ORTHO_MIN_HALF_HEIGHT, ORTHO_MAX_HALF_HEIGHT);
+            }
+            if self.active_view.is_axis_aligned() {
+                self.apply_axis_view_input(&input, dt);
+                return;
+            }
+        }
+
         self.cam_yaw += input.mouse_delta_x * LOOK;
         self.cam_pitch -= input.mouse_delta_y * LOOK;
         self.cam_pitch = self.cam_pitch.clamp(-1.5, 1.5);
@@ -2131,6 +2282,43 @@ impl HelioRenderer {
             self.cam_pos += (right * (-input.pan_delta_x) * pan_speed).as_dvec3();
             self.cam_pos += (screen_up * input.pan_delta_y * pan_speed).as_dvec3();
         }
+    }
+
+    /// Adopt the view the editor asked for. Returns whether it changed.
+    fn apply_view_kind(&mut self) -> bool {
+        let wanted = ViewKind::from_u8(self.view_kind.load(Ordering::Acquire));
+        if wanted == self.active_view {
+            return false;
+        }
+        self.active_view = wanted;
+        // The projection changed under the temporal history.
+        self.reset_taa_next_frame = true;
+        self.gizmo_dirty = true;
+        true
+    }
+
+    /// Input for a fixed-orientation orthographic view: the mouse pans the
+    /// view plane 1:1 (it never turns the camera) and the movement keys move
+    /// along the plane's right and up axes, scaled to the zoom.
+    fn apply_axis_view_input(&mut self, input: &CameraInput, dt: f32) {
+        let (_, right, up) = self.camera_basis();
+        let units_per_pixel = 2.0 * self.ortho_half_height / input.viewport_height.max(1.0);
+
+        let speed = (self.ortho_half_height / 10.0)
+            * if input.boost {
+                input.move_speed * 3.0
+            } else {
+                input.move_speed
+            };
+        self.cam_local_velocity = Vec3::new(input.right * speed, input.up * speed, 0.0);
+        self.cam_pos +=
+            ((right * self.cam_local_velocity.x + up * self.cam_local_velocity.y) * dt).as_dvec3();
+
+        // Grab convention: dragging right moves the content right, so the
+        // camera goes left; dragging down moves it down, so the camera goes up.
+        let drag_x = input.mouse_delta_x + input.pan_delta_x;
+        let drag_y = input.mouse_delta_y + input.pan_delta_y;
+        self.cam_pos += ((-right * drag_x + up * drag_y) * units_per_pixel).as_dvec3();
     }
 
     /// Hand the graph the view mode the toolbar chose. Returns whether it
@@ -2465,6 +2653,7 @@ impl HelioRenderer {
             viewport_bloom: self.viewport_bloom.clone(),
             viewport_realtime: self.viewport_realtime.clone(),
             viewport_debug_mode: self.viewport_debug_mode.clone(),
+            view_kind: self.view_kind.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
@@ -2562,6 +2751,13 @@ impl HelioRenderer {
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let tan = std::f32::consts::FRAC_PI_8.tan();
         let (forward, right, up) = self.camera_basis();
+        if self.active_view.is_orthographic() {
+            // Parallel rays: each pixel's ray starts on the image plane.
+            let half_height = self.ortho_half_height;
+            let offset = right * ((norm_x * 2.0 - 1.0) * half_height * aspect)
+                + up * ((1.0 - norm_y * 2.0) * half_height);
+            return (self.view_eye() + offset, forward);
+        }
         let direction = forward
             + right * ((norm_x * 2.0 - 1.0) * tan * aspect)
             + up * ((1.0 - norm_y * 2.0) * tan);
@@ -2572,13 +2768,14 @@ impl HelioRenderer {
         self.configure_gizmo_view();
         self.gizmo_dirty = true;
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
+        let view_eye = self.view_eye();
         let Some(inner) = &mut self.inner else { return };
         let store = self.scene_store.read();
         if inner.interaction.try_start_drag(
             &store.world,
             ray_origin,
             ray_direction,
-            self.cam_pos.as_vec3(),
+            view_eye,
         ) {
             // What the object's mesh and light instances author: the flag
             // the caches the drag would invalidate key on.
@@ -2614,6 +2811,7 @@ impl HelioRenderer {
     pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
         self.configure_gizmo_view();
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
+        let view_eye = self.view_eye();
         let Some(inner) = &mut self.inner else { return };
         if inner.interaction.is_dragging() {
             let mut store = self.scene_store.write();
@@ -2621,7 +2819,7 @@ impl HelioRenderer {
                 &mut store.world,
                 ray_origin,
                 ray_direction,
-                self.cam_pos.as_vec3(),
+                view_eye,
             );
             self.gizmo_dirty = true;
         } else {
@@ -2630,7 +2828,7 @@ impl HelioRenderer {
                 &store.world,
                 ray_origin,
                 ray_direction,
-                self.cam_pos.as_vec3(),
+                view_eye,
             );
         }
     }
@@ -2663,19 +2861,46 @@ impl HelioRenderer {
             .map(|input| glam::Vec2::new(input.viewport_width, input.viewport_height))
             .filter(|size| size.x > 1.0 && size.y > 1.0)
             .unwrap_or(glam::Vec2::new(w.max(1) as f32, h.max(1) as f32));
-        let projection = glam::camera::rh::proj::directx::perspective(
-            std::f32::consts::FRAC_PI_4,
-            w.max(1) as f32 / h.max(1) as f32,
-            0.1,
-            10_000.0,
-        );
-        let camera_position = self.cam_pos.as_vec3();
+        let aspect = w.max(1) as f32 / h.max(1) as f32;
+        let ortho = self
+            .active_view
+            .is_orthographic()
+            .then_some(self.ortho_half_height);
+        let projection = match ortho {
+            Some(half_height) => glam::camera::rh::proj::directx::orthographic(
+                -half_height * aspect,
+                half_height * aspect,
+                -half_height,
+                half_height,
+                0.1,
+                10_000.0,
+            ),
+            None => glam::camera::rh::proj::directx::perspective(
+                std::f32::consts::FRAC_PI_4,
+                aspect,
+                0.1,
+                10_000.0,
+            ),
+        };
+        let camera_position = self.view_eye();
         let view =
             glam::camera::rh::view::look_at_mat4(camera_position, camera_position + forward, up);
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
                 .set_view(camera_position, forward, projection * view, size, 10_000.0);
+            inner.interaction.set_orthographic(ortho);
+        }
+    }
+
+    /// Where the view is taken from: the camera, or for an orthographic view
+    /// the point [`ORTHO_STANDOFF`] behind its focus.
+    fn view_eye(&self) -> Vec3 {
+        if self.active_view.is_orthographic() {
+            let (forward, _, _) = self.camera_basis();
+            (self.cam_pos - forward.as_dvec3() * f64::from(ORTHO_STANDOFF)).as_vec3()
+        } else {
+            self.cam_pos.as_vec3()
         }
     }
 }

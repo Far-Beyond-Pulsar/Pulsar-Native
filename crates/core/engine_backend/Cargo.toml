@@ -14,6 +14,9 @@ serde_json = { workspace = true }
 pollster = "=0.4.0"
 # The camera lens test reads the lens pass rows.
 helio-pass-lens = { workspace = true }
+# The movement scaling report drives the object batch behind the join.
+helio-pass-object-batch = { workspace = true }
+helio-core = { workspace = true }
 # The environment join test reads the volumetric fog and foliage pass rows.
 helio-pass-volumetric-fog = { workspace = true }
 helio-pass-foliage-place = { workspace = true }

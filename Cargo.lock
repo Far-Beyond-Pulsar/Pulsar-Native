@@ -3105,6 +3105,7 @@ dependencies = [
  "gpui-ce",
  "helio",
  "helio-asset-compat",
+ "helio-core",
  "helio-default-graphs",
  "helio-mats",
  "helio-pass-billboard",
@@ -3113,6 +3114,7 @@ dependencies = [
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-lens",
+ "helio-pass-object-batch",
  "helio-pass-postprocess",
  "helio-pass-sky",
  "helio-pass-tsr",
@@ -9798,7 +9800,6 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1#fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9814,7 +9815,6 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1#fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",

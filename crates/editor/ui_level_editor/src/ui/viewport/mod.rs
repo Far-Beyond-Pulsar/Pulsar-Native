@@ -18,6 +18,7 @@ pub(crate) mod input_latch;
 pub mod input_state;
 mod input_thread;
 mod overlays;
+pub(crate) mod view_settings;
 pub mod performance;
 
 use std::cell::RefCell;
@@ -171,6 +172,28 @@ pub struct ViewportPanel {
     viewport: Entity<HelioViewport>,
     toolbar: Entity<crate::ui::toolbar::ToolbarView>,
 
+    /// The renderer this viewport draws with. Each viewport has its own
+    /// (camera, gizmo and input state are per renderer); they all read one
+    /// scene.
+    gpu_engine: Arc<Mutex<GpuRenderer>>,
+
+    /// What this viewport's own controls read and write: its overlays,
+    /// camera mode and debug view. The editor's shared state for the primary
+    /// viewport, a state of its own for a split-off one (see
+    /// [`view_settings`]).
+    view_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+
+    /// Whether `view_state` is a state of its own rather than the shared one.
+    /// The shared state is already read-locked by the caller when the panel
+    /// renders, so the panel must not lock it a second time.
+    own_view: bool,
+
+    /// Mailbox into `gpu_engine`, fetched once the renderer exists.
+    mailbox: Option<engine_backend::subsystems::render::HelioEditorMailbox>,
+
+    /// View-mode picker of a split-off viewport.
+    own_picker: Option<view_settings::OwnViewPicker>,
+
     /// Viewport controls state
     viewport_controls: ViewportControls,
 
@@ -241,6 +264,9 @@ impl ViewportPanel {
         render_enabled: Arc<AtomicBool>,
         input_state: Arc<InputState>,
         toolbar: Entity<crate::ui::toolbar::ToolbarView>,
+        gpu_engine: Arc<Mutex<GpuRenderer>>,
+        view_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        own_view: bool,
         _window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self
@@ -252,6 +278,11 @@ impl ViewportPanel {
         Self {
             viewport,
             toolbar,
+            gpu_engine,
+            view_state,
+            own_view,
+            mailbox: None,
+            own_picker: None,
             cached_frame_snapshot: EngineFrameSnapshot::default(),
             viewport_controls: ViewportControls::new(),
             render_enabled,

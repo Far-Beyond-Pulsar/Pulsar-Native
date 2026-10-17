@@ -2,18 +2,41 @@
 
 use super::*;
 
+use crate::ui::toolbar::view_mode_dropdown::ViewModePickerState;
+
 impl ViewportPanel {
+    /// The view-mode picker this viewport shows: its own when it was split off,
+    /// else the toolbar's.
+    fn view_picker(&self, cx: &App) -> Entity<ViewModePickerState> {
+        match &self.own_picker {
+            Some(own) => own.picker.clone(),
+            None => self.toolbar.read(cx).view_mode_picker.clone(),
+        }
+    }
+
+    fn view_picker_label(&self, cx: &App) -> SharedString {
+        match &self.own_picker {
+            Some(own) => own.label(cx),
+            None => self.toolbar.read(cx).view_mode_label(cx),
+        }
+    }
+
     /// Shared state changes must invalidate the floating controls even when
     /// Helio only composites a new frame without rebuilding the UI.
+    ///
+    /// `state` is the editor's shared state (tool, snaps); the overlays, camera
+    /// mode and debug view are this viewport's own.
     pub(crate) fn controls_signature(&self, state: &LevelEditorState, cx: &App) -> impl PartialEq {
         let editor = &state.editor;
-        let overlays = &state.overlays.state;
-        let positions = &state.overlays.positions;
+        let view_guard = self.own_view.then(|| self.view_state.read());
+        let view: &LevelEditorState = view_guard.as_deref().unwrap_or(state);
+        let overlays = &view.overlays.state;
+        let positions = &view.overlays.positions;
         (
             (
                 editor.current_tool,
-                editor.camera_mode,
-                editor.viewport_debug_mode,
+                view.editor.camera_mode,
+                view.editor.viewport_debug_mode,
                 editor.location_snap.to_bits(),
                 editor.rotation_snap.to_bits(),
                 editor.scale_snap.to_bits(),
@@ -34,11 +57,14 @@ impl ViewportPanel {
                 positions.is_dragging_viewport,
                 positions.is_dragging_camera,
             ),
-            self.toolbar.read(cx).view_mode_picker.entity_id(),
+            self.view_picker(cx).entity_id(),
         )
     }
 
     /// Render all viewport overlays.
+    ///
+    /// `state` and `state_arc` are the editor's shared state; this viewport's
+    /// own settings are `self.view_state`.
     pub(super) fn render_overlays<V>(
         &self,
         state: &LevelEditorState,
@@ -59,46 +85,51 @@ impl ViewportPanel {
             .right(scrollbar_width)
             .bottom(scrollbar_width);
 
-        // The command toolbar owns the retained controls and their subscriptions.
-        let toolbar = self.toolbar.read(cx);
-        let picker = toolbar.view_mode_picker.clone();
-        let view_mode_label = toolbar.view_mode_label(cx);
-        let snaps = toolbar.snap_panels.clone();
-        if state.overlays.state.show_viewport_options {
+        let view_arc = self.view_state.clone();
+        let view_guard = self.own_view.then(|| view_arc.read());
+        let view: &LevelEditorState = view_guard.as_deref().unwrap_or(state);
+
+        // The picker owns the retained controls and their subscriptions.
+        let picker = self.view_picker(cx);
+        let view_mode_label = self.view_picker_label(cx);
+        let snaps = self.toolbar.read(cx).snap_panels.clone();
+        if view.overlays.state.show_viewport_options {
             overlays = overlays.child(
                 div()
                     .absolute()
-                    .top(px(state.overlays.positions.viewport.1))
-                    .left(px(state.overlays.positions.viewport.0))
+                    .top(px(view.overlays.positions.viewport.1))
+                    .left(px(view.overlays.positions.viewport.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
                     .child(components::viewport_options::render_viewport_options(
                         state,
                         state_arc.clone(),
+                        view,
+                        view_arc.clone(),
                         &snaps,
-                        state.overlays.positions.is_dragging_viewport,
+                        view.overlays.positions.is_dragging_viewport,
                         cx,
                     )),
             );
         }
-        if state.overlays.state.show_camera_mode_selector {
+        if view.overlays.state.show_camera_mode_selector {
             overlays = overlays.child(
                 div()
                     .absolute()
-                    .top(px(state.overlays.positions.camera.1))
-                    .right(px(state.overlays.positions.camera.0))
+                    .top(px(view.overlays.positions.camera.1))
+                    .right(px(view.overlays.positions.camera.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
                     .child(components::camera_selector::render_camera_selector(
-                        state,
-                        state_arc.clone(),
-                        state.editor.camera_mode,
+                        view,
+                        view_arc.clone(),
+                        view.editor.camera_mode,
                         self.input_state.clone(),
                         &picker,
                         view_mode_label,
-                        state.overlays.positions.is_dragging_camera,
+                        view.overlays.positions.is_dragging_camera,
                         cx,
                     )),
             );
@@ -122,11 +153,11 @@ impl ViewportPanel {
 
         // Bottom-left: Performance overlay. A view with its own refresh timers,
         // not rebuilt here; see `components/performance_overlay`.
-        if state.overlays.state.show_performance_overlay {
+        if view.overlays.state.show_performance_overlay {
             overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
                 render_performance_overlay(
-                    state,
-                    state_arc.clone(),
+                    view,
+                    view_arc.clone(),
                     &self.stats,
                     sampler,
                     &self.perf_overlay,
@@ -139,8 +170,8 @@ impl ViewportPanel {
         }
 
         // GPU Pipeline overlay - positions next to performance overlay if both visible
-        if state.overlays.state.show_gpu_pipeline_overlay {
-            let overlay_div = if state.overlays.state.show_performance_overlay {
+        if view.overlays.state.show_gpu_pipeline_overlay {
+            let overlay_div = if view.overlays.state.show_performance_overlay {
                 // Position to the right of performance overlay
                 div().absolute().bottom_2().left(px(300.0)) // 400px width + 10px gap
             } else {
@@ -157,7 +188,7 @@ impl ViewportPanel {
 
         // Bottom-right: editor and renderer diagnostics. Its timer refreshes
         // the isolated overlay in place without invalidating the viewport.
-        if state.overlays.state.show_nerds_overlay {
+        if view.overlays.state.show_nerds_overlay {
             overlays = overlays.child(
                 div()
                     .absolute()
@@ -168,7 +199,7 @@ impl ViewportPanel {
                     // resolves to the panel width instead of the whole editor.
                     .w(px(230.0))
                     .child(render_nerds_overlay(
-                        state_arc,
+                        view_arc.clone(),
                         gpu_engine,
                         self.input_state.clone(),
                         &self.nerds_overlay,
@@ -181,7 +212,7 @@ impl ViewportPanel {
 
         // Debug passes can advertise a floating scale for a mode. Query only
         // while a debug mode is selected; lit view mode has no legend.
-        let active_legend = (state.editor.viewport_debug_mode != 0)
+        let active_legend = (view.editor.viewport_debug_mode != 0)
             .then(|| {
                 gpu_engine
                     .lock()
@@ -191,8 +222,10 @@ impl ViewportPanel {
                         mailbox
                             .viewport_debug_views()
                             .into_iter()
-                            .find(|view| view.debug_mode == state.editor.viewport_debug_mode)
-                            .and_then(|view| view.legend)
+                            .find(|view_mode| {
+                                view_mode.debug_mode == view.editor.viewport_debug_mode
+                            })
+                            .and_then(|view_mode| view_mode.legend)
                     })
             })
             .flatten();

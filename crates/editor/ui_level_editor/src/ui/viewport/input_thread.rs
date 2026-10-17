@@ -85,7 +85,7 @@ impl ViewportPanel {
             profiling::set_thread_name("Input Thread");
             // Lets the render thread wake this thread for a fresh sample right
             // before it reads the camera (see `input_latch`).
-            super::input_latch::register_input_thread();
+            let latch = super::input_latch::register_input_thread();
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
             // `DeviceState::new` panics without an X display (pure Wayland);
             // on Linux keys then come from the Wayland bypass instead.
@@ -99,7 +99,7 @@ impl ViewportPanel {
             loop {
                 if stop_flag.load(Ordering::Acquire) {
                     tracing::debug!("[INPUT-THREAD] shutdown requested, exiting");
-                    super::input_latch::set_capturing(false);
+                    super::input_latch::unregister_input_thread(&latch);
                     return;
                 }
 
@@ -112,7 +112,7 @@ impl ViewportPanel {
                 // While capturing, poll at ~500Hz so keypresses and cursor deltas
                 // reach the camera within ~2ms instead of up to 8ms; idle, drop to
                 // ~120Hz so we don't burn CPU.
-                super::input_latch::set_capturing(capturing);
+                latch.set_capturing(capturing);
                 // `park_timeout`, not `sleep`: the render thread can `unpark` this
                 // thread to request a fresh sample right before a frame reads the
                 // camera. Without a request it behaves exactly like the sleep.
@@ -159,7 +159,7 @@ impl ViewportPanel {
 
                 // Signals "one iteration finished" on every path out of this
                 // iteration body, including the early `continue`s below.
-                let _poll_done = super::input_latch::PollDone;
+                let _poll_done = super::input_latch::PollDone(latch.clone());
                 profiling::profile_scope!("input_poll");
                 let input_start = std::time::Instant::now();
 

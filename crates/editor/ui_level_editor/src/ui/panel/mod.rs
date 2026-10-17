@@ -10,6 +10,7 @@ mod handlers;
 mod lifecycle;
 pub(crate) mod pie;
 mod playback_host;
+pub(crate) mod split_viewports;
 pub(crate) mod spline;
 mod workspace_sync;
 
@@ -62,6 +63,11 @@ pub struct LevelEditorPanel {
     // doc. Fetched once at construction, not re-locked per command.
     helio_mailbox: Option<HelioEditorMailbox>,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+
+    /// Viewports added by the split buttons, each with a renderer of its own
+    /// over this editor's scene. Shared with the poller, which feeds them the
+    /// same tool and selection changes as the primary viewport.
+    extra_viewports: split_viewports::ExtraViewports,
 
     // Shared state for all panels (single source of truth)
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -260,6 +266,8 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_set_tool_mode))
             .on_action(cx.listener(Self::on_set_viewport_debug_mode))
             .on_action(cx.listener(Self::on_set_transform_snap))
+            .on_action(cx.listener(Self::on_split_viewports_half))
+            .on_action(cx.listener(Self::on_split_viewports_quad))
             // Object operations
             .on_action(cx.listener(Self::on_add_object))
             .on_action(cx.listener(Self::on_add_object_of_type))

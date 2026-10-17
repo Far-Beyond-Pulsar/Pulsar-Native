@@ -44,6 +44,19 @@ impl ViewportPanel {
         let cursor_capture =
             ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
 
+        // This viewport's own settings (the shared state for the primary one,
+        // which the caller already holds locked).
+        let view_state = self.view_state.clone();
+        let camera_mode = if self.own_view {
+            view_state.read().editor.camera_mode
+        } else {
+            state.editor.camera_mode
+        };
+        // An orthographic view zooms with the wheel instead of flying.
+        let ortho_zoom_camera = (camera_mode != crate::state::CameraMode::Perspective)
+            .then(|| snap.camera_input.clone())
+            .flatten();
+
         // For mouse move tracking
         let element_bounds_move = self.element_bounds.clone();
         let gpu_engine_move = gpu_engine.clone();
@@ -88,6 +101,7 @@ impl ViewportPanel {
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
+                let view_state_move = view_state.clone();
                 let pointer_events_move = snap.pointer_events.clone();
 
                 move |event: &gpui::MouseMoveEvent, _window, _cx| {
@@ -99,6 +113,7 @@ impl ViewportPanel {
                         mouse_right_captured.clone(),
                         mouse_middle_captured.clone(),
                         state_arc_move.clone(),
+                        view_state_move.clone(),
                         gpu_engine_move.clone(),
                         pointer_events_move.clone(),
                         element_bounds_move.clone(),
@@ -219,6 +234,7 @@ impl ViewportPanel {
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let input_state_scroll = self.input_state.clone();
+                let zoom_camera = ortho_zoom_camera.clone();
 
                 move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                     super::build_handlers::handle_scroll_wheel(
@@ -226,6 +242,7 @@ impl ViewportPanel {
                         mouse_right_captured.clone(),
                         mouse_middle_captured.clone(),
                         input_state_scroll.clone(),
+                        zoom_camera.clone(),
                     );
                 }
             })
@@ -257,6 +274,7 @@ impl ViewportPanel {
             .on_mouse_up(gpui::MouseButton::Left, {
                 let pointer_events = pointer_events_for_click.clone();
                 let state_arc_up = state_arc.clone();
+                let view_state_up = view_state.clone();
                 let gpu_engine_up = gpu_engine.clone();
 
                 move |event: &gpui::MouseUpEvent,
@@ -266,6 +284,7 @@ impl ViewportPanel {
                         event,
                         pointer_events.clone(),
                         state_arc_up.clone(),
+                        view_state_up.clone(),
                         gpu_engine_up.clone(),
                     );
                 }
@@ -273,12 +292,14 @@ impl ViewportPanel {
             .on_mouse_up_out(gpui::MouseButton::Left, {
                 let pointer_events = pointer_events_for_click.clone();
                 let state = state_arc.clone();
+                let view_state = view_state.clone();
                 let engine = gpu_engine.clone();
                 move |event, _window, _cx| {
                     super::build_handlers::handle_left_mouse_up(
                         event,
                         pointer_events.clone(),
                         state.clone(),
+                        view_state.clone(),
                         engine.clone(),
                     );
                 }

@@ -79,6 +79,8 @@ impl ToolbarPanel {
                         ))
                 })
                 .child(div().flex_1())
+                .child(self.render_viewport_split_buttons())
+                .child(self.render_separator(cx))
                 .child({
                     let _scope = gpui::render_stats::scope("toolbar: mode indicator");
                     ModeIndicator::render(state, cx)
@@ -94,6 +96,34 @@ impl ToolbarPanel {
                     )
                 }),
         )
+    }
+
+    /// Split the viewport into two or four. Clicking the layout that is
+    /// already showing returns to a single viewport.
+    fn render_viewport_split_buttons(&self) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .items_center()
+            .child(
+                Button::new("toolbar_split_viewports_half")
+                    .icon(ui::IconName::PanelRight)
+                    .small()
+                    .ghost()
+                    .tooltip(t!("LevelEditor.Viewport.SplitHalf"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::ui::actions::SplitViewportsHalf), cx)
+                    }),
+            )
+            .child(
+                Button::new("toolbar_split_viewports_quad")
+                    .icon(ui::IconName::LayoutDashboard)
+                    .small()
+                    .ghost()
+                    .tooltip(t!("LevelEditor.Viewport.SplitQuad"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::ui::actions::SplitViewportsQuad), cx)
+                    }),
+            )
     }
 
     fn default_level_path() -> Option<PathBuf> {

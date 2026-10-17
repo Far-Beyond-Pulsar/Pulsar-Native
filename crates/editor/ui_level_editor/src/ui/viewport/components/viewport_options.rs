@@ -124,9 +124,14 @@ fn gizmo_tool_buttons(
 }
 
 /// Render the complete viewport options toolbar.
+///
+/// `state` is the editor's shared state (tools and snaps); `view` is the
+/// viewport's own (its overlay menu, collapse state and position).
 pub fn render_viewport_options<V>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    view: &LevelEditorState,
+    view_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     snap_panels: &[Entity<SnapPanel>; 3],
     is_dragging: bool,
     cx: &mut Context<V>,
@@ -134,12 +139,12 @@ pub fn render_viewport_options<V>(
 where
     V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
-    if state.overlays.state.viewport_options_collapsed {
+    if view.overlays.state.viewport_options_collapsed {
         return Button::new("expand_viewport_options")
             .icon(IconName::LayoutDashboard)
             .tooltip(t!("LevelEditor.Viewport.ViewportOptions"))
             .on_click(move |_, _, _| {
-                state_arc
+                view_arc
                     .write()
                     .overlays
                     .set_viewport_options_collapsed(false);
@@ -148,7 +153,7 @@ where
     }
 
     let drag_handle = create_drag_handle(
-        state_arc.clone(),
+        view_arc.clone(),
         |s: &mut LevelEditorState, pos| s.overlays.positions.viewport_drag_start = pos,
         |s: &mut LevelEditorState, dragging| s.overlays.positions.is_dragging_viewport = dragging,
         HandleSide::Left,
@@ -162,14 +167,14 @@ where
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
         .child(TransformSnapControls::render(snap_panels, state))
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
-        .child(overlay_menu(state_arc.clone()))
+        .child(overlay_menu(view_arc.clone()))
         .child(
             Button::new("collapse_viewport_options")
                 .icon(IconName::Close)
                 .small()
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc
+                    view_arc
                         .write()
                         .overlays
                         .set_viewport_options_collapsed(true);

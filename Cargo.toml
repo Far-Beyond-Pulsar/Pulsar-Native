@@ -249,6 +249,8 @@ helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pa
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
 helio-pass-lens = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-lens" }
+helio-core = { path = "crates/renderer/helio/crates/helio-core" }
+helio-pass-object-batch = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-object-batch" }
 helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-volumetric-fog" }
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
 helio-pass-foliage-place = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-foliage-place" }
@@ -483,5 +485,5 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # exact revision to dependency manifests that use the same Git URL with a
 # different spelling.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1" }
+pulsar_scenedb = { path = "D:/GitHub/SceneDB-dirty-rows/crates/pulsar_scenedb" }
+pulsar_scenedb_derive = { path = "D:/GitHub/SceneDB-dirty-rows/crates/pulsar_scenedb_derive" }

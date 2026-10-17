@@ -51,6 +51,9 @@ actions!(
         TopView,
         FrontView,
         SideView,
+        // Viewport layout
+        SplitViewportsHalf,
+        SplitViewportsQuad,
         // Play/Edit mode
         PlayScene,
         StopScene,

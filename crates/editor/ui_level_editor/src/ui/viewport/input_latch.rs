@@ -14,7 +14,7 @@
 //! possible moment.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread::Thread;
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,10 @@ use std::time::{Duration, Instant};
 /// previous snapshot rather than stalling.
 const MAX_WAIT: Duration = Duration::from_micros(400);
 
-struct InputLatch {
+/// One viewport's input thread, as the render threads see it. Every viewport
+/// has its own thread and so its own latch; `latch_now` wakes whichever is
+/// capturing (the cursor is captured by at most one at a time).
+pub(super) struct InputLatch {
     /// Bumped at the end of every input-thread iteration.
     generation: AtomicU64,
     /// Whether the input thread is currently capturing (rotating/panning). No
@@ -32,48 +35,81 @@ struct InputLatch {
     thread: Mutex<Option<Thread>>,
 }
 
-static LATCH: InputLatch = InputLatch {
-    generation: AtomicU64::new(0),
-    capturing: AtomicBool::new(false),
-    thread: Mutex::new(None),
-};
+impl InputLatch {
+    fn new() -> Self {
+        Self {
+            generation: AtomicU64::new(0),
+            capturing: AtomicBool::new(false),
+            thread: Mutex::new(None),
+        }
+    }
 
-/// Called by the input thread once at startup so the render thread can wake it.
-pub(super) fn register_input_thread() {
-    if let Ok(mut slot) = LATCH.thread.lock() {
-        *slot = Some(std::thread::current());
+    /// Called by the input thread every iteration with the current capture
+    /// state, and with `false` when it exits.
+    pub(super) fn set_capturing(&self, capturing: bool) {
+        self.capturing.store(capturing, Ordering::Release);
     }
 }
 
-/// Called by the input thread every iteration with the current capture state,
-/// and with `false` when it exits.
-pub(super) fn set_capturing(capturing: bool) {
-    LATCH.capturing.store(capturing, Ordering::Release);
+static LATCHES: Mutex<Vec<Arc<InputLatch>>> = Mutex::new(Vec::new());
+
+/// Called by an input thread once at startup so the render threads can wake
+/// it. Returns the thread's latch; hand it to [`unregister_input_thread`] when
+/// the thread exits.
+pub(super) fn register_input_thread() -> Arc<InputLatch> {
+    let latch = Arc::new(InputLatch::new());
+    if let Ok(mut slot) = latch.thread.lock() {
+        *slot = Some(std::thread::current());
+    }
+    if let Ok(mut latches) = LATCHES.lock() {
+        latches.push(latch.clone());
+    }
+    latch
+}
+
+/// Forget an input thread that is exiting.
+pub(super) fn unregister_input_thread(latch: &Arc<InputLatch>) {
+    latch.set_capturing(false);
+    if let Ok(mut latches) = LATCHES.lock() {
+        latches.retain(|other| !Arc::ptr_eq(other, latch));
+    }
 }
 
 /// Marks the end of one input-thread iteration when dropped, on every exit path
 /// of the loop body (including the early `continue`s).
-pub(super) struct PollDone;
+pub(super) struct PollDone(pub(super) Arc<InputLatch>);
 
 impl Drop for PollDone {
     fn drop(&mut self) {
-        LATCH.generation.fetch_add(1, Ordering::Release);
+        self.0.generation.fetch_add(1, Ordering::Release);
     }
 }
 
-/// Ask the input thread for one fresh sample and wait (bounded) for it.
+/// Ask the capturing input thread for one fresh sample and wait (bounded) for
+/// it.
 ///
-/// Call from the render thread immediately before the frame reads `CameraInput`.
-/// A no-op unless the camera is being captured and an input thread is registered.
+/// Call from a render thread immediately before the frame reads `CameraInput`.
+/// A no-op unless a camera is being captured and its input thread is registered.
 pub(crate) fn latch_now() {
-    if !LATCH.capturing.load(Ordering::Acquire) {
-        return;
+    let capturing: Vec<Arc<InputLatch>> = match LATCHES.lock() {
+        Ok(latches) => latches
+            .iter()
+            .filter(|latch| latch.capturing.load(Ordering::Acquire))
+            .cloned()
+            .collect(),
+        Err(_) => return,
+    };
+    for latch in capturing {
+        latch_one(&latch);
     }
-    let Some(thread) = LATCH.thread.lock().ok().and_then(|slot| slot.clone()) else {
+}
+
+fn latch_one(latch: &InputLatch) {
+    let Some(thread) = latch.thread.lock().ok().and_then(|slot| slot.clone()) else {
         return;
     };
 
-    let before = LATCH.generation.load(Ordering::Acquire);
+    let before = latch.generation.load(Ordering::Acquire);
     // The input thread parks between polls; this wakes it now instead of at its
     // next 2 ms deadline. If it is mid-iteration the token makes its next park
     // return immediately, and the current iteration's completion (also a bump)
@@ -81,7 +117,7 @@ pub(crate) fn latch_now() {
     thread.unpark();
 
     let start = Instant::now();
-    while LATCH.generation.load(Ordering::Acquire) == before {
+    while latch.generation.load(Ordering::Acquire) == before {
         if start.elapsed() >= MAX_WAIT {
             return;
         }
@@ -103,21 +139,20 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let polls = Arc::new(AtomicU64::new(0));
         let (stop_t, polls_t) = (stop.clone(), polls.clone());
+        let (latch_tx, latch_rx) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
-            register_input_thread();
+            let latch = register_input_thread();
+            latch_tx.send(latch.clone()).unwrap();
             while !stop_t.load(Ordering::Acquire) {
                 std::thread::park_timeout(Duration::from_millis(200));
-                let _done = PollDone;
+                let _done = PollDone(latch.clone());
                 polls_t.fetch_add(1, Ordering::AcqRel);
             }
         });
-        // Wait until the thread has registered.
-        while LATCH.thread.lock().unwrap().is_none() {
-            std::thread::yield_now();
-        }
+        let latch = latch_rx.recv().unwrap();
 
         // Not capturing: returns at once, does not wake the thread.
-        set_capturing(false);
+        latch.set_capturing(false);
         let start = Instant::now();
         latch_now();
         assert!(
@@ -126,7 +161,7 @@ mod tests {
         );
 
         // Capturing: a fresh iteration happens well inside the 200 ms timer.
-        set_capturing(true);
+        latch.set_capturing(true);
         let mut worst = Duration::ZERO;
         for _ in 0..20 {
             let polls_before = polls.load(Ordering::Acquire);
@@ -157,9 +192,10 @@ mod tests {
             "latch waited on the 200 ms timer instead of waking the thread ({worst:?})"
         );
 
-        set_capturing(false);
+        latch.set_capturing(false);
         stop.store(true, Ordering::Release);
-        LATCH.thread.lock().unwrap().as_ref().unwrap().unpark();
+        latch.thread.lock().unwrap().as_ref().unwrap().unpark();
+        unregister_input_thread(&latch);
         handle.join().unwrap();
     }
 }

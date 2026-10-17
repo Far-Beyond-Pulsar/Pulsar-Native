@@ -8,6 +8,7 @@ pub(super) fn handle_mouse_move(
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
     state_arc_move: Arc<parking_lot::RwLock<LevelEditorState>>,
+    view_state_move: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_move: Arc<Mutex<GpuRenderer>>,
     pointer_events_move: Option<
         Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
@@ -45,8 +46,8 @@ pub(super) fn handle_mouse_move(
         input_state_clone.mouse_y.store(y, Ordering::Relaxed);
     }
 
-    // Handle overlay dragging
-    let mut state = state_arc_move.write();
+    // Handle overlay dragging (overlay positions are per viewport)
+    let mut state = view_state_move.write();
     if state.overlays.positions.is_dragging_camera {
         if let Some((start_x, start_y)) = state.overlays.positions.camera_drag_start {
             let current_x: f32 = event.position.x.into();
@@ -431,6 +432,7 @@ pub(super) fn handle_scroll_wheel(
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
     input_state_scroll: Arc<InputState>,
+    zoom_camera: Option<Arc<Mutex<engine_backend::subsystems::render::CameraInput>>>,
 ) {
     let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
 
@@ -443,6 +445,11 @@ pub(super) fn handle_scroll_wheel(
         let speed_delta = scroll_delta * 0.5; // Scale for reasonable adjustment
         input_state_scroll.adjust_move_speed(speed_delta);
         tracing::info!("[VIEWPORT] 🎚️ Camera speed adjusted by {:.2}", speed_delta);
+    } else if let Some(camera) = zoom_camera {
+        // An orthographic view has no depth to fly through: the wheel zooms it.
+        if let Ok(mut input) = camera.lock() {
+            input.zoom_delta += scroll_delta * 0.02;
+        }
     }
 }
 
@@ -564,9 +571,10 @@ pub(super) fn handle_left_mouse_up(
         Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
     >,
     state_arc_up: Arc<parking_lot::RwLock<LevelEditorState>>,
+    view_state_up: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_up: Arc<Mutex<GpuRenderer>>,
 ) {
-    let mut state = state_arc_up.write();
+    let mut state = view_state_up.write();
     state.overlays.positions.is_dragging_camera = false;
     state.overlays.positions.is_dragging_viewport = false;
     state.overlays.positions.camera_drag_start = None;

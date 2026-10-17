@@ -32,6 +32,9 @@ impl LevelEditorPanel {
                     render_enabled.clone(),
                     viewport_input_state.clone(),
                     toolbar.clone(),
+                    gpu.clone(),
+                    shared_state.clone(),
+                    false,
                     window,
                     cx,
                 );
