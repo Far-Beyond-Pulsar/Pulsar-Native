@@ -18,3 +18,4 @@ pub use renderer::{
     RendererCommand, StaticDragWarning, ViewportDebugLegend, ViewportDebugView, VoxelBrushRequest,
     VoxelBrushTool,
 };
+pub use voxel_backend::{VoxelChunkSaves, VoxelSavedChunks};

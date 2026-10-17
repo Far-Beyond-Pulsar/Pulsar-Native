@@ -13,6 +13,10 @@
 //!    for the snapshot, never for disk;
 //! 3. write the snapshot ([`level_io::write_level`]), no lock at all.
 //!
+//! A level save first folds old voxel edits into their journals' bases and
+//! keeps the renderer's chunks of the edits with them, both off the scene
+//! lock but for the moment each is put in.
+//!
 //! The unsaved-changes flag is cleared when the snapshot is taken, so an edit
 //! made while the file is being written marks the level dirty again, and it is
 //! set back if the write fails. Saves are numbered: a write whose snapshot is
@@ -170,7 +174,7 @@ fn save_blocking(
     // Snapshot under a read lock on the shared scene only (the editor-state
     // lock is released straight away), so the renderer keeps going. A level
     // save counts as saved from this point: later edits dirty it again.
-    let (scene, settings, foliage_sets) = {
+    let (scene, settings, foliage_sets, voxel_chunk_saves) = {
         let mut state = state.write();
         if kind == SaveKind::Level {
             state.scene.has_unsaved_changes = false;
@@ -179,10 +183,14 @@ fn save_blocking(
             state.scene.shared_scene(),
             state.scene.world_settings.clone(),
             state.editor.terrain.foliage_sets.clone(),
+            state.scene.voxel_chunk_saves.clone(),
         )
     };
     if kind == SaveKind::Level {
         compact_voxel_journals(&scene);
+        if let Some(saves) = &voxel_chunk_saves {
+            keep_voxel_chunks(&scene, saves);
+        }
     }
     let snapshot = {
         let scene = scene.read();
@@ -227,6 +235,51 @@ fn compact_voxel_journals(scene: &engine_backend::scene::SharedScene) {
             }
             Ok(None) => {}
             Err(error) => tracing::warn!("Voxel edits kept unfolded: {error}"),
+        }
+    }
+}
+
+/// How long a save waits for the renderer's voxel chunks (a few frames
+/// when the viewport draws; none when it does not).
+const VOXEL_CHUNKS_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Keep the renderer's chunks of the voxel terrain's edits with its journal
+/// (`VoxelEditJournal::keep_chunks`), so loading the level copies what the
+/// edits made instead of generating it from the terrain and every edit.
+/// Asked for only when a terrain with edits keeps none for them; kept only
+/// while the journal is the one they were made for. Deflated here, off the
+/// render thread and the scene lock.
+fn keep_voxel_chunks(
+    scene: &engine_backend::scene::SharedScene,
+    saves: &engine_backend::subsystems::render::VoxelChunkSaves,
+) {
+    use helio_component::VoxelTerrainComponent;
+    profiling::profile_scope!("level_editor::save::keep_voxel_chunks");
+    let wanted = scene
+        .read()
+        .world
+        .query::<&VoxelTerrainComponent>()
+        .into_iter()
+        .any(|(_, c)| !c.edits.is_empty() && c.edits.kept_chunks().is_none());
+    if !wanted {
+        return;
+    }
+    let Some(saved) = saves.kept_chunks(VOXEL_CHUNKS_WAIT) else {
+        return;
+    };
+    if saved.chunks.is_empty() {
+        return;
+    }
+    let kept = helio_voxel_data::VoxelKeptChunks::of(&saved.edits, saved.chunks.to_bytes().into());
+    let entity = pulsar_scenedb::Entity::from_bits(saved.id.entity_bits);
+    let mut scene = scene.write();
+    let unchanged = scene
+        .world
+        .get::<VoxelTerrainComponent>(entity)
+        .is_some_and(|terrain| terrain.edits == saved.edits);
+    if unchanged {
+        if let Some(mut terrain) = scene.world.get_mut::<VoxelTerrainComponent>(entity) {
+            terrain.edits.keep_chunks(kept);
         }
     }
 }
@@ -367,6 +420,164 @@ mod tests {
         ));
         assert!(!state.read().scene.has_unsaved_changes);
         assert!(std::fs::read_to_string(&path).unwrap().contains("Crate"));
+    }
+
+    /// A level save keeps the viewport renderer's chunks of the voxel
+    /// terrain's edits with the terrain's journal (asked while the renderer
+    /// draws), and the level loads with them.
+    #[test]
+    fn a_level_save_keeps_the_renderers_voxel_chunks() {
+        use crate::scene_edit::{components, objects, ObjectType, SceneObjectData, Transform};
+        use engine_backend::scene::SceneWorldExt as _;
+        use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
+        use helio_component::{voxel_world, VoxelTerrainComponent, VoxelTerrainLayersComponent};
+        use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
+        const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+            eprintln!("skipping: no GPU adapter available");
+            return;
+        };
+        let features = adapter.features() - wgpu::Features::EXPERIMENTAL_RAY_QUERY;
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_features: helio::required_wgpu_features(features),
+            required_limits: helio::required_wgpu_limits(adapter.limits()),
+            experimental_features: helio::required_experimental_features(features),
+            ..Default::default()
+        }))
+        .unwrap();
+
+        // A flat terrain dug where the camera looks.
+        let state = Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
+        let terrain = {
+            let state = state.read();
+            let mut world = state.scene.world_mut();
+            let id = objects::add_object(
+                &mut world,
+                SceneObjectData {
+                    id: String::new(),
+                    name: "Terrain".into(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                None,
+            );
+            components::add_component(
+                &mut world,
+                &id,
+                "VoxelTerrainComponent".into(),
+                serde_json::to_value(VoxelTerrainComponent::plane(512.0)).unwrap(),
+            );
+            components::add_component(
+                &mut world,
+                &id,
+                "VoxelTerrainLayersComponent".into(),
+                serde_json::to_value(VoxelTerrainLayersComponent::flat(2.0)).unwrap(),
+            );
+            let owner = world.entity_for(&id).unwrap();
+            let terrain = engine_backend::scene::attachments::enabled_components_of::<
+                VoxelTerrainComponent,
+            >(&world, owner)[0]
+                .0;
+            let edits = (0..64)
+                .map(|k| VoxelBrushEdit {
+                    center: [
+                        f64::from(k % 8) * 3.0 - 10.0,
+                        2.0,
+                        f64::from(k / 8) * 3.0 - 30.0,
+                    ],
+                    radius: 2.5,
+                    shape: VoxelBrushShape::Sphere,
+                    op: VoxelBrushOp::Remove,
+                    material: 0,
+                    height: 0.0,
+                })
+                .collect();
+            voxel_world::append_edits(&mut world, terrain, edits).unwrap();
+            terrain
+        };
+
+        // The editor's viewport renderer, settled on the dig.
+        let scene = state.read().scene.shared_scene();
+        let mut renderer = HelioRenderer::new(scene.clone());
+        renderer.set_editor_camera_state(EditorCameraState {
+            position: [0.0, 14.0, 0.0],
+            yaw: 0.0,
+            pitch: -0.5,
+        });
+        state.write().scene.voxel_chunk_saves = Some(renderer.editor_mailbox().voxel_chunk_saves());
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: 320,
+                height: 180,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&Default::default());
+        let mut frame = || {
+            let rendered = renderer
+                .render_frame(&device, &queue, &view, 320, 180, FORMAT)
+                .is_some();
+            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            rendered
+        };
+        for _ in 0..4000 {
+            if !frame() {
+                break;
+            }
+        }
+
+        // Saved on another thread while the viewport keeps drawing.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dug.level");
+        let n = NEXT_SAVE.fetch_add(1, Ordering::Relaxed);
+        let saving = {
+            let (state, path) = (state.clone(), path.clone());
+            std::thread::spawn(move || save_blocking(&state, &path, None, SaveKind::Level, n))
+        };
+        while !saving.is_finished() {
+            frame();
+        }
+        assert!(matches!(saving.join().unwrap(), Ok(SaveOutcome::Saved)));
+        let saved = scene
+            .read()
+            .world
+            .get::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .edits
+            .clone();
+        let kept = saved
+            .kept_chunks()
+            .expect("the save kept the renderer's chunks");
+        eprintln!("SAVE_KEPT {} KiB of chunks", kept.bytes.len() / 1024);
+
+        let mut loaded = engine_backend::scene::new_scene();
+        engine_backend::scene::RuntimeLevel::load_into(&path, &mut loaded.world).unwrap();
+        let journals: Vec<_> = loaded
+            .world
+            .query::<&VoxelTerrainComponent>()
+            .into_iter()
+            .map(|(_, terrain)| terrain.edits.clone())
+            .collect();
+        assert_eq!(journals.len(), 1);
+        assert_eq!(journals[0], saved);
+        assert_eq!(journals[0].kept_chunks(), Some(kept));
     }
 
     #[test]

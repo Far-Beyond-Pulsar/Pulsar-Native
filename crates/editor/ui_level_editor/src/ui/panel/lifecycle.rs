@@ -287,6 +287,9 @@ impl LevelEditorPanel {
             .lock()
             .ok()
             .and_then(|engine| engine.editor_mailbox());
+        if let Some(mailbox) = &helio_mailbox {
+            shared_state.write().scene.voxel_chunk_saves = Some(mailbox.voxel_chunk_saves());
+        }
 
         let playback_host_id = engine_state::playback::new_playback_host_id();
         let poll_state = Arc::clone(&shared_state);

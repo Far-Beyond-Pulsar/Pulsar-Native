@@ -5326,6 +5326,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-core",
  "image",
+ "miniz_oxide",
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",
