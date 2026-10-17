@@ -133,7 +133,10 @@ impl LevelEditorPanel {
             self.shared_state
                 .write()
                 .editor
-                .set_camera_        // The viewports keep one camera position between them until the user
+                .set_camera_mode(CameraMode::Perspective);
+        }
+
+        // The viewports keep one camera position between them until the user
         // unlocks one.
         let camera_group = Arc::new(CameraSync::default());
         if let Some(mailbox) = &self.helio_mailbox {
@@ -143,13 +146,6 @@ impl LevelEditorPanel {
             .added_views()
             .iter()
             .filter_map(|mode| self.build_extra_viewport(*mode, &camera_group, window, cx))
-            .collect();(CameraMode::Perspective);
-        }
-
-        let added: Vec<(Entity<ViewportPanelWrapper>, ExtraViewport)> = layout
-            .added_views()
-            .iter()
-            .filter_map(|mode| self.build_extra_viewport(*mode, window, cx))
             .collect();
 
         let primary_tabs: Vec<Arc<dyn PanelView>> = {
