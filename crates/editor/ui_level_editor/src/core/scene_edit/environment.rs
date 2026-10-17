@@ -25,9 +25,9 @@ impl EnvironmentPreset {
 
     fn sun(self) -> ([f32; 4], f32, [f32; 3]) {
         match self {
-            Self::ClearDay => ([1.0, 0.96, 0.88, 1.0], 80_000.0, [35.0, 25.0, 0.0]),
-            Self::GoldenHour => ([1.0, 0.58, 0.32, 1.0], 38_000.0, [8.0, 285.0, 0.0]),
-            Self::Overcast => ([0.72, 0.82, 1.0, 1.0], 24_000.0, [55.0, 20.0, 0.0]),
+            Self::ClearDay => ([1.0, 0.96, 0.88, 1.0], 2.0, [35.0, 25.0, 0.0]),
+            Self::GoldenHour => ([1.0, 0.58, 0.32, 1.0], 2.0, [8.0, 285.0, 0.0]),
+            Self::Overcast => ([0.72, 0.82, 1.0, 1.0], 2.0, [55.0, 20.0, 0.0]),
         }
     }
 }
@@ -56,6 +56,9 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
                 (helio_component::LightType::Spot, LightType::Spot)
             };
             light.general.light_type = light_type;
+            if light_type == helio_component::LightType::Directional {
+                light.intensity.intensity = 2.0;
+            }
             object_type = ObjectType::Light(object_light_type);
             vec![TypedComponent::new(light)]
         }
