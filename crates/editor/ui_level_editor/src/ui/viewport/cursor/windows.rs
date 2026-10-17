@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 static RAW_MOUSE_READY: OnceLock<bool> = OnceLock::new();
 static RAW_MOUSE_CAPTURED: AtomicBool = AtomicBool::new(false);
+static CAPTURE_WINDOW: AtomicI64 = AtomicI64::new(0);
 static RAW_MOUSE_DELTA_X: AtomicI64 = AtomicI64::new(0);
 static RAW_MOUSE_DELTA_Y: AtomicI64 = AtomicI64::new(0);
 
@@ -145,6 +146,68 @@ pub fn end_relative_mouse_mode() {
 #[cfg(target_os = "windows")]
 pub fn uses_raw_mouse_input() -> bool {
     RAW_MOUSE_READY.get().copied().unwrap_or(false)
+}
+
+/// Remember the native editor window whose foreground state owns the capture.
+#[cfg(target_os = "windows")]
+pub fn set_capture_window(window: &Window) -> bool {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let hwnd = match HasWindowHandle::window_handle(window) {
+        Ok(handle) => match handle.as_raw() {
+            RawWindowHandle::Win32(handle) => handle.hwnd.get() as isize,
+            _ => return false,
+        },
+        Err(_) => return false,
+    };
+    CAPTURE_WINDOW.store(hwnd as i64, Ordering::Release);
+    true
+}
+
+/// Keep the Windows capture tied to the foreground window and initiating
+/// button. Raw Input uses INPUTSINK so it can report while unfocused; that
+/// stream must never continue driving the editor after focus/button loss.
+#[cfg(target_os = "windows")]
+pub fn maintain_relative_mouse_mode(screen_x: i32, screen_y: i32, button_vk: i32) -> bool {
+    use winapi::shared::windef::POINT;
+    use winapi::um::winuser::{
+        ClipCursor, GetAsyncKeyState, GetCursorPos, GetForegroundWindow, SetCursorPos,
+    };
+
+    let hwnd =
+        CAPTURE_WINDOW.load(Ordering::Acquire) as isize as *mut winapi::shared::windef::HWND__;
+    unsafe {
+        if hwnd.is_null()
+            || GetForegroundWindow() != hwnd
+            || GetAsyncKeyState(button_vk) as u16 & 0x8000 == 0
+        {
+            return false;
+        }
+
+        if uses_raw_mouse_input() {
+            // Reassert the one-pixel anchor in case another window or the OS
+            // reset the process-wide clip after capture began.
+            let rect = winapi::shared::windef::RECT {
+                left: screen_x,
+                top: screen_y,
+                right: screen_x + 1,
+                bottom: screen_y + 1,
+            };
+            if ClipCursor(&rect) == 0 {
+                return false;
+            }
+            let mut point = POINT { x: 0, y: 0 };
+            if GetCursorPos(&mut point) == 0 {
+                return false;
+            }
+            if point.x != screen_x || point.y != screen_y {
+                if SetCursorPos(screen_x, screen_y) == 0 {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 
 #[cfg(target_os = "windows")]

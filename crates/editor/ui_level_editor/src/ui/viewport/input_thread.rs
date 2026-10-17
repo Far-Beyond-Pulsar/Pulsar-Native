@@ -105,8 +105,8 @@ impl ViewportPanel {
 
                 let capture =
                     ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
-                let is_rotating = capture == ViewportCursorCapture::Rotate;
-                let is_panning = capture == ViewportCursorCapture::Pan;
+                let is_rotating = capture.is_rotating();
+                let is_panning = capture.is_panning();
                 let capturing = is_rotating || is_panning;
 
                 // While capturing, poll at ~500Hz so keypresses and cursor deltas
@@ -121,13 +121,49 @@ impl ViewportPanel {
                 } else {
                     8
                 }));
+
+                // The raw-input window is registered with INPUTSINK so it can
+                // receive deltas regardless of focus. Validate ownership on
+                // every poll and tear capture down if focus or the initiating
+                // button was lost, even if GPUI never delivered mouse-up.
+                #[cfg(target_os = "windows")]
+                let capture_still_valid = if capturing {
+                    let anchor_x = locked_cursor_screen_x.load(Ordering::Acquire);
+                    let anchor_y = locked_cursor_screen_y.load(Ordering::Acquire);
+                    let button_vk = capture.initiating_button_vk();
+                    if anchor_x == i32::MIN
+                        || anchor_y == i32::MIN
+                        || !cursor::maintain_relative_mouse_mode(anchor_x, anchor_y, button_vk)
+                    {
+                        tracing::debug!(
+                            "[VIEWPORT] Ending cursor capture after focus or button loss"
+                        );
+                        ViewportCursorCapture::Released
+                            .store(&mouse_right_captured, &mouse_middle_captured);
+                        cursor::end_relative_mouse_mode();
+                        cursor::unlock_cursor();
+                        if anchor_x != i32::MIN && anchor_y != i32::MIN {
+                            cursor::set_cursor_position(anchor_x, anchor_y);
+                        }
+                        locked_cursor_screen_x.store(i32::MIN, Ordering::Release);
+                        locked_cursor_screen_y.store(i32::MIN, Ordering::Release);
+                        false
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                };
+                #[cfg(not(target_os = "windows"))]
+                let capture_still_valid = true;
+
                 // Signals "one iteration finished" on every path out of this
                 // iteration body, including the early `continue`s below.
                 let _poll_done = super::input_latch::PollDone;
                 profiling::profile_scope!("input_poll");
                 let input_start = std::time::Instant::now();
 
-                if !capturing {
+                if !capturing || !capture_still_valid {
                     // Not active - clear state
                     _last_mouse_pos = None;
                     input_state.set_forward(0);

@@ -49,12 +49,19 @@ enum ViewportCursorCapture {
     Released,
     Rotate,
     Pan,
+    PanRight,
 }
 
 impl ViewportCursorCapture {
     fn load(right: &AtomicBool, middle: &AtomicBool) -> Self {
         if right.load(Ordering::Acquire) {
-            Self::Rotate
+            // Right-drag may pan when Shift is held. Preserve the initiating
+            // button so Windows can stop capture if that button is released.
+            if middle.load(Ordering::Acquire) {
+                Self::PanRight
+            } else {
+                Self::Rotate
+            }
         } else if middle.load(Ordering::Acquire) {
             Self::Pan
         } else {
@@ -63,8 +70,27 @@ impl ViewportCursorCapture {
     }
 
     fn store(self, right: &AtomicBool, middle: &AtomicBool) {
-        right.store(matches!(self, Self::Rotate), Ordering::Release);
-        middle.store(matches!(self, Self::Pan), Ordering::Release);
+        right.store(
+            matches!(self, Self::Rotate | Self::PanRight),
+            Ordering::Release,
+        );
+        middle.store(
+            matches!(self, Self::Pan | Self::PanRight),
+            Ordering::Release,
+        );
+    }
+
+    fn is_rotating(self) -> bool {
+        self == Self::Rotate
+    }
+
+    fn is_panning(self) -> bool {
+        matches!(self, Self::Pan | Self::PanRight)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn initiating_button_vk(self) -> i32 {
+        if self == Self::Pan { 0x04 } else { 0x02 }
     }
 
     fn is_active(self) -> bool {

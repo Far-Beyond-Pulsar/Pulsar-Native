@@ -16,8 +16,8 @@ pub(super) fn handle_mouse_move(
     last_mouse_pos: Rc<RefCell<Option<(f32, f32)>>>,
 ) {
     let capture = ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
-    let is_rotating = capture == ViewportCursorCapture::Rotate;
-    let is_panning = capture == ViewportCursorCapture::Pan;
+    let is_rotating = capture.is_rotating();
+    let is_panning = capture.is_panning();
 
     if is_rotating || is_panning {
         #[cfg(target_os = "windows")]
@@ -200,6 +200,12 @@ pub(super) fn handle_right_mouse_down(
         return;
     }
 
+    #[cfg(target_os = "windows")]
+    if !crate::ui::viewport::cursor::set_capture_window(window) {
+        tracing::error!("[VIEWPORT] Could not associate mouse capture with the editor window");
+        return;
+    }
+
     let shift_pressed = event.modifiers.shift;
     let window_x: f32 = event.position.x.into();
     let window_y: f32 = event.position.y.into();
@@ -260,7 +266,7 @@ pub(super) fn handle_right_mouse_down(
     input_state_clone.mouse_y.store(y, Ordering::Relaxed);
 
     let capture = if shift_pressed {
-        ViewportCursorCapture::Pan
+        ViewportCursorCapture::PanRight
     } else {
         ViewportCursorCapture::Rotate
     };
@@ -292,12 +298,8 @@ pub(super) fn handle_right_mouse_up(
     crate::ui::viewport::cursor::end_relative_mouse_mode();
     crate::ui::viewport::cursor::unlock_cursor();
     #[cfg(target_os = "windows")]
-    if !crate::ui::viewport::cursor::uses_raw_mouse_input()
-        && restore_x != i32::MIN
-        && restore_y != i32::MIN
-    {
-        // The polling fallback recenters while captured, so return to the
-        // original native position after releasing the window confinement.
+    if restore_x != i32::MIN && restore_y != i32::MIN {
+        // Restore to the exact native down position after either input path.
         crate::ui::viewport::cursor::set_cursor_position(restore_x, restore_y);
     }
     #[cfg(not(target_os = "windows"))]
@@ -323,6 +325,12 @@ pub(super) fn handle_middle_mouse_down(
         ViewportCursorCapture::Released.store(&mouse_right_captured, &mouse_middle_captured);
         crate::ui::viewport::cursor::end_relative_mouse_mode();
         crate::ui::viewport::cursor::unlock_cursor();
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if !crate::ui::viewport::cursor::set_capture_window(window) {
+        tracing::error!("[VIEWPORT] Could not associate mouse capture with the editor window");
         return;
     }
 
@@ -409,10 +417,7 @@ pub(super) fn handle_middle_mouse_up(
     crate::ui::viewport::cursor::end_relative_mouse_mode();
     crate::ui::viewport::cursor::unlock_cursor();
     #[cfg(target_os = "windows")]
-    if !crate::ui::viewport::cursor::uses_raw_mouse_input()
-        && restore_x != i32::MIN
-        && restore_y != i32::MIN
-    {
+    if restore_x != i32::MIN && restore_y != i32::MIN {
         crate::ui::viewport::cursor::set_cursor_position(restore_x, restore_y);
     }
     #[cfg(not(target_os = "windows"))]
