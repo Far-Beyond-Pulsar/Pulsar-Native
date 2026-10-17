@@ -1,6 +1,18 @@
 use super::*;
 
 impl LevelEditorPanel {
+    pub(in crate::ui::panel) fn on_open_environment_config(
+        &mut self,
+        _: &OpenEnvironmentConfig,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::ui::environment_config_window::EnvironmentConfigWindow::open(
+            self.shared_state.clone(),
+            cx,
+        );
+    }
+
     pub(in crate::ui::panel) fn on_toggle_grid(
         &mut self,
         _: &ToggleGrid,

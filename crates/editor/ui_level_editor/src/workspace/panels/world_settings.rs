@@ -18,6 +18,7 @@ pub struct WorldSettingsPanel {
     /// world, which edits anywhere (properties panel, undo) can change.
     last_revision: u64,
     pump_started: bool,
+    environment_only: bool,
 }
 
 impl WorldSettingsPanel {
@@ -33,7 +34,18 @@ impl WorldSettingsPanel {
             state,
             last_revision,
             pump_started: false,
+            environment_only: false,
         }
+    }
+
+    pub(crate) fn new_environment_config(
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut panel = Self::new(state, window, cx);
+        panel.environment_only = true;
+        panel
     }
 
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -65,8 +77,13 @@ impl Render for WorldSettingsPanel {
 
         v_flex()
             .size_full()
+            .min_h_0()
             .bg(cx.theme().sidebar)
-            .child(self.world_settings.render(window, cx))
+            .child(if self.environment_only {
+                self.world_settings.render_environment_config(window, cx)
+            } else {
+                self.world_settings.render(window, cx).into_any_element()
+            })
     }
 }
 

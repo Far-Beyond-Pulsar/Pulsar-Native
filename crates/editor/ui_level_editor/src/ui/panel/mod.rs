@@ -289,6 +289,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_performance_overlay))
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
+            .on_action(cx.listener(Self::on_open_environment_config))
             .on_action(cx.listener(Self::on_toggle_fps_graph_type))
             // Performance metrics toggles
             .on_action(cx.listener(Self::on_toggle_fps_graph))

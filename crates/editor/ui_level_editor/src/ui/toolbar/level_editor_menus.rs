@@ -14,8 +14,8 @@ use rust_i18n::t;
 use ui_common::menu::{ImportAssets, NewAsset};
 
 use crate::ui::actions::{
-    AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, NewScene, OpenScene, SaveScene,
-    SaveSceneAs, ToggleCameraModeSelector, ToggleGrid, ToggleViewportOptions,
+    AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, NewScene, OpenEnvironmentConfig,
+    OpenScene, SaveScene, SaveSceneAs, ToggleCameraModeSelector, ToggleGrid, ToggleViewportOptions,
 };
 use crate::LevelEditorState;
 
@@ -38,6 +38,10 @@ impl LevelEditorMenus {
             )
             .menu(Self::create_menu())
             .menu(Self::assets_menu(&creatable_file_types()))
+            .menu(EditorMenu::new(t!("LevelEditor.Menu.Tools")).action(
+                t!("LevelEditor.Menu.EnvironmentConfig"),
+                OpenEnvironmentConfig,
+            ))
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.View"))
                     .action(t!("LevelEditor.Menu.ToggleGrid"), ToggleGrid)

@@ -32,6 +32,7 @@ actions!(
         TogglePerformanceOverlay,
         ToggleCameraModeSelector,
         ToggleViewportOptions,
+        OpenEnvironmentConfig,
         Toggle3DRenderer,
         ToggleGpuRenderer,
         ToggleFpsGraphType,

@@ -2,6 +2,7 @@
 //! [`sky_section`]), its global wind (its one `WindComponent`,
 //! [`wind_section`]) and the persisted gameplay and simulation settings.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ use ui::{
 use crate::state::LevelEditorState;
 use crate::WorldSettingsPanel;
 
+mod environment_section;
 mod sky_section;
 mod wind_section;
 
@@ -51,6 +53,10 @@ pub struct WorldSettingsPanelImpl {
     wind_properties: Option<Arc<sky_section::ClassProperties>>,
     /// Why the last "Create Wind" did nothing, if it did nothing.
     wind_message: Option<String>,
+    environment_property_state: ui_common::PropertyStateManager,
+    environment_properties: HashMap<String, Arc<sky_section::ClassProperties>>,
+    environment_selection: Option<environment_section::EnvironmentSelection>,
+    environment_sidebar_scroll: gpui::UniformListScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -150,6 +156,10 @@ impl WorldSettingsPanelImpl {
             wind_property_state: ui_common::PropertyStateManager::new(),
             wind_properties: None,
             wind_message: None,
+            environment_property_state: ui_common::PropertyStateManager::default(),
+            environment_properties: HashMap::new(),
+            environment_selection: None,
+            environment_sidebar_scroll: gpui::UniformListScrollHandle::new(),
             _subscriptions: subscriptions,
         };
         panel.load_blueprint_catalog(cx);
@@ -258,6 +268,7 @@ impl WorldSettingsPanelImpl {
         );
         let sky_section = self.render_sky_section(window, cx);
         let wind_section = self.render_wind_section(window, cx);
+        let environment_tools = self.render_environment_tools(cx);
         let state = self.state.read();
         let settings = &state.scene.world_settings;
         let selected = settings
@@ -275,10 +286,11 @@ impl WorldSettingsPanelImpl {
 
         v_flex()
             .size_full()
+            .min_h_0()
             .bg(cx.theme().background)
             .child(self.render_header(cx))
             .child(
-                div().flex_1().overflow_y_scroll().child(
+                div().flex_1().min_h_0().overflow_y_scroll().child(
                     v_flex()
                         .w_full()
                         .p_4()
@@ -287,6 +299,8 @@ impl WorldSettingsPanelImpl {
                         .child(sky_section)
                         .child(self.render_section_title("Wind"))
                         .child(wind_section)
+                        .child(self.render_section_title("Environment Mixer"))
+                        .child(environment_tools)
                         .child(self.render_section_title("General"))
                         .child(self.render_numeric_row(
                             "Time Scale",
@@ -333,6 +347,35 @@ impl WorldSettingsPanelImpl {
                         ),
                 ),
             )
+    }
+
+    pub(crate) fn render_environment_config(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<WorldSettingsPanel>,
+    ) -> AnyElement {
+        let tools = self.render_environment_tools(cx);
+        let components = self.render_environment_components(window, cx);
+        v_flex()
+            .size_full()
+            .min_h_0()
+            .bg(cx.theme().background)
+            .child(
+                v_flex()
+                    .size_full()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .w_full()
+                            .p_3()
+                            .border_b_1()
+                            .border_color(cx.theme().border)
+                            .child(tools),
+                    )
+                    .child(div().flex_1().min_h_0().w_full().child(components)),
+            )
+            .into_any_element()
     }
 
     fn render_header(&self, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
