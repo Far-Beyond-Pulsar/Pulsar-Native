@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use engine_backend::subsystems::render::{EditorCameraState, HelioEditorMailbox};
+use engine_backend::subsystems::render::{CameraSync, EditorCameraState, HelioEditorMailbox};
 use gpui::*;
 use ui::dock::{DockItem, PanelView};
 
@@ -133,7 +133,17 @@ impl LevelEditorPanel {
             self.shared_state
                 .write()
                 .editor
-                .set_camera_mode(CameraMode::Perspective);
+                .set_camera_        // The viewports keep one camera position between them until the user
+        // unlocks one.
+        let camera_group = Arc::new(CameraSync::default());
+        if let Some(mailbox) = &self.helio_mailbox {
+            mailbox.join_camera_sync(camera_group.clone());
+        }
+        let added: Vec<(Entity<ViewportPanelWrapper>, ExtraViewport)> = layout
+            .added_views()
+            .iter()
+            .filter_map(|mode| self.build_extra_viewport(*mode, &camera_group, window, cx))
+            .collect();(CameraMode::Perspective);
         }
 
         let added: Vec<(Entity<ViewportPanelWrapper>, ExtraViewport)> = layout
@@ -204,6 +214,7 @@ impl LevelEditorPanel {
     fn build_extra_viewport(
         &mut self,
         mode: CameraMode,
+        camera_group: &Arc<CameraSync>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<(Entity<ViewportPanelWrapper>, ExtraViewport)> {
@@ -219,6 +230,8 @@ impl LevelEditorPanel {
             .lock()
             .ok()
             .and_then(|engine| engine.editor_mailbox())?;
+
+        mailbox.join_camera_sync(camera_group.clone());
 
         // Start where the primary camera is, with the tool the user has.
         if let Some(camera) = self.current_editor_camera_state() {

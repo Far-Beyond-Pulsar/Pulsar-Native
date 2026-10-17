@@ -544,6 +544,34 @@ const ORTHO_STANDOFF: f32 = 4096.0;
 const ORTHO_MIN_HALF_HEIGHT: f32 = 0.05;
 const ORTHO_MAX_HALF_HEIGHT: f32 = 100_000.0;
 
+/// A camera position shared by the viewports of a split view. Each renderer
+/// that has joined publishes where its camera went when the user moved it and
+/// follows what the others publish, unless it is unlocked.
+#[derive(Default)]
+pub struct CameraSync {
+    shared: parking_lot::Mutex<SharedCameraPosition>,
+}
+
+#[derive(Default)]
+struct SharedCameraPosition {
+    /// Bumped at every publish.
+    generation: u64,
+    /// `None` until something moved.
+    position: Option<[f64; 3]>,
+}
+
+/// What one renderer remembers of its place in a [`CameraSync`].
+struct CameraSyncMember {
+    group: Arc<CameraSync>,
+    /// The generation this renderer last published or adopted. `u64::MAX`
+    /// forces the next adoption (after being unlocked).
+    seen_generation: u64,
+    /// Where this renderer last published or adopted; a camera anywhere else
+    /// was moved by the user.
+    synced_position: DVec3,
+    was_locked: bool,
+}
+
 /// A left-click or left-release event, queued by the UI thread and drained
 /// on the render thread at the top of [`HelioRenderer::render_frame`]
 /// (Pulsar-Native drag-release freeze fix).
@@ -667,6 +695,8 @@ pub struct HelioEditorMailbox {
     viewport_realtime: Arc<AtomicBool>,
     viewport_debug_mode: Arc<AtomicU32>,
     view_kind: Arc<AtomicU8>,
+    camera_sync_locked: Arc<AtomicBool>,
+    camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
@@ -769,6 +799,19 @@ impl HelioEditorMailbox {
         self.view_kind.store(kind.to_u8(), Ordering::Release);
     }
 
+    /// Whether this viewport follows (and leads) the camera of its
+    /// [`CameraSync`] group. Unlocked, its camera is its own.
+    pub fn set_camera_sync_locked(&self, locked: bool) {
+        self.camera_sync_locked.store(locked, Ordering::Release);
+    }
+
+    /// Put this viewport in a camera sync group, from the next frame.
+    pub fn join_camera_sync(&self, group: Arc<CameraSync>) {
+        if let Ok(mut slot) = self.camera_sync_join.lock() {
+            *slot = Some(group);
+        }
+    }
+
     /// The view the viewport was last asked for.
     pub fn view_kind(&self) -> ViewKind {
         ViewKind::from_u8(self.view_kind.load(Ordering::Acquire))
@@ -840,6 +883,11 @@ pub struct HelioRenderer {
     viewport_debug_mode: Arc<AtomicU32>,
     /// See [`HelioEditorMailbox::set_view_kind`].
     view_kind: Arc<AtomicU8>,
+    /// See [`HelioEditorMailbox::set_camera_sync_locked`].
+    camera_sync_locked: Arc<AtomicBool>,
+    /// See [`HelioEditorMailbox::join_camera_sync`].
+    camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
+    camera_sync: Option<CameraSyncMember>,
     /// The view the camera is currently built for (`view_kind` as of the last
     /// frame), so a change can be noticed and drawn.
     active_view: ViewKind,
@@ -1058,6 +1106,9 @@ impl HelioRenderer {
             viewport_realtime: Arc::new(AtomicBool::new(true)),
             viewport_debug_mode: Arc::new(AtomicU32::new(0)),
             view_kind: Arc::new(AtomicU8::new(ViewKind::Perspective.to_u8())),
+            camera_sync_locked: Arc::new(AtomicBool::new(true)),
+            camera_sync_join: Arc::new(Mutex::new(None)),
+            camera_sync: None,
             active_view: ViewKind::Perspective,
             ortho_half_height: 20.0,
             viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
@@ -1564,6 +1615,7 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
         }
+        let camera_synced = self.sync_camera();
         phases.mark("camera");
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
@@ -1624,6 +1676,7 @@ impl HelioRenderer {
             || postprocess_changed
             || debug_view_changed
             || view_kind_changed
+            || camera_synced
             // Realtime animation: wind, particles, shader-graph `time`.
             || animated
             || self.reset_taa_next_frame;
@@ -2284,6 +2337,61 @@ impl HelioRenderer {
         }
     }
 
+    /// Keep this camera's position in step with the others of its sync group.
+    /// Returns whether it was moved by one of them.
+    fn sync_camera(&mut self) -> bool {
+        if let Some(group) = self
+            .camera_sync_join
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+        {
+            let generation = group.shared.lock().generation;
+            self.camera_sync = Some(CameraSyncMember {
+                group,
+                seen_generation: generation,
+                synced_position: self.cam_pos,
+                was_locked: true,
+            });
+        }
+        let locked = self.camera_sync_locked.load(Ordering::Acquire);
+        let Some(member) = self.camera_sync.as_mut() else {
+            return false;
+        };
+        if !locked {
+            member.was_locked = false;
+            return false;
+        }
+        if !member.was_locked {
+            // Back in the group: rejoin where it is, not where this camera
+            // wandered off to.
+            member.was_locked = true;
+            member.synced_position = self.cam_pos;
+            member.seen_generation = u64::MAX;
+        }
+
+        let mut shared = member.group.shared.lock();
+        if self.cam_pos != member.synced_position {
+            // Moved by the user: the others follow.
+            shared.generation += 1;
+            shared.position = Some(self.cam_pos.to_array());
+            member.seen_generation = shared.generation;
+            member.synced_position = self.cam_pos;
+            return false;
+        }
+        match shared.position {
+            Some(position) if shared.generation != member.seen_generation => {
+                member.seen_generation = shared.generation;
+                self.cam_pos = DVec3::from_array(position);
+                member.synced_position = self.cam_pos;
+                // The temporal filters see a moving camera.
+                self.had_camera_input = true;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Adopt the view the editor asked for. Returns whether it changed.
     fn apply_view_kind(&mut self) -> bool {
         let wanted = ViewKind::from_u8(self.view_kind.load(Ordering::Acquire));
@@ -2654,6 +2762,8 @@ impl HelioRenderer {
             viewport_realtime: self.viewport_realtime.clone(),
             viewport_debug_mode: self.viewport_debug_mode.clone(),
             view_kind: self.view_kind.clone(),
+            camera_sync_locked: self.camera_sync_locked.clone(),
+            camera_sync_join: self.camera_sync_join.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
@@ -3524,5 +3634,62 @@ mod view_kind_tests {
             clip.z / clip.w
         };
         assert!(depth(100.0) > depth(-100.0));
+    }
+}
+
+#[cfg(test)]
+mod camera_sync_tests {
+    use super::*;
+
+    fn renderer() -> HelioRenderer {
+        HelioRenderer::new(Arc::new(parking_lot::RwLock::new(crate::scene::new_scene())))
+    }
+
+    fn join(renderer: &mut HelioRenderer, group: &Arc<CameraSync>) {
+        renderer.editor_mailbox().join_camera_sync(group.clone());
+        assert!(!renderer.sync_camera());
+    }
+
+    #[test]
+    fn locked_cameras_follow_the_one_the_user_moved() {
+        let group = Arc::new(CameraSync::default());
+        let (mut a, mut b) = (renderer(), renderer());
+        b.cam_pos = a.cam_pos;
+        join(&mut a, &group);
+        join(&mut b, &group);
+
+        a.cam_pos += DVec3::new(5.0, 0.0, -3.0);
+        assert!(!a.sync_camera(), "the one that moved is not moved again");
+        assert!(b.sync_camera());
+        assert_eq!(b.cam_pos, a.cam_pos);
+        // Nothing left to follow, and no echo back.
+        assert!(!b.sync_camera());
+        assert!(!a.sync_camera());
+    }
+
+    #[test]
+    fn an_unlocked_camera_neither_follows_nor_leads() {
+        let group = Arc::new(CameraSync::default());
+        let (mut a, mut b) = (renderer(), renderer());
+        b.cam_pos = a.cam_pos;
+        join(&mut a, &group);
+        join(&mut b, &group);
+
+        b.editor_mailbox().set_camera_sync_locked(false);
+        assert!(!b.sync_camera());
+        let before = b.cam_pos;
+        a.cam_pos += DVec3::X * 10.0;
+        a.sync_camera();
+        assert!(!b.sync_camera());
+        assert_eq!(b.cam_pos, before, "unlocked cameras stay put");
+
+        b.cam_pos += DVec3::Y * 7.0;
+        assert!(!b.sync_camera());
+        assert!(!a.sync_camera(), "an unlocked move is not published");
+
+        // Locking again rejoins the group where it is.
+        b.editor_mailbox().set_camera_sync_locked(true);
+        assert!(b.sync_camera());
+        assert_eq!(b.cam_pos, a.cam_pos);
     }
 }

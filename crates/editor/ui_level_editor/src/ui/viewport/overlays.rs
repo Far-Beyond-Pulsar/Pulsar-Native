@@ -3,6 +3,9 @@
 use super::*;
 
 use crate::ui::toolbar::view_mode_dropdown::ViewModePickerState;
+use rust_i18n::t;
+use ui::button::{Button, ButtonVariants as _};
+use ui::IconName;
 
 impl ViewportPanel {
     /// The view-mode picker this viewport shows: its own when it was split off,
@@ -50,6 +53,7 @@ impl ViewportPanel {
                 overlays.show_performance_overlay,
                 overlays.show_gpu_pipeline_overlay,
                 overlays.show_nerds_overlay,
+                overlays.camera_sync_locked,
             ),
             (
                 positions.viewport,
@@ -242,6 +246,42 @@ impl ViewportPanel {
                         &legend,
                         cx.theme(),
                     )),
+            );
+        }
+
+        // A split-off viewport can leave the camera sync: locked, its camera
+        // moves with the others; unlocked, it is its own.
+        if self.own_view {
+            let locked = view.overlays.state.camera_sync_locked;
+            let state = view_arc.clone();
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .top_2()
+                    .left(relative(0.5))
+                    .ml(px(-16.0))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        Button::new("viewport_camera_sync")
+                            .icon(if locked {
+                                IconName::Link
+                            } else {
+                                IconName::LinkSlash
+                            })
+                            .small()
+                            .tooltip(if locked {
+                                t!("LevelEditor.Viewport.CameraLocked")
+                            } else {
+                                t!("LevelEditor.Viewport.CameraUnlocked")
+                            })
+                            .on_click(move |_, _, _| {
+                                let mut state = state.write();
+                                let locked = state.overlays.state.camera_sync_locked;
+                                state.overlays.state.camera_sync_locked = !locked;
+                            }),
+                    ),
             );
         }
 

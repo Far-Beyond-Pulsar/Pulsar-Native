@@ -14,7 +14,8 @@ pub use core::{
     RenderSpikeLogConfig,
 };
 pub use renderer::{
-    CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer, PendingPointerEvent,
+    CameraSync, CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer,
+    PendingPointerEvent,
     RendererCommand, StaticDragWarning, ViewKind, ViewportDebugLegend, ViewportDebugView,
     VoxelBrushRequest,
     VoxelBrushTool,

@@ -146,6 +146,7 @@ impl ViewportPanel {
             mailbox.set_viewport_realtime(shared.editor.realtime_viewport);
         }
         mailbox.set_viewport_debug_mode(debug_mode);
+        mailbox.set_camera_sync_locked(self.view_state.read().overlays.state.camera_sync_locked);
 
         // The renderer advertises its debug views once its graph exists.
         let debug_views = mailbox.viewport_debug_views();

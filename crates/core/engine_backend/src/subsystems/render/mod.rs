@@ -5,7 +5,7 @@ pub mod helio_renderer;
 
 pub use handle_utils::{handle_to_usize, usize_to_handle};
 pub use helio_renderer::{
-    CameraInput, EditorCameraState, GpuProfilerAvailability, GpuProfilerData, HelioEditorMailbox,
+    CameraInput, CameraSync, EditorCameraState, GpuProfilerAvailability, GpuProfilerData, HelioEditorMailbox,
     HelioRenderer, PendingPointerEvent, RenderMetrics, RenderSpikeLogConfig, StaticDragWarning,
     ViewKind, ViewportDebugLegend, ViewportDebugView, VoxelBrushRequest, VoxelBrushTool,
 };
