@@ -138,7 +138,18 @@ impl LevelEditorPanel {
 
         // The viewports keep one camera position between them until the user
         // unlocks one.
-        let camera_group = Arc::new(CameraSync::default());
+        // They centre on the point the perspective camera is looking at.
+        let camera_group = Arc::new(match self.current_editor_camera_state() {
+            Some(camera) => CameraSync::at(
+                EditorCameraState {
+                    position: camera.position,
+                    yaw: camera.yaw,
+                    pitch: camera.pitch,
+                }
+                .focus_point(),
+            ),
+            None => CameraSync::default(),
+        });
         if let Some(mailbox) = &self.helio_mailbox {
             mailbox.join_camera_sync(camera_group.clone());
         }
