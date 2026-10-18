@@ -295,6 +295,8 @@ impl LevelEditorPanel {
         let poll_state = Arc::clone(&shared_state);
         let poll_gpu = gpu_engine.clone();
         let poll_mailbox = helio_mailbox.clone();
+        let extra_viewports = split_viewports::ExtraViewports::default();
+        let poll_extras = extra_viewports.clone();
         let poller = cx.spawn(async move |this, cx| {
             let mut last: Option<(
                 (bool, bool, bool, bool, u64),
@@ -322,18 +324,27 @@ impl LevelEditorPanel {
                 // Undo/redo from a caller without a renderer handle (the AI
                 // tools) may have changed the selection. Cleared only once
                 // the gizmo follows it.
+                // Viewports added by the split buttons (dropped ones pruned).
+                let extras = poll_extras.live();
                 if poll_state.read().scene.pending_selection_sync {
                     if let Ok(mut engine) = poll_gpu.try_lock() {
                         poll_state.write().scene.pending_selection_sync = false;
                         engine.sync_selection_to_helio();
+                        for extra in &extras {
+                            if let Ok(mut engine) = extra.gpu.try_lock() {
+                                engine.sync_selection_to_helio();
+                            }
+                        }
                     }
                 }
-                // Finished gizmo drags become undo steps (#931).
-                if let Some(drags) = poll_mailbox
-                    .as_ref()
-                    .map(|mailbox| mailbox.take_completed_drags())
-                    .filter(|drags| !drags.is_empty())
-                {
+                // Finished gizmo drags become undo steps (#931), whichever
+                // viewport made them.
+                let drags: Vec<_> = poll_mailbox
+                    .iter()
+                    .chain(extras.iter().map(|extra| &extra.mailbox))
+                    .flat_map(|mailbox| mailbox.take_completed_drags())
+                    .collect();
+                if !drags.is_empty() {
                     let mut s = poll_state.write();
                     for drag in drags {
                         s.scene.record_gizmo_drag(drag.entity, drag.before);
@@ -342,8 +353,9 @@ impl LevelEditorPanel {
                 // A gizmo drag on a Static/Stationary object (#837); the
                 // notification needs a window, so render shows it.
                 if let Some(warning) = poll_mailbox
-                    .as_ref()
-                    .and_then(|mailbox| mailbox.take_static_drag_warning())
+                    .iter()
+                    .chain(extras.iter().map(|extra| &extra.mailbox))
+                    .find_map(|mailbox| mailbox.take_static_drag_warning())
                 {
                     cx.update(|cx| {
                         let _ = this.update(cx, |panel, cx| {
@@ -393,6 +405,14 @@ impl LevelEditorPanel {
                         engine.queue_gizmo_mode(helio_mode);
                         engine.sync_selection_to_helio();
                     }
+                    for extra in &extras {
+                        if let Ok(mut engine) = extra.gpu.try_lock() {
+                            let (_, tool) = &snapshot.2;
+                            let (_, helio_mode) = Self::tool_to_gizmo(*tool);
+                            engine.queue_gizmo_mode(helio_mode);
+                            engine.sync_selection_to_helio();
+                        }
+                    }
                 }
 
                 if pie_changed || title_changed {
@@ -407,6 +427,7 @@ impl LevelEditorPanel {
 
         let playback_host = Self::bind_playback_host(playback_host_id, window, cx);
 
+        let viewport_input_state = Arc::new(InputState::new());
         let toolbar = cx.new(|cx| {
             ToolbarView::new(
                 window,
@@ -414,6 +435,7 @@ impl LevelEditorPanel {
                 shared_state.clone(),
                 gpu_engine.clone(),
                 helio_mailbox.clone(),
+                viewport_input_state.clone(),
             )
         });
         let class_updates =
@@ -424,10 +446,12 @@ impl LevelEditorPanel {
         Self {
             focus_handle: cx.focus_handle(),
             toolbar,
+            viewport_input_state,
             viewport,
             gpu_engine: gpu_engine.clone(),
             helio_mailbox,
             render_enabled,
+            extra_viewports,
             _class_updates: class_updates,
             _asset_reloads: asset_reloads,
             shared_state,

@@ -253,7 +253,8 @@ fn to_matrix(position: [f32; 3], rotation: [f32; 3], scale: [f32; 3]) -> Mat4 {
     Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
 }
 
-/// World transform of a component placed at `local` under `parent`.
+/// World transform of a component placed at `local` under `parent` (for code that
+/// needs the composed pose; stored transforms are parent-relative).
 pub fn compose(parent: &Transform, local: &LocalTransform) -> Transform {
     let m = to_matrix(parent.position, parent.rotation, parent.scale)
         * to_matrix(local.position, local.rotation, local.scale);
@@ -283,20 +284,25 @@ fn local_transform_of(world: &World, entity: Entity) -> LocalTransform {
         .unwrap_or_default()
 }
 
-/// Re-place every generated child from its root's current transform
-/// (object transforms are flat world-space values, so they don't follow
-/// their parent on their own). Returns the entities moved.
+/// Reset every generated child to its class slot's local transform. Object
+/// transforms are parent-relative, so a child follows its root on its own; this
+/// is for when a slot's local transform changed. Returns the entities reset.
 pub fn relayout_generated_children(world: &mut World, root: Entity) -> Vec<Entity> {
     let children = generated_children(world, root);
     for &child in &children {
-        let Some(parent) = world.parent_of(child) else {
-            continue;
-        };
-        let parent_tf = world.get::<Transform>(parent).copied().unwrap_or_default();
         let local = local_transform_of(world, child);
-        world.insert(child, compose(&parent_tf, &local));
+        world.insert(child, as_transform(&local));
     }
     children
+}
+
+/// A slot's local transform as the child's (parent-relative) `Transform`.
+fn as_transform(local: &LocalTransform) -> Transform {
+    Transform {
+        position: local.position,
+        rotation: local.rotation,
+        scale: local.scale,
+    }
 }
 
 // ── Instantiation ─────────────────────────────────────────────────────────
@@ -424,7 +430,6 @@ pub fn expand_from_template(
             .as_ref()
             .and_then(|slot| spawned.iter().find(|(s, _)| s == slot).map(|(_, e)| *e))
             .unwrap_or(root);
-        let parent_tf = world.get::<Transform>(parent).copied().unwrap_or_default();
         let visible = world.get::<Visibility>(root).copied().unwrap_or_default();
         let slot_id = child.component.slot_id.clone();
         let wanted_id = child_stable_id(&root_id, &slot_id);
@@ -433,7 +438,7 @@ pub fn expand_from_template(
                 .then_some(wanted_id),
             name: child.component.class_name.clone(),
             parent: Some(parent),
-            transform: compose(&parent_tf, &child.local),
+            transform: as_transform(&child.local),
             visibility: visible,
             object_type: ObjectType::Empty,
         };

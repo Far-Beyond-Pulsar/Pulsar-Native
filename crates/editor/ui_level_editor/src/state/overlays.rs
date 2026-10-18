@@ -54,6 +54,9 @@ pub struct OverlayState {
     // ── Collapse state (when X is clicked, overlay collapses to a button) ─
     pub camera_mode_selector_collapsed: bool,
     pub viewport_options_collapsed: bool,
+    /// Whether a split-off viewport's camera is kept in step with the other
+    /// viewports' (its lock button). The primary viewport is always locked.
+    pub camera_sync_locked: bool,
     pub performance_overlay_collapsed: bool,
     pub gpu_pipeline_overlay_collapsed: bool,
 
@@ -81,6 +84,7 @@ impl Default for OverlayState {
             show_viewport_options: true,
             camera_mode_selector_collapsed: false,
             viewport_options_collapsed: false,
+            camera_sync_locked: true,
             performance_overlay_collapsed: false,
             gpu_pipeline_overlay_collapsed: false,
             fps_graph_is_line: true,

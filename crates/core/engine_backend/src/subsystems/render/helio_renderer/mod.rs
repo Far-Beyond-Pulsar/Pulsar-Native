@@ -2,6 +2,7 @@
 
 mod animated_content;
 pub mod core;
+pub mod material_sampler;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
@@ -14,8 +15,10 @@ pub use core::{
     RenderSpikeLogConfig,
 };
 pub use renderer::{
-    CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer, PendingPointerEvent,
-    RendererCommand, StaticDragWarning, ViewportDebugLegend, ViewportDebugView, VoxelBrushRequest,
+    CameraSync, CompletedDrag, EditorCameraState, CAMERA_PIVOT_DISTANCE, HelioEditorMailbox, HelioRenderer,
+    PendingPointerEvent,
+    RendererCommand, StaticDragWarning, ViewKind, ViewportDebugLegend, ViewportDebugView,
+    VoxelBrushRequest,
     VoxelBrushTool,
 };
 pub use voxel_backend::{VoxelChunkSaves, VoxelSavedChunks};

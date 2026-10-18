@@ -31,6 +31,10 @@ pub struct ImportRecord {
     /// written before this existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<ImportOutput>,
+    /// Ids of the import companions the user accepted for this source, run
+    /// again on every re-import (see [`crate::companion`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub companions: Vec<String>,
 }
 
 /// One file of a multi-file import. Re-importing reads these back to give each
@@ -210,6 +214,7 @@ mod tests {
             importer: "mesh".into(),
             options: None,
             outputs: Vec::new(),
+            companions: Vec::new(),
         }
     }
 

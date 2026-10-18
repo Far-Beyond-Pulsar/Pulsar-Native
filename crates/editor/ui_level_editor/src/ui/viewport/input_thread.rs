@@ -85,7 +85,7 @@ impl ViewportPanel {
             profiling::set_thread_name("Input Thread");
             // Lets the render thread wake this thread for a fresh sample right
             // before it reads the camera (see `input_latch`).
-            super::input_latch::register_input_thread();
+            let latch = super::input_latch::register_input_thread();
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
             // `DeviceState::new` panics without an X display (pure Wayland);
             // on Linux keys then come from the Wayland bypass instead.
@@ -99,20 +99,20 @@ impl ViewportPanel {
             loop {
                 if stop_flag.load(Ordering::Acquire) {
                     tracing::debug!("[INPUT-THREAD] shutdown requested, exiting");
-                    super::input_latch::set_capturing(false);
+                    super::input_latch::unregister_input_thread(&latch);
                     return;
                 }
 
                 let capture =
                     ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
-                let is_rotating = capture == ViewportCursorCapture::Rotate;
-                let is_panning = capture == ViewportCursorCapture::Pan;
+                let is_rotating = capture.is_rotating();
+                let is_panning = capture.is_panning();
                 let capturing = is_rotating || is_panning;
 
                 // While capturing, poll at ~500Hz so keypresses and cursor deltas
                 // reach the camera within ~2ms instead of up to 8ms; idle, drop to
                 // ~120Hz so we don't burn CPU.
-                super::input_latch::set_capturing(capturing);
+                latch.set_capturing(capturing);
                 // `park_timeout`, not `sleep`: the render thread can `unpark` this
                 // thread to request a fresh sample right before a frame reads the
                 // camera. Without a request it behaves exactly like the sleep.
@@ -121,13 +121,49 @@ impl ViewportPanel {
                 } else {
                     8
                 }));
+
+                // The raw-input window is registered with INPUTSINK so it can
+                // receive deltas regardless of focus. Validate ownership on
+                // every poll and tear capture down if focus or the initiating
+                // button was lost, even if GPUI never delivered mouse-up.
+                #[cfg(target_os = "windows")]
+                let capture_still_valid = if capturing {
+                    let anchor_x = locked_cursor_screen_x.load(Ordering::Acquire);
+                    let anchor_y = locked_cursor_screen_y.load(Ordering::Acquire);
+                    let button_vk = capture.initiating_button_vk();
+                    if anchor_x == i32::MIN
+                        || anchor_y == i32::MIN
+                        || !cursor::maintain_relative_mouse_mode(anchor_x, anchor_y, button_vk)
+                    {
+                        tracing::debug!(
+                            "[VIEWPORT] Ending cursor capture after focus or button loss"
+                        );
+                        ViewportCursorCapture::Released
+                            .store(&mouse_right_captured, &mouse_middle_captured);
+                        cursor::end_relative_mouse_mode();
+                        cursor::unlock_cursor();
+                        if anchor_x != i32::MIN && anchor_y != i32::MIN {
+                            cursor::set_cursor_position(anchor_x, anchor_y);
+                        }
+                        locked_cursor_screen_x.store(i32::MIN, Ordering::Release);
+                        locked_cursor_screen_y.store(i32::MIN, Ordering::Release);
+                        false
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                };
+                #[cfg(not(target_os = "windows"))]
+                let capture_still_valid = true;
+
                 // Signals "one iteration finished" on every path out of this
                 // iteration body, including the early `continue`s below.
-                let _poll_done = super::input_latch::PollDone;
+                let _poll_done = super::input_latch::PollDone(latch.clone());
                 profiling::profile_scope!("input_poll");
                 let input_start = std::time::Instant::now();
 
-                if !capturing {
+                if !capturing || !capture_still_valid {
                     // Not active - clear state
                     _last_mouse_pos = None;
                     input_state.set_forward(0);
@@ -159,7 +195,13 @@ impl ViewportPanel {
                 // Poll keyboard
                 {
                     profiling::profile_scope!("keyboard_poll");
-                    let keys: Vec<Keycode> = held_camera_keys(device_state.as_ref());
+                    // Fly only during RMB look. Middle-mouse / Shift+RMB pan
+                    // must not also translate from the keyboard.
+                    let keys = if is_rotating {
+                        held_camera_keys(device_state.as_ref())
+                    } else {
+                        Vec::new()
+                    };
                     let forward = if keys.contains(&Keycode::W) {
                         1
                     } else if keys.contains(&Keycode::S) {
@@ -211,51 +253,70 @@ impl ViewportPanel {
                     profiling::profile_scope!("mouse_poll");
                     #[cfg(target_os = "windows")]
                     {
-                        let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
-                        let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
-
-                        if locked_screen_x > 0 && locked_screen_y > 0 {
-                            use winapi::shared::windef::POINT;
-                            use winapi::um::winuser::GetCursorPos;
-
-                            unsafe {
-                                let mut point = POINT { x: 0, y: 0 };
-                                GetCursorPos(&mut point);
-
-                                // Calculate delta from locked position (not last position)
-                                let dx = point.x - locked_screen_x;
-                                let dy = point.y - locked_screen_y;
-
-                                if dx != 0 || dy != 0 {
-                                    // On the first captured frame, discard the delta
-                                    // (`just_activated`) to avoid a stale jump, but still
-                                    // reset the cursor so the next delta is relative.
-                                    if !just_activated {
-                                        // Accumulate deltas so multiple input samples between render frames
-                                        // are preserved instead of being overwritten.
-                                        if let Some(cam) = &camera_input {
-                                            if let Ok(mut input) = cam.lock() {
-                                                if is_rotating {
-                                                    input.accumulate_look_delta(
-                                                        dx as f32, dy as f32,
-                                                    );
-                                                } else if is_panning {
-                                                    input
-                                                        .accumulate_pan_delta(dx as f32, dy as f32);
-                                                }
-                                            }
-                                        }
-
-                                        // Also update atomics for UI feedback (optional)
+                        if cursor::uses_raw_mouse_input() {
+                            // Raw Input delivers device-relative reports without
+                            // cursor acceleration or recentering. Deltas are
+                            // accumulated until this poll, then forwarded to the
+                            // same render-thread camera accumulator as other OSes.
+                            let (dx, dy) = cursor::take_mouse_delta();
+                            if dx != 0.0 || dy != 0.0 {
+                                if let Some(cam) = &camera_input {
+                                    if let Ok(mut input) = cam.lock() {
                                         if is_rotating {
-                                            input_state.set_mouse_delta(dx as f32, dy as f32);
+                                            input.accumulate_look_delta(dx, dy);
                                         } else if is_panning {
-                                            input_state.set_pan_delta(dx as f32, dy as f32);
+                                            input.accumulate_pan_delta(dx, dy);
                                         }
                                     }
+                                }
+                                if is_rotating {
+                                    input_state.set_mouse_delta(dx, dy);
+                                } else if is_panning {
+                                    input_state.set_pan_delta(dx, dy);
+                                }
+                            }
+                        } else {
+                            // Fallback for systems where Raw Input registration
+                            // fails: derive deltas from the confined cursor.
+                            let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                            let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
-                                    // Reset cursor to locked position
-                                    cursor::set_cursor_position(locked_screen_x, locked_screen_y);
+                            if locked_screen_x != i32::MIN && locked_screen_y != i32::MIN {
+                                use winapi::shared::windef::POINT;
+                                use winapi::um::winuser::GetCursorPos;
+
+                                unsafe {
+                                    let mut point = POINT { x: 0, y: 0 };
+                                    GetCursorPos(&mut point);
+                                    let dx = point.x - locked_screen_x;
+                                    let dy = point.y - locked_screen_y;
+
+                                    if dx != 0 || dy != 0 {
+                                        if !just_activated {
+                                            if let Some(cam) = &camera_input {
+                                                if let Ok(mut input) = cam.lock() {
+                                                    if is_rotating {
+                                                        input.accumulate_look_delta(
+                                                            dx as f32, dy as f32,
+                                                        );
+                                                    } else if is_panning {
+                                                        input.accumulate_pan_delta(
+                                                            dx as f32, dy as f32,
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            if is_rotating {
+                                                input_state.set_mouse_delta(dx as f32, dy as f32);
+                                            } else if is_panning {
+                                                input_state.set_pan_delta(dx as f32, dy as f32);
+                                            }
+                                        }
+                                        cursor::set_cursor_position(
+                                            locked_screen_x,
+                                            locked_screen_y,
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -319,7 +380,7 @@ impl ViewportPanel {
                         let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
                         let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
-                        if locked_screen_x > 0 && locked_screen_y > 0 {
+                        if locked_screen_x != i32::MIN && locked_screen_y != i32::MIN {
                             if let Some((cx, cy)) = cursor::get_cursor_position() {
                                 let dx = cx - locked_screen_x;
                                 let dy = cy - locked_screen_y;

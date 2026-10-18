@@ -19,14 +19,25 @@ impl LevelEditorPanel {
         let gpu = self.gpu_engine.clone();
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
+        let viewport_input_state = self.viewport_input_state.clone();
+        let toolbar = self.toolbar.clone();
 
         let viewport_panel =
             workspace.update(cx, |workspace, cx| {
                 let dock_area = workspace.dock_area().downgrade();
 
                 // Create viewport in center
-                let viewport_panel_inner =
-                    ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
+                let viewport_panel_inner = ViewportPanel::new(
+                    viewport.clone(),
+                    render_enabled.clone(),
+                    viewport_input_state.clone(),
+                    toolbar.clone(),
+                    gpu.clone(),
+                    shared_state.clone(),
+                    false,
+                    window,
+                    cx,
+                );
                 let viewport_panel = cx.new(|cx| {
                     use crate::ViewportPanelWrapper;
                     ViewportPanelWrapper::new(

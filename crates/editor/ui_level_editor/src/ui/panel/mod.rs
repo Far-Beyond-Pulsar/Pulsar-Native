@@ -10,6 +10,7 @@ mod handlers;
 mod lifecycle;
 pub(crate) mod pie;
 mod playback_host;
+pub(crate) mod split_viewports;
 pub(crate) mod spline;
 mod workspace_sync;
 
@@ -30,6 +31,7 @@ use ui::settings::EngineSettings;
 use ui::{notification::Notification, ContextModal as _};
 
 use super::actions::*;
+use super::viewport::input_state::InputState;
 use super::{ToolbarView, ViewportPanel};
 use crate::ai_sessions;
 use crate::scene_edit::LevelEditorCameraState;
@@ -51,6 +53,7 @@ pub struct LevelEditorPanel {
 
     // UI components are separate entities rendered with `AnyView::cached`.
     toolbar: Entity<ToolbarView>,
+    viewport_input_state: Arc<InputState>,
 
     // Helio viewport rendered via WgpuSurfaceHandle
     viewport: Entity<HelioViewport>,
@@ -60,6 +63,11 @@ pub struct LevelEditorPanel {
     // doc. Fetched once at construction, not re-locked per command.
     helio_mailbox: Option<HelioEditorMailbox>,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+
+    /// Viewports added by the split buttons, each with a renderer of its own
+    /// over this editor's scene. Shared with the poller, which feeds them the
+    /// same tool and selection changes as the primary viewport.
+    extra_viewports: split_viewports::ExtraViewports,
 
     // Shared state for all panels (single source of truth)
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -258,6 +266,8 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_set_tool_mode))
             .on_action(cx.listener(Self::on_set_viewport_debug_mode))
             .on_action(cx.listener(Self::on_set_transform_snap))
+            .on_action(cx.listener(Self::on_split_viewports_half))
+            .on_action(cx.listener(Self::on_split_viewports_quad))
             // Object operations
             .on_action(cx.listener(Self::on_add_object))
             .on_action(cx.listener(Self::on_add_object_of_type))
@@ -287,6 +297,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_performance_overlay))
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
+            .on_action(cx.listener(Self::on_open_environment_config))
             .on_action(cx.listener(Self::on_toggle_fps_graph_type))
             // Performance metrics toggles
             .on_action(cx.listener(Self::on_toggle_fps_graph))
@@ -306,11 +317,18 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_top_view))
             .on_action(cx.listener(Self::on_front_view))
             .on_action(cx.listener(Self::on_side_view))
-            // Keyboard shortcuts - LETTER KEYS for fast workflow
+            // Unreal-style tool shortcuts; camera navigation owns keys during capture.
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-                // Respond if this panel or any child (e.g. viewport) has focus,
-                // and no modifier keys are held.
+                // Ignore repeats so releasing RMB while a movement key is still
+                // held cannot unexpectedly switch tools.
                 if !this.focus_handle.contains_focused(window, cx)
+                    || event.is_held
+                    || window.pressed_mouse_button().is_some()
+                    || this
+                        .viewport_panel
+                        .as_ref()
+                        .and_then(|panel| panel.upgrade())
+                        .is_some_and(|panel| panel.read(cx).is_camera_navigating())
                     || event.keystroke.modifiers.control
                     || event.keystroke.modifiers.alt
                     || event.keystroke.modifiers.shift
@@ -336,11 +354,18 @@ impl Render for LevelEditorPanel {
                     // Tool selection — call handlers directly to avoid action-dispatch drift.
                     "q" => this.on_select_tool(&SelectTool, window, cx),
                     "w" => this.on_move_tool(&MoveTool, window, cx),
-                    "g" => this.on_move_tool(&MoveTool, window, cx), // Blender: G = Grab/Move
                     "e" => this.on_rotate_tool(&RotateTool, window, cx),
-                    "r" => this.on_rotate_tool(&RotateTool, window, cx), // Blender: R = Rotate
-                    "s" => this.on_scale_tool(&ScaleTool, window, cx),   // Blender: S = Scale
-                    "l" => {}
+                    "r" => this.on_scale_tool(&ScaleTool, window, cx),
+                    "space" => {
+                        let current_tool = this.shared_state.read().editor.current_tool;
+                        match current_tool {
+                            TransformTool::Select | TransformTool::Scale => {
+                                this.on_move_tool(&MoveTool, window, cx)
+                            }
+                            TransformTool::Move => this.on_rotate_tool(&RotateTool, window, cx),
+                            TransformTool::Rotate => this.on_scale_tool(&ScaleTool, window, cx),
+                        }
+                    }
                     "f" => this.on_focus_selected(&FocusSelected, window, cx),
                     _ => {}
                 }

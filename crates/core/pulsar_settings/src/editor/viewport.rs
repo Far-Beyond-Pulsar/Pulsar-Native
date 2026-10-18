@@ -10,12 +10,22 @@ pub fn register(cfg: &'static ConfigManager) {
             SchemaEntry::new("Fly camera movement speed", 10.0_f64)
                 .label("Camera Speed")
                 .page("Viewport")
-                .field_type(FieldType::Slider {
-                    min: 1.0,
-                    max: 100.0,
-                    step: 1.0,
+                .field_type(FieldType::NumberInput {
+                    min: Some(1.0),
+                    max: None,
+                    step: Some(1.0),
                 })
-                .validator(Validator::float_range(1.0, 100.0)),
+                .validator(Validator::custom(|value| {
+                    let speed = value.as_float().map_err(|error| error.to_string())?;
+                    if speed.is_finite() && (1.0..=f32::MAX as f64).contains(&speed) {
+                        Ok(())
+                    } else {
+                        Err(
+                            "camera speed must be finite and between 1 and the maximum supported value"
+                                .to_owned(),
+                        )
+                    }
+                })),
         )
         .setting(
             "location_snap",

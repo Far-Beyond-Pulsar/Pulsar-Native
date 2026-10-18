@@ -8,6 +8,7 @@ pub(super) fn handle_mouse_move(
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
     state_arc_move: Arc<parking_lot::RwLock<LevelEditorState>>,
+    view_state_move: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_move: Arc<Mutex<GpuRenderer>>,
     pointer_events_move: Option<
         Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
@@ -16,8 +17,8 @@ pub(super) fn handle_mouse_move(
     last_mouse_pos: Rc<RefCell<Option<(f32, f32)>>>,
 ) {
     let capture = ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
-    let is_rotating = capture == ViewportCursorCapture::Rotate;
-    let is_panning = capture == ViewportCursorCapture::Pan;
+    let is_rotating = capture.is_rotating();
+    let is_panning = capture.is_panning();
 
     if is_rotating || is_panning {
         #[cfg(target_os = "windows")]
@@ -45,8 +46,8 @@ pub(super) fn handle_mouse_move(
         input_state_clone.mouse_y.store(y, Ordering::Relaxed);
     }
 
-    // Handle overlay dragging
-    let mut state = state_arc_move.write();
+    // Handle overlay dragging (overlay positions are per viewport)
+    let mut state = view_state_move.write();
     if state.overlays.positions.is_dragging_camera {
         if let Some((start_x, start_y)) = state.overlays.positions.camera_drag_start {
             let current_x: f32 = event.position.x.into();
@@ -200,27 +201,63 @@ pub(super) fn handle_right_mouse_down(
         return;
     }
 
+    #[cfg(target_os = "windows")]
+    if !crate::ui::viewport::cursor::set_capture_window(window) {
+        tracing::error!("[VIEWPORT] Could not associate mouse capture with the editor window");
+        return;
+    }
+
     let shift_pressed = event.modifiers.shift;
     let window_x: f32 = event.position.x.into();
     let window_y: f32 = event.position.y.into();
     let x = (window_x * 1000.0) as i32;
     let y = (window_y * 1000.0) as i32;
 
+    // Save the OS pointer location directly. Converting GPUI's viewport
+    // coordinates to Win32/X11 screen coordinates can introduce a DPI-scaled
+    // offset, which becomes visible when capture ends and the pointer is
+    // restored.
     if let Some((screen_x, screen_y)) =
-        crate::ui::viewport::cursor::window_to_screen_position(window, window_x, window_y)
+        crate::ui::viewport::cursor::get_cursor_position().or_else(|| {
+            crate::ui::viewport::cursor::window_to_screen_position(window, window_x, window_y)
+        })
     {
         locked_cursor_x.store(x, Ordering::Relaxed);
         locked_cursor_y.store(y, Ordering::Relaxed);
         locked_cursor_screen_x.store(screen_x, Ordering::Relaxed);
         locked_cursor_screen_y.store(screen_y, Ordering::Relaxed);
+        #[cfg(target_os = "windows")]
+        let cursor_locked = if crate::ui::viewport::cursor::uses_raw_mouse_input() {
+            crate::ui::viewport::cursor::lock_cursor_to_point(screen_x, screen_y, 0)
+        } else {
+            crate::ui::viewport::cursor::lock_cursor_to_window(window)
+        };
+        #[cfg(target_os = "windows")]
+        if !cursor_locked {
+            tracing::error!("[VIEWPORT] Cursor lock failed; camera capture was not started");
+            crate::ui::viewport::cursor::unlock_cursor();
+            return;
+        }
+        #[cfg(not(target_os = "windows"))]
         crate::ui::viewport::cursor::lock_cursor_to_window(window);
     } else {
         locked_cursor_x.store(x, Ordering::Relaxed);
         locked_cursor_y.store(y, Ordering::Relaxed);
-        if let Some((sx, sy)) = crate::ui::viewport::cursor::get_cursor_position() {
-            locked_cursor_screen_x.store(sx, Ordering::Relaxed);
-            locked_cursor_screen_y.store(sy, Ordering::Relaxed);
+        #[cfg(target_os = "windows")]
+        if crate::ui::viewport::cursor::uses_raw_mouse_input() {
+            tracing::error!("[VIEWPORT] No native cursor position; camera capture was not started");
+            crate::ui::viewport::cursor::unlock_cursor();
+            return;
         }
+        #[cfg(target_os = "windows")]
+        if !crate::ui::viewport::cursor::lock_cursor_to_window(window) {
+            tracing::error!("[VIEWPORT] Cursor lock failed; camera capture was not started");
+            crate::ui::viewport::cursor::unlock_cursor();
+            return;
+        }
+        #[cfg(not(target_os = "windows"))]
+        // There is no global pointer position (for example, on Wayland). The
+        // platform backend still applies its window or compositor lock.
         crate::ui::viewport::cursor::lock_cursor_to_window(window);
     }
 
@@ -230,7 +267,7 @@ pub(super) fn handle_right_mouse_down(
     input_state_clone.mouse_y.store(y, Ordering::Relaxed);
 
     let capture = if shift_pressed {
-        ViewportCursorCapture::Pan
+        ViewportCursorCapture::PanRight
     } else {
         ViewportCursorCapture::Rotate
     };
@@ -256,12 +293,18 @@ pub(super) fn handle_right_mouse_up(
     locked_cursor_x.store(0, Ordering::Relaxed);
     locked_cursor_y.store(0, Ordering::Relaxed);
     ViewportCursorCapture::Released.store(&mouse_right_captured, &mouse_middle_captured);
-    locked_cursor_screen_x.store(0, Ordering::Relaxed);
-    locked_cursor_screen_y.store(0, Ordering::Relaxed);
+    locked_cursor_screen_x.store(i32::MIN, Ordering::Relaxed);
+    locked_cursor_screen_y.store(i32::MIN, Ordering::Relaxed);
 
     crate::ui::viewport::cursor::end_relative_mouse_mode();
     crate::ui::viewport::cursor::unlock_cursor();
-    if restore_x > 0 && restore_y > 0 {
+    #[cfg(target_os = "windows")]
+    if restore_x != i32::MIN && restore_y != i32::MIN {
+        // Restore to the exact native down position after either input path.
+        crate::ui::viewport::cursor::set_cursor_position(restore_x, restore_y);
+    }
+    #[cfg(not(target_os = "windows"))]
+    if restore_x != i32::MIN && restore_y != i32::MIN {
         crate::ui::viewport::cursor::set_cursor_position(restore_x, restore_y);
     }
 }
@@ -286,26 +329,58 @@ pub(super) fn handle_middle_mouse_down(
         return;
     }
 
+    #[cfg(target_os = "windows")]
+    if !crate::ui::viewport::cursor::set_capture_window(window) {
+        tracing::error!("[VIEWPORT] Could not associate mouse capture with the editor window");
+        return;
+    }
+
     let window_x: f32 = event.position.x.into();
     let window_y: f32 = event.position.y.into();
     let x = (window_x * 1000.0) as i32;
     let y = (window_y * 1000.0) as i32;
 
     if let Some((screen_x, screen_y)) =
-        crate::ui::viewport::cursor::window_to_screen_position(window, window_x, window_y)
+        crate::ui::viewport::cursor::get_cursor_position().or_else(|| {
+            crate::ui::viewport::cursor::window_to_screen_position(window, window_x, window_y)
+        })
     {
         locked_cursor_x.store(x, Ordering::Relaxed);
         locked_cursor_y.store(y, Ordering::Relaxed);
         locked_cursor_screen_x.store(screen_x, Ordering::Relaxed);
         locked_cursor_screen_y.store(screen_y, Ordering::Relaxed);
+        #[cfg(target_os = "windows")]
+        let cursor_locked = if crate::ui::viewport::cursor::uses_raw_mouse_input() {
+            crate::ui::viewport::cursor::lock_cursor_to_point(screen_x, screen_y, 0)
+        } else {
+            crate::ui::viewport::cursor::lock_cursor_to_window(window)
+        };
+        #[cfg(target_os = "windows")]
+        if !cursor_locked {
+            tracing::error!("[VIEWPORT] Cursor lock failed; camera capture was not started");
+            crate::ui::viewport::cursor::unlock_cursor();
+            return;
+        }
+        #[cfg(not(target_os = "windows"))]
         crate::ui::viewport::cursor::lock_cursor_to_window(window);
     } else {
         locked_cursor_x.store(x, Ordering::Relaxed);
         locked_cursor_y.store(y, Ordering::Relaxed);
-        if let Some((sx, sy)) = crate::ui::viewport::cursor::get_cursor_position() {
-            locked_cursor_screen_x.store(sx, Ordering::Relaxed);
-            locked_cursor_screen_y.store(sy, Ordering::Relaxed);
+        #[cfg(target_os = "windows")]
+        if crate::ui::viewport::cursor::uses_raw_mouse_input() {
+            tracing::error!("[VIEWPORT] No native cursor position; camera capture was not started");
+            crate::ui::viewport::cursor::unlock_cursor();
+            return;
         }
+        #[cfg(target_os = "windows")]
+        if !crate::ui::viewport::cursor::lock_cursor_to_window(window) {
+            tracing::error!("[VIEWPORT] Cursor lock failed; camera capture was not started");
+            crate::ui::viewport::cursor::unlock_cursor();
+            return;
+        }
+        #[cfg(not(target_os = "windows"))]
+        // There is no global pointer position (for example, on Wayland). The
+        // platform backend still applies its window or compositor lock.
         crate::ui::viewport::cursor::lock_cursor_to_window(window);
     }
 
@@ -337,12 +412,17 @@ pub(super) fn handle_middle_mouse_up(
     locked_cursor_x.store(0, Ordering::Relaxed);
     locked_cursor_y.store(0, Ordering::Relaxed);
     ViewportCursorCapture::Released.store(&mouse_right_captured, &mouse_middle_captured);
-    locked_cursor_screen_x.store(0, Ordering::Relaxed);
-    locked_cursor_screen_y.store(0, Ordering::Relaxed);
+    locked_cursor_screen_x.store(i32::MIN, Ordering::Relaxed);
+    locked_cursor_screen_y.store(i32::MIN, Ordering::Relaxed);
 
     crate::ui::viewport::cursor::end_relative_mouse_mode();
     crate::ui::viewport::cursor::unlock_cursor();
-    if restore_x > 0 && restore_y > 0 {
+    #[cfg(target_os = "windows")]
+    if restore_x != i32::MIN && restore_y != i32::MIN {
+        crate::ui::viewport::cursor::set_cursor_position(restore_x, restore_y);
+    }
+    #[cfg(not(target_os = "windows"))]
+    if restore_x != i32::MIN && restore_y != i32::MIN {
         crate::ui::viewport::cursor::set_cursor_position(restore_x, restore_y);
     }
 }
@@ -352,6 +432,7 @@ pub(super) fn handle_scroll_wheel(
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
     input_state_scroll: Arc<InputState>,
+    zoom_camera: Option<Arc<Mutex<engine_backend::subsystems::render::CameraInput>>>,
 ) {
     let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
 
@@ -364,6 +445,11 @@ pub(super) fn handle_scroll_wheel(
         let speed_delta = scroll_delta * 0.5; // Scale for reasonable adjustment
         input_state_scroll.adjust_move_speed(speed_delta);
         tracing::info!("[VIEWPORT] 🎚️ Camera speed adjusted by {:.2}", speed_delta);
+    } else if let Some(camera) = zoom_camera {
+        // An orthographic view has no depth to fly through: the wheel zooms it.
+        if let Ok(mut input) = camera.lock() {
+            input.zoom_delta += scroll_delta * 0.02;
+        }
     }
 }
 
@@ -485,9 +571,10 @@ pub(super) fn handle_left_mouse_up(
         Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
     >,
     state_arc_up: Arc<parking_lot::RwLock<LevelEditorState>>,
+    view_state_up: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_up: Arc<Mutex<GpuRenderer>>,
 ) {
-    let mut state = state_arc_up.write();
+    let mut state = view_state_up.write();
     state.overlays.positions.is_dragging_camera = false;
     state.overlays.positions.is_dragging_viewport = false;
     state.overlays.positions.camera_drag_start = None;

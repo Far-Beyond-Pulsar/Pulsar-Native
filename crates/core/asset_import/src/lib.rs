@@ -17,6 +17,7 @@
 //! - [`state`] is each file's relation to the database (linked, out of date,
 //!   ignored, …), for UI that offers import actions per file.
 
+pub mod companion;
 pub mod db;
 pub mod importer;
 pub mod rig;
@@ -24,11 +25,12 @@ pub mod scan;
 pub mod service;
 pub mod state;
 
+pub use companion::{nearby_images, offers_for, register_companion, CompanionOffer};
 pub use db::{ImportDb, ImportOutput, ImportRecord, LinkStatus};
-pub use importer::{importer_for, Imported, Importer, OptionValues, Previous};
+pub use importer::{importer_for, Imported, ImportedPart, Importer, OptionValues, Previous};
 pub use scan::{affects_scan, scan_project, OfferedOnce, ScanReport};
 pub use service::{
-    ignore_sources, submit_import, submit_reimport, submit_scan, unignore_sources, unlink_source,
+    ignore_sources, submit_import, submit_import_with_companions, submit_reimport, submit_scan, unignore_sources, unlink_source,
     ImportMode, TRASH_DIR,
 };
 pub use state::{db_revision, import_states, is_importable, FileImportState};

@@ -277,9 +277,11 @@ fn execute(
         slice.status("");
 
         match step {
-            Step::Bootstrap => engine_backend::services::ensure_core_bootstrap(project_root)
-                .map_err(StepError::Failed)
-                .map(|()| slice.set(100))?,
+            Step::RegenerateCoreProjectFiles => {
+                engine_backend::services::ensure_core_bootstrap(project_root)
+                    .map_err(StepError::Failed)
+                    .map(|()| slice.set(100))?
+            }
             Step::Update(invocation) | Step::Clean(invocation) => {
                 cargo::run_plain(invocation, project_root, &slice, &cancel)?
             }

@@ -51,6 +51,7 @@ pulsar_events = { workspace = true }
 script_editor_plugin = { path = "../../../plugins/vendor/code_editor", features = ["builtin"] }
 plugin_matter = { path = "../../../plugins/vendor/matter_editor" }
 shader_editor_plugin = { path = "../../../plugins/vendor/shader_editor" }
+asset_import = { workspace = true }
 editor_table_plugin = { path = "../../../plugins/vendor/table_editor" }
 asset_viewer_plugin = { path = "../../../plugins/vendor/asset_viewer", features = ["builtin"] }
 skeletal_animation_plugin = { path = "../../../plugins/vendor/skm_editor", features = ["builtin"] }

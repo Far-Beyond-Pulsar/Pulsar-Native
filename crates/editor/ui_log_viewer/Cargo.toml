@@ -15,6 +15,7 @@ ui_common.workspace = true
 # Engine
 engine_backend.workspace = true
 engine_state.workspace = true
+pulsar_scenedb.workspace = true
 
 # Logging
 tracing.workspace = true
@@ -47,8 +48,11 @@ wgpu.workspace = true
 notify = { version = "8.0", default-features = false, features = ["macos_kqueue"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_System_Performance", "Win32_System_ProcessStatus", "Win32_Graphics_Dxgi"] }
+windows = { workspace = true, features = ["Win32_System_Performance", "Win32_System_ProcessStatus", "Win32_Graphics_Dxgi", "Win32_System_Memory"] }
 winreg = "0.56"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }

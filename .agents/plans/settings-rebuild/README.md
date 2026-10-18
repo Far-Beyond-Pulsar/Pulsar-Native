@@ -92,7 +92,7 @@ selected file sort. Persist user preferences globally, not in the project.
 
 | Key | Default / range | Read/write behavior |
 |---|---|---|
-| `camera_move_speed` | `10.0`; 1–100 units/s | Initialize `InputState` and `EditorDomain`; camera speed buttons read/update/persist the same value |
+| `camera_move_speed` | `10.0`; at least 1 unit/s, no fixed upper limit | Initialize `InputState` and `EditorDomain`; camera speed buttons read/update/persist the same value |
 | `location_snap` | `1.0`; 0.01–1000 units | Initialize `EditorDomain`; snap selector updates the renderer gizmo and persists |
 | `rotation_snap` | `15.0`; 0.1–360 degrees | Same |
 | `scale_snap` | `0.1`; 0.01–10 scale units | Same |
@@ -101,9 +101,9 @@ Consumers: `ui_level_editor/src/state/editor.rs`,
 `ui_level_editor/src/ui/viewport/input_state.rs`,
 `ui_level_editor/src/ui/toolbar/snap_controls.rs`, and
 `engine_backend/src/subsystems/render/helio_renderer/interaction.rs`. Unify
-camera speed clamping: `InputState` currently clamps to 1–100 while
-`EditorDomain` permits 0.5–100. Apply loaded values to the input atomics and the
-renderer snap atomics, not just to the Settings pane.
+camera speed validation: keep the speed finite and at least 1 while allowing
+values above 100. Apply loaded values to the input atomics and the renderer snap
+atomics, not just to the Settings pane.
 
 ### Build feedback — `editor.build_notifications`
 

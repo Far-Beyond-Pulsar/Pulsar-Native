@@ -231,7 +231,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         .map(|file| unmigrated_bindings(&class_names, file.blueprint_bindings))
         .unwrap_or_default();
     let level_file = LevelFile {
-        version: "2.1".into(),
+        version: engine_backend::scene::hierarchy_transform::PARENT_RELATIVE_FILE_VERSION.into(),
         objects,
         components,
         blueprint_bindings: preserved_bindings,
@@ -406,6 +406,13 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
     for obj in level_file.objects {
         let parent = obj.parent.clone();
         add_object(world, obj, parent);
+    }
+    // A scene saved before parent-relative transforms holds world-space values
+    // for parented objects: make them local, keeping every object in place.
+    if engine_backend::scene::hierarchy_transform::file_has_world_space_transforms(
+        &level_file.version,
+    ) {
+        engine_backend::scene::hierarchy_transform::convert_all_legacy_world_transforms(world);
     }
 
     // When present, persisted components are authoritative and replace defaults.

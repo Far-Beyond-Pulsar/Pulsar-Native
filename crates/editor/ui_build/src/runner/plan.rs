@@ -44,8 +44,8 @@ impl Invocation {
 /// One step of a build.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Step {
-    /// Make sure the project's generated scaffolding exists and is current.
-    Bootstrap,
+    /// Regenerate engine-owned core project files before invoking Cargo.
+    RegenerateCoreProjectFiles,
     Update(Invocation),
     Clean(Invocation),
     Check {
@@ -66,7 +66,7 @@ impl Step {
     /// What it is doing, for status text.
     pub fn title(&self) -> String {
         let title = match self {
-            Self::Bootstrap => t!("Build.Step.Bootstrap"),
+            Self::RegenerateCoreProjectFiles => t!("Build.Step.RegenerateCoreProjectFiles"),
             Self::Update(_) => t!("Build.Step.Update"),
             Self::Clean(_) => t!("Build.Step.Clean"),
             Self::Check { platform: None, .. } => t!("Build.Step.Check"),
@@ -87,7 +87,7 @@ impl Step {
 
     pub fn invocation(&self) -> Option<&Invocation> {
         match self {
-            Self::Bootstrap => None,
+            Self::RegenerateCoreProjectFiles => None,
             Self::Update(i) | Self::Clean(i) => Some(i),
             Self::Check { invocation, .. }
             | Self::Build { invocation, .. }
@@ -99,7 +99,7 @@ impl Step {
     /// the bar is full when the build ends.
     fn weight(&self) -> u32 {
         match self {
-            Self::Bootstrap => 2,
+            Self::RegenerateCoreProjectFiles => 2,
             Self::Update(_) => 12,
             Self::Clean(_) => 8,
             Self::Check { .. } => 20,
@@ -218,7 +218,7 @@ fn cargo(
 /// Expand `config` into steps. `host` is the platform this machine runs, used
 /// to decide which build can be launched.
 ///
-/// Order: bootstrap, update, clean (once each), then for every platform check
+/// Order: optional project regeneration, update, clean (once each), then for every platform check
 /// and/or build, then run once for the first platform this machine can run.
 pub fn plan(config: &BuildConfiguration, host: Option<TargetPlatform>) -> Result<Plan, PlanError> {
     let steps = config.steps.normalized();
@@ -241,10 +241,13 @@ pub fn plan(config: &BuildConfiguration, host: Option<TargetPlatform>) -> Result
     };
 
     let mut plan = Plan {
-        steps: vec![Step::Bootstrap],
+        steps: Vec::new(),
         warnings: Vec::new(),
     };
 
+    if steps.regenerate_core_project_files {
+        plan.steps.push(Step::RegenerateCoreProjectFiles);
+    }
     if steps.update {
         plan.steps.push(Step::Update(Invocation::new("update")));
     }
@@ -312,7 +315,7 @@ mod tests {
         plan.steps
             .iter()
             .map(|s| match s {
-                Step::Bootstrap => "bootstrap",
+                Step::RegenerateCoreProjectFiles => "regenerate_core_project_files",
                 Step::Update(_) => "update",
                 Step::Clean(_) => "clean",
                 Step::Check { .. } => "check",
@@ -329,6 +332,7 @@ mod tests {
         let c = config(BuildSteps {
             update: true,
             clean: true,
+            regenerate_core_project_files: true,
             check: true,
             build: true,
             run: true,
@@ -336,7 +340,14 @@ mod tests {
         let p = plan(&c, WIN).unwrap();
         assert_eq!(
             kinds(&p),
-            ["bootstrap", "update", "clean", "check", "build", "run"]
+            [
+                "regenerate_core_project_files",
+                "update",
+                "clean",
+                "check",
+                "build",
+                "run"
+            ]
         );
     }
 
@@ -508,6 +519,7 @@ mod tests {
         let c = config(BuildSteps {
             update: true,
             clean: true,
+            regenerate_core_project_files: true,
             check: true,
             build: true,
             run: true,

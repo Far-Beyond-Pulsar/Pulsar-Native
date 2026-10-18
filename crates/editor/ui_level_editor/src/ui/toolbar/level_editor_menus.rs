@@ -14,9 +14,8 @@ use rust_i18n::t;
 use ui_common::menu::{ImportAssets, NewAsset};
 
 use crate::ui::actions::{
-    AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, FrontView, NewScene, OpenScene,
-    OrthographicView, PerspectiveView, SaveScene, SaveSceneAs, SideView, ToggleGrid,
-    ToggleLighting, TogglePerformanceOverlay, ToggleViewportOptions, ToggleWireframe, TopView,
+    AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, NewScene, OpenEnvironmentConfig,
+    OpenScene, SaveScene, SaveSceneAs, ToggleCameraModeSelector, ToggleGrid, ToggleViewportOptions,
 };
 use crate::LevelEditorState;
 
@@ -39,26 +38,16 @@ impl LevelEditorMenus {
             )
             .menu(Self::create_menu())
             .menu(Self::assets_menu(&creatable_file_types()))
+            .menu(EditorMenu::new(t!("LevelEditor.Menu.Tools")).action(
+                t!("LevelEditor.Menu.EnvironmentConfig"),
+                OpenEnvironmentConfig,
+            ))
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.View"))
                     .action(t!("LevelEditor.Menu.ToggleGrid"), ToggleGrid)
-                    .action(t!("LevelEditor.Menu.ToggleWireframe"), ToggleWireframe)
-                    .action(t!("LevelEditor.Menu.ToggleLighting"), ToggleLighting)
                     .separator()
-                    .action(
-                        t!("LevelEditor.Menu.PerformanceOverlay"),
-                        TogglePerformanceOverlay,
-                    )
-                    .action(
-                        t!("LevelEditor.Menu.ViewportOptions"),
-                        ToggleViewportOptions,
-                    )
-                    .separator()
-                    .action(t!("LevelEditor.Menu.Perspective"), PerspectiveView)
-                    .action(t!("LevelEditor.Menu.Orthographic"), OrthographicView)
-                    .action(t!("LevelEditor.Menu.Top"), TopView)
-                    .action(t!("LevelEditor.Menu.Front"), FrontView)
-                    .action(t!("LevelEditor.Menu.Side"), SideView),
+                    .action("Viewport controls", ToggleViewportOptions)
+                    .action("Camera controls", ToggleCameraModeSelector),
             )
             .menu(EditorMenu::new(t!("LevelEditor.Menu.Go")).action_if(
                 t!("LevelEditor.Menu.FocusSelected"),

@@ -23,6 +23,12 @@ pub struct AssetPayload {
 }
 
 impl AssetPayload {
+    /// A 3D source file (FBX, glTF, …) rather than the native `.mesh` an
+    /// import makes from it. Sources are imported, never placed in a level.
+    pub fn is_source_model(&self) -> bool {
+        self.kind == AssetKind::Mesh && self.extension != "mesh"
+    }
+
     /// Build a payload from any filesystem path. Kind is inferred from the
     /// extension. For best results, pass the engine-FS relative path.
     pub fn from_path(path: &Path) -> Self {

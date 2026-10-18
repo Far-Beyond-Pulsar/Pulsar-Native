@@ -13,7 +13,7 @@ use tool_registry_macros::tool;
 /// * `show_grid` - Show the ground grid.
 /// * `show_wireframe` - Draw wireframes.
 /// * `show_lighting` - Lit (true) or unlit (false) view.
-/// * `camera_move_speed` - Fly-camera speed, 0.5–100.
+/// * `camera_move_speed` - Fly-camera speed, at least 1 with no fixed upper limit.
 #[tool(category = "level_editor")]
 pub fn level_editor_set_view_options(
     ctx: &ToolContext,
@@ -63,7 +63,9 @@ pub fn level_editor_set_view_options(
         editor.show_lighting = v;
     }
     if let Some(speed) = camera_move_speed {
-        editor.camera_move_speed = speed.clamp(0.5, 100.0);
+        if speed.is_finite() {
+            editor.camera_move_speed = speed.max(1.0);
+        }
     }
     let out = json!({
         "transform_tool": format!("{:?}", editor.current_tool).to_lowercase(),

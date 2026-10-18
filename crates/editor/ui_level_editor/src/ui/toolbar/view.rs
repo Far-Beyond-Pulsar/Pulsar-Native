@@ -1,9 +1,8 @@
 //! `ToolbarView` — the level editor toolbar as its own cached GPUI view.
 //!
 //! The toolbar used to be rendered inline by `LevelEditorPanel::render`, which
-//! meant its whole element tree — playback controls, four dropdowns, feature
-//! toggles, the Build Core split button and every `t!()` lookup behind them —
-//! was rebuilt on every frame the panel was dirty. The panel is dirty on every
+//! meant its menu, viewport controls, save buttons and their translated labels
+//! were rebuilt on every frame the panel was dirty. The panel is dirty on every
 //! frame Helio publishes, so that was ~60 full rebuilds a second of a toolbar
 //! that changes only when the user clicks something.
 //!
@@ -25,16 +24,19 @@ use std::sync::Arc;
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::subsystems::render::{HelioEditorMailbox, ViewportDebugView};
 use gpui::*;
-use ui::dropdown::{DropdownEvent, SearchableVec};
 use ui::dock::PanelEvent;
+use ui::dropdown::{DropdownEvent, SearchableVec};
 use ui::input::{InputEvent, InputState, TextInput};
 
 use super::snap_controls::{SnapKind, SnapPanel};
-use super::view_mode_dropdown::{ViewModeDropdown, ViewModeOption, ViewModePickerState};
+use super::view_mode_dropdown::{
+    ViewModeDropdown, ViewModeOption, ViewModePickerState, ViewModeSelection,
+};
 use super::ToolbarPanel;
 use crate::state::EditorMode;
 use crate::tool_modes::ToolModeId;
 use crate::ui::frame_pump::spawn_frame_pump;
+use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
 use crate::LevelEditorState;
 
 /// Every piece of [`LevelEditorState`] the toolbar's element tree depends on.
@@ -54,6 +56,11 @@ pub struct ToolbarSignature {
     realtime_viewport: bool,
     viewport_debug_mode: u32,
     viewport_debug_views: Vec<ViewportDebugView>,
+    transform_tool: u8,
+    camera_mode: u8,
+    camera_move_speed: u32,
+    show_gpu_pipeline_overlay: bool,
+    show_nerds_overlay: bool,
     location_snap: u32,
     rotation_snap: u32,
     scale_snap: u32,
@@ -68,7 +75,11 @@ pub struct ToolbarSignature {
 }
 
 impl ToolbarSignature {
-    fn of(state: &LevelEditorState, debug_views: &[ViewportDebugView]) -> Self {
+    fn of(
+        state: &LevelEditorState,
+        debug_views: &[ViewportDebugView],
+        camera_move_speed: u32,
+    ) -> Self {
         Self {
             tool_mode: state.editor.tool_mode_registry.selected_id(),
             editor_mode: state.scene.editor_mode,
@@ -79,6 +90,11 @@ impl ToolbarSignature {
             realtime_viewport: state.editor.realtime_viewport,
             viewport_debug_mode: state.editor.viewport_debug_mode,
             viewport_debug_views: debug_views.to_vec(),
+            transform_tool: state.editor.current_tool as u8,
+            camera_mode: state.editor.camera_mode as u8,
+            camera_move_speed,
+            show_gpu_pipeline_overlay: state.overlays.state.show_gpu_pipeline_overlay,
+            show_nerds_overlay: state.overlays.state.show_nerds_overlay,
             location_snap: state.editor.location_snap.to_bits(),
             rotation_snap: state.editor.rotation_snap.to_bits(),
             scale_snap: state.editor.scale_snap.to_bits(),
@@ -98,11 +114,12 @@ pub struct ToolbarView {
     /// taking `gpu_engine`; see `HelioEditorMailbox`'s doc.
     helio_mailbox: Option<HelioEditorMailbox>,
     debug_views: Vec<ViewportDebugView>,
-    view_mode_picker: Entity<ViewModePickerState>,
+    pub(crate) view_mode_picker: Entity<ViewModePickerState>,
+    input_state: Arc<crate::ui::viewport::input_state::InputState>,
     last_signature: ToolbarSignature,
     pump_started: bool,
     custom_snaps: [Entity<InputState>; 3],
-    snap_panels: [Entity<SnapPanel>; 3],
+    pub(crate) snap_panels: [Entity<SnapPanel>; 3],
     _custom_snap_subscriptions: Vec<Subscription>,
     _view_mode_picker_subscription: Subscription,
 }
@@ -114,18 +131,23 @@ impl ToolbarView {
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
         helio_mailbox: Option<HelioEditorMailbox>,
+        input_state: Arc<crate::ui::viewport::input_state::InputState>,
     ) -> Self {
         let debug_views = helio_mailbox
             .as_ref()
             .map(HelioEditorMailbox::viewport_debug_views)
             .unwrap_or_default();
-        let last_signature = ToolbarSignature::of(&state.read(), &debug_views);
-        let view_mode_picker = ViewModeDropdown::new_state(
-            window,
-            cx,
+        let last_signature = ToolbarSignature::of(
+            &state.read(),
             &debug_views,
-            state.read().editor.viewport_debug_mode,
+            input_state.get_move_speed().to_bits(),
         );
+        let current_state = state.read();
+        let selected_view_mode =
+            ViewModeDropdown::selected(current_state.editor.viewport_debug_mode);
+        let view_mode_picker =
+            ViewModeDropdown::new_state(window, cx, &debug_views, selected_view_mode);
+        drop(current_state);
         let view_mode_picker_subscription =
             Self::subscribe_view_mode_picker(&state, &view_mode_picker, cx);
         if let Some(mailbox) = &helio_mailbox {
@@ -213,12 +235,25 @@ impl ToolbarView {
             helio_mailbox,
             debug_views,
             view_mode_picker,
+            input_state,
             last_signature,
             pump_started: false,
             custom_snaps,
             snap_panels,
             _custom_snap_subscriptions: custom_snap_subscriptions,
             _view_mode_picker_subscription: view_mode_picker_subscription,
+        }
+    }
+
+    pub(crate) fn view_mode_label(&self, cx: &App) -> SharedString {
+        match self.view_mode_picker.read(cx).selected_value() {
+            Some(ViewModeSelection::Debug(mode)) => self
+                .debug_views
+                .iter()
+                .find(|view| view.debug_mode == *mode)
+                .map(|view| view.name.into())
+                .unwrap_or_else(|| "Lit".into()),
+            _ => "Lit".into(),
         }
     }
 
@@ -235,7 +270,19 @@ impl ToolbarView {
                     return;
                 };
 
-                state.write().editor.viewport_debug_mode = *selected_mode;
+                let mut state = state.write();
+                match selected_mode {
+                    ViewModeSelection::Lit => {
+                        state.editor.viewport_debug_mode = 0;
+                        state.editor.show_wireframe = false;
+                        state.editor.show_lighting = true;
+                    }
+                    ViewModeSelection::Debug(debug_mode) => {
+                        state.editor.viewport_debug_mode = *debug_mode;
+                        state.editor.show_wireframe = false;
+                        state.editor.show_lighting = true;
+                    }
+                }
             },
         )
     }
@@ -261,7 +308,11 @@ impl ToolbarView {
                 .as_ref()
                 .map(HelioEditorMailbox::viewport_debug_views)
                 .unwrap_or_default();
-            let signature = ToolbarSignature::of(&this.state.read(), &debug_views);
+            let signature = ToolbarSignature::of(
+                &this.state.read(),
+                &debug_views,
+                this.input_state.get_move_speed().to_bits(),
+            );
             drop(_lock_scope);
             if signature != this.last_signature {
                 gpui::render_stats::count("toolbar: signature changed");
@@ -269,17 +320,17 @@ impl ToolbarView {
                 let debug_views_changed = debug_views != this.debug_views;
                 this.debug_views = debug_views;
                 if debug_views_changed {
+                    let state = this.state.read();
+                    let selected_view_mode =
+                        ViewModeDropdown::selected(state.editor.viewport_debug_mode);
                     this.view_mode_picker = ViewModeDropdown::new_state(
                         window,
                         cx,
                         &this.debug_views,
-                        this.state.read().editor.viewport_debug_mode,
+                        selected_view_mode,
                     );
-                    this._view_mode_picker_subscription = Self::subscribe_view_mode_picker(
-                        &this.state,
-                        &this.view_mode_picker,
-                        cx,
-                    );
+                    this._view_mode_picker_subscription =
+                        Self::subscribe_view_mode_picker(&this.state, &this.view_mode_picker, cx);
                 }
                 cx.notify();
             }
@@ -300,7 +351,11 @@ impl Render for ToolbarView {
         // notify again for a change we have already picked up (e.g. a render
         // triggered by an action handler rather than by the pump).
         let _signature_scope = gpui::render_stats::scope("toolbar: render signature");
-        self.last_signature = ToolbarSignature::of(&self.state.read(), &self.debug_views);
+        self.last_signature = ToolbarSignature::of(
+            &self.state.read(),
+            &self.debug_views,
+            self.input_state.get_move_speed().to_bits(),
+        );
         drop(_signature_scope);
 
         let _state_scope = gpui::render_stats::scope("toolbar: render state read");
@@ -316,16 +371,15 @@ impl Render for ToolbarView {
             mailbox.set_viewport_debug_mode(state.editor.viewport_debug_mode);
         }
         drop(_mailbox_scope);
-        let selected_mode = state.editor.viewport_debug_mode;
-        let selected_mode = if selected_mode == 0
+        let selected_mode = if state.editor.viewport_debug_mode == 0
             || self
                 .debug_views
                 .iter()
-                .any(|view| view.debug_mode == selected_mode)
+                .any(|view| view.debug_mode == state.editor.viewport_debug_mode)
         {
-            selected_mode
+            ViewModeDropdown::selected(state.editor.viewport_debug_mode)
         } else {
-            0
+            ViewModeSelection::Lit
         };
         if self.view_mode_picker.read(cx).selected_value().copied() != Some(selected_mode) {
             self.view_mode_picker.update(cx, |picker, cx| {
@@ -333,13 +387,7 @@ impl Render for ToolbarView {
             });
         }
         let _panel_scope = gpui::render_stats::scope("toolbar: panel element build");
-        self.toolbar.render(
-            &state,
-            self.state.clone(),
-            self.gpu_engine.clone(),
-            &self.snap_panels,
-            &self.view_mode_picker,
-            cx,
-        )
+        self.toolbar
+            .render(&state, self.state.clone(), self.gpu_engine.clone(), cx)
     }
 }

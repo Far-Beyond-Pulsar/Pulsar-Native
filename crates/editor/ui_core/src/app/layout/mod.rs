@@ -481,7 +481,18 @@ impl PulsarApp {
                 .window_bounds
                 .map(|b| SavedWindow::capture(b, self.state.window_restore_bounds)),
             sidebar: self.state.nav_sidebar.read(cx).model.save(&root),
-            chrome: self.state.chrome.save(),
+            chrome: {
+                let mut chrome = self.state.chrome.save();
+                chrome.file_manager_folder = self
+                    .state
+                    .chrome
+                    .file_manager_folder
+                    .as_deref()
+                    .and_then(|folder| folder.strip_prefix(&root).ok())
+                    .filter(|relative| !relative.as_os_str().is_empty())
+                    .map(|relative| relative.to_string_lossy().replace('\\', "/"));
+                chrome
+            },
             popouts,
             dormant,
             ..Default::default()
@@ -530,6 +541,19 @@ impl PulsarApp {
         layout.reinsert_dormant();
         // Chrome is plain flags; applying it cannot fail (heights are clamped).
         self.state.chrome.restore(&layout.chrome);
+        // The drawer reopens in the folder the user left it in, if it is
+        // still there.
+        if let Some(folder) = layout
+            .chrome
+            .file_manager_folder
+            .as_deref()
+            .map(|relative| root.join(relative))
+            .filter(|folder| folder.is_dir())
+        {
+            self.state
+                .file_manager_drawer
+                .update(cx, |drawer, cx| drawer.show_folder(folder, cx));
+        }
         let sidebar = std::mem::take(&mut layout.sidebar);
         self.state.nav_sidebar.update(cx, |nav, cx| {
             nav.model.restore(sidebar, &root);

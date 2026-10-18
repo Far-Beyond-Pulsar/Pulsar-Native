@@ -43,7 +43,8 @@ pub mod helio_bridge;
 
 #[cfg(feature = "render")]
 pub use helio_bridge::{
-    ensure_gpu_mirror, environment_join, environment_join_keys, scene_join, scene_join_keys,
+    ensure_gpu_mirror, environment_join, environment_join_keys, hierarchy_resolve,
+    hierarchy_resolve_keys, scene_join, scene_join_keys,
 };
 #[cfg(feature = "render")]
 pub mod editor_postprocess;
@@ -63,7 +64,7 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }
 pub use pulsar_scene_model::{
-    attachments, components, instance, world_ext, ComponentAttachments, ComponentInstance,
+    attachments, components, hierarchy_transform, instance, world_ext, ComponentAttachments, ComponentInstance,
     EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps,
     SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId, Transform,
     Visibility,

@@ -14,6 +14,9 @@ serde_json = { workspace = true }
 pollster = "=0.4.0"
 # The camera lens test reads the lens pass rows.
 helio-pass-lens = { workspace = true }
+# The movement scaling report drives the object batch behind the join.
+helio-pass-object-batch = { workspace = true }
+helio-core = { workspace = true }
 # The environment join test reads the volumetric fog and foliage pass rows.
 helio-pass-volumetric-fog = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
@@ -28,6 +31,7 @@ toml = { workspace = true }
 workspace = true
 
 [dependencies]
+toml.workspace = true
 helio-voxel-data.workspace = true
 # Physics bodies on the WaterSim channel derive the water simulation's
 # hitbox source rows (Pulsar-Native#1080).
@@ -91,6 +95,7 @@ helio-default-graphs = { workspace = true, optional = true }
 helio-pass-voxel-planet = { workspace = true, optional = true }
 helio-pass-sky = { workspace = true, optional = true }
 helio-pass-tsr = { workspace = true, optional = true }
+helio-pass-volumetric-fog = { workspace = true, optional = true }
 # Opt-in live SceneDB inspector bridge; inert unless launched by scenedb_inspector.
 scenedb-inspector-agent = { path = "../../renderer/helio/crates/scenedb-inspector-agent", optional = true }
 glam.workspace = true
@@ -125,7 +130,7 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:helio-pass-postprocess", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-pass-voxel-planet", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-mats", "dep:psgc", "dep:image"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:helio-pass-postprocess", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-pass-voxel-planet", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-pass-volumetric-fog", "dep:helio-mats", "dep:psgc", "dep:image"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]

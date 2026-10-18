@@ -41,7 +41,9 @@ impl AssetKind {
     /// the leading dot).
     pub fn from_extension(ext: &str) -> Self {
         match ext.to_ascii_lowercase().as_str() {
-            "fbx" | "gltf" | "glb" | "obj" | "usd" | "usdc" | "dae" | "abc" => Self::Mesh,
+            // `mesh` is the engine-native static mesh an import produces; the
+            // rest are source formats (`AssetPayload::is_source_model`).
+            "mesh" | "fbx" | "gltf" | "glb" | "obj" | "usd" | "usdc" | "dae" | "abc" => Self::Mesh,
             "png" | "jpg" | "jpeg" | "exr" | "hdr" | "tga" | "webp" | "bmp" | "dds" | "ktx" => {
                 Self::Texture
             }

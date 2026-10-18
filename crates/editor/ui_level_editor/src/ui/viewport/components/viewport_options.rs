@@ -1,7 +1,6 @@
 //! Viewport options toolbar component.
 //!
-//! This component provides a floating toolbar for toggling visual options
-//! like grid, wireframe, and lighting, as well as overlay controls.
+//! Draggable transform and snap controls with an overlay menu.
 
 use std::sync::Arc;
 
@@ -11,147 +10,60 @@ use rust_i18n::t;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
-    switch::Switch,
-    ActiveTheme, IconName, Selectable,
+    popup_menu::PopupMenuExt,
+    ActiveTheme, IconName, Selectable, Sizable,
 };
 
-use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
-use super::toggle_button::create_state_toggle;
+use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle, HandleSide};
 use crate::state::{LevelEditorState, TransformTool};
+use crate::ui::toolbar::snap_controls::{SnapPanel, TransformSnapControls};
 
-/// Render visual toggle buttons (grid, wireframe, lighting).
-fn visual_toggles(
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-    state: &LevelEditorState,
-) -> impl IntoElement {
-    h_flex()
-        .gap_1()
-        .child(create_state_toggle(
-            "toggle_grid",
-            IconName::LayoutDashboard,
-            &t!("LevelEditor.Viewport.ToggleGrid").to_string(),
-            state.editor.show_grid,
-            state_arc.clone(),
-            |s: &mut LevelEditorState| s.editor.toggle_grid(),
-        ))
-        .child(create_state_toggle(
-            "toggle_wireframe",
-            IconName::Triangle,
-            &t!("LevelEditor.Viewport.ToggleWireframe").to_string(),
-            state.editor.show_wireframe,
-            state_arc.clone(),
-            |s: &mut LevelEditorState| s.editor.toggle_wireframe(),
-        ))
-        .child(create_state_toggle(
-            "toggle_lighting",
-            IconName::Sun,
-            &t!("LevelEditor.Viewport.ToggleLighting").to_string(),
-            state.editor.show_lighting,
-            state_arc.clone(),
-            |s: &mut LevelEditorState| s.editor.toggle_lighting(),
-        ))
-}
-
-/// Render overlay toggle switches (performance, camera).
-fn overlay_toggles<V>(
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-    state: &LevelEditorState,
-    cx: &Context<V>,
-) -> impl IntoElement
-where
-    V: 'static + Render,
-{
-    h_flex()
-        .gap_2()
-        .items_center()
-        .child(
-            h_flex()
-                .gap_1()
-                .items_center()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(t!("LevelEditor.ViewportOptions.Perf").to_string()),
-                )
-                .child({
-                    let state_clone = state_arc.clone();
-                    Switch::new("toggle_perf")
-                        .checked(state.overlays.state.show_performance_overlay)
-                        .on_click(move |checked, _, _| {
-                            state_clone
-                                .write()
-                                .overlays
-                                .set_show_performance_overlay(*checked);
-                        })
-                }),
-        )
-        .child(
-            h_flex()
-                .gap_1()
-                .items_center()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(t!("LevelEditor.ViewportOptions.GPU").to_string()),
-                )
-                .child({
-                    let state_clone = state_arc.clone();
-                    Switch::new("toggle_gpu")
-                        .checked(state.overlays.state.show_gpu_pipeline_overlay)
-                        .on_click(move |checked, _, _| {
-                            state_clone
-                                .write()
-                                .overlays
-                                .set_show_gpu_pipeline_overlay(*checked);
-                        })
-                }),
-        )
-        .child(
-            h_flex()
-                .gap_1()
-                .items_center()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Nerds"),
-                )
-                .child({
-                    let state_clone = state_arc.clone();
-                    Switch::new("toggle_nerds")
-                        .checked(state.overlays.state.show_nerds_overlay)
-                        .on_click(move |checked, _, _| {
-                            state_clone
-                                .write()
-                                .overlays
-                                .set_show_nerds_overlay(*checked);
-                        })
-                }),
-        )
-        .child(
-            h_flex()
-                .gap_1()
-                .items_center()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(t!("LevelEditor.ViewportOptions.Cam").to_string()),
-                )
-                .child({
-                    let state_clone = state_arc.clone();
-                    Switch::new("toggle_cam")
-                        .checked(state.overlays.state.show_camera_mode_selector)
-                        .on_click(move |checked, _, _| {
-                            state_clone
-                                .write()
-                                .overlays
-                                .set_show_camera_mode_selector(*checked);
-                        })
-                }),
-        )
+/// Keep diagnostics available without expanding the floating bar into a strip.
+fn overlay_menu(state_arc: Arc<parking_lot::RwLock<LevelEditorState>>) -> impl IntoElement {
+    Button::new("viewport_overlays")
+        .label("Overlays")
+        .dropdown_caret(true)
+        .small()
+        .ghost()
+        .popup_menu(move |menu, _, _| {
+            let state = state_arc.read();
+            let options: [(&str, bool, fn(&mut crate::state::OverlayDomain, bool)); 4] = [
+                (
+                    "Performance",
+                    state.overlays.state.show_performance_overlay,
+                    crate::state::OverlayDomain::set_show_performance_overlay,
+                ),
+                (
+                    "GPU pipeline",
+                    state.overlays.state.show_gpu_pipeline_overlay,
+                    crate::state::OverlayDomain::set_show_gpu_pipeline_overlay,
+                ),
+                (
+                    "Stats",
+                    state.overlays.state.show_nerds_overlay,
+                    crate::state::OverlayDomain::set_show_nerds_overlay,
+                ),
+                (
+                    "Camera controls",
+                    state.overlays.state.show_camera_mode_selector,
+                    crate::state::OverlayDomain::set_show_camera_mode_selector,
+                ),
+            ];
+            drop(state);
+            let mut menu = menu;
+            for (label, enabled, set_enabled) in options {
+                let state = state_arc.clone();
+                let handler = move |_: &mut Window, _: &mut App| {
+                    set_enabled(&mut state.write().overlays, !enabled);
+                };
+                menu = if enabled {
+                    menu.menu_handler_with_icon(label, IconName::Check, handler)
+                } else {
+                    menu.menu_handler(label, handler)
+                };
+            }
+            menu
+        })
 }
 
 /// Render gizmo tool selector buttons.
@@ -165,6 +77,7 @@ fn gizmo_tool_buttons(
             let state_clone = state_arc.clone();
             Button::new("select_tool")
                 .icon(IconName::PcMouse)
+                .small()
                 .ghost()
                 .tooltip("Select Tool (Q)")
                 .selected(state.editor.current_tool == TransformTool::Select)
@@ -176,6 +89,7 @@ fn gizmo_tool_buttons(
             let state_clone = state_arc.clone();
             Button::new("move_tool")
                 .icon(IconName::ArrowUnion)
+                .small()
                 .ghost()
                 .tooltip("Move Tool (W)")
                 .selected(state.editor.current_tool == TransformTool::Move)
@@ -187,6 +101,7 @@ fn gizmo_tool_buttons(
             let state_clone = state_arc.clone();
             Button::new("rotate_tool")
                 .icon(IconName::Refresh)
+                .small()
                 .ghost()
                 .tooltip("Rotate Tool (E)")
                 .selected(state.editor.current_tool == TransformTool::Rotate)
@@ -198,6 +113,7 @@ fn gizmo_tool_buttons(
             let state_clone = state_arc.clone();
             Button::new("scale_tool")
                 .icon(IconName::Maximize)
+                .small()
                 .ghost()
                 .tooltip("Scale Tool (R)")
                 .selected(state.editor.current_tool == TransformTool::Scale)
@@ -208,21 +124,27 @@ fn gizmo_tool_buttons(
 }
 
 /// Render the complete viewport options toolbar.
+///
+/// `state` is the editor's shared state (tools and snaps); `view` is the
+/// viewport's own (its overlay menu, collapse state and position).
 pub fn render_viewport_options<V>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    view: &LevelEditorState,
+    view_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    snap_panels: &[Entity<SnapPanel>; 3],
     is_dragging: bool,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
     V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
-    if state.overlays.state.viewport_options_collapsed {
+    if view.overlays.state.viewport_options_collapsed {
         return Button::new("expand_viewport_options")
             .icon(IconName::LayoutDashboard)
             .tooltip(t!("LevelEditor.Viewport.ViewportOptions"))
             .on_click(move |_, _, _| {
-                state_arc
+                view_arc
                     .write()
                     .overlays
                     .set_viewport_options_collapsed(false);
@@ -231,26 +153,28 @@ where
     }
 
     let drag_handle = create_drag_handle(
-        state_arc.clone(),
+        view_arc.clone(),
         |s: &mut LevelEditorState, pos| s.overlays.positions.viewport_drag_start = pos,
         |s: &mut LevelEditorState, dragging| s.overlays.positions.is_dragging_viewport = dragging,
+        HandleSide::Left,
         cx,
     );
 
     let toolbar_content = h_flex()
         .gap_2()
         .items_center()
-        .child(visual_toggles(state_arc.clone(), state))
-        .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
         .child(gizmo_tool_buttons(state_arc.clone(), state))
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
-        .child(overlay_toggles(state_arc.clone(), state, cx))
+        .child(TransformSnapControls::render(snap_panels, state))
+        .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
+        .child(overlay_menu(view_arc.clone()))
         .child(
             Button::new("collapse_viewport_options")
                 .icon(IconName::Close)
+                .small()
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc
+                    view_arc
                         .write()
                         .overlays
                         .set_viewport_options_collapsed(true);
@@ -259,8 +183,12 @@ where
 
     h_flex()
         .gap_0()
-        .h(px(42.0))
         .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
-        .child(toolbar_with_drag_handle(drag_handle, toolbar_content, cx))
+        .child(toolbar_with_drag_handle(
+            drag_handle,
+            toolbar_content,
+            HandleSide::Left,
+            cx,
+        ))
         .into_any_element()
 }

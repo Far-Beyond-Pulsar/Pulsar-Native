@@ -272,6 +272,15 @@ impl PulsarApp {
         .detach();
         cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_drag_event)
             .detach();
+        // Keep the folder the drawer shows, so the layout remembers it.
+        cx.observe(&file_manager_drawer, |app, drawer, cx| {
+            let folder = drawer.read(cx).selected_folder().map(std::path::Path::to_path_buf);
+            if app.state.chrome.file_manager_folder != folder {
+                app.state.chrome.file_manager_folder = folder;
+                app.chrome_changed(cx);
+            }
+        })
+        .detach();
         cx.subscribe_in(
             &problems_drawer,
             window,

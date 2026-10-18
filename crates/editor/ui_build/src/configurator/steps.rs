@@ -23,7 +23,13 @@ struct StepRow {
 }
 
 /// In the order they run.
-const STEPS: [StepRow; 5] = [
+const STEPS: [StepRow; 6] = [
+    StepRow {
+        title: "Build.Steps.RegenerateCoreProjectFiles.Title",
+        description: "Build.Steps.RegenerateCoreProjectFiles.Description",
+        get: |s| s.regenerate_core_project_files,
+        set: |s, v| s.regenerate_core_project_files = v,
+    },
     StepRow {
         title: "Build.Steps.Update.Title",
         description: "Build.Steps.Update.Description",
@@ -69,6 +75,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
         BuildSteps {
             update: false,
             clean: false,
+            regenerate_core_project_files: true,
             check: true,
             build: false,
             run: false,
@@ -80,6 +87,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
         BuildSteps {
             update: false,
             clean: true,
+            regenerate_core_project_files: true,
             check: false,
             build: true,
             run: false,
@@ -90,6 +98,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
         BuildSteps {
             update: false,
             clean: false,
+            regenerate_core_project_files: true,
             check: false,
             build: true,
             run: true,
@@ -100,6 +109,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
         BuildSteps {
             update: true,
             clean: true,
+            regenerate_core_project_files: true,
             check: false,
             build: true,
             run: true,
@@ -226,10 +236,9 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
             v_flex()
                 .gap_1()
                 .children(plan.steps.iter().enumerate().map(|(ix, step)| {
-                    let command = step
-                        .invocation()
-                        .map(|i| i.display())
-                        .unwrap_or_else(|| t!("Build.Preview.Bootstrap").to_string());
+                    let command = step.invocation().map(|i| i.display()).unwrap_or_else(|| {
+                        t!("Build.Preview.RegenerateCoreProjectFiles").to_string()
+                    });
                     h_flex()
                         .gap_3()
                         .items_baseline()

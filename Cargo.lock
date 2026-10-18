@@ -528,6 +528,7 @@ dependencies = [
  "helio-asset-compat",
  "helio_component",
  "parking_lot",
+ "plugin_editor_api",
  "serde",
  "serde_json",
  "skeletal_assets",
@@ -3105,6 +3106,7 @@ dependencies = [
  "gpui-ce",
  "helio",
  "helio-asset-compat",
+ "helio-core",
  "helio-default-graphs",
  "helio-mats",
  "helio-pass-billboard",
@@ -3113,6 +3115,7 @@ dependencies = [
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-lens",
+ "helio-pass-object-batch",
  "helio-pass-postprocess",
  "helio-pass-sky",
  "helio-pass-tsr",
@@ -5414,6 +5417,7 @@ dependencies = [
  "helio-pass-water-sim",
  "helio-voxel-data",
  "image",
+ "intel_tex_2",
  "plugin_editor_api",
  "pollster 0.4.0",
  "psgc",
@@ -5960,6 +5964,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "intel_tex_2"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7980d359170e7da4bc2421aa74c49d338a3153313e006d732a3430f1af375a60"
+dependencies = [
+ "ispc_rt",
+]
+
+[[package]]
 name = "intrusive-collections"
 version = "0.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6039,6 +6052,16 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "ispc_rt"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a396f76fd253fab9945bb4c6080f515d0c4036bc30219462d199b58886fd37b4"
+dependencies = [
+ "libc",
+ "num_cpus",
+]
 
 [[package]]
 name = "itertools"
@@ -9799,7 +9822,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1#fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8b5b1144c4ef80411592985fcd9767134ee03941#8b5b1144c4ef80411592985fcd9767134ee03941"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9815,7 +9838,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1#fdbe195e1a5fe1283679d64fde0dc077fcfa5bb1"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8b5b1144c4ef80411592985fcd9767134ee03941#8b5b1144c4ef80411592985fcd9767134ee03941"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
@@ -14052,6 +14075,7 @@ dependencies = [
  "agent_provider_opencode",
  "agent_provider_vertex_ai",
  "anyhow",
+ "asset_import",
  "asset_viewer_plugin",
  "directories 6.0.0",
  "dirs 6.0.0",
@@ -14377,11 +14401,13 @@ dependencies = [
  "notify 8.2.0",
  "once_cell",
  "parking_lot",
+ "pulsar_scenedb",
  "rand 0.10.2",
  "rusqlite",
  "rust-i18n",
  "smol",
  "sysinfo",
+ "tempfile",
  "tokio",
  "tracing",
  "ui",

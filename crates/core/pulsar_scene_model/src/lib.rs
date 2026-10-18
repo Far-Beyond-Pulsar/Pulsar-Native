@@ -9,6 +9,7 @@
 
 pub mod attachments;
 pub mod components;
+pub mod hierarchy_transform;
 pub mod instance;
 pub mod motion;
 pub mod payload_catalog;
@@ -23,7 +24,7 @@ pub use attachments::{
     ComponentOwner, InstanceError, NewInstance, UnresolvedComponent,
 };
 pub use components::{
-    Name, ObjectHidden, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
+    Name, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
     Visibility,
 };
 pub use instance::{ComponentInstance, EditorObjectId};

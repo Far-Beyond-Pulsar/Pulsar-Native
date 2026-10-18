@@ -146,19 +146,34 @@ pub fn write(
     Some(result)
 }
 
+/// `object` with its transform in world space. A spline's points are edited
+/// through [`matrix`] and [`local_point`], which place them in the world, so
+/// an object under a folder must carry the pose it has there. Only the matrix
+/// and the id are used afterwards; this is never written back.
+fn in_world(world: &pulsar_scenedb::World, mut object: SceneObjectData) -> SceneObjectData {
+    use engine_backend::scene::SceneWorldExt;
+    if let Some(pose) = world
+        .entity_for(&object.id)
+        .and_then(|entity| engine_backend::scene::hierarchy_transform::world_transform_of(world, entity))
+    {
+        object.transform = pose.into();
+    }
+    object
+}
 pub fn all(state: &LevelEditorState) -> Vec<(SceneObjectData, SplineData)> {
     let world = state.scene.world();
     let mut rows: Vec<_> = scene_edit::objects::get_all_objects(&world)
         .into_iter()
-        .filter_map(|o| data(&world, &o).map(|d| (o, d)))
+        .filter_map(|o| data(&world, &o).map(|d| (in_world(&world, o), d)))
         .collect();
     rows.sort_by(|a, b| a.0.name.cmp(&b.0.name).then(a.0.id.cmp(&b.0.id)));
     rows
 }
 pub fn selected(state: &LevelEditorState) -> Option<(SceneObjectData, SplineData)> {
     let object = state.scene.get_selected_object()?;
-    let spline = data(&state.scene.world(), &object)?;
-    Some((object, spline))
+    let world = state.scene.world();
+    let spline = data(&world, &object)?;
+    Some((in_world(&world, object), spline))
 }
 pub fn sync_selection(state: &mut LevelEditorState) {
     let id = state.scene.selected_object();

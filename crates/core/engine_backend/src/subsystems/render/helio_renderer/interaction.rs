@@ -1,5 +1,6 @@
 //! Transform handles with shared solid geometry for drawing and picking.
 use super::gizmo_geometry::{meshes, rotation_grid, Handle};
+use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
@@ -30,6 +31,9 @@ struct View {
     matrix: Mat4,
     size: Vec2,
     far: f32,
+    /// Half the visible world height of an orthographic view; `0` for a
+    /// perspective one.
+    ortho_half_height: f32,
 }
 impl Default for View {
     fn default() -> Self {
@@ -39,6 +43,7 @@ impl Default for View {
             matrix: Mat4::IDENTITY,
             size: Vec2::new(1600.0, 900.0),
             far: 10_000.0,
+            ortho_half_height: 0.0,
         }
     }
 }
@@ -55,9 +60,13 @@ impl View {
     }
     fn length(self, p: Vec3) -> Option<f32> {
         let depth = (p - self.position).dot(self.forward);
-        (depth > 0.1 && depth < self.far).then_some(
-            2.0 * depth * std::f32::consts::FRAC_PI_8.tan() * HANDLE_PIXELS / self.size.y,
-        )
+        // Orthographic: the same world height at every depth.
+        let world_height = if self.ortho_half_height > 0.0 {
+            2.0 * self.ortho_half_height
+        } else {
+            2.0 * depth * std::f32::consts::FRAC_PI_8.tan()
+        };
+        (depth > 0.1 && depth < self.far).then_some(world_height * HANDLE_PIXELS / self.size.y)
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -65,13 +74,19 @@ struct DragState {
     entity: Entity,
     handle: Handle,
     mode: GizmoType,
+    /// The object's transform in the world when the drag began: what the handles are
+    /// laid out on.
     initial: Transform,
+    /// Its own (parent-relative) transform then, which undo restores.
+    initial_local: Transform,
     view: View,
     length: f32,
     start: Vec2,
     screen_axis: Vec2,
     plane_normal: Vec3,
     plane_start: Vec3,
+    /// Where on the axis line the cursor grabbed it (axis handles only).
+    axis_start: f32,
     previous_angle: f32,
     angle: f32,
 }
@@ -106,7 +121,13 @@ impl SceneInteraction {
             matrix,
             size: size.max(Vec2::ONE),
             far,
+            ortho_half_height: 0.0,
         };
+    }
+    /// Mark the view set by [`Self::set_view`] as orthographic, `half_height`
+    /// world units from the centre to the top edge (`None`: perspective).
+    pub fn set_orthographic(&mut self, half_height: Option<f32>) {
+        self.view.ortho_half_height = half_height.filter(|h| *h > 0.0).unwrap_or(0.0);
     }
     pub fn is_dragging(&self) -> bool {
         self.drag.is_some()
@@ -116,11 +137,11 @@ impl SceneInteraction {
         self.hovered = None;
     }
     /// End the drag in progress, if any: the object it moved and the
-    /// transform it started from, for undo (#931).
+    /// (parent-relative) transform it started from, for undo (#931).
     pub fn finish_drag(&mut self) -> Option<(Entity, Transform)> {
         let drag = self.drag.take()?;
         self.hovered = None;
-        Some((drag.entity, drag.initial))
+        Some((drag.entity, drag.initial_local))
     }
     pub fn pick(&self, world: &World, origin: Vec3, direction: Vec3) -> Option<String> {
         let direction = direction.normalize_or_zero();
@@ -139,7 +160,7 @@ impl SceneInteraction {
                 if !visibility.visible || !is_pickable(object_type) {
                     return None;
                 }
-                let transform = *world.get::<Transform>(entity)?;
+                let transform = world_transform_of(world, entity)?;
                 let (min, max) = object_bounds(world, entity, &object_type, transform);
                 ray_aabb(origin, direction, min, max)
                     .map(|distance| (distance, Some(entity) != selected, id.0.clone()))
@@ -161,7 +182,7 @@ impl SceneInteraction {
         if !v.visible || v.locked || self.mode == GizmoType::None {
             return None;
         }
-        Some((entity, *world.get::<Transform>(entity)?))
+        Some((entity, world_transform_of(world, entity)?))
     }
     fn handle_visible(&self, handle: Handle, pivot: Vec3, basis: Mat3, length: f32) -> bool {
         let Some(center) = self.view.project(pivot) else {
@@ -266,6 +287,12 @@ impl SceneInteraction {
             self.view.forward
         };
         let plane_start = ray_plane_intersection(o, d, pivot, plane_normal).unwrap_or(pivot);
+        let axis_start = match handle {
+            Handle::Axis(_) => {
+                axis_param(o, d, pivot, axis, self.view.forward).unwrap_or(0.0)
+            }
+            _ => 0.0,
+        };
         let previous_angle = if let Handle::Axis(i) = handle {
             projected_ring_initial_angle(
                 self.view,
@@ -284,12 +311,14 @@ impl SceneInteraction {
             handle,
             mode: self.mode,
             initial,
+            initial_local: world.get::<Transform>(entity).copied().unwrap_or(initial),
             view: self.view,
             length,
             start,
             screen_axis,
             plane_normal,
             plane_start,
+            axis_start,
             previous_angle,
             angle: 0.0,
         });
@@ -308,7 +337,7 @@ impl SceneInteraction {
             self.cancel_drag();
             return;
         }
-        let Some(current) = world.get::<Transform>(drag.entity).copied() else {
+        let Some(current) = world_transform_of(world, drag.entity) else {
             self.cancel_drag();
             return;
         };
@@ -318,16 +347,23 @@ impl SceneInteraction {
         let delta = cursor - drag.start;
         let pivot = Vec3::from_array(drag.initial.position);
         let basis = rotation_matrix(drag.initial);
-        let amount = if drag.screen_axis.length_squared() > 16.0 {
-            delta.dot(drag.screen_axis) / drag.screen_axis.length_squared()
-        } else {
-            -delta.y / HANDLE_PIXELS
+        // World-space travel along the grabbed axis, from the ray/axis solve.
+        // Holds the last value (no update) when the axis is edge-on to the
+        // view instead of jumping.
+        let axis_travel = match drag.handle {
+            Handle::Axis(i) if drag.mode != GizmoType::Rotate => {
+                let Some(t) = axis_param(o, d, pivot, basis.col(i), drag.view.forward) else {
+                    return;
+                };
+                t - drag.axis_start
+            }
+            _ => 0.0,
         };
         let mut next = current;
         match drag.mode {
             GizmoType::Translate => {
                 let movement = match drag.handle {
-                    Handle::Axis(i) => basis.col(i) * amount * drag.length,
+                    Handle::Axis(i) => basis.col(i) * axis_travel,
                     _ => {
                         let Some(p) = ray_plane_intersection(o, d, pivot, drag.plane_normal) else {
                             return;
@@ -342,7 +378,7 @@ impl SceneInteraction {
                     + if drag.handle == Handle::Center {
                         (delta.x - delta.y) / HANDLE_PIXELS
                     } else {
-                        amount
+                        axis_travel / drag.length
                     })
                 .max(0.001);
                 next.scale = drag.initial.scale;
@@ -408,9 +444,7 @@ impl SceneInteraction {
         self.drag = Some(drag);
         self.hovered = Some(drag.handle);
         if next != current {
-            if let Some(mut t) = world.get_mut::<Transform>(drag.entity) {
-                *t = next;
-            }
+            set_world_transform(world, drag.entity, next);
         }
     }
     pub fn update_hover(&mut self, world: &World, o: Vec3, d: Vec3, _camera: Vec3) -> bool {
@@ -727,6 +761,20 @@ fn rotation_axis_highlight_color(axis: usize) -> [f32; 4] {
         _ => [0.62, 0.78, 1.0, 1.0],
     }
 }
+/// Distance along the unit `axis` through `pivot` of the point on that line
+/// nearest the mouse ray. The ray is intersected with the plane that contains
+/// the axis and faces the camera most, then projected onto the axis. This is
+/// the standard editor gizmo solve: the grabbed point stays under the cursor
+/// exactly, in perspective, at any distance. `None` when the axis points
+/// nearly down the view direction, where the answer is ill-conditioned.
+fn axis_param(o: Vec3, d: Vec3, pivot: Vec3, axis: Vec3, view_forward: Vec3) -> Option<f32> {
+    let normal = view_forward - axis * axis.dot(view_forward);
+    if normal.length_squared() < 0.0025 {
+        return None;
+    }
+    let hit = ray_plane_intersection(o, d, pivot, normal.normalize())?;
+    Some((hit - pivot).dot(axis))
+}
 fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
     let denominator = d.dot(n);
     if denominator.abs() < 1e-5 {
@@ -887,6 +935,71 @@ mod tests {
         let final_transform = *world.get::<Transform>(entity).unwrap();
         interaction.update_drag(&mut world, Vec3::ZERO, start.normalize(), Vec3::ZERO);
         assert_eq!(*world.get::<Transform>(entity).unwrap(), final_transform);
+    }
+
+    #[test]
+    fn dragging_a_folder_moves_what_is_inside_it_without_rewriting_it() {
+        let (mut world, mut interaction, folder) = setup(GizmoType::Translate);
+        spawn_cube(&mut world, "inside", -10.0);
+        let inside = world.entity_for("inside").unwrap();
+        // Put in the folder where it stands: its local transform becomes zero.
+        crate::scene::hierarchy_transform::reparent_keeping_world(&mut world, inside, Some(folder))
+            .unwrap();
+        spawn_cube(&mut world, "outside", -10.0);
+        let outside = world.entity_for("outside").unwrap();
+        assert_eq!(world.get::<Transform>(inside).unwrap().position, [0.0; 3]);
+
+        let pivot = Vec3::new(0.0, 0.0, -10.0);
+        let length = interaction.view.length(pivot).unwrap();
+        let start = pivot + Vec3::X * length * 0.7;
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
+        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+
+        let moved = world.get::<Transform>(folder).unwrap().position[0];
+        assert!(moved > 0.0, "the folder did not move");
+        assert_eq!(
+            world.get::<Transform>(inside).unwrap().position,
+            [0.0; 3],
+            "the contents are not rewritten"
+        );
+        let world_x = world_transform_of(&world, inside).unwrap().position[0];
+        assert!((world_x - moved).abs() < 1e-4, "contents follow: {world_x} vs {moved}");
+        assert_eq!(world.get::<Transform>(outside).unwrap().position[0], 0.0);
+    }
+
+    #[test]
+    fn dragging_a_child_moves_it_in_the_world_and_stores_it_relative() {
+        let (mut world, mut interaction, folder) = setup(GizmoType::Translate);
+        // The folder stands 4 to the right of where the child will be dragged.
+        world.get_mut::<Transform>(folder).unwrap().position = [4.0, 0.0, -10.0];
+        spawn_cube(&mut world, "child", -10.0);
+        let child = world.entity_for("child").unwrap();
+        crate::scene::hierarchy_transform::reparent_keeping_world(&mut world, child, Some(folder))
+            .unwrap();
+        world.select(Some(child));
+        let before = world_transform_of(&world, child).unwrap();
+        assert!((before.position[0]).abs() < 1e-4, "{before:?}");
+
+        let pivot = Vec3::from_array(before.position);
+        let length = interaction.view.length(pivot).unwrap();
+        let start = pivot + Vec3::X * length * 0.7;
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
+        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+
+        let after = world_transform_of(&world, child).unwrap();
+        let local = world.get::<Transform>(child).unwrap().position[0];
+        assert!(after.position[0] > 0.0, "the child moved right in the world");
+        assert!(
+            (local - (after.position[0] - 4.0)).abs() < 1e-3,
+            "stored relative to the folder at x = 4: local {local}, world {}",
+            after.position[0]
+        );
+        // Undo restores the child's own (relative) transform.
+        let (entity, restore) = interaction.finish_drag().unwrap();
+        assert_eq!(entity, child);
+        assert!((restore.position[0] - -4.0).abs() < 1e-4, "{restore:?}");
     }
 
     #[test]

@@ -47,6 +47,10 @@ pub fn platform_label(platform: TargetPlatform) -> String {
 /// `Update › Clean › Build › Run`, or `No steps` when empty.
 pub fn steps_summary(steps: BuildSteps) -> String {
     let parts: Vec<String> = [
+        (
+            steps.regenerate_core_project_files,
+            t!("Build.Steps.Summary.RegenerateCoreProjectFiles"),
+        ),
         (steps.update, t!("Build.Steps.Summary.Update")),
         (steps.clean, t!("Build.Steps.Summary.Clean")),
         (steps.check, t!("Build.Steps.Summary.Check")),

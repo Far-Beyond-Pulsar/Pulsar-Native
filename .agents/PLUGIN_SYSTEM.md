@@ -264,3 +264,23 @@ ui = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component" }
 ```
 
 All must be compiled against the same rustc version as the engine binary.
+
+## Import companions
+
+A plugin can offer extra work for an import without the engine knowing what
+it is. `plugin_editor_api::import_companion` defines `ImportCompanion`:
+`offer(&ImportProbe)` (shown as a checkbox in the import configurator, only
+when the plugin has something to say about the sources) and
+`run(&ImportCompanionContext)` (after the native asset exists). The data both
+ways is neutral: the host passes `SourceSurface`s (a mesh slot, its name and
+the image files found for it, by role); the plugin returns `CompanionOutput`s
+(files written, optionally "default for slot N").
+
+`asset_import::register_companion` is the host-owned registry (a plugin links
+its own copy of the SDK, so a registry there would be private). Built-in
+providers register at startup in `ui_core`; the shader plugin registers
+`shader_editor_plugin::material_import_companion()`, which writes one
+`.material` graph per surface with images. Accepted companion ids are stored in
+`ImportRecord::companions`, so a re-import runs them again. Rules: a companion
+never overwrites a file that exists, and its outputs only fill mesh slots that
+have no default material. Not yet wired for DLL plugins (no FFI entry point).

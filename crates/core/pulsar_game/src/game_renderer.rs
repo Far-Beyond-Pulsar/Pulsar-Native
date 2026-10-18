@@ -5,7 +5,9 @@
 
 use std::sync::Arc;
 
-use engine_backend::scene::{ensure_gpu_mirror, environment_join, scene_join, SharedScene};
+use engine_backend::scene::{
+    ensure_gpu_mirror, environment_join, hierarchy_resolve, scene_join, SharedScene,
+};
 use helio::{Renderer, RendererBuilder, RendererConfig};
 
 /// The standalone game's renderer settings, from the project's
@@ -108,6 +110,8 @@ pub fn build_game_renderer(
     }
     builder
         .with_editor_mode(editor_mode)
+        // Parent-relative transforms become world-space first, under the same key.
+        .with_scene_derivation(hierarchy_resolve(&device))
         .with_scene_derivation(scene_join(&device, editor_mode))
         .with_scene_derivation(environment_join(&device))
         // No default ambient: all illumination comes from the scene's lights,

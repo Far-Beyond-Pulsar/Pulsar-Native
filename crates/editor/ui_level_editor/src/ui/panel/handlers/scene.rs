@@ -155,8 +155,11 @@ fn focus_camera(
             }
         }
     } else {
-        let object = crate::scene_edit::objects::entity_to_scene_object_data(world, entity);
-        let target = DVec3::from_array(object.transform.position.map(f64::from));
+        // Where the object is in the world, under any folder it is in.
+        let position = engine_backend::scene::hierarchy_transform::world_transform_of(world, entity)
+            .map(|pose| pose.position)
+            .unwrap_or_default();
+        let target = DVec3::from_array(position.map(f64::from));
         (target - forward * 8.0, forward)
     };
     Some(crate::scene_edit::LevelEditorCameraState {

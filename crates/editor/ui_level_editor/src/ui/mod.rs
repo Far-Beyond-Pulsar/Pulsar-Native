@@ -1,4 +1,5 @@
 mod actions;
+mod environment_config_window;
 pub(crate) mod frame_pump;
 pub(crate) mod hierarchy;
 pub(crate) mod mode_widgets;

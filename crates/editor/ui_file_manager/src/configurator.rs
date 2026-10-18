@@ -14,6 +14,7 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use pulsar_reflection::{Reflectable, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value as JsonValue;
+use ui::checkbox::Checkbox;
 use ui::notification::Notification;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -34,6 +35,9 @@ pub struct ImportConfiguratorParams {
     /// Lower-case extension all `sources` share (e.g. `fbx`).
     pub ext: String,
     pub schema: mesh_cache::OptionsSchema,
+    /// Extra work plugins offer for these sources, each with whether the user
+    /// has it switched on.
+    pub companions: Vec<(asset_import::CompanionOffer, bool)>,
 }
 
 thread_local! {
@@ -53,13 +57,23 @@ pub fn offer_import(
     cx: &mut App,
 ) {
     for (ext, sources) in by_ext {
-        let Some(schema) = asset_import::importer_for(&ext).and_then(|i| i.options_schema(&ext))
-        else {
-            asset_import::submit_import(
+        let importer = asset_import::importer_for(&ext);
+        let companions: Vec<_> = importer
+            .map(|i| asset_import::offers_for(i.id(), &sources))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|offer| {
+                let enabled = offer.offer.default_enabled;
+                (offer, enabled)
+            })
+            .collect();
+        let Some(schema) = importer.and_then(|i| i.options_schema(&ext)) else {
+            asset_import::submit_import_with_companions(
                 project_root.clone(),
                 sources,
                 asset_import::ImportMode::Link,
                 Arc::new(parking_lot::Mutex::new(HashMap::new())),
+                enabled_ids(&companions),
             );
             continue;
         };
@@ -69,10 +83,19 @@ pub fn offer_import(
                 sources,
                 ext,
                 schema,
+                companions,
             })
         });
     }
     open_next(cx);
+}
+
+fn enabled_ids(companions: &[(asset_import::CompanionOffer, bool)]) -> Vec<String> {
+    companions
+        .iter()
+        .filter(|(_, enabled)| *enabled)
+        .map(|(offer, _)| offer.companion_id.clone())
+        .collect()
 }
 
 fn open_next(cx: &mut App) {
@@ -91,6 +114,7 @@ pub struct ImportConfigurator {
     sources: Vec<PathBuf>,
     ext: String,
     fields: Vec<ImportField>,
+    companions: Vec<(asset_import::CompanionOffer, bool)>,
     values_shared: Arc<parking_lot::Mutex<HashMap<String, Box<dyn Any + Send>>>>,
     /// Caches the current value of each field as JSON so that
     /// `render_field` can produce a `&dyn Any` that reflects the
@@ -120,6 +144,7 @@ impl ImportConfigurator {
             sources: params.sources,
             ext: params.ext,
             fields: params.schema.fields,
+            companions: params.companions,
             values_shared,
             field_json,
             property_state: PropertyStateManager::new(),
@@ -139,11 +164,12 @@ impl ImportConfigurator {
         // The shared options map moves into the tasks; this window is done
         // with it.
         let options = std::mem::take(&mut *self.values_shared.lock());
-        asset_import::submit_import(
+        asset_import::submit_import_with_companions(
             self.project_root.clone(),
             self.sources.clone(),
             mode,
             Arc::new(parking_lot::Mutex::new(options)),
+            enabled_ids(&self.companions),
         );
         window.push_notification(
             Notification::info(format!("Importing {count} file(s) — see Tasks")),
@@ -309,7 +335,32 @@ impl Render for ImportConfigurator {
                             .collect();
                         self.fields = fields;
                         result
-                    }),
+                    })
+                    .children(self.companions.iter().enumerate().map(
+                        |(index, (offer, enabled))| {
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    Checkbox::new(SharedString::from(format!(
+                                        "cfg-companion-{}",
+                                        offer.companion_id
+                                    )))
+                                    .label(offer.offer.label.clone())
+                                    .checked(*enabled)
+                                    .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                                        this.companions[index].1 = *checked;
+                                        cx.notify();
+                                    })),
+                                )
+                                .child(
+                                    div()
+                                        .pl_6()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(offer.offer.description.clone()),
+                                )
+                        },
+                    )),
             )
             .child(
                 h_flex()

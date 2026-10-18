@@ -287,7 +287,7 @@ impl EngineFrameSnapshot {
         if let Some(cam) = engine.camera_input() {
             if let Ok(mut input) = cam.try_lock() {
                 input.move_speed = move_speed;
-                input.zoom_delta = zoom_delta;
+                input.zoom_delta += zoom_delta;
             }
         }
 

@@ -1,4 +1,3 @@
-use engine_fs::virtual_fs;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use rust_i18n::t;
@@ -6,9 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex,
-    notification::Notification,
-    ActiveTheme, ContextModal as _,
+    h_flex, v_flex, ActiveTheme, ContextModal as _, Sizable as _,
 };
 
 mod actions;
@@ -18,43 +15,23 @@ mod level_editor_menus;
 mod mode_indicator;
 mod multiplayer_panel;
 mod playback_controls;
-mod snap_controls;
+pub(crate) mod snap_controls;
 mod time_scale_dropdown;
 mod tool_mode_dropdown;
 mod view;
-mod view_mode_dropdown;
+pub(crate) mod view_mode_dropdown;
 
 pub use actions::*;
-use feature_toggles::FeatureToggles;
 pub use global_toolbar::{GlobalToolbarView, GLOBAL_TOOLBAR_HEIGHT};
 use level_editor_menus::LevelEditorMenus;
 use mode_indicator::ModeIndicator;
-use snap_controls::SnapPanel;
-use snap_controls::TransformSnapControls;
 use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
-use view_mode_dropdown::{ViewModeDropdown, ViewModePickerState};
 
 use crate::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
 use crate::LevelEditorState;
 
-/// Premium Toolbar - A beautifully crafted control panel for game development
-///
-/// Features:
-/// - **Tool Mode**: Dropdown for switching between Level Edit, Terrain, etc.
-/// - **Playback Controls**: Intuitive play/pause/stop for simulation
-/// - **Time Scale**: Smooth dropdown for speed control with checkmarks
-/// - **Multiplayer Mode**: Clean dropdown for networking options
-/// - **Build Settings**: Professional dropdowns for config & platform
-/// - **Mode Indicator**: Polished badge showing current mode
-/// - **Performance Toggle**: Quick access to profiling overlay
-///
-/// Design Philosophy:
-/// - Use dropdowns where choice clarity matters (time scale, multiplayer, build)
-/// - Use badges for status display (mode indicator)
-/// - Use icon buttons for toggles (profiling)
-/// - Everything styled to blend seamlessly with the editor
-/// - All controls modify real state immediately
+/// The editor command row. Viewport controls float inside the viewport.
 pub struct ToolbarPanel;
 
 impl ToolbarPanel {
@@ -67,66 +44,86 @@ impl ToolbarPanel {
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-        snap_panels: &[Entity<SnapPanel>; 3],
-        view_mode_picker: &Entity<ViewModePickerState>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let _scope = gpui::render_stats::scope("toolbar: panel render");
-        let theme = cx.theme();
+        let background = cx.theme().background;
 
         let _mode_scope = gpui::render_stats::scope("toolbar: mode controls");
         let mode_controls = active_mode_widgets(state, &gpu_engine);
         drop(_mode_scope);
         let has_mode_controls = !mode_controls.is_empty();
 
-        h_flex()
-            .w_full()
-            .h(px(36.0))
-            .px_2()
-            .gap_2()
-            .items_center()
-            .bg(theme.background)
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
-                ToolModeDropdown::render(state, state_arc.clone(), cx)
-            })
-            .child(LevelEditorMenus::render(state))
-            .child(TransformSnapControls::render(snap_panels, state))
-            .child(ViewModeDropdown::render(view_mode_picker))
-            .child(self.render_separator(cx))
-            .when(has_mode_controls, |el| {
-                el.child(render_mode_widgets(
-                    mode_controls,
-                    state_arc.clone(),
-                    gpu_engine.clone(),
-                    cx,
-                ))
+        v_flex().w_full().bg(background).child(
+            h_flex()
+                .w_full()
+                .h(px(36.0))
+                .px_2()
+                .gap_2()
+                .items_center()
+                .child({
+                    let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
+                    ToolModeDropdown::render(state, state_arc.clone(), cx)
+                })
+                .child(LevelEditorMenus::render(state))
+                .when(has_mode_controls, |el| {
+                    el.child(self.render_separator(cx))
+                        .child(render_mode_widgets(
+                            mode_controls,
+                            state_arc.clone(),
+                            gpu_engine.clone(),
+                            cx,
+                        ))
+                })
+                .child(div().flex_1())
+                .child(self.render_viewport_split_buttons())
                 .child(self.render_separator(cx))
-            })
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: feature toggles");
-                FeatureToggles::render(state, state_arc.clone(), gpu_engine.clone(), cx)
-            })
-            .child(div().flex_1())
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: mode indicator");
-                ModeIndicator::render(state, cx)
-            })
-            .child(self.render_separator(cx))
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: save button");
-                self.render_save_button(state_arc.clone(), gpu_engine.clone())
-            })
-            .when(Self::is_source_build(), |el| {
-                el.child(self.render_separator(cx)).child(
-                    self.render_save_as_default_button(state_arc.clone(), gpu_engine.clone()),
-                )
-            })
-            .child(self.render_separator(cx))
-            .child(self.render_profiling_button(state, state_arc.clone(), cx))
+                .child({
+                    let _scope = gpui::render_stats::scope("toolbar: mode indicator");
+                    ModeIndicator::render(state, cx)
+                })
+                .child(self.render_separator(cx))
+                .child({
+                    let _scope = gpui::render_stats::scope("toolbar: save button");
+                    self.render_save_button(state_arc.clone(), gpu_engine.clone())
+                })
+                .when(Self::is_source_build(), |el| {
+                    el.child(
+                        self.render_save_as_default_button(state_arc.clone(), gpu_engine.clone()),
+                    )
+                }),
+        )
+    }
+
+    /// Split the viewport into two or four. Clicking the layout that is
+    /// already showing returns to a single viewport.
+    fn render_viewport_split_buttons(&self) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .items_center()
+            .child(
+                Button::new("toolbar_split_viewports_half")
+                    .icon(ui::IconName::PanelRight)
+                    .small()
+                    .ghost()
+                    .tooltip(t!("LevelEditor.Viewport.SplitHalf"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::ui::actions::SplitViewportsHalf), cx)
+                    }),
+            )
+            .child(
+                Button::new("toolbar_split_viewports_quad")
+                    .icon(ui::IconName::LayoutDashboard)
+                    .small()
+                    .ghost()
+                    .tooltip(t!("LevelEditor.Viewport.SplitQuad"))
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::ui::actions::SplitViewportsQuad), cx)
+                    }),
+            )
     }
 
     fn default_level_path() -> Option<PathBuf> {
@@ -285,31 +282,5 @@ impl ToolbarPanel {
 
     fn render_separator<V: 'static>(&self, cx: &mut Context<V>) -> impl IntoElement {
         div().h_6().w_px().bg(cx.theme().border.opacity(0.4))
-    }
-
-    fn render_profiling_button<V>(
-        &self,
-        state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        _cx: &mut Context<V>,
-    ) -> impl IntoElement
-    where
-        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
-    {
-        let state_clone = state_arc.clone();
-        let is_profiling = state.overlays.state.show_performance_overlay;
-        let btn = Button::new("toggle_profiling")
-            .icon(ui::IconName::Activity)
-            .tooltip(t!("LevelEditor.Toolbar.TogglePerformance"))
-            .on_click(move |_, _, _| {
-                let mut s = state_clone.write();
-                s.overlays.state.show_performance_overlay =
-                    !s.overlays.state.show_performance_overlay;
-            });
-        if is_profiling {
-            btn.primary()
-        } else {
-            btn
-        }
     }
 }

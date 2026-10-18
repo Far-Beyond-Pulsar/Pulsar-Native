@@ -1,6 +1,6 @@
 use gpui::*;
 use std::sync::Arc;
-use ui::{button::Button, h_flex, Selectable};
+use ui::{button::Button, h_flex, Selectable, Sizable};
 
 use crate::state::LevelEditorState;
 use engine_backend::subsystems::render::helio_renderer::RendererCommand;
@@ -80,6 +80,8 @@ impl FeatureToggles {
     ) -> impl IntoElement {
         Button::new(id)
             .icon(icon)
+            .label(label)
+            .small()
             .tooltip(format!("Toggle {}", label))
             .selected(enabled)
             .on_click(move |_, _, _| {

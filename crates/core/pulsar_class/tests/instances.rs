@@ -134,10 +134,13 @@ fn two_components_of_one_type_put_the_second_on_a_child() {
         assert_eq!(placed.children, [child]);
         assert_eq!(slot_map(&world, root).len(), 2);
     }
-    // Children sit at their root's transform and have deterministic ids.
+    // Children are stored relative to their root (zero), so they stand at its
+    // transform in the world, and have deterministic ids.
     let b_child = generated_children(&world, b)[0];
     assert_eq!(
-        world.get::<Transform>(b_child).unwrap().position,
+        pulsar_scene_model::hierarchy_transform::world_transform_of(&world, b_child)
+            .unwrap()
+            .position,
         [5.0, 0.0, 0.0]
     );
     assert_eq!(

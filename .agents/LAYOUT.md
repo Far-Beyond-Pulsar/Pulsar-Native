@@ -198,7 +198,7 @@ own dock and their own `zoomed` field, applied once their window is open.
 ## Chrome
 
 `ChromeState` (`app/chrome.rs`) owns the former loose drawer fields. Saved
-(`chrome`): file manager docked / not, and its height (clamped on load; non-finite
+(`chrome`): file manager docked / not, the folder it shows (project-relative, restored only if it still exists), and its height (clamped on load; non-finite
 values fall back to the default). Every mutation of saved chrome must call
 `PulsarApp::chrome_changed(cx)`, because those paths emit no `DockEvent`.
 

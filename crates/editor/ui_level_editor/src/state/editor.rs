@@ -94,14 +94,14 @@ impl Default for EditorDomain {
                 .get(engine_state::settings::NS_EDITOR, "viewport", key)
                 .ok()
                 .and_then(|value| value.as_float().ok())
-                .filter(|value| value.is_finite())
+                .filter(|value| value.is_finite() && value.abs() <= f32::MAX as f64)
                 .unwrap_or(fallback as f64) as f32
         };
 
         Self {
             current_tool: TransformTool::Move,
             camera_mode: CameraMode::Perspective,
-            camera_move_speed: setting_float("camera_move_speed", 10.0).clamp(1.0, 100.0),
+            camera_move_speed: setting_float("camera_move_speed", 10.0).max(1.0),
             location_snap: setting_float("location_snap", 1.0).clamp(0.01, 1000.0),
             rotation_snap: setting_float("rotation_snap", 15.0).clamp(0.1, 360.0),
             scale_snap: setting_float("scale_snap", 0.1).clamp(0.01, 10.0),

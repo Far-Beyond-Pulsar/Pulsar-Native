@@ -161,6 +161,7 @@ mod tests {
             importer: "mesh".into(),
             options: None,
             outputs: Vec::new(),
+            companions: Vec::new(),
         });
         db.ignore("models/no.fbx");
         db.save(root).unwrap();
@@ -192,6 +193,7 @@ mod tests {
             importer: "mesh".into(),
             options: None,
             outputs: Vec::new(),
+            companions: Vec::new(),
         });
         db.save(root).unwrap();
 

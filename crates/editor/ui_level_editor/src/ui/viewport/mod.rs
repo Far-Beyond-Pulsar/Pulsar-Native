@@ -18,6 +18,7 @@ pub(crate) mod input_latch;
 pub mod input_state;
 mod input_thread;
 mod overlays;
+pub(crate) mod view_settings;
 pub mod performance;
 
 use std::cell::RefCell;
@@ -37,11 +38,9 @@ use ui_common::ViewportControls;
 
 use crate::state::LevelEditorState;
 use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
-use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
 use components::nerds_overlay::{render_nerds_overlay, NerdsOverlay};
 use components::performance_overlay::{render_performance_overlay, PerformanceOverlay};
-use components::viewport_options::render_viewport_options;
 use input_state::InputState;
 use performance::*;
 
@@ -51,12 +50,19 @@ enum ViewportCursorCapture {
     Released,
     Rotate,
     Pan,
+    PanRight,
 }
 
 impl ViewportCursorCapture {
     fn load(right: &AtomicBool, middle: &AtomicBool) -> Self {
         if right.load(Ordering::Acquire) {
-            Self::Rotate
+            // Right-drag may pan when Shift is held. Preserve the initiating
+            // button so Windows can stop capture if that button is released.
+            if middle.load(Ordering::Acquire) {
+                Self::PanRight
+            } else {
+                Self::Rotate
+            }
         } else if middle.load(Ordering::Acquire) {
             Self::Pan
         } else {
@@ -65,8 +71,27 @@ impl ViewportCursorCapture {
     }
 
     fn store(self, right: &AtomicBool, middle: &AtomicBool) {
-        right.store(matches!(self, Self::Rotate), Ordering::Release);
-        middle.store(matches!(self, Self::Pan), Ordering::Release);
+        right.store(
+            matches!(self, Self::Rotate | Self::PanRight),
+            Ordering::Release,
+        );
+        middle.store(
+            matches!(self, Self::Pan | Self::PanRight),
+            Ordering::Release,
+        );
+    }
+
+    fn is_rotating(self) -> bool {
+        self == Self::Rotate
+    }
+
+    fn is_panning(self) -> bool {
+        matches!(self, Self::Pan | Self::PanRight)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn initiating_button_vk(self) -> i32 {
+        if self == Self::Pan { 0x04 } else { 0x02 }
     }
 
     fn is_active(self) -> bool {
@@ -145,6 +170,29 @@ pub struct ViewportPanel {
     cached_frame_snapshot: EngineFrameSnapshot,
     /// Helio viewport entity for GPU rendering
     viewport: Entity<HelioViewport>,
+    toolbar: Entity<crate::ui::toolbar::ToolbarView>,
+
+    /// The renderer this viewport draws with. Each viewport has its own
+    /// (camera, gizmo and input state are per renderer); they all read one
+    /// scene.
+    gpu_engine: Arc<Mutex<GpuRenderer>>,
+
+    /// What this viewport's own controls read and write: its overlays,
+    /// camera mode and debug view. The editor's shared state for the primary
+    /// viewport, a state of its own for a split-off one (see
+    /// [`view_settings`]).
+    view_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+
+    /// Whether `view_state` is a state of its own rather than the shared one.
+    /// The shared state is already read-locked by the caller when the panel
+    /// renders, so the panel must not lock it a second time.
+    own_view: bool,
+
+    /// Mailbox into `gpu_engine`, fetched once the renderer exists.
+    mailbox: Option<engine_backend::subsystems::render::HelioEditorMailbox>,
+
+    /// View-mode picker of a split-off viewport.
+    own_picker: Option<view_settings::OwnViewPicker>,
 
     /// Viewport controls state
     viewport_controls: ViewportControls,
@@ -205,21 +253,36 @@ pub struct ViewportPanel {
 }
 
 impl ViewportPanel {
+    pub(crate) fn is_camera_navigating(&self) -> bool {
+        ViewportCursorCapture::load(&self.mouse_right_captured, &self.mouse_middle_captured)
+            .is_active()
+    }
+
     /// Create a new viewport panel.
     pub fn new<V>(
         viewport: Entity<HelioViewport>,
         render_enabled: Arc<AtomicBool>,
+        input_state: Arc<InputState>,
+        toolbar: Entity<crate::ui::toolbar::ToolbarView>,
+        gpu_engine: Arc<Mutex<GpuRenderer>>,
+        view_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        own_view: bool,
         _window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self
     where
         V: 'static,
     {
-        let input_state = Arc::new(InputState::new());
         let focus_handle = cx.focus_handle();
 
         Self {
             viewport,
+            toolbar,
+            gpu_engine,
+            view_state,
+            own_view,
+            mailbox: None,
+            own_picker: None,
             cached_frame_snapshot: EngineFrameSnapshot::default(),
             viewport_controls: ViewportControls::new(),
             render_enabled,
@@ -239,8 +302,10 @@ impl ViewportPanel {
             mouse_middle_captured: Arc::new(AtomicBool::new(false)),
             locked_cursor_x: Arc::new(AtomicI32::new(0)),
             locked_cursor_y: Arc::new(AtomicI32::new(0)),
-            locked_cursor_screen_x: Arc::new(AtomicI32::new(0)),
-            locked_cursor_screen_y: Arc::new(AtomicI32::new(0)),
+            // MIN marks that the platform has no global cursor coordinate
+            // (Wayland); (0, 0) and negative multi-monitor coordinates are valid.
+            locked_cursor_screen_x: Arc::new(AtomicI32::new(i32::MIN)),
+            locked_cursor_screen_y: Arc::new(AtomicI32::new(i32::MIN)),
             keys_pressed: Rc::new(RefCell::new(HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle,
@@ -279,33 +344,6 @@ impl Drop for ViewportPanel {
             let _ = handle.join();
         }
     }
-}
-
-/// Everything `render_viewport_options` reads out of [`LevelEditorState`].
-///
-/// This is a claim, and the failure mode of getting it wrong is a toolbar that
-/// stops updating — so it is derived by reading that function and its three
-/// helpers (`visual_toggles`, `gizmo_tool_buttons`, `overlay_toggles`) rather
-/// than by guessing, and it must be revisited whenever one of them starts
-/// reading something new. `WGPUI_LAYER_DEBUG=1` makes an omission visible: the
-/// layer fails to flash when the thing it forgot changes.
-///
-/// The theme is deliberately absent. It is a global rather than an entity, so
-/// nothing here could observe it — but changing it goes through
-/// `Window::refresh`, which is window-scope invalidation on every axis, and no
-/// layer composites through that.
-fn viewport_options_key(state: &LevelEditorState) -> impl std::hash::Hash {
-    (
-        state.overlays.state.viewport_options_collapsed,
-        state.overlays.state.show_performance_overlay,
-        state.overlays.state.show_gpu_pipeline_overlay,
-        state.overlays.state.show_nerds_overlay,
-        state.editor.show_grid,
-        state.editor.show_wireframe,
-        state.editor.show_lighting,
-        state.editor.current_tool as u8,
-        state.overlays.positions.is_dragging_viewport,
-    )
 }
 
 #[cfg(test)]

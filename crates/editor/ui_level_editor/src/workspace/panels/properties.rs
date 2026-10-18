@@ -203,7 +203,7 @@ impl PropertiesPanelWrapper {
                     )
                 }));
                 self.current_object_id = Some(object_id.clone());
-                self.follow_object(object_id, cx);
+                self.follow_object(object_id, window, cx);
             } else {
                 // Clearing selection removes the old object's inspectors.
                 self.end_object_feed();
@@ -217,7 +217,13 @@ impl PropertiesPanelWrapper {
     }
 
     /// Subscribe to `object_id`, replacing the previous selection's feed.
-    fn follow_object(&mut self, object_id: &str, cx: &mut Context<Self>) {
+    ///
+    /// What the feed delivers is shown by pushing it straight into the
+    /// sections that display it. The panel itself is not notified: a gizmo
+    /// drag delivers a transform every frame, and waking the panel for each
+    /// one rebuilt its tree and everything above it. Only a despawn, which
+    /// changes what the panel is showing, reaches the panel.
+    fn follow_object(&mut self, object_id: &str, window: &mut Window, cx: &mut Context<Self>) {
         use engine_backend::scene::SceneWorldExt;
         self.end_object_feed();
         let (wake, woken) = smol::channel::unbounded::<()>();
@@ -230,10 +236,13 @@ impl PropertiesPanelWrapper {
                 })
             })
         };
-        self._object_feed_task = Some(cx.spawn(async move |this, cx| {
+        self._object_feed_task = Some(cx.spawn_in(window, async move |this, cx| {
             while woken.recv().await.is_ok() {
                 while woken.try_recv().is_ok() {}
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                if this
+                    .update_in(cx, |this, window, cx| this.apply_object_updates(window, cx))
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -388,7 +397,6 @@ impl Render for PropertiesPanelWrapper {
         // the three section entities. Data updates arrive through the selected
         // object's feed.
         self.sync_sections(window, cx);
-        self.apply_object_updates(window, cx);
         let _state_scope = gpui::render_stats::scope("properties: render state read");
         let state = self.state.read();
         drop(_state_scope);

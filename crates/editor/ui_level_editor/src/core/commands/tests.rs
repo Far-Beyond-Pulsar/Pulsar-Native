@@ -755,6 +755,47 @@ mod undo_redo_tests {
         assert_eq!(state.scene.selected_object(), Some(copy));
     }
 
+    /// Duplicating a folder copies its contents, as one undo step.
+    #[test]
+    fn duplicating_a_folder_with_contents_undoes_and_redoes_as_one_step() {
+        let mut state = LevelEditorState::new();
+        let folder = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Folder"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        for name in ["a", "b"] {
+            execute_command(
+                &mut state,
+                SceneCommand::AddObject {
+                    data: object(name),
+                    parent_id: Some(folder.clone()),
+                },
+            );
+        }
+        let count = |state: &LevelEditorState| {
+            crate::scene_edit::objects::get_all_objects(&state.scene.world()).len()
+        };
+        assert_eq!(count(&state), 3);
+
+        let copy = crate::commands::duplicate_and_select(&mut state, &folder).expect("copy");
+        assert_eq!(count(&state), 6, "the folder and both objects were copied");
+        let held = crate::scene_edit::objects::get_object(&state.scene.world(), &copy)
+            .unwrap()
+            .children
+            .len();
+        assert_eq!(held, 2);
+
+        assert!(state.scene.undo());
+        assert_eq!(count(&state), 3, "one undo removes the copy and its contents");
+        assert!(state.scene.redo());
+        assert_eq!(count(&state), 6);
+    }
+
     /// A gizmo drag moves the object in the renderer, outside any command;
     /// the editor records it when the mouse is released (#931).
     #[test]

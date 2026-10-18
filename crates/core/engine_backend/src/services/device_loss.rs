@@ -43,6 +43,12 @@ fn watched() -> MutexGuard<'static, Vec<(wgpu::Device, DeviceLoss)>> {
     watched
 }
 
+/// The devices currently watched (the renderers'), for read-only diagnostics
+/// such as Mission Control's GPU memory report. Lost devices are not listed.
+pub fn watched_devices() -> Vec<wgpu::Device> {
+    watched().iter().map(|(device, _)| device.clone()).collect()
+}
+
 impl DeviceLoss {
     /// Watches `device`, or returns the watcher already on it. Its lost
     /// callback marks the loss. Errors no error scope caught panic as

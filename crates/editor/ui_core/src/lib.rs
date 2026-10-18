@@ -68,6 +68,10 @@ pub fn init(cx: &mut gpui::App) {
     // the file drawer can request material previews.
     shader_editor_plugin::register_material_thumbnail_renderer();
 
+    // Plugins tell the import pipeline what extra work they can do for an
+    // import; the pipeline itself knows nothing about what that work is.
+    asset_import::register_companion(shader_editor_plugin::material_import_companion());
+
     // Register global keybindings for actions that must work anywhere in the app
     #[cfg(target_os = "windows")]
     let toggle_palette = gpui::KeyBinding::new::<ToggleCommandPalette>(

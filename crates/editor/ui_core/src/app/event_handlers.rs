@@ -813,6 +813,31 @@ pub fn on_drag_event(
             // Close the drawer and set flag to suppress reopening
             app.state.chrome.suppress_drawer_for_drag = true;
             app.close_drawer(window, cx);
+            // The drawer can only report the drag ending while it renders,
+            // and it does not render while closed, so a drop elsewhere (the
+            // viewport) would leave it closed for good. Watch for the end
+            // here and bring it back, showing the folder it was in.
+            cx.spawn_in(window, async move |this, cx| loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(50))
+                    .await;
+                let ended = this
+                    .update_in(cx, |app, window, cx| {
+                        if cx.has_active_drag() {
+                            return false;
+                        }
+                        app.state.chrome.suppress_drawer_for_drag = false;
+                        if !app.state.chrome.drawer_docked {
+                            app.open_drawer(window, cx);
+                        }
+                        true
+                    })
+                    .unwrap_or(true);
+                if ended {
+                    break;
+                }
+            })
+            .detach();
         }
         ui_types_common::DragEvent::AssetDropped(_payload) => {
             tracing::debug!("Asset dropped, clearing suppress flag");

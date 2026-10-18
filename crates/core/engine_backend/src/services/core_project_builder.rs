@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use engine_fs::virtual_fs;
 use engine_state::{register_default_settings, ProjectSettings};
@@ -283,6 +283,52 @@ fn merge_baked_patches(manifest: &str) -> String {
     result
 }
 
+/// Remove local patch overrides whose source checkout has been deleted.
+/// Regeneration may run in an editor process with an older baked dependency
+/// snapshot; retaining a dangling local patch makes Cargo fail before it can
+/// build the refreshed project.
+fn remove_missing_local_patch_entries(manifest: &str, project_root: &Path) -> String {
+    let mut result = String::with_capacity(manifest.len());
+    let mut in_patch = false;
+
+    for line in manifest.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_patch = trimmed == "[patch]" || trimmed.starts_with("[patch.");
+        }
+
+        if in_patch {
+            if let Some((_, spec)) = trimmed.split_once('=') {
+                let parsed: Result<toml::Value, _> = toml::from_str(&format!("entry = {spec}"));
+                let path = parsed
+                    .ok()
+                    .and_then(|value| value.get("entry").cloned())
+                    .and_then(|value| {
+                        value
+                            .get("path")
+                            .and_then(toml::Value::as_str)
+                            .map(str::to_owned)
+                    });
+                if let Some(path) = path {
+                    let path = PathBuf::from(path);
+                    let resolved = if path.is_absolute() {
+                        path
+                    } else {
+                        project_root.join(path)
+                    };
+                    if !resolved.exists() {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        result.push_str(line);
+    }
+
+    result
+}
+
 fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     // Register schemas once before any project settings reads.
     register_default_settings();
@@ -343,6 +389,7 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     if !should_write_cargo {
         let existing = existing_manifest.as_deref().unwrap_or_default();
         let updated = ensure_generated_dependencies(existing, &script_crates);
+        let updated = remove_missing_local_patch_entries(&updated, project_root);
         if updated != existing {
             write_if_changed(&cargo_toml_path, updated.as_bytes()).map_err(|e| {
                 format!("Failed to update generated source dependencies in Cargo.toml: {e}")
@@ -410,6 +457,7 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         workspace_block = workspace_block(&script_crates),
     );
 
+    let cargo_content = remove_missing_local_patch_entries(&cargo_content, project_root);
     write_if_changed(&cargo_toml_path, cargo_content.as_bytes())
         .map_err(|e| format!("Failed to write Cargo.toml: {e}"))?;
 

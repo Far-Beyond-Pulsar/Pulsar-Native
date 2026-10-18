@@ -37,6 +37,7 @@ use serde_json::Value;
 
 use pulsar_scenedb::{Entity, World};
 
+use crate::scene::hierarchy_transform;
 use crate::scene::{
     LightType, MeshType, ObjectType, RenderProps, SceneWorldExt, SharedScene, SpawnObject,
     Transform, Visibility,
@@ -172,8 +173,14 @@ impl RuntimeLevel {
         // Validate before mutating World so malformed hierarchy/identity data
         // cannot leave a partially hydrated SceneDB.
         validate_objects(world, &file.objects)?;
+        let mut spawned = Vec::with_capacity(file.objects.len());
         for obj in &file.objects {
-            spawn_file_object(world, obj)?;
+            spawned.push(spawn_file_object(world, obj)?);
+        }
+        // A level saved before parent-relative transforms holds world-space
+        // values for parented objects: make them local, in place.
+        if hierarchy_transform::file_has_world_space_transforms(&version) {
+            hierarchy_transform::convert_legacy_world_transforms(world, &spawned);
         }
 
         let persisted = persisted_components(&file.components);
@@ -600,6 +607,38 @@ mod tests {
     fn sample_level() -> RuntimeLevel {
         let file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
         RuntimeLevel::from_scene_file(file).expect("sample hydrates")
+    }
+
+    /// A level saved before transforms were parent-relative keeps every object
+    /// where it was; a current level's values are already local.
+    #[test]
+    fn legacy_world_space_transforms_load_as_parent_relative() {
+        let level = |version: &str| {
+            let json = format!(
+                r#"{{
+                "version": "{version}",
+                "objects": [
+                    {{"id": "group", "name": "Group", "object_type": "Folder",
+                      "transform": {{"position": [10.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}},
+                      "parent": null, "visible": true, "locked": false, "props": {{}}}},
+                    {{"id": "cube", "name": "Cube", "object_type": {{"Mesh": "Cube"}},
+                      "transform": {{"position": [11.0, 2.0, 3.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}},
+                      "parent": "group", "visible": true, "locked": false, "props": {{}}}}
+                ],
+                "components": {{}}, "metadata": {{}}
+            }}"#
+            );
+            let file: SceneFile = serde_json::from_str(&json).expect("parses");
+            RuntimeLevel::from_scene_file(file).expect("hydrates")
+        };
+        let local_of_cube = |level: &RuntimeLevel| {
+            let scene = level.scene();
+            let scene = scene.read();
+            let cube = scene.world.entity_for("cube").unwrap();
+            scene.world.get::<Transform>(cube).unwrap().position
+        };
+        assert_eq!(local_of_cube(&level("2.1")), [1.0, 2.0, 3.0], "2.1 held world values");
+        assert_eq!(local_of_cube(&level("2.2")), [11.0, 2.0, 3.0], "2.2 holds local values");
     }
 
     /// #637: objects land in the shared store with transforms/hierarchy/

@@ -73,7 +73,7 @@ impl PropertiesPanel {
 
                             // Render new TransformSection if available (new binding system)
                             if let Some(ref section) = transform_section {
-                                flex = flex.child(Self::cached_section(section));
+                                flex = flex.child(Self::isolated_section(section));
                             }
 
                             // Reflection-backed object type properties — always present.
@@ -99,6 +99,17 @@ impl PropertiesPanel {
     fn cached_section<V: Render>(section: &Entity<V>) -> AnyView {
         AnyView::from(section.clone())
             .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
+    }
+
+    /// A section that refreshes by itself, like the viewport's overlays: a
+    /// transform pushed into it while an object is dragged re-renders just
+    /// this section, in place, and the panel, the dock and the rest of the
+    /// window do not render, lay out or prepaint. Only for a section whose
+    /// size does not follow what changes. The interactive surface (hit areas,
+    /// focus) is the one recorded when the panel last rendered, which stays
+    /// valid because the section's layout is fixed; see `AnyView::isolated`.
+    fn isolated_section<V: Render>(section: &Entity<V>) -> AnyView {
+        Self::cached_section(section).isolated()
     }
 
     fn render_header(

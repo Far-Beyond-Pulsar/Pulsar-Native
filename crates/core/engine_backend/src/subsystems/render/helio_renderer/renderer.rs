@@ -143,6 +143,9 @@ fn relative_camera_source_compatible(
         | "builtin_cell_metadata"
         | "component_owners"
         | "object_hidden"
+        // Parent indices, no positions; the hierarchy resolve composes the
+        // (camera-relative-safe) transform rows with them.
+        | "object_parent"
         | "Transform::packed"
         | "light_sources"
         | "decal_sources"
@@ -299,6 +302,47 @@ fn native_frame_camera(
     camera
 }
 
+/// An orthographic frame camera looking at `focus` along `forward`, in
+/// coordinates relative to `origin` like [`native_frame_camera`]. The eye is
+/// the focus itself and the view volume reaches [`ortho_depth_range`] to both
+/// sides of it (a near plane behind the eye).
+///
+/// The eye must stay at the focus: depth-based effects (volumetric fog,
+/// atmosphere) integrate along the distance from the eye, so an eye held far
+/// back would bury the scene in haze.
+fn ortho_frame_camera(
+    focus: DVec3,
+    forward: Vec3,
+    up: Vec3,
+    aspect: f32,
+    half_height: f32,
+    origin: DVec3,
+) -> Camera {
+    let range = ortho_depth_range(half_height);
+    let half_width = half_height * aspect;
+    // The engine's reversed-Z convention (`helio_core::depth::orthographic`):
+    // the near plane at depth 1, the far plane at depth 0.
+    let proj = glam::camera::rh::proj::directx::orthographic(
+        -half_width,
+        half_width,
+        -half_height,
+        half_height,
+        range,
+        -range,
+    );
+    let local = focus - origin;
+    let rotation = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, up);
+    let view = (rotation.as_dmat4() * glam::DMat4::from_translation(-local)).as_mat4();
+    // `near` and `far` are for the passes that read them as distances from the
+    // eye (effect ranges, shadow splits), not the clip planes above.
+    Camera::from_matrices(view, proj, local.as_vec3(), 0.1, range)
+}
+
+/// How far an orthographic view reaches ahead of and behind its focus.
+fn ortho_depth_range(half_height: f32) -> f32 {
+    (half_height * 200.0).max(ORTHO_STANDOFF)
+}
+
 /// Side of the cells camera-relative frames snap their world origin to.
 /// Within one cell of the origin, an f32 position steps by under 0.2 mm.
 const WORLD_ORIGIN_CELL: f64 = 1024.0;
@@ -445,7 +489,144 @@ pub struct EditorCameraState {
     pub pitch: f32,
 }
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+impl EditorCameraState {
+    /// The point `distance` ahead of the camera, which the other viewports of a
+    /// split view centre on.
+    pub fn focus_point(&self, distance: f64) -> [f64; 3] {
+        let ahead = direction(self.yaw, self.pitch).as_dvec3() * distance;
+        (DVec3::from_array(self.position) + ahead).to_array()
+    }
+}
+
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+
+/// How a viewport looks at the scene: the free perspective camera, or an
+/// orthographic one. The axis views are fixed in orientation; the editor
+/// pans and zooms them instead of turning them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewKind {
+    #[default]
+    Perspective,
+    /// Orthographic projection from the free camera's orientation.
+    Orthographic,
+    /// Looking straight down (-Y), +X to the right.
+    Top,
+    /// Looking along -Z, +X to the right.
+    Front,
+    /// Looking along -X, -Z to the right.
+    Side,
+}
+
+impl ViewKind {
+    fn to_u8(self) -> u8 {
+        match self {
+            Self::Perspective => 0,
+            Self::Orthographic => 1,
+            Self::Top => 2,
+            Self::Front => 3,
+            Self::Side => 4,
+        }
+    }
+
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Orthographic,
+            2 => Self::Top,
+            3 => Self::Front,
+            4 => Self::Side,
+            _ => Self::Perspective,
+        }
+    }
+
+    pub fn is_orthographic(self) -> bool {
+        self != Self::Perspective
+    }
+
+    /// Whether the orientation is fixed by the view (and the mouse pans
+    /// instead of looking).
+    pub fn is_axis_aligned(self) -> bool {
+        matches!(self, Self::Top | Self::Front | Self::Side)
+    }
+
+    /// World-space forward, right and up of an axis view.
+    fn axis_basis(self) -> Option<(Vec3, Vec3, Vec3)> {
+        match self {
+            Self::Top => Some((Vec3::NEG_Y, Vec3::X, Vec3::NEG_Z)),
+            Self::Front => Some((Vec3::NEG_Z, Vec3::X, Vec3::Y)),
+            Self::Side => Some((Vec3::NEG_X, Vec3::NEG_Z, Vec3::Y)),
+            Self::Perspective | Self::Orthographic => None,
+        }
+    }
+}
+
+/// How far behind its focus point an orthographic camera sits, so geometry
+/// on both sides of the focus is in front of the near plane.
+const ORTHO_STANDOFF: f32 = 4096.0;
+/// How far in front of the perspective camera the point lies that the other
+/// viewports of a split view centre on, and the default length of their
+/// "boom arms". An orthographic view at boom length `L` shows what a 45 degree
+/// perspective camera `L` from the focus would.
+pub const CAMERA_PIVOT_DISTANCE: f64 = 20.0;
+const ORTHO_MIN_BOOM: f32 = 0.1;
+const ORTHO_MAX_BOOM: f32 = 250_000.0;
+/// Two positions closer than this are the same place to the camera sync.
+const SYNC_EPSILON: f64 = 1.0e-6;
+
+/// A camera position shared by the viewports of a split view. Each renderer
+/// that has joined publishes where its camera went when the user moved it and
+/// follows what the others publish, unless it is unlocked.
+pub struct CameraSync {
+    shared: parking_lot::Mutex<SharedCameraPosition>,
+    /// How far ahead of the perspective camera the shared point lies, and the
+    /// starting boom length of the orthographic views.
+    pivot_distance: f64,
+}
+
+impl Default for CameraSync {
+    fn default() -> Self {
+        Self {
+            shared: Default::default(),
+            pivot_distance: CAMERA_PIVOT_DISTANCE,
+        }
+    }
+}
+
+impl CameraSync {
+    /// A group centred on `focus` from the start. `pivot_distance` is how far
+    /// ahead of the perspective camera that point is, and so how far out the
+    /// orthographic views start: pass the scale the scene is viewed at (the
+    /// distance to what is being looked at).
+    pub fn at(focus: [f64; 3], pivot_distance: f64) -> Self {
+        Self {
+            shared: parking_lot::Mutex::new(SharedCameraPosition {
+                generation: 1,
+                position: Some(focus),
+            }),
+            pivot_distance: pivot_distance
+                .clamp(f64::from(ORTHO_MIN_BOOM), f64::from(ORTHO_MAX_BOOM)),
+        }
+    }
+}
+
+#[derive(Default)]
+struct SharedCameraPosition {
+    /// Bumped at every publish.
+    generation: u64,
+    /// `None` until something moved.
+    position: Option<[f64; 3]>,
+}
+
+/// What one renderer remembers of its place in a [`CameraSync`].
+struct CameraSyncMember {
+    group: Arc<CameraSync>,
+    /// The generation this renderer last published or adopted. `u64::MAX`
+    /// forces the next adoption (after being unlocked).
+    seen_generation: u64,
+    /// Where this renderer last published or adopted; a camera anywhere else
+    /// was moved by the user.
+    synced_position: DVec3,
+    was_locked: bool,
+}
 
 /// A left-click or left-release event, queued by the UI thread and drained
 /// on the render thread at the top of [`HelioRenderer::render_frame`]
@@ -569,6 +750,9 @@ pub struct HelioEditorMailbox {
     viewport_bloom: Arc<AtomicBool>,
     viewport_realtime: Arc<AtomicBool>,
     viewport_debug_mode: Arc<AtomicU32>,
+    view_kind: Arc<AtomicU8>,
+    camera_sync_locked: Arc<AtomicBool>,
+    camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
@@ -671,6 +855,30 @@ impl HelioEditorMailbox {
         self.viewport_debug_mode.store(mode, Ordering::Release);
     }
 
+    /// Choose how this viewport looks at the scene (perspective,
+    /// orthographic, or a fixed axis view). Applied at the next frame.
+    pub fn set_view_kind(&self, kind: ViewKind) {
+        self.view_kind.store(kind.to_u8(), Ordering::Release);
+    }
+
+    /// Whether this viewport follows (and leads) the camera of its
+    /// [`CameraSync`] group. Unlocked, its camera is its own.
+    pub fn set_camera_sync_locked(&self, locked: bool) {
+        self.camera_sync_locked.store(locked, Ordering::Release);
+    }
+
+    /// Put this viewport in a camera sync group, from the next frame.
+    pub fn join_camera_sync(&self, group: Arc<CameraSync>) {
+        if let Ok(mut slot) = self.camera_sync_join.lock() {
+            *slot = Some(group);
+        }
+    }
+
+    /// The view the viewport was last asked for.
+    pub fn view_kind(&self) -> ViewKind {
+        ViewKind::from_u8(self.view_kind.load(Ordering::Acquire))
+    }
+
     /// Snapshot the debug views advertised by the current editor render graph.
     pub fn viewport_debug_views(&self) -> Vec<ViewportDebugView> {
         self.viewport_debug_views
@@ -735,6 +943,18 @@ pub struct HelioRenderer {
     /// The toolbar's view mode: the debug mode the graph renders (0 lit).
     /// See [`HelioEditorMailbox::set_viewport_debug_mode`].
     viewport_debug_mode: Arc<AtomicU32>,
+    /// See [`HelioEditorMailbox::set_view_kind`].
+    view_kind: Arc<AtomicU8>,
+    /// See [`HelioEditorMailbox::set_camera_sync_locked`].
+    camera_sync_locked: Arc<AtomicBool>,
+    /// See [`HelioEditorMailbox::join_camera_sync`].
+    camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
+    camera_sync: Option<CameraSyncMember>,
+    /// The view the camera is currently built for (`view_kind` as of the last
+    /// frame), so a change can be noticed and drawn.
+    active_view: ViewKind,
+    /// Half the visible world height of an orthographic view.
+    ortho_boom: f32,
     /// Debug views advertised by the active render graph, exposed to editor UI.
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     /// A fixed frame delta for deterministic captures; see
@@ -951,6 +1171,12 @@ impl HelioRenderer {
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             viewport_realtime: Arc::new(AtomicBool::new(true)),
             viewport_debug_mode: Arc::new(AtomicU32::new(0)),
+            view_kind: Arc::new(AtomicU8::new(ViewKind::Perspective.to_u8())),
+            camera_sync_locked: Arc::new(AtomicBool::new(true)),
+            camera_sync_join: Arc::new(Mutex::new(None)),
+            camera_sync: None,
+            active_view: ViewKind::Perspective,
+            ortho_boom: CAMERA_PIVOT_DISTANCE as f32,
             viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
             frame_delta_override: None,
             camera_jitter_override: None,
@@ -1074,7 +1300,9 @@ impl HelioRenderer {
 
     /// World-space forward, right and up of the editor camera.
     fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
-        basis(self.cam_frame, self.cam_yaw, self.cam_pitch)
+        self.active_view
+            .axis_basis()
+            .unwrap_or_else(|| basis(self.cam_frame, self.cam_yaw, self.cam_pitch))
     }
 
     /// Point the camera along a world-space direction within its frame.
@@ -1297,6 +1525,9 @@ impl HelioRenderer {
             let mut builder = helio::RendererBuilder::new(config, scene_db_handle.clone())
                 .with_external_device()
                 .with_editor_mode(true)
+                // Parent-relative transforms become world-space first, under
+                // the same key, so the joins below read them unchanged.
+                .with_scene_derivation(crate::scene::hierarchy_resolve(&device_arc))
                 // Meshes and lights: Helio joins the authored rows on the GPU.
                 .with_scene_derivation(crate::scene::scene_join(&device_arc, true))
                 .with_scene_derivation(crate::scene::environment_join(&device_arc))
@@ -1307,7 +1538,7 @@ impl HelioRenderer {
                 builder = builder.with_texture_streaming(pool_mb);
             }
             let voxel_passes = self.voxel_backends.pass_factories();
-            let r = builder
+            let mut r = builder
                 .with_pass_build_context(Box::new(move |ctx| {
                     helio_default_graphs::build_default_graph_external_with_voxel_passes(
                         ctx,
@@ -1315,6 +1546,11 @@ impl HelioRenderer {
                     )
                 }))
                 .build(device_arc.clone(), queue_arc.clone(), width, height, format);
+
+            // Scene materials read through trilinear, anisotropic, repeating
+            // filtering (project `streaming.texture_*` settings), not wgpu's
+            // nearest/clamp default.
+            r.set_material_sampler(&super::material_sampler::SamplerSettings::from_project().descriptor());
 
             if let Ok(mut views) = self.viewport_debug_views.lock() {
                 let legends = r.available_debug_view_legends();
@@ -1449,10 +1685,12 @@ impl HelioRenderer {
         #[cfg(feature = "editor-ui")]
         let _engine_frame_diagnostic = (self.frame_count, width, height);
 
+        let view_kind_changed = self.apply_view_kind();
         {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
         }
+        let camera_synced = self.sync_camera();
         phases.mark("camera");
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
@@ -1463,6 +1701,9 @@ impl HelioRenderer {
             self.apply_postprocess_baseline()
         };
         let debug_view_changed = self.apply_viewport_debug_mode();
+        self.apply_view_fog();
+        let view_eye = self.view_eye();
+        let ortho_half_height = self.ortho_half_height();
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -1511,6 +1752,8 @@ impl HelioRenderer {
             || viewport_resized
             || postprocess_changed
             || debug_view_changed
+            || view_kind_changed
+            || camera_synced
             // Realtime animation: wind, particles, shader-graph `time`.
             || animated
             || self.reset_taa_next_frame;
@@ -1757,23 +2000,39 @@ impl HelioRenderer {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
             profiling::profile_scope!("helio_frame_prepare");
-            let (fwd, _, _) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
-            let frame_up = self.cam_frame * Vec3::Y;
+            let (fwd, frame_up) = match self.active_view.axis_basis() {
+                Some((forward, _, up)) => (forward, up),
+                None => (
+                    basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0,
+                    self.cam_frame * Vec3::Y,
+                ),
+            };
             let aspect = width as f32 / height.max(1) as f32;
             // Canonical voxel coordinates stay global (`self.cam_pos`,
             // `VoxelView`); only the frame camera is origin-relative.
             self.world_origin =
                 camera_relative.then(|| frame_world_origin(self.world_origin, self.cam_pos));
             inner.renderer.set_world_origin(self.world_origin);
-            let camera = native_frame_camera(
-                self.cam_pos,
-                fwd,
-                frame_up,
-                aspect,
-                near,
-                far,
-                self.world_origin.unwrap_or(DVec3::ZERO),
-            );
+            let camera = if self.active_view.is_orthographic() {
+                ortho_frame_camera(
+                    self.cam_pos,
+                    fwd,
+                    frame_up,
+                    aspect,
+                    ortho_half_height,
+                    self.world_origin.unwrap_or(DVec3::ZERO),
+                )
+            } else {
+                native_frame_camera(
+                    self.cam_pos,
+                    fwd,
+                    frame_up,
+                    aspect,
+                    near,
+                    far,
+                    self.world_origin.unwrap_or(DVec3::ZERO),
+                )
+            };
             // A lens that maps past the frame (fisheye, barrel distortion)
             // needs a wider render than the frame, which it then crops back;
             // the camera lens component owns how much, and tells the lens pass
@@ -1803,7 +2062,7 @@ impl HelioRenderer {
                 inner.interaction.draw_gizmo(
                     &mut inner.renderer,
                     &store.world,
-                    self.cam_pos.as_vec3(),
+                    view_eye,
                 );
             }
             camera
@@ -2065,6 +2324,18 @@ impl HelioRenderer {
             Err(_) => return,
         };
 
+        if self.active_view.is_orthographic() {
+            if input.zoom_delta != 0.0 {
+                // Scrolling lengthens or shortens the boom arm.
+                self.ortho_boom = (self.ortho_boom * (-input.zoom_delta * 0.1).exp())
+                    .clamp(ORTHO_MIN_BOOM, ORTHO_MAX_BOOM);
+            }
+            if self.active_view.is_axis_aligned() {
+                self.apply_axis_view_input(&input, dt);
+                return;
+            }
+        }
+
         self.cam_yaw += input.mouse_delta_x * LOOK;
         self.cam_pitch -= input.mouse_delta_y * LOOK;
         self.cam_pitch = self.cam_pitch.clamp(-1.5, 1.5);
@@ -2142,6 +2413,154 @@ impl HelioRenderer {
             self.cam_pos += (right * (-input.pan_delta_x) * pan_speed).as_dvec3();
             self.cam_pos += (screen_up * input.pan_delta_y * pan_speed).as_dvec3();
         }
+    }
+
+    /// Half the height of the orthographic view: what a 45 degree perspective
+    /// camera sees at the boom length.
+    fn ortho_half_height(&self) -> f32 {
+        self.ortho_boom * std::f32::consts::FRAC_PI_8.tan()
+    }
+
+    fn sync_pivot_distance(&self) -> f64 {
+        self.camera_sync
+            .as_ref()
+            .map_or(CAMERA_PIVOT_DISTANCE, |member| member.group.pivot_distance)
+    }
+
+    /// The point of the world this viewport is centred on, which the viewports
+    /// of a split view share. An orthographic view looks at its camera position;
+    /// the perspective camera looks at a point [`CAMERA_PIVOT_DISTANCE`] ahead.
+    fn sync_anchor(&self) -> DVec3 {
+        if self.active_view.is_orthographic() {
+            self.cam_pos
+        } else {
+            self.cam_pos + self.camera_basis().0.as_dvec3() * self.sync_pivot_distance()
+        }
+    }
+
+    /// Move the camera so the viewport is centred on `anchor`.
+    fn set_sync_anchor(&mut self, anchor: DVec3) {
+        self.cam_pos = if self.active_view.is_orthographic() {
+            anchor
+        } else {
+            anchor - self.camera_basis().0.as_dvec3() * self.sync_pivot_distance()
+        };
+    }
+
+    /// Keep this camera's position in step with the others of its sync group.
+    /// Returns whether it was moved by one of them.
+    fn sync_camera(&mut self) -> bool {
+        if let Some(group) = self
+            .camera_sync_join
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+        {
+            // Start as far out as the group was set up for, and adopt where it
+            // is centred from the first frame.
+            self.ortho_boom = group.pivot_distance as f32;
+            self.camera_sync = Some(CameraSyncMember {
+                group,
+                seen_generation: u64::MAX,
+                synced_position: self.sync_anchor(),
+                was_locked: true,
+            });
+        }
+        let locked = self.camera_sync_locked.load(Ordering::Acquire);
+        let anchor = self.sync_anchor();
+        let Some(member) = self.camera_sync.as_mut() else {
+            return false;
+        };
+        if !locked {
+            member.was_locked = false;
+            return false;
+        }
+        if !member.was_locked {
+            // Back in the group: rejoin where it is, not where this camera
+            // wandered off to.
+            member.was_locked = true;
+            member.synced_position = anchor;
+            member.seen_generation = u64::MAX;
+        }
+
+        let mut shared = member.group.shared.lock();
+        if (anchor - member.synced_position).length() > SYNC_EPSILON {
+            // Moved by the user: the others follow.
+            shared.generation += 1;
+            shared.position = Some(anchor.to_array());
+            member.seen_generation = shared.generation;
+            member.synced_position = anchor;
+            return false;
+        }
+        let adopted = match shared.position {
+            Some(position) if shared.generation != member.seen_generation => {
+                member.seen_generation = shared.generation;
+                member.synced_position = DVec3::from_array(position);
+                Some(member.synced_position)
+            }
+            _ => None,
+        };
+        drop(shared);
+        let Some(adopted) = adopted else {
+            return false;
+        };
+        self.set_sync_anchor(adopted);
+        // The temporal filters see a moving camera.
+        self.had_camera_input = true;
+        true
+    }
+
+    /// Orthographic views (top, front, side) never fog: fog is a function of
+    /// the distance from the eye, which means nothing in a parallel projection,
+    /// and a haze over a drawing meant for measuring defeats it. Set every
+    /// frame, since a rebuilt graph starts with the fog on.
+    fn apply_view_fog(&mut self) {
+        let fog = !self.active_view.is_orthographic();
+        if let Some(inner) = self.inner.as_mut() {
+            if let Some(pass) = inner
+                .renderer
+                .find_pass_mut::<helio_pass_volumetric_fog::VolumetricFogPass>()
+            {
+                pass.set_active(fog);
+            }
+        }
+    }
+
+    /// Adopt the view the editor asked for. Returns whether it changed.
+    fn apply_view_kind(&mut self) -> bool {
+        let wanted = ViewKind::from_u8(self.view_kind.load(Ordering::Acquire));
+        if wanted == self.active_view {
+            return false;
+        }
+        self.active_view = wanted;
+        // The projection changed under the temporal history.
+        self.reset_taa_next_frame = true;
+        self.gizmo_dirty = true;
+        true
+    }
+
+    /// Input for a fixed-orientation orthographic view: the mouse pans the
+    /// view plane 1:1 (it never turns the camera) and the movement keys move
+    /// along the plane's right and up axes, scaled to the zoom.
+    fn apply_axis_view_input(&mut self, input: &CameraInput, dt: f32) {
+        let (_, right, up) = self.camera_basis();
+        let units_per_pixel = 2.0 * self.ortho_half_height() / input.viewport_height.max(1.0);
+
+        let speed = (self.ortho_half_height() / 10.0)
+            * if input.boost {
+                input.move_speed * 3.0
+            } else {
+                input.move_speed
+            };
+        self.cam_local_velocity = Vec3::new(input.right * speed, input.up * speed, 0.0);
+        self.cam_pos +=
+            ((right * self.cam_local_velocity.x + up * self.cam_local_velocity.y) * dt).as_dvec3();
+
+        // Grab convention: dragging right moves the content right, so the
+        // camera goes left; dragging down moves it down, so the camera goes up.
+        let drag_x = input.mouse_delta_x + input.pan_delta_x;
+        let drag_y = input.mouse_delta_y + input.pan_delta_y;
+        self.cam_pos += ((-right * drag_x + up * drag_y) * units_per_pixel).as_dvec3();
     }
 
     /// Hand the graph the view mode the toolbar chose. Returns whether it
@@ -2476,6 +2895,9 @@ impl HelioRenderer {
             viewport_bloom: self.viewport_bloom.clone(),
             viewport_realtime: self.viewport_realtime.clone(),
             viewport_debug_mode: self.viewport_debug_mode.clone(),
+            view_kind: self.view_kind.clone(),
+            camera_sync_locked: self.camera_sync_locked.clone(),
+            camera_sync_join: self.camera_sync_join.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
@@ -2574,6 +2996,13 @@ impl HelioRenderer {
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let tan = std::f32::consts::FRAC_PI_8.tan();
         let (forward, right, up) = self.camera_basis();
+        if self.active_view.is_orthographic() {
+            // Parallel rays: each pixel's ray starts on the image plane.
+            let half_height = self.ortho_half_height();
+            let offset = right * ((norm_x * 2.0 - 1.0) * half_height * aspect)
+                + up * ((1.0 - norm_y * 2.0) * half_height);
+            return (self.view_eye() + offset, forward);
+        }
         let direction = forward
             + right * ((norm_x * 2.0 - 1.0) * tan * aspect)
             + up * ((1.0 - norm_y * 2.0) * tan);
@@ -2584,13 +3013,15 @@ impl HelioRenderer {
         self.configure_gizmo_view();
         self.gizmo_dirty = true;
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
+        let view_eye = self.view_eye();
+        let ortho_half_height = self.ortho_half_height();
         let Some(inner) = &mut self.inner else { return };
         let store = self.scene_store.read();
         if inner.interaction.try_start_drag(
             &store.world,
             ray_origin,
             ray_direction,
-            self.cam_pos.as_vec3(),
+            view_eye,
         ) {
             // What the object's mesh and light instances author: the flag
             // the caches the drag would invalidate key on.
@@ -2626,6 +3057,8 @@ impl HelioRenderer {
     pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
         self.configure_gizmo_view();
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
+        let view_eye = self.view_eye();
+        let ortho_half_height = self.ortho_half_height();
         let Some(inner) = &mut self.inner else { return };
         if inner.interaction.is_dragging() {
             let mut store = self.scene_store.write();
@@ -2633,7 +3066,7 @@ impl HelioRenderer {
                 &mut store.world,
                 ray_origin,
                 ray_direction,
-                self.cam_pos.as_vec3(),
+                view_eye,
             );
             self.gizmo_dirty = true;
         } else {
@@ -2642,7 +3075,7 @@ impl HelioRenderer {
                 &store.world,
                 ray_origin,
                 ray_direction,
-                self.cam_pos.as_vec3(),
+                view_eye,
             );
         }
     }
@@ -2675,19 +3108,56 @@ impl HelioRenderer {
             .map(|input| glam::Vec2::new(input.viewport_width, input.viewport_height))
             .filter(|size| size.x > 1.0 && size.y > 1.0)
             .unwrap_or(glam::Vec2::new(w.max(1) as f32, h.max(1) as f32));
-        let projection = glam::camera::rh::proj::directx::perspective(
-            std::f32::consts::FRAC_PI_4,
-            w.max(1) as f32 / h.max(1) as f32,
-            0.1,
-            10_000.0,
-        );
-        let camera_position = self.cam_pos.as_vec3();
+        let aspect = w.max(1) as f32 / h.max(1) as f32;
+        let half_height_for_range = self.ortho_half_height();
+        let ortho = self
+            .active_view
+            .is_orthographic()
+            .then_some(self.ortho_half_height());
+        let projection = match ortho {
+            Some(half_height) => glam::camera::rh::proj::directx::orthographic(
+                -half_height * aspect,
+                half_height * aspect,
+                -half_height,
+                half_height,
+                0.1,
+                10_000.0,
+            ),
+            None => glam::camera::rh::proj::directx::perspective(
+                std::f32::consts::FRAC_PI_4,
+                aspect,
+                0.1,
+                10_000.0,
+            ),
+        };
+        let camera_position = self.view_eye();
         let view =
             glam::camera::rh::view::look_at_mat4(camera_position, camera_position + forward, up);
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
-                .set_view(camera_position, forward, projection * view, size, 10_000.0);
+                .set_view(
+                    camera_position,
+                    forward,
+                    projection * view,
+                    size,
+                    10_000.0f32.max(4.0 * ortho_depth_range(half_height_for_range)),
+                );
+            inner.interaction.set_orthographic(ortho);
+        }
+    }
+
+    /// Where the view is taken from: the camera, or for an orthographic view
+    /// the point [`ORTHO_STANDOFF`] behind its focus.
+    fn view_eye(&self) -> Vec3 {
+        if self.active_view.is_orthographic() {
+            // Behind everything the view reaches, so picks and the gizmo see
+            // objects on both sides of the focus (this is not the render eye).
+            let (forward, _, _) = self.camera_basis();
+            let range = ortho_depth_range(self.ortho_half_height());
+            (self.cam_pos - forward.as_dvec3() * f64::from(range)).as_vec3()
+        } else {
+            self.cam_pos.as_vec3()
         }
     }
 }
@@ -2826,7 +3296,9 @@ impl VoxelSceneRead {
             }
         }
         let sun = sun_owner
-            .and_then(|owner| world.get::<crate::scene::Transform>(owner).copied())
+            .and_then(|owner| {
+                crate::scene::hierarchy_transform::world_transform_of(world, owner)
+            })
             .map(|transform| {
                 let rotation = glam::Quat::from_euler(
                     glam::EulerRot::YXZ,
@@ -3243,5 +3715,220 @@ mod native_relative_camera_tests {
             (local.view.as_dmat4() * glam::DMat4::from_translation(shift)).as_mat4();
         let expected = (local.view.as_dmat4() * (point.as_dvec4() + shift.extend(0.0))).as_vec4();
         assert!((previous_view * point - expected).length() < 0.00001);
+    }
+}
+
+#[cfg(test)]
+mod view_kind_tests {
+    use super::*;
+
+    #[test]
+    fn axis_views_are_right_handed_orthonormal_bases() {
+        for kind in [ViewKind::Top, ViewKind::Front, ViewKind::Side] {
+            let (forward, right, up) = kind.axis_basis().expect("axis view");
+            assert!((forward.length() - 1.0).abs() < 1e-6);
+            assert!(forward.dot(right).abs() < 1e-6 && forward.dot(up).abs() < 1e-6);
+            // Camera right is forward x up, as in the perspective camera.
+            assert!(forward.cross(up).abs_diff_eq(right, 1e-6), "{kind:?}");
+        }
+        assert!(ViewKind::Perspective.axis_basis().is_none());
+        assert!(ViewKind::Orthographic.axis_basis().is_none());
+    }
+
+    #[test]
+    fn view_kind_survives_the_mailbox_encoding() {
+        for kind in [
+            ViewKind::Perspective,
+            ViewKind::Orthographic,
+            ViewKind::Top,
+            ViewKind::Front,
+            ViewKind::Side,
+        ] {
+            assert_eq!(ViewKind::from_u8(kind.to_u8()), kind);
+        }
+        assert_eq!(ViewKind::from_u8(200), ViewKind::Perspective);
+    }
+
+    #[test]
+    fn the_orthographic_camera_centres_its_focus_and_scales_by_half_height() {
+        let focus = DVec3::new(100.0, 5.0, -40.0);
+        let (forward, _, up) = ViewKind::Front.axis_basis().unwrap();
+        let camera = ortho_frame_camera(focus, forward, up, 2.0, 10.0, DVec3::ZERO);
+        let ndc = |p: Vec3| {
+            let clip = camera.proj * camera.view * p.extend(1.0);
+            clip.truncate() / clip.w
+        };
+
+        let centre = ndc(focus.as_vec3());
+        assert!(centre.x.abs() < 1e-4 && centre.y.abs() < 1e-4, "{centre:?}");
+        // Ten units up is the top edge; twenty to the right (aspect 2) the
+        // right edge, at the same depth as the focus.
+        let top = ndc(focus.as_vec3() + Vec3::Y * 10.0);
+        let right = ndc(focus.as_vec3() + Vec3::X * 20.0);
+        assert!((top.y - 1.0).abs() < 1e-4 && (right.x - 1.0).abs() < 1e-4);
+        // Geometry in front of and behind the focus is inside the depth range.
+        for depth in [-1000.0, 1000.0] {
+            let z = ndc(focus.as_vec3() + Vec3::Z * depth).z;
+            assert!((0.0..=1.0).contains(&z), "z {z} at {depth}");
+        }
+    }
+
+    #[test]
+    fn the_orthographic_projection_follows_the_reversed_depth_convention() {
+        let (forward, _, up) = ViewKind::Top.axis_basis().unwrap();
+        let camera = ortho_frame_camera(DVec3::ZERO, forward, up, 1.0, 5.0, DVec3::ZERO);
+        // Nearer to the eye (higher in a top view) gets the larger depth.
+        let depth = |y: f32| {
+            let clip = camera.proj * camera.view * Vec3::new(0.0, y, 0.0).extend(1.0);
+            clip.z / clip.w
+        };
+        assert!(depth(100.0) > depth(-100.0));
+    }
+}
+
+#[cfg(test)]
+mod camera_sync_tests {
+    use super::*;
+
+    fn renderer() -> HelioRenderer {
+        HelioRenderer::new(Arc::new(parking_lot::RwLock::new(crate::scene::new_scene())))
+    }
+
+    fn join(renderer: &mut HelioRenderer, group: &Arc<CameraSync>) {
+        renderer.editor_mailbox().join_camera_sync(group.clone());
+        renderer.sync_camera();
+    }
+
+    fn near(a: DVec3, b: DVec3) -> bool {
+        (a - b).length() < 1.0e-6
+    }
+
+    #[test]
+    fn orthographic_views_centre_on_the_point_the_perspective_camera_looks_at() {
+        let mut perspective = renderer();
+        let mut top = renderer();
+        top.editor_mailbox().set_view_kind(ViewKind::Top);
+        top.apply_view_kind();
+
+        let state = perspective.editor_camera_state();
+        let group = Arc::new(CameraSync::at(state.focus_point(CAMERA_PIVOT_DISTANCE), CAMERA_PIVOT_DISTANCE));
+        join(&mut perspective, &group);
+        join(&mut top, &group);
+
+        let ahead = perspective.cam_pos
+            + perspective.camera_basis().0.as_dvec3() * CAMERA_PIVOT_DISTANCE;
+        assert!(near(top.cam_pos, ahead), "{:?} vs {ahead:?}", top.cam_pos);
+        // The perspective camera itself does not move.
+        assert!(near(perspective.sync_anchor(), ahead));
+    }
+
+    #[test]
+    fn locked_cameras_follow_the_one_the_user_moved() {
+        let group = Arc::new(CameraSync::default());
+        let (mut a, mut b) = (renderer(), renderer());
+        b.cam_pos = a.cam_pos;
+        join(&mut a, &group);
+        join(&mut b, &group);
+
+        a.cam_pos += DVec3::new(5.0, 0.0, -3.0);
+        assert!(!a.sync_camera(), "the one that moved is not moved again");
+        assert!(b.sync_camera());
+        assert!(near(b.cam_pos, a.cam_pos));
+        // Nothing left to follow, and no echo back.
+        assert!(!b.sync_camera());
+        assert!(!a.sync_camera());
+    }
+
+    #[test]
+    fn panning_an_orthographic_view_moves_the_perspective_camera() {
+        let (mut perspective, mut top) = (renderer(), renderer());
+        let group = Arc::new(CameraSync::at(perspective.editor_camera_state().focus_point(CAMERA_PIVOT_DISTANCE), CAMERA_PIVOT_DISTANCE));
+        top.editor_mailbox().set_view_kind(ViewKind::Top);
+        top.apply_view_kind();
+        join(&mut perspective, &group);
+        join(&mut top, &group);
+        let eye = perspective.cam_pos;
+
+        top.cam_pos += DVec3::new(4.0, 0.0, 9.0);
+        top.sync_camera();
+        assert!(perspective.sync_camera());
+        assert!(near(perspective.cam_pos, eye + DVec3::new(4.0, 0.0, 9.0)));
+        // Still looking the same way, so no ping-pong.
+        assert!(!perspective.sync_camera());
+        assert!(!top.sync_camera());
+    }
+
+    #[test]
+    fn an_unlocked_camera_neither_follows_nor_leads() {
+        let group = Arc::new(CameraSync::default());
+        let (mut a, mut b) = (renderer(), renderer());
+        b.cam_pos = a.cam_pos;
+        join(&mut a, &group);
+        join(&mut b, &group);
+
+        b.editor_mailbox().set_camera_sync_locked(false);
+        assert!(!b.sync_camera());
+        let before = b.cam_pos;
+        a.cam_pos += DVec3::X * 10.0;
+        a.sync_camera();
+        assert!(!b.sync_camera());
+        assert_eq!(b.cam_pos, before, "unlocked cameras stay put");
+
+        b.cam_pos += DVec3::Y * 7.0;
+        assert!(!b.sync_camera());
+        assert!(!a.sync_camera(), "an unlocked move is not published");
+
+        // Locking again rejoins the group where it is.
+        b.editor_mailbox().set_camera_sync_locked(true);
+        assert!(b.sync_camera());
+        assert!(near(b.cam_pos, a.cam_pos));
+    }
+
+    #[test]
+    fn scrolling_changes_the_boom_length_and_with_it_the_view() {
+        let mut top = renderer();
+        top.editor_mailbox().set_view_kind(ViewKind::Top);
+        top.apply_view_kind();
+        let before = top.ortho_half_height();
+        // Default: what a 45 degree camera sees at the pivot distance.
+        let expected = CAMERA_PIVOT_DISTANCE as f32 * std::f32::consts::FRAC_PI_8.tan();
+        assert!((before - expected).abs() < 1e-4);
+
+        top.camera_input.lock().unwrap().zoom_delta = 5.0;
+        top.apply_camera_input(0.016);
+        assert!(top.ortho_half_height() < before, "scrolling in shortens the boom");
+        top.camera_input.lock().unwrap().zoom_delta = -50.0;
+        top.apply_camera_input(0.016);
+        assert!(top.ortho_half_height() > before, "scrolling out lengthens it");
+    }
+}
+
+#[cfg(test)]
+mod pivot_distance_tests {
+    use super::*;
+
+    fn renderer() -> HelioRenderer {
+        HelioRenderer::new(Arc::new(parking_lot::RwLock::new(crate::scene::new_scene())))
+    }
+
+    #[test]
+    fn a_group_sets_how_far_out_the_orthographic_views_start() {
+        let (mut perspective, mut side) = (renderer(), renderer());
+        side.editor_mailbox().set_view_kind(ViewKind::Side);
+        side.apply_view_kind();
+
+        let state = perspective.editor_camera_state();
+        let group = Arc::new(CameraSync::at(state.focus_point(900.0), 900.0));
+        perspective.editor_mailbox().join_camera_sync(group.clone());
+        side.editor_mailbox().join_camera_sync(group);
+        perspective.sync_camera();
+        side.sync_camera();
+
+        // A big scene: the side view starts zoomed out to match.
+        let expected = 900.0 * std::f32::consts::FRAC_PI_8.tan();
+        assert!((side.ortho_half_height() - expected).abs() < 1e-2);
+        // And centres on the point 900 ahead of the perspective camera.
+        let ahead = perspective.cam_pos + perspective.camera_basis().0.as_dvec3() * 900.0;
+        assert!((side.cam_pos - ahead).length() < 1e-6);
     }
 }
