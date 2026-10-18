@@ -72,6 +72,8 @@ read. Rebuilding from Cold costs a decode, a resize, a mip chain and an encode.
 | `cpu_cache_mb` | 1024 | Residency cache budget for cooked data in RAM |
 | `derived_cache_mb` | 4096 | Disk budget for derived files; pruned LRU at startup |
 | `texture_stream_pool_mb` | 512 | SceneDB GPU tier budget (VRAM) |
+| `texture_vram_budget_mb` | 3072 | Total cooked-texture size before every texture drops its top mip levels (0 = unlimited) |
+| `texture_filter` / `texture_anisotropy` / `texture_wrap` | trilinear / 8 / repeat | Default material sampler |
 
 ## Finding where memory is (Mission Control, tab "Memory Explorer")
 
@@ -95,18 +97,26 @@ Three sources, because no single tool covers a process whose "RAM" is half VRAM:
 
 Timings for your own images: `real_texture_cook.rs` (ignored test, see its header).
 
-## Not done yet
+## Done since, and not done yet
 
-- **Streaming by detail level.** Mip chains now exist and the RAM and Disk tiers
-  can serve them, but a texture is still uploaded whole (all levels). Dropping
-  the top levels under a VRAM budget, with a global bias, is the next step.
-- **Every cooked texture is sRGB BC7.** Normal and roughness maps would want
-  linear formats (BC5 for normals); the pipeline treated them all as sRGB before
-  and still does.
-- **The editor's shared material sampler is wgpu's default** (nearest filtering,
-  clamp). Mips are sampled, but trilinear filtering is an engine decision.
-- **Mesh vertex pools are per scene.** The GPU report shows
+- **Texture use decides the format.** `TextureUse` (Color / Data / Normal) is part
+  of the cook key and the per-device share key; the material graph's
+  `texture_uses` assigns it. Data and normals are linear BC7 (not BC5: BC5 would
+  need a different sampling expression per normal map).
+- **Default material sampler** (`helio_renderer/material_sampler.rs`): trilinear,
+  8x anisotropy, repeat, from `streaming.texture_filter` / `texture_anisotropy` /
+  `texture_wrap`; installed after the renderer is built.
+- **Detail budget** (`helio-component/src/texture_detail.rs`): one process-wide
+  mip bias from the total native size of resident textures against
+  `streaming.texture_vram_budget_mb` (default 3072, 0 = unlimited). Applied when a
+  material is bound; a slot at a stale bias is uploaded again. It is not
+  per-texture or per-frame streaming (no distance/screen-size selection).
+- **Prefetch** reaches `bind_mesh_material` through `warm`.
+- **Parallel `gpu_assets` hang**: concurrent device creation in tests; every GPU
+  test helper takes a `DEVICE_CREATION` mutex.
+- **Mesh vertex pools are per scene by design for now.** The GPU report shows
   `scenedb-var-len-pool-"builtin_mesh_vertex"` once per scene; only textures are
-  shared across scenes.
-- **A miss decodes on the caller's thread** unless something prefetched it.
-  `compiled_graph` prefetches a material's textures; other callers do not yet.
+  shared across scenes. Sharing needs a device-level pool registry in SceneDB and
+  growth notification to every bound scene.
+- **Editor memory with the cook in place is unmeasured**; export a Memory
+  Explorer report on the new build.

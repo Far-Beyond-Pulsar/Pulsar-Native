@@ -1521,7 +1521,7 @@ impl HelioRenderer {
                 builder = builder.with_texture_streaming(pool_mb);
             }
             let voxel_passes = self.voxel_backends.pass_factories();
-            let r = builder
+            let mut r = builder
                 .with_pass_build_context(Box::new(move |ctx| {
                     helio_default_graphs::build_default_graph_external_with_voxel_passes(
                         ctx,
@@ -1529,6 +1529,11 @@ impl HelioRenderer {
                     )
                 }))
                 .build(device_arc.clone(), queue_arc.clone(), width, height, format);
+
+            // Scene materials read through trilinear, anisotropic, repeating
+            // filtering (project `streaming.texture_*` settings), not wgpu's
+            // nearest/clamp default.
+            r.set_material_sampler(&super::material_sampler::SamplerSettings::from_project().descriptor());
 
             if let Ok(mut views) = self.viewport_debug_views.lock() {
                 let legends = r.available_debug_view_legends();

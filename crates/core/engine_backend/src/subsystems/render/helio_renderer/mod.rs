@@ -2,6 +2,7 @@
 
 mod animated_content;
 pub mod core;
+pub mod material_sampler;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
