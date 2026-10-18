@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use helio_component::mesh_cache::{self, OptionsSchema};
+use plugin_editor_api::{SourceImage, SourceImageRole, SourceSurface};
 
 use crate::db::ImportOutput;
 
@@ -30,6 +31,9 @@ pub struct Imported {
     /// The other files written, or still belonging to this source. Empty for a
     /// plain mesh.
     pub outputs: Vec<ImportOutput>,
+    /// The surfaces (materials) the source has and the image files found for
+    /// each, for import companions. Empty when the importer has none.
+    pub surfaces: Vec<SourceSurface>,
 }
 
 pub trait Importer: Send + Sync {
@@ -91,12 +95,63 @@ impl Importer for MeshImporter {
         // animations; anything else is the static mesh it always was.
         match scene.rig.take() {
             Some(rig) => crate::rig::import_rig(&rig, asset, previous),
-            None => mesh_cache::write_static_mesh(scene, asset).map(|asset| Imported {
-                asset,
-                outputs: Vec::new(),
-            }),
+            None => {
+                let surfaces = surfaces_of(&scene, source);
+                mesh_cache::write_static_mesh(scene, asset).map(|asset| Imported {
+                    asset,
+                    outputs: Vec::new(),
+                    surfaces,
+                })
+            }
         }
     }
+}
+
+fn role_of(semantic: helio_asset_compat::TextureSemantic) -> Option<SourceImageRole> {
+    use helio_asset_compat::TextureSemantic as T;
+    match semantic {
+        T::BaseColor => Some(SourceImageRole::BaseColor),
+        T::Normal => Some(SourceImageRole::Normal),
+        T::MetallicRoughness => Some(SourceImageRole::MetallicRoughness),
+        T::Occlusion => Some(SourceImageRole::Occlusion),
+        T::Emissive => Some(SourceImageRole::Emissive),
+        T::SpecularColor | T::SpecularWeight => None,
+    }
+}
+
+/// The source's materials as neutral surfaces: the images their texture
+/// slots name, plus images next to the model named after the material for
+/// roles the file leaves empty. Slot `i` is the native mesh's slot `i`.
+fn surfaces_of(scene: &helio_asset_compat::ConvertedScene, source: &Path) -> Vec<SourceSurface> {
+    let nearby = crate::companion::nearby_images(source);
+    let model_stem = source
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    let only_surface = scene.material_sources.len() == 1;
+    scene
+        .material_sources
+        .iter()
+        .enumerate()
+        .map(|(slot, material)| {
+            let mut surface = SourceSurface {
+                slot: slot as u32,
+                name: material.name.clone(),
+                images: material
+                    .images
+                    .iter()
+                    .filter_map(|image| {
+                        Some(SourceImage {
+                            role: role_of(image.semantic)?,
+                            path: image.path.clone(),
+                        })
+                    })
+                    .collect(),
+            };
+            crate::companion::complete_from_siblings(&mut surface, model_stem, only_surface, &nearby);
+            surface
+        })
+        .collect()
 }
 
 static IMPORTERS: &[&dyn Importer] = &[&MeshImporter];

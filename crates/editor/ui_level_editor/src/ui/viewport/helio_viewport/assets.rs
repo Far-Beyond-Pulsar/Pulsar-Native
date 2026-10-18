@@ -1,6 +1,23 @@
 use super::*;
 
 impl HelioViewport {
+    /// A source model (FBX, …) was dropped on the viewport: nothing is placed,
+    /// and the user is told why.
+    pub(super) fn reject_source_model_drop(
+        &mut self,
+        payload: &AssetPayload,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.push_notification(
+            Notification::info("Import it first").message(format!(
+                "{} is a source model. Import it, then place the imported mesh.",
+                payload.name
+            )),
+            cx,
+        );
+    }
+
     /// Handle an asset being dropped on the viewport
     pub(super) fn handle_asset_drop(
         &mut self,

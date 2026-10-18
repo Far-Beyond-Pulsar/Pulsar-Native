@@ -137,6 +137,7 @@ mod tests {
             importer: "mesh".into(),
             options: None,
             outputs: Vec::new(),
+            companions: Vec::new(),
         });
         db.ignore("skipped.fbx");
         db.save(root).unwrap();

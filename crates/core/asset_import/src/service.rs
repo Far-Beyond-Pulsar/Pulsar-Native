@@ -9,7 +9,7 @@ use engine_fs::virtual_fs;
 use parking_lot::Mutex;
 
 use crate::db::{hash_file, relative_key, ImportDb, ImportRecord};
-use crate::importer::{importer_by_id, importer_for, Importer, OptionValues, Previous};
+use crate::importer::{importer_by_id, importer_for, Imported, Importer, OptionValues, Previous};
 
 const TASK_CATEGORY: &str = "Import";
 
@@ -79,6 +79,7 @@ fn convert(
     source: &Path,
     mode: ImportMode,
     options: &Mutex<OptionValues>,
+    companions: &[String],
     task: &TaskContext,
 ) -> Result<(), String> {
     let importer = importer_of(source)?;
@@ -99,7 +100,7 @@ fn convert(
         .map(|record| record.outputs.clone())
         .unwrap_or_default();
     let chosen_options = options.lock();
-    let imported = importer.import(
+    let mut imported = importer.import(
         source,
         &asset,
         &chosen_options,
@@ -110,6 +111,7 @@ fn convert(
     )?;
     let stored_options = importer.serialize_options(&chosen_options);
     drop(chosen_options);
+    run_companions(project_root, source, companions, &mut imported, task);
 
     task.report_progress(0.9, "Recording");
     match mode {
@@ -122,6 +124,7 @@ fn convert(
                 importer: importer.id().to_owned(),
                 options: Some(stored_options),
                 outputs: imported.outputs,
+                companions: companions.to_vec(),
             })
         }),
         ImportMode::ConvertInPlace => {
@@ -149,6 +152,50 @@ fn convert(
     }
 }
 
+/// Run the import companions the user accepted, now that the native asset
+/// exists. Their outputs join the import's, and the surfaces they made
+/// something for get it as the native asset's default where it has none. A
+/// companion failing never fails the import.
+fn run_companions(
+    project_root: &Path,
+    source: &Path,
+    companions: &[String],
+    imported: &mut Imported,
+    task: &TaskContext,
+) {
+    if companions.is_empty() {
+        return;
+    }
+    task.report_progress(0.7, "Running import companions");
+    let (outputs, assignments) = crate::companion::run_companions(
+        companions,
+        project_root,
+        source,
+        &imported.asset,
+        &imported.surfaces,
+    );
+    if outputs.is_empty() {
+        // Not an error, but the user asked for something and should see it
+        // did not happen.
+        let found: usize = imported.surfaces.iter().map(|s| s.images.len()).sum();
+        task.report_progress(
+            0.8,
+            &format!(
+                "Import companions made nothing ({} surface(s), {found} matching image(s))",
+                imported.surfaces.len()
+            ),
+        );
+    }
+    for output in outputs {
+        if !imported.outputs.iter().any(|o| o.path == output.path) {
+            imported.outputs.push(output);
+        }
+    }
+    if let Err(error) = crate::companion::assign_default_materials(&imported.asset, &assignments) {
+        tracing::warn!("could not assign companion outputs to {}: {error}", imported.asset.display());
+    }
+}
+
 /// Convert `sources` (project files of importable formats), one task each,
 /// with the shared `options` the configurator produced for their format.
 pub fn submit_import(
@@ -156,6 +203,18 @@ pub fn submit_import(
     sources: Vec<PathBuf>,
     mode: ImportMode,
     options: Arc<Mutex<OptionValues>>,
+) -> Vec<TaskId> {
+    submit_import_with_companions(project_root, sources, mode, options, Vec::new())
+}
+
+/// [`submit_import`], also running the import companions named in
+/// `companions` (ids from [`crate::offers_for`]) once each asset is written.
+pub fn submit_import_with_companions(
+    project_root: PathBuf,
+    sources: Vec<PathBuf>,
+    mode: ImportMode,
+    options: Arc<Mutex<OptionValues>>,
+    companions: Vec<String>,
 ) -> Vec<TaskId> {
     sources
         .into_iter()
@@ -170,8 +229,9 @@ pub fn submit_import(
                 TaskDuration::Long,
             );
             let (root, options) = (project_root.clone(), Arc::clone(&options));
+            let companions = companions.clone();
             editor_task_queue::global().submit(description, move |task| {
-                convert(&root, &source, mode, &options, &task)
+                convert(&root, &source, mode, &options, &companions, &task)
             })
         })
         .collect()
@@ -216,7 +276,7 @@ pub fn submit_reimport(project_root: PathBuf, source: &str) -> Option<TaskId> {
             }
             task.report_progress(0.3, "Converting");
             let options = importer.stored_options(&asset, ext, record.options.as_ref());
-            let imported = importer.import(
+            let mut imported = importer.import(
                 &source,
                 &asset,
                 &options,
@@ -225,6 +285,7 @@ pub fn submit_reimport(project_root: PathBuf, source: &str) -> Option<TaskId> {
                     outputs: &record.outputs,
                 },
             )?;
+            run_companions(&project_root, &source, &record.companions, &mut imported, &task);
             task.report_progress(0.9, "Recording");
             with_db(&project_root, |db| {
                 db.upsert(ImportRecord {

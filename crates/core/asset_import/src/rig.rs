@@ -240,6 +240,7 @@ pub fn import_rig(
     Ok(Imported {
         asset: mesh_at.path,
         outputs,
+        surfaces: Vec::new(),
     })
 }
 

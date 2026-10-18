@@ -322,10 +322,13 @@ impl Render for HelioViewport {
             .id("helio-viewport-drop")
             .size_full()
             .drag_over::<AssetPayload>(|style, payload, _window, cx| {
-                if matches!(
-                    payload.kind,
-                    AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
-                ) {
+                // Source models (FBX, …) are imported, not placed.
+                if !payload.is_source_model()
+                    && matches!(
+                        payload.kind,
+                        AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
+                    )
+                {
                     style
                         .border_2()
                         .border_color(cx.theme().accent)
@@ -335,7 +338,12 @@ impl Render for HelioViewport {
                 }
             })
             .on_drop::<AssetPayload>(move |payload, window, cx| {
-                if matches!(
+                if payload.is_source_model() {
+                    let payload = payload.clone();
+                    viewport.update(cx, |this, cx| {
+                        this.reject_source_model_drop(&payload, window, cx);
+                    });
+                } else if matches!(
                     payload.kind,
                     AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
                 ) {
