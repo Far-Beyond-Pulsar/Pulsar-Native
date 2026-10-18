@@ -27,7 +27,9 @@ use engine_backend::scene::SceneWorldExt;
 pub fn select_world_camera(store: &pulsar_scenedb::SceneDb) -> Option<RenderCamera> {
     let world = &store.world;
     for entity in world.camera_entities() {
-        let Some(transform) = world.get::<engine_backend::scene::Transform>(entity) else {
+        let Some(transform) =
+            engine_backend::scene::hierarchy_transform::world_transform_of(world, entity)
+        else {
             continue;
         };
         // Degrees -> radians; yaw around Y, pitch around X (FPS-style).

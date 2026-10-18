@@ -121,3 +121,63 @@ fn scene_object_properties_round_trip_through_world_components() {
     assert!(!object.visible);
     assert!(object.locked);
 }
+
+#[test]
+fn a_folders_contents_follow_it_without_being_rewritten() {
+    use engine_backend::scene::hierarchy_transform::world_transform_of;
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let folder = objects::add_folder(world, "folder", None);
+    let item = objects::add_folder(world, "item", None);
+    objects::set_transform(world, &item, Some([1.0, 2.0, 3.0]), None, None);
+
+    // Put in the folder (which is at the origin), the object stays where it is.
+    assert!(objects::reparent_object(world, &item, Some(folder.clone())));
+    let entity = world.entity_for(&item).unwrap();
+    assert_eq!(
+        world_transform_of(world, entity).unwrap().position,
+        [1.0, 2.0, 3.0]
+    );
+
+    // Moving the folder moves the object in the world. Its own stored,
+    // parent-relative transform is not touched: nothing is rewritten per object.
+    assert!(objects::set_transform(
+        world,
+        &folder,
+        Some([10.0, 0.0, 0.0]),
+        None,
+        None
+    ));
+    assert_eq!(
+        objects::get_object(world, &item).unwrap().transform.position,
+        [1.0, 2.0, 3.0]
+    );
+    let moved = world_transform_of(world, entity).unwrap().position;
+    assert!(
+        moved
+            .iter()
+            .zip([11.0, 2.0, 3.0])
+            .all(|(a, b)| (a - b).abs() < 1e-4),
+        "{moved:?}"
+    );
+}
+
+#[test]
+fn reparenting_to_the_root_keeps_the_world_pose() {
+    use engine_backend::scene::hierarchy_transform::world_transform_of;
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let folder = objects::add_folder(world, "folder", None);
+    objects::set_transform(world, &folder, Some([10.0, 0.0, 0.0]), None, None);
+    let item = objects::add_folder(world, "item", Some(folder.clone()));
+    objects::set_transform(world, &item, Some([1.0, 0.0, 0.0]), None, None);
+    let entity = world.entity_for(&item).unwrap();
+    assert_eq!(world_transform_of(world, entity).unwrap().position[0], 11.0);
+
+    assert!(objects::reparent_object(world, &item, None));
+
+    assert_eq!(
+        objects::get_object(world, &item).unwrap().transform.position[0],
+        11.0
+    );
+}

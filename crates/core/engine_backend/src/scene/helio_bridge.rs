@@ -26,13 +26,14 @@ use helio_component::components::{
     WIND_SOURCES_BUFFER,
 };
 use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
+use helio_default_graphs::hierarchy_resolve::{HierarchyResolve, HierarchyResolveKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
 use pulsar_scene_model::attachments::ComponentOwner;
-use pulsar_scene_model::ObjectHidden;
+use pulsar_scene_model::{ObjectHidden, ObjectParent};
 
 /// Where this engine's authored rows live, for Helio's scene join. The
 /// names are the buffers the components below register: the instance owner
@@ -64,6 +65,23 @@ pub fn scene_join_keys() -> SceneJoinKeys {
 /// billboards.
 pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
     Box::new(SceneJoin::new(device, scene_join_keys(), editor))
+}
+
+/// Where this engine's parent-relative transforms and parent links live, for
+/// Helio's hierarchy resolve. It republishes world-space transforms under the
+/// transform key, so it must be installed before the scene and environment
+/// joins.
+pub fn hierarchy_resolve_keys() -> HierarchyResolveKeys {
+    HierarchyResolveKeys {
+        transforms: scene_join_keys().transforms,
+        parents: BufferKey::of("object_parent"),
+    }
+}
+
+/// Helio's hierarchy resolve, for `RendererBuilder::with_scene_derivation`,
+/// ahead of [`scene_join`] and [`environment_join`].
+pub fn hierarchy_resolve(device: &wgpu::Device) -> Box<HierarchyResolve> {
+    Box::new(HierarchyResolve::new(device, hierarchy_resolve_keys()))
 }
 
 /// Where this engine's environment rows live, for Helio's environment join:
@@ -156,6 +174,8 @@ pub fn ensure_gpu_mirror(
     LightSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     ComponentOwner::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
+    // Each object's parent, for the hierarchy resolve (transforms are parent-relative).
+    ObjectParent::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The environment join's inputs (see `environment_join_keys`); the fog
     // media, post-process volume, camera, water volume, foliage, atmosphere,

@@ -484,7 +484,8 @@ pub fn set_locked(world: &mut World, id: &str, locked: bool) -> bool {
     edit_visibility(world, id, |v| v.locked = locked)
 }
 
-/// Narrow transform update -- writes only the transform component, with no
+/// Narrow transform update of the object's own (parent-relative) transform --
+/// writes only the transform component, with no
 /// whole-object round trip and no component re-hydration. `None` fields are left
 /// unchanged; returns `false` if nothing actually changed or the object doesn't
 /// exist.
@@ -497,9 +498,6 @@ pub fn set_transform(
 ) -> bool {
     profiling::profile_scope!("scene_edit::set_transform");
     let Some(entity) = world.entity_for(id) else {
-        return false;
-    };
-    let Some(old_transform) = world.get::<WorldTransform>(entity).copied() else {
         return false;
     };
     let Some(mut transform) = world.get_mut::<WorldTransform>(entity) else {
@@ -518,17 +516,8 @@ pub fn set_transform(
         transform.scale = s;
         changed = true;
     }
-    let new_transform = *transform;
     drop(transform);
     if changed {
-        // Everything inside the object (a folder's contents, a parent's
-        // children) moves with it.
-        engine_backend::scene::hierarchy_transform::propagate_to_descendants(
-            world,
-            entity,
-            &old_transform,
-            &new_transform,
-        );
         // A class instance's generated children follow their root.
         super::classes::relayout_children(world, id);
     }
@@ -548,7 +537,14 @@ pub fn reparent_object(world: &mut World, id: &str, new_parent: Option<ObjectId>
         },
         None => None,
     };
-    world.reparent(entity, new_parent_entity).is_ok()
+    // The object stays where it is in the world; its local transform is
+    // rewritten for the new parent.
+    engine_backend::scene::hierarchy_transform::reparent_keeping_world(
+        world,
+        entity,
+        new_parent_entity,
+    )
+    .is_ok()
 }
 
 /// Reorder two sibling objects by swapping their positions. Both must share a

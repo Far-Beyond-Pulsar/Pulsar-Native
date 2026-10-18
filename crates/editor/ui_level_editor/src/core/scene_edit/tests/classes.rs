@@ -134,8 +134,11 @@ fn placing_a_class_twice_gives_two_full_instances() {
     // Moving the root moves its generated child.
     objects::set_transform(world, &b, Some([9.0, 0.0, 0.0]), None, None);
     let kid = &children(world, &b)[0];
+    let kid_entity = world.entity_for(kid).unwrap();
     assert_eq!(
-        objects::get_object_transform(world, kid).unwrap().position,
+        engine_backend::scene::hierarchy_transform::world_transform_of(world, kid_entity)
+            .unwrap()
+            .position,
         [9.0, 0.0, 0.0]
     );
 }

@@ -164,21 +164,27 @@ fn group_selection_into_folder(state: &mut LevelEditorState) -> bool {
     let parent_id = ancestors(state, &first).into_iter().next();
 
     // The folder sits at the centre of what it holds, so its gizmo is on the
-    // group. Objects keep their world transform when reparented, so nothing
-    // jumps; from then on moving the folder moves them.
+    // group. Reparenting keeps each object's place in the world, so nothing
+    // jumps; from then on moving the folder moves them. The folder's own
+    // transform is relative to its parent, like any object's.
     let mut transform = crate::scene_edit::Transform::default();
     {
+        use engine_backend::scene::hierarchy_transform::{local_for_world, world_transform_of};
         let world = state.scene.world();
         let positions: Vec<[f32; 3]> = roots
             .iter()
-            .filter_map(|id| crate::scene_edit::objects::get_object(&world, id))
-            .map(|object| object.transform.position)
+            .filter_map(|id| world.entity_for(id))
+            .filter_map(|entity| world_transform_of(&world, entity))
+            .map(|pose| pose.position)
             .collect();
         if !positions.is_empty() {
             let n = positions.len() as f32;
+            let mut centre = engine_backend::scene::Transform::default();
             for axis in 0..3 {
-                transform.position[axis] = positions.iter().map(|p| p[axis]).sum::<f32>() / n;
+                centre.position[axis] = positions.iter().map(|p| p[axis]).sum::<f32>() / n;
             }
+            let parent = parent_id.as_deref().and_then(|id| world.entity_for(id));
+            transform = local_for_world(&world, parent, &centre).into();
         }
     }
 

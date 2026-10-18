@@ -64,6 +64,7 @@ fn mesh(movability: ObjectMovability) -> StaticMeshComponent {
 struct Join {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
+    resolve: Box<dyn SceneDerivation>,
     join: Box<dyn SceneDerivation>,
 }
 
@@ -88,6 +89,18 @@ impl Join {
             },
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let resolved = self.resolve.derive(
+            &SceneDerivationContext {
+                device: &self.device,
+                queue: &self.queue,
+                inputs: &inputs,
+                world_origin: None,
+            },
+            &mut encoder,
+        );
+        for (key, handle) in resolved.buffers {
+            inputs.insert(key, handle);
+        }
         let output = self.join.derive(
             &SceneDerivationContext {
                 device: &self.device,
@@ -176,6 +189,7 @@ fn the_join_follows_the_engines_authored_rows() {
 
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = Join {
+        resolve: engine_backend::scene::hierarchy_resolve(&device),
         join: engine_backend::scene::scene_join(&device, true),
         device,
         queue,
@@ -293,6 +307,7 @@ fn every_path_addresses_one_instance_and_a_reused_index_is_a_new_one() {
     let second = pulsar_world_registry::attach_value(&mut scene.world, lamp, light(20.0)).unwrap();
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = Join {
+        resolve: engine_backend::scene::hierarchy_resolve(&device),
         join: engine_backend::scene::scene_join(&device, true),
         device,
         queue,
@@ -381,4 +396,155 @@ fn every_path_addresses_one_instance_and_a_reused_index_is_a_new_one() {
             .intensity,
         70.0
     );
+}
+
+
+fn mesh_on(
+    scene: &mut SceneDb,
+    parent: Option<Entity>,
+    transform: Transform,
+) -> (Entity, Entity) {
+    let object = scene
+        .world
+        .spawn_object(
+            SpawnObject::new("o")
+                .with_parent(parent)
+                .with_transform(transform),
+        )
+        .unwrap();
+    let instance = pulsar_world_registry::attach_value(
+        &mut scene.world,
+        object,
+        mesh(ObjectMovability::Movable),
+    )
+    .unwrap();
+    (object, instance)
+}
+
+fn position_of(join: &Join, out: &SceneBufferProjection, instance: Entity) -> [f32; 3] {
+    join.mesh_rows(out, instance)[0].transform[3][..3]
+        .try_into()
+        .unwrap()
+}
+
+/// Objects are placed under their parents on the GPU: moving a folder is one
+/// write to the folder, and everything in it follows, frame after frame.
+#[test]
+fn moving_a_folder_moves_the_meshes_inside_it() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let folder = place(&mut scene, "folder", [0.0, 0.0, 0.0]);
+    let (_, outsider) = mesh_on(
+        &mut scene,
+        None,
+        Transform {
+            position: [100.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    let children: Vec<Entity> = (0..3)
+        .map(|n| {
+            mesh_on(
+                &mut scene,
+                Some(folder),
+                Transform {
+                    position: [3.0 + n as f32, 0.0, 0.0],
+                    ..Transform::default()
+                },
+            )
+            .1
+        })
+        .collect();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        resolve: engine_backend::scene::hierarchy_resolve(&device),
+        join: engine_backend::scene::scene_join(&device, true),
+        device,
+        queue,
+    };
+    let out = join.run(&mut scene);
+    assert_eq!(position_of(&join, &out, children[0]), [3.0, 0.0, 0.0]);
+
+    for frame in 1..=4 {
+        let x = frame as f32 * 2.5;
+        // One write, to the folder alone.
+        scene.world.get_mut::<Transform>(folder).unwrap().position = [x, 0.0, 0.0];
+        let out = join.run(&mut scene);
+        for (n, child) in children.iter().enumerate() {
+            assert_eq!(
+                position_of(&join, &out, *child),
+                [x + 3.0 + n as f32, 0.0, 0.0],
+                "child {n} followed its folder on frame {frame}"
+            );
+        }
+        assert_eq!(
+            position_of(&join, &out, outsider),
+            [100.0, 0.0, 0.0],
+            "an object outside the folder stays put"
+        );
+    }
+}
+
+/// The GPU composes a chain of rotated, scaled and offset parents to the same
+/// model matrix the CPU arithmetic gives (gizmos and picking rely on it).
+#[test]
+fn the_gpu_composes_a_parent_chain_like_the_cpu() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let root = place(&mut scene, "root", [0.0; 3]);
+    {
+        let mut t = scene.world.get_mut::<Transform>(root).unwrap();
+        t.position = [5.0, -2.0, 1.0];
+        t.rotation = [10.0, 35.0, -20.0];
+        t.scale = [2.0, 2.0, 2.0];
+    }
+    let middle = scene
+        .world
+        .spawn_object(
+            SpawnObject::new("middle")
+                .with_parent(Some(root))
+                .with_transform(Transform {
+                    position: [1.0, 2.0, 3.0],
+                    rotation: [-15.0, 50.0, 25.0],
+                    scale: [0.5, 0.5, 0.5],
+                }),
+        )
+        .unwrap();
+    let (leaf, instance) = mesh_on(
+        &mut scene,
+        Some(middle),
+        Transform {
+            position: [-1.0, 0.5, 2.0],
+            rotation: [5.0, -70.0, 15.0],
+            scale: [1.0, 3.0, 2.0],
+        },
+    );
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        resolve: engine_backend::scene::hierarchy_resolve(&device),
+        join: engine_backend::scene::scene_join(&device, true),
+        device,
+        queue,
+    };
+    let out = join.run(&mut scene);
+    let model = join.mesh_rows(&out, instance)[0].transform;
+    let expected = engine_backend::scene::hierarchy_transform::world_matrix_of(&scene.world, leaf)
+        .unwrap()
+        .to_cols_array_2d();
+    for (c, (got, want)) in model.iter().zip(expected).enumerate() {
+        for r in 0..3 {
+            assert!(
+                (got[r] - want[r]).abs() < 1e-3,
+                "model column {c} row {r}: gpu {got:?} cpu {want:?}"
+            );
+        }
+    }
 }

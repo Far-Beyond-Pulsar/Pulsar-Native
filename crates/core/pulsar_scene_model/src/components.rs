@@ -124,6 +124,53 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
     }
 }
 
+/// [`Parent`]'s GPU row: the parent's entity index plus one, zero for an
+/// object with no parent. Keyed by the child entity. The renderer composes
+/// each object's world transform from its parent chain on the GPU
+/// (`HierarchyResolve`), so a parent's edit is one row write however many
+/// objects it holds. Derived from the authored [`Parent`] on every write,
+/// removal and replay, like [`ObjectHidden`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, pulsar_scenedb::SceneStore)]
+#[gpu(layout = packed, buffer = "object_parent")]
+#[repr(C)]
+pub struct ObjectParent {
+    #[gpu]
+    pub parent: u32,
+}
+
+fn object_parent_dispatch(
+    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
+    row: u32,
+    data: *const (),
+    is_new_insert: bool,
+) {
+    // SAFETY: SceneDB reaches this only through `Parent`'s own
+    // `ComponentId`, with a pointer to a live `Parent`.
+    let parent = unsafe { &*(data as *const Parent) };
+    let row_value = ObjectParent {
+        parent: parent.0.index() + 1,
+    };
+    pulsar_scenedb::gpu::write_derived_row(mirror, row, &row_value, is_new_insert);
+}
+
+fn object_parent_clear(mirror: &pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+    pulsar_scenedb::gpu::clear_derived_row::<ObjectParent>(mirror, row);
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuMirrorRegistration {
+        component_id: pulsar_scenedb::component_id::<Parent>,
+        dispatch: object_parent_dispatch,
+    }
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuClearRegistration {
+        component_id: pulsar_scenedb::component_id::<Parent>,
+        clear: object_parent_clear,
+    }
+}
+
 /// Free-form scene props of an object (file-format `props`, plus the scene
 /// props registered component classes project from their values). Component
 /// values themselves live on component-instance entities

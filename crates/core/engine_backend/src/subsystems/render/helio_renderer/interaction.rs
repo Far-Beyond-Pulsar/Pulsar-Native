@@ -1,5 +1,6 @@
 //! Transform handles with shared solid geometry for drawing and picking.
 use super::gizmo_geometry::{meshes, rotation_grid, Handle};
+use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
@@ -73,7 +74,11 @@ struct DragState {
     entity: Entity,
     handle: Handle,
     mode: GizmoType,
+    /// The object's transform in the world when the drag began: what the handles are
+    /// laid out on.
     initial: Transform,
+    /// Its own (parent-relative) transform then, which undo restores.
+    initial_local: Transform,
     view: View,
     length: f32,
     start: Vec2,
@@ -132,11 +137,11 @@ impl SceneInteraction {
         self.hovered = None;
     }
     /// End the drag in progress, if any: the object it moved and the
-    /// transform it started from, for undo (#931).
+    /// (parent-relative) transform it started from, for undo (#931).
     pub fn finish_drag(&mut self) -> Option<(Entity, Transform)> {
         let drag = self.drag.take()?;
         self.hovered = None;
-        Some((drag.entity, drag.initial))
+        Some((drag.entity, drag.initial_local))
     }
     pub fn pick(&self, world: &World, origin: Vec3, direction: Vec3) -> Option<String> {
         let direction = direction.normalize_or_zero();
@@ -155,7 +160,7 @@ impl SceneInteraction {
                 if !visibility.visible || !is_pickable(object_type) {
                     return None;
                 }
-                let transform = *world.get::<Transform>(entity)?;
+                let transform = world_transform_of(world, entity)?;
                 let (min, max) = object_bounds(world, entity, &object_type, transform);
                 ray_aabb(origin, direction, min, max)
                     .map(|distance| (distance, Some(entity) != selected, id.0.clone()))
@@ -177,7 +182,7 @@ impl SceneInteraction {
         if !v.visible || v.locked || self.mode == GizmoType::None {
             return None;
         }
-        Some((entity, *world.get::<Transform>(entity)?))
+        Some((entity, world_transform_of(world, entity)?))
     }
     fn handle_visible(&self, handle: Handle, pivot: Vec3, basis: Mat3, length: f32) -> bool {
         let Some(center) = self.view.project(pivot) else {
@@ -306,6 +311,7 @@ impl SceneInteraction {
             handle,
             mode: self.mode,
             initial,
+            initial_local: world.get::<Transform>(entity).copied().unwrap_or(initial),
             view: self.view,
             length,
             start,
@@ -331,7 +337,7 @@ impl SceneInteraction {
             self.cancel_drag();
             return;
         }
-        let Some(current) = world.get::<Transform>(drag.entity).copied() else {
+        let Some(current) = world_transform_of(world, drag.entity) else {
             self.cancel_drag();
             return;
         };
@@ -438,12 +444,7 @@ impl SceneInteraction {
         self.drag = Some(drag);
         self.hovered = Some(drag.handle);
         if next != current {
-            // Objects inside the dragged one (a folder's contents) follow it.
-            crate::scene::hierarchy_transform::set_transform_with_descendants(
-                world,
-                drag.entity,
-                next,
-            );
+            set_world_transform(world, drag.entity, next);
         }
     }
     pub fn update_hover(&mut self, world: &World, o: Vec3, d: Vec3, _camera: Vec3) -> bool {
@@ -934,6 +935,71 @@ mod tests {
         let final_transform = *world.get::<Transform>(entity).unwrap();
         interaction.update_drag(&mut world, Vec3::ZERO, start.normalize(), Vec3::ZERO);
         assert_eq!(*world.get::<Transform>(entity).unwrap(), final_transform);
+    }
+
+    #[test]
+    fn dragging_a_folder_moves_what_is_inside_it_without_rewriting_it() {
+        let (mut world, mut interaction, folder) = setup(GizmoType::Translate);
+        spawn_cube(&mut world, "inside", -10.0);
+        let inside = world.entity_for("inside").unwrap();
+        // Put in the folder where it stands: its local transform becomes zero.
+        crate::scene::hierarchy_transform::reparent_keeping_world(&mut world, inside, Some(folder))
+            .unwrap();
+        spawn_cube(&mut world, "outside", -10.0);
+        let outside = world.entity_for("outside").unwrap();
+        assert_eq!(world.get::<Transform>(inside).unwrap().position, [0.0; 3]);
+
+        let pivot = Vec3::new(0.0, 0.0, -10.0);
+        let length = interaction.view.length(pivot).unwrap();
+        let start = pivot + Vec3::X * length * 0.7;
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
+        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+
+        let moved = world.get::<Transform>(folder).unwrap().position[0];
+        assert!(moved > 0.0, "the folder did not move");
+        assert_eq!(
+            world.get::<Transform>(inside).unwrap().position,
+            [0.0; 3],
+            "the contents are not rewritten"
+        );
+        let world_x = world_transform_of(&world, inside).unwrap().position[0];
+        assert!((world_x - moved).abs() < 1e-4, "contents follow: {world_x} vs {moved}");
+        assert_eq!(world.get::<Transform>(outside).unwrap().position[0], 0.0);
+    }
+
+    #[test]
+    fn dragging_a_child_moves_it_in_the_world_and_stores_it_relative() {
+        let (mut world, mut interaction, folder) = setup(GizmoType::Translate);
+        // The folder stands 4 to the right of where the child will be dragged.
+        world.get_mut::<Transform>(folder).unwrap().position = [4.0, 0.0, -10.0];
+        spawn_cube(&mut world, "child", -10.0);
+        let child = world.entity_for("child").unwrap();
+        crate::scene::hierarchy_transform::reparent_keeping_world(&mut world, child, Some(folder))
+            .unwrap();
+        world.select(Some(child));
+        let before = world_transform_of(&world, child).unwrap();
+        assert!((before.position[0]).abs() < 1e-4, "{before:?}");
+
+        let pivot = Vec3::from_array(before.position);
+        let length = interaction.view.length(pivot).unwrap();
+        let start = pivot + Vec3::X * length * 0.7;
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
+        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+
+        let after = world_transform_of(&world, child).unwrap();
+        let local = world.get::<Transform>(child).unwrap().position[0];
+        assert!(after.position[0] > 0.0, "the child moved right in the world");
+        assert!(
+            (local - (after.position[0] - 4.0)).abs() < 1e-3,
+            "stored relative to the folder at x = 4: local {local}, world {}",
+            after.position[0]
+        );
+        // Undo restores the child's own (relative) transform.
+        let (entity, restore) = interaction.finish_drag().unwrap();
+        assert_eq!(entity, child);
+        assert!((restore.position[0] - -4.0).abs() < 1e-4, "{restore:?}");
     }
 
     #[test]

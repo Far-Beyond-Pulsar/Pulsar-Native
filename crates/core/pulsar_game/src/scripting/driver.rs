@@ -69,7 +69,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use engine_backend::scene::{ObjectType, SceneWorldExt, SpawnObject, Transform};
-use pulsar_class::{ClassEntry, ClassId, ClassInstance, ClassRegistry, LocalTransform};
+use pulsar_class::{ClassEntry, ClassId, ClassInstance, ClassRegistry};
 use pulsar_scenedb::{ChangeCursor, ChangeRead, ComponentChange, Entity, World};
 use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
 use pulsar_script_vm::{DebugCommand, DebugSnapshot, LibraryId};
@@ -1620,19 +1620,10 @@ impl ScriptDriver {
             return;
         };
         let parent = parent.filter(|p| world.is_alive(*p));
-        let transform = match parent {
-            Some(parent) => {
-                let local = LocalTransform {
-                    position,
-                    ..LocalTransform::default()
-                };
-                let parent_tf = world.get::<Transform>(parent).copied().unwrap_or_default();
-                pulsar_class::world::compose(&parent_tf, &local)
-            }
-            None => Transform {
-                position,
-                ..Transform::default()
-            },
+        // Parent-relative: a spawn under a parent is placed in that parent's space.
+        let transform = Transform {
+            position,
+            ..Transform::default()
         };
         let def = &template.def;
         let stable_id = self.next_spawn_id(world, &def.name);

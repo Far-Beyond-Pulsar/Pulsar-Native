@@ -3362,3 +3362,55 @@ fn the_viewport_shows_the_depth_and_normal_buffers() {
         "switching back did not restore the lit image: {change:?}"
     );
 }
+
+/// A mesh put in a folder moves with the folder, in the rendered frame.
+#[test]
+fn a_folders_meshes_move_with_it_in_the_frame() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    for nudge in [false, true] {
+        harness.nudge_camera.set(nudge);
+        let mut state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {});
+        let mesh = drop_mesh(&mut state);
+        let folder = add_object(&mut state, "folder", ObjectType::Folder);
+        let reparent = execute_command(
+            &mut state,
+            SceneCommand::ReparentObject {
+                id: mesh.clone(),
+                new_parent_id: Some(folder.clone()),
+            },
+        );
+        assert!(reparent.changed, "the mesh was not put in the folder");
+        let before = harness.frames(&mut renderer, || {});
+        let at_origin = Frame {
+            color: before.color.clone(),
+            depth: before.depth.clone(),
+            depth_width: before.depth_width,
+        };
+        assert!(
+            before.difference(&at_origin).depth_texels == 0,
+            "sanity: a frame equals itself"
+        );
+
+        move_to(&mut state, &folder, [radius * 1.5, 0.0, 0.0]);
+        let after = harness.frames(&mut renderer, || {});
+        let shift = after.difference(&at_origin);
+        assert!(
+            shift.depth_texels > 0,
+            "[nudge {nudge}] moving the folder did not move the mesh inside it ({shift:?})"
+        );
+    }
+}

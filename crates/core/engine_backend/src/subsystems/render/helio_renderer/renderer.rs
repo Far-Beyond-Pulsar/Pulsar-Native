@@ -1511,6 +1511,9 @@ impl HelioRenderer {
             let mut builder = helio::RendererBuilder::new(config, scene_db_handle.clone())
                 .with_external_device()
                 .with_editor_mode(true)
+                // Parent-relative transforms become world-space first, under
+                // the same key, so the joins below read them unchanged.
+                .with_scene_derivation(crate::scene::hierarchy_resolve(&device_arc))
                 // Meshes and lights: Helio joins the authored rows on the GPU.
                 .with_scene_derivation(crate::scene::scene_join(&device_arc, true))
                 .with_scene_derivation(crate::scene::environment_join(&device_arc))
@@ -3278,7 +3281,9 @@ impl VoxelSceneRead {
             }
         }
         let sun = sun_owner
-            .and_then(|owner| world.get::<crate::scene::Transform>(owner).copied())
+            .and_then(|owner| {
+                crate::scene::hierarchy_transform::world_transform_of(world, owner)
+            })
             .map(|transform| {
                 let rotation = glam::Quat::from_euler(
                     glam::EulerRot::YXZ,
