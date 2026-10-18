@@ -167,13 +167,33 @@ fn run_companions(
         return;
     }
     task.report_progress(0.7, "Running import companions");
-    let (outputs, assignments) = crate::companion::run_companions(
-        companions,
-        project_root,
-        source,
-        &imported.asset,
-        &imported.surfaces,
-    );
+    // A source that became several meshes gets companions run for each, with
+    // the surfaces that mesh uses; otherwise the one mesh and all surfaces.
+    let mut outputs = Vec::new();
+    let mut assigned: Vec<(&Path, Vec<(u32, String)>)> = Vec::new();
+    if imported.parts.is_empty() {
+        let (made, assignments) = crate::companion::run_companions(
+            companions,
+            project_root,
+            source,
+            &imported.asset,
+            &imported.surfaces,
+        );
+        outputs.extend(made);
+        assigned.push((&imported.asset, assignments));
+    } else {
+        for part in &imported.parts {
+            let (made, assignments) = crate::companion::run_companions(
+                companions,
+                project_root,
+                source,
+                &part.asset,
+                &part.surfaces,
+            );
+            outputs.extend(made);
+            assigned.push((&part.asset, assignments));
+        }
+    }
     if outputs.is_empty() {
         // Not an error, but the user asked for something and should see it
         // did not happen.
@@ -191,8 +211,10 @@ fn run_companions(
             imported.outputs.push(output);
         }
     }
-    if let Err(error) = crate::companion::assign_default_materials(&imported.asset, &assignments) {
-        tracing::warn!("could not assign companion outputs to {}: {error}", imported.asset.display());
+    for (asset, assignments) in assigned {
+        if let Err(error) = crate::companion::assign_default_materials(asset, &assignments) {
+            tracing::warn!("could not assign companion outputs to {}: {error}", asset.display());
+        }
     }
 }
 

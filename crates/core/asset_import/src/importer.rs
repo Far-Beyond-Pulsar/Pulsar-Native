@@ -34,6 +34,18 @@ pub struct Imported {
     /// The surfaces (materials) the source has and the image files found for
     /// each, for import companions. Empty when the importer has none.
     pub surfaces: Vec<SourceSurface>,
+    /// One entry per mesh file when the source held several meshes and each
+    /// got its own file; empty for a source that became one. `asset` is the
+    /// first of them.
+    pub parts: Vec<ImportedPart>,
+}
+
+/// One mesh file of a source that held several meshes.
+#[derive(Debug)]
+pub struct ImportedPart {
+    pub asset: PathBuf,
+    /// The surfaces this mesh uses; `slot` is the mesh's own slot.
+    pub surfaces: Vec<SourceSurface>,
 }
 
 pub trait Importer: Send + Sync {
@@ -97,14 +109,66 @@ impl Importer for MeshImporter {
             Some(rig) => crate::rig::import_rig(&rig, asset, previous),
             None => {
                 let surfaces = surfaces_of(&scene, source);
+                if scene.parts.len() > 1 {
+                    return import_parts(&scene, source, asset, previous, surfaces);
+                }
                 mesh_cache::write_static_mesh(scene, asset).map(|asset| Imported {
                     asset,
                     outputs: Vec::new(),
                     surfaces,
+                    parts: Vec::new(),
                 })
             }
         }
     }
+}
+
+/// A source with several meshes becomes one `.mesh` per mesh, named
+/// `<model>_<mesh>.mesh` beside where the single mesh would have gone. The
+/// first is the import's primary asset and the rest are recorded as outputs
+/// named for the mesh they came from.
+fn import_parts(
+    scene: &helio_asset_compat::ConvertedScene,
+    source: &Path,
+    asset: &Path,
+    previous: &Previous,
+    surfaces: Vec<SourceSurface>,
+) -> Result<Imported, String> {
+    let dir = asset.parent().unwrap_or_else(|| Path::new("."));
+    let stem = source.file_stem().and_then(|s| s.to_str()).unwrap_or("model");
+    let written = mesh_cache::write_mesh_parts(scene, dir, stem)?;
+    let parts: Vec<ImportedPart> = written
+        .iter()
+        .map(|part| ImportedPart {
+            asset: part.path.clone(),
+            surfaces: part
+                .source_materials
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, material)| {
+                    let mut surface = surfaces.get((*material)?)?.clone();
+                    surface.slot = slot as u32;
+                    Some(surface)
+                })
+                .collect(),
+        })
+        .collect();
+    let outputs = written
+        .iter()
+        .skip(1)
+        .map(|part| ImportOutput {
+            path: crate::db::relative_key(previous.project_root, &part.path),
+            kind: "mesh".to_string(),
+            id: None,
+            source_name: Some(part.name.clone()),
+        })
+        .collect();
+    Ok(Imported {
+        asset: written[0].path.clone(),
+        outputs,
+        surfaces,
+        parts,
+    })
 }
 
 fn role_of(semantic: helio_asset_compat::TextureSemantic) -> Option<SourceImageRole> {

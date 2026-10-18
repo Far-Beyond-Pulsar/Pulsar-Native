@@ -27,7 +27,7 @@ pub mod state;
 
 pub use companion::{nearby_images, offers_for, register_companion, CompanionOffer};
 pub use db::{ImportDb, ImportOutput, ImportRecord, LinkStatus};
-pub use importer::{importer_for, Imported, Importer, OptionValues, Previous};
+pub use importer::{importer_for, Imported, ImportedPart, Importer, OptionValues, Previous};
 pub use scan::{affects_scan, scan_project, OfferedOnce, ScanReport};
 pub use service::{
     ignore_sources, submit_import, submit_import_with_companions, submit_reimport, submit_scan, unignore_sources, unlink_source,

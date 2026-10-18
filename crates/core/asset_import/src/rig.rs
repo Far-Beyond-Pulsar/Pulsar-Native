@@ -241,6 +241,7 @@ pub fn import_rig(
         asset: mesh_at.path,
         outputs,
         surfaces: Vec::new(),
+        parts: Vec::new(),
     })
 }
 
