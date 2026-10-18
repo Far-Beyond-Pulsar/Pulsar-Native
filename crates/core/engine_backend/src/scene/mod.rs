@@ -63,7 +63,7 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }
 pub use pulsar_scene_model::{
-    attachments, components, instance, world_ext, ComponentAttachments, ComponentInstance,
+    attachments, components, hierarchy_transform, instance, world_ext, ComponentAttachments, ComponentInstance,
     EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps,
     SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId, Transform,
     Visibility,

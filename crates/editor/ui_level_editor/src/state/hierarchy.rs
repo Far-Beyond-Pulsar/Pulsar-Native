@@ -35,6 +35,13 @@ pub struct HierarchyDomain {
     pub expanded_components: HashSet<(String, usize)>,
     /// Active drag operation state.
     pub drag_state: HierarchyDragState,
+    /// Rows picked with ctrl/shift-click, in pick order. The scene's single
+    /// selection stays the primary (the inspector and gizmo follow it); this
+    /// set only adds the rows a group/folder action applies to. Empty when
+    /// only the primary is selected.
+    pub multi_selected: Vec<String>,
+    /// Row a shift-click range extends from.
+    pub selection_anchor: Option<String>,
 }
 
 impl Default for HierarchyDomain {
@@ -43,11 +50,31 @@ impl Default for HierarchyDomain {
             expanded_objects: HashSet::new(),
             expanded_components: HashSet::new(),
             drag_state: HierarchyDragState::None,
+            multi_selected: Vec::new(),
+            selection_anchor: None,
         }
     }
 }
 
 impl HierarchyDomain {
+    pub fn is_multi_selected(&self, object_id: &str) -> bool {
+        self.multi_selected.iter().any(|id| id == object_id)
+    }
+
+    /// Ctrl-click: add `object_id` to the selection, or drop it if present.
+    pub fn toggle_multi_selected(&mut self, object_id: &str) {
+        if let Some(at) = self.multi_selected.iter().position(|id| id == object_id) {
+            self.multi_selected.remove(at);
+        } else {
+            self.multi_selected.push(object_id.to_string());
+        }
+        self.selection_anchor = Some(object_id.to_string());
+    }
+
+    pub fn clear_multi_selection(&mut self) {
+        self.multi_selected.clear();
+    }
+
     pub fn toggle_object_expanded(&mut self, object_id: &str) {
         if self.expanded_objects.contains(object_id) {
             self.expanded_objects.remove(object_id);

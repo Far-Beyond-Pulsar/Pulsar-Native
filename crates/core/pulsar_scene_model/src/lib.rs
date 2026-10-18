@@ -9,6 +9,7 @@
 
 pub mod attachments;
 pub mod components;
+pub mod hierarchy_transform;
 pub mod instance;
 pub mod motion;
 pub mod payload_catalog;

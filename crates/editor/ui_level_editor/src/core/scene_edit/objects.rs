@@ -499,6 +499,9 @@ pub fn set_transform(
     let Some(entity) = world.entity_for(id) else {
         return false;
     };
+    let Some(old_transform) = world.get::<WorldTransform>(entity).copied() else {
+        return false;
+    };
     let Some(mut transform) = world.get_mut::<WorldTransform>(entity) else {
         return false;
     };
@@ -515,8 +518,17 @@ pub fn set_transform(
         transform.scale = s;
         changed = true;
     }
+    let new_transform = *transform;
     drop(transform);
     if changed {
+        // Everything inside the object (a folder's contents, a parent's
+        // children) moves with it.
+        engine_backend::scene::hierarchy_transform::propagate_to_descendants(
+            world,
+            entity,
+            &old_transform,
+            &new_transform,
+        );
         // A class instance's generated children follow their root.
         super::classes::relayout_children(world, id);
     }

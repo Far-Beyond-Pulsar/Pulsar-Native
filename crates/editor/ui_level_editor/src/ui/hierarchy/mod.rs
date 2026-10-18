@@ -59,6 +59,167 @@ struct SceneObjectItem {
     movability: Option<helio::Movability>,
 }
 
+/// Object ids in the order the tree shows them (expanded branches only).
+fn visible_order(state: &LevelEditorState) -> Vec<String> {
+    let (objects, root_ids) = {
+        let world = state.scene.world();
+        crate::scene_edit::objects::get_hierarchy_projection(&world)
+    };
+    let children: std::collections::HashMap<&str, &Vec<String>> = objects
+        .iter()
+        .map(|object| (object.id.as_str(), &object.children))
+        .collect();
+    let mut order = Vec::with_capacity(objects.len());
+    let mut stack: Vec<&String> = root_ids.iter().rev().collect();
+    while let Some(id) = stack.pop() {
+        order.push(id.clone());
+        if state.hierarchy.is_object_expanded(id) {
+            if let Some(kids) = children.get(id.as_str()) {
+                stack.extend(kids.iter().rev());
+            }
+        }
+    }
+    order
+}
+
+/// Row click with the held modifiers: plain selects one row, ctrl/cmd toggles
+/// a row in the selection, shift selects the range from the anchor.
+fn apply_row_selection(state: &mut LevelEditorState, id: &str, modifiers: &Modifiers) {
+    let primary = state.scene.selected_object();
+    if modifiers.shift {
+        let order = visible_order(state);
+        let anchor = state
+            .hierarchy
+            .selection_anchor
+            .clone()
+            .or_else(|| primary.clone())
+            .unwrap_or_else(|| id.to_string());
+        let from = order.iter().position(|row| *row == anchor);
+        let to = order.iter().position(|row| row == id);
+        if let (Some(from), Some(to)) = (from, to) {
+            let (lo, hi) = (from.min(to), from.max(to));
+            state.hierarchy.multi_selected = order[lo..=hi].to_vec();
+            state.hierarchy.selection_anchor = Some(anchor);
+            state.scene.select_object(Some(id.to_string()));
+            return;
+        }
+    }
+    if modifiers.secondary() {
+        if state.hierarchy.multi_selected.is_empty() {
+            state.hierarchy.multi_selected.extend(primary);
+        }
+        state.hierarchy.toggle_multi_selected(id);
+        let next_primary = if state.hierarchy.is_multi_selected(id) {
+            Some(id.to_string())
+        } else {
+            state.hierarchy.multi_selected.last().cloned()
+        };
+        state.scene.select_object(next_primary);
+        return;
+    }
+    state.hierarchy.clear_multi_selection();
+    state.hierarchy.selection_anchor = Some(id.to_string());
+    state.scene.select_object(Some(id.to_string()));
+}
+
+/// Put the selected objects into a new folder, placed under the first
+/// object's parent, and select the folder. Objects under another selected
+/// object travel with it, and class-generated children are left alone.
+/// Returns whether a folder was made.
+fn group_selection_into_folder(state: &mut LevelEditorState) -> bool {
+    use crate::commands::{execute_command, SceneCommand};
+    use engine_backend::scene::SceneWorldExt;
+
+    let mut picked = state.hierarchy.multi_selected.clone();
+    if picked.is_empty() {
+        picked.extend(state.scene.selected_object());
+    }
+    let order = visible_order(state);
+    // Ancestors of an object, nearest first.
+    let ancestors = |state: &LevelEditorState, id: &str| -> Vec<String> {
+        let world = state.scene.world();
+        let mut chain = Vec::new();
+        let mut at = world.entity_for(id).and_then(|e| world.parent_of(e));
+        while let Some(entity) = at {
+            if let Some(stable) = world.stable_id_of(entity) {
+                chain.push(stable.to_string());
+            }
+            at = world.parent_of(entity);
+        }
+        chain
+    };
+    let mut roots: Vec<String> = picked
+        .iter()
+        .filter(|id| {
+            let world = state.scene.world();
+            !crate::scene_edit::classes::is_generated_child(&world, id)
+                && !ancestors(state, id).iter().any(|a| picked.contains(a))
+        })
+        .cloned()
+        .collect();
+    roots.sort_by_key(|id| order.iter().position(|row| row == id).unwrap_or(usize::MAX));
+    let Some(first) = roots.first().cloned() else {
+        return false;
+    };
+    let parent_id = ancestors(state, &first).into_iter().next();
+
+    // The folder sits at the centre of what it holds, so its gizmo is on the
+    // group. Objects keep their world transform when reparented, so nothing
+    // jumps; from then on moving the folder moves them.
+    let mut transform = crate::scene_edit::Transform::default();
+    {
+        let world = state.scene.world();
+        let positions: Vec<[f32; 3]> = roots
+            .iter()
+            .filter_map(|id| crate::scene_edit::objects::get_object(&world, id))
+            .map(|object| object.transform.position)
+            .collect();
+        if !positions.is_empty() {
+            let n = positions.len() as f32;
+            for axis in 0..3 {
+                transform.position[axis] = positions.iter().map(|p| p[axis]).sum::<f32>() / n;
+            }
+        }
+    }
+
+    let created = execute_command(
+        state,
+        SceneCommand::AddObject {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "New Folder".to_string(),
+                object_type: ObjectType::Folder,
+                transform,
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id,
+        },
+    );
+    let Some(folder) = created.affected_ids.first().cloned() else {
+        return false;
+    };
+    for id in roots {
+        execute_command(
+            state,
+            SceneCommand::ReparentObject {
+                id,
+                new_parent_id: Some(folder.clone()),
+            },
+        );
+    }
+    state.hierarchy.expanded_objects.insert(folder.clone());
+    state.hierarchy.multi_selected = vec![folder.clone()];
+    state.hierarchy.selection_anchor = Some(folder.clone());
+    state.scene.select_object(Some(folder));
+    true
+}
+
 /// `id` and every object under it, for the subtree actions.
 fn subtree_ids(state: &LevelEditorState, id: &str) -> Vec<String> {
     use engine_backend::scene::SceneWorldExt;
@@ -279,6 +440,24 @@ impl HierarchyItem for SceneObjectItem {
             set_movability(ObjectMovability::Movable),
         )
         .separator()
+        .when(
+            {
+                let state = self.state_arc.read();
+                state.hierarchy.multi_selected.len() > 1
+                    && state.hierarchy.is_multi_selected(&self.object.id)
+            },
+            |menu| {
+                let group_state = self.state_arc.clone();
+                menu.menu_handler_with_icon(
+                    "Group into Folder",
+                    IconName::FolderPlus,
+                    move |_, _| {
+                        group_selection_into_folder(&mut group_state.write());
+                    },
+                )
+                .separator()
+            },
+        )
         .menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
             let mut state = duplicate_state.write();
@@ -313,7 +492,7 @@ pub struct HierarchyPanel {
     /// rather than `scene.revision`: the render thread writes gizmo-drag
     /// results and click-selects straight into the store without ever touching
     /// the UI-side revision counter.
-    cache_key: Option<(u64, Option<String>)>,
+    cache_key: Option<(u64, Option<String>, Vec<String>)>,
     cached_items: Vec<SceneObjectItem>,
     cached_root_ids: Vec<String>,
 }
@@ -334,7 +513,8 @@ impl HierarchyPanel {
     ) {
         let _scope = gpui::render_stats::scope("hierarchy: refresh cache");
         let selected = state.scene.selected_object();
-        let key = (state.scene.world_revision(), selected.clone());
+        let multi = state.hierarchy.multi_selected.clone();
+        let key = (state.scene.world_revision(), selected.clone(), multi.clone());
         if self.cache_key.as_ref() == Some(&key) {
             return;
         }
@@ -346,7 +526,8 @@ impl HierarchyPanel {
         self.cached_items = all_objects
             .into_iter()
             .map(|obj| {
-                let is_selected = selected.as_deref() == Some(obj.id.as_str());
+                let is_selected = selected.as_deref() == Some(obj.id.as_str())
+                    || multi.iter().any(|id| *id == obj.id);
                 let is_folder = matches!(obj.object_type, ObjectType::Folder);
                 let class_role = if crate::scene_edit::classes::is_class_root(&world, &obj.id) {
                     ClassRole::Root
@@ -443,6 +624,22 @@ impl HierarchyPanel {
             },
             {
                 let state_clone = state_arc.clone();
+                let wrapper = wrapper_entity.clone();
+                Button::new("group_selection")
+                    .icon(IconName::Folder)
+                    .ghost()
+                    .xsmall()
+                    .tooltip("Group selection into folder (ctrl/shift-click to select several)")
+                    .on_click(move |_, _, cx| {
+                        group_selection_into_folder(&mut state_clone.write());
+                        if let Some(wrapper) = wrapper.upgrade() {
+                            cx.notify(wrapper.entity_id());
+                        }
+                    })
+                    .into_any_element()
+            },
+            {
+                let state_clone = state_arc.clone();
                 Button::new("delete_object")
                     .icon(IconName::Trash)
                     .ghost()
@@ -515,14 +712,15 @@ impl HierarchyPanel {
                     }
                 });
             }),
-            on_select: Arc::new(move |id: &String, _window, cx| {
+            on_select: Arc::new(move |id: &String, window, cx| {
                 let id = id.clone();
+                let modifiers = window.modifiers();
                 let state = state_arc_for_select.clone();
                 let wrapper = wrapper_for_select.clone();
                 cx.defer(move |cx| {
                     {
                         let mut guard = state.write();
-                        guard.scene.select_object(Some(id));
+                        apply_row_selection(&mut guard, &id, &modifiers);
                     }
                     if let Some(wrapper) = wrapper.upgrade() {
                         cx.notify(wrapper.entity_id());

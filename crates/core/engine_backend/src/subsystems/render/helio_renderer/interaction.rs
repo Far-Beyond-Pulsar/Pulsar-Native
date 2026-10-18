@@ -438,9 +438,12 @@ impl SceneInteraction {
         self.drag = Some(drag);
         self.hovered = Some(drag.handle);
         if next != current {
-            if let Some(mut t) = world.get_mut::<Transform>(drag.entity) {
-                *t = next;
-            }
+            // Objects inside the dragged one (a folder's contents) follow it.
+            crate::scene::hierarchy_transform::set_transform_with_descendants(
+                world,
+                drag.entity,
+                next,
+            );
         }
     }
     pub fn update_hover(&mut self, world: &World, o: Vec3, d: Vec3, _camera: Vec3) -> bool {
