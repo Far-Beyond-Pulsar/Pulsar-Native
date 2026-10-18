@@ -222,6 +222,7 @@ const PROBE: &str = r#"
     result.clip_position = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
     result.tex_coords = vec2<f32>(x, y);
     result.world_normal = vec3<f32>(0.0, 1.0, 0.0);
+    result.world_position = vec3<f32>(x, 0.0, y);
     result.world_tangent = vec3<f32>(1.0, 0.0, 0.0);
     result.bitangent_sign = 1.0;
     return result;
@@ -857,4 +858,57 @@ fn inspect_local_mesh_uvs_and_sections() {
         .indices
         .iter()
         .all(|i| (*i as usize) < vertices.len()));
+}
+
+/// `sample -> normal_map -> normal`: the graph a normal map imports as. The
+/// decode takes the surface normal and world position, so the fragment gets a
+/// tangent frame from derivatives and the output pin receives a world-space
+/// unit `vec3`, not a raw texel.
+fn normal_map_graph() -> GraphDescription {
+    let mut graph = GraphDescription::new("normal map");
+    graph.add_node(node("output", "fragment_output"));
+    graph.add_node(node("uv", "frag_uv"));
+    graph.add_node(node("surface_normal", "frag_normal"));
+    graph.add_node(node("position", "world_position"));
+    let mut texture = node("texture", "sample_texture");
+    texture
+        .properties
+        .insert("texture".into(), serde_json::json!("test.png"));
+    graph.add_node(texture);
+    graph.add_node(node("decode", "normal_map"));
+    connect(&mut graph, "uv", "texture", "uv");
+    connect(&mut graph, "texture", "decode", "texel");
+    connect(&mut graph, "uv", "decode", "uv");
+    connect(&mut graph, "surface_normal", "decode", "normal");
+    connect(&mut graph, "position", "decode", "position");
+    connect(&mut graph, "decode", "output", "normal");
+    graph
+}
+
+#[test]
+fn a_normal_map_graph_compiles_with_its_helper_and_feeds_the_normal_pin() {
+    let graph = normal_map_graph();
+    let source = adapted(&graph, 0);
+    assert_eq!(source.matches("fn pn_normal_map").count(), 1, "{source}");
+    assert!(source.contains("pn_normal_map("), "{source}");
+    let uses = material_graph::texture_uses(&graph);
+    assert_eq!(uses["test.png"], helio_component::cooked_texture::TextureUse::Normal);
+}
+
+#[test]
+fn a_normal_map_renders_unit_world_space_normals_on_the_gpu() {
+    let gpu = Gpu::new(false);
+    let pixels = gpu.render(&normal_map_graph(), 1, false);
+    let geometric = [0.0, 1.0, 0.0];
+    // Row 2 of the 4x4 probe is `surface.normal`.
+    for column in 0..4 {
+        let [x, y, z, _] = pixels[8 + column];
+        let length = (x * x + y * y + z * z).sqrt();
+        assert!(length.is_finite() && (length - 1.0).abs() < 0.01, "column {column}: {x} {y} {z}");
+    }
+    let left = pixels[8];
+    assert!(
+        (left[0] - geometric[0]).abs() + (left[1] - geometric[1]).abs() + (left[2] - geometric[2]).abs() > 0.1,
+        "a non-flat texel must bend the normal away from the geometric one: {left:?}"
+    );
 }
