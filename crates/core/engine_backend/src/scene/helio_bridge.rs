@@ -226,6 +226,22 @@ pub fn ensure_gpu_mirror(
         }
     }
 
+    // Textures are cooked before they reach the GPU: a mip chain, and BC7 where
+    // the device can sample it. Loaders cook in the format this device wants,
+    // and SceneDB keeps the result on disk in the project's cache so a texture
+    // is cooked once, not once per session.
+    helio_component::texture_assets::set_preferred_cook_format(
+        if device
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+        {
+            helio_component::cooked_texture::CookFormat::Bc7
+        } else {
+            helio_component::cooked_texture::CookFormat::Rgba8
+        },
+    );
+    install_derived_cache();
+
     let material_texture_limit =
         helio_mats::MaterialBindingConfig::for_device(&device).max_textures;
     let texture_store = Arc::new(std::sync::RwLock::new(
@@ -240,6 +256,45 @@ pub fn ensure_gpu_mirror(
     tracing::info!("SceneDB GPU mirror attached for Helio 3.0");
     mirror
 }
+
+/// Point SceneDB's derived-data cache at the project's cache folder and keep it
+/// within `streaming.derived_cache_mb` (default 4096), pruning the least
+/// recently used files on a background thread. Done once per process: a second
+/// scene in the same project only repeats it.
+fn install_derived_cache() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let Some(project) = engine_state::get_project_path() else {
+            return;
+        };
+        let directory = std::path::PathBuf::from(project)
+            .join(".pulsar")
+            .join("cache")
+            .join("derived");
+        let budget_mb = match engine_state::settings::global_config().get(
+            engine_state::settings::NS_PROJECT,
+            "streaming",
+            "derived_cache_mb",
+        ) {
+            Ok(engine_state::settings::ConfigValue::Int(mb)) => mb.clamp(64, 1_048_576) as u64,
+            _ => 4096,
+        };
+        pulsar_scenedb::set_derived_cache_dir(Some(directory));
+        std::thread::spawn(move || {
+            match pulsar_scenedb::prune_derived_cache(budget_mb * 1024 * 1024) {
+                Ok(report) if report.removed_files > 0 => tracing::info!(
+                    "derived-data cache pruned: removed {} files ({} MiB), {} MiB kept",
+                    report.removed_files,
+                    report.removed_bytes / (1024 * 1024),
+                    report.kept_bytes / (1024 * 1024)
+                ),
+                Ok(_) => {}
+                Err(error) => tracing::debug!("derived-data cache not pruned: {error}"),
+            }
+        });
+    });
+}
+
 
 #[cfg(test)]
 mod tests {

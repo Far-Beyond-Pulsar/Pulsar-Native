@@ -7,6 +7,7 @@ pub mod large_allocs;
 pub mod live_logs;
 pub mod log_reader;
 pub mod mem_details;
+pub mod memory_report;
 pub mod memory_database;
 pub mod memory_tracking;
 pub mod performance_metrics;

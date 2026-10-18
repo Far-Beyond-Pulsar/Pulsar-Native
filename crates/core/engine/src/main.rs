@@ -325,8 +325,12 @@ fn main() {
 
     let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
         additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
-        // hardware wide multiplies for the voxel planet's fixed-point math
-        optional_features: wgpu::Features::SHADER_INT64,
+        // SHADER_INT64: hardware wide multiplies for the voxel planet's fixed-point math
+        // POLYGON_MODE_LINE: Helio's wireframe debug view
+        // TEXTURE_COMPRESSION_BC: cooked textures are stored as BC7 where the device can sample it
+        optional_features: wgpu::Features::SHADER_INT64
+            | wgpu::Features::POLYGON_MODE_LINE
+            | wgpu::Features::TEXTURE_COMPRESSION_BC,
         desired_maximum_frame_latency: max_frame_latency,
         backends: renderer_backends,
         power_preference,

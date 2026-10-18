@@ -13,6 +13,7 @@
 //! The GPU and Process views work without it.
 
 use crate::utils::gpu_alloc_report::{self, GpuReport};
+use crate::utils::memory_report;
 use crate::utils::large_allocs::{self, LargeSnapshot};
 use crate::utils::process_memory::{self, ProcessMemory, RegionKind};
 use crate::utils::tracking_allocator::{disable_tracking, enable_tracking, is_tracking_active};
@@ -50,6 +51,8 @@ pub struct MemoryExplorerPanel {
     expanded: HashSet<u64>,
     /// When the panel last drew; the refresh loop sleeps while it is hidden.
     last_render: Instant,
+    /// What the last export did, shown in the toolbar.
+    status: Arc<RwLock<String>>,
     _refresh_task: Task<()>,
 }
 
@@ -106,8 +109,55 @@ impl MemoryExplorerPanel {
             data,
             expanded: HashSet::new(),
             last_render: Instant::now(),
+            status: Arc::new(RwLock::new(String::new())),
             _refresh_task: refresh,
         }
+    }
+
+    /// Write a Markdown report of all three views and the cache to
+    /// `<project>/.pulsar/profiling/memory/`, off the UI thread.
+    fn export(&mut self, cx: &mut Context<Self>) {
+        let status = self.status.clone();
+        *status.write() = "Exporting…".into();
+        let tracking = is_tracking_active();
+        cx.spawn(async move |this, cx| {
+            let message = cx
+                .background_executor()
+                .spawn(async move {
+                    let heap = large_allocs::build_snapshot();
+                    let gpu = gpu_alloc_report::collect();
+                    let process = process_memory::scan();
+                    let unix_time = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |since| since.as_secs());
+                    let markdown = memory_report::render(&memory_report::ReportInput {
+                        heap: &heap,
+                        gpu: &gpu,
+                        process: &process,
+                        cache: pulsar_scenedb::residency_stats(),
+                        derived: pulsar_scenedb::derived_stats(),
+                        tracking_was_on: tracking,
+                        label: "",
+                        unix_time,
+                    });
+                    let root = engine_state::get_project_path()
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(std::env::temp_dir);
+                    match memory_report::write(&root, unix_time, &markdown) {
+                        Ok(path) => format!("Saved {}", path.display()),
+                        Err(error) => format!("Export failed: {error}"),
+                    }
+                })
+                .await;
+            *status.write() = message;
+            let _ = cx.update(|cx| {
+                if let Some(this) = this.upgrade() {
+                    this.update(cx, |_, cx| cx.notify());
+                }
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
@@ -248,7 +298,16 @@ impl Render for MemoryExplorerPanel {
             .child(self.chip("clear", "Clear", false, cx, |_, cx| {
                 large_allocs::clear();
                 cx.notify();
-            }));
+            }))
+            .child(self.chip("export", "Export report", false, cx, |this, cx| {
+                this.export(cx)
+            }))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(self.status.read().clone()),
+            );
 
         let body = match self.view {
             View::Heap => self.render_heap(tracking, cx),
@@ -354,12 +413,30 @@ impl MemoryExplorerPanel {
                 self.stat(
                     "Rebuildable-data cache",
                     format!(
-                        "{} / {} · {} values · {} evicted · {} rebuilt",
+                        "{} / {} · {} values · {} evicted · {} rebuilt · {} prefetched · {} joined",
                         fmt_bytes(cache.resident_bytes as u64),
                         fmt_bytes(cache.budget as u64),
                         cache.resident_values,
                         cache.evictions,
                         cache.rebuilds,
+                        cache.prefetches,
+                        cache.joined,
+                    ),
+                    cx,
+                )
+            })
+            .child({
+                // SceneDB's derived-data cache on disk: a hit is a file read,
+                // a miss is a cook (decode, mips, encode).
+                let derived = pulsar_scenedb::derived_stats();
+                self.stat(
+                    "Derived-data cache (disk)",
+                    format!(
+                        "{} hits · {} cooked · {} read · {} written",
+                        derived.hits,
+                        derived.misses,
+                        fmt_bytes(derived.bytes_read),
+                        fmt_bytes(derived.bytes_written),
                     ),
                     cx,
                 )
