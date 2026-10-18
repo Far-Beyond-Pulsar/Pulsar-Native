@@ -143,6 +143,9 @@ fn relative_camera_source_compatible(
         | "builtin_cell_metadata"
         | "component_owners"
         | "object_hidden"
+        // Parent indices, no positions; the hierarchy resolve composes the
+        // (camera-relative-safe) transform rows with them.
+        | "object_parent"
         | "Transform::packed"
         | "light_sources"
         | "decal_sources"

@@ -571,10 +571,56 @@ pub fn move_object_down(world: &mut World, id: &str) {
     }
 }
 
-/// Shallow-duplicate an object (children are not copied). Returns the new ID.
+/// Duplicate an object together with everything inside it: a folder's copy
+/// holds copies of its contents, nested to any depth, laid out as the
+/// originals are (transforms are parent-relative, so the copies sit in the new
+/// folder as the originals sit in the old one). Only the top copy is named
+/// "(Copy)". A class instance's generated children are rebuilt by the class
+/// copy, not copied. Returns the new ID.
 pub fn duplicate_object(world: &mut World, id: &str) -> Option<ObjectId> {
+    let new_id = duplicate_one(world, id, None, true)?;
+    duplicate_contents(world, id, &new_id);
+    Some(new_id)
+}
+
+/// Copy the objects inside `source_id` into `copy_id`, recursively.
+fn duplicate_contents(world: &mut World, source_id: &str, copy_id: &str) {
+    let Some(source) = world.entity_for(source_id) else {
+        return;
+    };
+    let children: Vec<ObjectId> = world
+        .children_of(Some(source))
+        .into_iter()
+        .filter_map(|child| world.stable_id_of(child).map(str::to_string))
+        .filter(|child| !super::classes::is_generated_child(world, child))
+        .collect();
+    for child in children {
+        if let Some(child_copy) = duplicate_one(world, &child, Some(copy_id.to_string()), false) {
+            duplicate_contents(world, &child, &child_copy);
+        }
+    }
+}
+
+/// Copy one object (not its contents). `parent` places the copy under that
+/// object, keeping its own transform; `None` leaves it beside the original.
+/// `rename` marks it "(Copy)".
+fn duplicate_one(
+    world: &mut World,
+    id: &str,
+    parent: Option<ObjectId>,
+    rename: bool,
+) -> Option<ObjectId> {
     if super::classes::is_class_root(world, id) {
         if let Some(new_id) = super::classes::duplicate_instance(world, id) {
+            if let Some(parent) = parent {
+                // Moved as it is: its transform is already relative to a
+                // parent of the same shape.
+                if let (Some(copy), Some(parent)) =
+                    (world.entity_for(&new_id), world.entity_for(&parent))
+                {
+                    let _ = world.reparent(copy, Some(parent));
+                }
+            }
             return Some(new_id);
         }
     }
@@ -585,9 +631,11 @@ pub fn duplicate_object(world: &mut World, id: &str) -> Option<ObjectId> {
     let source = world.entity_for(id)?;
     let mut obj = entity_to_scene_object_data(world, source);
     obj.id = String::new(); // force auto-assign
-    obj.name = format!("{} (Copy)", obj.name);
+    if rename {
+        obj.name = format!("{} (Copy)", obj.name);
+    }
     obj.children = vec![];
-    let parent = obj.parent.clone();
+    let parent = parent.or_else(|| obj.parent.clone());
     let new_id = add_object(world, obj, parent);
     if new_id.is_empty() {
         return None;

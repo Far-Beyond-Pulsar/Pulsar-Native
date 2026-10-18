@@ -181,3 +181,42 @@ fn reparenting_to_the_root_keeps_the_world_pose() {
         11.0
     );
 }
+
+#[test]
+fn duplicating_a_folder_duplicates_its_contents_into_the_copy() {
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let folder = objects::add_folder(world, "folder", None);
+    let item = objects::add_folder(world, "item", Some(folder.clone()));
+    objects::set_transform(world, &item, Some([1.0, 2.0, 3.0]), None, None);
+    let inner = objects::add_folder(world, "inner", Some(folder.clone()));
+    let deep = objects::add_folder(world, "deep", Some(inner.clone()));
+    let before = objects::get_all_objects(world).len();
+
+    let copy = objects::duplicate_object(world, &folder).expect("duplicated");
+
+    assert_eq!(objects::get_all_objects(world).len(), before * 2, "every object was copied");
+    let copy_data = objects::get_object(world, &copy).unwrap();
+    assert_eq!(copy_data.name, "folder (Copy)");
+    assert_eq!(copy_data.children.len(), 2, "the copy holds copies of both contents");
+    // The originals still hold theirs, untouched.
+    assert_eq!(objects::get_object(world, &folder).unwrap().children, [item.clone(), inner.clone()]);
+    assert_eq!(objects::get_object(world, &inner).unwrap().children, [deep]);
+
+    let mut names = Vec::new();
+    for id in &copy_data.children {
+        let child = objects::get_object(world, id).unwrap();
+        assert_ne!(*id, item);
+        assert_ne!(*id, inner);
+        if child.name == "item" {
+            assert_eq!(child.transform.position, [1.0, 2.0, 3.0], "same place in the new folder");
+        }
+        if child.name == "inner" {
+            assert_eq!(child.children.len(), 1, "nested contents are copied too");
+            assert_eq!(objects::get_object(world, &child.children[0]).unwrap().name, "deep");
+        }
+        names.push(child.name);
+    }
+    names.sort();
+    assert_eq!(names, ["inner", "item"], "contents keep their names");
+}
