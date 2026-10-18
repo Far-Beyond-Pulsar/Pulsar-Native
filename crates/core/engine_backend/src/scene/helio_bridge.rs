@@ -202,6 +202,15 @@ pub fn ensure_gpu_mirror(
             .clamp(64, 16_384) as u64
             * 1024
             * 1024;
+        // Rebuildable asset data (decoded images) is held in SceneDB's budgeted
+        // residency cache, so CPU memory follows this budget, not the number of
+        // assets in the project. Dropped data is decoded again on demand.
+        let cpu_cache_bytes = int_of(streaming("cpu_cache_mb"))
+            .unwrap_or(1024)
+            .clamp(64, 65_536) as usize
+            * 1024
+            * 1024;
+        pulsar_scenedb::set_residency_budget(cpu_cache_bytes);
         match gpu_store.configure_tiers(
             pulsar_scenedb::gpu::TierConfig {
                 vram_budget_bytes: pool_bytes,

@@ -14378,6 +14378,7 @@ dependencies = [
  "notify 8.2.0",
  "once_cell",
  "parking_lot",
+ "pulsar_scenedb",
  "rand 0.10.2",
  "rusqlite",
  "rust-i18n",

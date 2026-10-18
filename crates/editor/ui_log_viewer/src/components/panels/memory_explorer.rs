@@ -345,7 +345,25 @@ impl MemoryExplorerPanel {
                 format!("{} / {}", snapshot.total_allocs, snapshot.total_frees),
                 cx,
             ))
-            .child(self.stat("Threshold", fmt_bytes(snapshot.threshold.max(large_allocs::threshold()) as u64), cx));
+            .child(self.stat("Threshold", fmt_bytes(snapshot.threshold.max(large_allocs::threshold()) as u64), cx))
+            .child({
+                // SceneDB's budgeted cache of rebuildable data (decoded
+                // images): resident bytes stay within the budget, and
+                // evictions/rebuilds show the cache working.
+                let cache = pulsar_scenedb::residency_stats();
+                self.stat(
+                    "Rebuildable-data cache",
+                    format!(
+                        "{} / {} · {} values · {} evicted · {} rebuilt",
+                        fmt_bytes(cache.resident_bytes as u64),
+                        fmt_bytes(cache.budget as u64),
+                        cache.resident_values,
+                        cache.evictions,
+                        cache.rebuilds,
+                    ),
+                    cx,
+                )
+            });
 
         let hint = (!tracking).then(|| {
             div()

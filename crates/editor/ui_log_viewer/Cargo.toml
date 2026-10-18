@@ -15,6 +15,7 @@ ui_common.workspace = true
 # Engine
 engine_backend.workspace = true
 engine_state.workspace = true
+pulsar_scenedb.workspace = true
 
 # Logging
 tracing.workspace = true
