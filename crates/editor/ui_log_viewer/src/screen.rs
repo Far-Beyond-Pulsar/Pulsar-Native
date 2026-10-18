@@ -133,6 +133,9 @@ impl MissionControlPanel {
             let callers_panel = cx.new(|cx| {
                 panels::CallerSitesPanel::new(window, cx)
             });
+            // Memory Explorer: live large allocations, GPU allocations, and
+            // the process's address space, each by owner.
+            let explorer_panel = cx.new(panels::MemoryExplorerPanel::new);
             let resource_panel = cx.new(|cx| {
                 panels::ResourceMonitorPanel::new(metrics.clone(), cx)
             });
@@ -142,7 +145,7 @@ impl MissionControlPanel {
                 panels::SystemInfoPanel::new(system_info.clone(), cx)
             });
 
-            // Center: Logs | Memory | CPU | GPU | Callers tabs
+            // Center: Logs | Memory | CPU | GPU | Callers | Memory Explorer tabs
             let center_tabs = DockItem::tabs(
                 vec![
                     std::sync::Arc::new(logs_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
@@ -150,6 +153,7 @@ impl MissionControlPanel {
                     std::sync::Arc::new(advanced_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                     std::sync::Arc::new(gpu_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                     std::sync::Arc::new(callers_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    std::sync::Arc::new(explorer_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                 ],
                 Some(0), // Default to logs tab
                 &dock_area,

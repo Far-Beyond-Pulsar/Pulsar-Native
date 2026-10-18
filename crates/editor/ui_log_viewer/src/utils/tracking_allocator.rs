@@ -6,6 +6,7 @@
 
 use crate::utils::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
 use crate::utils::caller_tracking;
+use crate::utils::large_allocs;
 use crate::utils::memory_tracking::MemoryCategory;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -76,11 +77,15 @@ impl TrackingAllocator {
         ATOMIC_MEMORY_COUNTERS.record_alloc(layout.size(), Self::categorize_allocation());
 
         // Capture raw return addresses only — no symbol resolution, no heap alloc.
-        let mut frames = [0usize; 8];
+        // Ordinary allocations keep 8 frames; a large one (see `large_allocs`)
+        // gets a deep stack so the Memory Explorer can name its owner.
+        let large = large_allocs::wants(layout.size());
+        let limit = if large { large_allocs::MAX_FRAMES } else { 8 };
+        let mut frames = [0usize; large_allocs::MAX_FRAMES];
         let mut count = 0usize;
         unsafe {
             backtrace::trace_unsynchronized(|frame| {
-                if count < frames.len() {
+                if count < limit {
                     frames[count] = frame.ip() as usize;
                     count += 1;
                     true
@@ -90,7 +95,10 @@ impl TrackingAllocator {
             });
         }
         if count > 0 {
-            caller_tracking::record_alloc(ptr as usize, &frames[..count], layout.size());
+            caller_tracking::record_alloc(ptr as usize, &frames[..count.min(8)], layout.size());
+            if large {
+                large_allocs::record_alloc(ptr as usize, layout.size(), &frames[..count]);
+            }
         }
 
         TRACKING_ENABLED.with(|e| e.set(true));
@@ -119,6 +127,7 @@ impl TrackingAllocator {
 
         ATOMIC_MEMORY_COUNTERS.record_dealloc(layout.size(), Self::categorize_allocation());
         caller_tracking::record_dealloc(ptr as usize, layout.size());
+        large_allocs::record_dealloc(ptr as usize, layout.size());
 
         TRACKING_ENABLED.with(|e| e.set(true));
     }

@@ -273,7 +273,7 @@ pub fn refresh_snapshot(filter: &str) {
 
 // ─── Symbol resolution ────────────────────────────────────────────────────────
 
-fn resolve_symbol(addr: u64) -> String {
+pub(crate) fn resolve_symbol(addr: u64) -> String {
     if addr == 0 {
         return "<unknown>".to_string();
     }
