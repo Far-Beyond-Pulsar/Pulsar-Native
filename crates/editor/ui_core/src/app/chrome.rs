@@ -44,6 +44,10 @@ pub struct ChromeState {
     /// Drawer height in pixels, within `MIN..=MAX_DRAWER_HEIGHT`.
     pub drawer_height: f32,
     // ── transient ──
+    /// The folder the drawer shows, mirrored from it so the layout can save
+    /// it (the drawer owns the real value). The layout writes it as a
+    /// project-relative path, see [`SavedChrome::file_manager_folder`].
+    pub file_manager_folder: Option<std::path::PathBuf>,
     /// The overlay form of the drawer is showing (only while not docked).
     pub drawer_open: bool,
     pub drawer_resizing: bool,
@@ -62,6 +66,7 @@ impl Default for ChromeState {
         Self {
             drawer_docked: false,
             drawer_height: DEFAULT_DRAWER_HEIGHT,
+            file_manager_folder: None,
             drawer_open: false,
             drawer_resizing: false,
             drawer_resize_start_y: 0.0,
@@ -81,6 +86,10 @@ pub struct SavedChrome {
     pub file_manager_docked: bool,
     #[serde(default = "default_height", skip_serializing_if = "is_default_height")]
     pub file_manager_height: f32,
+    /// The folder the drawer was showing, relative to the project root with
+    /// forward slashes, so it reopens where the user left it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_manager_folder: Option<String>,
 }
 
 fn default_height() -> f32 {
@@ -96,6 +105,7 @@ impl Default for SavedChrome {
         Self {
             file_manager_docked: false,
             file_manager_height: DEFAULT_DRAWER_HEIGHT,
+            file_manager_folder: None,
         }
     }
 }
@@ -123,6 +133,8 @@ impl ChromeState {
         SavedChrome {
             file_manager_docked: self.drawer_docked,
             file_manager_height: self.drawer_height,
+            // Relative to the project root, which only the layout knows.
+            file_manager_folder: None,
         }
     }
 
@@ -186,6 +198,7 @@ mod tests {
             live.restore(&SavedChrome {
                 file_manager_docked: false,
                 file_manager_height: saved,
+                file_manager_folder: None,
             });
             assert_eq!(live.drawer_height, expected, "saved {saved}");
         }
