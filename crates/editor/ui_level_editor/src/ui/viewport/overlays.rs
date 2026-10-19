@@ -204,7 +204,7 @@ impl ViewportPanel {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
-                    .child(render_portal_debug_overlay(state_arc.clone(), cx)),
+                    .child(render_portal_debug_overlay(state_arc.clone(), gpu_engine, cx)),
             );
             if view.editor.camera_mode == crate::state::CameraMode::Perspective {
                 overlays = overlays.child(
@@ -219,6 +219,7 @@ impl ViewportPanel {
                 .and_then(|engine| engine.editor_mailbox())
             {
                 mailbox.set_portal_debug_texts(Vec::new());
+                mailbox.set_portal_debug_geometry(Vec::new());
             }
         } else if let Some(mailbox) = gpu_engine
             .try_lock()
@@ -226,6 +227,7 @@ impl ViewportPanel {
             .and_then(|engine| engine.editor_mailbox())
         {
             mailbox.set_portal_debug_texts(Vec::new());
+            mailbox.set_portal_debug_geometry(Vec::new());
         }
 
         // What the overlay samples, on its own timer: the renderer's statistics
@@ -380,6 +382,7 @@ impl ViewportPanel {
 
 fn render_portal_debug_overlay<V>(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
@@ -405,11 +408,17 @@ where
     for (portal_a, portal_b) in pairing.pairs {
         let name_a = portal_name(&world, portal_a.owner);
         let name_b = portal_name(&world, portal_b.owner);
+        let select_state = state_arc.clone();
+        let select_engine = gpu_engine.clone();
+        let select_source = portal_a;
+        let select_target = portal_b;
         rows.push(
             div()
                 .flex()
                 .items_center()
                 .gap_2()
+                .cursor_pointer()
+                .hover(|style| style.bg(cx.theme().sidebar.opacity(0.55)))
                 .child(
                     div()
                         .px_1()
@@ -424,13 +433,27 @@ where
                         .text_xs()
                         .text_color(cx.theme().foreground)
                         .child(format!("Through A → B  ·  {name_b}")),
-                ),
+                )
+                .on_click(move |_, _, _| {
+                    select_portal_debug_view(
+                        &select_state,
+                        &select_engine,
+                        select_source,
+                        select_target,
+                    );
+                }),
         );
+        let select_state = state_arc.clone();
+        let select_engine = gpu_engine.clone();
+        let select_source = portal_b;
+        let select_target = portal_a;
         rows.push(
             div()
                 .flex()
                 .items_center()
                 .gap_2()
+                .cursor_pointer()
+                .hover(|style| style.bg(cx.theme().sidebar.opacity(0.55)))
                 .child(
                     div()
                         .px_1()
@@ -445,7 +468,15 @@ where
                         .text_xs()
                         .text_color(cx.theme().foreground)
                         .child(format!("Through B → A  ·  {name_a}")),
-                ),
+                )
+                .on_click(move |_, _, _| {
+                    select_portal_debug_view(
+                        &select_state,
+                        &select_engine,
+                        select_source,
+                        select_target,
+                    );
+                }),
         );
     }
 
@@ -530,7 +561,84 @@ where
                 .text_color(cx.theme().muted_foreground)
                 .child("Each opening shows the scene from its partner."),
         )
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("Select a direction to reveal its mapped geometry."),
+        )
         .children(rows)
+}
+
+fn select_portal_debug_view(
+    state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
+    gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    source: engine_backend::scene::portals::Portal,
+    target: engine_backend::scene::portals::Portal,
+) {
+    use engine_backend::scene::SceneWorldExt as _;
+    let mut state = state_arc.write();
+    let world = state.scene.world();
+    let selected_id = world.stable_id_of(source.owner).map(str::to_owned);
+    let ghost = portal_ghost_geometry(&world, source, target);
+    drop(world);
+    state.scene.select_object(selected_id);
+    drop(state);
+    if let Some(mailbox) = gpu_engine
+        .try_lock()
+        .ok()
+        .and_then(|engine| engine.editor_mailbox())
+    {
+        mailbox.set_portal_debug_geometry(ghost);
+    }
+}
+
+/// Snapshot nearby static triangles and map them through the selected portal
+/// pair. This is a deliberate, bounded editor-only inspection payload.
+fn portal_ghost_geometry(
+    world: &pulsar_scenedb::World,
+    source: engine_backend::scene::portals::Portal,
+    target: engine_backend::scene::portals::Portal,
+) -> Vec<[f64; 3]> {
+    use glam::{DMat4, DVec3};
+    use helio_component::components::StaticMeshComponent;
+
+    const MAX_GHOST_VERTICES: usize = 90_000;
+    const RADIUS_SQUARED: f64 = 12_000.0;
+    let Some(source_world) = engine_backend::scene::hierarchy_transform::world_matrix_of(world, source.owner) else {
+        return Vec::new();
+    };
+    let Some(target_world) = engine_backend::scene::hierarchy_transform::world_matrix_of(world, target.owner) else {
+        return Vec::new();
+    };
+    let map = source_world * DMat4::from_rotation_y(std::f64::consts::PI) * target_world.inverse();
+    let target_position = target_world.transform_point3(DVec3::ZERO);
+    let mut vertices = Vec::new();
+    'meshes: for (_instance, owner, component) in engine_backend::scene::attachments::enabled_components::<StaticMeshComponent>(world) {
+        let Some(owner_world) = engine_backend::scene::hierarchy_transform::world_matrix_of(world, owner) else { continue; };
+        let center = owner_world.transform_point3(DVec3::ZERO);
+        if center.distance_squared(target_position) > RADIUS_SQUARED { continue; }
+        for triangle in component.indices.chunks_exact(3) {
+            if vertices.len() + 3 > MAX_GHOST_VERTICES { break 'meshes; }
+            let Some(triangle_vertices) = triangle
+                .iter()
+                .map(|index| component.vertices.get(*index as usize))
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            for vertex in triangle_vertices {
+                let local = DVec3::new(
+                    f64::from(vertex.position[0]),
+                    f64::from(vertex.position[1]),
+                    f64::from(vertex.position[2]),
+                );
+                let mapped = map.transform_point3(owner_world.transform_point3(local));
+                vertices.push(mapped.to_array());
+            }
+        }
+    }
+    vertices
 }
 
 fn portal_name(world: &pulsar_scenedb::World, owner: pulsar_scenedb::Entity) -> String {
@@ -569,7 +677,7 @@ fn render_portal_badges(
         let anchor = DVec3::new(
             -f64::from(portal.width) * 0.48,
             f64::from(portal.height) * 0.48,
-            0.02,
+            -0.02,
         );
         if world
             .get::<engine_backend::scene::Visibility>(owner)
@@ -600,7 +708,7 @@ fn render_portal_badges(
         };
         labels.push(
             engine_backend::subsystems::render::helio_renderer::PortalDebugText {
-                world_position: matrix.transform_point3(anchor).as_vec3().to_array(),
+                world_position: matrix.transform_point3(anchor).to_array(),
                 text: label,
                 color,
             },

@@ -9,6 +9,7 @@ pub use helio_renderer::{
     HelioEditorMailbox, HelioRenderer, PendingPointerEvent, RenderMetrics, RenderSpikeLogConfig,
     StaticDragWarning, ViewKind, ViewportDebugLegend, ViewportDebugView, VoxelBrushRequest,
     VoxelBrushTool, VoxelChunkSaves, VoxelSavedChunks, CAMERA_PIVOT_DISTANCE,
+    PORTAL_DEBUG_VIEW_MODE,
 };
 // pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 

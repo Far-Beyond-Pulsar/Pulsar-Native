@@ -22,7 +22,9 @@
 use std::sync::Arc;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
-use engine_backend::subsystems::render::{HelioEditorMailbox, ViewportDebugView};
+use engine_backend::subsystems::render::{
+    HelioEditorMailbox, ViewportDebugView, PORTAL_DEBUG_VIEW_MODE,
+};
 use gpui::*;
 use ui::dock::PanelEvent;
 use ui::dropdown::{DropdownEvent, SearchableVec};
@@ -273,11 +275,14 @@ impl ToolbarView {
                         state.editor.viewport_debug_mode = 0;
                         state.editor.show_wireframe = false;
                         state.editor.show_lighting = true;
+                        state.overlays.state.show_portal_debug_overlay = false;
                     }
                     ViewModeSelection::Debug(debug_mode) => {
                         state.editor.viewport_debug_mode = *debug_mode;
                         state.editor.show_wireframe = false;
                         state.editor.show_lighting = true;
+                        state.overlays.state.show_portal_debug_overlay =
+                            *debug_mode == PORTAL_DEBUG_VIEW_MODE;
                     }
                 }
             },
@@ -365,7 +370,12 @@ impl Render for ToolbarView {
         if let Some(mailbox) = &self.helio_mailbox {
             mailbox.set_viewport_bloom(state.editor.feature_bloom_enabled);
             mailbox.set_viewport_realtime(state.editor.realtime_viewport);
-            mailbox.set_viewport_debug_mode(state.editor.viewport_debug_mode);
+            let render_debug_mode = if state.editor.viewport_debug_mode == PORTAL_DEBUG_VIEW_MODE {
+                0
+            } else {
+                state.editor.viewport_debug_mode
+            };
+            mailbox.set_viewport_debug_mode(render_debug_mode);
         }
         drop(_mailbox_scope);
         let selected_mode = if state.editor.viewport_debug_mode == 0

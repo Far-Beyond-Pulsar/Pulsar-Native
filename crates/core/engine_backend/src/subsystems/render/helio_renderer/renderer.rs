@@ -757,6 +757,7 @@ pub struct HelioEditorMailbox {
     camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     pending_portal_debug_texts: Arc<Mutex<Option<Vec<helio::PortalDebugText>>>>,
+    pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
     voxel_chunk_saves: VoxelChunkSaves,
@@ -764,6 +765,10 @@ pub struct HelioEditorMailbox {
 
 /// A debug view advertised by a pass in the editor viewport's render graph.
 pub type ViewportDebugLegend = helio::DebugViewLegend;
+
+/// Editor-only view selection for portal diagnostics. The renderer keeps its
+/// color output lit while the editor draws portal labels and pairing overlays.
+pub const PORTAL_DEBUG_VIEW_MODE: u32 = 35;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ViewportDebugView {
@@ -862,6 +867,14 @@ impl HelioEditorMailbox {
     pub fn set_portal_debug_texts(&self, texts: Vec<helio::PortalDebugText>) {
         if let Ok(mut pending) = self.pending_portal_debug_texts.lock() {
             *pending = Some(texts);
+        }
+    }
+
+    /// Show the geometry mapped through the selected portal in the editor.
+    /// An empty vector clears the ghost overlay.
+    pub fn set_portal_debug_geometry(&self, vertices: Vec<[f64; 3]>) {
+        if let Ok(mut pending) = self.pending_portal_debug_geometry.lock() {
+            *pending = Some(vertices);
         }
     }
 
@@ -968,6 +981,7 @@ pub struct HelioRenderer {
     /// Debug views advertised by the active render graph, exposed to editor UI.
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     pending_portal_debug_texts: Arc<Mutex<Option<Vec<helio::PortalDebugText>>>>,
+    pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
     frame_delta_override: Option<f32>,
@@ -1193,6 +1207,7 @@ impl HelioRenderer {
             ortho_boom: CAMERA_PIVOT_DISTANCE as f32,
             viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
             pending_portal_debug_texts: Arc::new(Mutex::new(None)),
+            pending_portal_debug_geometry: Arc::new(Mutex::new(None)),
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
@@ -1730,6 +1745,11 @@ impl HelioRenderer {
             .lock()
             .ok()
             .and_then(|mut pending| pending.take());
+        let portal_debug_geometry = self
+            .pending_portal_debug_geometry
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.take());
         let measured_deferred_light_ms = self
             .inner
             .as_ref()
@@ -1751,6 +1771,9 @@ impl HelioRenderer {
 
         let portal_debug_texts_changed = portal_debug_texts
             .map(|texts| inner.renderer.set_portal_debug_texts(texts))
+            .unwrap_or(false);
+        let portal_debug_geometry_changed = portal_debug_geometry
+            .map(|vertices| inner.renderer.set_portal_debug_geometry(vertices))
             .unwrap_or(false);
         let measured_deferred_light_changed = inner
             .renderer
@@ -1799,6 +1822,7 @@ impl HelioRenderer {
             || postprocess_changed
             || debug_view_changed
             || portal_debug_texts_changed
+            || portal_debug_geometry_changed
             || (self.viewport_debug_mode.load(Ordering::Acquire) == 34
                 && measured_deferred_light_changed)
             || view_kind_changed
@@ -2958,6 +2982,7 @@ impl HelioRenderer {
             camera_sync_join: self.camera_sync_join.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
             pending_portal_debug_texts: self.pending_portal_debug_texts.clone(),
+            pending_portal_debug_geometry: self.pending_portal_debug_geometry.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
             voxel_chunk_saves: self.voxel_chunk_saves.clone(),

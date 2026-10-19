@@ -10,7 +10,9 @@
 
 use std::sync::Arc;
 
-use engine_backend::subsystems::render::{ViewKind, ViewportDebugView};
+use engine_backend::subsystems::render::{
+    ViewKind, ViewportDebugView, PORTAL_DEBUG_VIEW_MODE,
+};
 use gpui::*;
 use ui::dropdown::{DropdownEvent, SearchableVec};
 
@@ -71,6 +73,8 @@ impl OwnViewPicker {
                     ViewModeSelection::Lit => 0,
                     ViewModeSelection::Debug(mode) => *mode,
                 };
+                state.overlays.state.show_portal_debug_overlay =
+                    state.editor.viewport_debug_mode == PORTAL_DEBUG_VIEW_MODE;
                 state.editor.show_wireframe = false;
                 state.editor.show_lighting = true;
             },
@@ -145,7 +149,11 @@ impl ViewportPanel {
             mailbox.set_viewport_bloom(shared.editor.feature_bloom_enabled);
             mailbox.set_viewport_realtime(shared.editor.realtime_viewport);
         }
-        mailbox.set_viewport_debug_mode(debug_mode);
+        mailbox.set_viewport_debug_mode(if debug_mode == PORTAL_DEBUG_VIEW_MODE {
+            0
+        } else {
+            debug_mode
+        });
         mailbox.set_camera_sync_locked(self.view_state.read().overlays.state.camera_sync_locked);
 
         // The renderer advertises its debug views once its graph exists.
