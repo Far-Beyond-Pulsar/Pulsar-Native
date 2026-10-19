@@ -3486,6 +3486,71 @@ fn a_rigid_frames_meshes_move_with_it_in_the_frame() {
     }
 }
 
+/// Two portals (Link IDs `near_id` and `far_id`), the near one at the origin facing
+/// the test camera and the far one 100 m to the side, with a mesh on each side of the
+/// far one. The meshes are out of the camera's view unless the portals are linked.
+fn portal_scene(radius: f32, near_id: i32, far_id: i32) -> LevelEditorState {
+    let mut state = LevelEditorState::new();
+    let add_portal = |state: &mut LevelEditorState, name: &str, position: [f32; 3], link: i32| {
+        let id = add_object(state, name, ObjectType::Empty);
+        if position != [0.0; 3] {
+            move_to(state, &id, position);
+        }
+        assert!(
+            execute_command(
+                state,
+                SceneCommand::AddComponent {
+                    id: id.clone(),
+                    class_name: "PortalComponent".into(),
+                    value: None,
+                },
+            )
+            .changed,
+            "the portal component was refused"
+        );
+        for (property, value) in [
+            ("link_id", Box::new(link) as Box<dyn std::any::Any + Send>),
+            ("width", Box::new(radius * 3.0)),
+            ("height", Box::new(radius * 3.0)),
+        ] {
+            let result = execute_command(
+                state,
+                SceneCommand::SetComponentProperty {
+                    id: id.clone(),
+                    class_name: "PortalComponent".into(),
+                    component_index: 0,
+                    prop_name: property.into(),
+                    value,
+                },
+            );
+            assert!(result.changed, "portal {property} edit was refused");
+        }
+        id
+    };
+    add_portal(&mut state, "near", [0.0, 0.0, 0.0], near_id);
+    add_portal(&mut state, "far", [100.0, 0.0, 0.0], far_id);
+    for z in [radius * 2.0, -radius * 2.0] {
+        let mesh = drop_mesh(&mut state);
+        move_to(&mut state, &mesh, [100.0, 0.0, z]);
+    }
+    state
+}
+
+/// Mean `[r, g, b]` (0-255) over the pixels where `frame` differs from `reference`.
+fn mean_color_of_difference(frame: &Frame, reference: &Frame) -> Option<[f32; 3]> {
+    let mut sum = [0.0f64; 3];
+    let mut count = 0u64;
+    for (a, b) in frame.color.chunks_exact(4).zip(reference.color.chunks_exact(4)) {
+        if (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD {
+            for i in 0..3 {
+                sum[i] += f64::from(a[i]);
+            }
+            count += 1;
+        }
+    }
+    (count > 0).then(|| sum.map(|v| (v / count as f64) as f32))
+}
+
 /// Two linked portals show what is beside the far one, through the near one.
 /// The same scene with mismatched Link IDs shows nothing of it: the meshes sit
 /// 100 m to the side, out of the camera's view.
@@ -3503,65 +3568,70 @@ fn linked_portals_show_the_far_side_in_the_frame() {
     engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
     let radius = typed_mesh().bounds_local[3];
     let harness = Harness::new(device, queue, radius);
-
-    let scene = |near_id: i32, far_id: i32| {
-        let mut state = LevelEditorState::new();
-        let add_portal = |state: &mut LevelEditorState, name: &str, position: [f32; 3], link: i32| {
-            let id = add_object(state, name, ObjectType::Empty);
-            if position != [0.0; 3] {
-                move_to(state, &id, position);
-            }
-            assert!(
-                execute_command(
-                    state,
-                    SceneCommand::AddComponent {
-                        id: id.clone(),
-                        class_name: "PortalComponent".into(),
-                        value: None,
-                    },
-                )
-                .changed,
-                "the portal component was refused"
-            );
-            for (property, value) in [
-                ("link_id", Box::new(link) as Box<dyn std::any::Any + Send>),
-                ("width", Box::new(radius * 3.0)),
-                ("height", Box::new(radius * 3.0)),
-            ] {
-                let result = execute_command(
-                    state,
-                    SceneCommand::SetComponentProperty {
-                        id: id.clone(),
-                        class_name: "PortalComponent".into(),
-                        component_index: 0,
-                        prop_name: property.into(),
-                        value,
-                    },
-                );
-                assert!(result.changed, "portal {property} edit was refused");
-            }
-            id
-        };
-        add_portal(&mut state, "near", [0.0, 0.0, 0.0], near_id);
-        add_portal(&mut state, "far", [100.0, 0.0, 0.0], far_id);
-        // Content beside the far portal, on both of its sides.
-        for z in [radius * 2.0, -radius * 2.0] {
-            let mesh = drop_mesh(&mut state);
-            move_to(&mut state, &mesh, [100.0, 0.0, z]);
-        }
-        state
-    };
-
     let render = |state: &LevelEditorState| {
         let mut renderer = harness.renderer(state);
         harness.frames(&mut renderer, || {})
     };
-    let unlinked = render(&scene(1, 2));
-    let linked = render(&scene(5, 5));
+    let unlinked = render(&portal_scene(radius, 1, 2));
+    let linked = render(&portal_scene(radius, 5, 5));
     let shown = linked.difference(&unlinked);
-    println!("PORTAL linked vs unlinked: {shown:?}");
     assert!(
         shown.depth_texels > 0,
         "a linked portal showed nothing of the content beside its partner ({shown:?})"
+    );
+}
+
+/// What a portal shows keeps its materials when the scene grows. The material rows
+/// are the scene join's output and are reallocated as meshes are added; a portal
+/// draw still bound to the old buffer shows garbage (the content looked flat and
+/// blue). The meshes here are emissive orange, so what comes through the portal
+/// must stay orange (red well above blue) after the scene has grown.
+#[test]
+fn portal_content_keeps_its_materials_when_the_scene_grows() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    let unlinked = {
+        let state = portal_scene(radius, 1, 2);
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {})
+    };
+    let mut state = portal_scene(radius, 5, 5);
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+    let orange = |frame: &Frame| {
+        let [r, _, b] = mean_color_of_difference(frame, &unlinked)
+            .expect("the linked portal shows something");
+        (r, b)
+    };
+    let (red, blue) = orange(&before);
+    assert!(red > blue + 10.0, "the content through the portal is orange (r {red}, b {blue})");
+
+    // Grow the scene well past the material buffer's capacity, far out of view.
+    for n in 0..64 {
+        let mesh = drop_mesh(&mut state);
+        move_to(&mut state, &mesh, [2000.0 + n as f32 * 10.0, 0.0, 0.0]);
+    }
+    let after = harness.frames(&mut renderer, || {});
+    let (red_after, blue_after) = orange(&after);
+    assert!(
+        red_after > blue_after + 10.0,
+        "after the scene grew, the content through the portal lost its materials \
+         (r {red_after}, b {blue_after}; before r {red}, b {blue})"
+    );
+    assert!(
+        (red_after - red).abs() < 12.0 && (blue_after - blue).abs() < 12.0,
+        "the content through the portal changed colour when the scene grew \
+         (r {red} -> {red_after}, b {blue} -> {blue_after})"
     );
 }
