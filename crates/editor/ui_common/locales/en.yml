@@ -85,6 +85,10 @@ Menu.Search: Search
 Menu.Search.SearchEverything: Search Everything…
 Menu.Search.SearchDocumentation: Search Documentation
 
+Menu.Assets: Assets
+Menu.New: New
+Menu.Import: Import…
+
 Menu.Project: Project
 Menu.Project.ProjectSettings: Project Settings
 Menu.Project.OpenCargoToml: Cargo.toml

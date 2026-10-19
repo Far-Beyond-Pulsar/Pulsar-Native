@@ -70,8 +70,6 @@ pub struct ToolbarSignature {
     // enabled (Pulsar-Native#1012)
     history_revision: u64,
     has_selection: bool,
-    // Assets menu: one New item per creatable file type
-    creatable_file_types: usize,
 }
 
 impl ToolbarSignature {
@@ -101,7 +99,6 @@ impl ToolbarSignature {
             show_performance_overlay: state.overlays.state.show_performance_overlay,
             history_revision: plugin_editor_api::undo::lock(state.scene.history()).revision(),
             has_selection: state.scene.selected_object().is_some(),
-            creatable_file_types: super::level_editor_menus::creatable_file_type_count(),
         }
     }
 }
