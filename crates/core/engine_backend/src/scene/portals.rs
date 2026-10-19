@@ -169,6 +169,9 @@ pub struct PortalSync {
     /// Problems already reported, so a standing problem is logged once.
     reported: HashSet<PortalProblem>,
     counts: Option<(u32, u32)>,
+    /// The camera the chains are pruned against: `(view-projection, position)`,
+    /// relative to the frame's origin. Without one every path is built.
+    view: Option<(Mat4, glam::Vec3)>,
 }
 
 impl Default for PortalSync {
@@ -182,11 +185,17 @@ impl Default for PortalSync {
             .expect("a nonzero chain depth"),
             reported: HashSet::new(),
             counts: None,
+            view: None,
         }
     }
 }
 
 impl PortalSync {
+    /// The camera to prune chains against (see `view`).
+    pub fn set_view(&mut self, view: Option<(Mat4, glam::Vec3)>) {
+        self.view = view;
+    }
+
     /// The rows the portal derivation uploads (clone it into the derivation).
     pub fn input(&self) -> PortalProjectionInput {
         self.input.clone()
@@ -215,7 +224,18 @@ impl PortalSync {
             (0, 0)
         } else {
             let resolver = build_resolver(world, &pairing, origin);
-            match self.bridge.build_into(&resolver, table) {
+            // Only the portals the camera can see get chains: every chain redraws the
+            // scene it shows, so building the paths nobody sees is pure waste.
+            let built = match self.view {
+                Some((view_projection, position)) => self.bridge.build_visible_from_camera_into(
+                    &resolver,
+                    view_projection,
+                    position,
+                    table,
+                ),
+                None => self.bridge.build_into(&resolver, table),
+            };
+            match built {
                 Ok(frame) => {
                     self.input.set(&frame, table.matrices());
                     (frame.counts.portal_view_count, frame.counts.portal_chain_count)

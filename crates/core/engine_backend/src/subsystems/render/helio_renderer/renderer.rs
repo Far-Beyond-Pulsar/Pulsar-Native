@@ -2012,13 +2012,6 @@ impl HelioRenderer {
             self.world_origin =
                 camera_relative.then(|| frame_world_origin(self.world_origin, self.cam_pos));
             inner.renderer.set_world_origin(self.world_origin);
-            // Rigid frames: one matrix each, relative to the same origin. Their
-            // members' rows never change when a frame moves; this table does.
-            self.spaces.sync(
-                &self.scene_store,
-                self.world_origin.unwrap_or(DVec3::ZERO),
-                &mut inner.renderer,
-            );
             let camera = if self.active_view.is_orthographic() {
                 ortho_frame_camera(
                     self.cam_pos,
@@ -2052,6 +2045,19 @@ impl HelioRenderer {
                 aspect,
             );
             let camera = camera.with_overscan(lens_overscan);
+            // Rigid frames: one matrix each, relative to the same origin. Their
+            // members' rows never change when a frame moves; this table does.
+            // Portal chains are built for the portals this camera can see.
+            self.spaces.set_view(
+                camera.proj * camera.view,
+                camera.position,
+            );
+            self.spaces.sync(
+                &self.scene_store,
+                self.world_origin.unwrap_or(DVec3::ZERO),
+                &mut inner.renderer,
+            );
+
 
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.

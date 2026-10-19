@@ -440,3 +440,23 @@ Known, not fixed. Ordered roughly by how much they matter.
     `properties_panel_layout_budget` fails only in parallel runs.
 17. **Industry claims** in this document are unverified; back them with the
     phase-2 and phase-4 benchmarks before repeating them.
+
+### Portal findings (lighting + cost pass)
+
+- **Portal lighting**: portal pixels are tagged `(-1, -3 - chain)` in the G-buffer
+  `lightmap_uv`; `deferred_lighting.wgsl` maps position/normal/eye back through the
+  chain (`portal_chain_unmap`, a 256-entry uniform in group 0 binding 11, published by
+  `PortalProjection`) and walks all scene lights (cap `PORTAL_MAX_LIGHTS`) instead of
+  the host tile lists. Shadows are sampled at the content's real position, so content
+  outside the host camera's shadow cascades/local shadow maps is unshadowed. SSR and
+  planar reflections are skipped for portal pixels.
+- **Portal cost**: chains were built for every path (depth 3) whether or not the
+  camera could see them (`build_into`); every chain redraws the scene it shows. The
+  editor now builds chains with `build_visible_from_camera_into` (`SpaceSync::set_view`).
+  `pulsar_game` (`embed.rs`, `windowed_app.rs`) still calls `sync` without a view, so
+  it builds every path: give it the camera too. Not yet measured on a GPU.
+- **OPEN: content shifts with portal distance**: in `render_acceptance` (portals at
+  the origin and `far_x`, content beside the far one) the content seen through the near
+  portal moves across the frame as `far_x` grows (visible at 100 and 200, gone by 300),
+  though it should not move at all. Mapping bug somewhere between the portal pose
+  (`pose_of`, origin-relative) and the instance rows; not yet found.

@@ -467,6 +467,13 @@ pub struct SpaceSync {
 }
 
 impl SpaceSync {
+    /// The camera of the coming frame (view-projection and position, relative to
+    /// the origin given to `sync`), so portal chains are built only for the
+    /// portals it can see.
+    pub fn set_view(&mut self, view_projection: glam::Mat4, position: glam::Vec3) {
+        self.portals.set_view(Some((view_projection, position)));
+    }
+
     /// The rows Helio's portal derivation uploads (`portal_projection` takes a
     /// clone). Authored portals are paired and projected in [`Self::sync_with`].
     pub fn portal_input(&self) -> helio_default_graphs::portal_projection::PortalProjectionInput {
