@@ -21,3 +21,4 @@ pub use renderer::{
     VoxelBrushRequest,
     VoxelBrushTool,
 };
+pub use voxel_backend::{VoxelChunkSaves, VoxelSavedChunks};

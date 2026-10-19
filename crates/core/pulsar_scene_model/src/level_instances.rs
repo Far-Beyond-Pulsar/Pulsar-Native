@@ -131,7 +131,7 @@ mod tests {
     use crate::frames::{frame_table, space_of, SpaceSlot};
     use crate::Transform;
 
-    fn at(x: f32) -> Transform {
+    fn at(x: f64) -> Transform {
         Transform {
             position: [x, 0.0, 0.0],
             ..Transform::default()

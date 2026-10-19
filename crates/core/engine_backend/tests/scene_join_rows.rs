@@ -168,7 +168,7 @@ impl Join {
     }
 }
 
-fn place(scene: &mut SceneDb, name: &str, position: [f32; 3]) -> Entity {
+fn place(scene: &mut SceneDb, name: &str, position: [f64; 3]) -> Entity {
     let object = scene
         .world
         .spawn_object(SpawnObject::new(name))
@@ -463,7 +463,7 @@ fn moving_a_folder_moves_the_meshes_inside_it() {
                 &mut scene,
                 Some(folder),
                 Transform {
-                    position: [3.0 + n as f32, 0.0, 0.0],
+                    position: [3.0 + f64::from(n), 0.0, 0.0],
                     ..Transform::default()
                 },
             )
@@ -482,14 +482,14 @@ fn moving_a_folder_moves_the_meshes_inside_it() {
     assert_eq!(position_of(&join, &out, children[0]), [3.0, 0.0, 0.0]);
 
     for frame in 1..=4 {
-        let x = frame as f32 * 2.5;
+        let x = f64::from(frame) * 2.5;
         // One write, to the folder alone.
         scene.world.get_mut::<Transform>(folder).unwrap().position = [x, 0.0, 0.0];
         let out = join.run(&mut scene);
         for (n, child) in children.iter().enumerate() {
             assert_eq!(
                 position_of(&join, &out, *child),
-                [x + 3.0 + n as f32, 0.0, 0.0],
+                [(x + 3.0 + n as f64) as f32, 0.0, 0.0],
                 "child {n} followed its folder on frame {frame}"
             );
         }
@@ -550,6 +550,7 @@ fn the_gpu_composes_a_parent_chain_like_the_cpu() {
     let model = join.mesh_rows(&out, instance)[0].transform;
     let expected = engine_backend::scene::hierarchy_transform::world_matrix_of(&scene.world, leaf)
         .unwrap()
+        .as_mat4()
         .to_cols_array_2d();
     for (c, (got, want)) in model.iter().zip(expected).enumerate() {
         for r in 0..3 {
@@ -558,6 +559,56 @@ fn the_gpu_composes_a_parent_chain_like_the_cpu() {
                 "model column {c} row {r}: gpu {got:?} cpu {want:?}"
             );
         }
+    }
+}
+
+/// On a planet: a mesh under a turned folder 6_371 km from the world's
+/// origin, where an f32 position steps by half a metre. The scene keeps its
+/// f64 position, the GPU composes the chain in f32 pairs, and a frame
+/// rebased near it places it within a tenth of a millimetre of the CPU's
+/// f64 answer, frame after frame as the folder moves by millimetres.
+#[test]
+fn a_mesh_on_a_planet_keeps_its_millimetres() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let folder = place(&mut scene, "folder", [1000.0, 6_371_002.371, -300.0]);
+    scene.world.get_mut::<Transform>(folder).unwrap().rotation = [0.0, 90.0, 0.0];
+    let (leaf, instance) = mesh_on(
+        &mut scene,
+        Some(folder),
+        Transform {
+            position: [0.25, 0.5, 0.125],
+            ..Transform::default()
+        },
+    );
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        resolve: engine_backend::scene::hierarchy_resolve(&device),
+        join: engine_backend::scene::scene_join(&device, true),
+        device,
+        queue,
+    };
+    // The frame origin as the renderer snaps it: on a 1024 m cell.
+    let origin = glam::DVec3::new(1024.0, 6_371_328.0, 0.0);
+    for frame in 0..4 {
+        let step = f64::from(frame) * 0.001;
+        scene.world.get_mut::<Transform>(folder).unwrap().position =
+            [1000.0 + step, 6_371_002.371, -300.0 - step];
+        let out = join.run_at(&mut scene, Some(origin));
+        let got = glam::Vec3::from_slice(&position_of(&join, &out, instance));
+        let world = engine_backend::scene::hierarchy_transform::world_matrix_of(&scene.world, leaf)
+            .unwrap()
+            .w_axis
+            .truncate();
+        let want = (world - origin).as_vec3();
+        assert!(
+            (got - want).abs().max_element() < 1e-4,
+            "frame {frame}: gpu {got} cpu {want}"
+        );
     }
 }
 
@@ -579,8 +630,8 @@ fn nested_objects_far_from_the_origin_keep_their_offsets() {
         eprintln!("skipping: no GPU adapter available");
         return;
     };
-    const FAR: f32 = 6_400_000.0;
-    let origin = glam::DVec3::new(f64::from(FAR), 0.0, 0.0);
+    const FAR: f64 = 6_400_000.0;
+    let origin = glam::DVec3::new(FAR, 0.0, 0.0);
     let mut scene = SceneDb::new();
     let folder = place(&mut scene, "folder", [FAR, 0.0, 0.0]);
     let (_, near) = mesh_on(
@@ -623,7 +674,7 @@ fn a_flat_scene_is_still_made_origin_relative_by_the_join() {
         eprintln!("skipping: no GPU adapter available");
         return;
     };
-    const FAR: f32 = 6_400_000.0;
+    const FAR: f64 = 6_400_000.0;
     let mut scene = SceneDb::new();
     let (_, flat) = mesh_on(
         &mut scene,
@@ -635,7 +686,7 @@ fn a_flat_scene_is_still_made_origin_relative_by_the_join() {
     );
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = join_for(&device, &queue);
-    let out = join.run_at(&mut scene, Some(glam::DVec3::new(f64::from(FAR), 0.0, 0.0)));
+    let out = join.run_at(&mut scene, Some(glam::DVec3::new(FAR, 0.0, 0.0)));
     assert_eq!(position_of(&join, &out, flat), [4.0, 0.0, 0.0]);
 }
 
@@ -650,7 +701,7 @@ fn hierarchical_scenes_follow_only_what_moved() {
     };
     let mut scene = SceneDb::new();
     let folder = place(&mut scene, "folder", [0.0; 3]);
-    let at = |x: f32| Transform {
+    let at = |x: f64| Transform {
         position: [x, 0.0, 0.0],
         ..Transform::default()
     };
@@ -660,7 +711,7 @@ fn hierarchical_scenes_follow_only_what_moved() {
     // Enough unrelated objects that a small move is well under the "most of
     // the scene moved" share.
     for n in 0..16 {
-        mesh_on(&mut scene, None, at(100.0 + n as f32));
+        mesh_on(&mut scene, None, at(100.0 + n as f64));
     }
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = join_for(&device, &queue);
@@ -679,7 +730,7 @@ fn hierarchical_scenes_follow_only_what_moved() {
             .world
             .get_mut::<Transform>(inner_object)
             .unwrap()
-            .position[1] = step;
+            .position[1] = f64::from(step);
         let out = join.run(&mut scene);
         assert_eq!(position_of(&join, &out, inner), [1.0, step, 0.0], "child, frame {frame}");
         assert_eq!(position_of(&join, &out, other_inner), [2.0, 0.0, 0.0], "sibling untouched");
@@ -784,12 +835,12 @@ fn frame_members_are_placed_in_their_frame_and_follow_the_table() {
     );
     assert_close(
         table[leaf_space as usize] * leaf_row,
-        world_matrix_of(&scene.world, leaf).unwrap(),
+        world_matrix_of(&scene.world, leaf).unwrap().as_mat4(),
         "table * row is the leaf's world matrix",
     );
     let (loose_row, loose_space) = row_model(&join, &out, loose_mesh);
     assert_eq!(loose_space, 0, "an unparented object is in the world");
-    assert_close(loose_row, world_matrix_of(&scene.world, loose).unwrap(), "loose");
+    assert_close(loose_row, world_matrix_of(&scene.world, loose).unwrap().as_mat4(), "loose");
 
     // The ship moves and turns: only the table changes.
     {
@@ -804,13 +855,13 @@ fn frame_members_are_placed_in_their_frame_and_follow_the_table() {
     let table = frame_table(&scene.world, glam::DVec3::ZERO);
     assert_close(
         table[after_space as usize] * after_row,
-        world_matrix_of(&scene.world, leaf).unwrap(),
+        world_matrix_of(&scene.world, leaf).unwrap().as_mat4(),
         "table * row follows the moved ship",
     );
     let _ = loose;
 }
 
-fn at_x(x: f32) -> Transform {
+fn at_x(x: f64) -> Transform {
     Transform {
         position: [x, 0.0, 0.0],
         ..Transform::default()
@@ -890,9 +941,9 @@ fn a_reused_entity_index_does_not_inherit_a_stale_parent() {
     // New unparented meshes, until one lands on a freed index.
     let mut reused = None;
     for n in 0..16 {
-        let (object, instance) = mesh_on(&mut scene, None, at_x(20.0 + n as f32));
+        let (object, instance) = mesh_on(&mut scene, None, at_x(20.0 + n as f64));
         if freed.contains(&object.index()) {
-            reused = Some((instance, 20.0 + n as f32));
+            reused = Some((instance, 20.0 + n as f64));
             break;
         }
     }
@@ -900,7 +951,7 @@ fn a_reused_entity_index_does_not_inherit_a_stale_parent() {
     let out = join.run(&mut scene);
     assert_eq!(
         position_of(&join, &out, instance),
-        [x, 0.0, 0.0],
+        [x as f32, 0.0, 0.0],
         "placed in the world, not under the despawned object's parent"
     );
     let (_, space) = row_model(&join, &out, instance);

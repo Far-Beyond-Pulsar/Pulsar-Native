@@ -16,7 +16,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
 use pulsar_scene_model::attachments::{self, NewInstance};
 use pulsar_scene_model::{
     ComponentInstance, ObjectType, SceneError, SceneWorldExt, SpawnObject, Transform, Visibility,
@@ -243,28 +242,11 @@ pub fn placement(world: &World, root: Entity) -> ClassPlacement {
 
 // ── Transforms ────────────────────────────────────────────────────────────
 
-fn to_matrix(position: [f32; 3], rotation: [f32; 3], scale: [f32; 3]) -> Mat4 {
-    let q = Quat::from_euler(
-        EulerRot::YXZ,
-        rotation[1].to_radians(),
-        rotation[0].to_radians(),
-        rotation[2].to_radians(),
-    );
-    Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
-}
-
 /// World transform of a component placed at `local` under `parent` (for code that
 /// needs the composed pose; stored transforms are parent-relative).
 pub fn compose(parent: &Transform, local: &LocalTransform) -> Transform {
-    let m = to_matrix(parent.position, parent.rotation, parent.scale)
-        * to_matrix(local.position, local.rotation, local.scale);
-    let (scale, rotation, translation) = m.to_scale_rotation_translation();
-    let (y, x, z) = rotation.to_euler(EulerRot::YXZ);
-    Transform {
-        position: translation.to_array(),
-        rotation: [x.to_degrees(), y.to_degrees(), z.to_degrees()],
-        scale: scale.to_array(),
-    }
+    use pulsar_scene_model::hierarchy_transform::{from_matrix, to_matrix};
+    from_matrix(to_matrix(parent) * to_matrix(&as_transform(local)))
 }
 
 fn local_transform_of(world: &World, entity: Entity) -> LocalTransform {

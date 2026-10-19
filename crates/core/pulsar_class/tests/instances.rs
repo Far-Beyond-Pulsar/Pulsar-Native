@@ -60,7 +60,7 @@ fn lamp_prefab(intensity: f64, label: &str) -> serde_json::Value {
     })
 }
 
-fn spawn_at(name: &str, x: f32) -> SpawnObject {
+fn spawn_at(name: &str, x: f64) -> SpawnObject {
     SpawnObject::new(name)
         .with_id(name)
         .with_transform(Transform {

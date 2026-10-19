@@ -423,7 +423,7 @@ fn object_bounds(
     let voxel_size = component.voxel_size as f32 * scale;
     Some(SourceBounds {
         entity,
-        origin: transform.position,
+        origin: transform.position.map(|v| v as f32),
         voxel_size,
         material_slots: component.material_ids.len().min(usize::from(u8::MAX)) as u8,
         payloads: component.payload_store(),

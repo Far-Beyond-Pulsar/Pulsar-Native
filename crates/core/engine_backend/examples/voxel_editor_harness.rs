@@ -51,6 +51,37 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+/// Live heap bytes, for each step's memory line: the allocator counts what
+/// the process holds on the Rust heap (driver memory is not in it).
+struct CountingAlloc;
+
+static HEAP_LIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+unsafe impl std::alloc::GlobalAlloc for CountingAlloc {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        let p = unsafe { std::alloc::System.alloc(layout) };
+        if !p.is_null() {
+            HEAP_LIVE.fetch_add(layout.size(), std::sync::atomic::Ordering::Relaxed);
+        }
+        p
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        unsafe { std::alloc::System.dealloc(ptr, layout) };
+        HEAP_LIVE.fetch_sub(layout.size(), std::sync::atomic::Ordering::Relaxed);
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        let p = unsafe { std::alloc::System.realloc(ptr, layout, size) };
+        if !p.is_null() {
+            HEAP_LIVE.fetch_add(size, std::sync::atomic::Ordering::Relaxed);
+            HEAP_LIVE.fetch_sub(layout.size(), std::sync::atomic::Ordering::Relaxed);
+        }
+        p
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: CountingAlloc = CountingAlloc;
+
 // The editor presents to an sRGB surface: the graph's final pass encodes into it.
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 /// Frames recorded ahead of the GPU, as a game loop keeps it fed (waiting
@@ -246,6 +277,38 @@ impl Harness {
             at(0.95),
             at(1.0)
         );
+        println!(
+            "HARNESS {label}: memory heap {:.0} MB, kept chunks {} ({:.0} MB), resident chunks {}",
+            HEAP_LIVE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1048576.0,
+            self.voxel_word("kept_chunks"),
+            self.voxel_stat("kept_bytes") / 1048576.0,
+            self.voxel_word("resident_chunks"),
+        );
+        // The device's own allocations (wgpu's allocator): what is in GPU
+        // and GPU-visible memory, by label.
+        if let Some(report) = self.device.generate_allocator_report() {
+            let mut by_name: std::collections::HashMap<&str, (u64, usize)> = Default::default();
+            for a in &report.allocations {
+                let entry = by_name.entry(a.name.as_str()).or_default();
+                entry.0 += a.size;
+                entry.1 += 1;
+            }
+            let mut top: Vec<_> = by_name.into_iter().collect();
+            top.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+            let top: Vec<String> = top
+                .iter()
+                .take(10)
+                .map(|(name, (size, n))| format!("{name} {:.0} MB x{n}", *size as f64 / 1048576.0))
+                .collect();
+            println!(
+                "HARNESS {label}: device allocated {:.0} MB in {} allocations, reserved {:.0} MB in {} blocks; top: {}",
+                report.total_allocated_bytes as f64 / 1048576.0,
+                report.allocations.len(),
+                report.total_reserved_bytes as f64 / 1048576.0,
+                report.blocks.len(),
+                top.join(", ")
+            );
+        }
     }
 
     /// The chunk pass's `name=value` from its diagnostics (NaN: none).

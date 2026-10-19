@@ -30,7 +30,7 @@ struct SpawnSpec {
     #[serde(default)]
     parent_id: Option<String>,
     #[serde(default)]
-    position: Option<[f32; 3]>,
+    position: Option<[f64; 3]>,
     #[serde(default)]
     rotation: Option<[f32; 3]>,
     #[serde(default)]
@@ -132,7 +132,7 @@ pub fn level_editor_spawn_object(
     name: String,
     kind: Option<String>,
     parent_id: Option<String>,
-    position: Option<[f32; 3]>,
+    position: Option<[f64; 3]>,
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
     visible: Option<bool>,
@@ -340,7 +340,7 @@ pub fn level_editor_get_hierarchy(
 pub fn level_editor_set_transform(
     ctx: &ToolContext,
     id: String,
-    position: Option<[f32; 3]>,
+    position: Option<[f64; 3]>,
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
 ) -> Result<Value> {
@@ -373,7 +373,7 @@ pub fn level_editor_move_objects(
     ctx: &ToolContext,
     ids: Option<Vec<String>>,
     filter: Option<Value>,
-    translate: Option<[f32; 3]>,
+    translate: Option<[f64; 3]>,
     rotate: Option<[f32; 3]>,
     scale_by: Option<[f32; 3]>,
 ) -> Result<Value> {
@@ -381,6 +381,7 @@ pub fn level_editor_move_objects(
     let mut state = state_arc.write();
     let ids = target_ids(&state.scene.world(), ids, filter)?;
     let add = |a: [f32; 3], b: [f32; 3]| [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    let add_f64 = |a: [f64; 3], b: [f64; 3]| [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
     let mut changed = Vec::new();
     let mut errors = Vec::new();
     for id in ids {
@@ -393,7 +394,7 @@ pub fn level_editor_move_objects(
             &mut state,
             SceneCommand::SetTransform {
                 id: id.clone(),
-                position: translate.map(|d| add(t.position, d)),
+                position: translate.map(|d| add_f64(t.position, d)),
                 rotation: rotate.map(|d| add(t.rotation, d)),
                 scale: scale_by.map(|f| [t.scale[0] * f[0], t.scale[1] * f[1], t.scale[2] * f[2]]),
             },

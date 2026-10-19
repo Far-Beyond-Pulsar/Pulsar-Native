@@ -12,7 +12,7 @@
 //!
 //! Rotation is Euler angles in degrees (applied Y, X, Z), as stored.
 
-use glam::Vec3;
+use glam::{DVec3, Vec3};
 use pulsar_scenedb::{component_methods, Entity, World};
 
 use crate::components::Transform;
@@ -34,10 +34,10 @@ fn write(
 
 #[component_methods]
 impl Transform {
-    /// World-space position.
+    /// World-space position (to f32: script vectors are f32).
     #[reflect_method(side_effect_free, category = "Transform")]
     fn position(&self) -> Vec3 {
-        Vec3::from(self.position)
+        DVec3::from(self.position).as_vec3()
     }
 
     /// Euler rotation in degrees.
@@ -54,14 +54,14 @@ impl Transform {
     /// Fails if the object is not allowed to move.
     #[world_method(category = "Transform")]
     fn set_position(world: &mut World, entity: Entity, position: Vec3) -> Result<(), String> {
-        write(world, entity, |t| t.position = position.to_array())
+        write(world, entity, |t| t.position = position.as_dvec3().to_array())
     }
 
     /// Move by `delta`. Fails if the object is not allowed to move.
     #[world_method(category = "Transform")]
     fn translate(world: &mut World, entity: Entity, delta: Vec3) -> Result<(), String> {
         write(world, entity, |t| {
-            t.position = (Vec3::from(t.position) + delta).to_array()
+            t.position = (DVec3::from(t.position) + delta.as_dvec3()).to_array()
         })
     }
 

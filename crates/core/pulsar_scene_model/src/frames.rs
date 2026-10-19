@@ -24,12 +24,12 @@
 //! A rigid frame is authored with a prop on its object ([`FRAME_PROP`]) so it
 //! survives save and load with no file-format change.
 
-use glam::{DMat4, DQuat, DVec3, EulerRot, Mat4};
+use glam::{DVec3, Mat4};
 use pulsar_scenedb::{Entity, World};
 use std::collections::HashSet;
 
-use crate::components::{Parent, RenderProps, Transform};
-use crate::hierarchy_transform::MAX_DEPTH;
+use crate::components::{Parent, RenderProps};
+use crate::hierarchy_transform::{world_matrix_of, MAX_DEPTH};
 
 /// Spaces the table can hold. A space id travels in 8 bits of an instance's
 /// flags (`helio_pass_object_batch::INSTANCE_COORDINATE_SPACE_*`), and slot 0 is
@@ -249,42 +249,6 @@ pub fn sync_frames_from_props(world: &mut World, entities: &[Entity]) {
     sync_spaces(world);
 }
 
-/// `t` as an f64 matrix (same Euler convention as the shaders).
-fn to_dmat4(t: &Transform) -> DMat4 {
-    let q = DQuat::from_euler(
-        EulerRot::YXZ,
-        f64::from(t.rotation[1]).to_radians(),
-        f64::from(t.rotation[0]).to_radians(),
-        f64::from(t.rotation[2]).to_radians(),
-    );
-    DMat4::from_scale_rotation_translation(
-        DVec3::new(f64::from(t.scale[0]), f64::from(t.scale[1]), f64::from(t.scale[2])),
-        q,
-        DVec3::new(
-            f64::from(t.position[0]),
-            f64::from(t.position[1]),
-            f64::from(t.position[2]),
-        ),
-    )
-}
-
-/// `entity` placed in the world, composed in f64.
-pub fn world_dmat4_of(world: &World, entity: Entity) -> Option<DMat4> {
-    let mut matrix = to_dmat4(&world.get::<Transform>(entity).copied()?);
-    let mut at = world.get::<Parent>(entity).map(|p| p.0);
-    for _ in 0..MAX_DEPTH {
-        let Some(parent) = at else {
-            break;
-        };
-        let Some(transform) = world.get::<Transform>(parent) else {
-            break;
-        };
-        matrix = to_dmat4(&transform) * matrix;
-        at = world.get::<Parent>(parent).map(|p| p.0);
-    }
-    Some(matrix)
-}
-
 /// The matrices of the spaces objects define: slot 0 is the identity, and each
 /// space's slot holds the matrix taking its space to the world, **relative to
 /// `origin`** (the frame's camera-relative world origin; `DVec3::ZERO` outside
@@ -299,7 +263,7 @@ pub fn frame_table(world: &World, origin: DVec3) -> Vec<Mat4> {
     let top = spaces.iter().map(|(_, slot)| *slot).max().unwrap_or(0) as usize;
     let mut table = vec![Mat4::IDENTITY; top + 1];
     for (entity, slot) in spaces {
-        let Some(mut matrix) = world_dmat4_of(world, entity) else {
+        let Some(mut matrix) = world_matrix_of(world, entity) else {
             continue;
         };
         matrix.w_axis -= origin.extend(0.0);
@@ -332,9 +296,10 @@ pub fn space_of(world: &World, entity: Entity) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::Transform;
     use crate::world_ext::{SceneWorldExt, SpawnObject};
 
-    fn at(world: &mut World, parent: Option<Entity>, position: [f32; 3]) -> Entity {
+    fn at(world: &mut World, parent: Option<Entity>, position: [f64; 3]) -> Entity {
         world
             .spawn_object(SpawnObject::new("o").with_parent(parent).with_transform(Transform {
                 position,
@@ -404,7 +369,7 @@ mod tests {
     // frames need none of it.
     #[derive(Clone, Copy)]
     struct TestPlacement {
-        offset: f32,
+        offset: f64,
     }
 
     fn placements(world: &World) -> Vec<Entity> {

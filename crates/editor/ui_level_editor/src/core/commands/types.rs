@@ -110,7 +110,7 @@ pub enum SceneCommand {
     /// Set absolute world-space transform fields; `None` fields are unchanged.
     SetTransform {
         id: String,
-        position: Option<[f32; 3]>,
+        position: Option<[f64; 3]>,
         rotation: Option<[f32; 3]>,
         scale: Option<[f32; 3]>,
     },

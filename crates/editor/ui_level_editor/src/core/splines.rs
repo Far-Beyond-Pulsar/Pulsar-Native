@@ -248,7 +248,7 @@ pub fn matrix(object: &SceneObjectData) -> Mat4 {
             tr.rotation[0].to_radians(),
             tr.rotation[2].to_radians(),
         ),
-        Vec3::from(tr.position),
+        glam::DVec3::from(tr.position).as_vec3(),
     )
 }
 pub fn local_point(object: &SceneObjectData, world: [f32; 3]) -> Option<[f32; 3]> {
@@ -384,7 +384,7 @@ mod tests {
                 &mut state,
                 SceneCommand::SetTransform {
                     id: id.clone(),
-                    position: Some([x as f32, 0.0, 0.0]),
+                    position: Some([f64::from(x), 0.0, 0.0]),
                     rotation: None,
                     scale: None,
                 },

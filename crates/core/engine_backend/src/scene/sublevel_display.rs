@@ -193,7 +193,7 @@ mod tests {
     use pulsar_scene_model::world_ext::SpawnObject;
     use pulsar_scene_model::Transform;
 
-    fn display_on(world: &mut World, name: &str, level: &str, at: [f32; 3]) -> Entity {
+    fn display_on(world: &mut World, name: &str, level: &str, at: [f64; 3]) -> Entity {
         let object = world
             .spawn_object(SpawnObject::new(name).with_transform(Transform {
                 position: at,

@@ -462,7 +462,7 @@ fn move_to(state: &mut LevelEditorState, id: &str, position: [f32; 3]) {
         state,
         SceneCommand::SetTransform {
             id: id.to_string(),
-            position: Some(position),
+            position: Some(position.map(f64::from)),
             rotation: None,
             scale: None,
         },
@@ -1962,7 +1962,7 @@ fn particle_emitters_reach_the_frame_from_one_pool() {
                     name: "Particles".to_string(),
                     object_type: ObjectType::Empty,
                     transform: Transform {
-                        position: [x, 0.5, 0.0],
+                        position: [f64::from(x), 0.5, 0.0],
                         ..Transform::default()
                     },
                     visible: true,
@@ -2435,7 +2435,7 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
                     name: name.to_string(),
                     object_type: ObjectType::Empty,
                     transform: Transform {
-                        position: [x, 0.0, 0.0],
+                        position: [f64::from(x), 0.0, 0.0],
                         ..Transform::default()
                     },
                     visible: true,
@@ -2558,7 +2558,7 @@ fn bodies_on_the_water_sim_channel_push_the_water() {
             state,
             SceneCommand::SetTransform {
                 id: id.clone(),
-                position: Some(position),
+                position: Some(position.map(f64::from)),
                 rotation: None,
                 scale: Some([0.005; 3]),
             },

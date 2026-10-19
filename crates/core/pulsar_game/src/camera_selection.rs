@@ -35,7 +35,8 @@ pub fn select_world_camera(store: &pulsar_scenedb::SceneDb) -> Option<RenderCame
         // Degrees -> radians; yaw around Y, pitch around X (FPS-style).
         let yaw = transform.rotation[1].to_radians();
         let pitch = transform.rotation[0].to_radians();
-        return Some(camera_from_pose(transform.position, yaw, pitch));
+        // The game camera is f32 world space.
+        return Some(camera_from_pose(transform.position.map(|v| v as f32), yaw, pitch));
     }
     None
 }

@@ -85,7 +85,7 @@ pub fn level_editor_create_spline(
     ctx: &ToolContext,
     points: Vec<[f32; 3]>,
     name: Option<String>,
-    position: Option<[f32; 3]>,
+    position: Option<[f64; 3]>,
     parent_id: Option<String>,
     closed: Option<bool>,
     algorithm: Option<String>,

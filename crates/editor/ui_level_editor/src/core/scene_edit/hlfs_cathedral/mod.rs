@@ -127,7 +127,7 @@ fn light(color: [f32; 3], intensity: f32, range: f32) -> helio_component::LightC
 fn object(
     name: &str,
     object_type: ObjectType,
-    position: [f32; 3],
+    position: [f64; 3],
     parent: Option<&str>,
 ) -> SceneObjectData {
     SceneObjectData {
@@ -192,7 +192,7 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
                 object(
                     &name,
                     ObjectType::Light(LightType::Point),
-                    position,
+                    position.map(f64::from),
                     Some(&folder),
                 ),
                 Some(folder.clone()),

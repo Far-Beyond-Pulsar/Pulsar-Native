@@ -39,7 +39,7 @@ pub fn level_editor_place_class(
     ctx: &ToolContext,
     class: String,
     parent_id: Option<String>,
-    position: Option<[f32; 3]>,
+    position: Option<[f64; 3]>,
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
 ) -> Result<Value> {

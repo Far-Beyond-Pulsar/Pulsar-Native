@@ -130,8 +130,9 @@ pub type BlueprintBindings = BTreeMap<String, Vec<BlueprintBinding>>;
 /// World-space transform stored as a nested object (editor v2.x format).
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SceneTransform {
+    /// f64: an object on a planet keeps its millimetres.
     #[serde(default)]
-    pub position: [f32; 3],
+    pub position: [f64; 3],
 
     /// Euler rotation in degrees, YXZ order (pitch, yaw, roll as stored by editor).
     #[serde(default)]
@@ -169,7 +170,7 @@ pub struct SceneObject {
 
     // ── v1 flat fields (fallback if no nested transform) ─────────────────────
     #[serde(default)]
-    pub position: [f32; 3],
+    pub position: [f64; 3],
     #[serde(default)]
     pub rotation: [f32; 3],
     #[serde(default = "default_scale")]
@@ -231,7 +232,7 @@ impl Default for SceneObject {
 
 /// Resolved world-space position — prefers nested `transform` over flat field.
 impl SceneObject {
-    pub fn world_position(&self) -> [f32; 3] {
+    pub fn world_position(&self) -> [f64; 3] {
         // Nested transform is the v2.x format; the flat field is v1.
         // If the nested transform has a non-zero position use it, otherwise
         // fall back to the flat field.  (A v1 file never writes `transform`

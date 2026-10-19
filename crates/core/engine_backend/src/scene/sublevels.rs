@@ -46,7 +46,7 @@ fn fold(world: &mut World, entity: Entity) {
         return;
     };
     if let Some(own) = world.get::<Transform>(entity).copied() {
-        let folded = from_matrix(to_matrix(&own) * actor.transform());
+        let folded = from_matrix(to_matrix(&own) * actor.transform().as_dmat4());
         if let Some(mut transform) = world.get_mut::<Transform>(entity) {
             *transform = folded;
         }
@@ -91,7 +91,7 @@ mod tests {
         let slot = world.get::<SpaceSlot>(actor).expect("the placement has a slot").slot;
         assert_eq!(space_of(&world, wall), slot);
         // The authored placement now lives in the object's transform, once.
-        assert!(near(world.get::<Transform>(actor).unwrap().position, [10.0, 0.0, 0.0]));
+        assert!(near(world.get::<Transform>(actor).unwrap().position.map(|v| v as f32), [10.0, 0.0, 0.0]));
         assert_eq!(
             world.get::<SubLevelActorComponent>(actor).unwrap().transform(),
             Mat4::IDENTITY
@@ -101,7 +101,7 @@ mod tests {
         assert!(near(table[slot as usize].w_axis.truncate().to_array(), [10.0, 0.0, 0.0]));
 
         assert!(!sync_spaces(&mut world), "idempotent");
-        assert!(near(world.get::<Transform>(actor).unwrap().position, [10.0, 0.0, 0.0]));
+        assert!(near(world.get::<Transform>(actor).unwrap().position.map(|v| v as f32), [10.0, 0.0, 0.0]));
     }
 
     #[test]

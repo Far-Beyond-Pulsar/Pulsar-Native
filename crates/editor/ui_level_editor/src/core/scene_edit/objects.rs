@@ -496,7 +496,7 @@ pub fn set_locked(world: &mut World, id: &str, locked: bool) -> bool {
 pub fn set_transform(
     world: &mut World,
     id: &str,
-    position: Option<[f32; 3]>,
+    position: Option<[f64; 3]>,
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
 ) -> bool {

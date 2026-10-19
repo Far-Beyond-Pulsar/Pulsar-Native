@@ -13,7 +13,7 @@ use pulsar_scenedb::World;
 #[test]
 fn frames_and_a_portal_projection_share_one_table_without_overlap() {
     let mut world = World::new();
-    let place = |world: &mut World, x: f32| {
+    let place = |world: &mut World, x: f64| {
         let object = world
             .spawn_object(SpawnObject::new("o").with_transform(Transform {
                 position: [x, 0.0, 0.0],

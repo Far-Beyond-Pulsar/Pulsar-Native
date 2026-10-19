@@ -27,7 +27,8 @@ pub use attachments::{
     ComponentOwner, InstanceError, NewInstance, UnresolvedComponent,
 };
 pub use components::{
-    Name, ObjectFrame, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
+    Name, ObjectFrame, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex, StableId,
+    Transform, TransformRow,
     Visibility,
 };
 pub use instance::{ComponentInstance, EditorObjectId};

@@ -139,7 +139,7 @@ impl PropertiesPanelWrapper {
     ///
     /// Rebuilding on every revision change used to null `current_object_id`,
     /// tearing down and recreating all three sections per bump.
-    /// `TransformSection` alone owns 9 `F32BoundField`s, each with its own
+    /// `TransformSection` alone owns 9 `NumberBoundField`s, each with its own
     /// `Entity<InputState>`, so a dozen-odd entities were being destroyed and
     /// recreated every bump — and gizmo drags bump at input rate. It also
     /// wiped the user's expanded/collapsed property categories, which live on
@@ -328,7 +328,7 @@ impl PropertiesPanelWrapper {
             let new_value = self.property_input.read(cx).text().to_string();
 
             // Parse and update the property
-            if let Ok(value) = new_value.parse::<f32>() {
+            if let Ok(value) = new_value.parse::<f64>() {
                 self.update_transform_property(&property_path, value);
             }
         }
@@ -340,7 +340,7 @@ impl PropertiesPanelWrapper {
         cx.notify();
     }
 
-    fn update_transform_property(&self, property_path: &str, value: f32) {
+    fn update_transform_property(&self, property_path: &str, value: f64) {
         use crate::commands::{execute_command, SceneCommand};
         let selected = self.state.read().scene.selected_object();
         if let Some(object_id) = selected {
@@ -354,12 +354,12 @@ impl PropertiesPanelWrapper {
                     "position.x" => obj.transform.position[0] = value,
                     "position.y" => obj.transform.position[1] = value,
                     "position.z" => obj.transform.position[2] = value,
-                    "rotation.x" => obj.transform.rotation[0] = value,
-                    "rotation.y" => obj.transform.rotation[1] = value,
-                    "rotation.z" => obj.transform.rotation[2] = value,
-                    "scale.x" => obj.transform.scale[0] = value,
-                    "scale.y" => obj.transform.scale[1] = value,
-                    "scale.z" => obj.transform.scale[2] = value,
+                    "rotation.x" => obj.transform.rotation[0] = value as f32,
+                    "rotation.y" => obj.transform.rotation[1] = value as f32,
+                    "rotation.z" => obj.transform.rotation[2] = value as f32,
+                    "scale.x" => obj.transform.scale[0] = value as f32,
+                    "scale.y" => obj.transform.scale[1] = value as f32,
+                    "scale.z" => obj.transform.scale[2] = value as f32,
                     _ => return,
                 }
                 let mut state = self.state.write();

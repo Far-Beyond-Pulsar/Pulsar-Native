@@ -12,8 +12,8 @@ use crate::scene::{GizmoType, SceneWorldExt};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 use super::voxel_backend::{
-    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRayHint, VoxelView,
-    UNPICKED_REACH_M,
+    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint,
+    VoxelView, UNPICKED_REACH_M,
 };
 use super::voxel_mesh_backend::MeshVoxelBackend;
 type GizmoMode = GizmoType;
@@ -80,7 +80,7 @@ fn relative_camera_source_schema_compatible(
             pulsar_scene_model::attachments::ComponentOwner::packed_gpu_component_id()
         }
         "object_hidden" => pulsar_scene_model::ObjectHidden::packed_gpu_component_id(),
-        "Transform::packed" => crate::scene::Transform::packed_gpu_component_id(),
+        "object_transforms" => pulsar_scene_model::TransformRow::packed_gpu_component_id(),
         "light_sources" => c::LightSourceRow::packed_gpu_component_id(),
         "water_hitbox_sources" => pulsar_physics::WaterHitboxSourceRow::packed_gpu_component_id(),
         "global_fog_sources" => c::GlobalFogSourceRow::packed_gpu_component_id(),
@@ -147,7 +147,7 @@ fn relative_camera_source_compatible(
         // (camera-relative-safe) transform rows with them.
         | "object_parent"
         | "object_frame"
-        | "Transform::packed"
+        | "object_transforms"
         | "light_sources"
         | "decal_sources"
         | "water_hitbox_sources"
@@ -757,6 +757,7 @@ pub struct HelioEditorMailbox {
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
+    voxel_chunk_saves: VoxelChunkSaves,
 }
 
 /// A debug view advertised by a pass in the editor viewport's render graph.
@@ -801,6 +802,11 @@ impl HelioEditorMailbox {
     /// has not taken it yet.
     pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
         self.static_drag_warning.lock().ok()?.take()
+    }
+
+    /// Where saves ask the renderer for the voxel planet's edited chunks.
+    pub fn voxel_chunk_saves(&self) -> VoxelChunkSaves {
+        self.voxel_chunk_saves.clone()
     }
 
     /// The gizmo drags finished since the last call, oldest first.
@@ -966,6 +972,9 @@ pub struct HelioRenderer {
     pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     /// Gizmo drags that moved their object, taken by the UI for undo.
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
+    /// Saves' requests for the voxel planet's edited chunks (its backend
+    /// answers them).
+    voxel_chunk_saves: VoxelChunkSaves,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -1145,8 +1154,9 @@ impl HelioRenderer {
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         let mut voxel_backends = VoxelBackendRegistry::new();
+        let voxel_chunk_saves = VoxelChunkSaves::default();
         voxel_backends
-            .register(Box::new(PlanetVoxelBackend::new()))
+            .register(Box::new(PlanetVoxelBackend::new(voxel_chunk_saves.clone())))
             .expect("built-in voxel renderer ID must be unique");
         // Free-standing voxel objects: mesh rows in the shared scene.
         voxel_backends
@@ -1177,6 +1187,7 @@ impl HelioRenderer {
             animated_content: Default::default(),
             static_drag_warning: Arc::new(Mutex::new(None)),
             completed_drags: Arc::new(Mutex::new(Vec::new())),
+            voxel_chunk_saves,
             reset_taa_next_frame: false,
             device_loss: None,
             reported_device_loss: false,
@@ -1701,7 +1712,6 @@ impl HelioRenderer {
         };
         let debug_view_changed = self.apply_viewport_debug_mode();
         self.apply_view_fog();
-        let view_eye = self.view_eye();
         let ortho_half_height = self.ortho_half_height();
 
         let inner = match self.inner.as_mut() {
@@ -2071,11 +2081,7 @@ impl HelioRenderer {
             };
             {
                 profiling::profile_scope!("helio_draw_gizmo");
-                inner.interaction.draw_gizmo(
-                    &mut inner.renderer,
-                    &store.world,
-                    view_eye,
-                );
+                inner.interaction.draw_gizmo(&mut inner.renderer, &store.world);
             }
             camera
         };
@@ -2913,6 +2919,7 @@ impl HelioRenderer {
             viewport_debug_views: self.viewport_debug_views.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
+            voxel_chunk_saves: self.voxel_chunk_saves.clone(),
         }
     }
 
@@ -3002,7 +3009,7 @@ impl HelioRenderer {
     /// camera, along its basis through the pixel (a 45 degree view). No
     /// matrix holds the camera's position: on a planet an f32 one is off by
     /// metres.
-    fn build_pick_ray(&self, norm_x: f32, norm_y: f32) -> (Vec3, Vec3) {
+    fn build_pick_ray(&self, norm_x: f32, norm_y: f32) -> (DVec3, Vec3) {
         let (width, height) = self.viewport_size;
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let tan = std::f32::consts::FRAC_PI_8.tan();
@@ -3012,28 +3019,25 @@ impl HelioRenderer {
             let half_height = self.ortho_half_height();
             let offset = right * ((norm_x * 2.0 - 1.0) * half_height * aspect)
                 + up * ((1.0 - norm_y * 2.0) * half_height);
-            return (self.view_eye() + offset, forward);
+            return (self.view_eye() + offset.as_dvec3(), forward);
         }
         let direction = forward
             + right * ((norm_x * 2.0 - 1.0) * tan * aspect)
             + up * ((1.0 - norm_y * 2.0) * tan);
-        (self.cam_pos.as_vec3(), direction.normalize_or_zero())
+        (self.cam_pos, direction.normalize_or_zero())
     }
 
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
         self.configure_gizmo_view();
         self.gizmo_dirty = true;
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
-        let view_eye = self.view_eye();
         let ortho_half_height = self.ortho_half_height();
         let Some(inner) = &mut self.inner else { return };
         let store = self.scene_store.read();
-        if inner.interaction.try_start_drag(
-            &store.world,
-            ray_origin,
-            ray_direction,
-            view_eye,
-        ) {
+        if inner
+            .interaction
+            .try_start_drag(&store.world, ray_origin, ray_direction)
+        {
             // What the object's mesh and light instances author: the flag
             // the caches the drag would invalidate key on.
             let fixed = store.world.selected_entity().and_then(|selected| {
@@ -3071,26 +3075,20 @@ impl HelioRenderer {
     pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
         self.configure_gizmo_view();
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
-        let view_eye = self.view_eye();
         let ortho_half_height = self.ortho_half_height();
         let Some(inner) = &mut self.inner else { return };
         if inner.interaction.is_dragging() {
             let mut store = self.scene_store.write();
-            inner.interaction.update_drag(
-                &mut store.world,
-                ray_origin,
-                ray_direction,
-                view_eye,
-            );
+            inner
+                .interaction
+                .update_drag(&mut store.world, ray_origin, ray_direction);
             self.gizmo_dirty = true;
         } else {
             let store = self.scene_store.read();
-            self.gizmo_dirty |= inner.interaction.update_hover(
-                &store.world,
-                ray_origin,
-                ray_direction,
-                view_eye,
-            );
+            self.gizmo_dirty |=
+                inner
+                    .interaction
+                    .update_hover(&store.world, ray_origin, ray_direction);
         }
     }
 
@@ -3144,14 +3142,14 @@ impl HelioRenderer {
                 10_000.0,
             ),
         };
-        let camera_position = self.view_eye();
-        let view =
-            glam::camera::rh::view::look_at_mat4(camera_position, camera_position + forward, up);
+        // With the eye at the origin: the gizmo works in offsets from it.
+        let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, up);
+        let eye = self.view_eye();
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
                 .set_view(
-                    camera_position,
+                    eye,
                     forward,
                     projection * view,
                     size,
@@ -3163,15 +3161,15 @@ impl HelioRenderer {
 
     /// Where the view is taken from: the camera, or for an orthographic view
     /// the point [`ORTHO_STANDOFF`] behind its focus.
-    fn view_eye(&self) -> Vec3 {
+    fn view_eye(&self) -> DVec3 {
         if self.active_view.is_orthographic() {
             // Behind everything the view reaches, so picks and the gizmo see
             // objects on both sides of the focus (this is not the render eye).
             let (forward, _, _) = self.camera_basis();
             let range = ortho_depth_range(self.ortho_half_height());
-            (self.cam_pos - forward.as_dvec3() * f64::from(range)).as_vec3()
+            self.cam_pos - forward.as_dvec3() * f64::from(range)
         } else {
-            self.cam_pos.as_vec3()
+            self.cam_pos
         }
     }
 }

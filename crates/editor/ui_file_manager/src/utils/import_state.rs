@@ -215,6 +215,7 @@ mod tests {
             asset: "rock.mesh".into(),
             importer: "mesh".into(),
             options: None,
+            companions: Vec::new(),
             outputs: Vec::new(),
         });
         db.save(root).unwrap();

@@ -31,7 +31,7 @@ use helio_pass_portal_cull::{
     PortalProjectionBridge, PortalProjectionConfig, SubLevelContents, SubLevelResolver,
 };
 use pulsar_scene_model::attachments::enabled_components;
-use pulsar_scene_model::frames::world_dmat4_of;
+use pulsar_scene_model::hierarchy_transform::world_matrix_of;
 use pulsar_scene_model::Visibility;
 use pulsar_scenedb::{Entity, World};
 
@@ -126,7 +126,7 @@ pub fn pair_portals(world: &World) -> Pairing {
 /// (relative to `origin`), and half the opening's extent scaled by the object's
 /// world scale along its own X and Y.
 fn pose_of(world: &World, portal: &Portal, origin: DVec3) -> Option<(Mat4, [f32; 2])> {
-    let matrix = world_dmat4_of(world, portal.owner)?;
+    let matrix = world_matrix_of(world, portal.owner)?;
     let (scale, rotation, translation) = matrix.to_scale_rotation_translation();
     if !(scale.x.is_finite() && scale.y.is_finite()) {
         return None;
@@ -260,7 +260,7 @@ mod tests {
     use pulsar_scene_model::world_ext::{SceneWorldExt, SpawnObject};
     use pulsar_scene_model::Transform;
 
-    fn portal_at(world: &mut World, link_id: i32, position: [f32; 3]) -> Entity {
+    fn portal_at(world: &mut World, link_id: i32, position: [f64; 3]) -> Entity {
         let object = world
             .spawn_object(SpawnObject::new("portal").with_transform(Transform {
                 position,
