@@ -853,3 +853,57 @@ fn static_meshes_inside_a_frame_are_movable_in_the_world() {
     assert_ne!(join.mesh_rows(&out, inside)[0].flags & MOVABLE, 0, "static in a frame");
     assert_eq!(join.mesh_rows(&out, outside)[0].flags & MOVABLE, 0, "static in the world");
 }
+
+/// Parent and frame rows are keyed by entity index. An index freed by a
+/// despawn and reused by an unparented object must not inherit the old parent
+/// (or frame) from a row the despawn left behind.
+#[test]
+fn a_reused_entity_index_does_not_inherit_a_stale_parent() {
+    use engine_backend::scene::frames::make_frame;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let ship = place(&mut scene, "ship", [100.0, 0.0, 0.0]);
+    make_frame(&mut scene.world, ship).unwrap();
+    // Children of the frame, so their indices carry parent rows.
+    let doomed: Vec<Entity> = (0..4)
+        .map(|n| {
+            scene
+                .world
+                .spawn_object(SpawnObject::new(format!("d{n}")).with_parent(Some(ship)))
+                .unwrap()
+        })
+        .collect();
+    let (_, keeper) = mesh_on(&mut scene, None, at_x(7.0));
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = join_for(&device, &queue);
+    join.run(&mut scene);
+
+    let freed: Vec<u32> = doomed.iter().map(|e| e.index()).collect();
+    for entity in doomed {
+        scene.world.despawn_tree(entity);
+    }
+    join.run(&mut scene);
+
+    // New unparented meshes, until one lands on a freed index.
+    let mut reused = None;
+    for n in 0..16 {
+        let (object, instance) = mesh_on(&mut scene, None, at_x(20.0 + n as f32));
+        if freed.contains(&object.index()) {
+            reused = Some((instance, 20.0 + n as f32));
+            break;
+        }
+    }
+    let (instance, x) = reused.expect("a spawned object reused a freed index");
+    let out = join.run(&mut scene);
+    assert_eq!(
+        position_of(&join, &out, instance),
+        [x, 0.0, 0.0],
+        "placed in the world, not under the despawned object's parent"
+    );
+    let (_, space) = row_model(&join, &out, instance);
+    assert_eq!(space, 0, "and not in the old parent's frame");
+    assert_eq!(position_of(&join, &out, keeper), [7.0, 0.0, 0.0]);
+}
