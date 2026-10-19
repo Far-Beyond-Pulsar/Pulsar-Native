@@ -244,58 +244,85 @@ world.
 Phases 3-7 below are built to the extent described here; "not done" lists what
 is deliberately left, with the reason.
 
+**One allocator for every kind of space.** Rigid frames, sublevel placements and
+portal projections are different authored things with one runtime need: a slot
+in the coordinate-space table. None of them numbers the table, and none knows the
+others exist.
+
+- *Authored primitives stay the only authored things:* `PortalComponent`,
+  `SubLevelActorComponent`, and the `rigid_frame` object prop (which becomes the
+  `RigidFrame` marker). There is no separate "frame" component to author for a
+  portal or a sublevel.
+- *Anything that defines a space registers a `SpaceDefiner`* (`inventory`) in
+  the crate that owns the component: `pulsar_scene_model::frames` registers
+  `RigidFrame`, `engine_backend::scene::sublevels` registers
+  `SubLevelActorComponent`. A definer names its objects and may supply a
+  normalizer (a sublevel placement's authored matrix is folded into the object's
+  `Transform` once, so a space has exactly one placement).
+- *`sync_spaces(&mut World)` is the allocator.* It gives every claimed object a
+  `SpaceSlot` (`1..=255`), removes it when the claim ends, runs normalizers, and
+  is idempotent; `needs_space_sync(&World)` is its read-only check.
+  `SpaceSlot` is mirrored to the GPU as the derived `ObjectFrame` row.
+- *Entity-less spaces take slots through `helio_core::CoordinateSpaceAllocator`.*
+  `engine_backend::scene::SpaceTable` implements it over the table the objects'
+  spaces already fill; `PortalProjectionBridge::build_into(resolver, &mut table)`
+  asks it for each projection's matrix (`build` keeps numbering its own table, for
+  hosts without frames). `Renderer::set_coordinate_spaces` takes the one result;
+  `set_portal_projection_counts` carries the portal view and chain counts.
+
 **Frames (phase 3).**
 
-- `pulsar_scene_model::frames`: `Frame { slot }` (slots `1..=255`, 0 = world),
-  `make_frame` / `clear_frame` / `set_rigid_frame`, `frame_table(world, origin)`
-  (every frame's world matrix composed in **f64**, handed over relative to the
-  frame origin as f32), `frame_above`, `space_of`. A frame is authored with the
-  object prop `rigid_frame: true` (`FRAME_PROP`); `apply_frame_prop` makes the
-  component match it on `add_object`, `update_object` and runtime load, so it
-  survives save/load, undo and duplicate with no file-format change.
-- `ObjectFrame` (`object_frame`): the derived GPU row for `Frame`.
-- `HierarchyResolve` now publishes **two** results: the world rows
+- `pulsar_scene_model::frames`: `RigidFrame`, `SpaceSlot { slot }`,
+  `SpaceDefiner`, `sync_spaces`, `make_frame` / `clear_frame` /
+  `set_rigid_frame`, `frame_table(world, origin)` (every space's world matrix
+  composed in **f64**, handed over relative to the frame origin as f32),
+  `frame_above`, `space_of`. A rigid frame is authored with the object prop
+  `rigid_frame: true` (`FRAME_PROP`); `apply_frame_prop` makes the component match
+  it on `add_object`, `update_object` and runtime load, so it survives save/load,
+  undo and duplicate with no file-format change.
+- `HierarchyResolve` publishes **two** results: the world rows
   (`Transform::packed`, for lights, environment volumes, anything not
-  frame-aware) and the **placement** rows (`Transform::placement`) composed only
-  up to the nearest frame, with the object's space in `object_space`. Placement
-  rows are not origin-subtracted inside a frame (they are small). Dirty tracking
-  has three bits (transform / parent / frame); a frame moving adds nothing to
-  the placement moved list.
+  space-aware) and the **placement** rows (`Transform::placement`) composed only
+  up to the nearest space, with the object's space in `object_space`. Placement
+  rows are not origin-subtracted inside a space (they are small). Dirty tracking
+  has three bits (transform / parent / slot); a space moving adds nothing to the
+  placement moved list.
 - `SceneJoin` places meshes from the placement rows, writes the space into the
   instance flags (bits 8-15, which the G-buffer, occlusion cull, shadow, shadow
   cull, shadow dirty and ray-tracing passes already honour), and lights keep the
   world rows. Its structure signature includes the space buffer, so changing a
-  parent link or frame re-sorts, while moving does not.
+  parent link or slot re-sorts, while moving does not.
 - `GBufferPass`: 256 table slots (was 32) and a real previous-frame table (it
   used to upload the current table as "previous", so moving spaces had no
   motion vectors; a table that stops changing catches `prev` up next frame).
-- Engine: `FrameTableSync` (`engine_backend::scene`) builds the table each frame
-  and uploads it only when it changes, in the editor renderer and both game
-  render paths. Editor: **Make Rigid Frame / Make Ordinary Group** in the
-  hierarchy context menu (an undoable `UpdateObject`).
+- Engine: `SpaceSync` (`engine_backend::scene`) runs the allocator when
+  `needs_space_sync`, builds the `SpaceTable` each frame and uploads it only
+  when it changes, in the editor renderer and both game render paths. Editor:
+  **Make Rigid Frame / Make Ordinary Group** in the hierarchy context menu (an
+  undoable `UpdateObject`).
 - Tests: `frame_members_are_placed_in_their_frame_and_follow_the_table` (GPU,
-  nested frames, `table[space] * row == CPU world matrix`, moving a frame
+  nested spaces, `table[space] * row == CPU world matrix`, moving a space
   rewrites no member row), `a_rigid_frames_meshes_move_with_it_in_the_frame`
-  (full frame through the editor commands), the frame/prop/table unit tests.
+  (full frame through the editor commands), `independent_definers_share_one_
+  allocator`, the table/prop unit tests.
 
-**Sublevels (phase 4).** `engine_backend::scene::sublevels::adopt_sublevel_actors`
-makes every `SubLevelActorComponent` a rigid frame, folding its authored matrix
-into the object's own `Transform` once (idempotent). It runs after both loaders.
-So a sublevel placement *is* a frame and its content is its descendants.
+**Sublevels (phase 4).** A placement is just a registered definer (see above):
+no adopt step, and the component is the only thing authored. Test:
+`a_placement_is_a_space_holding_its_contents`, `a_placement_and_a_rigid_frame_get_
+different_slots`.
 **Not done:** the CPU `SubLevelResolver`'s own use of the table for sublevel
 content is untouched (nothing in the engine feeds it); a level-asset format for
 sublevel content, an editor UI to place one, instancing one content several
 times (each placement holds its own objects today), and per-placement culling.
 These need authoring decisions first.
 
-**Portals (phase 5).** Portals and frames share one table without erasing each
-other: `PortalProjectionConfig::first_slot` reserves the slots below it for
-frames (placeholders in the returned frame), and `Renderer` layers the two
-(`set_frame_spaces`, `set_portal_projection_frame`, `merge_spaces`;
-`set_coordinate_spaces` keeps its old replace-everything meaning). A host using
-both sets `first_slot = frame_count + 1`. **Not done:** portal chain
-composition does not yet reuse frame composition (they are still two code
-paths).
+**Portals (phase 5).** Portals author only `PortalComponent`. Their per-projection
+spaces come from the same allocator as everything else (`build_into`); there is no
+reserved range and no layering in the renderer. Test:
+`frames_and_a_portal_projection_share_one_table_without_overlap` (engine), and
+`a_host_allocator_shares_its_table_with_the_projection` (Helio). **Not done:**
+portal chain composition does not yet reuse frame composition (they are still two
+code paths).
 
 **Partitions (phase 6).** `pulsar_scene_model::partitions`: `ContentSpace(n)`
 (prop `content_space`), `assign_space`, `objects_in_space`, `space_roots`,
@@ -388,7 +415,7 @@ Known, not fixed. Ordered roughly by how much they matter.
 4. **Sublevel authoring and instancing** (phase 4): level-asset format, editor
    UI, one content placed several times, per-placement culling. `SubLevelResolver`
    is still unused by the engine.
-5. **Portal chains do not reuse frame composition** (phase 5): two code paths.
+5. **Portal chains do not reuse frame composition** (phase 5): two code paths (slots are shared; composition is not).
 6. **SceneDB partition key** (phase 6): per-partition journals and mirror flush
    ranges, in the external SceneDB repository.
 7. **A frame moving still advances the placement buffer's generation**, so the

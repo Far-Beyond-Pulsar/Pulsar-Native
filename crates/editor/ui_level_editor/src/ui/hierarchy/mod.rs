@@ -424,7 +424,7 @@ impl HierarchyItem for SceneObjectItem {
             let world = state.scene.world();
             world
                 .entity_for(&self.object.id)
-                .is_some_and(|entity| world.get::<engine_backend::scene::frames::Frame>(entity).is_some())
+                .is_some_and(|entity| world.get::<engine_backend::scene::frames::RigidFrame>(entity).is_some())
         };
         let duplicate_id = self.object.id.clone();
         let delete_id = self.object.id.clone();

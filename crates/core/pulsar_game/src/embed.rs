@@ -226,7 +226,7 @@ pub struct EmbeddedGame {
     /// for gameplay and rendering.
     scene_store: engine_backend::scene::SharedScene,
     /// Uploads the rigid-frame table when a frame moved.
-    frame_table: engine_backend::scene::FrameTableSync,
+    spaces: engine_backend::scene::SpaceSync,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
     /// Where the pointer last was (normalized), for motion deltas.
@@ -407,7 +407,7 @@ impl EmbeddedGame {
             out_texture,
             out_view,
             scene_store,
-            frame_table: Default::default(),
+            spaces: Default::default(),
             freecam,
             last_pointer: None,
             userdata: ctx.userdata,
@@ -471,11 +471,7 @@ impl EmbeddedGame {
         // 4. Render into the offscreen target the editor samples. ABI v2
         //    requires the host's authoritative SceneDB-backed store above, so
         //    simulation and rendering observe the same hydrated world.
-        self.frame_table.sync(
-            &self.scene_store.read().world,
-            glam::DVec3::ZERO,
-            &mut self.renderer,
-        );
+        self.spaces.sync(&self.scene_store, glam::DVec3::ZERO, &mut self.renderer);
         if let Err(e) = self.renderer.render(&helio_cam, &self.out_view) {
             tracing::error!("PiE render error: {:?}", e);
         }

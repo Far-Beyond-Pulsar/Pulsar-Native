@@ -46,7 +46,7 @@ pub mod sublevels;
 #[cfg(feature = "render")]
 pub use helio_bridge::{
     ensure_gpu_mirror, environment_join, environment_join_keys, first_fixed_in_group,
-    hierarchy_resolve, FrameTableSync,
+    hierarchy_resolve, SpaceSync, SpaceTable,
     hierarchy_resolve_keys, scene_join, scene_join_keys,
 };
 #[cfg(feature = "render")]

@@ -1047,7 +1047,7 @@ pub struct HelioRenderer {
     world_origin: Option<DVec3>,
     /// The rigid-frame table last handed to the renderer (slot 0 is the world),
     /// so it is re-uploaded only when a frame moved.
-    frame_table: crate::scene::FrameTableSync,
+    spaces: crate::scene::SpaceSync,
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
@@ -1212,7 +1212,7 @@ impl HelioRenderer {
             voxel_altitude: None,
             last_camera_relative: None,
             world_origin: None,
-            frame_table: Default::default(),
+            spaces: Default::default(),
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
             last_voxel_errors: Vec::new(),
@@ -2009,8 +2009,8 @@ impl HelioRenderer {
             inner.renderer.set_world_origin(self.world_origin);
             // Rigid frames: one matrix each, relative to the same origin. Their
             // members' rows never change when a frame moves; this table does.
-            self.frame_table.sync(
-                &self.scene_store.read().world,
+            self.spaces.sync(
+                &self.scene_store,
                 self.world_origin.unwrap_or(DVec3::ZERO),
                 &mut inner.renderer,
             );

@@ -404,31 +404,104 @@ mod tests {
     }
 }
 
-/// Keeps a renderer's rigid-frame table (see [`pulsar_scene_model::frames`])
-/// current: builds it from the world each frame and uploads it only when a
-/// frame moved, so the many objects inside a frame are never touched.
+/// The one coordinate-space table. Spaces objects define (rigid frames, sublevel
+/// placements; `pulsar_scene_model::frames`) fill slots `1..` in slot order;
+/// every other producer (a portal projection) asks this for slots through
+/// [`CoordinateSpaceAllocator`], so no producer numbers the table itself and
+/// none can overwrite another.
+pub struct SpaceTable {
+    matrices: Vec<glam::Mat4>,
+    /// Slots handed out by `space_for`, to reuse an equal matrix.
+    allocated: std::collections::HashMap<[u32; 16], u32>,
+}
+
+impl SpaceTable {
+    /// A table whose first slots are the spaces objects define (`frames[0]` is
+    /// the world).
+    pub fn new(frames: Vec<glam::Mat4>) -> Self {
+        let mut matrices = frames;
+        if matrices.is_empty() {
+            matrices.push(glam::Mat4::IDENTITY);
+        }
+        Self {
+            matrices,
+            allocated: Default::default(),
+        }
+    }
+
+    /// Every slot, the world first.
+    pub fn matrices(&self) -> &[glam::Mat4] {
+        &self.matrices
+    }
+}
+
+impl helio_core::CoordinateSpaceAllocator for SpaceTable {
+    fn space_for(&mut self, matrix: glam::Mat4) -> Option<u32> {
+        if matrix == glam::Mat4::IDENTITY {
+            return Some(0);
+        }
+        let key = matrix.to_cols_array().map(f32::to_bits);
+        if let Some(&slot) = self.allocated.get(&key) {
+            return Some(slot);
+        }
+        // 8 bits of an instance's flags carry the space id.
+        if self.matrices.len() >= 256 {
+            return None;
+        }
+        let slot = self.matrices.len() as u32;
+        self.matrices.push(matrix);
+        self.allocated.insert(key, slot);
+        Some(slot)
+    }
+}
+
+/// Keeps a renderer's coordinate-space table current. Each frame it makes sure
+/// every space-defining object has its slot (the allocator,
+/// `pulsar_scene_model::frames::sync_spaces`, taking the write lock only when
+/// something changed), builds the [`SpaceTable`] and uploads it only when it
+/// differs, so the many objects inside a space are never touched.
 #[derive(Default)]
-pub struct FrameTableSync {
+pub struct SpaceSync {
     last: Vec<glam::Mat4>,
 }
 
-impl FrameTableSync {
-    /// Bring `renderer`'s coordinate spaces up to date with `world`'s frames,
-    /// relative to `origin` (the frame's world origin; zero outside
-    /// camera-relative frames). Returns whether the table changed.
+impl SpaceSync {
+    /// Bring `renderer`'s table up to date with `scene`'s spaces, relative to
+    /// `origin` (the frame's world origin; zero outside camera-relative
+    /// frames). Returns whether the table changed.
     pub fn sync(
         &mut self,
-        world: &pulsar_scenedb::World,
+        scene: &crate::scene::SharedScene,
         origin: glam::DVec3,
         renderer: &mut helio::Renderer,
     ) -> bool {
-        let table = pulsar_scene_model::frames::frame_table(world, origin);
-        if table == self.last {
+        self.sync_with(scene, origin, renderer, |_| {})
+    }
+
+    /// [`Self::sync`], first letting `others` add the spaces other producers
+    /// need (a portal projection built with
+    /// `PortalProjectionBridge::build_into`).
+    pub fn sync_with(
+        &mut self,
+        scene: &crate::scene::SharedScene,
+        origin: glam::DVec3,
+        renderer: &mut helio::Renderer,
+        others: impl FnOnce(&mut SpaceTable),
+    ) -> bool {
+        if pulsar_scene_model::frames::needs_space_sync(&scene.read().world) {
+            pulsar_scene_model::frames::sync_spaces(&mut scene.write().world);
+        }
+        let mut table = SpaceTable::new(pulsar_scene_model::frames::frame_table(
+            &scene.read().world,
+            origin,
+        ));
+        others(&mut table);
+        if table.matrices == self.last {
             return false;
         }
         // Slot 0 (the world) is implicit in the renderer's table.
-        renderer.set_frame_spaces(&table[1..]);
-        self.last = table;
+        renderer.set_coordinate_spaces(&table.matrices[1..]);
+        self.last = table.matrices;
         true
     }
 }
@@ -442,7 +515,7 @@ pub fn first_fixed_in_group(
     world: &pulsar_scenedb::World,
     entity: pulsar_scenedb::Entity,
 ) -> Option<(pulsar_scenedb::Entity, helio::Movability)> {
-    use pulsar_scene_model::frames::{frame_above, Frame};
+    use pulsar_scene_model::frames::{frame_above, SpaceSlot};
     let fixed = |candidate| {
         let movability = helio_component::components::object_movability(world, candidate)?;
         (!movability.can_move()).then_some((candidate, movability))
@@ -450,7 +523,7 @@ pub fn first_fixed_in_group(
     if let found @ Some(_) = fixed(entity) {
         return found;
     }
-    if world.get::<Frame>(entity).is_some() {
+    if world.get::<SpaceSlot>(entity).is_some() {
         return None;
     }
     let space = frame_above(world, entity);

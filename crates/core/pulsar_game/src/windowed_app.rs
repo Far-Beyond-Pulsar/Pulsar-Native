@@ -51,7 +51,7 @@ struct GameWindow {
     /// The shared world, for the camera lens's overscan.
     scene_store: engine_backend::scene::SharedScene,
     /// Uploads the rigid-frame table when a frame moved.
-    frame_table: engine_backend::scene::FrameTableSync,
+    spaces: engine_backend::scene::SpaceSync,
 }
 
 /// Frame interval of an unfocused window when several game copies are running.
@@ -143,7 +143,7 @@ impl GameWindow {
             next_redraw: Instant::now(),
             editor_mode,
             scene_store: scene_store.clone(),
-            frame_table: Default::default(),
+            spaces: Default::default(),
         }
     }
 
@@ -250,11 +250,7 @@ impl GameWindow {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        self.frame_table.sync(
-            &self.scene_store.read().world,
-            glam::DVec3::ZERO,
-            &mut self.renderer,
-        );
+        self.spaces.sync(&self.scene_store, glam::DVec3::ZERO, &mut self.renderer);
         if let Err(e) = self.renderer.render(&helio_cam, &view) {
             tracing::error!(window = self.handle.id(), "Render error: {:?}", e);
         }

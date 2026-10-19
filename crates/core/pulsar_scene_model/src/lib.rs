@@ -33,7 +33,7 @@ pub use instance::{ComponentInstance, EditorObjectId};
 pub use payload_catalog::{
     ContentId, PayloadCatalog, PayloadCatalogError, PayloadMutation, PayloadRef,
 };
-pub use frames::Frame;
+pub use frames::{RigidFrame, SpaceSlot};
 pub use partitions::ContentSpace;
 pub use world_ext::{SceneError, SceneWorldExt, SpawnObject};
 
