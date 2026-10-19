@@ -1,4 +1,5 @@
 use rust_i18n::t;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -124,11 +125,14 @@ actions!(
 /// built twice — once for the platform native menu bar (macOS) and once
 /// converted to [`gpui::OwnedMenu`] for the custom in-window menu bar on
 /// Windows / Linux where `cx.get_menus()` always returns `None`.
-fn build_app_menus(title: SharedString, is_source_build: bool) -> Vec<Menu> {
-    // Only engine-global menus live here. Editors (level editor, blueprint
-    // editor, ...) provide their own menus in their own top bar, so nothing
-    // editor-specific (edit, selection, view, build, run, assets, ...) belongs
-    // in this list. Build / Run live on the global toolbar.
+fn build_app_menus(
+    title: SharedString,
+    is_source_build: bool,
+    file_types: &[plugin_editor_api::FileTypeDefinition],
+) -> Vec<Menu> {
+    // Only engine-global menus live here. Editor-specific edit, selection,
+    // view, build, and run actions stay with their editor or the global
+    // toolbar. Asset creation and import are project-wide operations.
     let mut menus = vec![
         // Pulsar (logo) menu
         Menu {
@@ -226,6 +230,7 @@ fn build_app_menus(title: SharedString, is_source_build: bool) -> Vec<Menu> {
                 ),
             ],
         },
+        assets_menu(file_types),
         // Tools: engine-wide diagnostics and collaboration
         Menu {
             name: t!("Menu.Tools").into(),
@@ -288,12 +293,88 @@ fn build_app_menus(title: SharedString, is_source_build: bool) -> Vec<Menu> {
     menus
 }
 
+fn assets_menu(file_types: &[plugin_editor_api::FileTypeDefinition]) -> Menu {
+    let mut categories: BTreeMap<&str, Vec<&plugin_editor_api::FileTypeDefinition>> =
+        BTreeMap::new();
+    let mut subcategories: BTreeMap<(&str, &str), Vec<&plugin_editor_api::FileTypeDefinition>> =
+        BTreeMap::new();
+    let mut top_level = Vec::new();
+    for file_type in file_types
+        .iter()
+        .filter(|file_type| file_type.is_creatable())
+    {
+        match file_type.categories.as_slice() {
+            [] => top_level.push(file_type),
+            [category] => categories
+                .entry(category.as_str())
+                .or_default()
+                .push(file_type),
+            [category, subcategory, ..] => subcategories
+                .entry((category.as_str(), subcategory.as_str()))
+                .or_default()
+                .push(file_type),
+        }
+    }
+    for (category, _) in subcategories.keys() {
+        categories.entry(category).or_default();
+    }
+    let make_item = |file_type: &plugin_editor_api::FileTypeDefinition| {
+        MenuItem::action(
+            file_type.display_name.clone(),
+            NewAsset {
+                file_type_id: file_type.id.as_str().to_string(),
+            },
+        )
+    };
+    top_level.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+    let mut new_items = top_level.into_iter().map(make_item).collect::<Vec<_>>();
+    for (category, mut types) in categories {
+        let mut items = Vec::new();
+        types.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        items.extend(types.into_iter().map(make_item));
+        for ((_, subcategory), types) in subcategories
+            .iter_mut()
+            .filter(|((parent, _), _)| *parent == category)
+        {
+            types.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+            items.push(MenuItem::Submenu(Menu {
+                name: (*subcategory).into(),
+                items: types.iter().map(|file_type| make_item(file_type)).collect(),
+            }));
+        }
+        new_items.push(MenuItem::Submenu(Menu {
+            name: category.into(),
+            items,
+        }));
+    }
+    Menu {
+        name: t!("Menu.Assets").into(),
+        items: vec![
+            MenuItem::Submenu(Menu {
+                name: t!("Menu.New").into(),
+                items: new_items,
+            }),
+            MenuItem::separator(),
+            MenuItem::action(t!("Menu.Import").to_string(), ImportAssets),
+        ],
+    }
+}
+
 /// Initialize the app menus.
 ///
 /// Calls `cx.set_menus` (native macOS menu bar) **and** stores an
 /// [`ui::AppMenusCache`] global so that [`ui::AppMenuBar`] can render the
 /// in-window menu bar on Windows / Linux where `cx.get_menus()` returns `None`.
 pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
+    init_app_menus_with_file_types(title, &[], cx);
+}
+
+/// Initialize the app menus with project asset types available to create.
+pub fn init_app_menus_with_file_types(
+    title: impl Into<SharedString>,
+    file_types: &[plugin_editor_api::FileTypeDefinition],
+    cx: &mut App,
+) {
     let title_str: SharedString = title.into();
     let is_source_build = engine_state::EngineContext::global()
         .map(|ctx| {
@@ -305,10 +386,14 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
         .unwrap_or(false);
 
     // macOS: platform-level native menu bar
-    cx.set_menus(build_app_menus(title_str.clone(), is_source_build));
+    cx.set_menus(build_app_menus(
+        title_str.clone(),
+        is_source_build,
+        file_types,
+    ));
 
     // Windows / Linux: cache as OwnedMenu for the custom in-window AppMenuBar
-    let owned: Vec<gpui::OwnedMenu> = build_app_menus(title_str, is_source_build)
+    let owned: Vec<gpui::OwnedMenu> = build_app_menus(title_str, is_source_build, file_types)
         .into_iter()
         .map(|m| m.owned())
         .collect();
@@ -330,6 +415,7 @@ pub struct AppTitleBar {
     theme_switcher: Entity<ThemeSwitcher>,
     theme_picker: Entity<crate::theme_dropdown::ThemePicker>,
     title: SharedString,
+    asset_file_types: Vec<plugin_editor_api::FileTypeDefinition>,
     last_locale: String,
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
     profile_dropdown: Entity<crate::profile_dropdown::ProfileDropdown>,
@@ -347,8 +433,17 @@ impl AppTitleBar {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::new_with_asset_file_types(title, Vec::new(), window, cx)
+    }
+
+    pub fn new_with_asset_file_types(
+        title: impl Into<SharedString>,
+        asset_file_types: Vec<plugin_editor_api::FileTypeDefinition>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let title_str = title.into();
-        init_app_menus(title_str.clone(), cx);
+        init_app_menus_with_file_types(title_str.clone(), &asset_file_types, cx);
 
         let app_menu_bar = new_menu_bar(window, cx);
         let locale_picker = cx.new(|cx| crate::locale_picker::LocalePicker::new(window, cx));
@@ -448,6 +543,7 @@ impl AppTitleBar {
             theme_switcher,
             theme_picker,
             title: title_str,
+            asset_file_types,
             last_locale: locale().to_string(),
             child: Rc::new(|_, _| div().into_any_element()),
             profile_dropdown,
@@ -490,7 +586,7 @@ impl Render for AppTitleBar {
             tracing::error!("DEBUG: Test translation Menu.File = {}", t!("Menu.File"));
 
             // Rebuild menus and app menu bar
-            init_app_menus(self.title.clone(), cx);
+            init_app_menus_with_file_types(self.title.clone(), &self.asset_file_types, cx);
             self.app_menu_bar = new_menu_bar(window, cx);
             self.last_locale = current_locale;
         }

@@ -45,7 +45,21 @@ impl EditorWindowShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
+        let asset_file_types = plugin_manager::global()
+            .and_then(|plugins| {
+                plugins.try_read().map(|plugins| {
+                    plugins
+                        .file_type_registry()
+                        .get_all_file_types()
+                        .into_iter()
+                        .filter(|file_type| file_type.is_creatable())
+                        .cloned()
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        let title_bar = cx
+            .new(|cx| AppTitleBar::new_with_asset_file_types(title, asset_file_types, window, cx));
         let global_toolbar = cx.new(|cx| ui_level_editor::GlobalToolbarView::new(window, cx));
         let friends_popover = cx.new(|cx| ui_friends::FriendsPopover::new(window, cx));
 
