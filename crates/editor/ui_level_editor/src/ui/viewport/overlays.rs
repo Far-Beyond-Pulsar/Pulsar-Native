@@ -4,8 +4,9 @@ use super::*;
 
 use crate::ui::toolbar::view_mode_dropdown::ViewModePickerState;
 use rust_i18n::t;
-use ui::button::{Button, ButtonVariants as _};
+use ui::button::Button;
 use ui::IconName;
+use ui::StyledExt as _;
 
 impl ViewportPanel {
     /// The view-mode picker this viewport shows: its own when it was split off,
@@ -53,6 +54,7 @@ impl ViewportPanel {
                 overlays.show_performance_overlay,
                 overlays.show_gpu_pipeline_overlay,
                 overlays.show_nerds_overlay,
+                overlays.show_portal_debug_overlay,
                 overlays.camera_sync_locked,
             ),
             (
@@ -188,6 +190,30 @@ impl ViewportPanel {
                         cx,
                     )),
             );
+        }
+
+        if view.overlays.state.show_portal_debug_overlay {
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .top(px(56.0))
+                    .right_2()
+                    .w(px(320.0))
+                    .max_h(px(360.0))
+                    .overflow_y_scroll()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+                    .child(render_portal_debug_overlay(state_arc.clone(), cx)),
+            );
+            if view.editor.camera_mode == crate::state::CameraMode::Perspective {
+                overlays = overlays.child(
+                    div()
+                        .absolute()
+                        .size_full()
+                        .child(render_portal_badges(state_arc.clone(), gpu_engine)),
+                );
+            }
         }
 
         // What the overlay samples, on its own timer: the renderer's statistics
@@ -338,4 +364,309 @@ impl ViewportPanel {
 
         overlays
     }
+}
+
+fn render_portal_debug_overlay<V>(
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    cx: &mut Context<V>,
+) -> impl IntoElement
+where
+    V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
+{
+    let state = state_arc.read();
+    let world = state.scene.world();
+    let pairing = engine_backend::scene::portals::pair_portals(&world);
+    let paired_count = pairing.pairs.len();
+    let unlinked_count = engine_backend::scene::attachments::enabled_components::<
+        helio_component::components::PortalComponent,
+    >(&world)
+    .filter(|(_, _, portal)| portal.enabled && portal.link_id == 0)
+    .count();
+    let disabled_count = engine_backend::scene::attachments::enabled_components::<
+        helio_component::components::PortalComponent,
+    >(&world)
+    .filter(|(_, _, portal)| !portal.enabled)
+    .count();
+    let issue_count = pairing.problems.len() + unlinked_count + disabled_count;
+
+    let mut rows = Vec::new();
+    for (portal_a, portal_b) in pairing.pairs {
+        let name_a = portal_name(&world, portal_a.owner);
+        let name_b = portal_name(&world, portal_b.owner);
+        rows.push(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .px_1()
+                        .rounded_sm()
+                        .bg(cx.theme().primary.opacity(0.22))
+                        .text_color(cx.theme().primary)
+                        .text_xs()
+                        .child(format!("L{}", portal_a.link_id)),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().foreground)
+                        .child(format!("Through A → B  ·  {name_b}")),
+                ),
+        );
+        rows.push(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .px_1()
+                        .rounded_sm()
+                        .bg(cx.theme().primary.opacity(0.22))
+                        .text_color(cx.theme().primary)
+                        .text_xs()
+                        .child(format!("L{}", portal_b.link_id)),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().foreground)
+                        .child(format!("Through B → A  ·  {name_a}")),
+                ),
+        );
+    }
+
+    for problem in pairing.problems {
+        let message = match problem {
+            engine_backend::scene::portals::PortalProblem::Alone { link_id } => {
+                format!("Link {link_id} · needs one more portal")
+            }
+            engine_backend::scene::portals::PortalProblem::Crowded { link_id, count } => {
+                format!("Link {link_id} · {count} portals; needs exactly 2")
+            }
+        };
+        rows.push(
+            div()
+                .text_xs()
+                .text_color(gpui::rgb(0xfbbf24))
+                .child(message),
+        );
+    }
+
+    if unlinked_count > 0 {
+        rows.push(
+            div()
+                .text_xs()
+                .text_color(gpui::rgb(0xfbbf24))
+                .child(format!("{unlinked_count} portal(s) use Link ID 0")),
+        );
+    }
+    if disabled_count > 0 {
+        rows.push(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{disabled_count} portal(s) are disabled")),
+        );
+    }
+
+    if rows.is_empty() {
+        rows.push(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("No linked portals. Pair two portals with the same nonzero Link ID."),
+        );
+    }
+
+    div()
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().background.opacity(0.94))
+        .p_2()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child("PORTAL LINKS"),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(if issue_count == 0 {
+                            gpui::rgb(0x4ade80)
+                        } else {
+                            gpui::rgb(0xfbbf24)
+                        })
+                        .child(format!("{paired_count} paired · {issue_count} issues")),
+                ),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("Each opening shows the scene from its partner."),
+        )
+        .children(rows)
+}
+
+fn portal_name(world: &pulsar_scenedb::World, owner: pulsar_scenedb::Entity) -> String {
+    use engine_backend::scene::SceneWorldExt as _;
+
+    world
+        .stable_id_of(owner)
+        .and_then(|id| crate::scene_edit::objects::get_object_name(world, id))
+        .unwrap_or_else(|| "Unnamed portal".to_string())
+}
+
+fn render_portal_badges(
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+) -> impl IntoElement {
+    use glam::DVec3;
+
+    let camera = gpu_engine
+        .try_lock()
+        .ok()
+        .and_then(|engine| engine.editor_camera_state());
+    let Some(camera) = camera else {
+        return gpui::canvas(|_, _, _| (), |_, _, _, _| {})
+            .size_full()
+            .into_any_element();
+    };
+
+    let state = state_arc.read();
+    let world = state.scene.world();
+    let pairing = engine_backend::scene::portals::pair_portals(&world);
+    let mut paired_sides = std::collections::HashMap::new();
+    for (a, b) in pairing.pairs {
+        paired_sides.insert(a.instance, 'A');
+        paired_sides.insert(b.instance, 'B');
+    }
+    let mut badges = Vec::new();
+    for (instance, owner, portal) in engine_backend::scene::attachments::enabled_components::<
+        helio_component::components::PortalComponent,
+    >(&world)
+    {
+        let Some(matrix) =
+            engine_backend::scene::hierarchy_transform::world_matrix_of(&world, owner)
+        else {
+            continue;
+        };
+        let anchor = DVec3::new(
+            -f64::from(portal.width) * 0.48,
+            f64::from(portal.height) * 0.48,
+            0.02,
+        );
+        if world
+            .get::<engine_backend::scene::Visibility>(owner)
+            .is_some_and(|visibility| !visibility.visible)
+        {
+            continue;
+        }
+        let (label, color_id, issue) = if !portal.enabled {
+            ("OFF".to_string(), 0, true)
+        } else if portal.link_id == 0 {
+            ("NO LINK".to_string(), 0, true)
+        } else if let Some(side) = paired_sides.get(&instance) {
+            (format!("{} {side}", portal.link_id), portal.link_id, false)
+        } else {
+            (format!("{} !", portal.link_id), portal.link_id, true)
+        };
+        badges.push((matrix.transform_point3(anchor), label, color_id, issue));
+    }
+    drop(world);
+    drop(state);
+
+    gpui::canvas(
+        |_, _, _| (),
+        move |bounds, (), window, cx| {
+            let width = f32::from(bounds.size.width);
+            let height = f32::from(bounds.size.height);
+            if width <= 1.0 || height <= 1.0 {
+                return;
+            }
+
+            let camera_pos = DVec3::from_array(camera.position);
+            let yaw = f64::from(camera.yaw);
+            let pitch = f64::from(camera.pitch);
+            let (sy, cy) = yaw.sin_cos();
+            let (sp, cp) = pitch.sin_cos();
+            let forward = DVec3::new(sy * cp, sp, -cy * cp).normalize();
+            let right = forward.cross(DVec3::Y).normalize_or_zero();
+            if right.length_squared() < 0.5 {
+                return;
+            }
+            let up = right.cross(forward).normalize();
+            let aspect = f64::from(width / height);
+            let tan_half_fov = (45.0_f64.to_radians() * 0.5).tan();
+            let style = window.text_style();
+
+            for (world_pos, label, link_id, issue) in &badges {
+                let relative = *world_pos - camera_pos;
+                let depth = relative.dot(forward);
+                if depth <= 0.1 {
+                    continue;
+                }
+                let ndc_x = relative.dot(right) / (depth * tan_half_fov * aspect);
+                let ndc_y = relative.dot(up) / (depth * tan_half_fov);
+                if ndc_x.abs() > 1.1 || ndc_y.abs() > 1.1 {
+                    continue;
+                }
+                let x = bounds.origin.x + px(((ndc_x as f32 + 1.0) * 0.5) * width);
+                let y = bounds.origin.y + px(((1.0 - ndc_y as f32) * 0.5) * height);
+                let hue = (link_id.unsigned_abs() as usize) % 6;
+                let color = if *issue {
+                    gpui::rgb(0xf59e0b)
+                } else {
+                    [
+                        gpui::rgb(0x60a5fa),
+                        gpui::rgb(0x34d399),
+                        gpui::rgb(0xfbbf24),
+                        gpui::rgb(0xf472b6),
+                        gpui::rgb(0xa78bfa),
+                        gpui::rgb(0x22d3ee),
+                    ][hue]
+                };
+                let text = window.text_system().shape_line(
+                    label.clone().into(),
+                    px(11.0),
+                    &[TextRun {
+                        len: label.len(),
+                        font: style.font(),
+                        color: gpui::rgb(0xffffff).into(),
+                        ..Default::default()
+                    }],
+                    None,
+                );
+                let badge_bounds = Bounds::new(
+                    point(x - px(5.0), y - px(4.0)),
+                    size(text.width + px(10.0), px(20.0)),
+                );
+                window.paint_quad(fill(badge_bounds, color).corner_radii(px(4.0)));
+                let _ = text.paint(
+                    point(
+                        badge_bounds.origin.x + px(5.0),
+                        badge_bounds.origin.y + px(2.0),
+                    ),
+                    px(16.0),
+                    window,
+                    cx,
+                );
+            }
+        },
+    )
+    .size_full()
+    .into_any_element()
 }

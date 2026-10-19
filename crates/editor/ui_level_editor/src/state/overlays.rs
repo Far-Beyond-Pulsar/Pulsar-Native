@@ -48,6 +48,7 @@ pub struct OverlayState {
     pub show_performance_overlay: bool,
     pub show_gpu_pipeline_overlay: bool,
     pub show_nerds_overlay: bool,
+    pub show_portal_debug_overlay: bool,
     pub show_camera_mode_selector: bool,
     pub show_viewport_options: bool,
 
@@ -80,6 +81,7 @@ impl Default for OverlayState {
             show_performance_overlay: false,
             show_gpu_pipeline_overlay: false,
             show_nerds_overlay: false,
+            show_portal_debug_overlay: false,
             show_camera_mode_selector: true,
             show_viewport_options: true,
             camera_mode_selector_collapsed: false,

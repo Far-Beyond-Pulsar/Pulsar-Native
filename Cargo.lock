@@ -4835,7 +4835,6 @@ dependencies = [
  "helio-pass-tsr",
  "helio-pass-virtual-geometry",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "image",
  "log",
