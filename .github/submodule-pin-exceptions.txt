@@ -7,4 +7,4 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
-crates/renderer/helio 581ad701 Helio voxel planet octree, per-voxel materials, edits on data, kept chunks in saves: Far-Beyond-Pulsar/Helio#353 (draft)
+crates/renderer/helio 6d2aeefc Helio voxel planet octree, per-voxel materials, edits on data, kept chunks in saves: Far-Beyond-Pulsar/Helio#353 (draft)
