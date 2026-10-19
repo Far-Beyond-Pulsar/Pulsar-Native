@@ -146,6 +146,7 @@ fn relative_camera_source_compatible(
         // Parent indices, no positions; the hierarchy resolve composes the
         // (camera-relative-safe) transform rows with them.
         | "object_parent"
+        | "object_frame"
         | "object_transforms"
         | "light_sources"
         | "decal_sources"
@@ -1053,6 +1054,9 @@ pub struct HelioRenderer {
     /// This frame's world origin when it renders camera-relative
     /// ([`frame_world_origin`]).
     world_origin: Option<DVec3>,
+    /// The rigid-frame table last handed to the renderer (slot 0 is the world),
+    /// so it is re-uploaded only when a frame moved.
+    spaces: crate::scene::SpaceSync,
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
@@ -1219,6 +1223,7 @@ impl HelioRenderer {
             voxel_altitude: None,
             last_camera_relative: None,
             world_origin: None,
+            spaces: Default::default(),
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
             last_voxel_errors: Vec::new(),
@@ -1531,6 +1536,11 @@ impl HelioRenderer {
                 // Meshes and lights: Helio joins the authored rows on the GPU.
                 .with_scene_derivation(crate::scene::scene_join(&device_arc, true))
                 .with_scene_derivation(crate::scene::environment_join(&device_arc))
+                // Authored portals, paired and projected each frame by `self.spaces`.
+                .with_scene_derivation(crate::scene::portal_projection(
+                    &device_arc,
+                    self.spaces.portal_input(),
+                ))
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
                 .with_ambient([0.0, 0.0, 0.0], 0.0)
                 .with_vt_tile_size(tile_px);
@@ -2045,6 +2055,19 @@ impl HelioRenderer {
                 aspect,
             );
             let camera = camera.with_overscan(lens_overscan);
+            // Rigid frames: one matrix each, relative to the same origin. Their
+            // members' rows never change when a frame moves; this table does.
+            // Portal chains are built for the portals this camera can see.
+            self.spaces.set_view(
+                camera.proj * camera.view,
+                camera.position,
+            );
+            self.spaces.sync(
+                &self.scene_store,
+                self.world_origin.unwrap_or(DVec3::ZERO),
+                &mut inner.renderer,
+            );
+
 
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.
@@ -3017,10 +3040,13 @@ impl HelioRenderer {
         {
             // What the object's mesh and light instances author: the flag
             // the caches the drag would invalidate key on.
-            let fixed = store.world.selected_entity().and_then(|entity| {
-                let movability =
-                    helio_component::components::object_movability(&store.world, entity)?;
-                (!movability.can_move()).then(|| StaticDragWarning {
+            let fixed = store.world.selected_entity().and_then(|selected| {
+                // The object itself, or anything dragging it would also move
+                // (a group's contents); a rigid frame's members stay fixed in
+                // its space.
+                let (entity, movability) =
+                    crate::scene::first_fixed_in_group(&store.world, selected)?;
+                Some(StaticDragWarning {
                     object_id: store
                         .world
                         .stable_id_of(entity)

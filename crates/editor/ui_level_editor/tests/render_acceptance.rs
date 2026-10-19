@@ -3414,3 +3414,472 @@ fn a_folders_meshes_move_with_it_in_the_frame() {
         );
     }
 }
+
+/// A mesh inside a rigid frame is drawn through the coordinate-space table:
+/// moving the frame moves it in the rendered frame, though its own row never
+/// changes, and turning the frame back into an ordinary folder keeps it there.
+#[test]
+fn a_rigid_frames_meshes_move_with_it_in_the_frame() {
+    use engine_backend::scene::frames::set_rigid_frame;
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    for nudge in [false, true] {
+        harness.nudge_camera.set(nudge);
+        let mut state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {});
+        let mesh = drop_mesh(&mut state);
+        let folder = add_object(&mut state, "ship", ObjectType::Folder);
+        let reparent = execute_command(
+            &mut state,
+            SceneCommand::ReparentObject {
+                id: mesh.clone(),
+                new_parent_id: Some(folder.clone()),
+            },
+        );
+        assert!(reparent.changed, "the mesh was not put in the folder");
+        let entity = state.scene.world().entity_for(&folder).expect("the ship");
+        set_rigid_frame(&mut state.scene.world_mut(), entity, true).expect("a free frame slot");
+        let before = harness.frames(&mut renderer, || {});
+        assert!(
+            before.depth.iter().zip(&before.depth).all(|(a, b)| a == b),
+            "sanity"
+        );
+        // The mesh is drawn (not lost to a wrong space): compare with an empty scene.
+        let empty = {
+            let state = LevelEditorState::new();
+            let mut renderer = harness.renderer(&state);
+            harness.frames(&mut renderer, || {})
+        };
+        assert_drawn(
+            &format!("[nudge {nudge}] a mesh inside a rigid frame"),
+            before.difference(&empty),
+        );
+        let at_origin = Frame {
+            color: before.color.clone(),
+            depth: before.depth.clone(),
+            depth_width: before.depth_width,
+        };
+
+        move_to(&mut state, &folder, [radius * 1.5, 0.0, 0.0]);
+        let after = harness.frames(&mut renderer, || {});
+        let shift = after.difference(&at_origin);
+        assert!(
+            shift.depth_texels > 0,
+            "[nudge {nudge}] moving the frame did not move the mesh inside it ({shift:?})"
+        );
+        assert_drawn(
+            &format!("[nudge {nudge}] the moved frame's mesh"),
+            after.difference(&empty),
+        );
+    }
+}
+
+/// A mesh on each side of the far portal (see [`portal_scene`]).
+fn add_portal_content(state: &mut LevelEditorState, radius: f32) {
+    for z in [radius * 2.0, -radius * 2.0] {
+        let mesh = drop_mesh(state);
+        move_to(state, &mesh, [100.0, 0.0, z]);
+    }
+}
+
+/// Two portals (Link IDs `near_id` and `far_id`), the near one at the origin facing
+/// the test camera and the far one 100 m to the side, with a mesh on each side of the
+/// far one. The meshes are out of the camera's view unless the portals are linked.
+fn portal_scene(radius: f32, near_id: i32, far_id: i32, content: bool) -> LevelEditorState {
+    portal_scene_at(radius, near_id, far_id, content, 100.0)
+}
+
+/// A portal object named `name` with Link ID `link`, `radius * 3` across.
+fn add_portal(state: &mut LevelEditorState, radius: f32, name: &str, position: [f32; 3], link: i32) -> String {
+    let id = add_object(state, name, ObjectType::Empty);
+    if position != [0.0; 3] {
+        move_to(state, &id, position);
+    }
+    assert!(
+        execute_command(
+            state,
+            SceneCommand::AddComponent {
+                id: id.clone(),
+                class_name: "PortalComponent".into(),
+                value: None,
+            },
+        )
+        .changed,
+        "the portal component was refused"
+    );
+    for (property, value) in [
+        ("link_id", Box::new(link) as Box<dyn std::any::Any + Send>),
+        ("width", Box::new(radius * 3.0)),
+        ("height", Box::new(radius * 3.0)),
+    ] {
+        let result = execute_command(
+            state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "PortalComponent".into(),
+                component_index: 0,
+                prop_name: property.into(),
+                value,
+            },
+        );
+        assert!(result.changed, "portal {property} edit was refused");
+    }
+    id
+}
+
+/// [`portal_scene`] with the far portal `far_x` metres to the side.
+fn portal_scene_at(
+    radius: f32,
+    near_id: i32,
+    far_id: i32,
+    content: bool,
+    far_x: f32,
+) -> LevelEditorState {
+    let mut state = LevelEditorState::new();
+    add_portal(&mut state, radius, "near", [0.0, 0.0, 0.0], near_id);
+    add_portal(&mut state, radius, "far", [far_x, 0.0, 0.0], far_id);
+    if content {
+        add_portal_content(&mut state, radius);
+    }
+    state
+}
+
+/// Mean `[r, g, b]` (0-255) over the pixels where `frame` differs from `reference`.
+fn mean_color_of_difference(frame: &Frame, reference: &Frame) -> Option<[f32; 3]> {
+    let mut sum = [0.0f64; 3];
+    let mut count = 0u64;
+    for (a, b) in frame.color.chunks_exact(4).zip(reference.color.chunks_exact(4)) {
+        if (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD {
+            for i in 0..3 {
+                sum[i] += f64::from(a[i]);
+            }
+            count += 1;
+        }
+    }
+    (count > 0).then(|| sum.map(|v| (v / count as f64) as f32))
+}
+
+/// Two linked portals show what is beside the far one, through the near one.
+/// The same scene with mismatched Link IDs shows nothing of it: the meshes sit
+/// 100 m to the side, out of the camera's view.
+#[test]
+fn linked_portals_show_the_far_side_in_the_frame() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let render = |state: &LevelEditorState| {
+        let mut renderer = harness.renderer(state);
+        harness.frames(&mut renderer, || {})
+    };
+    let unlinked = render(&portal_scene(radius, 1, 2, true));
+    let linked = render(&portal_scene(radius, 5, 5, true));
+    let shown = linked.difference(&unlinked);
+    assert!(
+        shown.depth_texels > 0,
+        "a linked portal showed nothing of the content beside its partner ({shown:?})"
+    );
+}
+
+/// What a portal shows keeps its materials when the scene grows. The material rows
+/// are the scene join's output and are reallocated as meshes are added; a portal
+/// draw still bound to the old buffer shows garbage (the content looked flat and
+/// blue). The meshes here are emissive orange, so what comes through the portal
+/// must stay orange (red well above blue) after the scene has grown.
+#[test]
+fn portal_content_keeps_its_materials_when_the_scene_grows() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    let unlinked = {
+        let state = portal_scene(radius, 1, 2, true);
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {})
+    };
+    // Linked portals and, to start with, nothing to look at.
+    let mut state = portal_scene(radius, 5, 5, false);
+    let mut renderer = harness.renderer(&state);
+    harness.frames(&mut renderer, || {});
+
+    // The scene grows well past the material buffer's capacity (far out of view)...
+    for n in 0..64 {
+        let mesh = drop_mesh(&mut state);
+        move_to(&mut state, &mesh, [2000.0 + n as f32 * 10.0, 0.0, 0.0]);
+    }
+    harness.frames(&mut renderer, || {});
+    // ...and only then does the content beside the far portal arrive, so its
+    // material rows live in the reallocated buffer.
+    add_portal_content(&mut state, radius);
+    let shown = harness.frames(&mut renderer, || {});
+
+    let [red, _, blue] = mean_color_of_difference(&shown, &unlinked)
+        .expect("the linked portal shows the content that arrived after the growth");
+    assert!(
+        red > blue + 10.0,
+        "the content that arrived after the scene grew lost its materials through the \
+         portal (mean r {red}, b {blue}); it should be emissive orange"
+    );
+}
+
+/// Mean colour of the pixels where `frame`'s scene depth differs from `reference`'s: the
+/// geometry that appeared, without the sky around it. Depth may be a different
+/// resolution than colour, so it is sampled at the matching position.
+fn mean_color_where_depth_differs(frame: &Frame, reference: &Frame) -> Option<([f32; 3], usize)> {
+    let width = frame.depth_width.max(1) as usize;
+    let height = (frame.depth.len() / width).max(1);
+    let mut sum = [0.0f64; 3];
+    let mut count = 0usize;
+    for y in 0..SIZE as usize {
+        for x in 0..SIZE as usize {
+            let dx = x * width / SIZE as usize;
+            let dy = y * height / SIZE as usize;
+            let d = dy * width + dx;
+            if !depth_differs(frame.depth[d], reference.depth[d]) {
+                continue;
+            }
+            let p = (y * SIZE as usize + x) * 4;
+            for i in 0..3 {
+                sum[i] += f64::from(frame.color[p + i]);
+            }
+            count += 1;
+        }
+    }
+    (count > 0).then(|| (sum.map(|v| (v / count as f64) as f32), count))
+}
+
+/// Mean `[r, g, b]` (0-255) and count of the strongly red pixels of `frame`: the
+/// red mesh, without the sky and the ground line around it.
+fn mean_of_red_pixels(frame: &Frame) -> Option<([f32; 3], usize)> {
+    let mut sum = [0.0f64; 3];
+    let mut count = 0usize;
+    for p in frame.color.chunks_exact(4) {
+        if p[0] > 120 && u32::from(p[0]) > 2 * u32::from(p[1]) + 40 && u32::from(p[0]) > 2 * u32::from(p[2]) + 40 {
+            for i in 0..3 {
+                sum[i] += f64::from(p[i]);
+            }
+            count += 1;
+        }
+    }
+    (count > 0).then(|| (sum.map(|v| (v / count as f64) as f32), count))
+}
+
+fn drop_red_mesh(state: &mut LevelEditorState) -> String {
+    drop_mesh_with(
+        state,
+        json!({"base_color": [0.9, 0.05, 0.05, 1.0], "metallic": 0.0, "roughness": 0.8,
+               "emissive_color": [0.0, 0.0, 0.0], "emissive_intensity": 0.0, "alpha": 1.0}),
+    )
+}
+
+/// DIAGNOSTIC: does a lit matte mesh, seen directly and through a linked portal,
+/// respond to the sun? Prints the mean colour of what changed.
+#[test]
+#[ignore = "diagnostic: prints and dumps frames"]
+fn diag_portal_lighting() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    for sun_on in [true, false] {
+        let environment = |state: &mut LevelEditorState| {
+            if sun_on {
+                add_light(
+                    state,
+                    [1.0e4, 0.0, 0.0],
+                    helio_component::components::LightType::Directional,
+                    SUN,
+                );
+            }
+            assert!(ui_level_editor::scene_edit::sky::create_sky(state).changed);
+        };
+        let render = |state: &LevelEditorState| {
+            let mut renderer = harness.renderer(state);
+            harness.frames(&mut renderer, || {})
+        };
+        // Direct.
+        let mut empty = LevelEditorState::new();
+        environment(&mut empty);
+        let mut direct = LevelEditorState::new();
+        let mesh = drop_red_mesh(&mut direct);
+        move_to(&mut direct, &mesh, [0.0, 0.0, -radius * 2.0]);
+        environment(&mut direct);
+        let (empty_f, direct_f) = (render(&empty), render(&direct));
+        direct_f.dump(&format!("diag_direct_sun{sun_on}"));
+        // Through a portal.
+        let portal = |link: i32| {
+            let mut state = portal_scene(radius, link, if link == 5 { 5 } else { 6 }, false);
+            for z in [radius * 2.0, -radius * 2.0] {
+                let mesh = drop_red_mesh(&mut state);
+                move_to(&mut state, &mesh, [100.0, 0.0, z]);
+            }
+            environment(&mut state);
+            state
+        };
+        let (unlinked, linked) = (render(&portal(1)), render(&portal(5)));
+        linked.dump(&format!("diag_portal_sun{sun_on}"));
+        println!(
+            "DIAG sun={sun_on}: direct {:?}  portal {:?}",
+            mean_of_red_pixels(&direct_f),
+            mean_of_red_pixels(&linked)
+        );
+    }
+}
+
+/// DIAGNOSTIC: GPU time by pass with no portals and with a linked pair in view.
+#[test]
+#[ignore = "diagnostic: prints GPU timings"]
+fn diag_portal_cost() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    for (label, near, far) in [("unlinked", 1, 2), ("linked", 5, 5)] {
+        let state = portal_scene(radius, near, far, true);
+        let mut renderer = harness.renderer(&state);
+        let mut best: Option<(f32, Vec<(&'static str, f32)>)> = None;
+        for _ in 0..6 {
+            harness.frames(&mut renderer, || {});
+            if let Some(t) = renderer.gpu_timings() {
+                if best.as_ref().is_none_or(|b| t.0 < b.0) {
+                    best = Some(t);
+                }
+            }
+        }
+        println!("DIAG {label} phases: {:?}", renderer.last_frame_phases());
+        let Some((total, mut passes)) = best else {
+            println!("DIAG {label}: no gpu timings");
+            continue;
+        };
+        passes.sort_by(|a, b| b.1.total_cmp(&a.1));
+        println!("DIAG {label}: total {total:.3} ms");
+        for (name, ms) in passes.iter().take(14) {
+            println!("DIAG   {name}: {ms:.3}");
+        }
+        for (name, ms) in passes.iter().filter(|(n, _)| n.contains("ortal")) {
+            println!("DIAG   [portal] {name}: {ms:.3}");
+        }
+    }
+}
+
+
+fn rotate_y(state: &mut LevelEditorState, id: &str, degrees: f32) {
+    if degrees == 0.0 {
+        return;
+    }
+    let result = execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id: id.to_string(),
+            position: None,
+            rotation: Some([0.0, degrees, 0.0]),
+            scale: None,
+        },
+    );
+    assert!(result.changed, "rotation edit was refused");
+}
+
+
+/// What a portal shows is lit by the lights of the world it shows, not of the
+/// world it is seen from. The far portal is far enough from the near one that a
+/// light beside the content is nowhere near the place the content appears
+/// through the near portal, and the other way round.
+#[test]
+fn portal_content_is_lit_by_the_lights_of_its_own_world() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let far_x = 5000.0;
+    // `None`: no light; otherwise a light at that x, in front of the content
+    // (which sits beside the far portal), reaching about 1200 m.
+    let render = |light_x: Option<f32>| {
+        let mut state = LevelEditorState::new();
+        // The near portal faces the camera.
+        let near = add_portal(&mut state, radius, "near", [0.0; 3], 5);
+        add_portal(&mut state, radius, "far", [far_x, 0.0, 0.0], 5);
+        rotate_y(&mut state, &near, 180.0);
+        for z in [radius * 2.0, -radius * 2.0] {
+            let mesh = drop_red_mesh(&mut state);
+            move_to(&mut state, &mesh, [far_x, 0.0, z]);
+        }
+        if let Some(x) = light_x {
+            let light = add_light(
+                &mut state,
+                [x, radius * 1.5, radius * 4.0],
+                helio_component::components::LightType::Point,
+                BRIGHT,
+            );
+            set_light(&mut state, &light, "range", Box::new(1200.0f32));
+            set_light(&mut state, &light, "cast_shadows", Box::new(false));
+        }
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {})
+    };
+    let brightness = |frame: &Frame| {
+        frame
+            .color
+            .chunks_exact(4)
+            .map(|p| f64::from(p[0]) + f64::from(p[1]) + f64::from(p[2]))
+            .sum::<f64>()
+            / (frame.color.len() / 4) as f64
+    };
+    let dark = brightness(&render(None));
+    let beside_content = brightness(&render(Some(far_x))) - dark;
+    let beside_portal = brightness(&render(Some(0.0))) - dark;
+    println!("lights: beside content {beside_content:+.2}, beside portal {beside_portal:+.2} (dark {dark:.2})");
+    assert!(
+        beside_content > 2.0,
+        "a light beside the content did not light it through the portal \
+         (brightness {beside_content:+.2} over {dark:.2})"
+    );
+    assert!(
+        beside_portal < beside_content * 0.25,
+        "a light beside the portal lit the content it shows, which is far from it \
+         ({beside_portal:+.2} against {beside_content:+.2} for a light beside the content)"
+    );
+}

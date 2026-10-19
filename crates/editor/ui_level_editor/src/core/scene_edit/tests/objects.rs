@@ -220,3 +220,35 @@ fn duplicating_a_folder_duplicates_its_contents_into_the_copy() {
     names.sort();
     assert_eq!(names, ["inner", "item"], "contents keep their names");
 }
+
+#[test]
+fn the_rigid_frame_prop_makes_a_frame_and_copies_keep_it() {
+    use engine_backend::scene::frames::{SpaceSlot, FRAME_PROP};
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let ship = objects::add_folder(world, "ship", None);
+    let entity = world.entity_for(&ship).unwrap();
+    assert!(world.get::<SpaceSlot>(entity).is_none());
+
+    // The prop is the authored truth; updating the object applies it.
+    let mut data = objects::get_object(world, &ship).unwrap();
+    data.props
+        .insert(FRAME_PROP.to_string(), serde_json::Value::Bool(true));
+    assert!(objects::update_object(world, data));
+    let slot = world.get::<SpaceSlot>(entity).expect("now a frame").slot;
+
+    // A copy is a frame of its own (its own slot), contents included.
+    let inside = objects::add_folder(world, "inside", Some(ship.clone()));
+    let copy = objects::duplicate_object(world, &ship).expect("copy");
+    let copy_entity = world.entity_for(&copy).unwrap();
+    let copy_slot = world.get::<SpaceSlot>(copy_entity).expect("the copy is a frame").slot;
+    assert_ne!(slot, copy_slot);
+    let _ = inside;
+
+    // Clearing the prop makes it an ordinary group again.
+    let mut data = objects::get_object(world, &ship).unwrap();
+    data.props.remove(FRAME_PROP);
+    assert!(objects::update_object(world, data));
+    assert!(world.get::<SpaceSlot>(entity).is_none());
+    assert!(world.get::<SpaceSlot>(copy_entity).is_some(), "the copy is untouched");
+}

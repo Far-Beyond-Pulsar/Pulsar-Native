@@ -121,7 +121,9 @@ pub fn capture_history_subset(world: &World, ids: &[ObjectId]) -> SceneHistorySn
         let mut subtree = vec![entity];
         collect_subtree(world, entity, &mut subtree);
         for entity in subtree {
-            if pulsar_class::world::is_generated_child(world, entity) {
+            if pulsar_class::world::is_generated_child(world, entity)
+                || engine_backend::scene::level_instances::is_member(world, entity)
+            {
                 continue;
             }
             if wanted.insert(entity) {

@@ -44,6 +44,10 @@ enum ClassRole {
     /// A child object the class generated (rebuilt from the class, not
     /// saved on its own): nested under its root and marked class-owned.
     Owned,
+    /// Generated content of a level instance (shown by a sublevel display, or
+    /// added to an in-memory instance): rebuilt from its source, never saved
+    /// with this level, edited by changing the source.
+    Instanced,
 }
 
 #[derive(Clone)]
@@ -153,6 +157,7 @@ fn group_selection_into_folder(state: &mut LevelEditorState) -> bool {
         .filter(|id| {
             let world = state.scene.world();
             !crate::scene_edit::classes::is_generated_child(&world, id)
+                && !crate::scene_edit::objects::is_instance_member(&world, id)
                 && !ancestors(state, id).iter().any(|a| picked.contains(a))
         })
         .cloned()
@@ -272,7 +277,7 @@ impl HierarchyItem for SceneObjectItem {
     {
         match self.class_role {
             ClassRole::Root => return cx.theme().primary,
-            ClassRole::Owned => return cx.theme().muted_foreground,
+            ClassRole::Owned | ClassRole::Instanced => return cx.theme().muted_foreground,
             ClassRole::None => {}
         }
         if self.object.icon_asset.is_some() {
@@ -393,6 +398,11 @@ impl HierarchyItem for SceneObjectItem {
                 .child(badge("class-owned", cx))
                 .child(visibility_button)
                 .into_any_element(),
+            // Content of a shown level comes and goes with the display that shows it.
+            ClassRole::Instanced => row
+                .child(badge("level instance", cx))
+                .child(visibility_button)
+                .into_any_element(),
             ClassRole::Root => row
                 .child(badge("class", cx))
                 .child(visibility_button)
@@ -415,9 +425,17 @@ impl HierarchyItem for SceneObjectItem {
     ) -> PopupMenu {
         use crate::commands::{execute_command, SceneCommand};
 
-        if self.class_role == ClassRole::Owned {
+        if matches!(self.class_role, ClassRole::Owned | ClassRole::Instanced) {
             return menu;
         }
+        let is_rigid_frame = {
+            use engine_backend::scene::SceneWorldExt;
+            let state = self.state_arc.read();
+            let world = state.scene.world();
+            world
+                .entity_for(&self.object.id)
+                .is_some_and(|entity| world.get::<engine_backend::scene::frames::RigidFrame>(entity).is_some())
+        };
         let duplicate_id = self.object.id.clone();
         let delete_id = self.object.id.clone();
         let duplicate_state = self.state_arc.clone();
@@ -446,6 +464,38 @@ impl HierarchyItem for SceneObjectItem {
             set_movability(ObjectMovability::Movable),
         )
         .separator()
+        // A rigid frame draws its contents through one matrix: moving it costs
+        // nothing per member. An ordinary group composes its members instead.
+        .menu_handler_with_icon(
+            if is_rigid_frame {
+                "Make Ordinary Group"
+            } else {
+                "Make Rigid Frame"
+            },
+            IconName::Box,
+            {
+                let id = self.object.id.clone();
+                let state_arc = self.state_arc.clone();
+                move |_: &mut Window, _: &mut App| {
+                    let mut state = state_arc.write();
+                    let found = {
+                        let world = state.scene.world();
+                        crate::scene_edit::objects::get_object(&world, &id)
+                    };
+                    if let Some(mut obj) = found {
+                        if is_rigid_frame {
+                            obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
+                        } else {
+                            obj.props.insert(
+                                engine_backend::scene::frames::FRAME_PROP.to_string(),
+                                serde_json::Value::Bool(true),
+                            );
+                        }
+                        execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
+                    }
+                }
+            },
+        )
         .when(
             {
                 let state = self.state_arc.read();
@@ -539,6 +589,8 @@ impl HierarchyPanel {
                     ClassRole::Root
                 } else if crate::scene_edit::classes::is_generated_child(&world, &obj.id) {
                     ClassRole::Owned
+                } else if crate::scene_edit::objects::is_instance_member(&world, &obj.id) {
+                    ClassRole::Instanced
                 } else {
                     ClassRole::None
                 };

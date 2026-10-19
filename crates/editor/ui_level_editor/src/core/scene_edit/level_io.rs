@@ -67,7 +67,10 @@ pub(crate) fn level_contents(
     let all = get_all_objects(world);
     let generated: HashSet<ObjectId> = all
         .iter()
-        .filter(|obj| classes::is_generated_child(world, &obj.id))
+        .filter(|obj| {
+            classes::is_generated_child(world, &obj.id)
+                || super::objects::is_instance_member(world, &obj.id)
+        })
         .map(|obj| obj.id.clone())
         .collect();
     let parent_of: HashMap<ObjectId, Option<ObjectId>> = all
@@ -423,6 +426,11 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
     }
 
     report_invalid_known_data(world, path.as_ref());
+    // Everything that defines a space (rigid frames, sublevel placements) gets its
+    // slot (`.agents/FRAMES.md`).
+    engine_backend::scene::frames::sync_spaces(world);
+    // Objects that show another level get its contents.
+    engine_backend::scene::sublevel_display::sync_level_instances(world);
 
     let unresolved = classes::rebuild_all_instances(world, registry);
     if !unresolved.is_empty() {

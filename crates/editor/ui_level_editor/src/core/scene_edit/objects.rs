@@ -317,6 +317,8 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
     if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
         render_props.props = obj.props;
     }
+    engine_backend::scene::frames::apply_frame_prop(world, entity);
+    engine_backend::scene::partitions::apply_space_prop(world, entity);
     if !inline_components.is_empty() {
         replace_components(world, &object_id, &inline_components);
     }
@@ -447,6 +449,8 @@ pub fn update_object(world: &mut World, obj: SceneObjectData) -> bool {
     if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
         render_props.props = obj.props;
     }
+    engine_backend::scene::frames::apply_frame_prop(world, entity);
+    engine_backend::scene::partitions::apply_space_prop(world, entity);
     super::classes::relayout_children(world, &id);
     true
 }
@@ -571,6 +575,16 @@ pub fn move_object_down(world: &mut World, id: &str) {
     }
 }
 
+/// Whether the object is generated content of a level instance (shown by a
+/// `SubLevelDisplayComponent`, or added to an in-memory instance): rebuilt from
+/// its source, so it is never saved with the level that shows it, copied, or
+/// edited as an ordinary object.
+pub fn is_instance_member(world: &World, id: &str) -> bool {
+    world
+        .entity_for(id)
+        .is_some_and(|entity| engine_backend::scene::level_instances::is_member(world, entity))
+}
+
 /// Duplicate an object together with everything inside it: a folder's copy
 /// holds copies of its contents, nested to any depth, laid out as the
 /// originals are (transforms are parent-relative, so the copies sit in the new
@@ -593,6 +607,7 @@ fn duplicate_contents(world: &mut World, source_id: &str, copy_id: &str) {
         .into_iter()
         .filter_map(|child| world.stable_id_of(child).map(str::to_string))
         .filter(|child| !super::classes::is_generated_child(world, child))
+        .filter(|child| !is_instance_member(world, child))
         .collect();
     for child in children {
         if let Some(child_copy) = duplicate_one(world, &child, Some(copy_id.to_string()), false) {

@@ -129,8 +129,65 @@ impl RuntimeLevel {
         let file = load_scene_file(path, registry)?;
         let editor_camera = editor_camera(&file.editor);
         Self::hydrate_scene_file(file, world, registry)?;
+        crate::scene::sublevel_display::sync_level_instances(world);
         Ok(LevelExtras { editor_camera })
     }
+    /// Instantiate a level file's objects **under** `parent`: the file's origin
+    /// is `parent`'s origin, its top-level objects become `parent`'s children
+    /// (their transforms are the file's own, relative to its origin), and every
+    /// object id gets `id_prefix` so a level can be placed more than once. This
+    /// is how a level instance is shown (`SubLevelDisplayComponent`).
+    ///
+    /// Returns every object this created, class-generated children included.
+    /// Call `engine_state::set_project_path` first, as for [`load_into`].
+    pub fn load_under(
+        path: &Path,
+        world: &mut World,
+        parent: Entity,
+        id_prefix: &str,
+    ) -> Result<Vec<Entity>, RuntimeLevelError> {
+        let registry = project_class_registry();
+        let mut file = load_scene_file(path, &registry)?;
+        let prefixed = |id: &str| format!("{id_prefix}{id}");
+        let top_level: Vec<String> = file
+            .objects
+            .iter()
+            .filter(|obj| obj.parent.is_none())
+            .map(|obj| prefixed(&obj.id))
+            .collect();
+        for obj in &mut file.objects {
+            obj.id = prefixed(&obj.id);
+            obj.parent = obj.parent.as_deref().map(prefixed);
+        }
+        if let Some(map) = file.components.as_object_mut() {
+            *map = std::mem::take(map)
+                .into_iter()
+                .map(|(id, value)| (prefixed(&id), value))
+                .collect();
+        }
+        file.blueprint_bindings = std::mem::take(&mut file.blueprint_bindings)
+            .into_iter()
+            .map(|(id, bindings)| (prefixed(&id), bindings))
+            .collect();
+
+        let mut before: HashSet<Entity> =
+            crate::scene::hierarchy_transform::descendants_of(world, parent)
+                .into_iter()
+                .collect();
+        before.insert(parent);
+        Self::hydrate_scene_file(file, world, &registry)?;
+        for id in top_level {
+            if let Some(entity) = world.entity_for(&id) {
+                // The file's transform is already relative to its origin.
+                let _ = world.reparent(entity, Some(parent));
+            }
+        }
+        Ok(crate::scene::hierarchy_transform::descendants_of(world, parent)
+            .into_iter()
+            .filter(|entity| !before.contains(entity))
+            .collect())
+    }
+
     /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
     /// (import/legacy callers that get their JSON from somewhere other than
     /// disk).
@@ -147,6 +204,7 @@ impl RuntimeLevel {
         let editor_camera = editor_camera(&file.editor);
         let mut scene = crate::scene::new_scene();
         Self::hydrate_scene_file(file, &mut scene.world, registry)?;
+        crate::scene::sublevel_display::sync_level_instances(&mut scene.world);
         let extras = LevelExtras { editor_camera };
         Ok(Self {
             scene: Arc::new(RwLock::new(scene)),
@@ -181,6 +239,11 @@ impl RuntimeLevel {
         // values for parented objects: make them local, in place.
         if hierarchy_transform::file_has_world_space_transforms(&version) {
             hierarchy_transform::convert_legacy_world_transforms(world, &spawned);
+        }
+        // Rigid frames (an object prop) become frame components.
+        crate::scene::frames::sync_frames_from_props(world, &spawned);
+        for &entity in &spawned {
+            crate::scene::partitions::apply_space_prop(world, entity);
         }
 
         let persisted = persisted_components(&file.components);
@@ -226,6 +289,9 @@ impl RuntimeLevel {
         // disabled, logged.
         crate::scene::level_rules::enforce_on_load(world);
         crate::scene::resolve_level_assets(world);
+        // Components are hydrated now: everything that defines a space (a sublevel
+        // placement is a component) gets its slot.
+        crate::scene::frames::sync_spaces(world);
         // What the migration could not turn into a ClassInstance (a second
         // class bound to one object) has no script instance any more.
         for (stable_id, bindings) in &file.blueprint_bindings {

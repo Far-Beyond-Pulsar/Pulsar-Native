@@ -33,7 +33,7 @@ use pulsar_scenedb::gpu::{
 };
 
 use pulsar_scene_model::attachments::ComponentOwner;
-use pulsar_scene_model::{ObjectHidden, ObjectParent, TransformRow};
+use pulsar_scene_model::{ObjectFrame, ObjectHidden, ObjectParent, TransformRow};
 
 /// Where this engine's authored rows live, for Helio's scene join. The
 /// names are the buffers the components below register: the instance owner
@@ -76,6 +76,7 @@ pub fn hierarchy_resolve_keys() -> HierarchyResolveKeys {
     HierarchyResolveKeys {
         transforms: scene_join_keys().transforms,
         parents: BufferKey::of("object_parent"),
+        frames: BufferKey::of("object_frame"),
     }
 }
 
@@ -177,6 +178,8 @@ pub fn ensure_gpu_mirror(
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // Each object's parent, for the hierarchy resolve (transforms are parent-relative).
     ObjectParent::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
+    // Which objects are rigid frames, and their slot in the coordinate-space table.
+    ObjectFrame::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     TransformRow::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The environment join's inputs (see `environment_join_keys`); the fog
     // media, post-process volume, camera, water volume, foliage, atmosphere,
@@ -397,4 +400,173 @@ mod tests {
             env::SPRITE_SOURCE_ROW_BYTES
         );
     }
+}
+
+/// The one coordinate-space table. Spaces objects define (rigid frames, sublevel
+/// placements; `pulsar_scene_model::frames`) fill slots `1..` in slot order;
+/// every other producer (a portal projection) asks this for slots through
+/// [`CoordinateSpaceAllocator`], so no producer numbers the table itself and
+/// none can overwrite another.
+pub struct SpaceTable {
+    matrices: Vec<glam::Mat4>,
+    /// Slots handed out by `space_for`, to reuse an equal matrix.
+    allocated: std::collections::HashMap<[u32; 16], u32>,
+}
+
+impl SpaceTable {
+    /// A table whose first slots are the spaces objects define (`frames[0]` is
+    /// the world).
+    pub fn new(frames: Vec<glam::Mat4>) -> Self {
+        let mut matrices = frames;
+        if matrices.is_empty() {
+            matrices.push(glam::Mat4::IDENTITY);
+        }
+        Self {
+            matrices,
+            allocated: Default::default(),
+        }
+    }
+
+    /// Every slot, the world first.
+    pub fn matrices(&self) -> &[glam::Mat4] {
+        &self.matrices
+    }
+}
+
+impl helio_core::CoordinateSpaceAllocator for SpaceTable {
+    fn space_for(&mut self, matrix: glam::Mat4) -> Option<u32> {
+        if matrix == glam::Mat4::IDENTITY {
+            return Some(0);
+        }
+        let key = matrix.to_cols_array().map(f32::to_bits);
+        if let Some(&slot) = self.allocated.get(&key) {
+            return Some(slot);
+        }
+        // 8 bits of an instance's flags carry the space id.
+        if self.matrices.len() >= 256 {
+            return None;
+        }
+        let slot = self.matrices.len() as u32;
+        self.matrices.push(matrix);
+        self.allocated.insert(key, slot);
+        Some(slot)
+    }
+}
+
+/// Keeps a renderer's coordinate-space table current. Each frame it makes sure
+/// every space-defining object has its slot (the allocator,
+/// `pulsar_scene_model::frames::sync_spaces`, taking the write lock only when
+/// something changed), builds the [`SpaceTable`] and uploads it only when it
+/// differs, so the many objects inside a space are never touched.
+#[derive(Default)]
+pub struct SpaceSync {
+    last: Vec<glam::Mat4>,
+    portals: crate::scene::portals::PortalSync,
+}
+
+impl SpaceSync {
+    /// The camera of the coming frame (view-projection and position, relative to
+    /// the origin given to `sync`), so portal chains are built only for the
+    /// portals it can see.
+    pub fn set_view(&mut self, view_projection: glam::Mat4, position: glam::Vec3) {
+        self.portals.set_view(Some((view_projection, position)));
+    }
+
+    /// The rows Helio's portal derivation uploads (`portal_projection` takes a
+    /// clone). Authored portals are paired and projected in [`Self::sync_with`].
+    pub fn portal_input(&self) -> helio_default_graphs::portal_projection::PortalProjectionInput {
+        self.portals.input()
+    }
+
+    /// Bring `renderer`'s table up to date with `scene`'s spaces, relative to
+    /// `origin` (the frame's world origin; zero outside camera-relative
+    /// frames). Returns whether the table changed.
+    pub fn sync(
+        &mut self,
+        scene: &crate::scene::SharedScene,
+        origin: glam::DVec3,
+        renderer: &mut helio::Renderer,
+    ) -> bool {
+        self.sync_with(scene, origin, renderer, |_| {})
+    }
+
+    /// [`Self::sync`], first letting `others` add the spaces other producers
+    /// need (a portal projection built with
+    /// `PortalProjectionBridge::build_into`).
+    pub fn sync_with(
+        &mut self,
+        scene: &crate::scene::SharedScene,
+        origin: glam::DVec3,
+        renderer: &mut helio::Renderer,
+        others: impl FnOnce(&mut SpaceTable),
+    ) -> bool {
+        // Levels that displays show, and the slots of everything that defines a
+        // space. Both checks are cheap reads; the write lock is taken only when
+        // something changed (a display was added or retargeted, a frame made).
+        let needs_sync = {
+            let world = &scene.read().world;
+            crate::scene::sublevel_display::needs_level_instance_sync(world)
+                || pulsar_scene_model::frames::needs_space_sync(world)
+        };
+        if needs_sync {
+            let mut scene = scene.write();
+            crate::scene::sublevel_display::sync_level_instances(&mut scene.world);
+            pulsar_scene_model::frames::sync_spaces(&mut scene.world);
+        }
+        let mut table = SpaceTable::new(pulsar_scene_model::frames::frame_table(
+            &scene.read().world,
+            origin,
+        ));
+        // Portal projections take their slots from the same table.
+        let portal_counts = self.portals.apply(&scene.read().world, origin, &mut table);
+        others(&mut table);
+        if let Some((views, chains)) = portal_counts {
+            renderer.set_portal_projection_counts(views, chains);
+        }
+        if table.matrices == self.last {
+            return false;
+        }
+        // Slot 0 (the world) is implicit in the renderer's table.
+        renderer.set_coordinate_spaces(&table.matrices[1..]);
+        self.last = table.matrices;
+        true
+    }
+}
+
+/// The first object that cannot move (authored `Static` or `Stationary`) among
+/// `entity` and what moving it would also move: its descendants, up to any
+/// rigid frame below it. Members of a frame are not counted when `entity` is
+/// the frame itself (they stay fixed in its space), and a frame nested inside
+/// the group is left alone for the same reason.
+pub fn first_fixed_in_group(
+    world: &pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) -> Option<(pulsar_scenedb::Entity, helio::Movability)> {
+    use pulsar_scene_model::frames::{frame_above, SpaceSlot};
+    let fixed = |candidate| {
+        let movability = helio_component::components::object_movability(world, candidate)?;
+        (!movability.can_move()).then_some((candidate, movability))
+    };
+    if let found @ Some(_) = fixed(entity) {
+        return found;
+    }
+    if world.get::<SpaceSlot>(entity).is_some() {
+        return None;
+    }
+    let space = frame_above(world, entity);
+    pulsar_scene_model::hierarchy_transform::descendants_of(world, entity)
+        .into_iter()
+        .filter(|descendant| frame_above(world, *descendant) == space)
+        .find_map(fixed)
+}
+
+/// Helio's portal derivation, for `RendererBuilder::with_scene_derivation`.
+/// `input` is [`SpaceSync::portal_input`]: the rows the host builds each frame.
+pub fn portal_projection(
+    device: &wgpu::Device,
+    input: helio_default_graphs::portal_projection::PortalProjectionInput,
+) -> Box<helio_default_graphs::portal_projection::PortalProjection> {
+    Box::new(helio_default_graphs::portal_projection::PortalProjection::new(
+        device, input,
+    ))
 }

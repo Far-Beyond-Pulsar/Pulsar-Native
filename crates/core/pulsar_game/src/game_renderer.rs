@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use engine_backend::scene::{
-    ensure_gpu_mirror, environment_join, hierarchy_resolve, scene_join, SharedScene,
+    ensure_gpu_mirror, environment_join, hierarchy_resolve, portal_projection, scene_join, SharedScene,
 };
 use helio::{Renderer, RendererBuilder, RendererConfig};
 
@@ -91,9 +91,8 @@ pub enum DeviceOwner {
     Host,
 }
 
-/// A renderer over `scene`. SceneDB's GPU mirror is attached first
-/// (idempotent: a second renderer on one scene shares the mirror); Helio's
-/// scene and environment joins derive the drawn rows from it on the GPU.
+
+/// [`build_game_renderer_with_portals`] for a host that draws no portals.
 pub fn build_game_renderer(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
@@ -101,6 +100,29 @@ pub fn build_game_renderer(
     config: RendererConfig,
     editor_mode: bool,
     owner: DeviceOwner,
+) -> Renderer {
+    build_game_renderer_with_portals(
+        device,
+        queue,
+        scene,
+        config,
+        editor_mode,
+        owner,
+        Default::default(),
+    )
+}
+
+/// A renderer over `scene`. SceneDB's GPU mirror is attached first
+/// (idempotent: a second renderer on one scene shares the mirror); Helio's
+/// scene and environment joins derive the drawn rows from it on the GPU.
+pub fn build_game_renderer_with_portals(
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    scene: &SharedScene,
+    config: RendererConfig,
+    editor_mode: bool,
+    owner: DeviceOwner,
+    portals: helio_default_graphs::portal_projection::PortalProjectionInput,
 ) -> Renderer {
     let (width, height, format) = (config.width, config.height, config.surface_format);
     let scene_db_handle = ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
@@ -114,6 +136,8 @@ pub fn build_game_renderer(
         .with_scene_derivation(hierarchy_resolve(&device))
         .with_scene_derivation(scene_join(&device, editor_mode))
         .with_scene_derivation(environment_join(&device))
+        // Authored portals, paired and projected each frame by the host's `SpaceSync`.
+        .with_scene_derivation(portal_projection(&device, portals))
         // No default ambient: all illumination comes from the scene's lights,
         // as in the editor.
         .with_ambient([0.0, 0.0, 0.0], 0.0)

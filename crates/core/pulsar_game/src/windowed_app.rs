@@ -50,6 +50,8 @@ struct GameWindow {
     editor_mode: bool,
     /// The shared world, for the camera lens's overscan.
     scene_store: engine_backend::scene::SharedScene,
+    /// Uploads the rigid-frame table when a frame moved.
+    spaces: engine_backend::scene::SpaceSync,
 }
 
 /// Frame interval of an unfocused window when several game copies are running.
@@ -115,7 +117,8 @@ impl GameWindow {
         // Build the Helio renderer. `pulsar_game` owns its device (unlike the
         // editor's wgpui-hosted viewport, which shares GPUI's device), and
         // takes its settings from the project (`crate::game_renderer`).
-        let renderer = crate::game_renderer::build_game_renderer(
+        let spaces = engine_backend::scene::SpaceSync::default();
+        let renderer = crate::game_renderer::build_game_renderer_with_portals(
             device.clone(),
             queue.clone(),
             scene_store,
@@ -126,6 +129,7 @@ impl GameWindow {
             ),
             editor_mode,
             crate::game_renderer::DeviceOwner::Game,
+            spaces.portal_input(),
         );
 
         Self {
@@ -141,6 +145,7 @@ impl GameWindow {
             next_redraw: Instant::now(),
             editor_mode,
             scene_store: scene_store.clone(),
+            spaces,
         }
     }
 
@@ -247,6 +252,7 @@ impl GameWindow {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        self.spaces.sync(&self.scene_store, glam::DVec3::ZERO, &mut self.renderer);
         if let Err(e) = self.renderer.render(&helio_cam, &view) {
             tracing::error!(window = self.handle.id(), "Render error: {:?}", e);
         }
