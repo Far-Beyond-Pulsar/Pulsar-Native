@@ -213,7 +213,19 @@ impl ViewportPanel {
                         .size_full()
                         .child(render_portal_badges(state_arc.clone(), gpu_engine)),
                 );
+            } else if let Some(mailbox) = gpu_engine
+                .try_lock()
+                .ok()
+                .and_then(|engine| engine.editor_mailbox())
+            {
+                mailbox.set_portal_debug_texts(Vec::new());
             }
+        } else if let Some(mailbox) = gpu_engine
+            .try_lock()
+            .ok()
+            .and_then(|engine| engine.editor_mailbox())
+        {
+            mailbox.set_portal_debug_texts(Vec::new());
         }
 
         // What the overlay samples, on its own timer: the renderer's statistics
@@ -536,16 +548,6 @@ fn render_portal_badges(
 ) -> impl IntoElement {
     use glam::DVec3;
 
-    let camera = gpu_engine
-        .try_lock()
-        .ok()
-        .and_then(|engine| engine.editor_camera_state());
-    let Some(camera) = camera else {
-        return gpui::canvas(|_, _, _| (), |_, _, _, _| {})
-            .size_full()
-            .into_any_element();
-    };
-
     let state = state_arc.read();
     let world = state.scene.world();
     let pairing = engine_backend::scene::portals::pair_portals(&world);
@@ -554,7 +556,7 @@ fn render_portal_badges(
         paired_sides.insert(a.instance, 'A');
         paired_sides.insert(b.instance, 'B');
     }
-    let mut badges = Vec::new();
+    let mut labels = Vec::new();
     for (instance, owner, portal) in engine_backend::scene::attachments::enabled_components::<
         helio_component::components::PortalComponent,
     >(&world)
@@ -584,89 +586,37 @@ fn render_portal_badges(
         } else {
             (format!("{} !", portal.link_id), portal.link_id, true)
         };
-        badges.push((matrix.transform_point3(anchor), label, color_id, issue));
+        let color = if issue {
+            [0.96, 0.62, 0.04, 1.0]
+        } else {
+            [
+                [0.38, 0.65, 0.98, 1.0],
+                [0.20, 0.83, 0.60, 1.0],
+                [0.98, 0.74, 0.13, 1.0],
+                [0.96, 0.45, 0.71, 1.0],
+                [0.65, 0.49, 0.98, 1.0],
+                [0.13, 0.83, 0.93, 1.0],
+            ][color_id.unsigned_abs() as usize % 6]
+        };
+        labels.push(
+            engine_backend::subsystems::render::helio_renderer::PortalDebugText {
+                world_position: matrix.transform_point3(anchor).as_vec3().to_array(),
+                text: label,
+                color,
+            },
+        );
     }
     drop(world);
     drop(state);
+    if let Some(mailbox) = gpu_engine
+        .try_lock()
+        .ok()
+        .and_then(|engine| engine.editor_mailbox())
+    {
+        mailbox.set_portal_debug_texts(labels);
+    }
 
-    gpui::canvas(
-        |_, _, _| (),
-        move |bounds, (), window, cx| {
-            let width = f32::from(bounds.size.width);
-            let height = f32::from(bounds.size.height);
-            if width <= 1.0 || height <= 1.0 {
-                return;
-            }
-
-            let camera_pos = DVec3::from_array(camera.position);
-            let yaw = f64::from(camera.yaw);
-            let pitch = f64::from(camera.pitch);
-            let (sy, cy) = yaw.sin_cos();
-            let (sp, cp) = pitch.sin_cos();
-            let forward = DVec3::new(sy * cp, sp, -cy * cp).normalize();
-            let right = forward.cross(DVec3::Y).normalize_or_zero();
-            if right.length_squared() < 0.5 {
-                return;
-            }
-            let up = right.cross(forward).normalize();
-            let aspect = f64::from(width / height);
-            let tan_half_fov = (45.0_f64.to_radians() * 0.5).tan();
-            let style = window.text_style();
-
-            for (world_pos, label, link_id, issue) in &badges {
-                let relative = *world_pos - camera_pos;
-                let depth = relative.dot(forward);
-                if depth <= 0.1 {
-                    continue;
-                }
-                let ndc_x = relative.dot(right) / (depth * tan_half_fov * aspect);
-                let ndc_y = relative.dot(up) / (depth * tan_half_fov);
-                if ndc_x.abs() > 1.1 || ndc_y.abs() > 1.1 {
-                    continue;
-                }
-                let x = bounds.origin.x + px(((ndc_x as f32 + 1.0) * 0.5) * width);
-                let y = bounds.origin.y + px(((1.0 - ndc_y as f32) * 0.5) * height);
-                let hue = (link_id.unsigned_abs() as usize) % 6;
-                let color = if *issue {
-                    gpui::rgb(0xf59e0b)
-                } else {
-                    [
-                        gpui::rgb(0x60a5fa),
-                        gpui::rgb(0x34d399),
-                        gpui::rgb(0xfbbf24),
-                        gpui::rgb(0xf472b6),
-                        gpui::rgb(0xa78bfa),
-                        gpui::rgb(0x22d3ee),
-                    ][hue]
-                };
-                let text = window.text_system().shape_line(
-                    label.clone().into(),
-                    px(11.0),
-                    &[TextRun {
-                        len: label.len(),
-                        font: style.font(),
-                        color: gpui::rgb(0xffffff).into(),
-                        ..Default::default()
-                    }],
-                    None,
-                );
-                let badge_bounds = Bounds::new(
-                    point(x - px(5.0), y - px(4.0)),
-                    size(text.width + px(10.0), px(20.0)),
-                );
-                window.paint_quad(fill(badge_bounds, color).corner_radii(px(4.0)));
-                let _ = text.paint(
-                    point(
-                        badge_bounds.origin.x + px(5.0),
-                        badge_bounds.origin.y + px(2.0),
-                    ),
-                    px(16.0),
-                    window,
-                    cx,
-                );
-            }
-        },
-    )
-    .size_full()
-    .into_any_element()
+    gpui::canvas(|_, _, _| (), |_, _, _, _| ())
+        .size_full()
+        .into_any_element()
 }

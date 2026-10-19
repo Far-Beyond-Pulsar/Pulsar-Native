@@ -7,6 +7,7 @@ use std::time::Instant;
 use helio::{Camera, Renderer, RendererConfig};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
+pub use helio::PortalDebugText;
 use crate::scene::{GizmoType, SceneWorldExt};
 
 use super::gpu_trace::emit_helio_gpu_passes;
@@ -755,6 +756,7 @@ pub struct HelioEditorMailbox {
     camera_sync_locked: Arc<AtomicBool>,
     camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
+    pending_portal_debug_texts: Arc<Mutex<Option<Vec<helio::PortalDebugText>>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
     voxel_chunk_saves: VoxelChunkSaves,
@@ -854,6 +856,13 @@ impl HelioEditorMailbox {
     /// (one a pass advertises in its `debug_views`), or 0 for the lit image.
     pub fn set_viewport_debug_mode(&self, mode: u32) {
         self.viewport_debug_mode.store(mode, Ordering::Release);
+    }
+
+    /// Update world-anchored portal labels rendered by Helio's overlay pass.
+    pub fn set_portal_debug_texts(&self, texts: Vec<helio::PortalDebugText>) {
+        if let Ok(mut pending) = self.pending_portal_debug_texts.lock() {
+            *pending = Some(texts);
+        }
     }
 
     /// Choose how this viewport looks at the scene (perspective,
@@ -958,6 +967,7 @@ pub struct HelioRenderer {
     ortho_boom: f32,
     /// Debug views advertised by the active render graph, exposed to editor UI.
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
+    pending_portal_debug_texts: Arc<Mutex<Option<Vec<helio::PortalDebugText>>>>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
     frame_delta_override: Option<f32>,
@@ -1182,6 +1192,7 @@ impl HelioRenderer {
             active_view: ViewKind::Perspective,
             ortho_boom: CAMERA_PIVOT_DISTANCE as f32,
             viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
+            pending_portal_debug_texts: Arc::new(Mutex::new(None)),
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
@@ -1714,10 +1725,36 @@ impl HelioRenderer {
         self.apply_view_fog();
         let ortho_half_height = self.ortho_half_height();
 
+        let portal_debug_texts = self
+            .pending_portal_debug_texts
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.take());
+        let measured_deferred_light_ms = self
+            .inner
+            .as_ref()
+            .and_then(|inner| {
+                inner
+                    .renderer
+                    .timing_snapshot()
+                    .passes
+                    .iter()
+                    .find(|pass| pass.name == "DeferredLight")
+                    .and_then(|pass| pass.gpu_ms)
+            })
+            .unwrap_or(0.0);
+
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => return None,
         };
+
+        let portal_debug_texts_changed = portal_debug_texts
+            .map(|texts| inner.renderer.set_portal_debug_texts(texts))
+            .unwrap_or(false);
+        let measured_deferred_light_changed = inner
+            .renderer
+            .set_deferred_light_timing_ms(measured_deferred_light_ms);
 
         // ── Idle detection ───────────────────────────────────────────────────────
         // If the camera is fully stopped, no scene changes are pending, and no
@@ -1761,6 +1798,9 @@ impl HelioRenderer {
             || viewport_resized
             || postprocess_changed
             || debug_view_changed
+            || portal_debug_texts_changed
+            || (self.viewport_debug_mode.load(Ordering::Acquire) == 34
+                && measured_deferred_light_changed)
             || view_kind_changed
             || camera_synced
             // Realtime animation: wind, particles, shader-graph `time`.
@@ -2917,6 +2957,7 @@ impl HelioRenderer {
             camera_sync_locked: self.camera_sync_locked.clone(),
             camera_sync_join: self.camera_sync_join.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
+            pending_portal_debug_texts: self.pending_portal_debug_texts.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
             voxel_chunk_saves: self.voxel_chunk_saves.clone(),
