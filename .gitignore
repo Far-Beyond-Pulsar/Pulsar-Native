@@ -48,3 +48,4 @@ blueprint_graph_debug.json
 docs/blog/helio-planet-scale-voxel-terrain.md
 /.claude/worktrees
 /.pulsar/flamegraph_layout.json
+/crates/editor/ui_level_editor/.pulsar/cache

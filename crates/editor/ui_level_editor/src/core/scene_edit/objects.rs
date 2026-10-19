@@ -317,6 +317,8 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
     if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
         render_props.props = obj.props;
     }
+    engine_backend::scene::frames::apply_frame_prop(world, entity);
+    engine_backend::scene::partitions::apply_space_prop(world, entity);
     if !inline_components.is_empty() {
         replace_components(world, &object_id, &inline_components);
     }
@@ -447,6 +449,8 @@ pub fn update_object(world: &mut World, obj: SceneObjectData) -> bool {
     if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
         render_props.props = obj.props;
     }
+    engine_backend::scene::frames::apply_frame_prop(world, entity);
+    engine_backend::scene::partitions::apply_space_prop(world, entity);
     super::classes::relayout_children(world, &id);
     true
 }

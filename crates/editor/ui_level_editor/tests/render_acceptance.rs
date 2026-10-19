@@ -3414,3 +3414,74 @@ fn a_folders_meshes_move_with_it_in_the_frame() {
         );
     }
 }
+
+/// A mesh inside a rigid frame is drawn through the coordinate-space table:
+/// moving the frame moves it in the rendered frame, though its own row never
+/// changes, and turning the frame back into an ordinary folder keeps it there.
+#[test]
+fn a_rigid_frames_meshes_move_with_it_in_the_frame() {
+    use engine_backend::scene::frames::set_rigid_frame;
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    for nudge in [false, true] {
+        harness.nudge_camera.set(nudge);
+        let mut state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {});
+        let mesh = drop_mesh(&mut state);
+        let folder = add_object(&mut state, "ship", ObjectType::Folder);
+        let reparent = execute_command(
+            &mut state,
+            SceneCommand::ReparentObject {
+                id: mesh.clone(),
+                new_parent_id: Some(folder.clone()),
+            },
+        );
+        assert!(reparent.changed, "the mesh was not put in the folder");
+        let entity = state.scene.world().entity_for(&folder).expect("the ship");
+        set_rigid_frame(&mut state.scene.world_mut(), entity, true).expect("a free frame slot");
+        let before = harness.frames(&mut renderer, || {});
+        assert!(
+            before.depth.iter().zip(&before.depth).all(|(a, b)| a == b),
+            "sanity"
+        );
+        // The mesh is drawn (not lost to a wrong space): compare with an empty scene.
+        let empty = {
+            let state = LevelEditorState::new();
+            let mut renderer = harness.renderer(&state);
+            harness.frames(&mut renderer, || {})
+        };
+        assert_drawn(
+            &format!("[nudge {nudge}] a mesh inside a rigid frame"),
+            before.difference(&empty),
+        );
+        let at_origin = Frame {
+            color: before.color.clone(),
+            depth: before.depth.clone(),
+            depth_width: before.depth_width,
+        };
+
+        move_to(&mut state, &folder, [radius * 1.5, 0.0, 0.0]);
+        let after = harness.frames(&mut renderer, || {});
+        let shift = after.difference(&at_origin);
+        assert!(
+            shift.depth_texels > 0,
+            "[nudge {nudge}] moving the frame did not move the mesh inside it ({shift:?})"
+        );
+        assert_drawn(
+            &format!("[nudge {nudge}] the moved frame's mesh"),
+            after.difference(&empty),
+        );
+    }
+}

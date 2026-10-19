@@ -9,9 +9,11 @@
 
 pub mod attachments;
 pub mod components;
+pub mod frames;
 pub mod hierarchy_transform;
 pub mod instance;
 pub mod motion;
+pub mod partitions;
 pub mod payload_catalog;
 pub mod runtime;
 mod transform_script;
@@ -24,13 +26,15 @@ pub use attachments::{
     ComponentOwner, InstanceError, NewInstance, UnresolvedComponent,
 };
 pub use components::{
-    Name, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
+    Name, ObjectFrame, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
     Visibility,
 };
 pub use instance::{ComponentInstance, EditorObjectId};
 pub use payload_catalog::{
     ContentId, PayloadCatalog, PayloadCatalogError, PayloadMutation, PayloadRef,
 };
+pub use frames::Frame;
+pub use partitions::ContentSpace;
 pub use world_ext::{SceneError, SceneWorldExt, SpawnObject};
 
 /// Same type as [`EditorObjectId`]; the alias the editor spells it as.

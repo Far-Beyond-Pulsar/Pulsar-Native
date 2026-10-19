@@ -177,6 +177,13 @@ impl RuntimeLevel {
         for obj in &file.objects {
             spawned.push(spawn_file_object(world, obj)?);
         }
+        // Rigid frames (an object prop) become frame components.
+        crate::scene::frames::sync_frames_from_props(world, &spawned);
+        for &entity in &spawned {
+            crate::scene::partitions::apply_space_prop(world, entity);
+        }
+        #[cfg(feature = "render")]
+        crate::scene::sublevels::adopt_sublevel_actors(world);
         // A level saved before parent-relative transforms holds world-space
         // values for parented objects: make them local, in place.
         if hierarchy_transform::file_has_world_space_transforms(&version) {

@@ -146,6 +146,7 @@ fn relative_camera_source_compatible(
         // Parent indices, no positions; the hierarchy resolve composes the
         // (camera-relative-safe) transform rows with them.
         | "object_parent"
+        | "object_frame"
         | "Transform::packed"
         | "light_sources"
         | "decal_sources"
@@ -1044,6 +1045,9 @@ pub struct HelioRenderer {
     /// This frame's world origin when it renders camera-relative
     /// ([`frame_world_origin`]).
     world_origin: Option<DVec3>,
+    /// The rigid-frame table last handed to the renderer (slot 0 is the world),
+    /// so it is re-uploaded only when a frame moved.
+    frame_table: crate::scene::FrameTableSync,
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
@@ -1208,6 +1212,7 @@ impl HelioRenderer {
             voxel_altitude: None,
             last_camera_relative: None,
             world_origin: None,
+            frame_table: Default::default(),
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
             last_voxel_errors: Vec::new(),
@@ -2002,6 +2007,13 @@ impl HelioRenderer {
             self.world_origin =
                 camera_relative.then(|| frame_world_origin(self.world_origin, self.cam_pos));
             inner.renderer.set_world_origin(self.world_origin);
+            // Rigid frames: one matrix each, relative to the same origin. Their
+            // members' rows never change when a frame moves; this table does.
+            self.frame_table.sync(
+                &self.scene_store.read().world,
+                self.world_origin.unwrap_or(DVec3::ZERO),
+                &mut inner.renderer,
+            );
             let camera = if self.active_view.is_orthographic() {
                 ortho_frame_camera(
                     self.cam_pos,
@@ -3013,10 +3025,13 @@ impl HelioRenderer {
         ) {
             // What the object's mesh and light instances author: the flag
             // the caches the drag would invalidate key on.
-            let fixed = store.world.selected_entity().and_then(|entity| {
-                let movability =
-                    helio_component::components::object_movability(&store.world, entity)?;
-                (!movability.can_move()).then(|| StaticDragWarning {
+            let fixed = store.world.selected_entity().and_then(|selected| {
+                // The object itself, or anything dragging it would also move
+                // (a group's contents); a rigid frame's members stay fixed in
+                // its space.
+                let (entity, movability) =
+                    crate::scene::first_fixed_in_group(&store.world, selected)?;
+                Some(StaticDragWarning {
                     object_id: store
                         .world
                         .stable_id_of(entity)

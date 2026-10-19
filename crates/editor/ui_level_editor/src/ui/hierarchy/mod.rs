@@ -418,6 +418,14 @@ impl HierarchyItem for SceneObjectItem {
         if self.class_role == ClassRole::Owned {
             return menu;
         }
+        let is_rigid_frame = {
+            use engine_backend::scene::SceneWorldExt;
+            let state = self.state_arc.read();
+            let world = state.scene.world();
+            world
+                .entity_for(&self.object.id)
+                .is_some_and(|entity| world.get::<engine_backend::scene::frames::Frame>(entity).is_some())
+        };
         let duplicate_id = self.object.id.clone();
         let delete_id = self.object.id.clone();
         let duplicate_state = self.state_arc.clone();
@@ -446,6 +454,38 @@ impl HierarchyItem for SceneObjectItem {
             set_movability(ObjectMovability::Movable),
         )
         .separator()
+        // A rigid frame draws its contents through one matrix: moving it costs
+        // nothing per member. An ordinary group composes its members instead.
+        .menu_handler_with_icon(
+            if is_rigid_frame {
+                "Make Ordinary Group"
+            } else {
+                "Make Rigid Frame"
+            },
+            IconName::Box,
+            {
+                let id = self.object.id.clone();
+                let state_arc = self.state_arc.clone();
+                move |_: &mut Window, _: &mut App| {
+                    let mut state = state_arc.write();
+                    let found = {
+                        let world = state.scene.world();
+                        crate::scene_edit::objects::get_object(&world, &id)
+                    };
+                    if let Some(mut obj) = found {
+                        if is_rigid_frame {
+                            obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
+                        } else {
+                            obj.props.insert(
+                                engine_backend::scene::frames::FRAME_PROP.to_string(),
+                                serde_json::Value::Bool(true),
+                            );
+                        }
+                        execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
+                    }
+                }
+            },
+        )
         .when(
             {
                 let state = self.state_arc.read();

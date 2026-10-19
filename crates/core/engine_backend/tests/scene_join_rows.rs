@@ -72,6 +72,15 @@ impl Join {
     /// Flush the scene and run the join over the frame's buffers, as the
     /// renderer does; returns the published buffers.
     fn run(&mut self, scene: &mut SceneDb) -> SceneBufferProjection {
+        self.run_at(scene, None)
+    }
+
+    /// [`Self::run`] in a camera-relative frame whose world origin is `origin`.
+    fn run_at(
+        &mut self,
+        scene: &mut SceneDb,
+        origin: Option<glam::DVec3>,
+    ) -> SceneBufferProjection {
         scene.step();
         let mirror = scene.world.gpu_mirror().expect("mirror attached").clone();
         let mut inputs = SceneBufferProjection::from_store_all(mirror.store());
@@ -94,19 +103,22 @@ impl Join {
                 device: &self.device,
                 queue: &self.queue,
                 inputs: &inputs,
-                world_origin: None,
+                world_origin: origin,
             },
             &mut encoder,
         );
         for (key, handle) in resolved.buffers {
             inputs.insert(key, handle);
         }
+        for (key, rows) in resolved.flushed {
+            inputs.set_flushed_rows(key, rows);
+        }
         let output = self.join.derive(
             &SceneDerivationContext {
                 device: &self.device,
                 queue: &self.queue,
                 inputs: &inputs,
-                world_origin: None,
+                world_origin: origin,
             },
             &mut encoder,
         );
@@ -547,4 +559,297 @@ fn the_gpu_composes_a_parent_chain_like_the_cpu() {
             );
         }
     }
+}
+
+fn join_for(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Join {
+    Join {
+        resolve: engine_backend::scene::hierarchy_resolve(device),
+        join: engine_backend::scene::scene_join(device, true),
+        device: Arc::clone(device),
+        queue: Arc::clone(queue),
+    }
+}
+
+/// Far from the origin, a parent's children keep the precision of their
+/// offset: the chain is composed relative to the frame's origin, not in
+/// absolute f32 (whose step at this distance is half a metre).
+#[test]
+fn nested_objects_far_from_the_origin_keep_their_offsets() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    const FAR: f32 = 6_400_000.0;
+    let origin = glam::DVec3::new(f64::from(FAR), 0.0, 0.0);
+    let mut scene = SceneDb::new();
+    let folder = place(&mut scene, "folder", [FAR, 0.0, 0.0]);
+    let (_, near) = mesh_on(
+        &mut scene,
+        Some(folder),
+        Transform {
+            position: [0.25, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    // An object with no parent shares the buffer: it must not be offset twice.
+    let (_, root) = mesh_on(
+        &mut scene,
+        None,
+        Transform {
+            position: [FAR + 3.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = join_for(&device, &queue);
+    let out = join.run_at(&mut scene, Some(origin));
+    assert_eq!(
+        position_of(&join, &out, near),
+        [0.25, 0.0, 0.0],
+        "the child kept its quarter metre (absolute f32 would round it to 0 or 0.5)"
+    );
+    assert_eq!(
+        position_of(&join, &out, root),
+        [3.0, 0.0, 0.0],
+        "an unparented object is offset by the origin exactly once"
+    );
+}
+
+/// A flat scene in a camera-relative frame is still offset by the joins
+/// themselves (no hierarchy resolve runs).
+#[test]
+fn a_flat_scene_is_still_made_origin_relative_by_the_join() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    const FAR: f32 = 6_400_000.0;
+    let mut scene = SceneDb::new();
+    let (_, flat) = mesh_on(
+        &mut scene,
+        None,
+        Transform {
+            position: [FAR + 4.0, 0.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = join_for(&device, &queue);
+    let out = join.run_at(&mut scene, Some(glam::DVec3::new(f64::from(FAR), 0.0, 0.0)));
+    assert_eq!(position_of(&join, &out, flat), [4.0, 0.0, 0.0]);
+}
+
+/// In a scene with a hierarchy only what moved is redone, and the join takes
+/// its moved-owner path: moving one child, then a whole folder, then
+/// reparenting, each lands exactly and leaves everything else alone.
+#[test]
+fn hierarchical_scenes_follow_only_what_moved() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let folder = place(&mut scene, "folder", [0.0; 3]);
+    let at = |x: f32| Transform {
+        position: [x, 0.0, 0.0],
+        ..Transform::default()
+    };
+    let (inner_object, inner) = mesh_on(&mut scene, Some(folder), at(1.0));
+    let (_, other_inner) = mesh_on(&mut scene, Some(folder), at(2.0));
+    let (loose_object, loose) = mesh_on(&mut scene, None, at(50.0));
+    // Enough unrelated objects that a small move is well under the "most of
+    // the scene moved" share.
+    for n in 0..16 {
+        mesh_on(&mut scene, None, at(100.0 + n as f32));
+    }
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = join_for(&device, &queue);
+    let out = join.run(&mut scene);
+    assert_eq!(position_of(&join, &out, inner), [1.0, 0.0, 0.0]);
+
+    let moved_generation = |out: &SceneBufferProjection| {
+        out.get(helio_default_graphs::scene_join::OBJECTS_MOVED_KEY)
+            .map_or(0, |h| h.content_generation)
+    };
+    let mut last_moved_generation = 0;
+    for frame in 1..=4u32 {
+        let step = frame as f32;
+        // One child moves.
+        scene
+            .world
+            .get_mut::<Transform>(inner_object)
+            .unwrap()
+            .position[1] = step;
+        let out = join.run(&mut scene);
+        assert_eq!(position_of(&join, &out, inner), [1.0, step, 0.0], "child, frame {frame}");
+        assert_eq!(position_of(&join, &out, other_inner), [2.0, 0.0, 0.0], "sibling untouched");
+        assert_eq!(position_of(&join, &out, loose), [50.0, 0.0, 0.0], "loose untouched");
+        last_moved_generation = moved_generation(&out);
+    }
+    assert_ne!(
+        last_moved_generation, 0,
+        "the join took its moved-owner path in a hierarchical scene"
+    );
+
+    // The whole folder moves: its contents follow, loose objects do not.
+    scene.world.get_mut::<Transform>(folder).unwrap().position = [10.0, 0.0, 0.0];
+    let out = join.run(&mut scene);
+    assert_eq!(position_of(&join, &out, inner), [11.0, 4.0, 0.0]);
+    assert_eq!(position_of(&join, &out, other_inner), [12.0, 0.0, 0.0]);
+    assert_eq!(position_of(&join, &out, loose), [50.0, 0.0, 0.0]);
+
+    // A loose object is put in the folder (keeping its world pose).
+    engine_backend::scene::hierarchy_transform::reparent_keeping_world(
+        &mut scene.world,
+        loose_object,
+        Some(folder),
+    )
+    .unwrap();
+    let out = join.run(&mut scene);
+    assert_eq!(position_of(&join, &out, loose), [50.0, 0.0, 0.0], "same place after reparenting");
+    // Now it moves with the folder.
+    scene.world.get_mut::<Transform>(folder).unwrap().position = [20.0, 0.0, 0.0];
+    let out = join.run(&mut scene);
+    assert_eq!(position_of(&join, &out, loose), [60.0, 0.0, 0.0]);
+    assert_eq!(position_of(&join, &out, inner), [21.0, 4.0, 0.0]);
+}
+
+fn row_model(join: &Join, out: &SceneBufferProjection, instance: Entity) -> (glam::Mat4, u32) {
+    let row = join.mesh_rows(out, instance)[0];
+    (glam::Mat4::from_cols_array_2d(&row.transform), (row.flags >> 8) & 0xFF)
+}
+
+fn assert_close(got: glam::Mat4, want: glam::Mat4, what: &str) {
+    let (g, w) = (got.to_cols_array(), want.to_cols_array());
+    assert!(
+        g.iter().zip(&w).all(|(a, b)| (a - b).abs() < 2e-3),
+        "{what}: got {g:?}, want {w:?}"
+    );
+}
+
+/// A mesh inside rigid frames is placed relative to its nearest frame and
+/// tagged with that frame's space; the frame table finishes the job. Moving a
+/// frame changes the table and none of its members' rows.
+#[test]
+fn frame_members_are_placed_in_their_frame_and_follow_the_table() {
+    use engine_backend::scene::frames::{frame_table, make_frame};
+    use engine_backend::scene::hierarchy_transform::world_matrix_of;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let ship = place(&mut scene, "ship", [100.0, 0.0, 0.0]);
+    scene.world.get_mut::<Transform>(ship).unwrap().rotation = [0.0, 30.0, 0.0];
+    let room = scene
+        .world
+        .spawn_object(
+            SpawnObject::new("room")
+                .with_parent(Some(ship))
+                .with_transform(Transform {
+                    position: [0.0, 2.0, 5.0],
+                    rotation: [0.0, 10.0, 0.0],
+                    ..Transform::default()
+                }),
+        )
+        .unwrap();
+    let (leaf, leaf_mesh) = mesh_on(
+        &mut scene,
+        Some(room),
+        Transform {
+            position: [3.0, 0.5, -1.0],
+            scale: [1.0, 2.0, 1.0],
+            ..Transform::default()
+        },
+    );
+    let (loose, loose_mesh) = mesh_on(&mut scene, None, at_x(7.0));
+    make_frame(&mut scene.world, ship).unwrap();
+    make_frame(&mut scene.world, room).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = join_for(&device, &queue);
+    let out = join.run(&mut scene);
+
+    let table = frame_table(&scene.world, glam::DVec3::ZERO);
+    let (leaf_row, leaf_space) = row_model(&join, &out, leaf_mesh);
+    assert_eq!(leaf_space, 2, "tagged with its nearest frame (the room)");
+    assert_close(
+        leaf_row,
+        glam::Mat4::from_scale_rotation_translation(
+            glam::Vec3::new(1.0, 2.0, 1.0),
+            glam::Quat::IDENTITY,
+            glam::Vec3::new(3.0, 0.5, -1.0),
+        ),
+        "the leaf's row is relative to the room, not the world",
+    );
+    assert_close(
+        table[leaf_space as usize] * leaf_row,
+        world_matrix_of(&scene.world, leaf).unwrap(),
+        "table * row is the leaf's world matrix",
+    );
+    let (loose_row, loose_space) = row_model(&join, &out, loose_mesh);
+    assert_eq!(loose_space, 0, "an unparented object is in the world");
+    assert_close(loose_row, world_matrix_of(&scene.world, loose).unwrap(), "loose");
+
+    // The ship moves and turns: only the table changes.
+    {
+        let mut t = scene.world.get_mut::<Transform>(ship).unwrap();
+        t.position = [250.0, 10.0, -40.0];
+        t.rotation = [0.0, 75.0, 0.0];
+    }
+    let out = join.run(&mut scene);
+    let (after_row, after_space) = row_model(&join, &out, leaf_mesh);
+    assert_eq!(after_space, 2);
+    assert_close(after_row, leaf_row, "a frame moving rewrites none of its members' rows");
+    let table = frame_table(&scene.world, glam::DVec3::ZERO);
+    assert_close(
+        table[after_space as usize] * after_row,
+        world_matrix_of(&scene.world, leaf).unwrap(),
+        "table * row follows the moved ship",
+    );
+    let _ = loose;
+}
+
+fn at_x(x: f32) -> Transform {
+    Transform {
+        position: [x, 0.0, 0.0],
+        ..Transform::default()
+    }
+}
+
+/// A fixed (Static) mesh inside a rigid frame is fixed only relative to the
+/// frame, which moves: the join marks it movable so world-keyed caches (static
+/// shadow casters, ray-tracing instances) do not go stale. Outside a frame it
+/// stays static.
+#[test]
+fn static_meshes_inside_a_frame_are_movable_in_the_world() {
+    use engine_backend::scene::frames::make_frame;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    const MOVABLE: u32 = 1 << 3;
+    let mut scene = SceneDb::new();
+    let ship = place(&mut scene, "ship", [0.0; 3]);
+    let object_with = |scene: &mut SceneDb, parent: Option<Entity>| {
+        let object = scene
+            .world
+            .spawn_object(SpawnObject::new("o").with_parent(parent))
+            .unwrap();
+        pulsar_world_registry::attach_value(
+            &mut scene.world,
+            object,
+            mesh(ObjectMovability::Static),
+        )
+        .unwrap()
+    };
+    let inside = object_with(&mut scene, Some(ship));
+    let outside = object_with(&mut scene, None);
+    make_frame(&mut scene.world, ship).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = join_for(&device, &queue);
+    let out = join.run(&mut scene);
+    assert_ne!(join.mesh_rows(&out, inside)[0].flags & MOVABLE, 0, "static in a frame");
+    assert_eq!(join.mesh_rows(&out, outside)[0].flags & MOVABLE, 0, "static in the world");
 }

@@ -171,6 +171,49 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
     }
 }
 
+/// [`crate::frames::Frame`]'s GPU row: the object's slot in the frame table
+/// (`1..=255`), zero for an object that is not a frame. Keyed by the frame's
+/// entity. The hierarchy resolve reads it to stop composing at the nearest
+/// frame above each object and to tag the object with that frame's space.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, pulsar_scenedb::SceneStore)]
+#[gpu(layout = packed, buffer = "object_frame")]
+#[repr(C)]
+pub struct ObjectFrame {
+    #[gpu]
+    pub slot: u32,
+}
+
+fn object_frame_dispatch(
+    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
+    row: u32,
+    data: *const (),
+    is_new_insert: bool,
+) {
+    // SAFETY: SceneDB reaches this only through `Frame`'s own `ComponentId`,
+    // with a pointer to a live `Frame`.
+    let frame = unsafe { &*(data as *const crate::frames::Frame) };
+    let row_value = ObjectFrame { slot: frame.slot };
+    pulsar_scenedb::gpu::write_derived_row(mirror, row, &row_value, is_new_insert);
+}
+
+fn object_frame_clear(mirror: &pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+    pulsar_scenedb::gpu::clear_derived_row::<ObjectFrame>(mirror, row);
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuMirrorRegistration {
+        component_id: pulsar_scenedb::component_id::<crate::frames::Frame>,
+        dispatch: object_frame_dispatch,
+    }
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuClearRegistration {
+        component_id: pulsar_scenedb::component_id::<crate::frames::Frame>,
+        clear: object_frame_clear,
+    }
+}
+
 /// Free-form scene props of an object (file-format `props`, plus the scene
 /// props registered component classes project from their values). Component
 /// values themselves live on component-instance entities

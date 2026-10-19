@@ -33,7 +33,7 @@ use pulsar_scenedb::gpu::{
 };
 
 use pulsar_scene_model::attachments::ComponentOwner;
-use pulsar_scene_model::{ObjectHidden, ObjectParent};
+use pulsar_scene_model::{ObjectFrame, ObjectHidden, ObjectParent};
 
 /// Where this engine's authored rows live, for Helio's scene join. The
 /// names are the buffers the components below register: the instance owner
@@ -75,6 +75,7 @@ pub fn hierarchy_resolve_keys() -> HierarchyResolveKeys {
     HierarchyResolveKeys {
         transforms: scene_join_keys().transforms,
         parents: BufferKey::of("object_parent"),
+        frames: BufferKey::of("object_frame"),
     }
 }
 
@@ -176,6 +177,8 @@ pub fn ensure_gpu_mirror(
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // Each object's parent, for the hierarchy resolve (transforms are parent-relative).
     ObjectParent::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
+    // Which objects are rigid frames, and their slot in the coordinate-space table.
+    ObjectFrame::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The environment join's inputs (see `environment_join_keys`); the fog
     // media, post-process volume, camera, water volume, foliage, atmosphere,
@@ -399,4 +402,60 @@ mod tests {
             env::SPRITE_SOURCE_ROW_BYTES
         );
     }
+}
+
+/// Keeps a renderer's rigid-frame table (see [`pulsar_scene_model::frames`])
+/// current: builds it from the world each frame and uploads it only when a
+/// frame moved, so the many objects inside a frame are never touched.
+#[derive(Default)]
+pub struct FrameTableSync {
+    last: Vec<glam::Mat4>,
+}
+
+impl FrameTableSync {
+    /// Bring `renderer`'s coordinate spaces up to date with `world`'s frames,
+    /// relative to `origin` (the frame's world origin; zero outside
+    /// camera-relative frames). Returns whether the table changed.
+    pub fn sync(
+        &mut self,
+        world: &pulsar_scenedb::World,
+        origin: glam::DVec3,
+        renderer: &mut helio::Renderer,
+    ) -> bool {
+        let table = pulsar_scene_model::frames::frame_table(world, origin);
+        if table == self.last {
+            return false;
+        }
+        // Slot 0 (the world) is implicit in the renderer's table.
+        renderer.set_frame_spaces(&table[1..]);
+        self.last = table;
+        true
+    }
+}
+
+/// The first object that cannot move (authored `Static` or `Stationary`) among
+/// `entity` and what moving it would also move: its descendants, up to any
+/// rigid frame below it. Members of a frame are not counted when `entity` is
+/// the frame itself (they stay fixed in its space), and a frame nested inside
+/// the group is left alone for the same reason.
+pub fn first_fixed_in_group(
+    world: &pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) -> Option<(pulsar_scenedb::Entity, helio::Movability)> {
+    use pulsar_scene_model::frames::{frame_above, Frame};
+    let fixed = |candidate| {
+        let movability = helio_component::components::object_movability(world, candidate)?;
+        (!movability.can_move()).then_some((candidate, movability))
+    };
+    if let found @ Some(_) = fixed(entity) {
+        return found;
+    }
+    if world.get::<Frame>(entity).is_some() {
+        return None;
+    }
+    let space = frame_above(world, entity);
+    pulsar_scene_model::hierarchy_transform::descendants_of(world, entity)
+        .into_iter()
+        .filter(|descendant| frame_above(world, *descendant) == space)
+        .find_map(fixed)
 }

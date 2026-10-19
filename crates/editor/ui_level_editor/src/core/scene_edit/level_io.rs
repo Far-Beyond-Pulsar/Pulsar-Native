@@ -423,6 +423,8 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
     }
 
     report_invalid_known_data(world, path.as_ref());
+    // Sublevel placements are rigid frames (`.agents/FRAMES.md`).
+    engine_backend::scene::sublevels::adopt_sublevel_actors(world);
 
     let unresolved = classes::rebuild_all_instances(world, registry);
     if !unresolved.is_empty() {
