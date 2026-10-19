@@ -3501,6 +3501,44 @@ fn portal_scene(radius: f32, near_id: i32, far_id: i32, content: bool) -> LevelE
     portal_scene_at(radius, near_id, far_id, content, 100.0)
 }
 
+/// A portal object named `name` with Link ID `link`, `radius * 3` across.
+fn add_portal(state: &mut LevelEditorState, radius: f32, name: &str, position: [f32; 3], link: i32) -> String {
+    let id = add_object(state, name, ObjectType::Empty);
+    if position != [0.0; 3] {
+        move_to(state, &id, position);
+    }
+    assert!(
+        execute_command(
+            state,
+            SceneCommand::AddComponent {
+                id: id.clone(),
+                class_name: "PortalComponent".into(),
+                value: None,
+            },
+        )
+        .changed,
+        "the portal component was refused"
+    );
+    for (property, value) in [
+        ("link_id", Box::new(link) as Box<dyn std::any::Any + Send>),
+        ("width", Box::new(radius * 3.0)),
+        ("height", Box::new(radius * 3.0)),
+    ] {
+        let result = execute_command(
+            state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "PortalComponent".into(),
+                component_index: 0,
+                prop_name: property.into(),
+                value,
+            },
+        );
+        assert!(result.changed, "portal {property} edit was refused");
+    }
+    id
+}
+
 /// [`portal_scene`] with the far portal `far_x` metres to the side.
 fn portal_scene_at(
     radius: f32,
@@ -3510,44 +3548,8 @@ fn portal_scene_at(
     far_x: f32,
 ) -> LevelEditorState {
     let mut state = LevelEditorState::new();
-    let add_portal = |state: &mut LevelEditorState, name: &str, position: [f32; 3], link: i32| {
-        let id = add_object(state, name, ObjectType::Empty);
-        if position != [0.0; 3] {
-            move_to(state, &id, position);
-        }
-        assert!(
-            execute_command(
-                state,
-                SceneCommand::AddComponent {
-                    id: id.clone(),
-                    class_name: "PortalComponent".into(),
-                    value: None,
-                },
-            )
-            .changed,
-            "the portal component was refused"
-        );
-        for (property, value) in [
-            ("link_id", Box::new(link) as Box<dyn std::any::Any + Send>),
-            ("width", Box::new(radius * 3.0)),
-            ("height", Box::new(radius * 3.0)),
-        ] {
-            let result = execute_command(
-                state,
-                SceneCommand::SetComponentProperty {
-                    id: id.clone(),
-                    class_name: "PortalComponent".into(),
-                    component_index: 0,
-                    prop_name: property.into(),
-                    value,
-                },
-            );
-            assert!(result.changed, "portal {property} edit was refused");
-        }
-        id
-    };
-    add_portal(&mut state, "near", [0.0, 0.0, 0.0], near_id);
-    add_portal(&mut state, "far", [far_x, 0.0, 0.0], far_id);
+    add_portal(&mut state, radius, "near", [0.0, 0.0, 0.0], near_id);
+    add_portal(&mut state, radius, "far", [far_x, 0.0, 0.0], far_id);
     if content {
         add_portal_content(&mut state, radius);
     }
@@ -3780,6 +3782,7 @@ fn diag_portal_cost() {
                 }
             }
         }
+        println!("DIAG {label} phases: {:?}", renderer.last_frame_phases());
         let Some((total, mut passes)) = best else {
             println!("DIAG {label}: no gpu timings");
             continue;
@@ -3792,5 +3795,50 @@ fn diag_portal_cost() {
         for (name, ms) in passes.iter().filter(|(n, _)| n.contains("ortal")) {
             println!("DIAG   [portal] {name}: {ms:.3}");
         }
+    }
+}
+
+/// DIAGNOSTIC: a busy scene (many meshes) with several portal pairs in view.
+#[test]
+#[ignore = "diagnostic: prints GPU timings"]
+fn diag_portal_cost_busy() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    for pairs in [0usize, 1, 3] {
+        let mut state = portal_scene(radius, 1, 2, true);
+        for n in 0..600 {
+            let mesh = drop_mesh(&mut state);
+            let (gx, gz) = ((n % 30) as f32, (n / 30) as f32);
+            move_to(&mut state, &mesh, [gx * radius * 3.0 - 40.0 * radius, 0.0, -gz * radius * 3.0 - 6.0 * radius]);
+        }
+        for p in 0..pairs {
+            let link = 10 + p as i32;
+            let x = (p as f32 - 1.0) * radius * 4.0;
+            add_portal(&mut state, radius, "a", [x, 0.0, -radius * 6.0], link);
+            add_portal(&mut state, radius, "b", [x + 50_000.0, 0.0, 0.0], link);
+        }
+        let mut renderer = harness.renderer(&state);
+        let mut best: Option<(f32, Vec<(&'static str, f32)>)> = None;
+        let mut render_ms = f32::MAX;
+        for _ in 0..6 {
+            harness.frames(&mut renderer, || {});
+            if let Some(t) = renderer.gpu_timings() {
+                if best.as_ref().is_none_or(|b| t.0 < b.0) {
+                    best = Some(t);
+                }
+            }
+            if let Some((_, ms)) = renderer.last_frame_phases().iter().find(|(n, _)| *n == "render") {
+                render_ms = render_ms.min(*ms);
+            }
+            let _ = &renderer;
+        }
+        let Some((total, passes)) = best else { continue };
+        let portal: f32 = passes.iter().filter(|(n, _)| n.contains("Portal")).map(|(_, m)| m).sum();
+        println!("DIAG busy pairs={pairs}: gpu {total:.3} ms (portal passes {portal:.3}), render phase {render_ms:.2} ms");
     }
 }
