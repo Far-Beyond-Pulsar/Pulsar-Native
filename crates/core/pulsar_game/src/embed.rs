@@ -378,13 +378,15 @@ impl EmbeddedGame {
         // standalone game's (`crate::game_renderer`) on the host's device; its
         // GPU mirror is the editor viewport's when that already attached one.
         let scene_store = Arc::clone(&tick_loop.scene_store);
-        let renderer = crate::game_renderer::build_game_renderer(
+        let spaces = engine_backend::scene::SpaceSync::default();
+        let renderer = crate::game_renderer::build_game_renderer_with_portals(
             device.clone(),
             queue.clone(),
             &scene_store,
             RendererConfig::new(width, height, color_format),
             false,
             crate::game_renderer::DeviceOwner::Host,
+            spaces.portal_input(),
         );
 
         // Under v2 the world comes pre-hydrated by the host, so the old
@@ -407,7 +409,7 @@ impl EmbeddedGame {
             out_texture,
             out_view,
             scene_store,
-            spaces: Default::default(),
+            spaces,
             freecam,
             last_pointer: None,
             userdata: ctx.userdata,

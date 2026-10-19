@@ -42,11 +42,13 @@ pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 pub mod helio_bridge;
 #[cfg(feature = "render")]
 pub mod sublevels;
+#[cfg(feature = "render")]
+pub mod portals;
 
 #[cfg(feature = "render")]
 pub use helio_bridge::{
     ensure_gpu_mirror, environment_join, environment_join_keys, first_fixed_in_group,
-    hierarchy_resolve, SpaceSync, SpaceTable,
+    hierarchy_resolve, portal_projection, SpaceSync, SpaceTable,
     hierarchy_resolve_keys, scene_join, scene_join_keys,
 };
 #[cfg(feature = "render")]

@@ -117,7 +117,8 @@ impl GameWindow {
         // Build the Helio renderer. `pulsar_game` owns its device (unlike the
         // editor's wgpui-hosted viewport, which shares GPUI's device), and
         // takes its settings from the project (`crate::game_renderer`).
-        let renderer = crate::game_renderer::build_game_renderer(
+        let spaces = engine_backend::scene::SpaceSync::default();
+        let renderer = crate::game_renderer::build_game_renderer_with_portals(
             device.clone(),
             queue.clone(),
             scene_store,
@@ -128,6 +129,7 @@ impl GameWindow {
             ),
             editor_mode,
             crate::game_renderer::DeviceOwner::Game,
+            spaces.portal_input(),
         );
 
         Self {
@@ -143,7 +145,7 @@ impl GameWindow {
             next_redraw: Instant::now(),
             editor_mode,
             scene_store: scene_store.clone(),
-            spaces: Default::default(),
+            spaces,
         }
     }
 

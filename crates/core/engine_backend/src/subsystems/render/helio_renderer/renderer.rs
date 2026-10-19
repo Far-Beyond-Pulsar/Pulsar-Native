@@ -1525,6 +1525,11 @@ impl HelioRenderer {
                 // Meshes and lights: Helio joins the authored rows on the GPU.
                 .with_scene_derivation(crate::scene::scene_join(&device_arc, true))
                 .with_scene_derivation(crate::scene::environment_join(&device_arc))
+                // Authored portals, paired and projected each frame by `self.spaces`.
+                .with_scene_derivation(crate::scene::portal_projection(
+                    &device_arc,
+                    self.spaces.portal_input(),
+                ))
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
                 .with_ambient([0.0, 0.0, 0.0], 0.0)
                 .with_vt_tile_size(tile_px);

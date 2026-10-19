@@ -463,9 +463,16 @@ impl helio_core::CoordinateSpaceAllocator for SpaceTable {
 #[derive(Default)]
 pub struct SpaceSync {
     last: Vec<glam::Mat4>,
+    portals: crate::scene::portals::PortalSync,
 }
 
 impl SpaceSync {
+    /// The rows Helio's portal derivation uploads (`portal_projection` takes a
+    /// clone). Authored portals are paired and projected in [`Self::sync_with`].
+    pub fn portal_input(&self) -> helio_default_graphs::portal_projection::PortalProjectionInput {
+        self.portals.input()
+    }
+
     /// Bring `renderer`'s table up to date with `scene`'s spaces, relative to
     /// `origin` (the frame's world origin; zero outside camera-relative
     /// frames). Returns whether the table changed.
@@ -495,7 +502,12 @@ impl SpaceSync {
             &scene.read().world,
             origin,
         ));
+        // Portal projections take their slots from the same table.
+        let portal_counts = self.portals.apply(&scene.read().world, origin, &mut table);
         others(&mut table);
+        if let Some((views, chains)) = portal_counts {
+            renderer.set_portal_projection_counts(views, chains);
+        }
         if table.matrices == self.last {
             return false;
         }
@@ -531,4 +543,15 @@ pub fn first_fixed_in_group(
         .into_iter()
         .filter(|descendant| frame_above(world, *descendant) == space)
         .find_map(fixed)
+}
+
+/// Helio's portal derivation, for `RendererBuilder::with_scene_derivation`.
+/// `input` is [`SpaceSync::portal_input`]: the rows the host builds each frame.
+pub fn portal_projection(
+    device: &wgpu::Device,
+    input: helio_default_graphs::portal_projection::PortalProjectionInput,
+) -> Box<helio_default_graphs::portal_projection::PortalProjection> {
+    Box::new(helio_default_graphs::portal_projection::PortalProjection::new(
+        device, input,
+    ))
 }
