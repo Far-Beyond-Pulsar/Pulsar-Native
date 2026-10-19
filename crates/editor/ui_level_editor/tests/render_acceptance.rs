@@ -3798,47 +3798,88 @@ fn diag_portal_cost() {
     }
 }
 
-/// DIAGNOSTIC: a busy scene (many meshes) with several portal pairs in view.
+
+fn rotate_y(state: &mut LevelEditorState, id: &str, degrees: f32) {
+    if degrees == 0.0 {
+        return;
+    }
+    let result = execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id: id.to_string(),
+            position: None,
+            rotation: Some([0.0, degrees, 0.0]),
+            scale: None,
+        },
+    );
+    assert!(result.changed, "rotation edit was refused");
+}
+
+
+/// What a portal shows is lit by the lights of the world it shows, not of the
+/// world it is seen from. The far portal is far enough from the near one that a
+/// light beside the content is nowhere near the place the content appears
+/// through the near portal, and the other way round.
 #[test]
-#[ignore = "diagnostic: prints GPU timings"]
-fn diag_portal_cost_busy() {
+fn portal_content_is_lit_by_the_lights_of_its_own_world() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
     let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
         return;
     };
     engine_state::EngineContext::new().set_global();
     engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
     let radius = typed_mesh().bounds_local[3];
     let harness = Harness::new(device, queue, radius);
-    for pairs in [0usize, 1, 3] {
-        let mut state = portal_scene(radius, 1, 2, true);
-        for n in 0..600 {
-            let mesh = drop_mesh(&mut state);
-            let (gx, gz) = ((n % 30) as f32, (n / 30) as f32);
-            move_to(&mut state, &mesh, [gx * radius * 3.0 - 40.0 * radius, 0.0, -gz * radius * 3.0 - 6.0 * radius]);
+    let far_x = 5000.0;
+    // `None`: no light; otherwise a light at that x, in front of the content
+    // (which sits beside the far portal), reaching about 1200 m.
+    let render = |light_x: Option<f32>| {
+        let mut state = LevelEditorState::new();
+        // The near portal faces the camera.
+        let near = add_portal(&mut state, radius, "near", [0.0; 3], 5);
+        add_portal(&mut state, radius, "far", [far_x, 0.0, 0.0], 5);
+        rotate_y(&mut state, &near, 180.0);
+        for z in [radius * 2.0, -radius * 2.0] {
+            let mesh = drop_red_mesh(&mut state);
+            move_to(&mut state, &mesh, [far_x, 0.0, z]);
         }
-        for p in 0..pairs {
-            let link = 10 + p as i32;
-            let x = (p as f32 - 1.0) * radius * 4.0;
-            add_portal(&mut state, radius, "a", [x, 0.0, -radius * 6.0], link);
-            add_portal(&mut state, radius, "b", [x + 50_000.0, 0.0, 0.0], link);
+        if let Some(x) = light_x {
+            let light = add_light(
+                &mut state,
+                [x, radius * 1.5, radius * 4.0],
+                helio_component::components::LightType::Point,
+                BRIGHT,
+            );
+            set_light(&mut state, &light, "range", Box::new(1200.0f32));
+            set_light(&mut state, &light, "cast_shadows", Box::new(false));
         }
         let mut renderer = harness.renderer(&state);
-        let mut best: Option<(f32, Vec<(&'static str, f32)>)> = None;
-        let mut render_ms = f32::MAX;
-        for _ in 0..6 {
-            harness.frames(&mut renderer, || {});
-            if let Some(t) = renderer.gpu_timings() {
-                if best.as_ref().is_none_or(|b| t.0 < b.0) {
-                    best = Some(t);
-                }
-            }
-            if let Some((_, ms)) = renderer.last_frame_phases().iter().find(|(n, _)| *n == "render") {
-                render_ms = render_ms.min(*ms);
-            }
-            let _ = &renderer;
-        }
-        let Some((total, passes)) = best else { continue };
-        let portal: f32 = passes.iter().filter(|(n, _)| n.contains("Portal")).map(|(_, m)| m).sum();
-        println!("DIAG busy pairs={pairs}: gpu {total:.3} ms (portal passes {portal:.3}), render phase {render_ms:.2} ms");
-    }
+        harness.frames(&mut renderer, || {})
+    };
+    let brightness = |frame: &Frame| {
+        frame
+            .color
+            .chunks_exact(4)
+            .map(|p| f64::from(p[0]) + f64::from(p[1]) + f64::from(p[2]))
+            .sum::<f64>()
+            / (frame.color.len() / 4) as f64
+    };
+    let dark = brightness(&render(None));
+    let beside_content = brightness(&render(Some(far_x))) - dark;
+    let beside_portal = brightness(&render(Some(0.0))) - dark;
+    println!("lights: beside content {beside_content:+.2}, beside portal {beside_portal:+.2} (dark {dark:.2})");
+    assert!(
+        beside_content > 2.0,
+        "a light beside the content did not light it through the portal \
+         (brightness {beside_content:+.2} over {dark:.2})"
+    );
+    assert!(
+        beside_portal < beside_content * 0.25,
+        "a light beside the portal lit the content it shows, which is far from it \
+         ({beside_portal:+.2} against {beside_content:+.2} for a light beside the content)"
+    );
 }
