@@ -5330,6 +5330,7 @@ dependencies = [
  "helio-core",
  "image",
  "miniz_oxide",
+ "rayon",
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",
