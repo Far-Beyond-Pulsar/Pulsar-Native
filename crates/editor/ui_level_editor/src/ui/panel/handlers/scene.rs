@@ -8,7 +8,6 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) {
         let state_arc = self.shared_state.clone();
-        let scene_db = { state_arc.read().scene.shared_scene() };
         let default_dir = state_arc
             .read()
             .scene
@@ -23,30 +22,9 @@ impl LevelEditorPanel {
         cx.spawn(async move |this, cx| {
             if let Some(handle) = dialog.pick_file().await {
                 let path = handle.path().to_path_buf();
-                // Load into the existing shared SceneDb (renderer keeps its Arc).
-                let result = {
-                    let mut world = scene_db.write();
-                    crate::scene_edit::level_io::load_from_file_with_editor_state(
-                        &mut world.world,
-                        &path,
-                    )
-                };
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
-                        match result {
-                            Ok((editor_state, world_settings)) => {
-                                this.apply_editor_camera_state(editor_state.camera.as_ref());
-                                let mut state = state_arc.write();
-                                state.scene.set_current_scene(Some(path), false);
-                                state.scene.world_settings = world_settings;
-                                state.editor.terrain.foliage_sets = editor_state.foliage_sets;
-                                state.scene.has_unsaved_changes = false;
-                                // Deselect so properties panel clears stale data.
-                                state.scene.select_object(None);
-                            }
-                            Err(e) => tracing::error!("Open scene failed: {}", e),
-                        }
-                        cx.notify();
+                    let _ = this.update(cx, |panel, cx| {
+                        panel.begin_scene_load(path, cx);
                     });
                 });
             }

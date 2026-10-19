@@ -75,6 +75,9 @@ pub struct LevelEditorState {
 
     /// Play-mode state — time scale, target FPS, multiplayer.
     pub play: PlayDomain,
+
+    /// Progress for a level currently being hydrated into SceneDB.
+    pub scene_hydration_progress: Option<Arc<std::sync::atomic::AtomicU32>>,
 }
 
 impl Default for LevelEditorState {
@@ -86,6 +89,7 @@ impl Default for LevelEditorState {
             hierarchy: HierarchyDomain::default(),
             build: BuildDomain::default(),
             play: PlayDomain::default(),
+            scene_hydration_progress: None,
         }
     }
 }
@@ -115,6 +119,7 @@ impl LevelEditorState {
             hierarchy: self.hierarchy.clone(),
             build: self.build.clone(),
             play: self.play.clone(),
+            scene_hydration_progress: self.scene_hydration_progress.clone(),
         }
     }
 }

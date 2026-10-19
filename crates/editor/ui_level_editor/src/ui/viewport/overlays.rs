@@ -61,6 +61,10 @@ impl ViewportPanel {
                 positions.is_dragging_viewport,
                 positions.is_dragging_camera,
             ),
+            state
+                .scene_hydration_progress
+                .as_ref()
+                .map(|progress| progress.load(std::sync::atomic::Ordering::Relaxed)),
             self.view_picker(cx).entity_id(),
         )
     }
@@ -92,6 +96,53 @@ impl ViewportPanel {
         let view_arc = self.view_state.clone();
         let view_guard = self.own_view.then(|| view_arc.read());
         let view: &LevelEditorState = view_guard.as_deref().unwrap_or(state);
+
+        if let Some(progress) = &state.scene_hydration_progress {
+            let progress = f32::from_bits(progress.load(std::sync::atomic::Ordering::Relaxed));
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .w(px(280.0))
+                            .rounded(px(8.0))
+                            .p(px(16.0))
+                            .bg(cx.theme().background)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Hydrating scene…"),
+                            )
+                            .child(
+                                div()
+                                    .h(px(6.0))
+                                    .w_full()
+                                    .rounded_full()
+                                    .bg(cx.theme().muted_foreground.opacity(0.25))
+                                    .child(
+                                        div()
+                                            .h_full()
+                                            .w(relative(progress.clamp(0.0, 1.0)))
+                                            .rounded_full()
+                                            .bg(cx.theme().primary),
+                                    ),
+                            ),
+                    ),
+            );
+        }
 
         // The picker owns the retained controls and their subscriptions.
         let picker = self.view_picker(cx);

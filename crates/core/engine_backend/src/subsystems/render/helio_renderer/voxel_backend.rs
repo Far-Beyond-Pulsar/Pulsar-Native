@@ -806,10 +806,11 @@ impl PlanetVoxelBackend {
                     })
                     .map_err(|_| "the voxel world builder stopped")?;
             }
-            // Only the first world of a source (nothing to show yet) and
-            // tests wait for a build.
-            let first = self.cached.as_ref().is_none_or(|c| c.id != entry.id);
-            if !(self.blocking || first) {
+            // The viewport never waits for terrain generation. Before the
+            // first world is ready it draws the normal scene frame; the
+            // builder completion requests another frame. Tests may opt into
+            // waiting so they can assert on a completed world immediately.
+            if !self.blocking {
                 break;
             }
             let Ok(result) = self.builder.results.recv() else {

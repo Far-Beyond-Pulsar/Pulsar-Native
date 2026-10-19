@@ -1,7 +1,7 @@
 //! `.level` file save/load, straight between the world and the file format.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use engine_fs::virtual_fs;
 use pulsar_class::ClassRegistry;
@@ -379,7 +379,78 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
     path: P,
     registry: &ClassRegistry,
 ) -> Result<(LevelEditorFileState, WorldSettingsData), String> {
+    load_with_classes_and_editor_state_progress(world, path, registry, &mut |_| {})
+}
+
+fn load_with_classes_and_editor_state_progress<P: AsRef<Path>>(
+    world: &mut World,
+    path: P,
+    registry: &ClassRegistry,
+    progress: &mut impl FnMut(f32),
+) -> Result<(LevelEditorFileState, WorldSettingsData), String> {
     profiling::profile_scope!("scene_edit::load_from_file");
+    let mut prepared = prepare_level_for_hydration_with_registry(path, registry)?;
+    let total_work = prepared.total_work();
+    let mut completed_work = 0usize;
+    progress(0.02);
+    clear(world);
+    for obj in std::mem::take(&mut prepared.objects) {
+        let parent = obj.parent.clone();
+        add_object(world, obj, parent);
+        completed_work += 1;
+        progress(0.05 + 0.78 * completed_work as f32 / total_work as f32);
+    }
+    convert_legacy_transforms(world, &prepared.version);
+    for (object_id, components) in std::mem::take(&mut prepared.components) {
+        replace_components(world, &object_id, &components);
+        completed_work += components.len();
+        progress(0.05 + 0.78 * completed_work as f32 / total_work as f32);
+    }
+    progress(0.86);
+    finish_prepared_hydration_with_registry(world, &prepared, registry);
+    progress(0.98);
+    tracing::info!(
+        "Scene loaded from: {} (version: {})",
+        prepared.path.display(),
+        prepared.version
+    );
+    Ok((prepared.editor, prepared.world_settings))
+}
+
+/// Parsed level data, ready to be applied in short SceneDB write batches.
+/// This is file data, not a second scene owner.
+pub(crate) struct PreparedLevel {
+    pub(crate) path: PathBuf,
+    pub(crate) version: String,
+    pub(crate) objects: Vec<SceneObjectData>,
+    pub(crate) components: HashMap<ObjectId, Vec<ComponentInstance>>,
+    pub(crate) editor: LevelEditorFileState,
+    pub(crate) world_settings: WorldSettingsData,
+}
+
+impl PreparedLevel {
+    pub(crate) fn total_work(&self) -> usize {
+        (self.objects.len()
+            + self
+                .components
+                .values()
+                .map(|instances| instances.len())
+                .sum::<usize>())
+        .max(1)
+    }
+}
+
+/// Read and migrate level data without holding the shared SceneDB lock.
+pub(crate) fn prepare_level_for_hydration<P: AsRef<Path>>(
+    path: P,
+) -> Result<PreparedLevel, String> {
+    prepare_level_for_hydration_with_registry(path, &project_registry())
+}
+
+fn prepare_level_for_hydration_with_registry<P: AsRef<Path>>(
+    path: P,
+    registry: &ClassRegistry,
+) -> Result<PreparedLevel, String> {
     let bytes =
         virtual_fs::read_file(path.as_ref()).map_err(|e| format!("Failed to read file: {e}"))?;
     let json = String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {e}"))?;
@@ -403,29 +474,51 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
             level_file.version
         ));
     }
+    Ok(PreparedLevel {
+        path: path.as_ref().to_path_buf(),
+        version: level_file.version,
+        objects: level_file.objects,
+        components: level_file.components,
+        editor: level_file.editor.unwrap_or_default(),
+        world_settings: level_file.world_settings,
+    })
+}
+
+pub(crate) fn clear_for_hydration(world: &mut World) {
     clear(world);
-    // Objects are stored in DFS order so parents are always inserted first.
-    let has_persisted_components = !level_file.components.is_empty();
-    for obj in level_file.objects {
-        let parent = obj.parent.clone();
-        add_object(world, obj, parent);
-    }
+}
+
+pub(crate) fn add_hydrated_object(world: &mut World, obj: SceneObjectData) {
+    let parent = obj.parent.clone();
+    add_object(world, obj, parent);
+}
+
+pub(crate) fn convert_legacy_transforms(world: &mut World, version: &str) {
     // A scene saved before parent-relative transforms holds world-space values
     // for parented objects: make them local, keeping every object in place.
-    if engine_backend::scene::hierarchy_transform::file_has_world_space_transforms(
-        &level_file.version,
-    ) {
+    if engine_backend::scene::hierarchy_transform::file_has_world_space_transforms(version) {
         engine_backend::scene::hierarchy_transform::convert_all_legacy_world_transforms(world);
     }
+}
 
-    // When present, persisted components are authoritative and replace defaults.
-    if has_persisted_components {
-        for (object_id, components) in level_file.components {
-            replace_components(world, &object_id, &components);
-        }
-    }
+pub(crate) fn add_hydrated_components(
+    world: &mut World,
+    object_id: &str,
+    components: &[ComponentInstance],
+) {
+    replace_components(world, object_id, components);
+}
 
-    report_invalid_known_data(world, path.as_ref());
+pub(crate) fn finish_prepared_hydration(world: &mut World, prepared: &PreparedLevel) {
+    finish_prepared_hydration_with_registry(world, prepared, &project_registry());
+}
+
+fn finish_prepared_hydration_with_registry(
+    world: &mut World,
+    prepared: &PreparedLevel,
+    registry: &ClassRegistry,
+) {
+    report_invalid_known_data(world, &prepared.path);
     // Everything that defines a space (rigid frames, sublevel placements) gets its
     // slot (`.agents/FRAMES.md`).
     engine_backend::scene::frames::sync_spaces(world);
@@ -444,16 +537,6 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
     // disabled, logged.
     engine_backend::scene::level_rules::enforce_on_load(world);
     engine_backend::scene::resolve_level_assets(world);
-
-    tracing::info!(
-        "Scene loaded from: {} (version: {})",
-        path.as_ref().display(),
-        level_file.version
-    );
-    Ok((
-        level_file.editor.unwrap_or_default(),
-        level_file.world_settings,
-    ))
 }
 
 #[cfg(test)]

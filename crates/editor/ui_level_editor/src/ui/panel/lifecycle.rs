@@ -13,15 +13,9 @@ impl LevelEditorPanel {
         panel
     }
 
-    /// Defers `ensure_default_level_file` to run after the editor window has
-    /// rendered its first frame.
-    ///
-    /// By the time the loading screen closes, the scene directory already exists
-    /// and the `default.level` file is in the OS page cache (both pre-warmed by
-    /// the loading-screen background thread).  Even so, the actual deserialization
-    /// happens here on the GPUI main thread — deferring it means the window
-    /// becomes visible first, avoiding the "frozen / locked up" appearance on
-    /// Windows.
+    /// Defers opening the default level until the editor window has rendered its
+    /// first frame. File preparation and scene hydration then run in the
+    /// background so the window remains responsive.
     pub(super) fn spawn_level_load(cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             // Yield once so the event loop can paint the first frame and make
@@ -30,164 +24,190 @@ impl LevelEditorPanel {
                 .timer(std::time::Duration::ZERO)
                 .await;
 
-            // Back on the GPUI main thread: load the level file. Panels pick
-            // the contents up through their own frame pumps; this panel only
-            // needs its title refreshed.
+            // Start default-level preparation after the window has painted.
             cx.update(|cx| {
                 this.update(cx, |panel, cx| {
-                    panel.ensure_default_level_file();
-                    cx.notify();
+                    panel.begin_default_level_load(cx);
                 });
             });
         })
         .detach();
     }
 
-    /// If no project is open, do nothing. Otherwise resolve `<project>/scene/default.level`:
-    /// - If the file already exists, load it.
-    /// - If it doesn't exist, save the current in-memory default scene to it and
-    ///   set `current_scene` so the title bar and save-as shortcuts work correctly.
-    pub(super) fn ensure_default_level_file(&mut self) {
+    /// If no project is open, do nothing. Otherwise prepare
+    /// `<project>/scene/default.level` in the background and start normal scene
+    /// hydration once the file exists.
+    pub(super) fn begin_default_level_load(&self, cx: &mut Context<Self>) {
         let Some(project_str) = engine_state::get_project_path() else {
             return;
         };
         let default_path = std::path::PathBuf::from(&project_str)
             .join("scene")
             .join("default.level");
+        let scene_db = self.shared_state.read().scene.shared_scene();
+        let camera_state = self.current_editor_camera_state();
+        let embedded = engine_state::EngineContext::global()
+            .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone());
 
-        if let Some(parent) = default_path.parent() {
-            if let Err(e) = engine_fs::virtual_fs::create_dir_all(parent) {
-                tracing::warn!("Could not create default level directory {:?}: {e}", parent);
-                return;
-            }
-        }
-
-        let scene_db = { self.shared_state.read().scene.shared_scene() };
-
-        if default_path.exists() {
-            // File already on disk — load it into the shared scene db.
-            {
-                let mut world = scene_db.write();
-                crate::scene_edit::objects::clear(&mut world.world);
-            }
-            let load_result = {
-                let mut world = scene_db.write();
-                crate::scene_edit::level_io::load_from_file_with_editor_state(
-                    &mut world.world,
-                    &default_path,
-                )
-            };
-            match load_result {
-                Ok((editor_state, world_settings)) => {
-                    self.apply_editor_camera_state(editor_state.camera.as_ref());
-                    let mut w = self.shared_state.write();
-                    w.scene.set_current_scene(Some(default_path), false);
-                    w.scene.world_settings = world_settings;
-                    w.editor.terrain.foliage_sets = editor_state.foliage_sets;
-                    w.scene.has_unsaved_changes = false;
-                    w.scene.bump_revision(false);
+        cx.spawn(async move |this, cx| {
+            let prepare_path = default_path.clone();
+            let result = cx.background_executor().spawn(async move {
+                if let Some(parent) = prepare_path.parent() {
+                    engine_fs::virtual_fs::create_dir_all(parent)
+                        .map_err(|e| format!("Could not create default level directory: {e}"))?;
                 }
-                Err(e) => {
-                    tracing::warn!("Default level exists but could not be loaded: {e}");
-                    self.shared_state.write().scene.bump_revision(false);
-                }
-            }
-        } else {
-            // File does not exist — seed from the embedded default.level if available,
-            // otherwise save the current in-memory (empty) scene to disk.
-            let embedded = engine_state::EngineContext::global()
-                .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone());
 
-            // The embedded default level references engine meshes (the cathedral
-            // batches) by project-relative path; make sure they exist first.
-            if let Some(root) = default_path.parent().and_then(|p| p.parent()) {
-                engine_backend::services::ensure_engine_primitives(root);
-            }
-
-            let seed_result = if let Some(bytes) = embedded {
-                // Write the embedded bytes directly — preserves whatever the developer
-                // designed as the default scene via "Save as Default Level".
-                engine_fs::virtual_fs::write_file(&default_path, &bytes)
-                    .map_err(|e| format!("Failed to write embedded default level: {e}"))
-            } else {
-                // No embedded asset yet — persist the current empty scene so the
-                // path is stable for future saves.
-                let world = scene_db.read();
-                crate::scene_edit::level_io::save_to_file_with_editor_camera(
-                    &world.world,
-                    &default_path,
-                    self.current_editor_camera_state(),
-                )
-            };
-
-            match seed_result {
-                Ok(_) => {
-                    // Load back what we just wrote so the editor shows the correct scene.
-                    {
-                        let mut world = scene_db.write();
-                        crate::scene_edit::objects::clear(&mut world.world);
+                if !prepare_path.exists() {
+                    if let Some(root) = prepare_path.parent().and_then(|p| p.parent()) {
+                        engine_backend::services::ensure_engine_primitives(root);
                     }
-                    let load_result = {
-                        let mut world = scene_db.write();
-                        crate::scene_edit::level_io::load_from_file_with_editor_state(
-                            &mut world.world,
-                            &default_path,
-                        )
-                    };
-                    match load_result {
-                        Ok((editor_state, world_settings)) => {
-                            self.apply_editor_camera_state(editor_state.camera.as_ref());
-                            let mut state = self.shared_state.write();
-                            state.scene.world_settings = world_settings;
-                            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
-                            tracing::info!("Default level seeded at {:?}", default_path)
-                        }
-                        Err(e) => tracing::warn!("Seeded default level but reload failed: {e}"),
+                    if let Some(bytes) = embedded {
+                        engine_fs::virtual_fs::write_file(&prepare_path, &bytes)
+                            .map_err(|e| format!("Failed to write embedded default level: {e}"))?;
+                    } else {
+                        let world = scene_db.read();
+                        crate::scene_edit::level_io::save_to_file_with_editor_camera(
+                            &world.world,
+                            &prepare_path,
+                            camera_state,
+                        )?;
                     }
-                    let mut w = self.shared_state.write();
-                    w.scene.set_current_scene(Some(default_path), false);
-                    w.scene.has_unsaved_changes = false;
-                    w.scene.bump_revision(false);
+                    tracing::info!("Default level seeded at {:?}", prepare_path);
                 }
-                Err(e) => {
-                    tracing::warn!("Could not create default level at {:?}: {e}", default_path);
-                    self.shared_state.write().scene.bump_revision(false);
-                }
-            }
-        }
+                Ok::<_, String>(prepare_path)
+            }).await;
+
+            cx.update(|cx| {
+                let _ = this.update(cx, |panel, cx| match result {
+                    Ok(path) => panel.begin_scene_load(path, cx),
+                    Err(error) => {
+                        tracing::warn!("Could not prepare default level: {error}");
+                        cx.notify();
+                    }
+                });
+            });
+        }).detach();
     }
 
-    /// Create the editor and immediately load a level file from disk.
+    /// Create the editor and start loading a level file in the background.
     ///
     /// The scene is cleared and reloaded into the existing shared `Arc<SceneDb>`
-    /// so the renderer stays in sync. Returns an error string on load failure
-    /// (the panel is still valid and shows the default empty scene).
+    /// so the renderer stays in sync. The panel appears immediately with a
+    /// viewport hydration overlay while the file is loaded and applied. Load
+    /// failures are logged after panel creation.
     pub fn new_with_path(
         path: std::path::PathBuf,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Self, String> {
-        let mut panel = Self::new_internal(None, window, cx);
-        // Clear the default scene that was just populated, then load from file.
-        let scene_db = { panel.shared_state.read().scene.shared_scene() };
-        {
-            let mut world = scene_db.write();
-            crate::scene_edit::objects::clear(&mut world.world);
-        }
-        let (editor_state, world_settings) = {
-            let mut world = scene_db.write();
-            crate::scene_edit::level_io::load_from_file_with_editor_state(&mut world.world, &path)?
-        };
-        panel.apply_editor_camera_state(editor_state.camera.as_ref());
-        {
-            let mut state = panel.shared_state.write();
-            state.scene.set_current_scene(Some(path), false);
-            state.scene.world_settings = world_settings;
-            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
-            state.scene.has_unsaved_changes = false;
-            state.scene.bump_revision(false);
-        }
+        let panel = Self::new_internal(None, window, cx);
+        panel.begin_scene_load(path, cx);
         Ok(panel)
+    }
+
+    /// Start a level load without blocking panel creation or the UI executor.
+    pub(super) fn begin_scene_load(
+        &self,
+        path: std::path::PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let state_arc = self.shared_state.clone();
+        let scene_db = { state_arc.read().scene.shared_scene() };
+        let progress = Arc::new(AtomicU32::new(0.0f32.to_bits()));
+        state_arc.write().scene_hydration_progress = Some(progress.clone());
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let load_path = path.clone();
+            let load_progress = progress.clone();
+            let result: Result<
+                (
+                    crate::scene_edit::LevelEditorFileState,
+                    crate::world_settings_data::WorldSettingsData,
+                ),
+                String,
+            > = cx
+                .background_executor()
+                .spawn(async move {
+                    use crate::scene_edit::level_io;
+
+                    // Parse and migrate outside SceneDB's lock, then apply one
+                    // object/component group per write so readers can proceed
+                    // between batches.
+                    let mut prepared = level_io::prepare_level_for_hydration(&load_path)?;
+                    let total = prepared.total_work() as f32;
+                    let mut completed = 0usize;
+                    let set_progress = |value: f32| {
+                        load_progress.store(value.to_bits(), Ordering::Relaxed);
+                    };
+                    set_progress(0.02);
+                    {
+                        let mut scene = scene_db.write();
+                        level_io::clear_for_hydration(&mut scene.world);
+                    }
+
+                    for object in std::mem::take(&mut prepared.objects) {
+                        let mut scene = scene_db.write();
+                        level_io::add_hydrated_object(&mut scene.world, object);
+                        drop(scene);
+                        completed += 1;
+                        set_progress(0.05 + 0.78 * completed as f32 / total);
+                    }
+                    {
+                        let mut scene = scene_db.write();
+                        level_io::convert_legacy_transforms(&mut scene.world, &prepared.version);
+                    }
+                    for (object_id, components) in std::mem::take(&mut prepared.components) {
+                        let count = components.len();
+                        let mut scene = scene_db.write();
+                        level_io::add_hydrated_components(
+                            &mut scene.world,
+                            &object_id,
+                            &components,
+                        );
+                        drop(scene);
+                        completed += count;
+                        set_progress(0.05 + 0.78 * completed as f32 / total);
+                    }
+                    set_progress(0.86);
+                    {
+                        let mut scene = scene_db.write();
+                        level_io::finish_prepared_hydration(&mut scene.world, &prepared);
+                    }
+                    set_progress(0.98);
+                    tracing::info!(
+                        "Scene loaded from: {} (version: {})",
+                        prepared.path.display(),
+                        prepared.version
+                    );
+                    Ok((prepared.editor, prepared.world_settings))
+                })
+                .await;
+
+            cx.update(|cx| {
+                let _ = this.update(cx, |panel, cx| {
+                    state_arc.write().scene_hydration_progress = None;
+                    match result {
+                        Ok((editor_state, world_settings)) => {
+                            panel.apply_editor_camera_state(editor_state.camera.as_ref());
+                            let mut state = state_arc.write();
+                            state.scene.set_current_scene(Some(path), false);
+                            state.scene.world_settings = world_settings;
+                            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
+                            state.scene.has_unsaved_changes = false;
+                            state.scene.select_object(None);
+                            state.scene.bump_revision(false);
+                        }
+                        Err(error) => tracing::error!("Open scene failed: {}", error),
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
 
     pub(super) fn new_internal(
