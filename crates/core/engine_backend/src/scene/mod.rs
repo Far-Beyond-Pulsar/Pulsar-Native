@@ -44,7 +44,7 @@ pub mod helio_bridge;
 pub mod sublevels;
 #[cfg(feature = "render")]
 pub mod portals;
-pub mod level_instances;
+pub mod sublevel_display;
 
 #[cfg(feature = "render")]
 pub use helio_bridge::{
@@ -70,7 +70,7 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }
 pub use pulsar_scene_model::{
-    attachments, components, frames, hierarchy_transform, instance, partitions, world_ext, ComponentAttachments, ComponentInstance,
+    attachments, components, frames, hierarchy_transform, instance, level_instances, partitions, world_ext, ComponentAttachments, ComponentInstance,
     EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps,
     SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId, Transform,
     Visibility,

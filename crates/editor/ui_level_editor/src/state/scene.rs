@@ -460,8 +460,15 @@ impl SceneDomain {
     }
 
     fn restore_delta(&mut self, snapshot: &SceneHistorySnapshot, ids: &[ObjectId]) -> bool {
-        match scene_edit::history::restore_history_delta(&mut self.world_mut(), snapshot, ids) {
-            Ok(()) => true,
+        // The write guard must be gone before the sync below takes it again.
+        let restored =
+            scene_edit::history::restore_history_delta(&mut self.world_mut(), snapshot, ids);
+        match restored {
+            Ok(()) => {
+                // Displays that came back (or went) show (or drop) their levels.
+                engine_backend::scene::sublevel_display::sync_level_instances(&mut self.world_mut());
+                true
+            }
             Err(error) => {
                 tracing::error!(%error, "scoped scene restore rejected");
                 false

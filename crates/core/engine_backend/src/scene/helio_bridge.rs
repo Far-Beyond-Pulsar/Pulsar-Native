@@ -495,8 +495,18 @@ impl SpaceSync {
         renderer: &mut helio::Renderer,
         others: impl FnOnce(&mut SpaceTable),
     ) -> bool {
-        if pulsar_scene_model::frames::needs_space_sync(&scene.read().world) {
-            pulsar_scene_model::frames::sync_spaces(&mut scene.write().world);
+        // Levels that displays show, and the slots of everything that defines a
+        // space. Both checks are cheap reads; the write lock is taken only when
+        // something changed (a display was added or retargeted, a frame made).
+        let needs_sync = {
+            let world = &scene.read().world;
+            crate::scene::sublevel_display::needs_level_instance_sync(world)
+                || pulsar_scene_model::frames::needs_space_sync(world)
+        };
+        if needs_sync {
+            let mut scene = scene.write();
+            crate::scene::sublevel_display::sync_level_instances(&mut scene.world);
+            pulsar_scene_model::frames::sync_spaces(&mut scene.world);
         }
         let mut table = SpaceTable::new(pulsar_scene_model::frames::frame_table(
             &scene.read().world,

@@ -129,6 +129,7 @@ impl RuntimeLevel {
         let file = load_scene_file(path, registry)?;
         let editor_camera = editor_camera(&file.editor);
         Self::hydrate_scene_file(file, world, registry)?;
+        crate::scene::sublevel_display::sync_level_instances(world);
         Ok(LevelExtras { editor_camera })
     }
     /// Instantiate a level file's objects **under** `parent`: the file's origin
@@ -203,6 +204,7 @@ impl RuntimeLevel {
         let editor_camera = editor_camera(&file.editor);
         let mut scene = crate::scene::new_scene();
         Self::hydrate_scene_file(file, &mut scene.world, registry)?;
+        crate::scene::sublevel_display::sync_level_instances(&mut scene.world);
         let extras = LevelExtras { editor_camera };
         Ok(Self {
             scene: Arc::new(RwLock::new(scene)),

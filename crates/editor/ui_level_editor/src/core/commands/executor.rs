@@ -830,6 +830,19 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
         }
     })();
 
+    // An edit may have added, retargeted, disabled or removed a sublevel display
+    // (or copied one): bring the contents it shows up to date now, so the
+    // viewport and hierarchy never show a stale level. Generated content is not
+    // part of the undo snapshot below; restoring the display regenerates it.
+    if result.changed {
+        let mut world = state.scene.world_mut();
+        if engine_backend::scene::sublevel_display::needs_level_instance_sync(&world) {
+            engine_backend::scene::sublevel_display::sync_level_instances(&mut world);
+            drop(world);
+            state.scene.bump_revision(false);
+        }
+    }
+
     if result.changed {
         if let Some(pre) = pre_state {
             let mut post_scope = scope;

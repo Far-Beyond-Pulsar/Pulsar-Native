@@ -755,6 +755,92 @@ mod undo_redo_tests {
         assert_eq!(state.scene.selected_object(), Some(copy));
     }
 
+    /// A sublevel display added in the editor shows its level, and that content is
+    /// generated: it is not saved with the level that shows it, a copy of the
+    /// display gets its own, and undo and redo take it away and bring it back.
+    #[test]
+    fn a_sublevel_display_shows_its_level_through_the_editor_commands() {
+        use crate::scene_edit::objects::get_all_objects;
+        let dir = tempfile::tempdir().unwrap();
+        let level = dir.path().join("room.level");
+        std::fs::write(
+            &level,
+            r#"{"version": "2.2", "objects": [
+                {"id": "wall", "name": "Wall", "object_type": "Empty",
+                 "transform": {"position": [3.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]},
+                 "parent": null, "visible": true, "locked": false, "props": {}},
+                {"id": "lamp", "name": "Lamp", "object_type": "Empty",
+                 "transform": {"position": [0.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]},
+                 "parent": "wall", "visible": true, "locked": false, "props": {}}],
+               "components": {}, "metadata": {}}"#,
+        )
+        .unwrap();
+
+        let mut state = LevelEditorState::new();
+        let display = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Door"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        let count = |state: &LevelEditorState| get_all_objects(&state.scene.world()).len();
+        assert_eq!(count(&state), 1);
+
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::AddComponent {
+                    id: display.clone(),
+                    class_name: "SubLevelDisplayComponent".into(),
+                    value: None,
+                },
+            )
+            .changed
+        );
+        assert_eq!(count(&state), 1, "no level named yet: nothing shown");
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::SetComponentProperty {
+                    id: display.clone(),
+                    class_name: "SubLevelDisplayComponent".into(),
+                    component_index: 0,
+                    prop_name: "level".into(),
+                    value: Box::new(level.to_string_lossy().into_owned()),
+                },
+            )
+            .changed
+        );
+        assert_eq!(count(&state), 3, "the display and the level's two objects");
+
+        // The shown objects are generated content: saved levels never hold them.
+        let (saved, _) = crate::scene_edit::level_io::level_contents(
+            &state.scene.world(),
+            &pulsar_class::ClassRegistry::default(),
+        );
+        assert_eq!(saved.len(), 1, "only the display object is saved");
+
+        // A copy of the display shows its own copy of the level.
+        let copy = crate::commands::duplicate_and_select(&mut state, &display).expect("copy");
+        assert_eq!(count(&state), 6, "two displays and two copies of the level");
+        assert_ne!(copy, display);
+
+        // Undo takes the copy's content away with the copy; redo brings both back.
+        assert!(state.scene.undo());
+        assert_eq!(count(&state), 3);
+        assert!(state.scene.redo());
+        assert_eq!(count(&state), 6);
+
+        // Removing the display removes what it shows.
+        assert!(
+            execute_command(&mut state, SceneCommand::RemoveObject { id: display.clone() }).changed
+        );
+        assert_eq!(count(&state), 3, "the copy and its level remain");
+    }
+
     /// Duplicating a folder copies its contents, as one undo step.
     #[test]
     fn duplicating_a_folder_with_contents_undoes_and_redoes_as_one_step() {
