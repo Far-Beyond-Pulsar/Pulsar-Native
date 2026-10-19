@@ -217,7 +217,7 @@ impl PortalSync {
             let resolver = build_resolver(world, &pairing, origin);
             match self.bridge.build_into(&resolver, table) {
                 Ok(frame) => {
-                    self.input.set(&frame);
+                    self.input.set(&frame, table.matrices());
                     (frame.counts.portal_view_count, frame.counts.portal_chain_count)
                 }
                 Err(error) => {

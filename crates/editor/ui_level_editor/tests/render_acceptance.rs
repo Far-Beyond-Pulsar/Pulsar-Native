@@ -3486,10 +3486,18 @@ fn a_rigid_frames_meshes_move_with_it_in_the_frame() {
     }
 }
 
+/// A mesh on each side of the far portal (see [`portal_scene`]).
+fn add_portal_content(state: &mut LevelEditorState, radius: f32) {
+    for z in [radius * 2.0, -radius * 2.0] {
+        let mesh = drop_mesh(state);
+        move_to(state, &mesh, [100.0, 0.0, z]);
+    }
+}
+
 /// Two portals (Link IDs `near_id` and `far_id`), the near one at the origin facing
 /// the test camera and the far one 100 m to the side, with a mesh on each side of the
 /// far one. The meshes are out of the camera's view unless the portals are linked.
-fn portal_scene(radius: f32, near_id: i32, far_id: i32) -> LevelEditorState {
+fn portal_scene(radius: f32, near_id: i32, far_id: i32, content: bool) -> LevelEditorState {
     let mut state = LevelEditorState::new();
     let add_portal = |state: &mut LevelEditorState, name: &str, position: [f32; 3], link: i32| {
         let id = add_object(state, name, ObjectType::Empty);
@@ -3529,9 +3537,8 @@ fn portal_scene(radius: f32, near_id: i32, far_id: i32) -> LevelEditorState {
     };
     add_portal(&mut state, "near", [0.0, 0.0, 0.0], near_id);
     add_portal(&mut state, "far", [100.0, 0.0, 0.0], far_id);
-    for z in [radius * 2.0, -radius * 2.0] {
-        let mesh = drop_mesh(&mut state);
-        move_to(&mut state, &mesh, [100.0, 0.0, z]);
+    if content {
+        add_portal_content(&mut state, radius);
     }
     state
 }
@@ -3572,8 +3579,8 @@ fn linked_portals_show_the_far_side_in_the_frame() {
         let mut renderer = harness.renderer(state);
         harness.frames(&mut renderer, || {})
     };
-    let unlinked = render(&portal_scene(radius, 1, 2));
-    let linked = render(&portal_scene(radius, 5, 5));
+    let unlinked = render(&portal_scene(radius, 1, 2, true));
+    let linked = render(&portal_scene(radius, 5, 5, true));
     let shown = linked.difference(&unlinked);
     assert!(
         shown.depth_texels > 0,
@@ -3602,36 +3609,210 @@ fn portal_content_keeps_its_materials_when_the_scene_grows() {
     let harness = Harness::new(device, queue, radius);
 
     let unlinked = {
-        let state = portal_scene(radius, 1, 2);
+        let state = portal_scene(radius, 1, 2, true);
         let mut renderer = harness.renderer(&state);
         harness.frames(&mut renderer, || {})
     };
-    let mut state = portal_scene(radius, 5, 5);
+    // Linked portals and, to start with, nothing to look at.
+    let mut state = portal_scene(radius, 5, 5, false);
     let mut renderer = harness.renderer(&state);
-    let before = harness.frames(&mut renderer, || {});
-    let orange = |frame: &Frame| {
-        let [r, _, b] = mean_color_of_difference(frame, &unlinked)
-            .expect("the linked portal shows something");
-        (r, b)
-    };
-    let (red, blue) = orange(&before);
-    assert!(red > blue + 10.0, "the content through the portal is orange (r {red}, b {blue})");
+    harness.frames(&mut renderer, || {});
 
-    // Grow the scene well past the material buffer's capacity, far out of view.
+    // The scene grows well past the material buffer's capacity (far out of view)...
     for n in 0..64 {
         let mesh = drop_mesh(&mut state);
         move_to(&mut state, &mesh, [2000.0 + n as f32 * 10.0, 0.0, 0.0]);
     }
-    let after = harness.frames(&mut renderer, || {});
-    let (red_after, blue_after) = orange(&after);
+    harness.frames(&mut renderer, || {});
+    // ...and only then does the content beside the far portal arrive, so its
+    // material rows live in the reallocated buffer.
+    add_portal_content(&mut state, radius);
+    let shown = harness.frames(&mut renderer, || {});
+
+    let [red, _, blue] = mean_color_of_difference(&shown, &unlinked)
+        .expect("the linked portal shows the content that arrived after the growth");
     assert!(
-        red_after > blue_after + 10.0,
-        "after the scene grew, the content through the portal lost its materials \
-         (r {red_after}, b {blue_after}; before r {red}, b {blue})"
+        red > blue + 10.0,
+        "the content that arrived after the scene grew lost its materials through the \
+         portal (mean r {red}, b {blue}); it should be emissive orange"
     );
+}
+
+/// Mean colour of the pixels where `frame`'s scene depth differs from `reference`'s: the
+/// geometry that appeared, without the sky around it. Depth may be a different
+/// resolution than colour, so it is sampled at the matching position.
+fn mean_color_where_depth_differs(frame: &Frame, reference: &Frame) -> Option<([f32; 3], usize)> {
+    let width = frame.depth_width.max(1) as usize;
+    let height = (frame.depth.len() / width).max(1);
+    let mut sum = [0.0f64; 3];
+    let mut count = 0usize;
+    for y in 0..SIZE as usize {
+        for x in 0..SIZE as usize {
+            let dx = x * width / SIZE as usize;
+            let dy = y * height / SIZE as usize;
+            let d = dy * width + dx;
+            if !depth_differs(frame.depth[d], reference.depth[d]) {
+                continue;
+            }
+            let p = (y * SIZE as usize + x) * 4;
+            for i in 0..3 {
+                sum[i] += f64::from(frame.color[p + i]);
+            }
+            count += 1;
+        }
+    }
+    (count > 0).then(|| (sum.map(|v| (v / count as f64) as f32), count))
+}
+
+/// Mean `[r, g, b]` (0-255) and count of the strongly red pixels of `frame`: the
+/// red mesh, without the sky and the ground line around it.
+fn mean_of_red_pixels(frame: &Frame) -> Option<([f32; 3], usize)> {
+    let mut sum = [0.0f64; 3];
+    let mut count = 0usize;
+    for p in frame.color.chunks_exact(4) {
+        if p[0] > 120 && u32::from(p[0]) > 2 * u32::from(p[1]) + 40 && u32::from(p[0]) > 2 * u32::from(p[2]) + 40 {
+            for i in 0..3 {
+                sum[i] += f64::from(p[i]);
+            }
+            count += 1;
+        }
+    }
+    (count > 0).then(|| (sum.map(|v| (v / count as f64) as f32), count))
+}
+
+fn drop_red_mesh(state: &mut LevelEditorState) -> String {
+    drop_mesh_with(
+        state,
+        json!({"base_color": [0.9, 0.05, 0.05, 1.0], "metallic": 0.0, "roughness": 0.8,
+               "emissive_color": [0.0, 0.0, 0.0], "emissive_intensity": 0.0, "alpha": 1.0}),
+    )
+}
+
+/// DIAGNOSTIC: does a lit matte mesh, seen directly and through a linked portal,
+/// respond to the sun? Prints the mean colour of what changed.
+#[test]
+#[ignore = "diagnostic: prints and dumps frames"]
+fn diag_portal_lighting() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    for sun_on in [true, false] {
+        let environment = |state: &mut LevelEditorState| {
+            if sun_on {
+                add_light(
+                    state,
+                    [1.0e4, 0.0, 0.0],
+                    helio_component::components::LightType::Directional,
+                    SUN,
+                );
+            }
+            assert!(ui_level_editor::scene_edit::sky::create_sky(state).changed);
+        };
+        let render = |state: &LevelEditorState| {
+            let mut renderer = harness.renderer(state);
+            harness.frames(&mut renderer, || {})
+        };
+        // Direct.
+        let mut empty = LevelEditorState::new();
+        environment(&mut empty);
+        let mut direct = LevelEditorState::new();
+        let mesh = drop_red_mesh(&mut direct);
+        move_to(&mut direct, &mesh, [0.0, 0.0, -radius * 2.0]);
+        environment(&mut direct);
+        let (empty_f, direct_f) = (render(&empty), render(&direct));
+        direct_f.dump(&format!("diag_direct_sun{sun_on}"));
+        // Through a portal.
+        let portal = |link: i32| {
+            let mut state = portal_scene(radius, link, if link == 5 { 5 } else { 6 }, false);
+            for z in [radius * 2.0, -radius * 2.0] {
+                let mesh = drop_red_mesh(&mut state);
+                move_to(&mut state, &mesh, [100.0, 0.0, z]);
+            }
+            environment(&mut state);
+            state
+        };
+        let (unlinked, linked) = (render(&portal(1)), render(&portal(5)));
+        linked.dump(&format!("diag_portal_sun{sun_on}"));
+        println!(
+            "DIAG sun={sun_on}: direct {:?}  portal {:?}",
+            mean_of_red_pixels(&direct_f),
+            mean_of_red_pixels(&linked)
+        );
+    }
+}
+
+/// What a portal shows is lit by the lights of the world it shows, not of the
+/// world it is seen from. The light here sits beside the content (100 m from the
+/// near portal, in the content's own world), so lighting a pixel at the place it
+/// appears through the portal would miss it by 100 m and leave the content dark.
+#[test]
+fn portal_content_is_lit_by_the_lights_of_its_own_world() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let render = |lit: bool| {
+        let mut state = portal_scene(radius, 5, 5, false);
+        for z in [radius * 2.0, -radius * 2.0] {
+            let mesh = drop_red_mesh(&mut state);
+            move_to(&mut state, &mesh, [100.0, 0.0, z]);
+        }
+        if lit {
+            add_light(
+                &mut state,
+                [100.0, radius * 1.5, radius * 4.0],
+                helio_component::components::LightType::Point,
+                BRIGHT,
+            );
+        }
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {})
+    };
+    let dark = render(false);
+    let lit = render(true);
+    let count = |frame: &Frame| mean_of_red_pixels(frame).map_or(0, |(_, count)| count);
     assert!(
-        (red_after - red).abs() < 12.0 && (blue_after - blue).abs() < 12.0,
-        "the content through the portal changed colour when the scene grew \
-         (r {red} -> {red_after}, b {blue} -> {blue_after})"
+        count(&lit) > 100 && count(&lit) > 4 * count(&dark),
+        "the light beside the content did not light it through the portal \
+         (red pixels: {} lit, {} without the light)",
+        count(&lit),
+        count(&dark)
     );
+}
+
+#[test]
+#[ignore = "diagnostic"]
+fn diag_portal_point_light() {
+    let Some((device, queue)) = device() else { return; };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    println!("DIAG radius {radius}");
+    let harness = Harness::new(device, queue, radius);
+    for intensity in [BRIGHT / 1.0e5, BRIGHT / 1.0e4, BRIGHT / 1.0e3, BRIGHT / 100.0] {
+        for (label, at) in [("content-side", [100.0, radius * 1.5, radius * 4.0]), ("host-side", [0.0, radius * 1.5, radius * 4.0]), ("none", [0.0, 1.0e6, 0.0])] {
+            let mut state = portal_scene(radius, 5, 5, false);
+            for z in [radius * 2.0, -radius * 2.0] {
+                let mesh = drop_red_mesh(&mut state);
+                move_to(&mut state, &mesh, [100.0, 0.0, z]);
+            }
+            add_light(&mut state, at, helio_component::components::LightType::Point, intensity);
+            let mut renderer = harness.renderer(&state);
+            let frame = harness.frames(&mut renderer, || {});
+            println!("DIAG I={intensity} {label}: {:?}", mean_of_red_pixels(&frame));
+        }
+    }
 }
