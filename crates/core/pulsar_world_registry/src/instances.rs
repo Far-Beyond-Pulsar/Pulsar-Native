@@ -613,7 +613,10 @@ fn transform_of(value: &Value) -> Transform {
             .unwrap_or(default)
     };
     Transform {
-        position: vec3("position", [0.0; 3]),
+        position: value
+            .get("position")
+            .and_then(|v| serde_json::from_value::<[f64; 3]>(v.clone()).ok())
+            .unwrap_or([0.0; 3]),
         rotation: vec3("rotation", [0.0; 3]),
         scale: vec3("scale", [1.0; 3]),
     }

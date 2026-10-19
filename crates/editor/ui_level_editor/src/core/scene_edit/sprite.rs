@@ -30,7 +30,7 @@ pub fn create_sprite(
                 name: SPRITE_OBJECT_NAME.to_string(),
                 object_type: ObjectType::Empty,
                 transform: Transform {
-                    position: [position[0], position[1], 0.0],
+                    position: [f64::from(position[0]), f64::from(position[1]), 0.0],
                     ..Transform::default()
                 },
                 visible: true,

@@ -171,17 +171,17 @@ fn group_selection_into_folder(state: &mut LevelEditorState) -> bool {
     {
         use engine_backend::scene::hierarchy_transform::{local_for_world, world_transform_of};
         let world = state.scene.world();
-        let positions: Vec<[f32; 3]> = roots
+        let positions: Vec<[f64; 3]> = roots
             .iter()
             .filter_map(|id| world.entity_for(id))
             .filter_map(|entity| world_transform_of(&world, entity))
             .map(|pose| pose.position)
             .collect();
         if !positions.is_empty() {
-            let n = positions.len() as f32;
+            let n = positions.len() as f64;
             let mut centre = engine_backend::scene::Transform::default();
             for axis in 0..3 {
-                centre.position[axis] = positions.iter().map(|p| p[axis]).sum::<f32>() / n;
+                centre.position[axis] = positions.iter().map(|p| p[axis]).sum::<f64>() / n;
             }
             let parent = parent_id.as_deref().and_then(|id| world.entity_for(id));
             transform = local_for_world(&world, parent, &centre).into();
@@ -832,7 +832,7 @@ pub(crate) fn editor_camera_spawn_transform(
         .ok()
         .and_then(|engine| engine.editor_camera_state())
     {
-        transform.position = camera.position.map(|coordinate| coordinate as f32);
+        transform.position = camera.position;
     }
     transform
 }

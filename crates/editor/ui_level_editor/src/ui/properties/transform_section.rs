@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
-use super::bindings::bound_field::F32BoundField;
+use super::bindings::bound_field::NumberBoundField;
 use crate::core::commands::{execute_command, SceneCommand};
 use crate::state::LevelEditorState;
 use engine_backend::scene::SharedScene;
@@ -19,12 +19,12 @@ enum Axis {
     Scale,
 }
 
-/// Builds an `F32FieldBinding` for one axis (x/y/z) of one transform
+/// Builds an `NumberFieldBinding` for one axis (x/y/z) of one transform
 /// component (position/rotation/scale), routed through `SceneCommand::
 /// SetTransform`/`execute_command` (Pulsar-Native#561), not
 /// `scene_edit::objects::update_object`.
 ///
-/// Previously every one of these 9 fields used `F32FieldBinding::new`
+/// Previously every one of these 9 fields used `NumberFieldBinding::new`
 /// (whole-`SceneObjectData` getter/setter) whose `set()` called
 /// `db.update_object(obj)` -- a full read-modify-write of the ENTIRE object,
 /// which (via `sync_registered_component_props_to_scene_db`) re-serialized
@@ -39,10 +39,10 @@ fn axis_binding(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     axis: Axis,
     index: usize,
-) -> super::bindings::field_bindings::F32FieldBinding {
-    use super::bindings::field_bindings::F32FieldBinding;
+) -> super::bindings::field_bindings::NumberFieldBinding {
+    use super::bindings::field_bindings::NumberFieldBinding;
 
-    F32FieldBinding::new_with_db(
+    NumberFieldBinding::new_with_db(
         move |id, db| {
             // Targeted component read, not `get_object`: this getter runs on
             // every scene revision bump under the current selection (gizmo
@@ -54,8 +54,8 @@ fn axis_binding(
             let transform = crate::scene_edit::objects::get_object_transform(&world.world, id);
             transform.map(|t| match axis {
                 Axis::Position => t.position[index],
-                Axis::Rotation => t.rotation[index],
-                Axis::Scale => t.scale[index],
+                Axis::Rotation => f64::from(t.rotation[index]),
+                Axis::Scale => f64::from(t.scale[index]),
             })
         },
         move |id, val, db| {
@@ -76,12 +76,12 @@ fn axis_binding(
                 }
                 Axis::Rotation => {
                     let mut v = t.rotation;
-                    v[index] = val;
+                    v[index] = val as f32;
                     rotation = Some(v);
                 }
                 Axis::Scale => {
                     let mut v = t.scale;
-                    v[index] = val;
+                    v[index] = val as f32;
                     scale = Some(v);
                 }
             }
@@ -107,19 +107,19 @@ fn axis_binding(
 /// - Scale (X, Y, Z)
 pub struct TransformSection {
     // Position fields
-    position_x: Entity<F32BoundField>,
-    position_y: Entity<F32BoundField>,
-    position_z: Entity<F32BoundField>,
+    position_x: Entity<NumberBoundField>,
+    position_y: Entity<NumberBoundField>,
+    position_z: Entity<NumberBoundField>,
 
     // Rotation fields
-    rotation_x: Entity<F32BoundField>,
-    rotation_y: Entity<F32BoundField>,
-    rotation_z: Entity<F32BoundField>,
+    rotation_x: Entity<NumberBoundField>,
+    rotation_y: Entity<NumberBoundField>,
+    rotation_z: Entity<NumberBoundField>,
 
     // Scale fields
-    scale_x: Entity<F32BoundField>,
-    scale_y: Entity<F32BoundField>,
-    scale_z: Entity<F32BoundField>,
+    scale_x: Entity<NumberBoundField>,
+    scale_y: Entity<NumberBoundField>,
+    scale_z: Entity<NumberBoundField>,
 
     object_id: String,
     collapsed: bool,
@@ -135,7 +135,7 @@ impl TransformSection {
     ) -> Self {
         // Position fields
         let position_x = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Position, 0),
                 "X",
                 object_id.clone(),
@@ -146,7 +146,7 @@ impl TransformSection {
         });
 
         let position_y = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Position, 1),
                 "Y",
                 object_id.clone(),
@@ -157,7 +157,7 @@ impl TransformSection {
         });
 
         let position_z = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Position, 2),
                 "Z",
                 object_id.clone(),
@@ -169,7 +169,7 @@ impl TransformSection {
 
         // Rotation fields
         let rotation_x = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Rotation, 0),
                 "X",
                 object_id.clone(),
@@ -180,7 +180,7 @@ impl TransformSection {
         });
 
         let rotation_y = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Rotation, 1),
                 "Y",
                 object_id.clone(),
@@ -191,7 +191,7 @@ impl TransformSection {
         });
 
         let rotation_z = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Rotation, 2),
                 "Z",
                 object_id.clone(),
@@ -203,7 +203,7 @@ impl TransformSection {
 
         // Scale fields
         let scale_x = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Scale, 0),
                 "X",
                 object_id.clone(),
@@ -214,7 +214,7 @@ impl TransformSection {
         });
 
         let scale_y = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Scale, 1),
                 "Y",
                 object_id.clone(),
@@ -225,7 +225,7 @@ impl TransformSection {
         });
 
         let scale_z = cx.new(|cx| {
-            F32BoundField::new(
+            NumberBoundField::new(
                 axis_binding(state_arc.clone(), Axis::Scale, 2),
                 "Z",
                 object_id.clone(),
@@ -262,12 +262,12 @@ impl TransformSection {
             (&self.position_x, transform.position[0]),
             (&self.position_y, transform.position[1]),
             (&self.position_z, transform.position[2]),
-            (&self.rotation_x, transform.rotation[0]),
-            (&self.rotation_y, transform.rotation[1]),
-            (&self.rotation_z, transform.rotation[2]),
-            (&self.scale_x, transform.scale[0]),
-            (&self.scale_y, transform.scale[1]),
-            (&self.scale_z, transform.scale[2]),
+            (&self.rotation_x, f64::from(transform.rotation[0])),
+            (&self.rotation_y, f64::from(transform.rotation[1])),
+            (&self.rotation_z, f64::from(transform.rotation[2])),
+            (&self.scale_x, f64::from(transform.scale[0])),
+            (&self.scale_y, f64::from(transform.scale[1])),
+            (&self.scale_z, f64::from(transform.scale[2])),
         ];
         for (field, value) in fields {
             field.update(cx, |field, cx| field.show(value, window, cx));
@@ -310,9 +310,9 @@ impl TransformSection {
     fn render_vector3_field(
         &self,
         label: &str,
-        x_field: &Entity<F32BoundField>,
-        y_field: &Entity<F32BoundField>,
-        z_field: &Entity<F32BoundField>,
+        x_field: &Entity<NumberBoundField>,
+        y_field: &Entity<NumberBoundField>,
+        z_field: &Entity<NumberBoundField>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         v_flex()
@@ -363,11 +363,11 @@ impl TransformSection {
     /// Render a single axis input with colored indicator
     fn render_axis_field(
         &self,
-        field: &Entity<F32BoundField>,
+        field: &Entity<NumberBoundField>,
         axis_color: Hsla,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        // We need to override the default F32BoundField rendering to add the colored axis indicator
+        // We need to override the default NumberBoundField rendering to add the colored axis indicator
         // Get the label from the field
         let label = field.read(cx).label.clone();
         let input = field.read(cx).input.clone();

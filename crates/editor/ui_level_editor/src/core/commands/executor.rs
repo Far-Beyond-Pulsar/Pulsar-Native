@@ -383,9 +383,9 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                             );
                             if let Some(mut copy) = copy {
                                 copy.transform.position = [
-                                    src[0] + off[0] * n,
-                                    src[1] + off[1] * n,
-                                    src[2] + off[2] * n,
+                                    src[0] + f64::from(off[0] * n),
+                                    src[1] + f64::from(off[1] * n),
+                                    src[2] + f64::from(off[2] * n),
                                 ];
                                 crate::scene_edit::objects::update_object(
                                     &mut state.scene.world_mut(),

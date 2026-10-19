@@ -160,7 +160,7 @@ mod tests {
         // A drag (Pulsar-Native#995): the world changes every frame, the
         // answer cannot, and the slots are not walked again.
         for x in 0..10 {
-            world.get_mut::<Transform>(object).unwrap().position = [x as f32, 0.0, 0.0];
+            world.get_mut::<Transform>(object).unwrap().position = [f64::from(x), 0.0, 0.0];
             assert!(!content.live(&world));
         }
         assert_eq!(content.checks, 1);

@@ -165,7 +165,7 @@ impl Bench {
                 .spawn_object(SpawnObject::new(format!("o{i}")))
                 .expect("spawn");
             scene.world.get_mut::<Transform>(object).unwrap().position =
-                [(i % 100) as f32, (i / 100 % 100) as f32, (i / 10_000) as f32];
+                [(i % 100) as f64, (i / 100 % 100) as f64, (i / 10_000) as f64];
             pulsar_world_registry::attach_value(&mut scene.world, object, mesh()).unwrap();
             objects.push(object);
         }
@@ -213,7 +213,7 @@ impl Bench {
         for k in 0..moved {
             // A spread-out set, not a run of neighbours.
             let object = self.objects[(k * 7919) % count];
-            self.scene.world.get_mut::<Transform>(object).unwrap().position[1] = phase + k as f32;
+            self.scene.world.get_mut::<Transform>(object).unwrap().position[1] = f64::from(phase + k as f32);
         }
         stages.mutate = start.elapsed();
 

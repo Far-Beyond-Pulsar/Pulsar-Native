@@ -2,7 +2,7 @@
 use super::gizmo_geometry::{meshes, rotation_grid, Handle};
 use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
-use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
+use glam::{DVec3, EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
 use pulsar_scenedb::{Entity, World};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -26,6 +26,12 @@ const HANDLE_PIXELS: f32 = 112.0;
 const PICK_MARGIN: f32 = 7.0;
 #[derive(Clone, Copy, Debug)]
 struct View {
+    /// The world point (f64) the view's coordinates are taken from: the
+    /// eye. Positions here are f32 offsets from it, exact near the eye
+    /// however far it is from the world's origin (on a planet an f32 world
+    /// position steps by half a metre).
+    origin: DVec3,
+    /// The eye in those coordinates.
     position: Vec3,
     forward: Vec3,
     matrix: Mat4,
@@ -38,6 +44,7 @@ struct View {
 impl Default for View {
     fn default() -> Self {
         Self {
+            origin: DVec3::ZERO,
             position: Vec3::ZERO,
             forward: -Vec3::Z,
             matrix: Mat4::IDENTITY,
@@ -48,6 +55,18 @@ impl Default for View {
     }
 }
 impl View {
+    /// World position `p` in the view's coordinates.
+    fn relative(self, p: [f64; 3]) -> Vec3 {
+        (DVec3::from_array(p) - self.origin).as_vec3()
+    }
+    /// The world position of `v` (view coordinates).
+    fn world(self, v: Vec3) -> [f64; 3] {
+        (self.origin + v.as_dvec3()).to_array()
+    }
+    /// `v` as a debug line vertex: debug geometry is world-space f32.
+    fn vertex(self, v: Vec3) -> [f32; 3] {
+        (self.origin + v.as_dvec3()).as_vec3().to_array()
+    }
     fn project(self, point: Vec3) -> Option<Vec2> {
         let p = self.matrix * point.extend(1.0);
         if p.w <= 0.001 || !p.is_finite() {
@@ -114,9 +133,12 @@ impl SceneInteraction {
             self.mode = mode;
         }
     }
-    pub fn set_view(&mut self, position: Vec3, forward: Vec3, matrix: Mat4, size: Vec2, far: f32) {
+    /// The view from `eye` (world, f64) along `forward`; `matrix` is the
+    /// view-projection with the eye at the origin.
+    pub fn set_view(&mut self, eye: DVec3, forward: Vec3, matrix: Mat4, size: Vec2, far: f32) {
         self.view = View {
-            position,
+            origin: eye,
+            position: Vec3::ZERO,
             forward,
             matrix,
             size: size.max(Vec2::ONE),
@@ -143,11 +165,13 @@ impl SceneInteraction {
         self.hovered = None;
         Some((drag.entity, drag.initial_local))
     }
-    pub fn pick(&self, world: &World, origin: Vec3, direction: Vec3) -> Option<String> {
+    /// The object a ray from `origin` (world) along `direction` hits first.
+    pub fn pick(&self, world: &World, origin: DVec3, direction: Vec3) -> Option<String> {
         let direction = direction.normalize_or_zero();
         if direction == Vec3::ZERO {
             return None;
         }
+        let origin = self.view.relative(origin.to_array());
 
         // Of objects hit at the same distance (a duplicate starts on its
         // source), the selected one stays picked; then the lowest id.
@@ -161,7 +185,7 @@ impl SceneInteraction {
                     return None;
                 }
                 let transform = world_transform_of(world, entity)?;
-                let (min, max) = object_bounds(world, entity, &object_type, transform);
+                let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
                 ray_aabb(origin, direction, min, max)
                     .map(|distance| (distance, Some(entity) != selected, id.0.clone()))
             })
@@ -228,7 +252,7 @@ impl SceneInteraction {
         )
     }
     fn hit(&self, t: Transform, cursor: Vec2) -> Option<Handle> {
-        let pivot = Vec3::from_array(t.position);
+        let pivot = self.view.relative(t.position);
         let length = self.view.length(pivot)?;
         let basis = rotation_matrix(t);
         let mut best: Option<(f32, f32, Handle)> = None;
@@ -262,17 +286,19 @@ impl SceneInteraction {
         }
         best.map(|(_, _, h)| h)
     }
-    pub fn try_start_drag(&mut self, world: &World, o: Vec3, d: Vec3, _camera: Vec3) -> bool {
+    /// Grab a gizmo handle under the ray from `o` (world) along `d`.
+    pub fn try_start_drag(&mut self, world: &World, o: DVec3, d: Vec3) -> bool {
         let Some((entity, initial)) = self.selected(world) else {
             return false;
         };
+        let o = self.view.relative(o.to_array());
         let Some(start) = self.view.cursor(o, d) else {
             return false;
         };
         let Some(handle) = self.hit(initial, start) else {
             return false;
         };
-        let pivot = Vec3::from_array(initial.position);
+        let pivot = self.view.relative(initial.position);
         let length = self.view.length(pivot).unwrap();
         let basis = rotation_matrix(initial);
         let center = self.view.project(pivot).unwrap();
@@ -325,10 +351,13 @@ impl SceneInteraction {
         self.hovered = Some(handle);
         true
     }
-    pub fn update_drag(&mut self, world: &mut World, o: Vec3, d: Vec3, _camera: Vec3) {
+    /// Follow the ray from `o` (world) along `d` with the handle held.
+    pub fn update_drag(&mut self, world: &mut World, o: DVec3, d: Vec3) {
         let Some(mut drag) = self.drag else {
             return;
         };
+        // In the coordinates of the view the drag began in.
+        let o = drag.view.relative(o.to_array());
         if world.selected_entity() != Some(drag.entity)
             || !world
                 .get::<Visibility>(drag.entity)
@@ -345,7 +374,7 @@ impl SceneInteraction {
             return;
         };
         let delta = cursor - drag.start;
-        let pivot = Vec3::from_array(drag.initial.position);
+        let pivot = drag.view.relative(drag.initial.position);
         let basis = rotation_matrix(drag.initial);
         // World-space travel along the grabbed axis, from the ray/axis solve.
         // Holds the last value (no update) when the axis is edge-on to the
@@ -371,7 +400,7 @@ impl SceneInteraction {
                         p - drag.plane_start
                     }
                 };
-                next.position = (pivot + movement).to_array();
+                next.position = drag.view.world(pivot + movement);
             }
             GizmoType::Scale => {
                 let factor = (1.0
@@ -427,7 +456,8 @@ impl SceneInteraction {
         }
         match drag.mode {
             GizmoType::Translate => {
-                let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
+                // Snapped in world space, in f64.
+                let step = f64::from(f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed)));
                 for value in &mut next.position {
                     *value = (*value / step).round() * step;
                 }
@@ -447,8 +477,10 @@ impl SceneInteraction {
             set_world_transform(world, drag.entity, next);
         }
     }
-    pub fn update_hover(&mut self, world: &World, o: Vec3, d: Vec3, _camera: Vec3) -> bool {
+    /// Highlight the handle under the ray from `o` (world) along `d`.
+    pub fn update_hover(&mut self, world: &World, o: DVec3, d: Vec3) -> bool {
         let previous = self.hovered;
+        let o = self.view.relative(o.to_array());
         if let Some(drag) = self.drag {
             self.hovered = Some(drag.handle);
             return previous != self.hovered;
@@ -458,11 +490,12 @@ impl SceneInteraction {
             .and_then(|(_, t)| self.view.cursor(o, d).and_then(|p| self.hit(t, p)));
         previous != self.hovered
     }
-    pub fn draw_gizmo(&self, renderer: &mut Renderer, world: &World, _camera: Vec3) {
+    pub fn draw_gizmo(&self, renderer: &mut Renderer, world: &World) {
         let Some((_, t)) = self.selected(world) else {
             return;
         };
-        let pivot = Vec3::from_array(t.position);
+        let pivot = self.view.relative(t.position);
+        let vertex = |v: Vec3| self.view.vertex(v);
         let Some(length) = self.view.length(pivot) else {
             return;
         };
@@ -512,8 +545,8 @@ impl SceneInteraction {
                         let radial = u * cos + v * sin;
                         let overlay = -self.view.forward * (length * 0.015);
                         batch.line(
-                            (pivot + radial * (0.825 * length) + overlay).to_array(),
-                            (pivot + radial * (0.875 * length) + overlay).to_array(),
+                            vertex(pivot + radial * (0.825 * length) + overlay),
+                            vertex(pivot + radial * (0.875 * length) + overlay),
                             [0.015, 0.015, 0.015, 1.0],
                         );
                     }
@@ -549,8 +582,8 @@ impl SceneInteraction {
                     };
                     for [a, b] in rotation_grid(axis, signs) {
                         batch.line(
-                            (pivot + grid_basis * a * length).to_array(),
-                            (pivot + grid_basis * b * length).to_array(),
+                            vertex(pivot + grid_basis * a * length),
+                            vertex(pivot + grid_basis * b * length),
                             color,
                         );
                     }
@@ -593,9 +626,9 @@ impl SceneInteraction {
                     let n = (b - a).cross(c - a).normalize_or_zero();
                     let shade = 0.65 + 0.35 * n.dot(Vec3::new(0.3, 0.8, 0.5).normalize()).abs();
                     batch.tri(
-                        a.to_array(),
-                        b.to_array(),
-                        c.to_array(),
+                        vertex(a),
+                        vertex(b),
+                        vertex(c),
                         [base[0] * shade, base[1] * shade, base[2] * shade, base[3]],
                     );
                 }
@@ -624,15 +657,15 @@ impl SceneInteraction {
                         let outer_a = pivot + (radial(a) * 0.89 + axis_vector * 0.008) * length;
                         let outer_b = pivot + (radial(b) * 0.89 + axis_vector * 0.008) * length;
                         batch.tri(
-                            inner_a.to_array(),
-                            inner_b.to_array(),
-                            outer_b.to_array(),
+                            vertex(inner_a),
+                            vertex(inner_b),
+                            vertex(outer_b),
                             color,
                         );
                         batch.tri(
-                            inner_a.to_array(),
-                            outer_b.to_array(),
-                            outer_a.to_array(),
+                            vertex(inner_a),
+                            vertex(outer_b),
+                            vertex(outer_a),
                             color,
                         );
 
@@ -641,15 +674,15 @@ impl SceneInteraction {
                         let outer_a = pivot + (radial(a) * 0.89 - axis_vector * 0.008) * length;
                         let outer_b = pivot + (radial(b) * 0.89 - axis_vector * 0.008) * length;
                         batch.tri(
-                            inner_a.to_array(),
-                            outer_b.to_array(),
-                            inner_b.to_array(),
+                            vertex(inner_a),
+                            vertex(outer_b),
+                            vertex(inner_b),
                             color,
                         );
                         batch.tri(
-                            inner_a.to_array(),
-                            outer_a.to_array(),
-                            outer_b.to_array(),
+                            vertex(inner_a),
+                            vertex(outer_a),
+                            vertex(outer_b),
                             color,
                         );
                     }
@@ -798,13 +831,14 @@ fn local_half_extent(object_type: &ObjectType) -> Vec3 {
     }
 }
 
-/// World-space box of what the object draws: its enabled mesh instances'
+/// Box of what the object draws, in `view`'s coordinates: its enabled mesh instances'
 /// local bounding spheres, or, without one, a unit box for its type.
 fn object_bounds(
     world: &World,
     entity: Entity,
     object_type: &ObjectType,
     transform: Transform,
+    view: View,
 ) -> (Vec3, Vec3) {
     let meshes = crate::scene::attachments::enabled_components_of::<
         helio_component::components::StaticMeshComponent,
@@ -824,20 +858,20 @@ fn object_bounds(
         });
     }
     let Some((min, max)) = local else {
-        return world_bounds(object_type, transform);
+        return world_bounds(object_type, transform, view);
     };
     let rotation = rotation_matrix(transform);
     let scale = Vec3::from_array(transform.scale);
-    let center = rotation * ((min + max) * 0.5 * scale) + Vec3::from_array(transform.position);
+    let center = rotation * ((min + max) * 0.5 * scale) + view.relative(transform.position);
     let extents = rotation.abs() * ((max - min) * 0.5 * scale.abs());
     (center - extents, center + extents)
 }
 
-fn world_bounds(object_type: &ObjectType, transform: Transform) -> (Vec3, Vec3) {
+fn world_bounds(object_type: &ObjectType, transform: Transform, view: View) -> (Vec3, Vec3) {
     let half = local_half_extent(object_type);
     let rotation = rotation_matrix(transform);
     let extents = rotation.abs() * (half * Vec3::from_array(transform.scale).abs());
-    let center = Vec3::from_array(transform.position);
+    let center = view.relative(transform.position);
     (center - extents, center + extents)
 }
 
@@ -887,7 +921,7 @@ mod tests {
         let mut interaction = SceneInteraction::default();
         interaction.set_mode(mode);
         interaction.set_view(
-            Vec3::ZERO,
+            DVec3::ZERO,
             -Vec3::Z,
             Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 10000.0),
             Vec2::splat(900.0),
@@ -906,7 +940,7 @@ mod tests {
         assert!(interaction.selected(&world).is_some());
         assert!(interaction
             .view
-            .length(Vec3::from_array(planet.position))
+            .length(DVec3::from_array(planet.position).as_vec3())
             .is_none());
     }
 
@@ -916,24 +950,24 @@ mod tests {
         let pivot = Vec3::new(0.0, 0.0, -10.0);
         let length = interaction.view.length(pivot).unwrap();
         let start = pivot + Vec3::X * length * 0.7;
-        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        assert!(interaction.try_start_drag(&world, DVec3::ZERO, start.normalize()));
         assert_eq!(interaction.drag.unwrap().handle, Handle::Axis(0));
         let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
-        interaction.update_hover(&world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+        interaction.update_hover(&world, DVec3::ZERO, away.normalize());
         assert_eq!(interaction.hovered, Some(Handle::Axis(0)));
-        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+        interaction.update_drag(&mut world, DVec3::ZERO, away.normalize());
         // The cursor is 3.3 handle lengths along the axis from where the drag
         // started; the moved position lands on the location snap grid.
         let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
         let expected = (3.3 * length / step).round() * step;
         let x = world.get::<Transform>(entity).unwrap().position[0];
         assert!(
-            (x - expected).abs() < 1e-3 && x > 0.0,
+            (x - f64::from(expected)).abs() < 1e-3 && x > 0.0,
             "dragged off the handle to x = {x}, expected {expected}"
         );
         interaction.cancel_drag();
         let final_transform = *world.get::<Transform>(entity).unwrap();
-        interaction.update_drag(&mut world, Vec3::ZERO, start.normalize(), Vec3::ZERO);
+        interaction.update_drag(&mut world, DVec3::ZERO, start.normalize());
         assert_eq!(*world.get::<Transform>(entity).unwrap(), final_transform);
     }
 
@@ -952,9 +986,9 @@ mod tests {
         let pivot = Vec3::new(0.0, 0.0, -10.0);
         let length = interaction.view.length(pivot).unwrap();
         let start = pivot + Vec3::X * length * 0.7;
-        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        assert!(interaction.try_start_drag(&world, DVec3::ZERO, start.normalize()));
         let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
-        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+        interaction.update_drag(&mut world, DVec3::ZERO, away.normalize());
 
         let moved = world.get::<Transform>(folder).unwrap().position[0];
         assert!(moved > 0.0, "the folder did not move");
@@ -981,12 +1015,12 @@ mod tests {
         let before = world_transform_of(&world, child).unwrap();
         assert!((before.position[0]).abs() < 1e-4, "{before:?}");
 
-        let pivot = Vec3::from_array(before.position);
+        let pivot = DVec3::from_array(before.position).as_vec3();
         let length = interaction.view.length(pivot).unwrap();
         let start = pivot + Vec3::X * length * 0.7;
-        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        assert!(interaction.try_start_drag(&world, DVec3::ZERO, start.normalize()));
         let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
-        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+        interaction.update_drag(&mut world, DVec3::ZERO, away.normalize());
 
         let after = world_transform_of(&world, child).unwrap();
         let local = world.get::<Transform>(child).unwrap().position[0];
@@ -1006,7 +1040,7 @@ mod tests {
     fn ring_is_pickable_between_axes() {
         let (world, interaction, entity) = setup(GizmoType::Rotate);
         let t = *world.get::<Transform>(entity).unwrap();
-        let pivot = Vec3::from_array(t.position);
+        let pivot = DVec3::from_array(t.position).as_vec3();
         let length = interaction.view.length(pivot).unwrap();
         let point = pivot + Vec3::new(0.6, 0.6, 0.0) * length;
         assert_eq!(
@@ -1038,7 +1072,7 @@ mod tests {
                 position: [0.0, 0.0, -depth],
                 ..Default::default()
             };
-            let pivot = Vec3::from_array(t.position);
+            let pivot = DVec3::from_array(t.position).as_vec3();
             let length = interaction.view.length(pivot).unwrap();
             let shaft = interaction
                 .view
@@ -1056,17 +1090,17 @@ mod tests {
     fn plane_and_center_handles_capture_and_locked_objects_do_not() {
         let (mut world, mut interaction, entity) = setup(GizmoType::Translate);
         let t = *world.get::<Transform>(entity).unwrap();
-        let pivot = Vec3::from_array(t.position);
+        let pivot = DVec3::from_array(t.position).as_vec3();
         let length = interaction.view.length(pivot).unwrap();
         let plane = pivot + Vec3::new(0.33, 0.33, 0.0) * length;
-        assert!(interaction.try_start_drag(&world, Vec3::ZERO, plane.normalize(), Vec3::ZERO));
+        assert!(interaction.try_start_drag(&world, DVec3::ZERO, plane.normalize()));
         assert_eq!(interaction.drag.unwrap().handle, Handle::Plane(2));
         interaction.cancel_drag();
-        assert!(interaction.try_start_drag(&world, Vec3::ZERO, pivot.normalize(), Vec3::ZERO));
+        assert!(interaction.try_start_drag(&world, DVec3::ZERO, pivot.normalize()));
         assert_eq!(interaction.drag.unwrap().handle, Handle::Center);
         interaction.cancel_drag();
         world.get_mut::<Visibility>(entity).unwrap().locked = true;
-        assert!(!interaction.try_start_drag(&world, Vec3::ZERO, plane.normalize(), Vec3::ZERO));
+        assert!(!interaction.try_start_drag(&world, DVec3::ZERO, plane.normalize()));
     }
 
     #[test]
@@ -1075,12 +1109,12 @@ mod tests {
         let pivot = Vec3::new(0.0, 0.0, -10.0);
         let length = interaction.view.length(pivot).unwrap();
         let start = pivot + Vec3::new(0.6, 0.6, 0.0) * length;
-        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        assert!(interaction.try_start_drag(&world, DVec3::ZERO, start.normalize()));
         let end = pivot + Vec3::new(-0.6, 0.6, 0.0) * length;
-        interaction.update_drag(&mut world, Vec3::ZERO, end.normalize(), Vec3::ZERO);
+        interaction.update_drag(&mut world, DVec3::ZERO, end.normalize());
         let t = world.get::<Transform>(entity).unwrap();
         assert!((t.rotation[2] - 90.0).abs() < 0.01);
-        assert_eq!(t.position, pivot.to_array());
+        assert_eq!(t.position, pivot.as_dvec3().to_array());
         assert_eq!(t.scale, [1.0; 3]);
     }
 
@@ -1123,7 +1157,7 @@ mod tests {
     fn hidden_rotation_quadrants_do_not_capture() {
         let (world, interaction, entity) = setup(GizmoType::Rotate);
         let t = *world.get::<Transform>(entity).unwrap();
-        let pivot = Vec3::from_array(t.position);
+        let pivot = DVec3::from_array(t.position).as_vec3();
         let length = interaction.view.length(pivot).unwrap();
         let hidden = interaction
             .view
@@ -1212,7 +1246,7 @@ mod tests {
         }
     }
 
-    fn spawn_cube(world: &mut World, id: &str, z: f32) {
+    fn spawn_cube(world: &mut World, id: &str, z: f64) {
         world
             .spawn_object(
                 SpawnObject::new(id)
@@ -1234,14 +1268,14 @@ mod tests {
 
         let interaction = SceneInteraction::default();
         assert_eq!(
-            interaction.pick(&world, Vec3::ZERO, -Vec3::Z),
+            interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
             Some("near".into())
         );
     }
 
     /// A mesh object attached a `StaticMeshComponent` whose local bounding
     /// sphere has `radius`, at `z`.
-    fn spawn_mesh(world: &mut World, id: &str, z: f32, radius: f32) -> Entity {
+    fn spawn_mesh(world: &mut World, id: &str, z: f64, radius: f32) -> Entity {
         spawn_cube(world, id, z);
         let owner = world.entity_for(id).unwrap();
         let mesh = helio_component::components::StaticMeshComponent {
@@ -1260,12 +1294,12 @@ mod tests {
         spawn_mesh(&mut world, "wide", -10.0, 5.0);
         let towards_its_side = Vec3::new(3.0, 0.0, -10.0);
         assert_eq!(
-            SceneInteraction::default().pick(&world, Vec3::ZERO, towards_its_side),
+            SceneInteraction::default().pick(&world, DVec3::ZERO, towards_its_side),
             Some("wide".into())
         );
         // Outside its bounds nothing is hit.
         assert_eq!(
-            SceneInteraction::default().pick(&world, Vec3::ZERO, Vec3::new(12.0, 0.0, -10.0)),
+            SceneInteraction::default().pick(&world, DVec3::ZERO, Vec3::new(12.0, 0.0, -10.0)),
             None
         );
     }
@@ -1280,12 +1314,12 @@ mod tests {
         let copy = spawn_mesh(&mut world, "b", -10.0, 1.0);
         let interaction = SceneInteraction::default();
         assert_eq!(
-            interaction.pick(&world, Vec3::ZERO, -Vec3::Z),
+            interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
             Some("a".into())
         );
         world.select(Some(copy));
         assert_eq!(
-            interaction.pick(&world, Vec3::ZERO, -Vec3::Z),
+            interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
             Some("b".into())
         );
     }
@@ -1305,7 +1339,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            SceneInteraction::default().pick(&world, Vec3::ZERO, -Vec3::Z),
+            SceneInteraction::default().pick(&world, DVec3::ZERO, -Vec3::Z),
             None
         );
     }

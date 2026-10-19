@@ -310,19 +310,20 @@ fn a_script_write_reaches_the_gpu_row_like_a_typed_write() {
     }
     world.flush_gpu_mirror(ctx.queue()).unwrap();
 
-    // `Transform::packed`: position, rotation, scale; 36 bytes per entity.
+    // `object_transforms` (`TransformRow`): the position's f32 pair,
+    // rotation, scale; 48 bytes per entity.
     let handle = store
-        .resolve_buffer_handle(BufferKey::of("Transform::packed"))
+        .resolve_buffer_handle(BufferKey::of("object_transforms"))
         .unwrap();
     let rows = 1 + scripted.index().max(typed.index()) as u64;
     let staging = ctx.device().create_buffer(&wgpu::BufferDescriptor {
         label: None,
-        size: rows * 36,
+        size: rows * 48,
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
     let mut encoder = ctx.device().create_command_encoder(&Default::default());
-    encoder.copy_buffer_to_buffer(&handle.buffer, 0, &staging, 0, rows * 36);
+    encoder.copy_buffer_to_buffer(&handle.buffer, 0, &staging, 0, rows * 48);
     ctx.queue().submit([encoder.finish()]);
     staging
         .slice(..)
@@ -337,7 +338,7 @@ fn a_script_write_reaches_the_gpu_row_like_a_typed_write() {
         .chunks_exact(4)
         .map(|w| f32::from_ne_bytes(w.try_into().unwrap()))
         .collect();
-    let row = |e: Entity| words[e.index() as usize * 9..e.index() as usize * 9 + 9].to_vec();
+    let row = |e: Entity| words[e.index() as usize * 12..e.index() as usize * 12 + 12].to_vec();
     assert_eq!(row(scripted), row(typed));
-    assert_eq!(row(scripted), [5.0, 6.0, 7.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0]);
+    assert_eq!(row(scripted), [5.0, 6.0, 7.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0]);
 }

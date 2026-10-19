@@ -25,6 +25,7 @@ pub use attachments::{
 };
 pub use components::{
     Name, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
+    TransformRow,
     Visibility,
 };
 pub use instance::{ComponentInstance, EditorObjectId};

@@ -50,7 +50,8 @@ pub use history::{SceneHistoryDelta, SceneHistorySnapshot};
 /// values the world stores in `engine_backend::scene::Transform`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transform {
-    pub position: [f32; 3],
+    /// f64: an object on a planet keeps its millimetres.
+    pub position: [f64; 3],
     pub rotation: [f32; 3],
     pub scale: [f32; 3],
 }

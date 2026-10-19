@@ -1622,7 +1622,7 @@ impl ScriptDriver {
         let parent = parent.filter(|p| world.is_alive(*p));
         // Parent-relative: a spawn under a parent is placed in that parent's space.
         let transform = Transform {
-            position,
+            position: position.map(f64::from),
             ..Transform::default()
         };
         let def = &template.def;

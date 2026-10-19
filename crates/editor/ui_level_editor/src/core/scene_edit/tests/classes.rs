@@ -105,7 +105,7 @@ fn children(world: &World, id: &str) -> Vec<String> {
         .collect()
 }
 
-fn place(world: &mut World, dir: &Path, x: f32) -> String {
+fn place(world: &mut World, dir: &Path, x: f64) -> String {
     let transform = Transform {
         position: [x, 0.0, 0.0],
         ..Default::default()

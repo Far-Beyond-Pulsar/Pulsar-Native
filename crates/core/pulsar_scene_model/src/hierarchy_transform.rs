@@ -15,9 +15,9 @@
 //!
 //! A [`Transform`] cannot hold shear, so a rotated, non-uniformly scaled
 //! parent over a rotated child resolves to the nearest shear-free transform
-//! (the same on the GPU and here).
+//! (the same on the GPU and here). The arithmetic is f64, as positions are.
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
+use glam::{DMat4, DQuat, DVec3, EulerRot};
 use pulsar_scenedb::{Entity, World};
 use std::collections::HashMap;
 
@@ -29,34 +29,34 @@ use crate::world_ext::{SceneError, SceneWorldExt};
 pub const MAX_DEPTH: usize = 64;
 
 /// `t` as a matrix.
-pub fn to_matrix(t: &Transform) -> Mat4 {
-    let q = Quat::from_euler(
+pub fn to_matrix(t: &Transform) -> DMat4 {
+    let q = DQuat::from_euler(
         EulerRot::YXZ,
-        t.rotation[1].to_radians(),
-        t.rotation[0].to_radians(),
-        t.rotation[2].to_radians(),
+        f64::from(t.rotation[1]).to_radians(),
+        f64::from(t.rotation[0]).to_radians(),
+        f64::from(t.rotation[2]).to_radians(),
     );
-    Mat4::from_scale_rotation_translation(
-        Vec3::from_array(t.scale),
+    DMat4::from_scale_rotation_translation(
+        DVec3::from_array(t.scale.map(f64::from)),
         q,
-        Vec3::from_array(t.position),
+        DVec3::from_array(t.position),
     )
 }
 
 /// The nearest [`Transform`] to `m`.
-pub fn from_matrix(m: Mat4) -> Transform {
+pub fn from_matrix(m: DMat4) -> Transform {
     let (scale, rotation, translation) = m.to_scale_rotation_translation();
     let (y, x, z) = rotation.to_euler(EulerRot::YXZ);
     Transform {
         position: translation.to_array(),
-        rotation: [x.to_degrees(), y.to_degrees(), z.to_degrees()],
-        scale: scale.to_array(),
+        rotation: [x.to_degrees() as f32, y.to_degrees() as f32, z.to_degrees() as f32],
+        scale: scale.as_vec3().to_array(),
     }
 }
 
 /// The matrix taking `entity`'s space to the world: its own transform under
 /// every ancestor's.
-pub fn world_matrix_of(world: &World, entity: Entity) -> Option<Mat4> {
+pub fn world_matrix_of(world: &World, entity: Entity) -> Option<DMat4> {
     let mut matrix = to_matrix(&world.get::<Transform>(entity).copied()?);
     let mut at = world.get::<Parent>(entity).map(|parent| parent.0);
     for _ in 0..MAX_DEPTH {
@@ -84,10 +84,10 @@ pub fn world_transform_of(world: &World, entity: Entity) -> Option<Transform> {
 }
 
 /// The matrix taking `parent`'s space to the world (identity for no parent).
-pub fn parent_matrix(world: &World, parent: Option<Entity>) -> Mat4 {
+pub fn parent_matrix(world: &World, parent: Option<Entity>) -> DMat4 {
     parent
         .and_then(|parent| world_matrix_of(world, parent))
-        .unwrap_or(Mat4::IDENTITY)
+        .unwrap_or(DMat4::IDENTITY)
 }
 
 /// The local transform that places an object under `parent` at `world_pose`.
@@ -173,7 +173,7 @@ pub fn convert_legacy_world_transforms(world: &mut World, entities: &[Entity]) {
     let listed: std::collections::HashSet<Entity> = entities.iter().copied().collect();
     // Every object's pose as loaded, before any is rewritten: a child is
     // converted against its parent's world-space value, not its new local one.
-    let poses: HashMap<Entity, Mat4> = world
+    let poses: HashMap<Entity, DMat4> = world
         .query::<&Transform>()
         .map(|(entity, transform)| (entity, to_matrix(transform)))
         .collect();
@@ -215,14 +215,14 @@ mod tests {
             .unwrap()
     }
 
-    fn at(position: [f32; 3]) -> Transform {
+    fn at(position: [f64; 3]) -> Transform {
         Transform {
             position,
             ..Transform::default()
         }
     }
 
-    fn near(a: [f32; 3], b: [f32; 3]) -> bool {
+    fn near(a: [f64; 3], b: [f64; 3]) -> bool {
         a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-4)
     }
 

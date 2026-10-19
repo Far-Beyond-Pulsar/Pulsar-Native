@@ -28,7 +28,7 @@ use crate::{PARENT_INDEX_KEY, REMOVED_KEY, TRANSFORM_KEY};
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LocalTransform {
     #[serde(default)]
-    pub position: [f32; 3],
+    pub position: [f64; 3],
     /// Euler degrees, the editor's convention.
     #[serde(default)]
     pub rotation: [f32; 3],

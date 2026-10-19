@@ -135,7 +135,7 @@ fn place(scene: &mut SceneDb, name: &str, transform: Transform) -> Entity {
     object
 }
 
-fn at(position: [f32; 3]) -> Transform {
+fn at(position: [f64; 3]) -> Transform {
     Transform {
         position,
         ..Transform::default()
@@ -686,7 +686,7 @@ fn particle_emitters_take_disjoint_ranges_of_the_particle_pool() {
         return;
     };
     let mut scene = SceneDb::new();
-    let emitter = |scene: &mut SceneDb, name: &str, x: f32, max_particles: u32| {
+    let emitter = |scene: &mut SceneDb, name: &str, x: f64, max_particles: u32| {
         let owner = place(scene, name, at([x, 2.0, -1.0]));
         let emitter = ParticleEmitterComponent {
             max_particles,
@@ -775,7 +775,7 @@ fn particle_emitters_take_disjoint_ranges_of_the_particle_pool() {
     // (with the three above), clamps the last ranges to what is left.
     let largest = 262_144; // helio_pass_corona::CORONA_MAX_PARTICLES_PER_EMITTER
     for x in 4..9 {
-        emitter(&mut scene, "large", x as f32, largest);
+        emitter(&mut scene, "large", f64::from(x), largest);
     }
     let out = join.run(&mut scene);
     let placed = ranges(&join, &out);

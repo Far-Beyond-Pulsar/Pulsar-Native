@@ -34,19 +34,78 @@ pub struct SiblingIndex(pub u64);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Selected;
 
-/// Flat per-entity world-space transform, mirrored to the GPU as one packed,
-/// dirty-tracked row so renderer consumers can read an entity's current
-/// transform by the same `Entity` index.
-#[derive(Clone, Copy, Debug, PartialEq, pulsar_scenedb::SceneStore)]
-#[gpu(layout = packed)]
-#[repr(C)]
+/// Flat per-entity transform: in world space, or relative to its
+/// [`Parent`]. The position is f64, so an object keeps its millimetres on
+/// a planet (an f32 steps by half a metre at Earth's radius); rotation (YXZ
+/// Euler degrees) and scale are f32. Mirrored to the GPU as
+/// [`TransformRow`].
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transform {
+    pub position: [f64; 3],
+    pub rotation: [f32; 3],
+    pub scale: [f32; 3],
+}
+
+/// [`Transform`]'s GPU row, keyed by the object entity: the position as an
+/// f32 pair (`position_hi`, the nearest f32; `position_lo`, what that
+/// drops), which the renderer rebases on each frame's world origin part by
+/// part, then rotation and scale. Derived on every write, removal and
+/// replay, like [`ObjectHidden`].
+#[derive(Clone, Copy, Debug, PartialEq, pulsar_scenedb::SceneStore)]
+#[gpu(layout = packed, buffer = "object_transforms")]
+#[repr(C)]
+pub struct TransformRow {
     #[gpu]
-    pub position: [f32; 3],
+    pub position_hi: [f32; 3],
+    #[gpu]
+    pub position_lo: [f32; 3],
     #[gpu]
     pub rotation: [f32; 3],
     #[gpu]
     pub scale: [f32; 3],
+}
+
+impl From<&Transform> for TransformRow {
+    fn from(t: &Transform) -> Self {
+        let hi = t.position.map(|v| v as f32);
+        let lo = [0, 1, 2].map(|i| (t.position[i] - f64::from(hi[i])) as f32);
+        Self {
+            position_hi: hi,
+            position_lo: lo,
+            rotation: t.rotation,
+            scale: t.scale,
+        }
+    }
+}
+
+fn transform_row_dispatch(
+    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
+    row: u32,
+    data: *const (),
+    is_new_insert: bool,
+) {
+    // SAFETY: SceneDB reaches this only through `Transform`'s own
+    // `ComponentId`, with a pointer to a live `Transform`.
+    let transform = unsafe { &*(data as *const Transform) };
+    pulsar_scenedb::gpu::write_derived_row(mirror, row, &TransformRow::from(transform), is_new_insert);
+}
+
+fn transform_row_clear(mirror: &pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+    pulsar_scenedb::gpu::clear_derived_row::<TransformRow>(mirror, row);
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuMirrorRegistration {
+        component_id: pulsar_scenedb::component_id::<Transform>,
+        dispatch: transform_row_dispatch,
+    }
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuClearRegistration {
+        component_id: pulsar_scenedb::component_id::<Transform>,
+        clear: transform_row_clear,
+    }
 }
 
 impl Default for Transform {

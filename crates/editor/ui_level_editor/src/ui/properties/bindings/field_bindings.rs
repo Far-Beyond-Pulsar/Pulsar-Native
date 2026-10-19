@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// - Convert between data types and UI string representations
 /// - Validate user input
 pub trait FieldBinding: 'static + Send + Sync {
-    /// The value type this binding manages (f32, [f32; 3], String, etc.)
+    /// The value type this binding manages (f64, String, etc.)
     type Value: Clone + PartialEq + Send + 'static;
 
     /// Get the current value from the scene database for the given object
@@ -37,22 +37,23 @@ pub trait FieldBinding: 'static + Send + Sync {
 }
 
 // ============================================================================
-// F32 Field Binding
+// Number Field Binding
 // ============================================================================
 
-/// Binding for a single f32 field
-pub struct F32FieldBinding {
-    getter: Option<Arc<dyn Fn(&SceneObjectData) -> f32 + Send + Sync>>,
-    setter: Option<Arc<dyn Fn(&mut SceneObjectData, f32) + Send + Sync>>,
-    getter_db: Option<Arc<dyn Fn(&ObjectId, &SharedScene) -> Option<f32> + Send + Sync>>,
-    setter_db: Option<Arc<dyn Fn(&ObjectId, f32, &SharedScene) -> bool + Send + Sync>>,
+/// Binding for a single numeric field, in f64 (a position on a planet
+/// keeps its millimetres; f64 values convert at the getter and setter)
+pub struct NumberFieldBinding {
+    getter: Option<Arc<dyn Fn(&SceneObjectData) -> f64 + Send + Sync>>,
+    setter: Option<Arc<dyn Fn(&mut SceneObjectData, f64) + Send + Sync>>,
+    getter_db: Option<Arc<dyn Fn(&ObjectId, &SharedScene) -> Option<f64> + Send + Sync>>,
+    setter_db: Option<Arc<dyn Fn(&ObjectId, f64, &SharedScene) -> bool + Send + Sync>>,
 }
 
-impl F32FieldBinding {
+impl NumberFieldBinding {
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
-        G: Fn(&ObjectId, &SharedScene) -> Option<f32> + Send + Sync + 'static,
-        S: Fn(&ObjectId, f32, &SharedScene) -> bool + Send + Sync + 'static,
+        G: Fn(&ObjectId, &SharedScene) -> Option<f64> + Send + Sync + 'static,
+        S: Fn(&ObjectId, f64, &SharedScene) -> bool + Send + Sync + 'static,
     {
         Self {
             getter: None,
@@ -63,10 +64,10 @@ impl F32FieldBinding {
     }
 }
 
-impl FieldBinding for F32FieldBinding {
-    type Value = f32;
+impl FieldBinding for NumberFieldBinding {
+    type Value = f64;
 
-    fn get(&self, object_id: &ObjectId, db: &SharedScene) -> Option<f32> {
+    fn get(&self, object_id: &ObjectId, db: &SharedScene) -> Option<f64> {
         if let Some(getter_db) = &self.getter_db {
             return getter_db(object_id, db);
         }
@@ -76,7 +77,7 @@ impl FieldBinding for F32FieldBinding {
         crate::scene_edit::objects::get_object(&world.world, object_id).map(|obj| getter(&obj))
     }
 
-    fn set(&self, object_id: &ObjectId, value: f32, db: &SharedScene) -> bool {
+    fn set(&self, object_id: &ObjectId, value: f64, db: &SharedScene) -> bool {
         if let Some(setter_db) = &self.setter_db {
             return setter_db(object_id, value, db);
         }
@@ -91,11 +92,11 @@ impl FieldBinding for F32FieldBinding {
         false
     }
 
-    fn to_string(&self, value: &f32) -> String {
+    fn to_string(&self, value: &f64) -> String {
         format!("{:.3}", value)
     }
 
-    fn from_string(&self, s: &str) -> Result<f32, String> {
+    fn from_string(&self, s: &str) -> Result<f64, String> {
         s.trim()
             .parse()
             .map_err(|_| format!("Invalid number: {}", s))
@@ -115,7 +116,7 @@ pub struct StringFieldBinding {
 }
 
 impl StringFieldBinding {
-    /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
+    /// Same shape as `NumberFieldBinding::new_with_db` -- see that method's doc.
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
         G: Fn(&ObjectId, &SharedScene) -> Option<String> + Send + Sync + 'static,
@@ -178,7 +179,7 @@ pub struct BoolFieldBinding {
 }
 
 impl BoolFieldBinding {
-    /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
+    /// Same shape as `NumberFieldBinding::new_with_db` -- see that method's doc.
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
         G: Fn(&ObjectId, &SharedScene) -> Option<bool> + Send + Sync + 'static,

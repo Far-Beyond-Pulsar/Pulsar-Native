@@ -72,6 +72,12 @@ impl Join {
     /// Flush the scene and run the join over the frame's buffers, as the
     /// renderer does; returns the published buffers.
     fn run(&mut self, scene: &mut SceneDb) -> SceneBufferProjection {
+        self.run_at(scene, None)
+    }
+
+    /// [`Self::run`] in a frame rebased to `origin` (world, f64), as a
+    /// camera-relative frame is.
+    fn run_at(&mut self, scene: &mut SceneDb, origin: Option<glam::DVec3>) -> SceneBufferProjection {
         scene.step();
         let mirror = scene.world.gpu_mirror().expect("mirror attached").clone();
         let mut inputs = SceneBufferProjection::from_store_all(mirror.store());
@@ -94,7 +100,7 @@ impl Join {
                 device: &self.device,
                 queue: &self.queue,
                 inputs: &inputs,
-                world_origin: None,
+                world_origin: origin,
             },
             &mut encoder,
         );
@@ -106,7 +112,7 @@ impl Join {
                 device: &self.device,
                 queue: &self.queue,
                 inputs: &inputs,
-                world_origin: None,
+                world_origin: origin,
             },
             &mut encoder,
         );
@@ -156,7 +162,7 @@ impl Join {
     }
 }
 
-fn place(scene: &mut SceneDb, name: &str, position: [f32; 3]) -> Entity {
+fn place(scene: &mut SceneDb, name: &str, position: [f64; 3]) -> Entity {
     let object = scene
         .world
         .spawn_object(SpawnObject::new(name))
@@ -451,7 +457,7 @@ fn moving_a_folder_moves_the_meshes_inside_it() {
                 &mut scene,
                 Some(folder),
                 Transform {
-                    position: [3.0 + n as f32, 0.0, 0.0],
+                    position: [3.0 + f64::from(n), 0.0, 0.0],
                     ..Transform::default()
                 },
             )
@@ -470,14 +476,14 @@ fn moving_a_folder_moves_the_meshes_inside_it() {
     assert_eq!(position_of(&join, &out, children[0]), [3.0, 0.0, 0.0]);
 
     for frame in 1..=4 {
-        let x = frame as f32 * 2.5;
+        let x = f64::from(frame) * 2.5;
         // One write, to the folder alone.
         scene.world.get_mut::<Transform>(folder).unwrap().position = [x, 0.0, 0.0];
         let out = join.run(&mut scene);
         for (n, child) in children.iter().enumerate() {
             assert_eq!(
                 position_of(&join, &out, *child),
-                [x + 3.0 + n as f32, 0.0, 0.0],
+                [(x + 3.0 + n as f64) as f32, 0.0, 0.0],
                 "child {n} followed its folder on frame {frame}"
             );
         }
@@ -538,6 +544,7 @@ fn the_gpu_composes_a_parent_chain_like_the_cpu() {
     let model = join.mesh_rows(&out, instance)[0].transform;
     let expected = engine_backend::scene::hierarchy_transform::world_matrix_of(&scene.world, leaf)
         .unwrap()
+        .as_mat4()
         .to_cols_array_2d();
     for (c, (got, want)) in model.iter().zip(expected).enumerate() {
         for r in 0..3 {
@@ -546,5 +553,55 @@ fn the_gpu_composes_a_parent_chain_like_the_cpu() {
                 "model column {c} row {r}: gpu {got:?} cpu {want:?}"
             );
         }
+    }
+}
+
+/// On a planet: a mesh under a turned folder 6_371 km from the world's
+/// origin, where an f32 position steps by half a metre. The scene keeps its
+/// f64 position, the GPU composes the chain in f32 pairs, and a frame
+/// rebased near it places it within a tenth of a millimetre of the CPU's
+/// f64 answer, frame after frame as the folder moves by millimetres.
+#[test]
+fn a_mesh_on_a_planet_keeps_its_millimetres() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let folder = place(&mut scene, "folder", [1000.0, 6_371_002.371, -300.0]);
+    scene.world.get_mut::<Transform>(folder).unwrap().rotation = [0.0, 90.0, 0.0];
+    let (leaf, instance) = mesh_on(
+        &mut scene,
+        Some(folder),
+        Transform {
+            position: [0.25, 0.5, 0.125],
+            ..Transform::default()
+        },
+    );
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        resolve: engine_backend::scene::hierarchy_resolve(&device),
+        join: engine_backend::scene::scene_join(&device, true),
+        device,
+        queue,
+    };
+    // The frame origin as the renderer snaps it: on a 1024 m cell.
+    let origin = glam::DVec3::new(1024.0, 6_371_328.0, 0.0);
+    for frame in 0..4 {
+        let step = f64::from(frame) * 0.001;
+        scene.world.get_mut::<Transform>(folder).unwrap().position =
+            [1000.0 + step, 6_371_002.371, -300.0 - step];
+        let out = join.run_at(&mut scene, Some(origin));
+        let got = glam::Vec3::from_slice(&position_of(&join, &out, instance));
+        let world = engine_backend::scene::hierarchy_transform::world_matrix_of(&scene.world, leaf)
+            .unwrap()
+            .w_axis
+            .truncate();
+        let want = (world - origin).as_vec3();
+        assert!(
+            (got - want).abs().max_element() < 1e-4,
+            "frame {frame}: gpu {got} cpu {want}"
+        );
     }
 }

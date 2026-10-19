@@ -33,12 +33,13 @@ use pulsar_scenedb::gpu::{
 };
 
 use pulsar_scene_model::attachments::ComponentOwner;
-use pulsar_scene_model::{ObjectHidden, ObjectParent};
+use pulsar_scene_model::{ObjectHidden, ObjectParent, TransformRow};
 
 /// Where this engine's authored rows live, for Helio's scene join. The
 /// names are the buffers the components below register: the instance owner
 /// links (`ComponentOwner`), object visibility (`Visibility`'s derived
-/// `ObjectHidden`) and transforms (`Transform`, packed), the mesh geometry
+/// `ObjectHidden`) and transforms (`Transform`'s derived `TransformRow`:
+/// the f64 position as an f32 pair), the mesh geometry
 /// handles and derived draw rows (`StaticMeshComponent`, `StaticMeshDraw`),
 /// and the light rows (`LightComponent`'s derived `LightSourceRow`).
 pub fn scene_join_keys() -> SceneJoinKeys {
@@ -47,7 +48,7 @@ pub fn scene_join_keys() -> SceneJoinKeys {
         owners: BufferKey::of("component_owners"),
         generations: ENTITY_GENERATIONS_KEY,
         hidden: BufferKey::of("object_hidden"),
-        transforms: BufferKey::of("Transform::packed"),
+        transforms: BufferKey::of("object_transforms"),
         vertex_handles: BufferKey::of("builtin_mesh_vertex::handles"),
         index_handles: BufferKey::of("builtin_mesh_index::handles"),
         mesh_bounds: BufferKey::of(MESH_BOUNDS_BUFFER),
@@ -176,7 +177,7 @@ pub fn ensure_gpu_mirror(
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // Each object's parent, for the hierarchy resolve (transforms are parent-relative).
     ObjectParent::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
+    TransformRow::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The environment join's inputs (see `environment_join_keys`); the fog
     // media, post-process volume, camera, water volume, foliage, atmosphere,
     // decal, Corona emitter and water hitbox rows the passes read are its
@@ -334,10 +335,7 @@ mod tests {
         use std::mem::size_of;
         assert_eq!(size_of::<ComponentOwner>() as u64, join::OWNER_ROW_BYTES);
         assert_eq!(size_of::<ObjectHidden>() as u64, join::HIDDEN_ROW_BYTES);
-        assert_eq!(
-            size_of::<crate::scene::Transform>() as u64,
-            join::TRANSFORM_ROW_BYTES
-        );
+        assert_eq!(size_of::<TransformRow>() as u64, join::TRANSFORM_ROW_BYTES);
         assert_eq!(
             size_of::<pulsar_scenedb::gpu::VarLenHandle>() as u64,
             join::HANDLE_ROW_BYTES

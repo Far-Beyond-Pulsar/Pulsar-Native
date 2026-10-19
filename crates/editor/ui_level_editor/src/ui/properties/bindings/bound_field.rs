@@ -14,16 +14,16 @@ use ui::{
     v_flex, ActiveTheme, Sizable,
 };
 
-use super::field_bindings::{BoolFieldBinding, F32FieldBinding, FieldBinding, StringFieldBinding};
+use super::field_bindings::{BoolFieldBinding, NumberFieldBinding, FieldBinding, StringFieldBinding};
 use engine_backend::scene::SharedScene;
 
 // ============================================================================
-// F32 Bound Field - For numeric fields
+// Number Bound Field - For numeric fields
 // ============================================================================
 
-/// A UI component that binds a NumberInput to an f32 field in scene data
-pub struct F32BoundField {
-    binding: Arc<F32FieldBinding>,
+/// A UI component that binds a NumberInput to a numeric (f64) field in scene data
+pub struct NumberBoundField {
+    binding: Arc<NumberFieldBinding>,
     pub input: Entity<InputState>,
     pub label: String,
     object_id: String,
@@ -34,9 +34,9 @@ pub struct F32BoundField {
     _step_subscription: Subscription,
 }
 
-impl F32BoundField {
+impl NumberBoundField {
     pub fn new(
-        binding: F32FieldBinding,
+        binding: NumberFieldBinding,
         label: impl Into<String>,
         object_id: String,
         scene_db: SharedScene,
@@ -176,7 +176,7 @@ impl F32BoundField {
     /// Show `value`, delivered by the object's subscription, without
     /// reading the scene. A field being typed into keeps the user's text:
     /// the delivered value is the echo of their own edit.
-    pub fn show(&self, value: f32, window: &mut Window, cx: &mut App) {
+    pub fn show(&self, value: f64, window: &mut Window, cx: &mut App) {
         if self.input.read(cx).focus_handle(cx).is_focused(window) {
             return;
         }
@@ -187,7 +187,7 @@ impl F32BoundField {
     }
 }
 
-impl Render for F32BoundField {
+impl Render for NumberBoundField {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
