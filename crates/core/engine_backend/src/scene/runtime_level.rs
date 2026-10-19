@@ -131,6 +131,62 @@ impl RuntimeLevel {
         Self::hydrate_scene_file(file, world, registry)?;
         Ok(LevelExtras { editor_camera })
     }
+    /// Instantiate a level file's objects **under** `parent`: the file's origin
+    /// is `parent`'s origin, its top-level objects become `parent`'s children
+    /// (their transforms are the file's own, relative to its origin), and every
+    /// object id gets `id_prefix` so a level can be placed more than once. This
+    /// is how a level instance is shown (`SubLevelDisplayComponent`).
+    ///
+    /// Returns every object this created, class-generated children included.
+    /// Call `engine_state::set_project_path` first, as for [`load_into`].
+    pub fn load_under(
+        path: &Path,
+        world: &mut World,
+        parent: Entity,
+        id_prefix: &str,
+    ) -> Result<Vec<Entity>, RuntimeLevelError> {
+        let registry = project_class_registry();
+        let mut file = load_scene_file(path, &registry)?;
+        let prefixed = |id: &str| format!("{id_prefix}{id}");
+        let top_level: Vec<String> = file
+            .objects
+            .iter()
+            .filter(|obj| obj.parent.is_none())
+            .map(|obj| prefixed(&obj.id))
+            .collect();
+        for obj in &mut file.objects {
+            obj.id = prefixed(&obj.id);
+            obj.parent = obj.parent.as_deref().map(prefixed);
+        }
+        if let Some(map) = file.components.as_object_mut() {
+            *map = std::mem::take(map)
+                .into_iter()
+                .map(|(id, value)| (prefixed(&id), value))
+                .collect();
+        }
+        file.blueprint_bindings = std::mem::take(&mut file.blueprint_bindings)
+            .into_iter()
+            .map(|(id, bindings)| (prefixed(&id), bindings))
+            .collect();
+
+        let mut before: HashSet<Entity> =
+            crate::scene::hierarchy_transform::descendants_of(world, parent)
+                .into_iter()
+                .collect();
+        before.insert(parent);
+        Self::hydrate_scene_file(file, world, &registry)?;
+        for id in top_level {
+            if let Some(entity) = world.entity_for(&id) {
+                // The file's transform is already relative to its origin.
+                let _ = world.reparent(entity, Some(parent));
+            }
+        }
+        Ok(crate::scene::hierarchy_transform::descendants_of(world, parent)
+            .into_iter()
+            .filter(|entity| !before.contains(entity))
+            .collect())
+    }
+
     /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
     /// (import/legacy callers that get their JSON from somewhere other than
     /// disk).

@@ -44,6 +44,7 @@ pub mod helio_bridge;
 pub mod sublevels;
 #[cfg(feature = "render")]
 pub mod portals;
+pub mod level_instances;
 
 #[cfg(feature = "render")]
 pub use helio_bridge::{

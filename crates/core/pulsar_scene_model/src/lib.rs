@@ -12,6 +12,7 @@ pub mod components;
 pub mod frames;
 pub mod hierarchy_transform;
 pub mod instance;
+pub mod level_instances;
 pub mod motion;
 pub mod partitions;
 pub mod payload_catalog;
@@ -34,6 +35,7 @@ pub use payload_catalog::{
     ContentId, PayloadCatalog, PayloadCatalogError, PayloadMutation, PayloadRef,
 };
 pub use frames::{RigidFrame, SpaceSlot};
+pub use level_instances::{LevelInstanceMember, LevelInstanceRoot};
 pub use partitions::ContentSpace;
 pub use world_ext::{SceneError, SceneWorldExt, SpawnObject};
 
