@@ -455,8 +455,16 @@ Known, not fixed. Ordered roughly by how much they matter.
   editor now builds chains with `build_visible_from_camera_into` (`SpaceSync::set_view`).
   `pulsar_game` (`embed.rs`, `windowed_app.rs`) still calls `sync` without a view, so
   it builds every path: give it the camera too. Not yet measured on a GPU.
-- **OPEN: content shifts with portal distance**: in `render_acceptance` (portals at
-  the origin and `far_x`, content beside the far one) the content seen through the near
-  portal moves across the frame as `far_x` grows (visible at 100 and 200, gone by 300),
-  though it should not move at all. Mapping bug somewhere between the portal pose
-  (`pose_of`, origin-relative) and the instance rows; not yet found.
+- **Portal materials**: portal duplicates now draw per material key like the G-buffer
+  (`PortalCullPass` packs `portal_indirect` into portal segments laid out by the
+  G-buffer's segment table via `compact_portal.wgsl`; `PortalInstancePass` draws one
+  segment per key with a pipeline built from `gbuffer_portal.wgsl` plus the graph,
+  `RadiantTemplate::build_shader_source_on`). Graph `time` nodes read 0 there; the
+  transparent and forward buckets are not drawn through portals; built-in template
+  classes 1-4 follow the G-buffer (which also only uses class 0). Compiles for graph
+  and built-in classes are unit-tested; a graph material drawn through a portal on a
+  GPU is NOT yet verified.
+- **Not a bug (was a test artefact)**: "content shifts with portal distance" came from
+  the test scene (mesh radius ~173 m, so the far content was directly visible, and the
+  near portal faced away from the camera). Portal tests must face the near portal at the
+  camera (`rotate_y(.., 180.0)`) and keep the far portal thousands of metres away.
