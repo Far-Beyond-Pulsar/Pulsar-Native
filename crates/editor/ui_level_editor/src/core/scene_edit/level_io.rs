@@ -408,6 +408,7 @@ fn load_with_classes_and_editor_state_progress<P: AsRef<Path>>(
     }
     progress(0.86);
     finish_prepared_hydration_with_registry(world, &prepared, registry);
+    engine_backend::scene::resolve_level_assets(world);
     progress(0.98);
     tracing::info!(
         "Scene loaded from: {} (version: {})",
@@ -510,6 +511,9 @@ pub(crate) fn add_hydrated_components(
 }
 
 pub(crate) fn finish_prepared_hydration(world: &mut World, prepared: &PreparedLevel) {
+    // The interactive loader calls this with the shared scene write-locked.
+    // Never wait for asset workers here: every UI reader would wait with us.
+    // Its caller pumps completed assets between unlocked async waits instead.
     finish_prepared_hydration_with_registry(world, prepared, &project_registry());
 }
 
@@ -536,7 +540,67 @@ fn finish_prepared_hydration_with_registry(
     // One sky and one directional light per level; extras are kept but
     // disabled, logged.
     engine_backend::scene::level_rules::enforce_on_load(world);
-    engine_backend::scene::resolve_level_assets(world);
+}
+
+#[cfg(test)]
+mod interactive_hydration_tests {
+    use super::*;
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::time::Duration;
+
+    #[test]
+    fn finalization_releases_the_scene_while_an_asset_loader_is_blocked() {
+        const KIND: &str = "editor-finalization-nonblocking-regression";
+        let (release, wait) = mpsc::channel();
+        let wait = Mutex::new(wait);
+        let (started, start) = mpsc::channel();
+        pulsar_scenedb::register_loader(KIND, move |_| {
+            let _ = started.send(());
+            wait.lock().unwrap().recv().map_err(|e| e.to_string())?;
+            Ok(Arc::new(()) as pulsar_scenedb::AssetPayload)
+        });
+
+        let scene = Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
+        {
+            let mut store = scene.write();
+            store.world.reload_asset(pulsar_scenedb::AssetId::declare(KIND, "held"));
+            store.world.pump_assets();
+        }
+        start.recv_timeout(Duration::from_secs(5)).expect("loader starts");
+
+        let loading_scene = scene.clone();
+        let (finished, finish) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let prepared = PreparedLevel {
+                path: PathBuf::from("nonblocking.level"),
+                version: "2.0".into(),
+                objects: Vec::new(),
+                components: HashMap::new(),
+                editor: LevelEditorFileState::default(),
+                world_settings: WorldSettingsData::default(),
+            };
+            {
+                let mut store = loading_scene.write();
+                finish_prepared_hydration_with_registry(
+                    &mut store.world,
+                    &prepared,
+                    &ClassRegistry::default(),
+                );
+            }
+            finished.send(()).unwrap();
+        });
+
+        // Release the loader even on regression, so a failing test does not
+        // leave a worker waiting for the full production asset timeout.
+        let returned_before_asset = finish.recv_timeout(Duration::from_secs(2)).is_ok();
+        let readable_while_loading = scene
+            .try_read()
+            .is_some_and(|store| store.world.asset_work_pending());
+        let _ = release.send(());
+        worker.join().unwrap();
+        assert!(returned_before_asset, "finalization waited for an asset worker");
+        assert!(readable_while_loading, "the UI could not read the loading scene");
+    }
 }
 
 #[cfg(test)]

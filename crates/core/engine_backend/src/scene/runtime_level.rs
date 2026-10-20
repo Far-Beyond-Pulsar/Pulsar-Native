@@ -130,6 +130,7 @@ impl RuntimeLevel {
         let editor_camera = editor_camera(&file.editor);
         Self::hydrate_scene_file(file, world, registry)?;
         crate::scene::sublevel_display::sync_level_instances(world);
+        crate::scene::resolve_level_assets(world);
         Ok(LevelExtras { editor_camera })
     }
     /// Instantiate a level file's objects **under** `parent`: the file's origin
@@ -140,6 +141,8 @@ impl RuntimeLevel {
     ///
     /// Returns every object this created, class-generated children included.
     /// Call `engine_state::set_project_path` first, as for [`load_into`].
+    /// Assets resolve through the host's normal asset pump. This path mutates
+    /// a live shared world, so it must never wait for asset workers.
     pub fn load_under(
         path: &Path,
         world: &mut World,
@@ -205,6 +208,7 @@ impl RuntimeLevel {
         let mut scene = crate::scene::new_scene();
         Self::hydrate_scene_file(file, &mut scene.world, registry)?;
         crate::scene::sublevel_display::sync_level_instances(&mut scene.world);
+        crate::scene::resolve_level_assets(&mut scene.world);
         let extras = LevelExtras { editor_camera };
         Ok(Self {
             scene: Arc::new(RwLock::new(scene)),
@@ -288,7 +292,6 @@ impl RuntimeLevel {
         // One sky and one directional light per level; extras are kept but
         // disabled, logged.
         crate::scene::level_rules::enforce_on_load(world);
-        crate::scene::resolve_level_assets(world);
         // Components are hydrated now: everything that defines a space (a sublevel
         // placement is a component) gets its slot.
         crate::scene::frames::sync_spaces(world);

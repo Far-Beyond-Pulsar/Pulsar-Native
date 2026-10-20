@@ -120,6 +120,7 @@ impl LevelEditorPanel {
 
         cx.spawn(async move |this, cx| {
             let load_path = path.clone();
+            let executor = cx.background_executor().clone();
             let result: Result<
                 (
                     crate::scene_edit::LevelEditorFileState,
@@ -171,6 +172,30 @@ impl LevelEditorPanel {
                     {
                         let mut scene = scene_db.write();
                         level_io::finish_prepared_hydration(&mut scene.world, &prepared);
+                    }
+                    // Asset workers compile shaders and decode meshes/textures.
+                    // Waiting for them while holding SceneDB's write lock also
+                    // freezes every UI panel that reads the world. Only bind
+                    // completed work under the lock, then release it before
+                    // yielding. Keep the loading token alive across the wait.
+                    let deadline = std::time::Instant::now()
+                        + engine_backend::scene::LEVEL_ASSET_WAIT;
+                    loop {
+                        let pending = {
+                            let mut scene = scene_db.write();
+                            scene.world.pump_assets();
+                            scene.world.asset_work_pending()
+                        };
+                        if !pending {
+                            break;
+                        }
+                        if std::time::Instant::now() >= deadline {
+                            tracing::warn!(
+                                "Scene assets are still loading; the renderer will continue loading them"
+                            );
+                            break;
+                        }
+                        executor.timer(std::time::Duration::from_millis(16)).await;
                     }
                     set_progress(0.98);
                     tracing::info!(
