@@ -175,7 +175,7 @@ impl ToolbarPanel {
     fn editor_camera(
         gpu_engine: &Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     ) -> Option<crate::scene_edit::LevelEditorCameraState> {
-        let camera = gpu_engine.lock().ok()?.editor_camera_state()?;
+        let camera = gpu_engine.try_lock().ok()?.editor_camera_state()?;
         Some(crate::scene_edit::LevelEditorCameraState {
             position: camera.position,
             yaw: camera.yaw,

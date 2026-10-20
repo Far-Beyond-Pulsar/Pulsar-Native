@@ -10,9 +10,7 @@
 
 use std::sync::Arc;
 
-use engine_backend::subsystems::render::{
-    ViewKind, ViewportDebugView, PORTAL_DEBUG_VIEW_MODE,
-};
+use engine_backend::subsystems::render::{ViewKind, ViewportDebugView, PORTAL_DEBUG_VIEW_MODE};
 use gpui::*;
 use ui::dropdown::{DropdownEvent, SearchableVec};
 
@@ -127,7 +125,7 @@ impl ViewportPanel {
         if self.mailbox.is_none() {
             self.mailbox = self
                 .gpu_engine
-                .lock()
+                .try_lock()
                 .ok()
                 .and_then(|engine| engine.editor_mailbox());
         }

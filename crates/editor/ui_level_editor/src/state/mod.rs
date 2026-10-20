@@ -46,8 +46,10 @@ pub use scene::SceneDomain;
 pub use spline::SplineDomain;
 pub use terrain::TerrainDomain;
 
+use parking_lot::Mutex;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 // ── LevelEditorState ─────────────────────────────────────────────────────────
 
@@ -76,8 +78,90 @@ pub struct LevelEditorState {
     /// Play-mode state — time scale, target FPS, multiplayer.
     pub play: PlayDomain,
 
-    /// Progress for a level currently being hydrated into SceneDB.
-    pub scene_hydration_progress: Option<Arc<std::sync::atomic::AtomicU32>>,
+    /// Shared progress for scene hydration and Helio renderer initialization.
+    /// Every viewport in this editor reads the same task set for its overlay.
+    pub editor_loading: EditorLoadingProgress,
+}
+
+#[derive(Clone, Default)]
+pub struct EditorLoadingProgress {
+    inner: Arc<Mutex<EditorLoadingState>>,
+}
+
+#[derive(Default)]
+struct EditorLoadingState {
+    next_id: u64,
+    tasks: BTreeMap<u64, EditorLoadingTaskSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EditorLoadingTaskSnapshot {
+    pub label: String,
+    pub progress: f32,
+    pub active_tasks: usize,
+}
+
+/// RAII handle for one editor initialization operation. The loading overlay
+/// remains visible until all overlapping scene and renderer tasks complete.
+pub struct EditorLoadingTask {
+    inner: Weak<Mutex<EditorLoadingState>>,
+    id: u64,
+}
+
+impl EditorLoadingProgress {
+    pub fn begin(&self, label: impl Into<String>) -> EditorLoadingTask {
+        let mut state = self.inner.lock();
+        state.next_id = state.next_id.wrapping_add(1).max(1);
+        let id = state.next_id;
+        state.tasks.insert(
+            id,
+            EditorLoadingTaskSnapshot {
+                label: label.into(),
+                progress: 0.0,
+                active_tasks: 0,
+            },
+        );
+        EditorLoadingTask {
+            inner: Arc::downgrade(&self.inner),
+            id,
+        }
+    }
+
+    pub fn snapshot(&self) -> Option<EditorLoadingTaskSnapshot> {
+        let state = self.inner.lock();
+        let latest = state.tasks.last_key_value()?.1;
+        let progress =
+            state.tasks.values().map(|task| task.progress).sum::<f32>() / state.tasks.len() as f32;
+        Some(EditorLoadingTaskSnapshot {
+            label: if state.tasks.len() == 1 {
+                latest.label.clone()
+            } else {
+                format!("Initializing editor ({} tasks)…", state.tasks.len())
+            },
+            progress,
+            active_tasks: state.tasks.len(),
+        })
+    }
+}
+
+impl EditorLoadingTask {
+    pub fn set_progress(&self, progress: f32) {
+        let Some(inner) = self.inner.upgrade() else {
+            return;
+        };
+        let mut state = inner.lock();
+        if let Some(task) = state.tasks.get_mut(&self.id) {
+            task.progress = progress.clamp(0.0, 1.0);
+        }
+    }
+}
+
+impl Drop for EditorLoadingTask {
+    fn drop(&mut self) {
+        if let Some(inner) = self.inner.upgrade() {
+            inner.lock().tasks.remove(&self.id);
+        }
+    }
 }
 
 impl Default for LevelEditorState {
@@ -89,7 +173,7 @@ impl Default for LevelEditorState {
             hierarchy: HierarchyDomain::default(),
             build: BuildDomain::default(),
             play: PlayDomain::default(),
-            scene_hydration_progress: None,
+            editor_loading: EditorLoadingProgress::default(),
         }
     }
 }
@@ -119,7 +203,7 @@ impl LevelEditorState {
             hierarchy: self.hierarchy.clone(),
             build: self.build.clone(),
             play: self.play.clone(),
-            scene_hydration_progress: self.scene_hydration_progress.clone(),
+            editor_loading: self.editor_loading.clone(),
         }
     }
 }

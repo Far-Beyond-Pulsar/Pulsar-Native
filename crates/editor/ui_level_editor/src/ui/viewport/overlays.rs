@@ -63,10 +63,7 @@ impl ViewportPanel {
                 positions.is_dragging_viewport,
                 positions.is_dragging_camera,
             ),
-            state
-                .scene_hydration_progress
-                .as_ref()
-                .map(|progress| progress.load(std::sync::atomic::Ordering::Relaxed)),
+            state.editor_loading.snapshot(),
             self.view_picker(cx).entity_id(),
         )
     }
@@ -99,8 +96,7 @@ impl ViewportPanel {
         let view_guard = self.own_view.then(|| view_arc.read());
         let view: &LevelEditorState = view_guard.as_deref().unwrap_or(state);
 
-        if let Some(progress) = &state.scene_hydration_progress {
-            let progress = f32::from_bits(progress.load(std::sync::atomic::Ordering::Relaxed));
+        if let Some(progress) = state.editor_loading.snapshot() {
             overlays = overlays.child(
                 div()
                     .absolute()
@@ -126,7 +122,7 @@ impl ViewportPanel {
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().foreground)
-                                    .child("Hydrating scene…"),
+                                    .child(progress.label),
                             )
                             .child(
                                 div()
@@ -137,7 +133,7 @@ impl ViewportPanel {
                                     .child(
                                         div()
                                             .h_full()
-                                            .w(relative(progress.clamp(0.0, 1.0)))
+                                            .w(relative(progress.progress.clamp(0.0, 1.0)))
                                             .rounded_full()
                                             .bg(cx.theme().primary),
                                     ),
@@ -204,7 +200,11 @@ impl ViewportPanel {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
-                    .child(render_portal_debug_overlay(state_arc.clone(), gpu_engine, cx)),
+                    .child(render_portal_debug_overlay(
+                        state_arc.clone(),
+                        gpu_engine,
+                        cx,
+                    )),
             );
             if view.editor.camera_mode == crate::state::CameraMode::Perspective {
                 overlays = overlays.child(
@@ -310,7 +310,7 @@ impl ViewportPanel {
         let active_legend = (view.editor.viewport_debug_mode != 0)
             .then(|| {
                 gpu_engine
-                    .lock()
+                    .try_lock()
                     .ok()
                     .and_then(|engine| engine.editor_mailbox())
                     .and_then(|mailbox| {
@@ -605,21 +605,35 @@ fn portal_ghost_geometry(
 
     const MAX_GHOST_VERTICES: usize = 90_000;
     const RADIUS_SQUARED: f64 = 12_000.0;
-    let Some(source_world) = engine_backend::scene::hierarchy_transform::world_matrix_of(world, source.owner) else {
+    let Some(source_world) =
+        engine_backend::scene::hierarchy_transform::world_matrix_of(world, source.owner)
+    else {
         return Vec::new();
     };
-    let Some(target_world) = engine_backend::scene::hierarchy_transform::world_matrix_of(world, target.owner) else {
+    let Some(target_world) =
+        engine_backend::scene::hierarchy_transform::world_matrix_of(world, target.owner)
+    else {
         return Vec::new();
     };
     let map = source_world * DMat4::from_rotation_y(std::f64::consts::PI) * target_world.inverse();
     let target_position = target_world.transform_point3(DVec3::ZERO);
     let mut vertices = Vec::new();
-    'meshes: for (_instance, owner, component) in engine_backend::scene::attachments::enabled_components::<StaticMeshComponent>(world) {
-        let Some(owner_world) = engine_backend::scene::hierarchy_transform::world_matrix_of(world, owner) else { continue; };
+    'meshes: for (_instance, owner, component) in
+        engine_backend::scene::attachments::enabled_components::<StaticMeshComponent>(world)
+    {
+        let Some(owner_world) =
+            engine_backend::scene::hierarchy_transform::world_matrix_of(world, owner)
+        else {
+            continue;
+        };
         let center = owner_world.transform_point3(DVec3::ZERO);
-        if center.distance_squared(target_position) > RADIUS_SQUARED { continue; }
+        if center.distance_squared(target_position) > RADIUS_SQUARED {
+            continue;
+        }
         for triangle in component.indices.chunks_exact(3) {
-            if vertices.len() + 3 > MAX_GHOST_VERTICES { break 'meshes; }
+            if vertices.len() + 3 > MAX_GHOST_VERTICES {
+                break 'meshes;
+            }
             let Some(triangle_vertices) = triangle
                 .iter()
                 .map(|index| component.vertices.get(*index as usize))

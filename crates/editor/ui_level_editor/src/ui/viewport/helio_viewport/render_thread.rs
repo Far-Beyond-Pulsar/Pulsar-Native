@@ -9,6 +9,7 @@ impl HelioViewport {
         surface: WgpuSurfaceHandle,
         refresh_hz: Option<f64>,
         first_ui_frame: std::sync::mpsc::Receiver<()>,
+        loading: crate::state::EditorLoadingTask,
     ) {
         if self.render_thread_handle.is_some() {
             return;
@@ -46,6 +47,7 @@ impl HelioViewport {
                             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                         }
                     }
+                    loading.set_progress(0.05);
 
                     // Start at the display's refresh rate and drop from there only
                     // if the renderer can't keep up. The old `sleep(16ms)` ran *in
@@ -56,6 +58,7 @@ impl HelioViewport {
                     let mut pacer = FramePacer::new(refresh_hz);
                     let mut ui_frame_seen = gpui::ui_frame_signal::ui_frame_seq();
                     let mut first_frame = true;
+                    let mut initial_load = Some(loading);
                     tracing::info!(
                         "[VIEWPORT PACER] starting at {:.0} Hz{}",
                         pacer.target_hz,
@@ -125,7 +128,67 @@ impl HelioViewport {
                         if width == 0 || height == 0 {
                             continue;
                         }
-                        let prepared = {
+                        let prepared = if initial_load.is_some() {
+                            // All editor viewports share this cold-start lane.
+                            // The viewport thread waits for its own result; the
+                            // UI thread stays free to repaint the loading overlay.
+                            let engine = engine.clone();
+                            let device = device.clone();
+                            let queue = queue.clone();
+                            let init_stop = stop.clone();
+                            let Some(result_rx) = super::init_queue::enqueue(move || {
+                                if init_stop.load(Ordering::Acquire) {
+                                    return false;
+                                }
+                                let locked = engine.lock();
+                                let mut engine = match locked {
+                                    Ok(engine) => engine,
+                                    Err(poisoned) => {
+                                        tracing::error!(
+                                            "[HELIO-VIEWPORT] renderer mutex was poisoned; recovering"
+                                        );
+                                        poisoned.into_inner()
+                                    }
+                                };
+                                engine.prepare_for_render(
+                                    &device, &queue, width, height, format,
+                                )
+                            }) else {
+                                tracing::error!("[HELIO-VIEWPORT] Helio initialization worker unavailable");
+                                return;
+                            };
+                            let result = loop {
+                                if stop.load(Ordering::Acquire) {
+                                    break false;
+                                }
+                                match result_rx.recv_timeout(Duration::from_millis(50)) {
+                                    Ok(Ok(prepared)) => break prepared,
+                                    Ok(Err(())) => {
+                                        tracing::error!("[HELIO-VIEWPORT] renderer initialization panicked");
+                                        break false;
+                                    }
+                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                        break false;
+                                    }
+                                }
+                            };
+                            if result {
+                                if let Some(loading) = initial_load.as_ref() {
+                                    loading.set_progress(1.0);
+                                }
+                                initial_load = None;
+                            } else {
+                                // A failed cold setup must not be retried every
+                                // frame (and must not hold the loading overlay
+                                // open forever). End this viewport's render
+                                // worker; the editor remains interactive and
+                                // can report/recover through its normal error
+                                // path.
+                                return;
+                            }
+                            result
+                        } else {
                             let locked = engine.lock();
                             let mut engine = match locked {
                                 Ok(engine) => engine,
@@ -136,8 +199,7 @@ impl HelioViewport {
                                     poisoned.into_inner()
                                 }
                             };
-                            engine.is_initialized()
-                                || engine.prepare_for_render(device, queue, width, height, format)
+                            engine.prepare_for_render(device, queue, width, height, format)
                         };
                         if !prepared {
                             continue;
@@ -312,6 +374,14 @@ impl HelioViewport {
 
         crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, window, cx| {
             this.poll_display_refresh(window, cx);
+
+            let loading = this.shared_state.read().editor_loading.snapshot();
+            if loading != this.last_loading_snapshot {
+                this.last_loading_snapshot = loading;
+                this.awaiting_render = true;
+                cx.notify();
+                return;
+            }
 
             let published = this.frames_published.load(Ordering::Acquire);
             if published == this.last_published_frame {

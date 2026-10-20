@@ -51,31 +51,36 @@ impl LevelEditorPanel {
 
         cx.spawn(async move |this, cx| {
             let prepare_path = default_path.clone();
-            let result = cx.background_executor().spawn(async move {
-                if let Some(parent) = prepare_path.parent() {
-                    engine_fs::virtual_fs::create_dir_all(parent)
-                        .map_err(|e| format!("Could not create default level directory: {e}"))?;
-                }
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    if let Some(parent) = prepare_path.parent() {
+                        engine_fs::virtual_fs::create_dir_all(parent).map_err(|e| {
+                            format!("Could not create default level directory: {e}")
+                        })?;
+                    }
 
-                if !prepare_path.exists() {
-                    if let Some(root) = prepare_path.parent().and_then(|p| p.parent()) {
-                        engine_backend::services::ensure_engine_primitives(root);
+                    if !prepare_path.exists() {
+                        if let Some(root) = prepare_path.parent().and_then(|p| p.parent()) {
+                            engine_backend::services::ensure_engine_primitives(root);
+                        }
+                        if let Some(bytes) = embedded {
+                            engine_fs::virtual_fs::write_file(&prepare_path, &bytes).map_err(
+                                |e| format!("Failed to write embedded default level: {e}"),
+                            )?;
+                        } else {
+                            let world = scene_db.read();
+                            crate::scene_edit::level_io::save_to_file_with_editor_camera(
+                                &world.world,
+                                &prepare_path,
+                                camera_state,
+                            )?;
+                        }
+                        tracing::info!("Default level seeded at {:?}", prepare_path);
                     }
-                    if let Some(bytes) = embedded {
-                        engine_fs::virtual_fs::write_file(&prepare_path, &bytes)
-                            .map_err(|e| format!("Failed to write embedded default level: {e}"))?;
-                    } else {
-                        let world = scene_db.read();
-                        crate::scene_edit::level_io::save_to_file_with_editor_camera(
-                            &world.world,
-                            &prepare_path,
-                            camera_state,
-                        )?;
-                    }
-                    tracing::info!("Default level seeded at {:?}", prepare_path);
-                }
-                Ok::<_, String>(prepare_path)
-            }).await;
+                    Ok::<_, String>(prepare_path)
+                })
+                .await;
 
             cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| match result {
@@ -86,7 +91,8 @@ impl LevelEditorPanel {
                     }
                 });
             });
-        }).detach();
+        })
+        .detach();
     }
 
     /// Create the editor and start loading a level file in the background.
@@ -106,23 +112,14 @@ impl LevelEditorPanel {
     }
 
     /// Start a level load without blocking panel creation or the UI executor.
-    pub(super) fn begin_scene_load(
-        &self,
-        path: std::path::PathBuf,
-        cx: &mut Context<Self>,
-    ) {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        use std::sync::Arc;
-
+    pub(super) fn begin_scene_load(&self, path: std::path::PathBuf, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene.shared_scene() };
-        let progress = Arc::new(AtomicU32::new(0.0f32.to_bits()));
-        state_arc.write().scene_hydration_progress = Some(progress.clone());
+        let loading = state_arc.read().editor_loading.begin("Loading scene…");
         cx.notify();
 
         cx.spawn(async move |this, cx| {
             let load_path = path.clone();
-            let load_progress = progress.clone();
             let result: Result<
                 (
                     crate::scene_edit::LevelEditorFileState,
@@ -140,9 +137,7 @@ impl LevelEditorPanel {
                     let mut prepared = level_io::prepare_level_for_hydration(&load_path)?;
                     let total = prepared.total_work() as f32;
                     let mut completed = 0usize;
-                    let set_progress = |value: f32| {
-                        load_progress.store(value.to_bits(), Ordering::Relaxed);
-                    };
+                    let set_progress = |value: f32| loading.set_progress(value);
                     set_progress(0.02);
                     {
                         let mut scene = scene_db.write();
@@ -189,7 +184,6 @@ impl LevelEditorPanel {
 
             cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    state_arc.write().scene_hydration_progress = None;
                     match result {
                         Ok((editor_state, world_settings)) => {
                             panel.apply_editor_camera_state(editor_state.camera.as_ref());

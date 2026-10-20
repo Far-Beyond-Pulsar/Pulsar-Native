@@ -121,7 +121,7 @@ impl LevelEditorPanel {
     ) {
         let camera = self
             .gpu_engine
-            .lock()
+            .try_lock()
             .ok()
             .and_then(|engine| engine.editor_camera_state());
         let camera = camera

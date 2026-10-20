@@ -273,10 +273,15 @@ impl PulsarApp {
 
         // Restore once construction (plugin manager included) has finished.
         let this = cx.entity();
-        window.defer(cx, move |window, cx| {
+        // Let the application paint its initial frame before resolving saved
+        // tabs. Editor providers may still need to construct UI entities on
+        // this thread, but that work must not prevent the user from seeing the
+        // editor window at all.
+        window.on_next_frame(move |window, cx| {
             this.update(cx, |app, cx| {
                 app.restore_layout(window, cx);
                 app.state.layout_ready = true;
+                cx.notify();
                 // Only the primary window brings the others back.
                 if app.state.layout_slot == Some(PRIMARY) {
                     app.reopen_recorded_windows(cx);

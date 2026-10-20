@@ -64,6 +64,9 @@ pub struct HelioViewport {
     last_display_refresh_sample: Instant,
     /// Value of `frames_published` at the last repaint this view requested.
     last_published_frame: u64,
+    /// Loading state seen by the frame pump; changes repaint the shared
+    /// initialization overlay even before Helio has produced its first frame.
+    last_loading_snapshot: Option<crate::state::EditorLoadingTaskSnapshot>,
     /// A repaint has been requested but `render()` has not run yet. Keeps the
     /// pump from stacking up notifies for a viewport that isn't being rendered.
     awaiting_render: bool,
@@ -86,6 +89,7 @@ pub struct HelioViewport {
 
 mod assets;
 mod frame_pacer;
+mod init_queue;
 mod render_thread;
 mod thumbnail;
 use thumbnail::capture_viewport_thumbnail;
@@ -109,6 +113,7 @@ impl HelioViewport {
             display_refresh_millihertz: Arc::new(AtomicU32::new(0)),
             last_display_refresh_sample: Instant::now(),
             last_published_frame: 0,
+            last_loading_snapshot: None,
             awaiting_render: false,
             last_full_render: Instant::now(),
             viewport_size_at_last_full_render: None,
@@ -249,7 +254,12 @@ impl Render for HelioViewport {
                     window.on_next_frame(move |_, _| {
                         let _ = first_frame_tx.send(());
                     });
-                    self.start_render_thread(s.clone(), refresh_hz, first_frame_rx);
+                    let loading = self
+                        .shared_state
+                        .read()
+                        .editor_loading
+                        .begin("Initializing Helio renderer…");
+                    self.start_render_thread(s.clone(), refresh_hz, first_frame_rx, loading);
                     self.surface = Some(s);
                 }
                 None => {

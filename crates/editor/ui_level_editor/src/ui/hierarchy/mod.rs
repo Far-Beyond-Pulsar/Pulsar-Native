@@ -432,9 +432,11 @@ impl HierarchyItem for SceneObjectItem {
             use engine_backend::scene::SceneWorldExt;
             let state = self.state_arc.read();
             let world = state.scene.world();
-            world
-                .entity_for(&self.object.id)
-                .is_some_and(|entity| world.get::<engine_backend::scene::frames::RigidFrame>(entity).is_some())
+            world.entity_for(&self.object.id).is_some_and(|entity| {
+                world
+                    .get::<engine_backend::scene::frames::RigidFrame>(entity)
+                    .is_some()
+            })
         };
         let duplicate_id = self.object.id.clone();
         let delete_id = self.object.id.clone();
@@ -570,7 +572,11 @@ impl HierarchyPanel {
         let _scope = gpui::render_stats::scope("hierarchy: refresh cache");
         let selected = state.scene.selected_object();
         let multi = state.hierarchy.multi_selected.clone();
-        let key = (state.scene.world_revision(), selected.clone(), multi.clone());
+        let key = (
+            state.scene.world_revision(),
+            selected.clone(),
+            multi.clone(),
+        );
         if self.cache_key.as_ref() == Some(&key) {
             return;
         }
@@ -880,7 +886,7 @@ pub(crate) fn editor_camera_spawn_transform(
 ) -> crate::scene_edit::Transform {
     let mut transform = crate::scene_edit::Transform::default();
     if let Some(camera) = gpu_engine
-        .lock()
+        .try_lock()
         .ok()
         .and_then(|engine| engine.editor_camera_state())
     {
