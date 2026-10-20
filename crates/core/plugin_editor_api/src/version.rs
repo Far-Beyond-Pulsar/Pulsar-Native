@@ -42,11 +42,18 @@ impl VersionInfo {
     }
 }
 
+/// Bumped whenever the plugin trait objects change layout (a method added to
+/// `EditorPlugin` or an extension trait shifts every vtable slot after it).
+/// It is mixed into [`rustc_version_hash`], so a plugin library built before
+/// the change fails the version check and is refused instead of being called
+/// through a stale vtable.
+const PLUGIN_ABI_REVISION: u64 = 2;
+
 /// Compile-time hash of the rustc version
 /// This is set at compile time to ensure ABI compatibility
 const fn rustc_version_hash() -> u64 {
     const RUSTC_VERSION: &str = env!("RUSTC_VERSION");
-    hash_semver_only(RUSTC_VERSION)
+    hash_semver_only(RUSTC_VERSION) ^ PLUGIN_ABI_REVISION.wrapping_mul(0x9E37_79B9_7F4A_7C15)
 }
 
 /// Hash only the semver portion of rustc version string
