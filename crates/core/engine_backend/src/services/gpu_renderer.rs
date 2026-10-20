@@ -1,8 +1,11 @@
 //! GPU renderer service — thin wrapper around HelioRenderer.
 //!
-//! Initialisation is synchronous and lazy: the Helio renderer itself creates its
-//! wgpu resources on the first `render_frame_to_surface` call, once the
-//! WgpuSurface is available.
+//! The lightweight renderer controller is created synchronously by the builder.
+//! Helio's render graph and wgpu resources are initialized lazily on the first
+//! `render_frame_to_surface` call, once the `WgpuSurface` is available. In the
+//! editor, that call runs on the viewport's dedicated `Helio Render` thread,
+//! keeping graph construction, pipeline creation, and cache loading off the UI
+//! thread.
 
 use crate::subsystems::render::{
     EditorCameraState, HelioRenderer, RenderMetrics, RenderSpikeLogConfig,
