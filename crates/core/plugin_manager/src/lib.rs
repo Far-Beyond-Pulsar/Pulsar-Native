@@ -224,6 +224,13 @@ pub fn global() -> Option<&'static RwLock<PluginManager>> {
 /// - The `plugin` reference has `'static` lifetime (safe because library never unloads)
 /// - The `library` handle is wrapped in `PermanentLibrary` (prevents dlclose/FreeLibrary)
 /// - All plugin code, vtables, and drop glue remain valid forever
+/// A plugin library that is loaded and verified but has not run any of its own
+/// code yet; see [`PluginManager::prepare_plugin`].
+pub struct PreparedPlugin {
+    path: PathBuf,
+    library: PermanentLibrary,
+}
+
 struct LoadedPlugin {
     /// Reference to the plugin instance.
     ///
@@ -517,8 +524,59 @@ impl PluginManager {
         path: impl AsRef<Path>,
         cx: &gpui::App,
     ) -> Result<PluginId, PluginManagerError> {
-        let path = path.as_ref();
+        let prepared = Self::prepare_plugin(path.as_ref())?;
+        self.install_prepared_plugin(prepared, cx)
+    }
 
+    /// Every plugin library in `dir`, prepared in parallel on worker threads.
+    /// This is the slow, thread-safe half of loading (OS library load, SHA-256
+    /// of the file, integrity manifest); it touches no manager state and needs
+    /// no UI. Finish each with [`PluginManager::install_prepared_plugin`].
+    pub fn prepare_plugins_in_dir(
+        dir: impl AsRef<Path>,
+    ) -> Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)> {
+        let dir = dir.as_ref();
+        if !dir.exists() {
+            tracing::warn!("Plugin directory does not exist: {:?}", dir);
+            return Vec::new();
+        }
+        #[cfg(target_os = "windows")]
+        let extension = "dll";
+        #[cfg(target_os = "linux")]
+        let extension = "so";
+        #[cfg(target_os = "macos")]
+        let extension = "dylib";
+
+        let paths: Vec<PathBuf> = walkdir::WalkDir::new(dir)
+            .max_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .map(|e| e.into_path())
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some(extension))
+            .collect();
+        std::thread::scope(|scope| {
+            let workers: Vec<_> = paths
+                .iter()
+                .map(|path| scope.spawn(move || Self::prepare_plugin(path)))
+                .collect();
+            paths
+                .iter()
+                .cloned()
+                .zip(workers)
+                .map(|(path, worker)| {
+                    let result = worker.join().unwrap_or_else(|_| {
+                        Err(PluginManagerError::PluginCreationFailed {
+                            message: "plugin preparation panicked".to_string(),
+                        })
+                    });
+                    (path, result)
+                })
+                .collect()
+        })
+    }
+
+    /// Load the library at `path` and verify it against the integrity manifest.
+    pub fn prepare_plugin(path: &Path) -> Result<PreparedPlugin, PluginManagerError> {
         // Resolve to an absolute path before handing it to the OS loader.
         // Windows `LoadLibraryExW` fails with ERROR_MOD_NOT_FOUND (126) for a
         // relative path (e.g. `plugins/editor\script_editor_plugin.dll`) even
@@ -572,6 +630,18 @@ impl PluginManager {
                 });
             }
         }
+
+        Ok(PreparedPlugin { path, library })
+    }
+
+    /// Run a prepared plugin's code and register what it provides. Runs on the
+    /// thread that owns the manager (the plugin constructor takes the UI theme).
+    pub fn install_prepared_plugin(
+        &mut self,
+        prepared: PreparedPlugin,
+        cx: &gpui::App,
+    ) -> Result<PluginId, PluginManagerError> {
+        let PreparedPlugin { path, library } = prepared;
 
         // Get the version info function
         let version_fn: libloading::Symbol<extern "C" fn() -> VersionInfo> = unsafe {

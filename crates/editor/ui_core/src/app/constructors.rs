@@ -389,60 +389,6 @@ impl PulsarApp {
             t_plugins.elapsed()
         );
 
-        let plugins_dir = std::path::Path::new("plugins/editor");
-        let t_load = std::time::Instant::now();
-        match plugin_manager.load_plugins_from_dir(plugins_dir, &*cx) {
-            Err(e) => {
-                tracing::error!("[PulsarApp] failed to load editor plugins: {}", e);
-            }
-            Ok(_) => {
-                let loaded_plugins = plugin_manager.get_plugins();
-                tracing::info!(
-                    "[PulsarApp] loaded {} plugin(s) in {:?}",
-                    loaded_plugins.len(),
-                    t_load.elapsed()
-                );
-            }
-        }
-
-        // Drain plugin subsystems and inject into the engine backend
-        // before the plugin manager becomes globally accessible.
-        let plugin_subsystems = plugin_manager.drain_subsystems();
-        if !plugin_subsystems.is_empty() {
-            tracing::debug!(
-                "🧩 Injecting {} plugin subsystem(s) into engine backend",
-                plugin_subsystems.len()
-            );
-            if let Some(backend) = engine_backend::EngineBackend::global() {
-                if let Err(e) = backend.update(|b| b.inject_plugin_subsystems(plugin_subsystems)) {
-                    tracing::error!("Failed to inject plugin subsystems: {}", e);
-                }
-            } else {
-                tracing::warn!(
-                    "EngineBackend not yet available — plugin subsystems will not be registered"
-                );
-            }
-        }
-
-        // Drain plugin component registrations and inject into the engine backend
-        let plugin_components = plugin_manager.drain_component_registrations();
-        if !plugin_components.is_empty() {
-            tracing::debug!(
-                "🔧 Injecting {} plugin component(s) into engine backend",
-                plugin_components.len()
-            );
-            if let Some(backend) = engine_backend::EngineBackend::global() {
-                backend.update(|b| b.inject_plugin_components(plugin_components));
-            } else {
-                tracing::warn!(
-                    "EngineBackend not yet available — plugin components will not be registered"
-                );
-            }
-        }
-
-        // Initialize global plugin manager
-        tracing::debug!("🌍 Initializing global plugin manager");
-        plugin_manager::initialize_global(plugin_manager);
 
         let multiuser_refresh_task = cx.spawn(async move |this, cx| {
             let multiuser = engine_state::EngineContext::global()
@@ -610,19 +556,6 @@ impl PulsarApp {
                 names.sort_unstable();
                 names
             };
-            let mut creatable_file_types: Vec<_> = plugin_manager::global()
-                .map(|manager| {
-                    manager
-                        .read()
-                        .file_type_registry()
-                        .get_all_file_types()
-                        .into_iter()
-                        .filter(|file_type| file_type.is_creatable())
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_default();
-            creatable_file_types.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
             let (palette_id, palette_ref) =
                 PaletteManager::register_palette("commands", window, cx);
@@ -792,29 +725,6 @@ impl PulsarApp {
                     );
                 }
 
-                // File creation choices come from the same plugin file-type
-                // registry used by the file manager's New menu.
-                for file_type in creatable_file_types {
-                    let id = file_type.id.to_string();
-                    let label = format!("Create {}", file_type.display_name);
-                    let description = format!("Create a new .{} asset", file_type.extension);
-                    palette.add_item_with_keywords(
-                        label,
-                        description,
-                        file_type.icon,
-                        "Create",
-                        vec![file_type.extension, id.clone(), "new".into()],
-                        move |window, cx| {
-                            window.dispatch_action(
-                                Box::new(ui_common::menu::NewAsset {
-                                    file_type_id: id.clone(),
-                                }),
-                                cx,
-                            );
-                        },
-                        cx,
-                    );
-                }
 
                 // Fast path: use the file list that the loading-screen background
                 // thread already scanned — no disk I/O on the main thread.
@@ -908,6 +818,9 @@ impl PulsarApp {
         if has_project {
             app.init_layout_persistence(window, cx);
         }
+
+        // Plugins load in the background; the layout restores once they have.
+        app.start_plugin_load(plugin_manager, window, cx);
 
         app
     }

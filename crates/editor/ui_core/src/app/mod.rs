@@ -11,6 +11,7 @@ mod menu_actions;
 mod nav_sidebar;
 mod navigation;
 mod open_editors;
+mod plugin_startup;
 mod radial_menu;
 mod render;
 mod script_problems;

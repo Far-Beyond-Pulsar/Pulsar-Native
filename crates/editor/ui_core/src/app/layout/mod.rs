@@ -271,23 +271,20 @@ impl PulsarApp {
             cx,
         );
 
-        // Restore once construction (plugin manager included) has finished.
-        let this = cx.entity();
-        // Let the application paint its initial frame before resolving saved
-        // tabs. Editor providers may still need to construct UI entities on
-        // this thread, but that work must not prevent the user from seeing the
-        // editor window at all.
-        window.on_next_frame(move |window, cx| {
-            this.update(cx, |app, cx| {
-                app.restore_layout(window, cx);
-                app.state.layout_ready = true;
-                cx.notify();
-                // Only the primary window brings the others back.
-                if app.state.layout_slot == Some(PRIMARY) {
-                    app.reopen_recorded_windows(cx);
-                }
-            });
-        });
+        // The restore itself runs from `restore_layout_now`, once the plugins
+        // that build the editors have loaded in the background.
+    }
+
+    /// Restore the saved layout and start saving it. Called when the plugins
+    /// are ready, which is after the window has painted.
+    pub(super) fn restore_layout_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.restore_layout(window, cx);
+        self.state.layout_ready = true;
+        cx.notify();
+        // Only the primary window brings the others back.
+        if self.state.layout_slot == Some(PRIMARY) {
+            self.reopen_recorded_windows(cx);
+        }
     }
 
     /// Record the window's current geometry, remembering the last windowed
