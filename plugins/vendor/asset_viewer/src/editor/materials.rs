@@ -58,10 +58,50 @@ impl AssetViewerPanel {
         if path.extension().and_then(|e| e.to_str()) != Some("mesh") {
             return;
         }
-        let Some(asset) = helio_component::subsystems::load_mesh_asset_upload(&path) else {
-            log::error!("Could not read native mesh {:?}", path);
-            return;
-        };
+        self.asset_loading = true;
+        let entity = cx.entity().downgrade();
+        let window_handle = window.window_handle();
+        cx.spawn(async move |_, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    helio_component::subsystems::load_mesh_asset_upload(&path)
+                        .ok_or_else(|| format!("Could not read native mesh {}", path.display()))
+                })
+                .await;
+            let _ = cx.update_window(window_handle, |_, window, cx| {
+                let _ = entity.update(cx, |panel, cx| {
+                    panel.asset_loading = false;
+                    match result {
+                        Ok(asset) => {
+                            panel.native_mesh_asset = Some(std::sync::Arc::new(asset.clone()));
+                            panel.populate_mesh_materials(asset, window, cx);
+                            if let (Some(device), Some(queue), Some(path)) = (
+                                panel.device.clone(),
+                                panel.queue.clone(),
+                                panel.current_path.clone(),
+                            ) {
+                                panel.load_native_mesh(&device, &queue, &path);
+                            }
+                        }
+                        Err(error) => {
+                            log::error!("{error}");
+                            panel.asset_error = Some(error);
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+    }
+
+    fn populate_mesh_materials(
+        &mut self,
+        asset: helio_component::mesh_cache::MeshAssetUpload,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.mesh_sections = asset
             .sections
             .iter()
@@ -101,13 +141,13 @@ impl AssetViewerPanel {
             },
         ));
         self.mesh_materials = Some(MeshMaterials { rows, apply_all });
-        self.refresh_slot_colors();
+        self.refresh_slot_colors(cx);
     }
 
     /// Recompute each slot's preview colour from its current material: the
     /// scalar surface of a `.mat`, else the imported surface. (Shader-graph
     /// materials are not evaluated here and show the imported surface.)
-    fn refresh_slot_colors(&mut self) {
+    fn refresh_slot_colors(&mut self, cx: &mut Context<Self>) {
         let Some(materials) = self.mesh_materials.as_ref() else {
             return;
         };
@@ -126,13 +166,13 @@ impl AssetViewerPanel {
                     .base_color
             })
             .collect();
-        self.rebuild_graph_draws();
+        self.rebuild_graph_draws(cx);
     }
 
     /// Compile a pipeline for every slot whose material is a shader graph.
     /// Needs the GPU device, so it is a no-op until the surface exists;
     /// `init_surface` calls it again once it does.
-    pub(crate) fn rebuild_graph_draws(&mut self) {
+    pub(crate) fn rebuild_graph_draws(&mut self, cx: &mut Context<Self>) {
         let (
             Some(device),
             Some(queue),
@@ -154,29 +194,67 @@ impl AssetViewerPanel {
         let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from) else {
             return;
         };
-        let ctx = super::graph_material::GraphContext {
-            device: &device,
-            queue: &queue,
-            target_format: config.format,
-            globals_layout: &globals_layout,
-            uniform_layout: &layout,
-        };
         let vertex_layout = super::panel_render::mesh_vertex_layout();
-        let draws = materials
+        let material_paths = materials
             .rows
             .iter()
-            .map(|row| {
-                let preview =
-                    helio_component::graph_preview::compile_graph_preview(&root, &row.material)?;
-                let built = preview.and_then(|preview| {
-                    super::graph_material::build(&ctx, &preview, &[Some(vertex_layout.clone())])
-                });
-                built
-                    .map_err(|error| log::warn!("graph material {:?}: {error}", row.material))
-                    .ok()
-            })
-            .collect();
-        self.graph_draws = draws;
+            .map(|row| row.material.clone())
+            .collect::<Vec<_>>();
+        self.graph_material_job_id = self.graph_material_job_id.wrapping_add(1);
+        let job_id = self.graph_material_job_id;
+        self.graph_materials_loading = true;
+        let entity = cx.entity().downgrade();
+
+        // Graph parsing, PSGC compilation, texture decoding and wgpu pipeline
+        // creation can all be expensive. Keep the UI thread free while they
+        // run; the viewport already paints its loading state until this result
+        // is ready.
+        cx.spawn(async move |_, cx| {
+            let draws = cx
+                .background_executor()
+                .spawn(async move {
+                    let context = super::graph_material::GraphContext {
+                        device: &device,
+                        queue: &queue,
+                        target_format: config.format,
+                        globals_layout: &globals_layout,
+                        uniform_layout: &layout,
+                    };
+                    material_paths
+                        .into_iter()
+                        .map(|material| {
+                            helio_component::graph_preview::compile_graph_preview(
+                                &root,
+                                &material,
+                            )
+                            .map(|preview| {
+                                preview.and_then(|preview| {
+                                    super::graph_material::build(
+                                        &context,
+                                        &preview,
+                                        &[Some(vertex_layout.clone())],
+                                    )
+                                })
+                                .map_err(|error| {
+                                    log::warn!("graph material {material:?}: {error}")
+                                })
+                                .ok()
+                            })
+                            .flatten()
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .await;
+            let _ = entity.update(cx, |panel, cx| {
+                if panel.graph_material_job_id != job_id {
+                    return;
+                }
+                panel.graph_draws = draws;
+                panel.graph_materials_loading = false;
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn set_slot_material(&mut self, index: usize, material: String, cx: &mut Context<Self>) {
@@ -190,7 +268,7 @@ impl AssetViewerPanel {
             return;
         }
         row.material = material;
-        self.refresh_slot_colors();
+        self.refresh_slot_colors(cx);
         self.save_mesh_materials();
         cx.notify();
     }
@@ -204,7 +282,7 @@ impl AssetViewerPanel {
             row.picker
                 .update(cx, |picker, _| picker.set_selected_path(material.clone()));
         }
-        self.refresh_slot_colors();
+        self.refresh_slot_colors(cx);
         self.save_mesh_materials();
         cx.notify();
     }

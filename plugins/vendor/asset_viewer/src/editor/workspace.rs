@@ -95,7 +95,31 @@ impl Render for ViewportPanel {
                     window.request_animation_frame();
                 }
 
-                let surface_elem: gpui::AnyElement = if let Some(surface) = &editor.surface_handle {
+                let surface_elem: gpui::AnyElement = if editor.asset_loading
+                    || editor.graph_materials_loading
+                {
+                    div()
+                        .size_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_color(gpui::rgb(0x888888))
+                        .child(if editor.graph_materials_loading {
+                            "Compiling graph materials…"
+                        } else {
+                            "Loading asset…"
+                        })
+                        .into_any_element()
+                } else if let Some(error) = &editor.asset_error {
+                    div()
+                        .size_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_color(gpui::rgb(0xff7777))
+                        .child(error.clone())
+                        .into_any_element()
+                } else if let Some(surface) = &editor.surface_handle {
                     gpui::wgpu_surface(surface.clone())
                         .defer_resize_until_mouse_up(true)
                         .size_full()

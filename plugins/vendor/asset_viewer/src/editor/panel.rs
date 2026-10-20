@@ -87,6 +87,9 @@ pub struct AssetViewerPanel {
     pub current_path: Option<PathBuf>,
     pub is_3d: bool,
     pub image_data: Option<(u32, u32, Vec<u8>)>,
+    pub asset_loading: bool,
+    pub asset_error: Option<String>,
+    pub native_mesh_asset: Option<std::sync::Arc<helio_component::mesh_cache::MeshAssetUpload>>,
     pub modified: bool,
     pub save_path: Option<PathBuf>,
     pub tab_title: Option<String>,
@@ -180,6 +183,11 @@ pub struct AssetViewerPanel {
     pub slot_colors: Vec<[f32; 4]>,
     /// Compiled shader-graph material per slot (None: plain colour).
     pub graph_draws: Vec<Option<super::graph_material::GraphDraw>>,
+    /// True while graph materials are being parsed, compiled and prepared for
+    /// the GPU. This is independent of surface creation so the panel can show
+    /// a loading state without blocking the first editor frame.
+    pub graph_materials_loading: bool,
+    pub graph_material_job_id: u64,
     /// Layout of the per-draw uniforms, shared with graph pipelines.
     pub mesh_bgl: Option<wgpu::BindGroupLayout>,
     pub empty_bind_group: Option<wgpu::BindGroup>,
@@ -554,21 +562,9 @@ impl AssetViewerPanel {
 
         let is_3d = ext == "fbx" || ext == "mesh";
 
-        let image_data = if ext == "png" {
-            match image::open(&file_path) {
-                Ok(img) => {
-                    let rgba = img.to_rgba8();
-                    let (w, h) = rgba.dimensions();
-                    Some((w, h, rgba.into_raw()))
-                }
-                Err(e) => {
-                    log::error!("Failed to load PNG {:?}: {}", file_path, e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
+        // File decoding can be substantial for large textures. Construct the
+        // panel first so workspace restore can paint its loading state.
+        let image_loading = ext == "png";
 
         let tab_title = file_path
             .file_name()
@@ -579,7 +575,10 @@ impl AssetViewerPanel {
             focus_handle: cx.focus_handle(),
             current_path: Some(file_path.clone()),
             is_3d,
-            image_data,
+            image_data: None,
+            asset_loading: image_loading,
+            asset_error: None,
+            native_mesh_asset: None,
             modified: false,
             save_path: Some(file_path),
             tab_title,
@@ -655,6 +654,8 @@ impl AssetViewerPanel {
             slot_surfaces: Vec::new(),
             slot_colors: Vec::new(),
             graph_draws: Vec::new(),
+            graph_materials_loading: false,
+            graph_material_job_id: 0,
             mesh_bgl: None,
             empty_bind_group: None,
             globals_buffer: None,
@@ -663,6 +664,43 @@ impl AssetViewerPanel {
             frame_counter: 0,
         };
         panel.init_mesh_materials(window, cx);
+        if image_loading {
+            let path = panel.current_path.clone().expect("asset viewer has a current path");
+            let entity = cx.entity().downgrade();
+            cx.spawn(async move |_, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move {
+                        image::open(&path)
+                            .map(|image| {
+                                let rgba = image.to_rgba8();
+                                let (width, height) = rgba.dimensions();
+                                (width, height, rgba.into_raw())
+                            })
+                            .map_err(|error| error.to_string())
+                    })
+                    .await;
+                let _ = entity.update(cx, |panel, cx| {
+                    panel.asset_loading = false;
+                    match result {
+                        Ok(image) => {
+                            panel.image_data = Some(image);
+                            if let (Some(device), Some(queue)) =
+                                (panel.device.clone(), panel.queue.clone())
+                            {
+                                panel.upload_image_texture(&device, &queue);
+                            }
+                        }
+                        Err(error) => {
+                            log::error!("Failed to load PNG: {error}");
+                            panel.asset_error = Some(error);
+                        }
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         panel
     }
 }

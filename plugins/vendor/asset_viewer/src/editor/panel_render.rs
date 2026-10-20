@@ -710,7 +710,7 @@ impl AssetViewerPanel {
         self.needs_rebuild = true;
     }
 
-    pub(crate) fn init_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+    pub(crate) fn init_surface(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self
             .surface_handle
             .as_ref()
@@ -788,7 +788,7 @@ impl AssetViewerPanel {
 
             self.setup_mesh_pipeline(&device, &queue, &config);
             self.load_and_upload_mesh(&device, &queue);
-            self.rebuild_graph_draws();
+            self.rebuild_graph_draws(cx);
             self.rebuild_density_resources();
         }
         self.needs_rebuild = false;
@@ -1236,13 +1236,21 @@ impl AssetViewerPanel {
 
     /// Native `.mesh` assets: already triangulated and merged, so no scene
     /// walk — just normalize into the viewport's unit box.
-    fn load_native_mesh(
+    pub(crate) fn load_native_mesh(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         path: &std::path::Path,
     ) {
-        let Some(asset) = helio_component::subsystems::load_mesh_asset_upload(path) else {
+        if self.asset_loading {
+            return;
+        }
+        let asset = self
+            .native_mesh_asset
+            .as_deref()
+            .cloned()
+            .or_else(|| helio_component::subsystems::load_mesh_asset_upload(path));
+        let Some(asset) = asset else {
             let error = native_mesh_error(path);
             log::error!("{error}");
             self.mesh_error = Some(error);
@@ -1765,7 +1773,7 @@ impl AssetViewerPanel {
         self.needs_rebuild = false;
     }
 
-    fn upload_image_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub(crate) fn upload_image_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let Some((width, height, ref pixels)) = self.image_data else {
             return;
         };
