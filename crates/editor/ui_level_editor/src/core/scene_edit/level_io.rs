@@ -427,6 +427,7 @@ pub(crate) struct PreparedLevel {
     pub(crate) components: HashMap<ObjectId, Vec<ComponentInstance>>,
     pub(crate) editor: LevelEditorFileState,
     pub(crate) world_settings: WorldSettingsData,
+    registry: ClassRegistry,
 }
 
 impl PreparedLevel {
@@ -474,6 +475,7 @@ pub(crate) fn prepare_new_level_for_hydration(
             components: HashMap::new(),
             editor: LevelEditorFileState::default(),
             world_settings: WorldSettingsData::default(),
+            registry: ClassRegistry::default(),
         }),
     }
 }
@@ -511,6 +513,7 @@ fn prepare_level_bytes_for_hydration<P: AsRef<Path>>(
         components: level_file.components,
         editor: level_file.editor.unwrap_or_default(),
         world_settings: level_file.world_settings,
+        registry: registry.clone(),
     })
 }
 
@@ -543,7 +546,7 @@ pub(crate) fn finish_prepared_hydration(world: &mut World, prepared: &PreparedLe
     // The interactive loader calls this with the shared scene write-locked.
     // Never wait for asset workers here: every UI reader would wait with us.
     // Its caller pumps completed assets between unlocked async waits instead.
-    finish_prepared_hydration_with_registry(world, prepared, &project_registry());
+    finish_prepared_hydration_with_registry(world, prepared, &prepared.registry);
 }
 
 fn finish_prepared_hydration_with_registry(
@@ -607,6 +610,7 @@ mod interactive_hydration_tests {
                 components: HashMap::new(),
                 editor: LevelEditorFileState::default(),
                 world_settings: WorldSettingsData::default(),
+                registry: ClassRegistry::default(),
             };
             {
                 let mut store = loading_scene.write();

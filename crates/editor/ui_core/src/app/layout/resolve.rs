@@ -193,6 +193,36 @@ pub(super) trait LeafResolver {
     fn resolve_leaf(&mut self, leaf: &PanelState) -> Result<Self::Leaf, Unresolved>;
     /// Keep a leaf that resolved to [`Unresolved::Dormant`] for the next save.
     fn shelve(&mut self, dormant: PendingDormant);
+
+    /// Whether a tab that is not the displayed one of its group may be built
+    /// later, one per frame, instead of during this resolve. Building an
+    /// editor is the cost of a restore, and a hidden tab is not needed to
+    /// paint the first frame.
+    fn should_defer(&self, _leaf: &PanelState) -> bool {
+        false
+    }
+
+    /// Record a deferred tab: it goes into the group of `sibling` (a tab of the
+    /// same group that did resolve) at saved position `index`.
+    fn defer(
+        &mut self,
+        _sibling: &Self::Leaf,
+        _index: usize,
+        _anchor: Option<AnchorKey>,
+        _state: PanelState,
+    ) {
+    }
+}
+
+/// A saved tab that restore left for later; see [`LeafResolver::should_defer`].
+pub(super) struct DeferredTab {
+    pub root: DormantRoot,
+    /// A resolved tab of the group this one belongs in.
+    pub sibling: Arc<dyn PanelView>,
+    /// Its position in the saved group.
+    pub index: usize,
+    pub anchor: Option<AnchorKey>,
+    pub state: PanelState,
 }
 
 /// Build the plan for a saved tree. `None` when nothing in it resolves.
@@ -248,6 +278,7 @@ pub(super) fn resolve_tree<R: LeafResolver>(
                         .enumerate()
                         .filter(|(_, c)| c.owner().is_some()),
                 );
+            let mut deferred_ix: Vec<usize> = Vec::new();
             for (ix, child) in owned_last {
                 // Ephemeral tabs are deliberately not restored: a decision the
                 // panel made, not a loss.
@@ -255,7 +286,18 @@ pub(super) fn resolve_tree<R: LeafResolver>(
                     tracing::debug!("layout: skipping ephemeral tab {}", child.panel_name);
                     continue;
                 }
+                if ix != *active_index && resolver.should_defer(child) {
+                    deferred_ix.push(ix);
+                    continue;
+                }
                 results[ix] = Some(resolver.resolve_leaf(child));
+            }
+            // With no resolved tab there is nothing to hang the deferred ones
+            // on (the displayed tab failed): build them now.
+            if !results.iter().any(|r| matches!(r, Some(Ok(_)))) {
+                for ix in deferred_ix.drain(..) {
+                    results[ix] = Some(resolver.resolve_leaf(&state.children[ix]));
+                }
             }
             for (ix, (child, result)) in state.children.iter().zip(results).enumerate() {
                 let Some(result) = result else {
@@ -271,6 +313,11 @@ pub(super) fn resolve_tree<R: LeafResolver>(
                     }
                     Err(Unresolved::Dormant) => shelved.push(child.clone()),
                     Err(Unresolved::Gone) => {}
+                }
+            }
+            if let Some(sibling) = panels.first() {
+                for ix in deferred_ix {
+                    resolver.defer(sibling, ix, anchor.clone(), state.children[ix].clone());
                 }
             }
             for state in shelved {
@@ -491,8 +538,55 @@ pub(super) struct Resolver<'a> {
     /// Where each claimed owned panel sits now, so commit can take it out.
     homes: &'a mut HashMap<EntityId, Entity<TabPanel>>,
     dormant: &'a mut Vec<PendingDormant>,
+    /// Which saved root this resolves, for the tabs it defers.
+    root: DormantRoot,
+    /// Files some saved tab names as its owner. Such an editor is built now so
+    /// its inner panels can be claimed.
+    owners: &'a HashSet<String>,
+    deferred: &'a mut Vec<DeferredTab>,
     window: &'a mut Window,
     cx: &'a mut App,
+}
+
+/// Build one tab that restore deferred. Nothing live is claimed: a deferred tab
+/// is never an owned panel or a live singleton.
+pub(super) fn build_deferred(
+    state: &PanelState,
+    project_root: &std::path::Path,
+    window: &mut Window,
+    cx: &mut App,
+) -> Result<Arc<dyn PanelView>, Unresolved> {
+    let snapshot = LiveSnapshot {
+        panels: Vec::new(),
+        anchor_panels: HashSet::new(),
+    };
+    let (mut claims, mut homes, mut dormant, mut deferred) =
+        (Claims::default(), HashMap::new(), Vec::new(), Vec::new());
+    let owners = HashSet::new();
+    let mut resolver = Resolver {
+        project_root: project_root.to_path_buf(),
+        claim_live: false,
+        snapshot: &snapshot,
+        claims: &mut claims,
+        homes: &mut homes,
+        dormant: &mut dormant,
+        root: DormantRoot::Center,
+        owners: &owners,
+        deferred: &mut deferred,
+        window,
+        cx,
+    };
+    resolve_in_order(&mut resolver, state)
+}
+
+/// Every file a tab in `state`'s tree names as its owner.
+fn collect_owners(state: &PanelState, out: &mut HashSet<String>) {
+    if let Some((owner, _)) = state.owner() {
+        out.insert(owner.to_string());
+    }
+    for child in &state.children {
+        collect_owners(child, out);
+    }
 }
 
 impl LeafSources for Resolver<'_> {
@@ -603,6 +697,36 @@ impl LeafResolver for Resolver<'_> {
     fn shelve(&mut self, dormant: PendingDormant) {
         self.dormant.push(dormant);
     }
+
+    fn should_defer(&self, leaf: &PanelState) -> bool {
+        // Pop-outs build everything: their window opens at commit.
+        self.claim_live
+            && leaf.owner().is_none()
+            && (leaf.file().is_some() || leaf.restore_key().is_some())
+            && !leaf.file().is_some_and(|file| self.owners.contains(file))
+            // A live panel of this name would be claimed, not built.
+            && !self
+                .snapshot
+                .panels
+                .iter()
+                .any(|live| live.panel.panel_name(self.cx) == leaf.panel_name)
+    }
+
+    fn defer(
+        &mut self,
+        sibling: &Self::Leaf,
+        index: usize,
+        anchor: Option<AnchorKey>,
+        state: PanelState,
+    ) {
+        self.deferred.push(DeferredTab {
+            root: self.root,
+            sibling: sibling.clone(),
+            index,
+            anchor,
+            state,
+        });
+    }
 }
 
 /// Whether opening a file failed because nothing is registered for it (its
@@ -660,6 +784,8 @@ pub(super) struct ResolvedLayout {
     /// dormant. They stay in the file (empty, with their id and bounds) so the
     /// dormant tabs have a pop-out to come back to.
     pub ghost_popouts: Vec<SavedPopout>,
+    /// Hidden tabs not built yet; each joins the group of a tab in this layout.
+    pub deferred: Vec<DeferredTab>,
 }
 
 /// Validation bookkeeping shared by the roots of one window.
@@ -671,6 +797,8 @@ struct ResolveState {
     dormant: Vec<DormantLeaf>,
     /// The tab group each claimed owned panel sits in now.
     homes: HashMap<EntityId, Entity<TabPanel>>,
+    /// Tabs left for after the first frame, across all roots.
+    deferred: Vec<DeferredTab>,
 }
 
 impl ResolveState {
@@ -712,7 +840,23 @@ pub(super) fn resolve_layout(
         seen: HashSet::new(),
         dormant: Vec::new(),
         homes: HashMap::new(),
+        deferred: Vec::new(),
     };
+    let mut owners = HashSet::new();
+    collect_owners(&saved.dock.center, &mut owners);
+    for dock in [
+        saved.dock.left_dock.as_ref(),
+        saved.dock.right_dock.as_ref(),
+        saved.dock.bottom_dock.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        collect_owners(dock.panel(), &mut owners);
+    }
+    for popout in &saved.popouts {
+        collect_owners(&popout.dock, &mut owners);
+    }
     // `claim_live`: whether the root may claim the live panels by name. Pop-outs
     // never do: a live panel sits in the main window's dock.
     let resolve = |state: &mut ResolveState,
@@ -730,6 +874,9 @@ pub(super) fn resolve_layout(
                 claims: &mut state.claims,
                 homes: &mut state.homes,
                 dormant: &mut pending,
+                root,
+                owners: &owners,
+                deferred: &mut state.deferred,
                 window,
                 cx,
             };
@@ -849,10 +996,19 @@ pub(super) fn resolve_layout(
         .cloned()
         .collect();
 
+    // A deferred tab whose group sat in a discarded plan has nowhere to go.
+    let seen = &state.seen;
+    let deferred = state
+        .deferred
+        .into_iter()
+        .filter(|d| seen.contains(&d.sibling.view().entity_id()))
+        .collect();
+
     ResolvedLayout {
         center,
         docks,
         unmentioned,
+        deferred,
         dormant: state.dormant,
         zoomed: saved.dock.zoomed.clone(),
         popouts,

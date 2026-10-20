@@ -242,6 +242,7 @@ pub(super) fn commit(
         unmentioned,
         dormant: _,
         ghost_popouts: _,
+        deferred: _,
         zoomed,
         popouts,
         owned_homes,

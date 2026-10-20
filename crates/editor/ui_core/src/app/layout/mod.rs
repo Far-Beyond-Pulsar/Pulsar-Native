@@ -576,10 +576,21 @@ impl PulsarApp {
         );
         // Phase 1: resolve against a read-only snapshot; nothing live changes.
         let snapshot = resolve::LiveSnapshot::capture(&dock_area, &anchor, cx);
-        let resolved = resolve::resolve_layout(&layout, &snapshot, &root, &dock_area, window, cx);
+        let mut resolved =
+            resolve::resolve_layout(&layout, &snapshot, &root, &dock_area, window, cx);
         // Whatever is still unbuildable is shelved again (and so saved again).
         self.state.layout_dormant = resolved.dormant.clone();
         self.state.layout_ghosts = resolved.ghost_popouts.clone();
+        // Hidden tabs are built after the first frames. Until each exists it is
+        // kept as a dormant tab, so a save in between does not lose it.
+        let deferred = std::mem::take(&mut resolved.deferred);
+        for tab in &deferred {
+            self.state.layout_dormant.push(dormant::DormantLeaf {
+                root: tab.root,
+                anchor: tab.anchor.clone(),
+                state: tab.state.clone(),
+            });
+        }
 
         // Phase 2: attach.
         let popouts = commit::commit(
@@ -597,7 +608,81 @@ impl PulsarApp {
                 .insert(handle, PopoutNote { id, restore });
         }
 
+        self.build_deferred_tabs(deferred.into(), window, cx);
+
         self.refresh_open_editor_snapshot(cx);
+        cx.notify();
+    }
+
+    /// Build one deferred tab, then the next on the following frame, so no
+    /// frame pays for more than one editor.
+    fn build_deferred_tabs(
+        &mut self,
+        mut queue: std::collections::VecDeque<resolve::DeferredTab>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = queue.pop_front() else {
+            return;
+        };
+        self.build_deferred_tab(tab, window, cx);
+        if queue.is_empty() {
+            return;
+        }
+        let this = cx.entity().downgrade();
+        window.on_next_frame(move |window, cx| {
+            _ = this.update(cx, |app, cx| app.build_deferred_tabs(queue, window, cx));
+        });
+    }
+
+    fn build_deferred_tab(
+        &mut self,
+        tab: resolve::DeferredTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(root) = self.state.project_path.clone() else {
+            return;
+        };
+        let sibling = tab.sibling.view().entity_id();
+        let group = self
+            .state
+            .dock_area
+            .read(cx)
+            .tab_panels(cx)
+            .into_iter()
+            .map(|(_, tabs)| tabs)
+            .find(|tabs| {
+                tabs.read(cx)
+                    .all_panels()
+                    .iter()
+                    .any(|panel| panel.view().entity_id() == sibling)
+            });
+        // The group is gone (the user closed its tabs): the tab stays dormant.
+        let Some(group) = group else {
+            return;
+        };
+        let built = match resolve::build_deferred(&tab.state, &root, window, cx) {
+            Ok(panel) => {
+                group.update(cx, |tabs, cx| {
+                    let shown = tabs.active_tab_index();
+                    let at = tab.index.min(tabs.all_panels().len());
+                    // Inserting activates the new tab; keep the user's.
+                    tabs.insert_panel_at(panel, at, window, cx);
+                    if let Some(shown) = shown {
+                        tabs.set_active_tab(if at <= shown { shown + 1 } else { shown }, window, cx);
+                    }
+                });
+                true
+            }
+            Err(resolve::Unresolved::Gone) => true,
+            Err(resolve::Unresolved::Dormant) => false,
+        };
+        if built {
+            self.state
+                .layout_dormant
+                .retain(|d| !(d.root == tab.root && d.state.same_identity(&tab.state)));
+        }
         cx.notify();
     }
 }

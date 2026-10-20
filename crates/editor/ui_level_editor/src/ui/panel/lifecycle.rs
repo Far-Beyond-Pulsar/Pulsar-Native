@@ -3,35 +3,25 @@ use super::*;
 impl LevelEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let panel = Self::new_internal(None, window, cx);
-        Self::spawn_level_load(cx);
+        Self::spawn_level_load(window, cx);
         panel
     }
 
     pub fn new_with_window_id(window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let panel = Self::new_internal(Some(window_id), window, cx);
-        Self::spawn_level_load(cx);
+        Self::spawn_level_load(window, cx);
         panel
     }
 
-    /// Defers opening the default level until the editor window has rendered its
-    /// first frame. File preparation and scene hydration then run in the
-    /// background so the window remains responsive.
-    pub(super) fn spawn_level_load(cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
-            // Yield once so the event loop can paint the first frame and make
-            // the editor window visible before we touch disk.
-            cx.background_executor()
-                .timer(std::time::Duration::ZERO)
-                .await;
-
-            // Start default-level preparation after the window has painted.
-            cx.update(|cx| {
-                this.update(cx, |panel, cx| {
-                    panel.begin_default_level_load(cx);
-                });
-            });
-        })
-        .detach();
+    /// Defers opening the default level until the editor window has painted its
+    /// first frame, so the loading bar is on screen while the level loads (a
+    /// load that starts and ends before that frame never shows it). File
+    /// preparation and scene hydration then run in the background.
+    pub(super) fn spawn_level_load(window: &mut Window, cx: &mut Context<Self>) {
+        let this = cx.entity().downgrade();
+        window.on_next_frame(move |_, cx| {
+            _ = this.update(cx, |panel, cx| panel.begin_default_level_load(cx));
+        });
     }
 
     /// If no project is open, do nothing. Otherwise prepare
@@ -107,7 +97,13 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) -> Result<Self, String> {
         let panel = Self::new_internal(None, window, cx);
-        panel.begin_scene_load(path, cx);
+        // Not now: the caller may still have synchronous construction to do
+        // before the window paints, and a load that starts (and can finish)
+        // before the first frame never shows its progress bar.
+        let this = cx.entity().downgrade();
+        window.on_next_frame(move |_, cx| {
+            _ = this.update(cx, |panel, cx| panel.begin_scene_load(path, cx));
+        });
         Ok(panel)
     }
 
