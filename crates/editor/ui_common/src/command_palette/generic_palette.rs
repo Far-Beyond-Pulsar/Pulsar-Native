@@ -1,3 +1,4 @@
+use super::palette_trait::{PaletteDelegate, PaletteItem};
 use gpui::{
     div, prelude::*, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString, StyledText,
@@ -14,7 +15,6 @@ use ui::{
     text::TextView,
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt, VirtualListScrollHandle,
 };
-use super::palette_trait::{PaletteDelegate, PaletteItem};
 
 fn flatten_categories<I: Clone>(categories: &[(String, Vec<I>)]) -> Vec<(String, I)> {
     categories
@@ -366,19 +366,14 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                             this.ensure_thumbnail(path.to_path_buf(), cx);
                             this.thumbnails.get(path).cloned()
                         });
-                        Some(
-                            div()
-                                .w_full()
-                                .h(px(64.))
-                                .child(this.render_item(
-                                    &item,
-                                    &category,
-                                    index == selected_index,
-                                    index,
-                                    thumbnail,
-                                    cx,
-                                )),
-                        )
+                        Some(div().w_full().h(px(64.)).child(this.render_item(
+                            &item,
+                            &category,
+                            index == selected_index,
+                            index,
+                            thumbnail,
+                            cx,
+                        )))
                     })
                     .collect::<Vec<_>>()
             }),
@@ -632,9 +627,9 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                 return;
             };
             let image = image.map(|rgba| {
-                Arc::new(gpui::RenderImage::new(smallvec::smallvec![image::Frame::new(
-                    (*rgba).clone().into(),
-                )]))
+                Arc::new(gpui::RenderImage::new(smallvec::smallvec![
+                    image::Frame::new((*rgba).clone().into(),)
+                ]))
             });
             let _ = cx.update(|cx| {
                 this.update(cx, |this, cx| {

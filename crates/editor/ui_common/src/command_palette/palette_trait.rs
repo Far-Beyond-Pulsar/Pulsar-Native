@@ -1,5 +1,5 @@
-use ui::IconName;
 use std::path::Path;
+use ui::IconName;
 
 /// Trait for items that can be displayed in a palette
 /// Provides display information only - no rendering logic

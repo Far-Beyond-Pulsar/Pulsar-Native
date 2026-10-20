@@ -274,7 +274,10 @@ impl PulsarApp {
             .detach();
         // Keep the folder the drawer shows, so the layout remembers it.
         cx.observe(&file_manager_drawer, |app, drawer, cx| {
-            let folder = drawer.read(cx).selected_folder().map(std::path::Path::to_path_buf);
+            let folder = drawer
+                .read(cx)
+                .selected_folder()
+                .map(std::path::Path::to_path_buf);
             if app.state.chrome.file_manager_folder != folder {
                 app.state.chrome.file_manager_folder = folder;
                 app.chrome_changed(cx);
@@ -817,13 +820,19 @@ impl PulsarApp {
                 // thread already scanned — no disk I/O on the main thread.
                 for entry in preloaded_files {
                     let path = entry.path.clone();
+                    let open_path = path.clone();
                     let item_id = palette.add_item(
                         entry.name,
                         entry.path.to_string_lossy().to_string(),
                         IconName::SubmitDocument,
                         "Files",
                         move |window, cx| {
-                            window.dispatch_action(Box::new(OpenFile { path: path.clone() }), cx);
+                            window.dispatch_action(
+                                Box::new(OpenFile {
+                                    path: open_path.clone(),
+                                }),
+                                cx,
+                            );
                         },
                         cx,
                     );
@@ -851,6 +860,7 @@ impl PulsarApp {
                             palette_ref.update(cx, |palette, cx| {
                                 for file in files {
                                     let path = file.path.clone();
+                                    let open_path = path.clone();
                                     let item_id = palette.add_item(
                                         file.name.clone(),
                                         file.path.to_string_lossy().to_string(),
@@ -858,7 +868,9 @@ impl PulsarApp {
                                         "Files",
                                         move |window, cx| {
                                             window.dispatch_action(
-                                                Box::new(OpenFile { path: path.clone() }),
+                                                Box::new(OpenFile {
+                                                    path: open_path.clone(),
+                                                }),
                                                 cx,
                                             );
                                         },

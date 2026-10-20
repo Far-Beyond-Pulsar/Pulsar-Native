@@ -151,10 +151,12 @@ pub fn supports_thumbnail(path: &Path) -> bool {
         return false;
     };
     let extension = extension.to_ascii_lowercase();
-    matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif")
-        || FORMAT_RENDERERS
-            .get()
-            .is_some_and(|renderers| renderers.lock().contains_key(&extension))
+    matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif"
+    ) || FORMAT_RENDERERS
+        .get()
+        .is_some_and(|renderers| renderers.lock().contains_key(&extension))
 }
 
 /// Access the process-wide thumbnail service.
