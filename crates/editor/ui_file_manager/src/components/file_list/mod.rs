@@ -4,7 +4,6 @@ use gpui::*;
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use ui::{
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
@@ -13,8 +12,7 @@ use ui::{
     popup_menu::PopupMenuExt as _,
     resizable::{h_resizable, resizable_panel, ResizableState},
     scroll::{Scrollbar, ScrollbarState},
-    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
-    StyledExt, VirtualListScrollHandle,
+    v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
 };
 
 use crate::components::commit_picker::{CommitPicker, CommitSelected};
@@ -74,8 +72,8 @@ pub struct FileManagerDrawer {
     /// out-of-date badges (#1102).
     pub(crate) import_states: crate::utils::import_state::FolderImportStates,
     pub(crate) clipboard: Option<(Vec<PathBuf>, bool)>,
-    pub(crate) grid_scroll_handle: VirtualListScrollHandle,
-    pub(crate) list_scroll_handle: VirtualListScrollHandle,
+    pub(crate) grid_scroll_handle: UniformListScrollHandle,
+    pub(crate) list_scroll_handle: UniformListScrollHandle,
     pub(crate) grid_scrollbar_state: ScrollbarState,
     pub(crate) list_scrollbar_state: ScrollbarState,
     pub(crate) thumbnails:
@@ -237,8 +235,8 @@ impl FileManagerDrawer {
             show_hidden_files,
             clipboard: None,
             registered_file_types: Vec::new(),
-            grid_scroll_handle: VirtualListScrollHandle::new(),
-            list_scroll_handle: VirtualListScrollHandle::new(),
+            grid_scroll_handle: UniformListScrollHandle::new(),
+            list_scroll_handle: UniformListScrollHandle::new(),
             grid_scrollbar_state: ScrollbarState::default(),
             list_scrollbar_state: ScrollbarState::default(),
             thumbnails: std::collections::HashMap::new(),
@@ -649,8 +647,6 @@ pub fn render_grid_view(
     let cols = (((aw + G) / (CW + G)).floor() as usize).max(1);
     let cw = ((aw - (cols.saturating_sub(1)) as f32 * G) / cols as f32).max(CW);
     let rows = n.div_ceil(cols);
-    let sizes = Rc::new(vec![size(px(0.0), px(CH + G)); rows]);
-    let view = cx.entity().clone();
     let handle = d.grid_scroll_handle.clone();
     if let Some(index) = d.take_pending_reveal(&items) {
         handle.scroll_to_item(index / cols, gpui::ScrollStrategy::Center);
@@ -664,17 +660,17 @@ pub fn render_grid_view(
         .px_2()
         .pt_2()
         .child(
-            v_virtual_list(
-                view,
+            uniform_list(
                 "file-manager-grid",
-                sizes,
-                move |this, range, w, cx| {
+                rows,
+                cx.processor(move |this, range: std::ops::Range<usize>, w, cx| {
                     range
                         .map(|row| {
                             let s = row * cols;
                             let e = (s + cols).min(n);
                             h_flex()
                                 .w_full()
+                                .h(px(CH + G))
                                 .gap(px(G))
                                 .py(px(G / 2.))
                                 .items_start()
@@ -697,9 +693,10 @@ pub fn render_grid_view(
                                 )
                                 .into_any_element()
                         })
-                        .collect()
-                },
+                        .collect::<Vec<_>>()
+                }),
             )
+            .size_full()
             .track_scroll(&handle),
         )
         .child(
@@ -709,7 +706,7 @@ pub fn render_grid_view(
                 .left_0()
                 .right_0()
                 .bottom_0()
-                .child(Scrollbar::vertical(&scrollbar_state, &handle)),
+                .child(Scrollbar::uniform_scroll(&scrollbar_state, &handle)),
         )
         .into_any_element()
 }
@@ -994,8 +991,6 @@ pub fn render_list_view(
     if n == 0 {
         return v_flex().flex_1().min_h_0().into_any_element();
     }
-    let sizes = Rc::new(vec![size(px(0.0), px(40.0)); n]);
-    let view = cx.entity().clone();
     let handle = d.list_scroll_handle.clone();
     if let Some(index) = d.take_pending_reveal(&items) {
         handle.scroll_to_item(index, gpui::ScrollStrategy::Center);
@@ -1009,16 +1004,22 @@ pub fn render_list_view(
         .px_2()
         .pt_2()
         .child(
-            v_virtual_list(
-                view,
+            uniform_list(
                 "file-manager-list",
-                sizes,
-                move |this, range, w, cx| {
+                n,
+                cx.processor(move |this, range: std::ops::Range<usize>, w, cx| {
                     range
-                        .map(|i| render_list_item(this, &items[i], w, cx).into_any_element())
-                        .collect()
-                },
+                        .map(|i| {
+                            div()
+                                .w_full()
+                                .h(px(40.0))
+                                .child(render_list_item(this, &items[i], w, cx))
+                                .into_any_element()
+                        })
+                        .collect::<Vec<_>>()
+                }),
             )
+            .size_full()
             .track_scroll(&handle),
         )
         .child(
@@ -1028,7 +1029,7 @@ pub fn render_list_view(
                 .left_0()
                 .right_0()
                 .bottom_0()
-                .child(Scrollbar::vertical(&scrollbar_state, &handle)),
+                .child(Scrollbar::uniform_scroll(&scrollbar_state, &handle)),
         )
         .into_any_element()
 }
