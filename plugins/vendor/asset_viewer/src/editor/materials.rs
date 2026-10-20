@@ -223,24 +223,22 @@ impl AssetViewerPanel {
                     material_paths
                         .into_iter()
                         .map(|material| {
-                            helio_component::graph_preview::compile_graph_preview(
-                                &root,
-                                &material,
-                            )
-                            .map(|preview| {
-                                preview.and_then(|preview| {
-                                    super::graph_material::build(
-                                        &context,
-                                        &preview,
-                                        &[Some(vertex_layout.clone())],
-                                    )
+                            helio_component::graph_preview::compile_graph_preview(&root, &material)
+                                .map(|preview| {
+                                    preview
+                                        .and_then(|preview| {
+                                            super::graph_material::build(
+                                                &context,
+                                                &preview,
+                                                &[Some(vertex_layout.clone())],
+                                            )
+                                        })
+                                        .map_err(|error| {
+                                            log::warn!("graph material {material:?}: {error}")
+                                        })
+                                        .ok()
                                 })
-                                .map_err(|error| {
-                                    log::warn!("graph material {material:?}: {error}")
-                                })
-                                .ok()
-                            })
-                            .flatten()
+                                .flatten()
                         })
                         .collect::<Vec<_>>()
                 })

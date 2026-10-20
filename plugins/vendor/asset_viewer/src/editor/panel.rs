@@ -665,7 +665,10 @@ impl AssetViewerPanel {
         };
         panel.init_mesh_materials(window, cx);
         if image_loading {
-            let path = panel.current_path.clone().expect("asset viewer has a current path");
+            let path = panel
+                .current_path
+                .clone()
+                .expect("asset viewer has a current path");
             let entity = cx.entity().downgrade();
             cx.spawn(async move |_, cx| {
                 let result = cx
