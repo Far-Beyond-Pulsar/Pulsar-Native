@@ -38,51 +38,9 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Warn if unsaved changes (TODO: modal dialog)
-        // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
-        let scene_db = { self.shared_state.read().scene.shared_scene() };
-        let mut editor_state = crate::scene_edit::LevelEditorFileState::default();
-        let mut world_settings = crate::world_settings_data::WorldSettingsData::default();
-        {
-            let mut world = scene_db.write();
-            crate::scene_edit::objects::clear(&mut world.world);
-        }
-
-        // Load from the embedded default.level if available, otherwise start empty.
-        if let Some(bytes) = engine_state::EngineContext::global()
-            .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone())
-        {
-            let tmp = std::env::temp_dir().join("pulsar_new_scene_seed.level");
-            if engine_fs::virtual_fs::write_file(&tmp, &bytes).is_ok() {
-                let load_result = {
-                    let mut world = scene_db.write();
-                    crate::scene_edit::level_io::load_from_file_with_editor_state(
-                        &mut world.world,
-                        &tmp,
-                    )
-                };
-                match load_result {
-                    Ok((loaded_editor, loaded_settings)) => {
-                        editor_state = loaded_editor;
-                        world_settings = loaded_settings;
-                    }
-                    Err(e) => {
-                        tracing::warn!("New scene: could not load embedded default.level: {e}")
-                    }
-                }
-            }
-        }
-        self.apply_editor_camera_state(editor_state.camera.as_ref());
-        {
-            let mut state = self.shared_state.write();
-            state.scene.set_current_scene(None, false);
-            state.scene.world_settings = world_settings;
-            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
-            state.scene.has_unsaved_changes = false;
-            // Deselect so properties panel clears stale data.
-            state.scene.select_object(None);
-        }
-        cx.notify();
+        let embedded = engine_state::EngineContext::global()
+            .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone());
+        self.begin_scene_load_from(None, embedded, cx);
     }
 
     pub(in crate::ui::panel) fn on_focus_selected(

@@ -113,6 +113,16 @@ impl LevelEditorPanel {
 
     /// Start a level load without blocking panel creation or the UI executor.
     pub(super) fn begin_scene_load(&self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        self.begin_scene_load_from(Some(path), None, cx);
+    }
+
+    /// File opens and untitled scenes share the same worker and loading overlay.
+    pub(super) fn begin_scene_load_from(
+        &self,
+        path: Option<std::path::PathBuf>,
+        embedded: Option<Vec<u8>>,
+        cx: &mut Context<Self>,
+    ) {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene.shared_scene() };
         let loading = state_arc.read().editor_loading.begin("Loading scene…");
@@ -135,7 +145,10 @@ impl LevelEditorPanel {
                     // Parse and migrate outside SceneDB's lock, then apply one
                     // object/component group per write so readers can proceed
                     // between batches.
-                    let mut prepared = level_io::prepare_level_for_hydration(&load_path)?;
+                    let mut prepared = match load_path {
+                        Some(path) => level_io::prepare_level_for_hydration(path)?,
+                        None => level_io::prepare_new_level_for_hydration(embedded)?,
+                    };
                     let total = prepared.total_work() as f32;
                     let mut completed = 0usize;
                     let set_progress = |value: f32| loading.set_progress(value);
@@ -213,7 +226,7 @@ impl LevelEditorPanel {
                         Ok((editor_state, world_settings)) => {
                             panel.apply_editor_camera_state(editor_state.camera.as_ref());
                             let mut state = state_arc.write();
-                            state.scene.set_current_scene(Some(path), false);
+                            state.scene.set_current_scene(path, false);
                             state.scene.world_settings = world_settings;
                             state.editor.terrain.foliage_sets = editor_state.foliage_sets;
                             state.scene.has_unsaved_changes = false;

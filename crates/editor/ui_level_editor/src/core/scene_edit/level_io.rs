@@ -454,6 +454,35 @@ fn prepare_level_for_hydration_with_registry<P: AsRef<Path>>(
 ) -> Result<PreparedLevel, String> {
     let bytes =
         virtual_fs::read_file(path.as_ref()).map_err(|e| format!("Failed to read file: {e}"))?;
+    prepare_level_bytes_for_hydration(bytes, path, registry)
+}
+
+/// Prepare an untitled scene on the loader worker, without a temporary file.
+pub(crate) fn prepare_new_level_for_hydration(
+    embedded: Option<Vec<u8>>,
+) -> Result<PreparedLevel, String> {
+    match embedded {
+        Some(bytes) => prepare_level_bytes_for_hydration(
+            bytes,
+            Path::new("Untitled.level"),
+            &project_registry(),
+        ),
+        None => Ok(PreparedLevel {
+            path: PathBuf::from("Untitled.level"),
+            version: "2.0".into(),
+            objects: Vec::new(),
+            components: HashMap::new(),
+            editor: LevelEditorFileState::default(),
+            world_settings: WorldSettingsData::default(),
+        }),
+    }
+}
+
+fn prepare_level_bytes_for_hydration<P: AsRef<Path>>(
+    bytes: Vec<u8>,
+    path: P,
+    registry: &ClassRegistry,
+) -> Result<PreparedLevel, String> {
     let json = String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {e}"))?;
     let mut value: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
