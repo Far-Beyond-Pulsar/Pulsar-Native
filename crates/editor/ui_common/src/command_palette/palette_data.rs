@@ -5,6 +5,7 @@
 
 use gpui::{App, Context, Window};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use ui::IconName;
 
@@ -26,6 +27,9 @@ pub struct PaletteItemData {
     pub name: String,
     pub description: String,
     pub icon: IconName,
+    /// When set, the generic palette lazily requests a cached thumbnail as
+    /// this item enters the visible list.
+    pub thumbnail_path: Option<PathBuf>,
     pub keywords: Vec<String>,
     pub category: String,
     pub callback: Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>,
@@ -42,6 +46,10 @@ impl PaletteItem for PaletteItemData {
 
     fn icon(&self) -> IconName {
         self.icon.clone()
+    }
+
+    fn thumbnail_path(&self) -> Option<&Path> {
+        self.thumbnail_path.as_deref()
     }
 
     fn keywords(&self) -> Vec<&str> {
@@ -136,6 +144,7 @@ impl Palette {
                 name: name.into(),
                 description: description.into(),
                 icon,
+                thumbnail_path: None,
                 keywords: vec![],
                 category: category.into(),
                 callback: Arc::new(callback),
@@ -171,6 +180,7 @@ impl Palette {
                 name: name.into(),
                 description: description.into(),
                 icon,
+                thumbnail_path: None,
                 keywords,
                 category: category.into(),
                 callback: Arc::new(callback),
@@ -185,6 +195,13 @@ impl Palette {
     /// Returns Some(()) if the item existed, None otherwise
     pub fn remove_item(&mut self, item_id: ItemId, _cx: &mut Context<Self>) -> Option<()> {
         self.items.remove(&item_id).map(|_| ())
+    }
+
+    /// Mark an item as a file entry whose visible row should show its thumbnail.
+    pub fn set_item_thumbnail_path(&mut self, item_id: ItemId, path: impl Into<PathBuf>) {
+        if let Some(item) = self.items.get_mut(&item_id) {
+            item.thumbnail_path = Some(path.into());
+        }
     }
 
     /// Rebind a callback for an item

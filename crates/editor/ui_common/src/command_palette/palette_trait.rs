@@ -1,4 +1,5 @@
 use ui::IconName;
+use std::path::Path;
 
 /// Trait for items that can be displayed in a palette
 /// Provides display information only - no rendering logic
@@ -11,6 +12,11 @@ pub trait PaletteItem: Clone + 'static {
 
     /// Icon to display
     fn icon(&self) -> IconName;
+
+    /// Optional file path whose thumbnail should replace the item's icon.
+    fn thumbnail_path(&self) -> Option<&Path> {
+        None
+    }
 
     /// Keywords for searching (default: empty)
     fn keywords(&self) -> Vec<&str> {

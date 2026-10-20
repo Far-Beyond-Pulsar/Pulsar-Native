@@ -185,10 +185,11 @@ impl NavSidebar {
     /// content tree stays current without anything else notifying the sidebar.
     pub(crate) fn observe_drawer(&mut self, cx: &mut Context<Self>) {
         let drawer = self.drawer.clone();
-        cx.observe(&drawer, |_sidebar, _drawer, cx| {
-            // Thumbnail completion also updates the drawer. Redraw visible
-            // content rows so their file icons can become images.
-            cx.notify();
+        cx.observe(&drawer, |sidebar, drawer, cx| {
+            let revision = drawer.read(cx).content_revision();
+            if sidebar.content_key.map(|(_, drawer)| drawer) != Some(revision) {
+                cx.notify();
+            }
         })
         .detach();
     }

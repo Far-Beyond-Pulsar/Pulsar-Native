@@ -3,6 +3,9 @@ use gpui::{
     KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString, StyledText,
     UniformListScrollHandle, Window,
 };
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::Arc;
 use ui::scroll::Scrollable;
 use ui::{
     h_flex,
@@ -44,6 +47,10 @@ pub struct GenericPalette<D: PaletteDelegate> {
     docs_scroll_handle: VirtualListScrollHandle,
     /// Scrollbar state for the docs panel
     docs_scrollbar_state: ScrollbarState,
+    /// Decoded thumbnails requested for visible file entries.
+    thumbnails: HashMap<PathBuf, Arc<gpui::RenderImage>>,
+    thumbnail_requested: HashSet<PathBuf>,
+    thumbnail_cache_root: PathBuf,
 }
 
 impl<D: PaletteDelegate> EventEmitter<DismissEvent> for GenericPalette<D> {}
@@ -63,6 +70,10 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         let filtered_items = flatten_categories(&categories);
         let scroll_handle = UniformListScrollHandle::new();
         scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
+        let thumbnail_cache_root = engine_state::get_project_path()
+            .map(PathBuf::from)
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("."));
 
         // Subscribe to input changes
         cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
@@ -86,6 +97,9 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             scrollbar_state: ScrollbarState::default(),
             docs_scroll_handle: VirtualListScrollHandle::new(),
             docs_scrollbar_state: ScrollbarState::default(),
+            thumbnails: HashMap::new(),
+            thumbnail_requested: HashSet::new(),
+            thumbnail_cache_root,
         }
     }
 
@@ -347,16 +361,21 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
                 range
                     .filter_map(|index| {
-                        let (category, item) = this.filtered_items.get(index)?;
+                        let (category, item) = this.filtered_items.get(index)?.clone();
+                        let thumbnail = item.thumbnail_path().and_then(|path| {
+                            this.ensure_thumbnail(path.to_path_buf(), cx);
+                            this.thumbnails.get(path).cloned()
+                        });
                         Some(
                             div()
                                 .w_full()
                                 .h(px(64.))
                                 .child(this.render_item(
-                                    item,
-                                    category,
+                                    &item,
+                                    &category,
                                     index == selected_index,
                                     index,
+                                    thumbnail,
                                     cx,
                                 )),
                         )
@@ -504,6 +523,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         category: &str,
         is_selected: bool,
         item_index: usize,
+        thumbnail: Option<Arc<gpui::RenderImage>>,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         h_flex()
@@ -533,15 +553,20 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                     cx.notify();
                 }
             }))
-            .child(
-                Icon::new(item.icon())
+            .child(match thumbnail {
+                Some(thumbnail) => gpui::img(gpui::ImageSource::Render(thumbnail))
+                    .size(px(32.))
+                    .rounded(px(4.))
+                    .into_any_element(),
+                None => Icon::new(item.icon())
                     .size(px(18.0))
                     .text_color(if is_selected {
                         cx.theme().primary
                     } else {
                         cx.theme().muted_foreground
-                    }),
-            )
+                    })
+                    .into_any_element(),
+            })
             .child(
                 v_flex()
                     .flex_1()
@@ -583,5 +608,43 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                 )
             })
             .into_any_element()
+    }
+
+    /// Request a thumbnail once for a file row that the virtual list is drawing.
+    fn ensure_thumbnail(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        crate::asset_thumbnails::register_mesh_thumbnail_renderer();
+        if self.thumbnails.contains_key(&path)
+            || self.thumbnail_requested.contains(&path)
+            || !engine_fs::thumbnails::supports_thumbnail(&path)
+        {
+            return;
+        }
+        self.thumbnail_requested.insert(path.clone());
+
+        let cache_root = self.thumbnail_cache_root.clone();
+        let request_path = path.clone();
+        let (tx, rx) = smol::channel::bounded(1);
+        engine_fs::thumbnails::service().request(path.clone(), cache_root, move |image| {
+            let _ = smol::block_on(tx.send(image));
+        });
+        cx.spawn(async move |this, cx| {
+            let Ok(image) = rx.recv().await else {
+                return;
+            };
+            let image = image.map(|rgba| {
+                Arc::new(gpui::RenderImage::new(smallvec::smallvec![image::Frame::new(
+                    (*rgba).clone().into(),
+                )]))
+            });
+            let _ = cx.update(|cx| {
+                this.update(cx, |this, cx| {
+                    if let Some(image) = image {
+                        this.thumbnails.insert(request_path, image);
+                    }
+                    cx.notify();
+                })
+            });
+        })
+        .detach();
     }
 }

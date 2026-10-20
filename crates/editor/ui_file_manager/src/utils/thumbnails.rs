@@ -26,7 +26,7 @@ impl FileManagerDrawer {
         )
     }
 
-    pub fn ensure_thumbnail(
+    pub(crate) fn ensure_thumbnail(
         &mut self,
         path: &std::path::Path,
         cx: &mut gpui::Context<Self>,
@@ -69,11 +69,6 @@ impl FileManagerDrawer {
             });
         })
         .detach();
-    }
-
-    /// Return a thumbnail once the shared thumbnail service has finished it.
-    pub fn thumbnail(&self, path: &std::path::Path) -> Option<std::sync::Arc<gpui::RenderImage>> {
-        self.thumbnails.get(path).and_then(|thumbnail| thumbnail.clone())
     }
 
     pub fn set_thumbnail_cache_root(&mut self, root: std::path::PathBuf) {

@@ -817,7 +817,7 @@ impl PulsarApp {
                 // thread already scanned — no disk I/O on the main thread.
                 for entry in preloaded_files {
                     let path = entry.path.clone();
-                    palette.add_item(
+                    let item_id = palette.add_item(
                         entry.name,
                         entry.path.to_string_lossy().to_string(),
                         IconName::SubmitDocument,
@@ -827,6 +827,7 @@ impl PulsarApp {
                         },
                         cx,
                     );
+                    palette.set_item_thumbnail_path(item_id, path);
                 }
             });
 
@@ -850,7 +851,7 @@ impl PulsarApp {
                             palette_ref.update(cx, |palette, cx| {
                                 for file in files {
                                     let path = file.path.clone();
-                                    palette.add_item(
+                                    let item_id = palette.add_item(
                                         file.name.clone(),
                                         file.path.to_string_lossy().to_string(),
                                         IconName::SubmitDocument,
@@ -863,6 +864,7 @@ impl PulsarApp {
                                         },
                                         cx,
                                     );
+                                    palette.set_item_thumbnail_path(item_id, path);
                                 }
                             });
                         });

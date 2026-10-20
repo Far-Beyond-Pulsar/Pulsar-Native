@@ -145,6 +145,18 @@ pub fn register_mesh_thumbnail_renderer(renderer: MeshThumbnailRenderer) {
     }
 }
 
+/// Whether the thumbnail service has a renderer for this path's extension.
+pub fn supports_thumbnail(path: &Path) -> bool {
+    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
+        return false;
+    };
+    let extension = extension.to_ascii_lowercase();
+    matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif")
+        || FORMAT_RENDERERS
+            .get()
+            .is_some_and(|renderers| renderers.lock().contains_key(&extension))
+}
+
 /// Access the process-wide thumbnail service.
 pub fn service() -> &'static ThumbnailService {
     GLOBAL_SERVICE.get_or_init(ThumbnailService::new)

@@ -7,7 +7,6 @@
 //! deletes, cuts, copies and pastes through the drawer's operations.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use gpui::{
     div, prelude::*, px, uniform_list, AnyElement, Context, ElementId, IntoElement, SharedString,
@@ -39,17 +38,6 @@ enum Entry {
 }
 
 impl NavSidebar {
-    /// Request an on-screen asset thumbnail from the shared file-browser cache.
-    fn content_thumbnail(
-        &self,
-        path: &Path,
-        cx: &mut Context<Self>,
-    ) -> Option<Arc<gpui::RenderImage>> {
-        self.drawer
-            .update(cx, |drawer, cx| drawer.ensure_thumbnail(path, cx));
-        self.drawer.read(cx).thumbnail(path)
-    }
-
     /// Rebuild the content tree's rows when a folder was expanded or
     /// collapsed, or the project's files changed. Otherwise the rows built
     /// last time are kept, so drawing the tree costs nothing per change of
@@ -234,20 +222,9 @@ impl NavSidebar {
                 }),
         )
         .child(match &row.asset {
-            Some(asset) => self
-                .content_thumbnail(&asset.path, cx)
-                .map(|thumbnail| {
-                    gpui::img(gpui::ImageSource::Render(thumbnail))
-                        .size(px(16.))
-                        .rounded_sm()
-                        .into_any_element()
-                })
-                .unwrap_or_else(|| {
-                    Icon::new(asset.icon.clone())
-                        .size(px(14.))
-                        .text_color(asset.color.unwrap_or(theme.muted_foreground))
-                        .into_any_element()
-                }),
+            Some(asset) => Icon::new(asset.icon.clone())
+                .size(px(14.))
+                .text_color(asset.color.unwrap_or(theme.muted_foreground)),
             None => Icon::new(if open {
                 IconName::FolderOpen
             } else {
@@ -258,8 +235,7 @@ impl NavSidebar {
                 theme.primary
             } else {
                 theme.muted_foreground
-            })
-            .into_any_element(),
+            }),
         })
         .child(self.render_name(&row.path, &row.name))
         .child(self.reveal_button(&row.path, &row.name, entry, selected, cx))
@@ -293,7 +269,6 @@ impl NavSidebar {
         let theme = cx.theme().clone();
         let selected = self.selected_path() == Some(file.path.as_path());
         let path = file.path.clone();
-        let thumbnail = self.content_thumbnail(&file.path, cx);
 
         tree_row(
             ElementId::Name(format!("nav-file-{}", file.path.display()).into()),
@@ -305,16 +280,11 @@ impl NavSidebar {
         )
         // In the chevron's column, so names line up with folders'.
         .child(div().size(px(14.)).flex_none())
-        .child(match thumbnail {
-            Some(thumbnail) => gpui::img(gpui::ImageSource::Render(thumbnail))
-                .size(px(16.))
-                .rounded_sm()
-                .into_any_element(),
-            None => Icon::new(file.icon.clone())
+        .child(
+            Icon::new(file.icon.clone())
                 .size(px(14.))
-                .text_color(file.color.unwrap_or(theme.muted_foreground))
-                .into_any_element(),
-        })
+                .text_color(file.color.unwrap_or(theme.muted_foreground)),
+        )
         .child(self.render_name(&file.path, &file.name))
         .child(self.reveal_button(&file.path, &file.name, Entry::File, selected, cx))
         .on_click(
