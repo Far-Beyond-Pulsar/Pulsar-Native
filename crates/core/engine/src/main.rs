@@ -98,6 +98,45 @@ pub use engine_state::{
 
 use init::{init_task, task_ids::*, InitContext, InitGraph};
 
+/// Give the engine's render graphs a stable cache path beside Cargo's build
+/// artifacts. An explicit path is useful for hosts that coordinate several
+/// processes (the play-mode runner does this) and always takes precedence.
+///
+/// The Helio graph builder reads this before creating its device pipeline
+/// cache, so configure it before initialization can start any renderer work.
+fn configure_pipeline_cache_path() {
+    if std::env::var_os("PULSAR_PIPELINE_CACHE").is_some() {
+        return;
+    }
+
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(std::path::PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(&path))
+                    .unwrap_or(path)
+            }
+        })
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|executable| {
+                executable
+                    .ancestors()
+                    .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "target"))
+                    .map(std::path::Path::to_path_buf)
+            })
+        });
+
+    if let Some(target_dir) = target_dir {
+        std::env::set_var(
+            "PULSAR_PIPELINE_CACHE",
+            target_dir.join("pulsar").join("pipeline_cache.bin"),
+        );
+    }
+}
+
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
 pub static NvOptimusEnablement: u32 = 0x0000_0001;
@@ -182,6 +221,7 @@ fn main() {
 
     // Parse arguments first (needed for init context)
     let _ = dotenv::dotenv();
+    configure_pipeline_cache_path();
     let parsed = args::parse_args();
     let project_path = parsed.project_path.clone();
 
