@@ -8,6 +8,7 @@ impl HelioViewport {
         &mut self,
         surface: WgpuSurfaceHandle,
         refresh_hz: Option<f64>,
+        first_ui_frame: std::sync::mpsc::Receiver<()>,
     ) {
         if self.render_thread_handle.is_some() {
             return;
@@ -32,6 +33,20 @@ impl HelioViewport {
                 profiling::set_thread_name("Helio Render");
 
                 let panic_result = catch_unwind(AssertUnwindSafe(|| {
+                    // A cold Helio graph can synchronously compile many GPU
+                    // pipelines. Let the first editor frame reach the display
+                    // before starting that work, so startup never presents as a
+                    // blank window while the driver initializes.
+                    loop {
+                        if stop.load(Ordering::Acquire) {
+                            return;
+                        }
+                        match first_ui_frame.recv_timeout(Duration::from_millis(50)) {
+                            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                        }
+                    }
+
                     // Start at the display's refresh rate and drop from there only
                     // if the renderer can't keep up. The old `sleep(16ms)` ran *in
                     // addition to* the render, so the real period was 16ms + render
@@ -40,6 +55,7 @@ impl HelioViewport {
                     // it was leaving more than half the refresh rate on the table.
                     let mut pacer = FramePacer::new(refresh_hz);
                     let mut ui_frame_seen = gpui::ui_frame_signal::ui_frame_seq();
+                    let mut first_frame = true;
                     tracing::info!(
                         "[VIEWPORT PACER] starting at {:.0} Hz{}",
                         pacer.target_hz,
@@ -66,6 +82,12 @@ impl HelioViewport {
                             // target entirely: render as fast as the frame can complete.
                             if profiling::uncap_frame_rate() {
                                 pacer.skip_wait();
+                            } else if first_frame {
+                                // Do the cold initialization immediately after
+                                // the first editor frame, instead of aligning
+                                // its synchronous pipeline creation with the
+                                // next UI frame begin.
+                                pacer.skip_wait();
                             } else {
                                 pacer.wait_for_next_frame_aligned(&mut ui_frame_seen);
                             }
@@ -90,6 +112,38 @@ impl HelioViewport {
                         // theirs concurrently, so frame pacing stays independent.
                         let _frame = gpui::render_stats::scope("helio: FRAME TOTAL");
                         gpui::render_stats::count("helio frames rendered");
+
+                        // First-frame graph construction compiles the renderer's
+                        // pipelines. It may take seconds on a cold driver cache,
+                        // so do it before taking the submit guard: WGPUI needs the
+                        // guard's write side to reconfigure the editor surface,
+                        // and must remain free to resize/repaint while Helio warms.
+                        let device = surface.device();
+                        let queue = surface.queue();
+                        let format = surface.format();
+                        let (width, height) = surface.size();
+                        if width == 0 || height == 0 {
+                            continue;
+                        }
+                        let prepared = {
+                            let locked = engine.lock();
+                            let mut engine = match locked {
+                                Ok(engine) => engine,
+                                Err(poisoned) => {
+                                    tracing::error!(
+                                        "[HELIO-VIEWPORT] renderer mutex was poisoned; recovering"
+                                    );
+                                    poisoned.into_inner()
+                                }
+                            };
+                            engine.is_initialized()
+                                || engine.prepare_for_render(device, queue, width, height, format)
+                        };
+                        if !prepared {
+                            continue;
+                        }
+                        first_frame = false;
+
                         // Blocks for as long as a window resize holds the
                         // exclusive side of this lock (`Surface::configure`).
                         let submit_guard = {
@@ -105,10 +159,6 @@ impl HelioViewport {
                             gpui::render_stats::count("helio: no back buffer (skipped)");
                             continue;
                         };
-
-                        let device = surface.device();
-                        let queue = surface.queue();
-                        let format = surface.format();
 
                         let submission_index = {
                             let lock_start = Instant::now();

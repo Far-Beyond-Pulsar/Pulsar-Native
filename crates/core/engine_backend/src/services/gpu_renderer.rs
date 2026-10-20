@@ -1,11 +1,11 @@
 //! GPU renderer service — thin wrapper around HelioRenderer.
 //!
 //! The lightweight renderer controller is created synchronously by the builder.
-//! Helio's render graph and wgpu resources are initialized lazily on the first
-//! `render_frame_to_surface` call, once the `WgpuSurface` is available. In the
-//! editor, that call runs on the viewport's dedicated `Helio Render` thread,
-//! keeping graph construction, pipeline creation, and cache loading off the UI
-//! thread.
+//! Helio's render graph and wgpu resources are initialized lazily once the
+//! `WgpuSurface` is available. The editor prepares them on its dedicated
+//! `Helio Render` thread before taking WGPUI's GPU submit guard for its first
+//! frame, so initial graph construction, pipeline creation, and cache loading
+//! cannot hold up a surface reconfiguration.
 
 use crate::subsystems::render::{
     EditorCameraState, HelioRenderer, RenderMetrics, RenderSpikeLogConfig,
@@ -80,6 +80,22 @@ pub struct GpuRenderer {
 const FPS_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl GpuRenderer {
+    /// Prepare Helio's graph before acquiring a surface submit guard. This is
+    /// the expensive first-frame path and can compile many pipelines.
+    pub fn prepare_for_render(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> bool {
+        self.helio_renderer
+            .as_mut()
+            .map(|renderer| renderer.prepare_for_render(device, queue, width, height, format))
+            .unwrap_or(false)
+    }
+
     /// Render one frame directly into a `WgpuSurfaceHandle` back-buffer view.
     pub fn render_frame_to_surface(
         &mut self,

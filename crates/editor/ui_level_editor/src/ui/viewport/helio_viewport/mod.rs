@@ -242,7 +242,14 @@ impl Render for HelioViewport {
                 Some(s) if s.is_device_lost() => {}
                 Some(s) => {
                     tracing::info!("[HELIO-VIEWPORT] WgpuSurface created (format={:?})", format);
-                    self.start_render_thread(s.clone(), refresh_hz);
+                    // Let WGPUI finish presenting this frame before Helio asks
+                    // the shared device to build its cold pipeline graph. The
+                    // callback runs at the start of the next platform frame.
+                    let (first_frame_tx, first_frame_rx) = std::sync::mpsc::channel();
+                    window.on_next_frame(move |_, _| {
+                        let _ = first_frame_tx.send(());
+                    });
+                    self.start_render_thread(s.clone(), refresh_hz, first_frame_rx);
                     self.surface = Some(s);
                 }
                 None => {

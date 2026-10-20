@@ -1352,33 +1352,19 @@ impl HelioRenderer {
         self.spike_log_config
     }
 
-    /// Called each GPUI frame from the viewport.
-    pub fn render_frame(
+    /// Prepare or rebuild Helio's graph without holding WGPUI's submit guard.
+    ///
+    /// Graph construction can compile many pipelines. The editor calls this
+    /// before taking the surface submit guard so a resize/reconfigure of the
+    /// editor window is never held up by first-frame initialization.
+    pub fn prepare_for_render(
         &mut self,
         _device: &wgpu::Device,
         _queue: &wgpu::Queue,
-        view: &wgpu::TextureView,
         width: u32,
         height: u32,
         format: wgpu::TextureFormat,
-    ) -> Option<wgpu::SubmissionIndex> {
-        // When the Inspector capture is active, put the engine-side render
-        // phases into the same bounded WGPUI timeline as Window::draw. The
-        // cfg keeps the renderer usable without the optional editor UI, and
-        // the macro is a single relaxed capture check when idle.
-        #[cfg(feature = "editor-ui")]
-        let _wgpui_profile_bridge = WgpuiProfileBridge::begin();
-        #[cfg(feature = "editor-ui")]
-        gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
-        profiling::profile_scope!("helio_frame");
-        let frame_start = Instant::now();
-        let mut phases = FramePhases::new(frame_start);
-        let now = Instant::now();
-        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
-        self.last_frame = now;
-        self.frame_count += 1;
-        self.profiler_frame_counter += 1;
-
+    ) -> bool {
         // Level loading runs on the UI thread while rendering can hold the
         // engine mutex. Consume the camera mailbox before camera input and
         // idle detection so the saved pose cannot be silently skipped.
@@ -1431,7 +1417,7 @@ impl HelioRenderer {
                     "GPU device lost; the viewport stops drawing until it has a new one"
                 );
             }
-            return None;
+            return false;
         }
 
         // ── Lazy init (first frame only) ────────────────────────────────────────
@@ -1628,6 +1614,40 @@ impl HelioRenderer {
                 self.cam_pitch
             );
             // First frame must render (lazy init includes nothing visible)
+        }
+
+        true
+    }
+
+    /// Called each GPUI frame from the viewport.
+    pub fn render_frame(
+        &mut self,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> Option<wgpu::SubmissionIndex> {
+        // When the Inspector capture is active, put the engine-side render
+        // phases into the same bounded WGPUI timeline as Window::draw. The
+        // cfg keeps the renderer usable without the optional editor UI, and
+        // the macro is a single relaxed capture check when idle.
+        #[cfg(feature = "editor-ui")]
+        let _wgpui_profile_bridge = WgpuiProfileBridge::begin();
+        #[cfg(feature = "editor-ui")]
+        gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
+        profiling::profile_scope!("helio_frame");
+        let frame_start = Instant::now();
+        let mut phases = FramePhases::new(frame_start);
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame = now;
+        self.frame_count += 1;
+        self.profiler_frame_counter += 1;
+
+        if !self.prepare_for_render(_device, _queue, width, height, format) {
+            return None;
         }
 
         let previous_viewport_size = self.viewport_size;
