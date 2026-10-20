@@ -451,16 +451,11 @@ pub fn render_file_content(
     w: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
 ) -> impl IntoElement {
-    // Queue thumbnails for every asset in the opened folder before applying
-    // the UI filter or virtualizing rows. This keeps offscreen and filtered
-    // items from being skipped by the editor task queue.
+    // Import-state discovery runs in the background. Thumbnails are requested
+    // by render_grid_item for visible rows only, so opening a large folder does
+    // not enqueue work for every offscreen or filtered asset.
     if let Some(folder) = d.selected_folder.clone() {
         let folder_items = d.cached_items_for_folder(&folder);
-        for item in &folder_items {
-            if !item.is_folder && !item.is_ghost {
-                d.ensure_thumbnail(&item.path, cx);
-            }
-        }
         d.refresh_import_states(&folder, &folder_items, cx);
     }
     let items = d.get_filtered_items();
