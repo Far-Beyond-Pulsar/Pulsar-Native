@@ -326,7 +326,11 @@ impl PulsarApp {
         // Initialize plugin manager
         let t_plugins = std::time::Instant::now();
         tracing::info!("[PulsarApp] plugin init start");
-        let mut plugin_manager = PluginManager::new();
+        // The splash screen normally installed the plugins already; without it
+        // (compat path) they load in the background below.
+        let staged_manager = plugin_manager::take_staged_manager();
+        let plugins_staged = staged_manager.is_some();
+        let mut plugin_manager = staged_manager.unwrap_or_else(PluginManager::new);
         // Every editor -- built-in or a plugin library -- is created with a handle
         // to the engine's one language server and its one set of undo
         // histories (one per document, Pulsar-Native#931).
@@ -820,7 +824,7 @@ impl PulsarApp {
         }
 
         // Plugins load in the background; the layout restores once they have.
-        app.start_plugin_load(plugin_manager, window, cx);
+        app.start_plugin_load(plugin_manager, plugins_staged, window, cx);
 
         app
     }

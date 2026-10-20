@@ -14375,6 +14375,8 @@ dependencies = [
  "engine_state",
  "gpui-ce",
  "image",
+ "plugin_editor_api",
+ "plugin_manager",
  "serde",
  "serde_json",
  "smallvec",

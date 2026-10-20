@@ -18,12 +18,14 @@ use super::PulsarApp;
 const PLUGINS_DIR: &str = "plugins/editor";
 
 impl PulsarApp {
-    /// Load the editor plugins into `manager` in the background, publish it as
+    /// Load the editor plugins into `manager` in the background (none when the
+    /// splash screen already `staged` them), publish it as
     /// the global manager, then restore the layout. A window opened after the
     /// first finds the global manager already there and goes straight to ready.
     pub(super) fn start_plugin_load(
         &mut self,
         manager: PluginManager,
+        staged: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -33,10 +35,16 @@ impl PulsarApp {
             if load {
                 let mut manager = manager;
                 let started = Instant::now();
-                let prepared = cx
-                    .background_executor()
-                    .spawn(async { PluginManager::prepare_plugins_in_dir(PLUGINS_DIR) })
-                    .await;
+                // The splash screen normally prepared these already.
+                let prepared = match plugin_manager::take_prewarmed_plugins() {
+                    _ if staged => Vec::new(),
+                    Some(prepared) => prepared,
+                    None => {
+                        cx.background_executor()
+                            .spawn(async { PluginManager::prepare_plugins_in_dir(PLUGINS_DIR) })
+                            .await
+                    }
+                };
                 tracing::info!(
                     "[PulsarApp] {} plugin librar(ies) prepared in {:?}",
                     prepared.len(),

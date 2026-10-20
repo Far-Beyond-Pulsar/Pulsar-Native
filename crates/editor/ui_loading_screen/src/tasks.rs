@@ -7,7 +7,7 @@
 //! real-time.  There are no artificial `sleep` calls — the loading screen
 //! completes as fast as the actual work does.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 // ── Task result ────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ pub(crate) type TaskFn = fn(&Path) -> TaskResult;
 /// Sequential loading tasks.  Each entry is `(display_label, task_fn)`.
 /// The background thread executes them in order and reports real elapsed times.
 pub(crate) const TASKS: &[(&str, TaskFn)] = &[
+    ("Preparing editor plugins", task_prepare_plugins),
     ("Verifying project structure", task_verify_project),
     ("Indexing project files", task_index_project_files),
     ("Reading project configuration", task_read_config),
@@ -36,6 +37,8 @@ pub(crate) const TASKS: &[(&str, TaskFn)] = &[
     ("Scanning asset pipeline", task_scan_assets),
     ("Building file tree", task_scan_folder_tree),
     ("Warming scene cache", task_warm_scene),
+    ("Preloading open tabs", task_warm_open_tabs),
+    ("Preloading plugin assets", task_preload_plugin_assets),
     ("Loading engine settings", task_load_settings),
     ("Checking language server", task_check_lsp),
     ("Synchronizing Git hooks", task_sync_git_hooks),
@@ -327,4 +330,120 @@ fn count_files_recursive(dir: &Path, max_depth: usize) -> usize {
         }
     }
     n
+}
+
+// ── Editor startup work ────────────────────────────────────────────────────
+
+/// Load and verify every editor plugin library (OS loader, SHA-256, integrity
+/// manifest) on worker threads, so the editor window only has to install them.
+fn task_prepare_plugins(_project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let count = plugin_manager::prewarm_plugins("plugins/editor");
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(format!("{count} plugin librar(ies)")),
+    }
+}
+
+/// Read the files of the tabs the last session left open, so the editors that
+/// restore them in the first frames find them in the OS file cache. An asset
+/// that is a folder (a Blueprint class, a material) is read file by file. The
+/// paths are also kept for the plugins' own preloads.
+fn task_warm_open_tabs(project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let mut files = Vec::new();
+    if let Ok(text) = std::fs::read_to_string(project.join(".pulsar").join("layout.json")) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+            collect_tab_files(&value, &mut files);
+        }
+    }
+    files.sort();
+    files.dedup();
+    let absolute: Vec<PathBuf> = files
+        .iter()
+        .map(|file| {
+            let p = Path::new(file);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                project.join(p)
+            }
+        })
+        .collect();
+    if let Ok(mut slot) = OPEN_TAB_FILES.lock() {
+        *slot = absolute.clone();
+    }
+
+
+    let bytes: usize = std::thread::scope(|scope| {
+        let workers: Vec<_> = absolute
+            .iter()
+            .map(|path| scope.spawn(move || warm_path(path, 0)))
+            .collect();
+        workers.into_iter().filter_map(|w| w.join().ok()).sum()
+    });
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(format!("{} tabs, {} KB", files.len(), bytes / 1024)),
+    }
+}
+
+/// Every string stored under a `"file"` key, anywhere in a saved layout.
+fn collect_tab_files(value: &serde_json::Value, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map {
+                match (key.as_str(), child) {
+                    ("file", serde_json::Value::String(file)) => out.push(file.clone()),
+                    _ => collect_tab_files(child, out),
+                }
+            }
+        }
+        serde_json::Value::Array(items) => items.iter().for_each(|v| collect_tab_files(v, out)),
+        _ => {}
+    }
+}
+
+/// Read a file, or a folder's files (a few levels deep), returning the bytes.
+fn warm_path(path: &Path, depth: usize) -> usize {
+    if path.is_dir() {
+        if depth >= 3 {
+            return 0;
+        }
+        return std::fs::read_dir(path)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| warm_path(&entry.path(), depth + 1))
+            .sum();
+    }
+    std::fs::read(path).map(|b| b.len()).unwrap_or(0)
+}
+
+/// The files the last session's open tabs refer to, absolute. Filled by
+/// [`task_warm_open_tabs`], read by [`task_preload_plugin_assets`].
+static OPEN_TAB_FILES: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+/// Let every plugin preload what its editors will need for the open tabs
+/// (`EditorPlugin::preload`). Waits for the UI thread to install the plugins.
+fn task_preload_plugin_assets(project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let files = OPEN_TAB_FILES.lock().map(|f| f.clone()).unwrap_or_default();
+    let ctx = plugin_editor_api::PreloadContext {
+        project_root: project,
+        open_files: &files,
+    };
+    let results = plugin_manager::run_plugin_preloads(&ctx, Duration::from_secs(30));
+    let notes: Vec<String> = results
+        .into_iter()
+        .filter_map(|(id, note)| note.map(|n| format!("{id}: {n}")))
+        .collect();
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(if notes.is_empty() {
+            "nothing requested".to_string()
+        } else {
+            notes.join("; ")
+        }),
+    }
 }

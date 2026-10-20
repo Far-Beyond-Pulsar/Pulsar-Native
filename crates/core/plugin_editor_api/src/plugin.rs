@@ -8,6 +8,18 @@ use crate::version::VersionInfo;
 // ============================================================================
 // Core Plugin Trait
 // ============================================================================
+/// What the host tells a plugin about the project it may preload for.
+///
+/// See [`EditorPlugin::preload`].
+pub struct PreloadContext<'a> {
+    /// The project being opened.
+    pub project_root: &'a std::path::Path,
+    /// Absolute paths of the files the tabs left open last session refer to
+    /// (and the files inside folder-style assets). A plugin picks out the
+    /// ones it edits.
+    pub open_files: &'a [std::path::PathBuf],
+}
+
 
 /// Core trait that all editor plugins must implement.
 ///
@@ -44,6 +56,18 @@ pub trait EditorPlugin: Send + Sync {
     /// Called when the plugin is loaded.  Override to perform
     /// one-time initialisation.
     fn on_load(&mut self) {}
+
+    /// Called while the splash screen plays, on a worker thread, after every
+    /// plugin has loaded and before the editor window exists. Parse, decode or
+    /// otherwise prepare whatever the editors this plugin creates will need for
+    /// the files in `ctx.open_files`, and keep the result in a static of the
+    /// plugin's own (a plugin library has its own statics, so the host cannot
+    /// carry it for you); the editor takes it when it is created. It must be
+    /// safe to call from any thread, and returns a short note for the log.
+    fn preload(&self, ctx: &PreloadContext<'_>) -> Option<String> {
+        let _ = ctx;
+        None
+    }
 }
 
 // ============================================================================
@@ -148,6 +172,9 @@ macro_rules! export_plugin {
             }
             fn on_load(&mut self) {
                 $crate::plugin::EditorPlugin::on_load(&mut self.0)
+            }
+            fn preload(&self, ctx: &$crate::plugin::PreloadContext<'_>) -> Option<String> {
+                $crate::plugin::EditorPlugin::preload(&self.0, ctx)
             }
         }
 

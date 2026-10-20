@@ -28,6 +28,9 @@ pub struct LoadingScreen {
     rx: std::sync::mpsc::Receiver<LoadingEvent>,
     running_since: Option<Instant>,
     _analyzer: Option<Entity<RustAnalyzerManager>>,
+    /// Plugins being installed on this thread, one per frame, once their
+    /// libraries are prepared. See [`LoadingScreen::step_plugin_install`].
+    plugin_install: Option<PluginInstall>,
 }
 
 impl LoadingScreen {
@@ -94,6 +97,7 @@ impl LoadingScreen {
             splash: splash_handle(),
             rx,
             _analyzer: Some(analyzer),
+            plugin_install: None,
         }
     }
 
@@ -132,8 +136,12 @@ impl Render for LoadingScreen {
         }) = self.rx.try_recv()
         {
             self.advance(idx, elapsed, detail);
+            if idx == PREPARE_PLUGINS_TASK {
+                self.begin_plugin_install();
+            }
             cx.notify();
         }
+        self.step_plugin_install(cx);
 
         if !self.all_done {
             self.anim_tick = self.anim_tick.wrapping_add(1);
@@ -142,7 +150,7 @@ impl Render for LoadingScreen {
 
         if self.all_done && !self.opened_editor {
             let elapsed = self.created_at.elapsed();
-            if elapsed < MIN_DISPLAY_DURATION {
+            if elapsed < MIN_DISPLAY_DURATION || self.plugin_install.is_some() {
                 window.request_animation_frame();
             } else {
                 self.opened_editor = true;
@@ -228,5 +236,54 @@ impl Render for LoadingScreen {
                     )
                     .child(progress_bar_widget(self.progress, self.anim_tick)),
             )
+    }
+}
+
+/// Index of the task that prepares the plugin libraries; the install starts
+/// when it finishes.
+const PREPARE_PLUGINS_TASK: usize = 0;
+
+/// A manager being filled with prepared plugins.
+struct PluginInstall {
+    manager: plugin_manager::PluginManager,
+    queue: std::collections::VecDeque<<plugin_manager::PrewarmedPlugins as IntoIterator>::Item>,
+}
+
+impl LoadingScreen {
+    /// The plugin libraries are prepared: start installing them here. Running a
+    /// plugin's own code needs the UI thread, so it happens one plugin per
+    /// frame while the splash animates. When all are in, the manager is staged
+    /// for the editor and the plugins are released to preload (they preload on
+    /// the task thread, which waits for this).
+    fn begin_plugin_install(&mut self) {
+        let queue = plugin_manager::take_prewarmed_plugins()
+            .unwrap_or_default()
+            .into();
+        self.plugin_install = Some(PluginInstall {
+            manager: plugin_manager::PluginManager::new(),
+            queue,
+        });
+    }
+
+    fn step_plugin_install(&mut self, cx: &mut Context<Self>) {
+        let Some(install) = self.plugin_install.as_mut() else {
+            return;
+        };
+        match install.queue.pop_front() {
+            Some((_, Ok(prepared))) => {
+                match install.manager.install_prepared_plugin(prepared, cx) {
+                    Ok(id) => tracing::info!("✅ Successfully loaded plugin: {id}"),
+                    Err(e) => tracing::error!("❌ Failed to install plugin: {e}"),
+                }
+            }
+            Some((path, Err(e))) => tracing::error!("❌ Failed to load plugin {path:?}: {e}"),
+            None => {
+                if let Some(install) = self.plugin_install.take() {
+                    plugin_manager::publish_preload_targets(&install.manager);
+                    plugin_manager::stage_manager(install.manager);
+                }
+            }
+        }
+        cx.notify();
     }
 }
