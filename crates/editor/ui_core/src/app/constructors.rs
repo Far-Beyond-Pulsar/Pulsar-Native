@@ -596,6 +596,31 @@ impl PulsarApp {
             let preloaded_files = ui_loading_screen::take_preloaded_files();
             let had_preloaded_files = !preloaded_files.is_empty();
 
+            let mut registered_actions: Vec<_> =
+                gpui::generate_list_of_all_registered_actions().collect();
+            registered_actions.sort_by(|a, b| a.name.cmp(b.name));
+            let registered_windows = {
+                use gpui::UpdateGlobal as _;
+                let mut names = window_manager::WindowRegistry::update_global(cx, |registry, _| {
+                    registry.registered_names()
+                });
+                names.sort_unstable();
+                names
+            };
+            let mut creatable_file_types: Vec<_> = plugin_manager::global()
+                .map(|manager| {
+                    manager
+                        .read()
+                        .file_type_registry()
+                        .get_all_file_types()
+                        .into_iter()
+                        .filter(|file_type| file_type.is_creatable())
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            creatable_file_types.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+
             let (palette_id, palette_ref) =
                 PaletteManager::register_palette("commands", window, cx);
 
@@ -701,6 +726,93 @@ impl PulsarApp {
                     cx,
                 );
 
+                // GPUI's inventory-backed action registry is the source of
+                // commandable actions. Only documented, zero-argument actions
+                // are promoted automatically; required-parameter actions stay
+                // with the workflows that know how to supply those values.
+                let manually_named = [
+                    "ToggleFileManager",
+                    "ToggleUnifiedSidebar",
+                    "ToggleProblems",
+                    "ToggleMultiplayer",
+                    "ToggleAgentChat",
+                ];
+                for action in registered_actions {
+                    let Some(description) = action.documentation else {
+                        continue;
+                    };
+                    let short_name = action.name.rsplit("::").next().unwrap_or(action.name);
+                    if manually_named
+                        .iter()
+                        .any(|manual| short_name.ends_with(manual))
+                        || (action.build)(serde_json::json!({})).is_err()
+                    {
+                        continue;
+                    }
+                    let action_name = action.name.to_string();
+                    let display_name = humanize_action_name(short_name);
+                    let build_action = action.build;
+                    palette.add_item_with_keywords(
+                        display_name,
+                        description,
+                        IconName::Settings,
+                        "Actions",
+                        vec![action_name.clone(), "action".into(), "command".into()],
+                        move |window, cx| match build_action(serde_json::json!({})) {
+                            Ok(action) => window.dispatch_action(action, cx),
+                            Err(error) => {
+                                tracing::warn!(%error, "Could not build command palette action")
+                            }
+                        },
+                        cx,
+                    );
+                }
+
+                // Registered windows can be opened by name, so surface them
+                // without maintaining a second hand-written command list.
+                for name in registered_windows {
+                    let label = format!("Open {}", humanize_action_name(name));
+                    let registered_name = name;
+                    palette.add_item_with_keywords(
+                        label,
+                        "Open this registered engine window",
+                        IconName::Folder,
+                        "Windows",
+                        vec![name.to_string(), "window".into(), "open".into()],
+                        move |_window, cx| {
+                            use gpui::UpdateGlobal as _;
+                            window_manager::WindowRegistry::update_global(cx, |registry, cx| {
+                                registry.open(registered_name, cx)
+                            });
+                        },
+                        cx,
+                    );
+                }
+
+                // File creation choices come from the same plugin file-type
+                // registry used by the file manager's New menu.
+                for file_type in creatable_file_types {
+                    let id = file_type.id.to_string();
+                    let label = format!("Create {}", file_type.display_name);
+                    let description = format!("Create a new .{} asset", file_type.extension);
+                    palette.add_item_with_keywords(
+                        label,
+                        description,
+                        file_type.icon,
+                        "Create",
+                        vec![file_type.extension, id.clone(), "new".into()],
+                        move |window, cx| {
+                            window.dispatch_action(
+                                Box::new(ui_common::menu::NewAsset {
+                                    file_type_id: id.clone(),
+                                }),
+                                cx,
+                            );
+                        },
+                        cx,
+                    );
+                }
+
                 // Fast path: use the file list that the loading-screen background
                 // thread already scanned — no disk I/O on the main thread.
                 for entry in preloaded_files {
@@ -795,4 +907,28 @@ impl PulsarApp {
     pub fn workspace_root(&self) -> Option<&PathBuf> {
         self.state.project_path.as_ref()
     }
+}
+
+fn humanize_action_name(name: &str) -> String {
+    let mut result = String::with_capacity(name.len() + 8);
+    let mut previous = None;
+    for character in name.chars() {
+        if matches!(character, '_' | '-') {
+            if !result.ends_with(' ') {
+                result.push(' ');
+            }
+        } else {
+            if character.is_ascii_uppercase()
+                && previous.is_some_and(|previous: char| {
+                    previous.is_ascii_lowercase() || previous.is_ascii_digit()
+                })
+                && !result.ends_with(' ')
+            {
+                result.push(' ');
+            }
+            result.push(character);
+        }
+        previous = Some(character);
+    }
+    result.trim().to_string()
 }

@@ -1,6 +1,7 @@
 use gpui::{
     div, prelude::*, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    KeyDownEvent, MouseButton, Render, SharedString, StyledText, Window,
+    KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString, StyledText,
+    UniformListScrollHandle, Window,
 };
 use ui::scroll::Scrollable;
 use ui::{
@@ -10,12 +11,18 @@ use ui::{
     text::TextView,
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt, VirtualListScrollHandle,
 };
-
 use super::palette_trait::{PaletteDelegate, PaletteItem};
 
-struct CategoryState {
-    name: String,
-    expanded: bool,
+fn flatten_categories<I: Clone>(categories: &[(String, Vec<I>)]) -> Vec<(String, I)> {
+    categories
+        .iter()
+        .flat_map(|(category, items)| {
+            items
+                .iter()
+                .cloned()
+                .map(move |item| (category.clone(), item))
+        })
+        .collect()
 }
 
 /// Generic palette component that works with any PaletteDelegate
@@ -24,14 +31,13 @@ pub struct GenericPalette<D: PaletteDelegate> {
     focus_handle: FocusHandle,
     pub search_input: Entity<InputState>,
     delegate: D,
-    filtered_categories: Vec<(String, Vec<D::Item>)>,
-    category_states: Vec<CategoryState>,
+    filtered_items: Vec<(String, D::Item)>,
     selected_index: usize,
     show_docs: bool,
     /// Cached lowercased query for text highlighting
     search_query: SharedString,
     /// Scroll handle for the item list
-    scroll_handle: VirtualListScrollHandle,
+    scroll_handle: UniformListScrollHandle,
     /// Scrollbar state for the item list
     scrollbar_state: ScrollbarState,
     /// Scroll handle for the docs panel
@@ -47,7 +53,6 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         // Get all the data we need from delegate before moving it
         let placeholder = delegate.placeholder().to_string();
         let categories = delegate.categories();
-        let collapsed = delegate.categories_collapsed_by_default();
 
         let search_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
@@ -55,15 +60,9 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             state
         });
 
-        let category_states: Vec<CategoryState> = categories
-            .iter()
-            .map(|(name, _)| CategoryState {
-                name: name.clone(),
-                expanded: !collapsed,
-            })
-            .collect();
-
-        let filtered_categories = categories.clone();
+        let filtered_items = flatten_categories(&categories);
+        let scroll_handle = UniformListScrollHandle::new();
+        scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
 
         // Subscribe to input changes
         cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
@@ -79,12 +78,11 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             focus_handle: cx.focus_handle(),
             search_input,
             delegate,
-            filtered_categories,
-            category_states,
+            filtered_items,
             selected_index: 0,
             show_docs: false,
             search_query: SharedString::default(),
-            scroll_handle: VirtualListScrollHandle::new(),
+            scroll_handle,
             scrollbar_state: ScrollbarState::default(),
             docs_scroll_handle: VirtualListScrollHandle::new(),
             docs_scrollbar_state: ScrollbarState::default(),
@@ -103,19 +101,11 @@ impl<D: PaletteDelegate> GenericPalette<D> {
     /// Called when the palette is reopened to clear search and reset selection
     pub fn reset_filter(&mut self) {
         let categories = self.delegate.categories();
-        let collapsed = self.delegate.categories_collapsed_by_default();
-
-        self.filtered_categories = categories.clone();
-        self.category_states = categories
-            .iter()
-            .map(|(name, _)| CategoryState {
-                name: name.clone(),
-                expanded: !collapsed,
-            })
-            .collect();
+        self.filtered_items = flatten_categories(&categories);
         self.selected_index = 0;
         self.search_query = SharedString::default();
-        self.scroll_handle = VirtualListScrollHandle::new();
+        self.scroll_handle = UniformListScrollHandle::new();
+        self.scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
         self.scrollbar_state = ScrollbarState::default();
         self.docs_scroll_handle = VirtualListScrollHandle::new();
         self.docs_scrollbar_state = ScrollbarState::default();
@@ -127,7 +117,6 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         // Get data from new delegate
         let placeholder = new_delegate.placeholder().to_string();
         let categories = new_delegate.categories();
-        let collapsed = new_delegate.categories_collapsed_by_default();
 
         // Update delegate
         self.delegate = new_delegate;
@@ -139,19 +128,12 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         });
 
         // Update categories
-        self.category_states = categories
-            .iter()
-            .map(|(name, _)| CategoryState {
-                name: name.clone(),
-                expanded: !collapsed,
-            })
-            .collect();
-
-        self.filtered_categories = categories;
+        self.filtered_items = flatten_categories(&categories);
         self.selected_index = 0;
         self.show_docs = false;
         self.search_query = SharedString::default();
-        self.scroll_handle = VirtualListScrollHandle::new();
+        self.scroll_handle = UniformListScrollHandle::new();
+        self.scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
         self.scrollbar_state = ScrollbarState::default();
         self.docs_scroll_handle = VirtualListScrollHandle::new();
         self.docs_scrollbar_state = ScrollbarState::default();
@@ -160,85 +142,32 @@ impl<D: PaletteDelegate> GenericPalette<D> {
     }
 
     fn update_filter(&mut self, query: &str) {
-        let old_categories = self.filtered_categories.clone();
-        self.filtered_categories = self.delegate.filter(query);
+        let categories = self.delegate.filter(query);
+        self.filtered_items = flatten_categories(&categories);
         self.search_query = SharedString::from(query.to_lowercase());
-
-        // Update category states
-        let collapsed = self.delegate.categories_collapsed_by_default();
-        self.category_states = self
-            .filtered_categories
-            .iter()
-            .map(|(name, items)| CategoryState {
-                name: name.clone(),
-                // Auto-expand categories with matches when searching, or respect default
-                expanded: if query.is_empty() {
-                    !collapsed
-                } else {
-                    !items.is_empty()
-                },
-            })
-            .collect();
-
-        // Only reset selection if the filtered results actually changed
-        // This prevents arrow key navigation from resetting selection
-        let categories_changed = old_categories.len() != self.filtered_categories.len()
-            || old_categories
-                .iter()
-                .zip(self.filtered_categories.iter())
-                .any(|(a, b)| a.0 != b.0 || a.1.len() != b.1.len());
-
-        if categories_changed {
-            self.selected_index = 0;
-        } else {
-            // Clamp selection to valid range
-            let visible_items = self.get_all_visible_items();
-            if !visible_items.is_empty() && self.selected_index >= visible_items.len() {
-                self.selected_index = visible_items.len() - 1;
-            }
-        }
-    }
-
-    fn get_all_visible_items(&self) -> Vec<D::Item> {
-        self.filtered_categories
-            .iter()
-            .enumerate()
-            .filter(|(idx, _)| {
-                self.category_states
-                    .get(*idx)
-                    .map(|s| s.expanded)
-                    .unwrap_or(true)
-            })
-            .flat_map(|(_, (_, items))| items.iter().cloned())
-            .collect()
+        self.selected_index = 0;
+        self.scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
     }
 
     fn select_item(&mut self, cx: &mut Context<Self>) {
-        let visible_items = self.get_all_visible_items();
-        if let Some(item) = visible_items.get(self.selected_index) {
+        if let Some((_, item)) = self.filtered_items.get(self.selected_index) {
             self.delegate.confirm(item);
             cx.emit(DismissEvent);
         }
     }
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
-        let visible_items = self.get_all_visible_items();
-        if visible_items.is_empty() {
+        if self.filtered_items.is_empty() {
             return;
         }
 
         let new_index = ((self.selected_index as isize) + delta)
-            .rem_euclid(visible_items.len() as isize) as usize;
+            .rem_euclid(self.filtered_items.len() as isize) as usize;
 
         self.selected_index = new_index;
+        self.scroll_handle
+            .scroll_to_item(new_index, ScrollStrategy::Nearest);
         cx.notify();
-    }
-
-    fn toggle_category(&mut self, category_index: usize, cx: &mut Context<Self>) {
-        if let Some(state) = self.category_states.get_mut(category_index) {
-            state.expanded = !state.expanded;
-            cx.notify();
-        }
     }
 
     /// Highlight matching portions of text for a given search query
@@ -265,8 +194,10 @@ impl<D: PaletteDelegate> GenericPalette<D> {
 impl<D: PaletteDelegate> Render for GenericPalette<D> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selected_index = self.selected_index;
-        let visible_items = self.get_all_visible_items();
-        let selected_item = visible_items.get(selected_index).cloned();
+        let selected_item = self
+            .filtered_items
+            .get(selected_index)
+            .map(|(_, item)| item.clone());
         let show_docs = self.show_docs && self.delegate.supports_docs();
 
         // Outer wrapper: full-screen darkened background overlay
@@ -405,40 +336,44 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         selected_index: usize,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
-        if self
-            .filtered_categories
-            .iter()
-            .all(|(_, items)| items.is_empty())
-        {
+        if self.filtered_items.is_empty() {
             return self.render_no_results(cx);
         }
 
-        let has_categories = self
-            .filtered_categories
-            .iter()
-            .any(|(name, _)| !name.is_empty());
+        let row_count = self.filtered_items.len();
+        let list = gpui::uniform_list(
+            "palette-list",
+            row_count,
+            cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
+                range
+                    .filter_map(|index| {
+                        let (category, item) = this.filtered_items.get(index)?;
+                        Some(
+                            div()
+                                .w_full()
+                                .h(px(64.))
+                                .child(this.render_item(
+                                    item,
+                                    category,
+                                    index == selected_index,
+                                    index,
+                                    cx,
+                                )),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .track_scroll(&self.scroll_handle)
+        .size_full();
 
         div()
             .relative()
-            .h(px(384.))
-            .child(
-                v_flex()
-                    .h_full()
-                    .scrollable(Axis::Vertical)
-                    .id("palette-list")
-                    .track_scroll(&self.scroll_handle)
-                    .child(
-                        v_flex()
-                            .gap_0p5()
-                            .p_2()
-                            .children(self.render_category_items(
-                                selected_index,
-                                has_categories,
-                                cx,
-                            )),
-                    ),
-            )
-            .child(div().absolute().inset_0().child(Scrollbar::vertical(
+            .flex_1()
+            .min_h_0()
+            .overflow_hidden()
+            .child(list)
+            .child(div().absolute().inset_0().child(Scrollbar::uniform_scroll(
                 &self.scrollbar_state,
                 &self.scroll_handle,
             )))
@@ -467,110 +402,6 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                             .text_color(cx.theme().muted_foreground)
                             .child("No items found"),
                     ),
-            )
-            .into_any_element()
-    }
-
-    /// Renders all category headers and their items for the item list.
-    fn render_category_items(
-        &self,
-        selected_index: usize,
-        has_categories: bool,
-        cx: &mut Context<Self>,
-    ) -> Vec<gpui::AnyElement> {
-        let mut elements = Vec::new();
-        // Global index across all visible items
-        let mut global_index = 0;
-
-        for (cat_idx, (cat_name, items)) in self.filtered_categories.iter().enumerate() {
-            if !cat_name.is_empty() && has_categories {
-                let expanded = self
-                    .category_states
-                    .get(cat_idx)
-                    .map(|s| s.expanded)
-                    .unwrap_or(true);
-
-                elements.push(self.render_category_header(
-                    cat_idx,
-                    cat_name,
-                    items.len(),
-                    expanded,
-                    cx,
-                ));
-
-                if expanded {
-                    for item in items {
-                        let is_selected = global_index == selected_index;
-                        elements.push(self.render_item(item, is_selected, global_index, cx));
-                        global_index += 1;
-                    }
-                } else {
-                    // Even when collapsed we still count items for selection indices
-                    for _ in items {
-                        global_index += 1;
-                    }
-                }
-            } else {
-                for item in items {
-                    let is_selected = global_index == selected_index;
-                    elements.push(self.render_item(item, is_selected, global_index, cx));
-                    global_index += 1;
-                }
-            }
-        }
-
-        elements
-    }
-
-    /// Renders a single category header row.
-    fn render_category_header(
-        &self,
-        cat_idx: usize,
-        cat_name: &str,
-        item_count: usize,
-        expanded: bool,
-        cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
-        h_flex()
-            .w_full()
-            .px_2()
-            .py_1p5()
-            .gap_2()
-            .items_center()
-            .cursor_pointer()
-            .rounded(px(4.))
-            .hover(|s| s.bg(cx.theme().muted.opacity(0.1)))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this, _, _, cx| {
-                    this.toggle_category(cat_idx, cx);
-                }),
-            )
-            .child(
-                Icon::new(if expanded {
-                    IconName::ChevronDown
-                } else {
-                    IconName::ChevronRight
-                })
-                .size(px(12.))
-                .text_color(cx.theme().muted_foreground),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .text_xs()
-                    .font_semibold()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(cat_name.to_string()),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .flex_shrink_0()
-                    .text_color(cx.theme().muted_foreground)
-                    .opacity(0.6)
-                    .child(format!("({})", item_count)),
             )
             .into_any_element()
     }
@@ -670,12 +501,14 @@ impl<D: PaletteDelegate> GenericPalette<D> {
     fn render_item(
         &self,
         item: &D::Item,
+        category: &str,
         is_selected: bool,
         item_index: usize,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         h_flex()
             .w_full()
+            .flex_shrink_0()
             .px_3()
             .py_2()
             .rounded(px(6.))
@@ -739,6 +572,16 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                             .child(item.description().to_string()),
                     ),
             )
+            .when(!category.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .flex_shrink_0()
+                        .text_color(cx.theme().muted_foreground)
+                        .opacity(0.7)
+                        .child(category.to_string()),
+                )
+            })
             .into_any_element()
     }
 }

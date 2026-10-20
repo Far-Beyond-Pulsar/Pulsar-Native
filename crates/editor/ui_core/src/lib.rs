@@ -84,6 +84,11 @@ pub fn init(cx: &mut gpui::App) {
         gpui::KeyBinding::new::<ToggleCommandPalette>("alt-space", ToggleCommandPalette {}, None);
     cx.bind_keys([
         toggle_palette,
+        gpui::KeyBinding::new::<ToggleCommandPalette>(
+            "ctrl-shift-space",
+            ToggleCommandPalette {},
+            None,
+        ),
         gpui::KeyBinding::new::<ToggleFileManager>("ctrl-space", ToggleFileManager {}, None),
         gpui::KeyBinding::new::<GoBack>("alt-left", GoBack {}, None),
         gpui::KeyBinding::new::<GoForward>("alt-right", GoForward {}, None),

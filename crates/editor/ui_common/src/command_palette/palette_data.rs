@@ -229,6 +229,9 @@ impl Palette {
         }
 
         let mut result: Vec<_> = categories.into_iter().collect();
+        for (_, items) in &mut result {
+            items.sort_by(|a, b| a.name.cmp(&b.name));
+        }
         result.sort_by(|a, b| a.0.cmp(&b.0));
         result
     }
