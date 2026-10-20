@@ -256,6 +256,11 @@ impl LoadingScreen {
     /// for the editor and the plugins are released to preload (they preload on
     /// the task thread, which waits for this).
     fn begin_plugin_install(&mut self) {
+        // A second project in this process: the plugins are installed already.
+        if let Some(global) = plugin_manager::global() {
+            plugin_manager::publish_preload_targets(&global.read());
+            return;
+        }
         let queue = plugin_manager::take_prewarmed_plugins()
             .unwrap_or_default()
             .into();

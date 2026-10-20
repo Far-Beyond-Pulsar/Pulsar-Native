@@ -338,6 +338,13 @@ fn count_files_recursive(dir: &Path, max_depth: usize) -> usize {
 /// manifest) on worker threads, so the editor window only has to install them.
 fn task_prepare_plugins(_project: &Path) -> TaskResult {
     let t = Instant::now();
+    // Opening a second project in this process: the plugins are loaded already.
+    if plugin_manager::global().is_some() {
+        return TaskResult {
+            elapsed: t.elapsed(),
+            detail: Some("already loaded".to_string()),
+        };
+    }
     let count = plugin_manager::prewarm_plugins("plugins/editor");
     TaskResult {
         elapsed: t.elapsed(),
