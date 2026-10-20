@@ -4810,6 +4810,7 @@ dependencies = [
  "helio-pass-forward-lit",
  "helio-pass-fxaa",
  "helio-pass-gbuffer",
+ "helio-pass-gi",
  "helio-pass-hiz",
  "helio-pass-hlfs",
  "helio-pass-indirect-dispatch",
@@ -4835,6 +4836,7 @@ dependencies = [
  "helio-pass-tsr",
  "helio-pass-virtual-geometry",
  "helio-pass-volumetric-fog",
+ "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "image",
  "log",
@@ -4926,6 +4928,7 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-mats",
+ "helio-pass-gi",
  "helio-pass-radiance-cascades",
  "helio-pass-shadow-matrix",
  "helio-pass-sky",
@@ -5015,6 +5018,17 @@ dependencies = [
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
  "serde_json",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-gi"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-pass-sky",
  "wgpu",
 ]
 
@@ -5163,7 +5177,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "helio-pass-sky",
  "wgpu",
 ]
 
@@ -5317,6 +5330,7 @@ dependencies = [
  "helio-core",
  "helio-pass-postprocess",
  "helio-pass-shadow-matrix",
+ "helio-pass-sky",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -5330,6 +5344,9 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
+ "helio-mats",
+ "helio-pass-gi",
+ "helio-pass-shadow-matrix",
  "image",
  "miniz_oxide",
  "rayon",
