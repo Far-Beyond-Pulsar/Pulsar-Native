@@ -8,6 +8,7 @@ mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
 pub mod renderer;
+pub mod scene_renderer;
 pub mod voxel_backend;
 pub mod voxel_mesh_backend;
 
@@ -22,5 +23,9 @@ pub use renderer::{
     PORTAL_DEBUG_VIEW_MODE,
     VoxelBrushRequest,
     VoxelBrushTool,
+};
+pub use scene_renderer::{
+    DeviceOwner, FrameProjection, FrameView, PreparedFrame, SceneRenderer, SceneRendererOptions,
+    VoxelGround,
 };
 pub use voxel_backend::{VoxelChunkSaves, VoxelSavedChunks};

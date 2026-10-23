@@ -96,6 +96,25 @@ pub struct RenderCamera {
     pub far: f32,
 }
 
+impl RenderCamera {
+    /// The frame this camera sees, `aspect` (width over height) wide.
+    pub fn frame_view(&self, aspect: f32) -> engine_backend::subsystems::render::FrameView {
+        use engine_backend::subsystems::render::{FrameProjection, FrameView};
+        let position = glam::Vec3::from_array(self.position);
+        FrameView {
+            eye: position.as_dvec3(),
+            forward: (glam::Vec3::from_array(self.target) - position).normalize_or(glam::Vec3::NEG_Z),
+            up: glam::Vec3::from_array(self.up),
+            aspect,
+            projection: FrameProjection::Perspective {
+                fov_y: self.fov_y,
+                near: self.near,
+                far: self.far,
+            },
+        }
+    }
+}
+
 impl Default for RenderCamera {
     fn default() -> Self {
         Self {

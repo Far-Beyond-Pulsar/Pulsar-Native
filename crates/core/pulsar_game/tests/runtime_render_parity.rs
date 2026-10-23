@@ -4,17 +4,19 @@
 //! editor viewport's, all headless; and a disabled mesh is drawn by none.
 //!
 //! The standalone and embedded renderers are the ones the game window and
-//! the PIE viewport build (`pulsar_game::game_renderer`); only the window
-//! surface is replaced by an offscreen texture. Needs a GPU adapter
-//! (lavapipe works); skips without one.
+//! the PIE viewport build (`SceneRenderer`, the editor viewport's
+//! construction); only the window surface is replaced by an offscreen
+//! texture. Needs a GPU adapter (lavapipe works); skips without one.
 
 use std::path::Path;
 use std::sync::Arc;
 
 use engine_backend::scene::{attachments, RuntimeLevel, SceneWorldExt, SharedScene};
-use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
+use engine_backend::subsystems::render::{
+    DeviceOwner, EditorCameraState, FrameProjection, FrameView, HelioRenderer, SceneRenderer,
+    SceneRendererOptions,
+};
 use helio_component::components::StaticMeshComponent;
-use pulsar_game::game_renderer::{build_game_renderer, project_renderer_config, DeviceOwner};
 use serde_json::json;
 
 const SIZE: u32 = 192;
@@ -90,6 +92,35 @@ impl Target {
     }
 }
 
+/// A game renderer over `scene`, as the game window (`DeviceOwner::Renderer`)
+/// or the PIE viewport (`DeviceOwner::Host`) builds it.
+fn game_renderer(target: &Target, scene: &SharedScene, owner: DeviceOwner) -> SceneRenderer {
+    SceneRenderer::new(
+        Arc::clone(&target.device),
+        Arc::clone(&target.queue),
+        scene,
+        SIZE,
+        SIZE,
+        FORMAT,
+        SceneRendererOptions::game(owner, false),
+    )
+}
+
+/// The game's view from `eye` towards `target`, as a `RenderCamera` gives it.
+fn look_at(eye: glam::Vec3, target: glam::Vec3, far: f32) -> FrameView {
+    FrameView {
+        eye: eye.as_dvec3(),
+        forward: (target - eye).normalize(),
+        up: glam::Vec3::Y,
+        aspect: 1.0,
+        projection: FrameProjection::Perspective {
+            fov_y: std::f32::consts::FRAC_PI_4,
+            near: 0.1,
+            far,
+        },
+    }
+}
+
 /// Pixels whose RGB differ by more than a small threshold.
 fn changed(a: &[u8], b: &[u8]) -> usize {
     a.chunks_exact(4)
@@ -128,37 +159,17 @@ fn render(runtime: Runtime, target: &Target, scene: &SharedScene, distance: f32)
             }
         }
         Runtime::Standalone | Runtime::Embedded => {
-            let (config, owner) = match runtime {
-                Runtime::Standalone => (
-                    project_renderer_config(SIZE, SIZE, FORMAT),
-                    DeviceOwner::Game,
-                ),
-                _ => (
-                    helio::RendererConfig::new(SIZE, SIZE, FORMAT),
-                    DeviceOwner::Host,
-                ),
+            let owner = match runtime {
+                Runtime::Standalone => DeviceOwner::Renderer,
+                _ => DeviceOwner::Host,
             };
-            let mut renderer = build_game_renderer(
-                Arc::clone(&target.device),
-                Arc::clone(&target.queue),
-                scene,
-                config,
-                false,
-                owner,
-            );
-            let camera = helio::Camera::perspective_look_at(
-                eye,
-                glam::Vec3::ZERO,
-                glam::Vec3::Y,
-                std::f32::consts::FRAC_PI_4,
-                1.0,
-                0.1,
-                distance * 10.0,
-            );
+            let mut renderer = game_renderer(target, scene, owner);
+            let camera = look_at(eye, glam::Vec3::ZERO, distance * 10.0);
             for _ in 0..FRAMES {
                 // As the game loop and the PIE tick do: step the world, then render.
-                scene.write().step();
-                renderer.render(&camera, &view).expect("render");
+                renderer.step_scene(&mut scene.write());
+                let frame = renderer.prepare_frame(&camera, [SIZE, SIZE]);
+                renderer.render(&frame.camera, &view).expect("render");
                 target
                     .device
                     .poll(wgpu::PollType::wait_indefinitely())
@@ -344,25 +355,14 @@ fn the_game_clock_drives_animation_and_pause_freezes_it() {
         texture,
     };
     let view = target.texture.create_view(&Default::default());
-    let mut renderer = build_game_renderer(
-        Arc::clone(&target.device),
-        Arc::clone(&target.queue),
-        &scene,
-        helio::RendererConfig::new(SIZE, SIZE, FORMAT),
-        false,
-        DeviceOwner::Host,
-    );
+    let mut renderer = game_renderer(&target, &scene, DeviceOwner::Host);
     // Temporal filters and rasterization deterministic: what changes is the
     // game clock's doing.
-    renderer.set_frame_delta_override(Some(1.0 / 30.0));
-    renderer.set_camera_jitter_override(Some([0.0, 0.0]));
-    let camera = helio::Camera::perspective_look_at(
+    renderer.renderer.set_frame_delta_override(Some(1.0 / 30.0));
+    renderer.renderer.set_camera_jitter_override(Some([0.0, 0.0]));
+    let camera = look_at(
         glam::Vec3::new(0.0, 1.0, 5.0),
         glam::Vec3::new(0.0, 0.5, 0.0),
-        glam::Vec3::Y,
-        std::f32::consts::FRAC_PI_4,
-        1.0,
-        0.1,
         100.0,
     );
     let mut frames = |game: &mut TickLoop, count: usize| {
@@ -370,9 +370,12 @@ fn the_game_clock_drives_animation_and_pause_freezes_it() {
             // The embedded game's frame: tick, the game clock to the
             // renderer, step the world, render.
             let time = game.tick_once();
-            renderer.set_frame_clock_delta(Some(time.delta.as_secs_f32()));
-            scene.write().step();
-            renderer.render(&camera, &view).expect("render");
+            renderer
+                .renderer
+                .set_frame_clock_delta(Some(time.delta.as_secs_f32()));
+            renderer.step_scene(&mut scene.write());
+            let frame = renderer.prepare_frame(&camera, [SIZE, SIZE]);
+            renderer.render(&frame.camera, &view).expect("render");
             target
                 .device
                 .poll(wgpu::PollType::wait_indefinitely())
