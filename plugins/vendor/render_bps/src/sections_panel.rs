@@ -86,8 +86,18 @@ impl Render for SectionsPanel {
                     .cursor_pointer()
                     .hover(|style| style.bg(hover))
                     .on_click(cx.listener(move |this, _, window, cx| {
+                        // A click lands while the dock is being updated, and opening a tab
+                        // updates the dock: do it once this is done, as the Macros panel does.
                         let id = id.clone();
-                        let _ = this.editor.update(cx, |editor, cx| editor.open_macro_tab(&id, window, cx));
+                        let editor = this.editor.clone();
+                        let window_handle = window.window_handle();
+                        cx.defer(move |cx| {
+                            let _ = cx.update_window(window_handle, |_, window, cx| {
+                                let _ = editor.update(cx, |editor, cx| {
+                                    editor.open_macro_tab(&id, window, cx)
+                                });
+                            });
+                        });
                     }))
                     .child(div().flex_1().text_sm().truncate().child(name.clone()))
                     .child(div().text_xs().text_color(muted).child(format!("{nodes} nodes"))),

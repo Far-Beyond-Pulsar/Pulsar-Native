@@ -33,9 +33,16 @@ impl BuffersPanel {
         Self { editor, search, query: String::new(), focus_handle: cx.focus_handle() }
     }
 
-    fn add(&self, definition: &'static str, entry: String, cx: &mut Context<Self>) {
-        let _ = self.editor.update(cx, |editor, cx| {
-            editor.add_profile_node(definition, vec![("buffer".to_string(), entry)], cx);
+    fn add(&self, definition: &'static str, entry: String, window: &Window, cx: &mut Context<Self>) {
+        // Clicks land while the dock is being updated; touch the editor afterwards.
+        let editor = self.editor.clone();
+        let window_handle = window.window_handle();
+        cx.defer(move |cx| {
+            let _ = cx.update_window(window_handle, |_, _, cx| {
+                let _ = editor.update(cx, |editor, cx| {
+                    editor.add_profile_node(definition, vec![("buffer".to_string(), entry)], cx);
+                });
+            });
         });
     }
 
@@ -110,13 +117,13 @@ impl Render for BuffersPanel {
                     .hover(|style| style.bg(hover))
                     .child(div().flex_1().text_sm().truncate().child(name.clone()))
                     .child(
-                        pill(("get", index), "Get", accent).on_click(cx.listener(move |this, _, _, cx| {
-                            this.add(core_nodes::BUFFER_GET, get_entry.clone(), cx);
+                        pill(("get", index), "Get", accent).on_click(cx.listener(move |this, _, window, cx| {
+                            this.add(core_nodes::BUFFER_GET, get_entry.clone(), window, cx);
                         })),
                     )
                     .child(
-                        pill(("set", index), "Set", accent).on_click(cx.listener(move |this, _, _, cx| {
-                            this.add(core_nodes::BUFFER_SET, set_entry.clone(), cx);
+                        pill(("set", index), "Set", accent).on_click(cx.listener(move |this, _, window, cx| {
+                            this.add(core_nodes::BUFFER_SET, set_entry.clone(), window, cx);
                         })),
                     ),
             );
