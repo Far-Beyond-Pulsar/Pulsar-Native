@@ -24,6 +24,8 @@
 //!   drag stroke across the view through the editor's pointer queue (op:
 //!   dig, build, paint; tool: stamp, flatten, smooth), then release, settle
 //!   and capture; logs per-frame times and the edits the journal gained.
+//! - `debug:<mode>`: later views render the renderer's debug view `mode`
+//!   (the toolbar's view mode: 0 lit, 26 the voxel sun's visibility).
 //! - `at:<x>:<y>:<z>`: later views are placed over this direction from the
 //!   planet's centre (an editor session's `eye` from its logs).
 //! - `down:<metres>`: move the camera that far down the local vertical (into
@@ -567,6 +569,13 @@ fn main() {
                 h.report("drag settle", &times);
                 println!("HARNESS drag: journal {} -> {} edits", before, h.edits());
                 h.capture(&format!("drag_{n}"));
+            }
+            "debug" => {
+                // The renderer's debug view for the views after (the
+                // toolbar's view mode; 0 lit, 26 the voxel sun).
+                let mode = number(1, 0.0) as u32;
+                h.renderer.editor_mailbox().set_viewport_debug_mode(mode);
+                println!("HARNESS debug view {mode}");
             }
             "at" => {
                 direction =
