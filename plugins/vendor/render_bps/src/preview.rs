@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use blueprint_editor_plugin::BlueprintGraph;
+use blueprint_graph::BlueprintAsset;
 use engine_backend::scene::{new_scene, resolve_level_assets, RuntimeLevel};
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use engine_backend::subsystems::render::helio_renderer::pipelines;
@@ -115,8 +115,8 @@ impl PipelinePreview {
     }
 
     /// Runs the graph through the preview renderer, if it is sound.
-    pub fn apply_graph(&mut self, graph: &BlueprintGraph, cx: &mut Context<Self>) {
-        let asset = model::live_asset(graph);
+    pub fn apply_graph(&mut self, document: &BlueprintAsset, cx: &mut Context<Self>) {
+        let asset = model::buildable_asset(document, model::registry());
         let problems = model::problems(&asset, model::registry());
         if !problems.is_empty() {
             self.status = Some((true, problems.join("; ")));

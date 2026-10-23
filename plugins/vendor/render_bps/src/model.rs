@@ -201,59 +201,144 @@ fn params_from_text<'a>(
 
 // ── Asset <-> editor description ─────────────────────────────────────────────
 
-/// A render graph as the editor's document model.
-pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result<BlueprintAsset, String> {
-    let mut graph = GraphDescription::new(if asset.name.is_empty() { "Render Graph" } else { &asset.name });
-    graph.metadata.description = asset.description.clone();
+/// Definition id of a node that places a collapsed graph, as the editor writes it.
+const SUBGRAPH_PREFIX: &str = "subgraph:collapsed:";
+/// Ids of the entry and exit nodes inside a collapsed graph description.
+const ENTRY_ID: &str = "section_entry";
+const EXIT_ID: &str = "section_exit";
+const ENTRY_TYPE: &str = "macro_entry";
+const EXIT_TYPE: &str = "macro_exit";
 
+/// The collapsed graph a node placing one names: `subgraph:collapsed:<id>`, and the
+/// older `subgraph:<id>` and `macro:<id>` forms.
+fn called_section(definition_id: &str) -> Option<&str> {
+    let rest = definition_id
+        .strip_prefix("subgraph:")
+        .or_else(|| definition_id.strip_prefix("macro:"))?;
+    let rest = rest.strip_prefix("collapsed:").or_else(|| rest.strip_prefix("macro:")).unwrap_or(rest);
+    (!rest.is_empty()).then_some(rest)
+}
+
+/// Ports from the pins of a node placing a collapsed graph.
+fn ports_from_pins(pins: &[blueprint_editor_plugin::Pin]) -> Vec<helio_graph_asset::SectionPort> {
+    pins.iter().map(|pin| port_from_type(&pin.id, &pin.data_type.type_name)).collect()
+}
+
+fn port_from_type(name: &str, type_name: &str) -> helio_graph_asset::SectionPort {
+    helio_graph_asset::SectionPort {
+        name: name.to_string(),
+        ty: pin_type_of(type_name),
+        resource: type_name
+            .split_once(':')
+            .map(|(_, resource)| resource.to_string())
+            .unwrap_or_default(),
+    }
+}
+
+fn pin_instances(pins: &[PinDesc], direction: DescPinType) -> Vec<PinInstance> {
+    pins.iter()
+        .map(|pin| PinInstance {
+            id: pin.name.clone(),
+            pin: DescPin {
+                name: pin_label(pin),
+                pin_type: direction.clone(),
+                data_type: DataType::from_type_str(&pin_type_string(pin)),
+                connected_to: Vec::new(),
+            },
+        })
+        .collect()
+}
+
+/// One graph of the asset (the main one, or a section) as an editor description.
+/// Inside a section (`io`), the entry and exit nodes carry its ports.
+fn build_description(
+    name: &str,
+    nodes: &[NodeInstance],
+    connections: &[Connection],
+    comments: &[helio_graph_asset::GraphComment],
+    registry: &NodeRegistry,
+    sections: &[helio_graph_asset::GraphSection],
+    io: Option<&helio_graph_asset::GraphSection>,
+) -> Result<GraphDescription, String> {
+    let mut graph = GraphDescription::new(name);
     let mut pin_kinds: HashMap<(String, String), PinKind> = HashMap::new();
-    for node in &asset.nodes {
+
+    for node in nodes {
+        let section_id = helio_graph_asset::sections::section_id(&node.kind);
+        let section = section_id.and_then(|id| sections.iter().find(|s| s.id == id));
+        let definition = match section_id {
+            Some(id) => format!("{SUBGRAPH_PREFIX}{id}"),
+            None => node.kind.clone(),
+        };
         let mut instance = DescNode::new(
             &node.id,
-            &node.kind,
+            &definition,
             Position { x: node.position[0], y: node.position[1] },
         );
-        if let Some(descriptor) = registry.get(&node.kind) {
+        let pins = if let Some(section) = section {
+            Some(helio_graph_asset::sections::section_pins(section))
+        } else if let Some(descriptor) = registry.get(&node.kind) {
             let params = descriptor.effective_params(&node.params);
             for (key, value) in &params {
                 instance.properties.insert(key.clone(), Value::from(param_string(value)));
             }
-            let pins = descriptor.pins(&params);
-            for (list, direction, is_input) in [
-                (&pins.inputs, DescPinType::Input, true),
-                (&pins.outputs, DescPinType::Output, false),
-            ] {
-                for pin in list {
-                    pin_kinds.insert((node.id.clone(), pin.name.clone()), pin.ty.kind);
-                    let entry = PinInstance {
-                        id: pin.name.clone(),
-                        pin: DescPin {
-                            name: pin_label(pin),
-                            pin_type: direction.clone(),
-                            data_type: DataType::from_type_str(&pin_type_string(pin)),
-                            connected_to: Vec::new(),
-                        },
-                    };
-                    if is_input {
-                        instance.inputs.push(entry);
-                    } else {
-                        instance.outputs.push(entry);
-                    }
-                }
+            Some(descriptor.pins(&params))
+        } else {
+            None
+        };
+        if let Some(pins) = pins {
+            for pin in pins.inputs.iter().chain(&pins.outputs) {
+                pin_kinds.insert((node.id.clone(), pin.name.clone()), pin.ty.kind);
             }
+            instance.inputs = pin_instances(&pins.inputs, DescPinType::Input);
+            instance.outputs = pin_instances(&pins.outputs, DescPinType::Output);
         }
         graph.add_node(instance)?;
     }
 
-    for (index, connection) in asset.connections.iter().enumerate() {
-        let kind = pin_kinds
-            .get(&(connection.from.node.clone(), connection.from.pin.clone()))
-            .copied();
+    if let Some(section) = io {
+        let (left, right, top) = if nodes.is_empty() {
+            (0.0, 0.0, 0.0)
+        } else {
+            (
+                nodes.iter().map(|n| n.position[0]).fold(f32::MAX, f32::min),
+                nodes.iter().map(|n| n.position[0]).fold(f32::MIN, f32::max),
+                nodes.iter().map(|n| n.position[1]).fold(f32::MAX, f32::min),
+            )
+        };
+        let entry_pins: Vec<PinDesc> =
+            section.inputs.iter().map(helio_graph_asset::SectionPort::to_pin).collect();
+        let exit_pins: Vec<PinDesc> =
+            section.outputs.iter().map(helio_graph_asset::SectionPort::to_pin).collect();
+        let mut entry = DescNode::new(ENTRY_ID, ENTRY_TYPE, Position { x: left - 360.0, y: top });
+        entry.outputs = pin_instances(&entry_pins, DescPinType::Output);
+        let mut exit = DescNode::new(EXIT_ID, EXIT_TYPE, Position { x: right + 560.0, y: top });
+        exit.inputs = pin_instances(&exit_pins, DescPinType::Input);
+        for pin in &entry_pins {
+            pin_kinds.insert((ENTRY_ID.to_string(), pin.name.clone()), pin.ty.kind);
+        }
+        for pin in &exit_pins {
+            pin_kinds.insert((EXIT_ID.to_string(), pin.name.clone()), pin.ty.kind);
+        }
+        graph.add_node(entry)?;
+        graph.add_node(exit)?;
+    }
+
+    let node_name = |id: &str| -> String {
+        match id {
+            helio_graph_asset::SECTION_ENTRY => ENTRY_ID.to_string(),
+            helio_graph_asset::SECTION_EXIT => EXIT_ID.to_string(),
+            other => other.to_string(),
+        }
+    };
+    for (index, connection) in connections.iter().enumerate() {
+        let (from_node, to_node) = (node_name(&connection.from.node), node_name(&connection.to.node));
+        let kind = pin_kinds.get(&(from_node.clone(), connection.from.pin.clone())).copied();
         let wire = DescConnection {
             id: format!("wire{index}"),
-            source_node: connection.from.node.clone(),
+            source_node: from_node,
             source_pin: connection.from.pin.clone(),
-            target_node: connection.to.node.clone(),
+            target_node: to_node,
             target_pin: connection.to.pin.clone(),
             connection_type: if kind == Some(PinKind::Flow) {
                 ConnectionType::Execution
@@ -264,12 +349,11 @@ pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result
         // A wire to a pin the node no longer has is dropped here; validation of
         // the saved asset reports the same thing.
         if let Err(error) = graph.add_connection(wire) {
-            log::warn!("render graph `{}`: dropped wire: {error}", asset.name);
+            log::warn!("render graph `{name}`: dropped wire: {error}");
         }
     }
 
-    graph.comments = asset
-        .comments
+    graph.comments = comments
         .iter()
         .map(|c| blueprint_graph::BlueprintComment {
             id: c.id.clone(),
@@ -280,22 +364,81 @@ pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result
             contained_node_ids: c.nodes.clone(),
         })
         .collect();
+    Ok(graph)
+}
+
+/// A render graph as the editor document model: the main graph, and each
+/// section as a collapsed graph of its own.
+pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result<BlueprintAsset, String> {
+    let name = if asset.name.is_empty() { "Render Graph" } else { &asset.name };
+    let mut graph = build_description(
+        name,
+        &asset.nodes,
+        &asset.connections,
+        &asset.comments,
+        registry,
+        &asset.sections,
+        None,
+    )?;
+    graph.metadata.description = asset.description.clone();
 
     let mut blueprint = BlueprintAsset::new();
     blueprint.main_graph = graph;
+    for section in &asset.sections {
+        let inner = build_description(
+            &section.name,
+            &section.nodes,
+            &section.connections,
+            &[],
+            registry,
+            &asset.sections,
+            Some(section),
+        )?;
+        let interface_pins =
+            |ports: &[helio_graph_asset::SectionPort]| -> Vec<blueprint_graph::SubGraphPin> {
+                ports
+                    .iter()
+                    .map(|port| {
+                        let pin = port.to_pin();
+                        blueprint_graph::SubGraphPin {
+                            id: port.name.clone(),
+                            name: pin_label(&pin),
+                            data_type: DataType::from_type_str(&pin_type_string(&pin)),
+                            description: None,
+                            default_value: None,
+                            is_instance_editable: false,
+                            category: None,
+                        }
+                    })
+                    .collect()
+            };
+        let mut subgraph = blueprint_graph::SubGraph::new(&section.id, &section.name);
+        subgraph.kind = blueprint_graph::SubGraphKind::Collapsed;
+        subgraph.description = "A section of the render graph".to_string();
+        subgraph.graph = inner;
+        subgraph.interface = blueprint_graph::SubGraphInterface {
+            inputs: interface_pins(&section.inputs),
+            outputs: interface_pins(&section.outputs),
+        };
+        subgraph.macro_config.hide_in_palette = true;
+        subgraph.macro_config.category = "Collapsed".to_string();
+        blueprint.subgraphs.push(subgraph);
+    }
     Ok(blueprint)
 }
 
-/// The inverse of [`to_blueprint_asset`].
-pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry) -> GraphAsset {
-    let graph = &blueprint.main_graph;
+/// The nodes of an editor description, in id order, with the nodes placing
+/// collapsed graphs turned into section nodes. Entry and exit nodes are left out.
+fn nodes_of(graph: &GraphDescription, registry: &NodeRegistry) -> Vec<NodeInstance> {
     let mut ids: Vec<&String> = graph.nodes.keys().collect();
     ids.sort();
-    let nodes = ids
-        .into_iter()
+    ids.into_iter()
+        .filter(|id| !matches!(graph.nodes[*id].node_type.as_str(), ENTRY_TYPE | EXIT_TYPE))
         .map(|id| {
             let node = &graph.nodes[id];
-            let params = registry.get(&node.node_type).map_or_else(Params::new, |descriptor| {
+            let kind = called_section(&node.node_type)
+                .map_or_else(|| node.node_type.clone(), helio_graph_asset::sections::section_kind);
+            let params = registry.get(&kind).map_or_else(Params::new, |descriptor| {
                 params_from_text(
                     descriptor,
                     node.properties.iter().map(|(key, value)| (key, param_string(value))),
@@ -303,38 +446,121 @@ pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry)
             });
             NodeInstance {
                 id: node.id.clone(),
-                kind: node.node_type.clone(),
+                kind,
                 params,
                 position: [node.position.x, node.position.y],
             }
+        })
+        .collect()
+}
+
+/// The wires of an editor description; the entry and exit nodes of a collapsed
+/// graph become the section own `$entry` and `$exit`.
+fn connections_of(graph: &GraphDescription) -> Vec<Connection> {
+    let name_of = |id: &String| -> String {
+        match graph.nodes.get(id).map(|n| n.node_type.as_str()) {
+            Some(ENTRY_TYPE) => helio_graph_asset::SECTION_ENTRY.to_string(),
+            Some(EXIT_TYPE) => helio_graph_asset::SECTION_EXIT.to_string(),
+            _ => id.clone(),
+        }
+    };
+    graph
+        .connections
+        .iter()
+        .map(|c| Connection {
+            from: PinRef::new(name_of(&c.source_node), &c.source_pin),
+            to: PinRef::new(name_of(&c.target_node), &c.target_pin),
+        })
+        .collect()
+}
+
+fn comments_of(graph: &GraphDescription) -> Vec<helio_graph_asset::GraphComment> {
+    graph
+        .comments
+        .iter()
+        .map(|c| helio_graph_asset::GraphComment {
+            id: c.id.clone(),
+            text: c.text.clone(),
+            position: [c.position.0, c.position.1],
+            size: [c.size.0, c.size.1],
+            color: c.color,
+            nodes: c.contained_node_ids.clone(),
+        })
+        .collect()
+}
+
+/// The inverse of [`to_blueprint_asset`]: each collapsed graph is a section.
+pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry) -> GraphAsset {
+    let graph = &blueprint.main_graph;
+    let ports = |pins: &[blueprint_graph::SubGraphPin]| -> Vec<helio_graph_asset::SectionPort> {
+        pins.iter().map(|pin| port_from_type(&pin.id, &pin.data_type.to_string())).collect()
+    };
+    let sections = blueprint
+        .subgraphs
+        .iter()
+        .filter(|subgraph| subgraph.kind == blueprint_graph::SubGraphKind::Collapsed)
+        .map(|subgraph| helio_graph_asset::GraphSection {
+            id: subgraph.id.clone(),
+            name: subgraph.name.clone(),
+            inputs: ports(&subgraph.interface.inputs),
+            outputs: ports(&subgraph.interface.outputs),
+            nodes: nodes_of(&subgraph.graph, registry),
+            connections: connections_of(&subgraph.graph),
         })
         .collect();
     GraphAsset {
         name: graph.metadata.name.clone(),
         description: graph.metadata.description.clone(),
-        nodes,
-        connections: graph
-            .connections
-            .iter()
-            .map(|c| Connection {
-                from: PinRef::new(&c.source_node, &c.source_pin),
-                to: PinRef::new(&c.target_node, &c.target_pin),
-            })
-            .collect(),
-        comments: graph
-            .comments
-            .iter()
-            .map(|c| helio_graph_asset::GraphComment {
-                id: c.id.clone(),
-                text: c.text.clone(),
-                position: [c.position.0, c.position.1],
-                size: [c.size.0, c.size.1],
-                color: c.color,
-                nodes: c.contained_node_ids.clone(),
-            })
-            .collect(),
+        nodes: nodes_of(graph, registry),
+        connections: connections_of(graph),
+        comments: comments_of(graph),
+        sections,
         ..GraphAsset::default()
     }
+}
+
+/// Wires through reroute nodes (the editor tidying device) joined end to end, and
+/// the reroutes removed.
+fn bypass_reroutes(nodes: &mut Vec<NodeInstance>, connections: &mut Vec<Connection>) {
+    let reroutes: HashSet<String> =
+        nodes.iter().filter(|n| n.kind == REROUTE).map(|n| n.id.clone()).collect();
+    if reroutes.is_empty() {
+        return;
+    }
+    let mut joined = Vec::new();
+    for wire in connections.iter().filter(|w| !reroutes.contains(&w.from.node)) {
+        if !reroutes.contains(&wire.to.node) {
+            joined.push(wire.clone());
+            continue;
+        }
+        let mut pending = vec![wire.to.node.clone()];
+        let mut seen: HashSet<String> = HashSet::new();
+        while let Some(reroute) = pending.pop() {
+            if !seen.insert(reroute.clone()) {
+                continue; // a reroute cycle
+            }
+            for next in connections.iter().filter(|w| w.from.node == reroute) {
+                if reroutes.contains(&next.to.node) {
+                    pending.push(next.to.node.clone());
+                } else {
+                    joined.push(Connection { from: wire.from.clone(), to: next.to.clone() });
+                }
+            }
+        }
+    }
+    nodes.retain(|n| n.kind != REROUTE);
+    *connections = joined;
+}
+
+/// The asset the editor document describes, ready to check and build: sections
+/// kept, reroutes removed.
+pub fn buildable_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry) -> GraphAsset {
+    let mut asset = from_blueprint_asset(blueprint, registry);
+    bypass_reroutes(&mut asset.nodes, &mut asset.connections);
+    for section in &mut asset.sections {
+        bypass_reroutes(&mut section.nodes, &mut section.connections);
+    }
+    asset
 }
 
 // ── The editor's live graph ──────────────────────────────────────────────────
@@ -418,7 +644,8 @@ pub fn asset_from_live(
                 });
                 NodeInstance {
                     id: n.id.clone(),
-                    kind: n.definition_id.clone(),
+                    kind: called_section(&n.definition_id)
+                        .map_or_else(|| n.definition_id.clone(), helio_graph_asset::sections::section_kind),
                     params,
                     position: n.position,
                 }
@@ -459,6 +686,21 @@ pub fn live_asset(graph: &blueprint_editor_plugin::BlueprintGraph) -> GraphAsset
 /// and keep where they are.
 pub fn auto_layout_graph(graph: &mut blueprint_editor_plugin::BlueprintGraph) -> bool {
     let mut asset = live_asset(graph);
+    // Collapsed graphs are sections; their pins are what the nodes placing them show.
+    asset.sections = graph
+        .nodes
+        .iter()
+        .filter_map(|node| {
+            called_section(&node.definition_id).map(|id| helio_graph_asset::GraphSection {
+                id: id.to_string(),
+                name: node.title.clone(),
+                inputs: ports_from_pins(&node.inputs),
+                outputs: ports_from_pins(&node.outputs),
+                nodes: Vec::new(),
+                connections: Vec::new(),
+            })
+        })
+        .collect();
     helio_graph_asset::auto_layout(&mut asset, registry());
 
     let positions: HashMap<String, [f32; 2]> =
@@ -673,6 +915,20 @@ mod tests {
         expected.nodes.sort_by(|a, b| a.id.cmp(&b.id));
         assert_eq!(back.nodes, expected.nodes);
         assert_eq!(back.connections, asset.connections);
+
+        // Each section is a collapsed graph and comes back as the same section.
+        assert!(!asset.sections.is_empty());
+        assert_eq!(blueprint.subgraphs.len(), asset.sections.len());
+        assert_eq!(back.sections.len(), asset.sections.len());
+        for (section, restored) in asset.sections.iter().zip(&back.sections) {
+            assert_eq!(section.name, restored.name);
+            assert_eq!(section.inputs, restored.inputs);
+            assert_eq!(section.outputs, restored.outputs);
+            assert_eq!(section.connections, restored.connections);
+            let mut nodes = section.nodes.clone();
+            nodes.sort_by(|a, b| a.id.cmp(&b.id));
+            assert_eq!(nodes, restored.nodes);
+        }
         assert!(problems(&back, &registry).is_empty());
     }
 

@@ -144,6 +144,31 @@ a host input. The compiled graph is exactly what direct wires would give.
   declared but unused form a "Host Inputs" group.
 - Collapsing nodes and lanes is not implemented yet.
 
+## Sections (collapsed nodes)
+
+The default graph is grouped into **sections**: one named node per stage of the
+frame (Scene Prep, Geometry, Lighting, ...), each holding its passes and their
+Get/Set buffer nodes. The main graph is then short: On Frame Start, the sections
+in execution order, Output.
+
+- A section is `GraphAsset::sections` (`GraphSection`: id, name, ports, nodes,
+  connections) placed by a node of kind `section:<id>`. Inside, the pseudo nodes
+  `$entry` / `$exit` stand for its ports (`SECTION_ENTRY` / `SECTION_EXIT`).
+- It is organisation only: `sections::expand` puts the nodes back in place and
+  joins the wires across the ports before the buffers are flattened, validated and
+  built. A section is placed once (its nodes keep their ids).
+- In the editor a section is a Blueprint *collapsed graph* (`SubGraphKind::Collapsed`):
+  one node that opens onto its own graph tab (double-click, or the left
+  **Sections** tab). `render_bps::model` maps both ways (`to_blueprint_asset` /
+  `from_blueprint_asset`); the editor's own Collapse/Expand commands work too, the
+  crossing wires becoming ports.
+- `sections::sectionize` makes the sections from the lane groups of
+  `auto_layout`; On Frame Start and Output stay outside. Auto Layout on a graph
+  with sections lays out each inside and the main graph as a row.
+- The left panel has two tabs: **Sections** (open any section) and **Buffers**.
+- `EditorProfile::validate` / `graph_applied` receive the whole `BlueprintAsset`
+  (main graph and collapsed graphs), and `left_panels` returns the tabs.
+
 ## Resource nodes
 
 `core.texture` / `core.depth` allocate a graph-recycled texture by name.

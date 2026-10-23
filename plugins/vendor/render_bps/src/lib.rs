@@ -22,6 +22,7 @@ use ui::dock::PanelView;
 mod buffers_panel;
 mod model;
 mod preview;
+mod sections_panel;
 
 /// Extension of a render graph asset.
 const EXTENSION: &str = helio_graph_asset::EXTENSION;
@@ -102,15 +103,16 @@ impl EditorProfile for RenderProfile {
         model::buffer_title(definition_id, properties)
     }
 
-    fn left_panel(
+    fn left_panels(
         &self,
         editor: WeakEntity<BlueprintEditorPanel>,
         _file: Option<&std::path::Path>,
         window: &mut Window,
         cx: &mut App,
-    ) -> Option<Arc<dyn PanelView>> {
-        let panel = cx.new(|cx| buffers_panel::BuffersPanel::new(editor, window, cx));
-        Some(Arc::new(panel))
+    ) -> Vec<Arc<dyn PanelView>> {
+        let sections = cx.new(|cx| sections_panel::SectionsPanel::new(editor.clone(), cx));
+        let buffers = cx.new(|cx| buffers_panel::BuffersPanel::new(editor, window, cx));
+        vec![Arc::new(sections), Arc::new(buffers)]
     }
 
     fn auto_layout(&self, graph: &mut BlueprintGraph) -> bool {
@@ -128,15 +130,15 @@ impl EditorProfile for RenderProfile {
         Some(Arc::new(preview))
     }
 
-    fn graph_applied(&self, file: Option<&std::path::Path>, graph: &BlueprintGraph, cx: &mut App) {
+    fn graph_applied(&self, file: Option<&std::path::Path>, asset: &blueprint_graph::BlueprintAsset, cx: &mut App) {
         for preview in preview::previews_for(file) {
-            let _ = preview.update(cx, |preview, cx| preview.apply_graph(graph, cx));
+            let _ = preview.update(cx, |preview, cx| preview.apply_graph(asset, cx));
         }
     }
 
-    fn validate(&self, graph: &BlueprintGraph) -> Vec<String> {
+    fn validate(&self, document: &blueprint_graph::BlueprintAsset) -> Vec<String> {
         let registry = model::registry();
-        let asset = model::live_asset(graph);
+        let asset = model::buildable_asset(document, registry);
         let mut problems = model::problems(&asset, registry);
         // Without the probe the stage nodes have no resource pins; say why.
         if let Some(reason) = engine_backend::subsystems::render::helio_renderer::pipelines::graph_pin_probe_error() {
