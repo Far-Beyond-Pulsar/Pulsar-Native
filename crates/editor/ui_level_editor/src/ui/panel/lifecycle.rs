@@ -385,6 +385,17 @@ impl LevelEditorPanel {
                         }
                     }
                 }
+                // The level's render pipeline (World Settings) reaches every
+                // viewport's renderer; a change rebuilds it at a frame boundary.
+                {
+                    let pipeline = poll_state.read().scene.world_settings.render_pipeline.clone();
+                    for mailbox in poll_mailbox
+                        .iter()
+                        .chain(extras.iter().map(|extra| &extra.mailbox))
+                    {
+                        mailbox.set_render_pipeline(pipeline.clone());
+                    }
+                }
                 // Finished gizmo drags become undo steps (#931), whichever
                 // viewport made them.
                 let drags: Vec<_> = poll_mailbox

@@ -292,8 +292,8 @@ transient buffer. `Missing` entries are blockers, not compatibility exemptions.
 | `SceneActor::Sky` | `helio-pass-sky::AtmosphereComponent` (authored as `helio_component::AtmosphereComponent`) | Packed `atmospheres` row derived through the environment join; LUTs are frame-local | Done: the procedural `SkyComponent`/`SkyPass` are retired (#1057); a level has one sky, edited in World Settings |
 | `Mesh`, `insert_mesh`, `insert_object` | `helio-component::StaticMeshComponent` + `engine_backend::scene::{SectionedMeshComponent,MeshObjectComponent}` + `Transform` + material component | Generated mesh pools/transforms; transient draw instances | Partial: parent bridge exists; section/object state now has typed SceneDB equivalents |
 | `Light`, `insert_light*` | `helio-component::LightComponent` | Generated fields; transient compact light list | Partial: parent projection exists; Helio APIs remain |
-| `VirtualMesh`, `insert_virtual_mesh` | virtual-geometry pass mesh component | SceneDB meshlet pools; cull work is transient | Missing: legacy VG mesh registry remains |
-| `VirtualObject`, `insert_virtual_object` | virtual-geometry pass object component | SceneDB transform/material rows; meshlet work transient | Missing: legacy VG object registry remains |
+| `VirtualMesh`, `insert_virtual_mesh` | removed with the old virtual-geometry pass (T0); see `.agents/plans/virtual-geometry.md` | `VirtualGeometryComponent` on a static mesh | Done: no legacy VG registry |
+| `VirtualObject`, `insert_virtual_object` | removed with the old virtual-geometry pass (T0) | `VirtualGeometryInstances` derivation of `static_objects` rows | Done: no legacy VG registry |
 | `Decal`, `insert_decal*` | decal pass/component crate | Generated decal rows; visible list transient | Missing: no accepted SceneDB decal component |
 | `WaterVolume`, `insert_water_volume` | `helio-component::WaterVolumeComponent` | Generated rows; simulation surface/clipmap transient | Partial: component exists; Helio registry remains |
 | `WaterHitbox`, `insert_water_hitbox` | water pass hitbox component | Generated rows; interaction results transient | Missing: no accepted component |

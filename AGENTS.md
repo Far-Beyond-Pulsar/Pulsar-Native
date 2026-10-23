@@ -23,6 +23,8 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
 | `.agents/MEMORY.md` | How memory is held and bounded (`Residency`, texture size cap), settings, and the Mission Control Memory Explorer |
+| `.agents/LOD.md` | Authored mesh LOD as a camera-dependent asset choice, separate from renderer-internal geometric LOD, and its residency boundary |
+| `.agents/RENDER_GRAPH.md` | Render pipelines: `IntoGraph`, built-in pipelines, `.rendergraph` assets, pin shapes, the `render_bps` plugin |
 
 ## Project data (`.pulsar/`)
 

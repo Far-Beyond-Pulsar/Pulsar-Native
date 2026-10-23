@@ -52,6 +52,8 @@ struct GameWindow {
     scene_store: engine_backend::scene::SharedScene,
     /// Uploads the rigid-frame table when a frame moved.
     spaces: engine_backend::scene::SpaceSync,
+    /// Builds and streams the cluster assets of virtual-geometry meshes.
+    vg: engine_backend::scene::VirtualGeometryHost,
 }
 
 /// Frame interval of an unfocused window when several game copies are running.
@@ -118,7 +120,8 @@ impl GameWindow {
         // editor's wgpui-hosted viewport, which shares GPUI's device), and
         // takes its settings from the project (`crate::game_renderer`).
         let spaces = engine_backend::scene::SpaceSync::default();
-        let renderer = crate::game_renderer::build_game_renderer_with_portals(
+        let mut vg = engine_backend::scene::VirtualGeometryHost::new();
+        let renderer = crate::game_renderer::build_game_renderer_with_virtual_geometry(
             device.clone(),
             queue.clone(),
             scene_store,
@@ -130,6 +133,7 @@ impl GameWindow {
             editor_mode,
             crate::game_renderer::DeviceOwner::Game,
             spaces.portal_input(),
+            &mut vg,
         );
 
         Self {
@@ -146,6 +150,7 @@ impl GameWindow {
             editor_mode,
             scene_store: scene_store.clone(),
             spaces,
+            vg,
         }
     }
 
@@ -252,6 +257,7 @@ impl GameWindow {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        engine_backend::scene::sync_virtual_geometry(&mut self.vg, &self.scene_store, None);
         self.spaces.sync(&self.scene_store, glam::DVec3::ZERO, &mut self.renderer);
         if let Err(e) = self.renderer.render(&helio_cam, &view) {
             tracing::error!(window = self.handle.id(), "Render error: {:?}", e);

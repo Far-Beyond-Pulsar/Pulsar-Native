@@ -1,0 +1,38 @@
+[package]
+name = "render_bps_plugin"
+version = "0.1.0"
+edition = "2021"
+description = "Visual editor for Helio render graphs, built on the Blueprint graph editor"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "render_bps_plugin"
+
+# Built into the editor (feature `builtin`, on in pulsar_engine) it registers at link
+# time like the Blueprint editor; without it, it exports the plugin DLL symbols.
+# It installs a profile into the shared graph editor (`blueprint_editor_plugin::profile`),
+# which an editor opened on a `.rendergraph` file selects by extension.
+
+[features]
+# Statically linked into the editor: registers through plugin_manager at link time.
+builtin = ["dep:plugin_manager"]
+
+[dependencies]
+plugin_editor_api = { workspace = true }
+plugin_manager = { workspace = true, optional = true }
+gpui-ce = { workspace = true }
+ui = { workspace = true }
+
+# The graph editor this plugin reuses. Its `builtin` registration is the
+# editor shell's to turn on (pulsar_engine does), not this plugin's.
+blueprint_editor_plugin = { path = "../blueprint_editor", default-features = false }
+blueprint_graph = { path = "../blueprint_editor/graph" }
+
+# The render graph asset model, its node registry and compiler.
+helio-graph-asset = { workspace = true }
+helio-default-graphs = { workspace = true }
+
+serde_json = { workspace = true }
+log = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }

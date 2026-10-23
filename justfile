@@ -142,4 +142,3 @@ check-plugin-pins:
 # is listed in .github/submodule-pin-exceptions.txt); what CI runs.
 check-submodule-pins:
     bash scripts/submodule-pins.sh check
-

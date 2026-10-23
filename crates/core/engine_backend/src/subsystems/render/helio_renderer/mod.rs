@@ -6,6 +6,7 @@ pub mod material_sampler;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
+pub mod pipelines;
 pub mod renderer;
 pub mod voxel_backend;
 pub mod voxel_mesh_backend;

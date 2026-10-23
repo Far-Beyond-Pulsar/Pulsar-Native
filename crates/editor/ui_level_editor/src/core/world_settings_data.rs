@@ -25,6 +25,10 @@ pub struct WorldSettingsData {
     /// stable across project rebuilds. The Blueprint index owns validation and
     /// resolution of this reference.
     pub game_mode_blueprint: Option<String>,
+    /// The render pipeline the level runs: the id of a built-in Helio
+    /// pipeline (`helio.fxaa`) or the project-relative path of a render-graph
+    /// asset. `None`, or an id no longer registered, runs the engine default.
+    pub render_pipeline: Option<String>,
 }
 
 impl Default for WorldSettingsData {
@@ -36,6 +40,7 @@ impl Default for WorldSettingsData {
             physics_enabled: true,
             auto_simulation: true,
             game_mode_blueprint: None,
+            render_pipeline: None,
         }
     }
 }

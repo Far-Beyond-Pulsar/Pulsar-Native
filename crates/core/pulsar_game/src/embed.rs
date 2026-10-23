@@ -227,6 +227,8 @@ pub struct EmbeddedGame {
     scene_store: engine_backend::scene::SharedScene,
     /// Uploads the rigid-frame table when a frame moved.
     spaces: engine_backend::scene::SpaceSync,
+    /// Builds and streams the cluster assets of virtual-geometry meshes.
+    vg: engine_backend::scene::VirtualGeometryHost,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
     /// Where the pointer last was (normalized), for motion deltas.
@@ -379,7 +381,8 @@ impl EmbeddedGame {
         // GPU mirror is the editor viewport's when that already attached one.
         let scene_store = Arc::clone(&tick_loop.scene_store);
         let spaces = engine_backend::scene::SpaceSync::default();
-        let renderer = crate::game_renderer::build_game_renderer_with_portals(
+        let mut vg = engine_backend::scene::VirtualGeometryHost::new();
+        let renderer = crate::game_renderer::build_game_renderer_with_virtual_geometry(
             device.clone(),
             queue.clone(),
             &scene_store,
@@ -387,6 +390,7 @@ impl EmbeddedGame {
             false,
             crate::game_renderer::DeviceOwner::Host,
             spaces.portal_input(),
+            &mut vg,
         );
 
         // Under v2 the world comes pre-hydrated by the host, so the old
@@ -410,6 +414,7 @@ impl EmbeddedGame {
             out_view,
             scene_store,
             spaces,
+            vg,
             freecam,
             last_pointer: None,
             userdata: ctx.userdata,
@@ -473,6 +478,7 @@ impl EmbeddedGame {
         // 4. Render into the offscreen target the editor samples. ABI v2
         //    requires the host's authoritative SceneDB-backed store above, so
         //    simulation and rendering observe the same hydrated world.
+        engine_backend::scene::sync_virtual_geometry(&mut self.vg, &self.scene_store, None);
         self.spaces.sync(&self.scene_store, glam::DVec3::ZERO, &mut self.renderer);
         if let Err(e) = self.renderer.render(&helio_cam, &self.out_view) {
             tracing::error!("PiE render error: {:?}", e);

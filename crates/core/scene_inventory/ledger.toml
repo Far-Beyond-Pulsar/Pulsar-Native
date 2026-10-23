@@ -142,12 +142,23 @@ status = "verified"
 name = "LODComponent"
 category = "Rendering"
 world_registered = true
-own_gpu_columns = false
+own_gpu_columns = true
 owner = "helio_component::components::lod_component"
-disposition = "unfinished, Phase 4 (tracked in #1053): nothing consumes LOD settings; meshes draw their imported level of detail. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
+disposition = "render, Phase 4: each render view selects an authored mesh asset by camera distance and bias, requests its SceneDB residency, leases shared GPU geometry while selected, and patches static draw rows. A generation marker rebuilds draw grouping when selection or residency changes; an unavailable level falls back to the base static mesh. Independent of meshlet/virtual-geometry LOD"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1053"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_mesh)"
+status = "verified"
+
+[[class]]
+name = "VirtualGeometryComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::virtual_geometry_component"
+disposition = "render, virtual geometry (.agents/plans/virtual-geometry.md): optional per-instance overrides (enabled, tier lock, lod error scale, force root only, shadow caster) for a static mesh's virtual-geometry rendering; a mesh without it uses the global defaults. Its derived VgOverrideGpu row is written on every insert, write, removal and replay; the VirtualGeometryInstances derivation joins it on the GPU to the owner's mesh instances. A VG-active instance's authored LODComponent is inert (plan item 7). The default deferred graph draws it (helio-default-graphs virtual_geometry): VirtualGeometryHost builds and streams the mesh's .vgeo, and the cluster passes shade into the G-buffer. Not declared unfinished (no tracking issue)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/renderer/helio/crates/helio-component/src/components/virtual_geometry_component.rs (tests); crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
+status = "verified"
 
 [[class]]
 name = "LightComponent"
@@ -653,6 +664,20 @@ disposition = "keep: the authored mesh instance; the scene join draws it from it
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "verified"
+
+[[schema]]
+type = "VirtualGeometryComponent"
+path = "helio_component::components::virtual_geometry_component::VirtualGeometryComponent"
+buffers = ["vg_instance_overrides"]
+clears_on_remove = true
+releases_var_len = true
+registered = true
+writer = "its own SceneDB var-len dispatch: one VgOverrideGpu row (authored flags, tier lock, sanitised error scale) refreshed on decode and on every write of an authored property, freed on removal"
+owner = "helio_component::components::virtual_geometry_component"
+disposition = "keep: the per-instance virtual-geometry overrides; the VirtualGeometryInstances derivation reads them (vg_instance_overrides, vg_instance_overrides::handles)"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+status = "unverified"
 
 [[schema]]
 type = "BillboardComponent"
@@ -1809,11 +1834,81 @@ status = "verified"
 [[buffer]]
 key = "builtin_mesh_vertex::handles"
 producers = []
-consumers = ["engine_backend"]
+consumers = ["engine_backend", "helio_component"]
 owner = "helio_component StaticMeshComponent (interned vertex pool handle table)"
 disposition = "keep: a mesh instance's vertex range; the scene join reads it per instance"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "vg_instance_overrides"
+producers = ["VirtualGeometryComponent"]
+consumers = ["helio_component"]
+owner = "helio_component::components::virtual_geometry_component (VgOverrideGpu pool)"
+disposition = "keep: a VirtualGeometryComponent's one override row; the VirtualGeometryInstances derivation scatters it to its owner object"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+status = "unverified"
+
+[[buffer]]
+key = "vg_instance_overrides::handles"
+producers = []
+consumers = ["helio_component"]
+owner = "helio_component::components::virtual_geometry_component (handle table, keyed by component entity)"
+disposition = "keep: the range of a VirtualGeometryComponent's override row; a zero count means no component"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+status = "unverified"
+
+[[buffer]]
+key = "vg_instances"
+producers = []
+consumers = ["helio_component"]
+owner = "helio_component::virtual_geometry_instances (VirtualGeometryInstances scene derivation output)"
+disposition = "keep: execution data. One GpuVgInstance row per VG-active static-mesh instance (asset slot, flags incl. INST_LOD_SUPPRESS and INST_CONE_CULL, error scale, first-section row in static_objects), compacted in instance order and rebuilt on the GPU only when an input changed; the virtual-geometry passes read it by key. Valid rows: vg_instance_count"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+status = "unverified"
+
+[[buffer]]
+key = "vg_instance_count"
+producers = []
+consumers = ["helio_component"]
+owner = "helio_component::virtual_geometry_instances (VirtualGeometryInstances scene derivation output)"
+disposition = "keep: execution data. Word 0 is the number of valid rows in vg_instances"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+status = "unverified"
+
+[[buffer]]
+key = "lod_suppressed"
+producers = []
+consumers = ["engine_backend", "helio_component"]
+owner = "helio_component::virtual_geometry_instances (output); engine_backend::scene::authored_lod (reader)"
+disposition = "keep: a generic per-object-entity flag buffer; non-zero makes the authored-LOD selection skip the object because another system (virtual geometry) draws its detail (plan item 7). Neither side knows the other's types"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs; crates/core/engine_backend/src/scene/authored_lod.rs (gpu_selection_changes_with_the_current_view_camera)"
+status = "unverified"
+
+[[buffer]]
+key = "classic_suppressed"
+producers = []
+consumers = ["helio_component"]
+owner = "helio_component::virtual_geometry_instances (output); helio-pass-object-batch (reader)"
+disposition = "keep: execution data. One u32 per static_objects row, non-zero for every section row of a VG-active instance; the object batch tags the instance INSTANCE_FLAG_CLASSIC_SUPPRESSED and the main-view frustum cull skips it so virtual geometry does not double-draw. Shadow passes still draw the row: the classic geometry is the shadow proxy (plan D5). Neither side knows the other's types"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (virtual_geometry_matches_the_classic_render_and_off_restores_it)"
+status = "verified"
+
+[[buffer]]
+key = "vg_asset_ready"
+producers = []
+consumers = ["helio_component"]
+owner = "helio_component::virtual_geometry_host (VgAssetReadyPublisher scene derivation output, rows from helio_vg_stream::VgRuntime); helio_component::virtual_geometry_instances (reader)"
+disposition = "keep: per-asset readiness rows (VgAssetReadyRow: interned vertex offset, asset slot, ready flag) sorted by vertex offset; an instance is VG-active only once its asset's root pages are resident"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs (test-built rows); crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (published from the runtime)"
 status = "verified"
 
 [[buffer]]
@@ -1869,7 +1964,7 @@ status = "verified"
 [[buffer]]
 key = "static_mesh_draw_sections::handles"
 producers = []
-consumers = ["engine_backend"]
+consumers = ["engine_backend", "helio_component"]
 owner = "helio_component::components::static_mesh_draw"
 disposition = "keep: a mesh instance's section range in the sections pool"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -1889,7 +1984,7 @@ status = "verified"
 [[buffer]]
 key = "component_owners"
 producers = ["ComponentOwner"]
-consumers = ["engine_backend"]
+consumers = ["engine_backend", "helio_component"]
 owner = "pulsar_scene_model::attachments"
 disposition = "keep: each component instance's owner object and enabled flag as a GPU row (Phase 1, D1), the join a GPU consumer uses from an instance's row to its object; Phase 2 consumes it for render rows"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -1939,7 +2034,7 @@ status = "unverified"
 [[buffer]]
 key = "builtin_mesh_index"
 producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
-consumers = ["helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+consumers = ["engine_backend", "helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: same as builtin_mesh_vertex"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -1949,7 +2044,7 @@ status = "verified"
 [[buffer]]
 key = "builtin_mesh_vertex"
 producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
-consumers = ["helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+consumers = ["engine_backend", "helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: authored StaticMeshComponent pools are the canonical geometry; retire or merge the second, pass-owned producer"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2099,7 +2194,7 @@ status = "verified"
 [[buffer]]
 key = "materials"
 producers = ["MaterialComponent"]
-consumers = ["helio-default-graphs", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+consumers = ["helio-default-graphs", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-vg-shade"]
 owner = "helio-default-graphs scene join (execution output, one row per drawn section)"
 disposition = "keep: material rows come from StaticMeshDraw's resolved slot materials; the default is the slot's imported surface, defined once in helio-component (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2169,7 +2264,7 @@ status = "out-of-scope"
 [[buffer]]
 key = "scene_lights"
 producers = ["LightComponent"]
-consumers = ["helio-default-graphs", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-sky", "helio-pass-transparent", "helio-pass-virtual-geometry", "helio-pass-volumetric-fog"]
+consumers = ["helio-default-graphs", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-sky", "helio-pass-transparent", "helio-pass-vg-shade", "helio-pass-volumetric-fog"]
 owner = "helio-default-graphs scene join (execution output)"
 disposition = "keep: light rows are joined on the GPU from LightSourceRow and the owner transform/visibility; shadow-matrix assigns atlas slots in them (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2209,7 +2304,7 @@ status = "verified"
 [[buffer]]
 key = "static_objects"
 producers = ["StaticObjectComponent"]
-consumers = ["helio-default-graphs", "helio-pass-object-batch"]
+consumers = ["engine_backend", "helio-default-graphs", "helio-pass-object-batch", "helio_component"]
 owner = "helio-default-graphs scene join (execution output; Helio demos still insert StaticObjectComponent)"
 disposition = "keep: draw rows are joined on the GPU from authored mesh instances, owner transform and visibility each frame the inputs change (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2822,13 +2917,53 @@ test = "none: not in a production graph"
 status = "out-of-scope"
 
 [[pass]]
-crate = "helio-pass-virtual-geometry"
+crate = "helio-pass-vg-bvh"
 in_default_graph = true
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
-owner = "helio-default-graphs (mapping); helio-pass-virtual-geometry (algorithm)"
-disposition = "keep: reads the authored mesh pools, materials and joined lights, all verified upstream; the pass runs in the editor graph"
+reads = []
+owner = "helio-default-graphs (mapping); helio-pass-vg-bvh (algorithm)"
+disposition = "keep: the global instance BVH (GPU LBVH + refit, batch leaves) built from the vg_instances and static_objects scene buffers each frame; execution data only (vg_gcbvh_nodes/header/items are graph resources, not a second scene owner)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs); crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-vg-bvh/tests/gpu_bvh.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
+status = "verified"
+
+[[pass]]
+crate = "helio-pass-vg-cull"
+in_default_graph = true
+reads = []
+owner = "helio-default-graphs (mapping); helio-pass-vg-cull (algorithm)"
+disposition = "keep: two-phase GPU cluster-DAG cut (BVH traversal, frustum, Hi-Z, screen-space error, cone) with page requests into the stream feedback; reads the vg_instances and static_objects scene buffers through the published VgCullInputs and writes only execution data (visible-cluster bins, indirect args)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-vg-cull/tests/gpu_cull.rs; crates/renderer/helio/crates/passes/3d/helio-pass-vg-cull/tests/real_asset.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
+status = "verified"
+
+[[pass]]
+crate = "helio-pass-vg-dense"
+in_default_graph = true
+reads = []
+owner = "helio-default-graphs (mapping); helio-pass-vg-dense (algorithm)"
+disposition = "keep: Tier 3 over dense tiles, the 3-NonRT depth peel driven from the graph; the 3-RT backend exists and is tested but is not driven from the graph (it needs a CPU instance list and proxy-LOD assets, T13). Execution data only"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-vg-dense/tests/gpu.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (mode switching)"
+status = "verified"
+
+[[pass]]
+crate = "helio-pass-vg-raster"
+in_default_graph = true
+reads = []
+owner = "helio-default-graphs (mapping); helio-pass-vg-raster (algorithm)"
+disposition = "keep: Tier 1 hardware raster by vertex pulling, Tier 2 software micro-raster (64-bit atomic or tiled fallback), the phase-0 Hi-Z build and dense-tile classification, as early/late graph passes over the visible-cluster bins; execution data only"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-vg-raster/tests/gpu_raster.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
+status = "verified"
+
+[[pass]]
+crate = "helio-pass-vg-shade"
+in_default_graph = true
+reads = ["materials", "scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-vg-shade (algorithm)"
+disposition = "keep: vis resolve, material binning, shading through the classic G-buffer material evaluator (reads the materials scene buffer; the light count from scene_lights) and the final depth; writes the same G-buffer and depth the classic pass writes"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-vg-shade/tests/gpu_pipeline.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (virtual_geometry_matches_the_classic_render_and_off_restores_it)"
 status = "verified"
 
 [[pass]]

@@ -15,9 +15,10 @@ use std::sync::Arc;
 
 use helio_component::components::{
     AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow,
-    FoliageSourceRow, GlobalFogSourceRow, GlobalWindSourceRow, LightSourceRow, LocalFogSourceRow,
+    FoliageSourceRow, GlobalFogSourceRow, GlobalWindSourceRow, LODComponent, LightSourceRow,
+    LocalFogSourceRow,
     PostProcessVolumeSourceRow, SkeletalMeshComponent, SpriteSourceRow, StaticMeshComponent,
-    StaticMeshDraw, WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER,
+    StaticMeshDraw, VirtualGeometryComponent, WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER,
     CAMERA_POST_PROCESS_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER, DECAL_SOURCES_BUFFER,
     FOLIAGE_SOURCES_BUFFER, GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER,
     LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
@@ -32,6 +33,7 @@ use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
+use crate::scene::{AuthoredLodKeys, AuthoredLodSelection};
 use pulsar_scene_model::attachments::ComponentOwner;
 use pulsar_scene_model::{ObjectFrame, ObjectHidden, ObjectParent, TransformRow};
 
@@ -66,6 +68,27 @@ pub fn scene_join_keys() -> SceneJoinKeys {
 /// billboards.
 pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
     Box::new(SceneJoin::new(device, scene_join_keys(), editor))
+}
+
+/// Per-render-view authored mesh LOD selection. Installed after
+/// [`scene_join`] so its output can be consumed by the same renderer frame.
+pub fn authored_lod_selection(
+    device: &wgpu::Device,
+    mirror: GpuMirrorHandle,
+) -> Box<AuthoredLodSelection> {
+    Box::new(AuthoredLodSelection::new(
+        device,
+        AuthoredLodKeys {
+            owners: BufferKey::of("component_owners"),
+            generations: ENTITY_GENERATIONS_KEY,
+            hidden: BufferKey::of("object_hidden"),
+            transforms: BufferKey::of("object_transforms"),
+            level_handles: BufferKey::of("lod_component_levels::handles"),
+            levels: BufferKey::of("lod_component_levels"),
+            camera: helio_core::CAMERA_BUFFER_KEY,
+        },
+        Some(mirror),
+    ))
 }
 
 /// Where this engine's parent-relative transforms and parent links live, for
@@ -169,6 +192,12 @@ pub fn ensure_gpu_mirror(
     // only; growable registration remains the sole owner of GPU storage and
     // deduplication behavior.
     StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
+    // Authored mesh LOD levels are source rows consumed by the per-view LOD
+    // resolver; they are separate from Helio's meshlet/virtual-geometry LOD.
+    LODComponent::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
+    // Per-instance virtual-geometry overrides, joined to mesh instances by the
+    // VirtualGeometryInstances derivation (`vg_instance_overrides`).
+    VirtualGeometryComponent::register_gpu_columns_growable(&mut gpu_store, 256, &device);
     SkeletalMeshComponent::register_gpu_columns_growable(&mut gpu_store, 128, &device);
     // The scene join's inputs (see `scene_join_keys`); the object, material
     // and light rows passes draw are the join's outputs, not SceneDB's.
@@ -569,4 +598,76 @@ pub fn portal_projection(
     Box::new(helio_default_graphs::portal_projection::PortalProjection::new(
         device, input,
     ))
+}
+
+// ── Virtual geometry ────────────────────────────────────────────────────────
+//
+// Plan: `.agents/plans/virtual-geometry.md`. A host owns one
+// [`VirtualGeometryHost`]; it hands its runtime to `RendererConfig::with_virtual_geometry`
+// (the graph passes), installs the two derivations below between the scene
+// join and the authored-LOD selection, and calls [`sync_virtual_geometry`]
+// every frame.
+
+pub use helio_component::virtual_geometry_host::{VgAssetReadyPublisher, VirtualGeometryHost};
+pub use helio_component::virtual_geometry_instances::VirtualGeometryInstances;
+
+/// The `vg_asset_ready` publisher, for `RendererBuilder::with_scene_derivation`
+/// right after [`scene_join`].
+pub fn virtual_geometry_asset_ready(
+    host: &VirtualGeometryHost,
+    device: &wgpu::Device,
+) -> Box<VgAssetReadyPublisher> {
+    host.asset_ready_derivation(device)
+}
+
+/// The `VirtualGeometryInstances` derivation, after
+/// [`virtual_geometry_asset_ready`] and before [`authored_lod_selection`].
+pub fn virtual_geometry_instances(
+    host: &mut VirtualGeometryHost,
+    device: &wgpu::Device,
+) -> Box<VirtualGeometryInstances> {
+    host.instances_derivation(device)
+}
+
+/// The project's `project.virtual_geometry` settings as the runtime's.
+pub fn virtual_geometry_runtime_settings(
+    settings: pulsar_settings::project::virtual_geometry::VirtualGeometrySettings,
+) -> helio_vg_stream::VgRuntimeSettings {
+    use pulsar_settings::project::virtual_geometry::VirtualGeometryMode;
+    let settings = settings.sanitized();
+    helio_vg_stream::VgRuntimeSettings {
+        mode: match settings.mode {
+            VirtualGeometryMode::Auto => helio_vg_format::VgMode::Auto,
+            VirtualGeometryMode::ForceNonRtFallback => helio_vg_format::VgMode::ForceNonRtFallback,
+            VirtualGeometryMode::ForceHwRaster => helio_vg_format::VgMode::ForceHwRaster,
+            VirtualGeometryMode::Off => helio_vg_format::VgMode::Off,
+        },
+        tau_px: settings.tau_pixels,
+        page_budget_mb: settings.page_budget_mb,
+        max_visible_clusters: settings.max_visible_clusters,
+        two_phase_occlusion: settings.two_phase_occlusion,
+        tier3: settings.tier3,
+        ..helio_vg_stream::VgRuntimeSettings::default()
+    }
+}
+
+/// Per-frame host service: reads the project's virtual-geometry settings
+/// (or `override_settings`), then lets `host` build / stream the assets the
+/// scene's `VirtualGeometryComponent`s ask for. Cheap on frames with nothing
+/// to do.
+pub fn sync_virtual_geometry(
+    host: &mut VirtualGeometryHost,
+    scene: &crate::scene::SharedScene,
+    override_settings: Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
+) {
+    let settings = override_settings.unwrap_or_else(|| {
+        pulsar_settings::project::virtual_geometry::VirtualGeometrySettings::from_config(
+            engine_state::settings::global_config(),
+        )
+    });
+    let scene = scene.read();
+    let Some(mirror) = scene.world.gpu_mirror() else {
+        return;
+    };
+    host.sync(&scene.world, mirror, virtual_geometry_runtime_settings(settings));
 }

@@ -419,6 +419,19 @@ pub fn load_level(
     content: &ContentRoot,
     path: &std::path::Path,
 ) -> Result<(), String> {
+    // The level's render pipeline: offer the project's render graphs, then
+    // remember which one this level runs for the renderer built after this.
+    {
+        use engine_backend::subsystems::render::helio_renderer::pipelines;
+        let report = pipelines::refresh_project_pipelines(content.root());
+        for (graph, error) in &report.failed {
+            tracing::warn!(graph = %graph, "Render graph not offered: {error}");
+        }
+        let requested = std::fs::read_to_string(path)
+            .ok()
+            .and_then(|json| pipelines::render_pipeline_of_level(&json));
+        pipelines::set_level_pipeline(requested);
+    }
     let registry = pulsar_class::ClassRegistry::scan(content.root());
     let name = content
         .relative(path)

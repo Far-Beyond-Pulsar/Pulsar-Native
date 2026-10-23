@@ -37,6 +37,8 @@ pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 #[cfg(feature = "render")]
+mod authored_lod;
+#[cfg(feature = "render")]
 // Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
 // and Helio's scene join over the authored rows.
 pub mod helio_bridge;
@@ -47,10 +49,16 @@ pub mod portals;
 pub mod sublevel_display;
 
 #[cfg(feature = "render")]
+pub use authored_lod::{
+    AuthoredLodKeys, AuthoredLodSelection, LodSelectionRow, LOD_SELECTIONS_KEY,
+};
+#[cfg(feature = "render")]
 pub use helio_bridge::{
-    ensure_gpu_mirror, environment_join, environment_join_keys, first_fixed_in_group,
-    hierarchy_resolve, portal_projection, SpaceSync, SpaceTable,
-    hierarchy_resolve_keys, scene_join, scene_join_keys,
+    authored_lod_selection, ensure_gpu_mirror, environment_join, environment_join_keys,
+    first_fixed_in_group, hierarchy_resolve, hierarchy_resolve_keys, portal_projection, scene_join,
+    scene_join_keys, sync_virtual_geometry, virtual_geometry_asset_ready,
+    virtual_geometry_instances, virtual_geometry_runtime_settings, SpaceSync, SpaceTable,
+    VgAssetReadyPublisher, VirtualGeometryHost, VirtualGeometryInstances,
 };
 #[cfg(feature = "render")]
 pub mod editor_postprocess;

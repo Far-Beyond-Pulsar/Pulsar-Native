@@ -26,6 +26,7 @@
 #[cfg(feature = "editor")]
 pub mod asset_index;
 pub mod blueprint_trait_index;
+pub mod builtin_traits;
 #[cfg(feature = "editor")]
 mod engine_fs;
 pub mod events;
