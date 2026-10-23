@@ -10602,16 +10602,19 @@ version = "0.1.0"
 dependencies = [
  "blueprint_editor_plugin",
  "blueprint_graph",
+ "engine_backend",
  "gpui-ce",
  "helio-default-graphs",
  "helio-graph-asset",
  "log",
+ "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
  "serde_json",
  "tracing",
  "ui",
  "uuid",
+ "wgpu",
 ]
 
 [[package]]

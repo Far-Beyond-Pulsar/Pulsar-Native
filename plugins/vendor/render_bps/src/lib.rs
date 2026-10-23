@@ -20,8 +20,7 @@ use plugin_editor_api::*;
 use ui::dock::PanelView;
 
 mod model;
-
-use model::{LiveNode, LiveWire};
+mod preview;
 
 /// Extension of a render graph asset.
 const EXTENSION: &str = helio_graph_asset::EXTENSION;
@@ -30,9 +29,17 @@ const EDITOR: &str = "render-graph-editor";
 
 /// Installs the profile once, before any editor opens a render graph. Safe to
 /// call from every entry point.
-pub(crate) fn ensure_profile() {
+pub(crate) fn ensure_profile(window: Option<&Window>) {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
+        use engine_backend::subsystems::render::helio_renderer::pipelines;
+        // Learn the pins of Helio's nodes from their passes in the background, on
+        // the editor's own device when there is one (so no second device is made),
+        // so they are ready by the time a graph is opened.
+        if let Some((device, queue)) = window.and_then(Window::gpu_device_and_queue) {
+            pipelines::offer_probe_device(device, queue);
+        }
+        pipelines::start_graph_pin_probe();
         if let Err(error) = install_profile(Arc::new(RenderProfile)) {
             log::error!("Render Graph Editor: {error}");
         }
@@ -76,35 +83,41 @@ impl EditorProfile for RenderProfile {
         model::refresh_pins(graph, node_id, model::registry());
     }
 
+    fn preview_panel(
+        &self,
+        file: Option<&std::path::Path>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Arc<dyn PanelView>> {
+        let preview = cx.new(preview::PipelinePreview::new);
+        preview::register(file.map(std::path::Path::to_path_buf), preview.downgrade());
+        Some(Arc::new(preview))
+    }
+
+    fn graph_applied(&self, file: Option<&std::path::Path>, graph: &BlueprintGraph, cx: &mut App) {
+        for preview in preview::previews_for(file) {
+            let _ = preview.update(cx, |preview, cx| preview.apply_graph(graph, cx));
+        }
+    }
+
     fn validate(&self, graph: &BlueprintGraph) -> Vec<String> {
-        let nodes: Vec<LiveNode> = graph
-            .nodes
-            .iter()
-            .map(|node| LiveNode {
-                id: node.id.clone(),
-                definition_id: node.definition_id.clone(),
-                position: [node.position.x, node.position.y],
-                properties: node.properties.clone(),
-            })
-            .collect();
-        let wires: Vec<LiveWire> = graph
-            .connections
-            .iter()
-            .map(|c| LiveWire {
-                source_node: c.source_node.clone(),
-                source_pin: c.source_pin.clone(),
-                target_node: c.target_node.clone(),
-                target_pin: c.target_pin.clone(),
-            })
-            .collect();
         let registry = model::registry();
-        let asset = model::asset_from_live("", &nodes, &wires, registry);
-        model::problems(&asset, registry)
+        let asset = model::live_asset(graph);
+        let mut problems = model::problems(&asset, registry);
+        // Without the probe the stage nodes have no resource pins; say why.
+        if let Some(reason) = engine_backend::subsystems::render::helio_renderer::pipelines::graph_pin_probe_error() {
+            problems.insert(0, format!("node pins unavailable: {reason}"));
+        }
+        problems
     }
 }
 
 pub(crate) fn file_type() -> FileTypeDefinition {
-    let template = helio_default_graphs::nodes::default_graph_asset();
+    // A new graph starts as the stage chain. The editor can show every resource
+    // and SceneDB buffer pin, but a file made at startup cannot wait for the pin
+    // probe, so the wires between them are drawn by the author, or taken from
+    // `default_graph_template`.
+    let template = helio_default_graphs::nodes::default_graph_asset(&helio_graph_asset::Probe::default());
     FileTypeDefinition {
         id: FileTypeId::new(FILE_TYPE),
         extension: EXTENSION.to_string(),
@@ -156,7 +169,7 @@ impl EditorPlugin for RenderBpsPlugin {
     }
 
     fn on_load(&mut self) {
-        ensure_profile();
+        ensure_profile(None);
         log::info!("Render Graph Editor plugin loaded");
     }
 }
@@ -168,7 +181,7 @@ impl RenderBpsPlugin {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        ensure_profile();
+        ensure_profile(Some(&*window));
         let panel = cx.new(|cx| {
             match BlueprintEditorPanel::new_with_path(file_path.clone(), window, cx) {
                 Ok(panel) => panel,

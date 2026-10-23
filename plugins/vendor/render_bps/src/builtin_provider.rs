@@ -45,7 +45,7 @@ impl BuiltinEditorProvider for RenderBpsBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        ensure_profile();
+        ensure_profile(Some(&*window));
         let panel = cx.new(|cx| {
             match blueprint_editor_plugin::BlueprintEditorPanel::new_with_path(
                 file_path.clone(),

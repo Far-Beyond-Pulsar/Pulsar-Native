@@ -26,7 +26,53 @@ fn registry() -> &'static RwLock<RenderPipelineRegistry> {
 
 /// Every offered pipeline: built-ins first, then project pipelines.
 pub fn list_pipelines() -> Vec<PipelineInfo> {
-    registry().read().map(|r| r.list()).unwrap_or_default()
+    registry()
+        .read()
+        .map(|r| r.list())
+        .unwrap_or_default()
+        .into_iter()
+        // A preview's pipeline is the editor's own, not a choice for a level.
+        .filter(|info| !info.id.starts_with(PREVIEW_PREFIX))
+        .collect()
+}
+
+/// Id prefix of pipelines made for a render graph editor's preview.
+const PREVIEW_PREFIX: &str = "preview:";
+
+/// Registers `asset` as a pipeline for a preview viewport and returns its id,
+/// for [`crate::subsystems::render::HelioEditorMailbox::set_render_pipeline`].
+/// Each call makes a new id (so the renderer rebuilds), and `replacing` retires
+/// the previous one. Previews are not listed with [`list_pipelines`].
+pub fn register_preview_pipeline(
+    asset: helio_graph_asset::GraphAsset,
+    replacing: Option<&str>,
+) -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = format!("{PREVIEW_PREFIX}{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let asset = Arc::new(asset);
+    let nodes = Arc::new(graph_node_registry());
+    let factory: PipelineFactory = Arc::new(move || {
+        Box::new(helio_graph_asset::GraphAssetPipeline::new(
+            Arc::clone(&asset),
+            Arc::clone(&nodes),
+            helio_default_graphs::build_default_graph_external_with_context,
+        )) as Box<dyn IntoGraph>
+    });
+    if let Ok(mut registry) = registry().write() {
+        if let Some(old) = replacing {
+            registry.remove(old);
+        }
+        registry.register(
+            PipelineInfo {
+                id: id.clone(),
+                label: "Preview".to_string(),
+                description: String::new(),
+                origin: PipelineOrigin::Project,
+            },
+            factory,
+        );
+    }
+    id
 }
 
 /// The id the engine runs for `requested`: the request if it is registered,
@@ -67,16 +113,146 @@ pub fn register_project_pipeline(
 
 fn node_registry_cell() -> &'static RwLock<helio_graph_asset::NodeRegistry> {
     static NODES: OnceLock<RwLock<helio_graph_asset::NodeRegistry>> = OnceLock::new();
-    NODES.get_or_init(|| RwLock::new(helio_default_graphs::nodes::node_registry()))
+    NODES.get_or_init(|| RwLock::new(helio_default_graphs::nodes::base_registry()))
+}
+
+/// Builds the default graph once on a headless device and returns the pins its
+/// passes declare, and the SceneDB buffers the mirror registers.
+fn probe_on_headless_device() -> Result<helio_graph_asset::Probe, String> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
+        .map_err(|error| format!("no GPU adapter: {error}"))?;
+    let features = helio::required_wgpu_features(adapter.features());
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_features: features,
+        required_limits: helio::required_wgpu_limits(adapter.limits()),
+        // Ray queries are experimental in wgpu; Helio asks for them with the features.
+        experimental_features: helio::required_experimental_features(features),
+        ..Default::default()
+    }))
+    .map_err(|error| format!("no GPU device: {error}"))?;
+    probe_on(Arc::new(device), Arc::new(queue))
+}
+
+/// The editor's own device and queue, if one was offered before the probe ran.
+static PROBE_DEVICE: OnceLock<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> = OnceLock::new();
+
+/// Offers the editor's shared device for the pin probe, so it does not create a
+/// second one. Only the first offer, made before the probe starts, is used.
+pub fn offer_probe_device(device: wgpu::Device, queue: wgpu::Queue) {
+    let _ = PROBE_DEVICE.set((Arc::new(device), Arc::new(queue)));
+}
+
+/// Builds the default graph on `device` (without locking it) and returns the
+/// pins its passes declare, and the SceneDB buffers the mirror registers.
+fn probe_on(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<helio_graph_asset::Probe, String> {
+
+    let mut scene = pulsar_scenedb::SceneDb::new();
+    let scene_db = crate::scene::ensure_gpu_mirror(&mut scene, device.clone(), queue.clone());
+
+    let buffer = |label: &str, size: u64, usage: wgpu::BufferUsages| {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage,
+            mapped_at_creation: false,
+        })
+    };
+    let camera = buffer(
+        "Probe Camera",
+        (std::mem::size_of::<helio_core::GpuCameraUniforms>() * 2) as u64,
+        wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    );
+    let debug_camera =
+        buffer("Probe Debug Camera", 64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
+    let cull_stats = buffer(
+        "Probe Cull Stats",
+        64,
+        wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+    );
+
+    let config = helio::RendererConfig::new(64, 64, wgpu::TextureFormat::Bgra8UnormSrgb);
+    let mut env = helio_graph_asset::BuildEnv::new(
+        &device,
+        &queue,
+        config,
+        Arc::new(std::sync::Mutex::new(helio::DebugDrawState::default())),
+        &camera,
+        &debug_camera,
+        &cull_stats,
+        false,
+        scene_db,
+    );
+    helio_default_graphs::nodes::probe_pins(&mut env)
+}
+
+/// The probe, on the shared device when one was offered, else a headless one.
+fn probe_run() -> Result<helio_graph_asset::Probe, String> {
+    match PROBE_DEVICE.get() {
+        Some((device, queue)) => probe_on(device.clone(), queue.clone()),
+        None => probe_on_headless_device(),
+    }
+}
+
+/// What the passes declare, found once per process by building the default graph
+/// on a headless device (a second or two; see [`start_graph_pin_probe`]).
+/// `None` when no GPU is available: stage nodes then have flow pins only.
+static PROBE_ERROR: OnceLock<String> = OnceLock::new();
+
+/// Why [`graph_pin_probe`] found nothing, once it has tried and failed.
+pub fn graph_pin_probe_error() -> Option<&'static str> {
+    PROBE_ERROR.get().map(String::as_str)
+}
+
+pub fn graph_pin_probe() -> Option<&'static helio_graph_asset::Probe> {
+    static PROBE: OnceLock<Option<helio_graph_asset::Probe>> = OnceLock::new();
+    PROBE
+        .get_or_init(|| match std::panic::catch_unwind(probe_run)
+            .unwrap_or_else(|_| Err("building the passes panicked".to_string()))
+        {
+            Ok(probe) => Some(probe),
+            Err(error) => {
+                tracing::warn!("Render graph nodes have no resource pins: {error}");
+                let _ = PROBE_ERROR.set(error);
+                None
+            }
+        })
+        .as_ref()
+}
+
+/// Starts [`graph_pin_probe`] on a background thread, so the pins are ready
+/// when an editor first asks for the node registry.
+pub fn start_graph_pin_probe() {
+    std::thread::Builder::new()
+        .name("render-graph-pin-probe".into())
+        .spawn(|| {
+            graph_pin_probe();
+        })
+        .ok();
 }
 
 /// The node types render-graph assets can use: the core resource nodes,
-/// Helio's stages, and whatever [`register_graph_node`] added. A snapshot, so
-/// the editor and the compiler see one consistent set.
+/// Helio's stages with the pins their passes declare (waits for the probe),
+/// and whatever [`register_graph_node`] added. A snapshot, so the editor and
+/// the compiler see one consistent set.
 pub fn graph_node_registry() -> helio_graph_asset::NodeRegistry {
+    if let Some(probe) = graph_pin_probe() {
+        static APPLIED: std::sync::Once = std::sync::Once::new();
+        APPLIED.call_once(|| {
+            if let Ok(mut registry) = node_registry_cell().write() {
+                helio_default_graphs::nodes::register_nodes(&mut registry, probe);
+            }
+        });
+    }
     node_registry_cell().read().map(|r| r.clone()).unwrap_or_default()
 }
 
+/// The default deferred pipeline as a graph, wired from the probed pins: the
+/// template for a new render graph.
+pub fn default_graph_template() -> helio_graph_asset::GraphAsset {
+    let probe = graph_pin_probe().cloned().unwrap_or_default();
+    helio_default_graphs::nodes::default_graph_asset(&probe)
+}
 /// Offers a node type to render-graph assets. A plugin whose pass crate
 /// supplies a node registers it here; the graphs already registered as
 /// pipelines pick it up the next time the project's graphs are loaded.
@@ -156,7 +332,10 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
 /// Forgets every project pipeline (a project closed or is reloading).
 pub fn clear_project_pipelines() {
     if let Ok(mut registry) = registry().write() {
-        registry.clear_origin(PipelineOrigin::Project);
+        // Project graphs go; a preview's pipeline belongs to an open editor.
+        registry.retain(|info| {
+            info.origin != PipelineOrigin::Project || info.id.starts_with(PREVIEW_PREFIX)
+        });
     }
 }
 

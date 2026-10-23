@@ -23,7 +23,12 @@ use serde_json::Value;
 /// The node types render graphs can use.
 pub fn registry() -> &'static Arc<NodeRegistry> {
     static REGISTRY: OnceLock<Arc<NodeRegistry>> = OnceLock::new();
-    REGISTRY.get_or_init(|| Arc::new(helio_default_graphs::nodes::node_registry()))
+    // The engine's registry: Helio's stages with the pins their passes declare
+    // (the first call waits for the probe that reads them), and every node any
+    // crate in this binary registered.
+    REGISTRY.get_or_init(|| {
+        Arc::new(engine_backend::subsystems::render::helio_renderer::pipelines::graph_node_registry())
+    })
 }
 
 // ── Pin types ────────────────────────────────────────────────────────────────
@@ -85,6 +90,7 @@ fn category_look(category: &str) -> (&'static str, &'static str) {
         "Graph" => ("#6B7280", "⏹"),
         "Resources" => ("#B7791F", "▦"),
         "Helio Stages" => ("#2B6CB0", "◈"),
+        "SceneDB" => ("#2F855A", "▤"),
         _ => ("#4A5568", "●"),
     }
 }
@@ -100,7 +106,7 @@ fn definition_pins(pins: &[PinDesc], pin_type: blueprint_editor_plugin::PinType)
     pins.iter()
         .map(|pin| PinDefinition {
             id: pin.name.clone(),
-            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.name.clone() },
+            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.resource.clone() },
             data_type: blueprint_editor_plugin::PinDataType::from_type_str(pin_type_string(pin)),
             pin_type: pin_type.clone(),
         })
@@ -210,7 +216,7 @@ pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result
                     let entry = PinInstance {
                         id: pin.name.clone(),
                         pin: DescPin {
-                            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.name.clone() },
+                            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.resource.clone() },
                             pin_type: direction.clone(),
                             data_type: DataType::from_type_str(&pin_type_string(pin)),
                             connected_to: Vec::new(),
@@ -386,6 +392,31 @@ pub fn asset_from_live(
     }
 }
 
+/// The asset the editor's graph describes.
+pub fn live_asset(graph: &blueprint_editor_plugin::BlueprintGraph) -> GraphAsset {
+    let nodes: Vec<LiveNode> = graph
+        .nodes
+        .iter()
+        .map(|node| LiveNode {
+            id: node.id.clone(),
+            definition_id: node.definition_id.clone(),
+            position: [node.position.x, node.position.y],
+            properties: node.properties.clone(),
+        })
+        .collect();
+    let wires: Vec<LiveWire> = graph
+        .connections
+        .iter()
+        .map(|c| LiveWire {
+            source_node: c.source_node.clone(),
+            source_pin: c.source_pin.clone(),
+            target_node: c.target_node.clone(),
+            target_pin: c.target_pin.clone(),
+        })
+        .collect();
+    asset_from_live("", &nodes, &wires, registry())
+}
+
 /// Problems that stop a graph from building, as one line each.
 pub fn problems(asset: &GraphAsset, registry: &NodeRegistry) -> Vec<String> {
     helio_graph_asset::validate(asset, registry)
@@ -431,7 +462,7 @@ fn editor_pins(
     pins.iter()
         .map(|pin| blueprint_editor_plugin::Pin {
             id: pin.name.clone(),
-            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.name.clone() },
+            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.resource.clone() },
             pin_type: direction.clone(),
             data_type: blueprint_editor_plugin::PinDataType::from_type_str(pin_type_string(pin)),
         })
@@ -491,7 +522,8 @@ pub fn refresh_pins(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helio_default_graphs::nodes::{default_graph_asset, node_registry};
+    use helio_default_graphs::nodes::{base_registry, default_graph_asset};
+    use helio_graph_asset::Probe;
 
     #[test]
     fn pin_type_strings_carry_kind_persistence_and_resource() {
@@ -518,7 +550,7 @@ mod tests {
 
     #[test]
     fn the_catalogue_lists_every_registered_node_with_matching_pins() {
-        let registry = node_registry();
+        let registry = base_registry();
         let catalog = catalog(&registry);
         let listed: usize = catalog.categories.iter().map(|c| c.nodes.len()).sum();
         assert_eq!(listed, registry.list().len());
@@ -534,8 +566,8 @@ mod tests {
 
     #[test]
     fn the_default_graph_survives_the_editor_model_both_ways() {
-        let registry = node_registry();
-        let asset = default_graph_asset();
+        let registry = base_registry();
+        let asset = default_graph_asset(&Probe::default());
         let blueprint = to_blueprint_asset(&asset, &registry).unwrap();
         assert_eq!(blueprint.main_graph.nodes.len(), asset.nodes.len());
         assert_eq!(blueprint.main_graph.connections.len(), asset.connections.len());
@@ -550,7 +582,7 @@ mod tests {
 
     #[test]
     fn edited_parameters_round_trip_as_their_declared_types() {
-        let registry = node_registry();
+        let registry = base_registry();
         let mut asset = GraphAsset::default();
         asset.nodes.push(NodeInstance {
             id: "buf".into(),
@@ -572,7 +604,7 @@ mod tests {
 
     #[test]
     fn live_graphs_join_wires_through_reroutes() {
-        let registry = node_registry();
+        let registry = base_registry();
         let node = |id: &str, kind: &str| LiveNode {
             id: id.into(),
             definition_id: kind.into(),
@@ -601,7 +633,7 @@ mod tests {
 
     #[test]
     fn problems_report_a_graph_without_an_output() {
-        let registry = node_registry();
+        let registry = base_registry();
         let found = problems(&GraphAsset::default(), &registry);
         assert!(found.iter().any(|p| p.contains("Output")), "{found:?}");
     }

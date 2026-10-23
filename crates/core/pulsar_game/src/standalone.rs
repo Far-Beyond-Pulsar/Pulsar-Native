@@ -423,13 +423,17 @@ pub fn load_level(
     // remember which one this level runs for the renderer built after this.
     {
         use engine_backend::subsystems::render::helio_renderer::pipelines;
-        let report = pipelines::refresh_project_pipelines(content.root());
-        for (graph, error) in &report.failed {
-            tracing::warn!(graph = %graph, "Render graph not offered: {error}");
-        }
         let requested = std::fs::read_to_string(path)
             .ok()
             .and_then(|json| pipelines::render_pipeline_of_level(&json));
+        // Loading project graphs builds Helio's passes once to learn their pins, so
+        // only a level that names a pipeline pays for it.
+        if requested.is_some() {
+            let report = pipelines::refresh_project_pipelines(content.root());
+            for (graph, error) in &report.failed {
+                tracing::warn!(graph = %graph, "Render graph not offered: {error}");
+            }
+        }
         pipelines::set_level_pipeline(requested);
     }
     let registry = pulsar_class::ClassRegistry::scan(content.root());

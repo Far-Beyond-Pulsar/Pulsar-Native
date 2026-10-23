@@ -33,6 +33,34 @@ binds resources by name.
 | Buffer | square | second outline |
 | Scene (host input) | hexagon | – |
 
+## Pins are generated, not written
+
+No node lists its resources by hand. `RenderPass::scene_buffers` (SceneDB keys a
+pass consumes) joins `reads()` / `writes()` / `declare_resources` as what a
+pass declares, and `helio_graph_asset::probe` builds a graph on a device and
+derives every node's pins from those declarations:
+
+- outputs: everything its passes write, typed by how the pass declares it
+  (`write_buffer` is a buffer, colour and group writes are textures, depth is
+  depth);
+- inputs: what its passes read that an earlier node wrote, or that the host
+  supplies (a Scene pin). A resource only a later pass writes is last frame's
+  value (Hi-Z reads `depth`) and is not an input; one nothing writes is an
+  optional input with a fallback;
+- SceneDB: a Buffer input `scenedb.<key>` for each key a pass consumes. The
+  SceneDB node outputs every key the mirror registered plus those declared;
+- host inputs: a node that calls `declare_external_input` gets a Scene output.
+
+The pin type of a SceneDB buffer is the buffer kind, not its row type. The
+default graph's wires are generated the same way (`default_graph_asset`).
+
+`engine_backend` runs the probe once per process on a headless device
+(`graph_pin_probe`, started in the background when the editor registers), and
+`graph_node_registry` waits for it. With no GPU the stages have flow pins only.
+A pass that fetches a SceneDB buffer should list it in `scene_buffers`; passes
+with more than one `RenderPass` impl in a file (sky composite, perf overlay
+analyser, VG raster) are declared by hand where the key is used.
+
 ## Resource nodes
 
 `core.texture` / `core.depth` allocate a graph-recycled texture by name.
@@ -71,12 +99,33 @@ the document, pin styles, `validate` (the Compile button), `parameters` /
 `parameter_changed` (editable node parameters; resource pins are renamed and
 their wires moved), and whether the Blueprint side panels show (they don't).
 
+## Preview
+
+The editor shows a live preview above the Properties panel (`render_bps/src/preview.rs`):
+a full Helio renderer on the editor's own wgpu device (the window's surface), drawing a
+private built-in test scene (ground, shapes, sun, point light) through the graph's
+pipeline. Compile and Save apply the graph (`EditorProfile::graph_applied`); a graph
+with errors is reported in the preview and not applied. The pipeline is registered
+under a hidden `preview:N` id and set through the mailbox
+(`HelioEditorMailbox::set_render_pipeline`), so it rebuilds like a level does.
+Drag orbits, scroll zooms.
+
+The node-pin probe also runs on the editor's shared device when the window offers one
+(`offer_probe_device`), and on a headless one otherwise (the game).
+
 ## Known gaps
 
-- Plugin-registered nodes are not visible to `render_bps` (its registry is its
-  own copy). Nodes from `helio-default-graphs` are.
+- The probe builds with TSR on (FXAA and TSR are alternatives), so `fxaa_color`
+  has no output pin; stage inputs that only exist in the other branch are
+  missing the same way.
+- A new graph made from the file menu starts as the flow chain (the file is
+  written before the probe can finish); `default_graph_template()` has the
+  wires.
 - A custom graph does not include the engine's voxel passes (the editor's
   default pipeline does).
+- The preview is a small separate component, not the level editor's `HelioViewport`
+  (no input beyond orbit and zoom, no gizmos, simple frame pacing). Extracting a
+  reusable viewport from `ui_level_editor` is tracked as an issue.
 - Project render graphs are registered when the World Settings panel (editor)
   or `load_level` (game) runs; a packaged game needs `.rendergraph` files in its
   content.
