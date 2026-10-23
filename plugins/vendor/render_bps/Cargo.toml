@@ -33,7 +33,7 @@ blueprint_graph = { path = "../blueprint_editor/graph" }
 
 # The render graph asset model, its node registry and compiler.
 helio-graph-asset = { workspace = true }
-helio-default-graphs = { workspace = true }
+helio-default-passes = { workspace = true }
 
 serde_json = { workspace = true }
 log = { workspace = true }

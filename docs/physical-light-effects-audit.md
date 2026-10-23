@@ -246,7 +246,7 @@ The implementation choices above are proposals for this repository. Relevant pri
 [PP execution]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/passes/3d/helio-pass-postprocess/src/lib.rs:1326
 [PP shader]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/passes/3d/helio-pass-postprocess/shaders/postprocess.wgsl:338
 [CPU blender]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/passes/3d/helio-pass-postprocess/src/gpu_types.rs:798
-[default graph]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/helio-default-graphs/src/lib.rs:732
+[default graph]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/helio-default-passes/src/lib.rs:732
 [deferred target]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light/src/lib.rs:888
 [graph execution]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/helio-core/src/graph/execution.rs:1690
 [water shader]: C:/Users/redst/OneDrive/Documents/GitHub/Pulsar-Native/crates/renderer/helio/crates/passes/3d/helio-pass-water-sim/shaders/underwater_fog.wgsl:141

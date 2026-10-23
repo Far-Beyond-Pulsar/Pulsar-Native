@@ -6,7 +6,7 @@
 //! through. SceneDB derives a [`WaterHitboxSourceRow`] from the component
 //! on every insert, write, removal and replay, keyed by the component
 //! instance; the renderer's environment join (Helio's
-//! `helio-default-graphs::environment_join`) bounds the body by its owner's
+//! `helio-default-passes::environment_join`) bounds the body by its owner's
 //! meshes at the owner's transform, on the GPU, into the water
 //! simulation's hitbox rows, and the simulation keeps each body's previous
 //! bounds itself, so a body displaces water only as it moves.
@@ -25,7 +25,7 @@ pub const WATER_HITBOX_EDGE_SOFTNESS: f32 = 0.25;
 pub const WATER_HITBOX_STRENGTH: f32 = 1.0;
 
 /// A body's water interaction: `[edge softness (m), strength, interacts,
-/// 0]`, the layout `helio_default_graphs::environment_join` reads
+/// 0]`, the layout `helio_default_passes::environment_join` reads
 /// (`WATER_HITBOX_SOURCE_ROW_BYTES`). Zero for a body that does not
 /// interact, which the join skips.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]

@@ -19,7 +19,7 @@ fn registry() -> &'static RwLock<RenderPipelineRegistry> {
     static REGISTRY: OnceLock<RwLock<RenderPipelineRegistry>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let mut registry = RenderPipelineRegistry::new();
-        helio_default_graphs::pipelines::register_builtin_pipelines(&mut registry);
+        helio_default_passes::pipelines::register_builtin_pipelines(&mut registry);
         RwLock::new(registry)
     })
 }
@@ -55,7 +55,7 @@ pub fn register_preview_pipeline(
         Box::new(helio_graph_asset::GraphAssetPipeline::new(
             Arc::clone(&asset),
             Arc::clone(&nodes),
-            helio_default_graphs::build_default_graph_external_with_context,
+            helio_default_passes::build_default_graph_external_with_context,
         )) as Box<dyn IntoGraph>
     });
     if let Ok(mut registry) = registry().write() {
@@ -113,7 +113,7 @@ pub fn register_project_pipeline(
 
 fn node_registry_cell() -> &'static RwLock<helio_graph_asset::NodeRegistry> {
     static NODES: OnceLock<RwLock<helio_graph_asset::NodeRegistry>> = OnceLock::new();
-    NODES.get_or_init(|| RwLock::new(helio_default_graphs::nodes::base_registry()))
+    NODES.get_or_init(|| RwLock::new(helio_default_passes::graphs::base_registry()))
 }
 
 /// Builds the default graph once on a headless device and returns the pins its
@@ -183,7 +183,10 @@ fn probe_on(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<helio_
         false,
         scene_db,
     );
-    helio_default_graphs::nodes::probe_pins(&mut env)
+    // The registry as it is now: its pin table is shared, so the nodes it holds
+    // get their pins when the result is applied.
+    let registry = node_registry_cell().read().map(|r| r.clone()).map_err(|_| "node registry is poisoned".to_string())?;
+    helio_default_passes::graphs::probe_pins(&registry, &mut env)
 }
 
 /// The probe, on the shared device when one was offered, else a headless one.
@@ -240,7 +243,7 @@ pub fn graph_node_registry() -> helio_graph_asset::NodeRegistry {
         static APPLIED: std::sync::Once = std::sync::Once::new();
         APPLIED.call_once(|| {
             if let Ok(mut registry) = node_registry_cell().write() {
-                helio_default_graphs::nodes::register_nodes(&mut registry, probe);
+                helio_default_passes::graphs::apply_probe(&mut registry, probe);
             }
         });
     }
@@ -250,8 +253,8 @@ pub fn graph_node_registry() -> helio_graph_asset::NodeRegistry {
 /// The default deferred pipeline as a graph, wired from the probed pins: the
 /// template for a new render graph.
 pub fn default_graph_template() -> helio_graph_asset::GraphAsset {
-    let probe = graph_pin_probe().cloned().unwrap_or_default();
-    helio_default_graphs::nodes::default_graph_asset(&probe)
+    let registry = graph_node_registry();
+    helio_default_passes::graphs::deferred_graph_asset(&registry)
 }
 /// Offers a node type to render-graph assets. A plugin whose pass crate
 /// supplies a node registers it here; the graphs already registered as
@@ -320,7 +323,7 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
                 Box::new(helio_graph_asset::GraphAssetPipeline::new(
                     Arc::clone(&asset),
                     Arc::clone(&nodes),
-                    helio_default_graphs::build_default_graph_external_with_context,
+                    helio_default_passes::build_default_graph_external_with_context,
                 )) as Box<dyn IntoGraph>
             }),
         );
@@ -394,7 +397,7 @@ mod tests {
     #[test]
     fn unknown_ids_fall_back_to_the_default() {
         let default = resolve_pipeline(None).expect("built-ins are registered");
-        assert_eq!(default, helio_default_graphs::pipelines::DEFAULT);
+        assert_eq!(default, helio_default_passes::pipelines::DEFAULT);
         assert_eq!(resolve_pipeline(Some("no/such.rendergraph")), Some(default));
     }
 

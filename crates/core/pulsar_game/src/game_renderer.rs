@@ -124,7 +124,7 @@ pub fn build_game_renderer_with_portals(
     config: RendererConfig,
     editor_mode: bool,
     owner: DeviceOwner,
-    portals: helio_default_graphs::portal_projection::PortalProjectionInput,
+    portals: helio_default_passes::portal_projection::PortalProjectionInput,
 ) -> Renderer {
     // A host that never syncs its `VirtualGeometryHost` draws classically.
     build_game_renderer_with_virtual_geometry(
@@ -151,7 +151,7 @@ pub fn build_game_renderer_with_virtual_geometry(
     config: RendererConfig,
     editor_mode: bool,
     owner: DeviceOwner,
-    portals: helio_default_graphs::portal_projection::PortalProjectionInput,
+    portals: helio_default_passes::portal_projection::PortalProjectionInput,
     vg: &mut VirtualGeometryHost,
 ) -> Renderer {
     let config = config.with_virtual_geometry(vg.runtime());
@@ -167,7 +167,7 @@ pub fn build_game_renderer_with_virtual_geometry(
     let chosen = pipelines::resolve_pipeline(pipelines::level_pipeline().as_deref());
     let custom = chosen
         .as_deref()
-        .filter(|id| *id != helio_default_graphs::pipelines::DEFAULT)
+        .filter(|id| *id != helio_default_passes::pipelines::DEFAULT)
         .and_then(|id| pipelines::create_pipeline(Some(id)));
     let builder = builder
         .with_editor_mode(editor_mode)
@@ -186,7 +186,7 @@ pub fn build_game_renderer_with_virtual_geometry(
     let builder = match custom {
         Some(pipeline) => builder.with_boxed_graph(pipeline),
         None => builder.with_pass_build_context(Box::new(
-            helio_default_graphs::build_default_graph_external_with_context,
+            helio_default_passes::build_default_graph_external_with_context,
         )),
     };
     builder.build(device, queue, width, height, format)

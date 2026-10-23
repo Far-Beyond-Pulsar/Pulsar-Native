@@ -85,6 +85,18 @@ pub fn pin_style(type_name: &str) -> PinStyle {
 
 // ── Catalogue ────────────────────────────────────────────────────────────────
 
+/// What the editor prints next to a pin: its resource, marked when it reads the
+/// previous frame; nothing for a flow pin.
+fn pin_label(pin: &PinDesc) -> String {
+    if pin.ty.kind == PinKind::Flow {
+        String::new()
+    } else if pin.history {
+        format!("{} (prev frame)", pin.resource)
+    } else {
+        pin.resource.clone()
+    }
+}
+
 fn category_look(category: &str) -> (&'static str, &'static str) {
     match category {
         "Graph" => ("#6B7280", "⏹"),
@@ -106,7 +118,7 @@ fn definition_pins(pins: &[PinDesc], pin_type: blueprint_editor_plugin::PinType)
     pins.iter()
         .map(|pin| PinDefinition {
             id: pin.name.clone(),
-            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.resource.clone() },
+            name: pin_label(pin),
             data_type: blueprint_editor_plugin::PinDataType::from_type_str(pin_type_string(pin)),
             pin_type: pin_type.clone(),
         })
@@ -216,7 +228,7 @@ pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result
                     let entry = PinInstance {
                         id: pin.name.clone(),
                         pin: DescPin {
-                            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.resource.clone() },
+                            name: pin_label(pin),
                             pin_type: direction.clone(),
                             data_type: DataType::from_type_str(&pin_type_string(pin)),
                             connected_to: Vec::new(),
@@ -256,6 +268,19 @@ pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result
         }
     }
 
+    graph.comments = asset
+        .comments
+        .iter()
+        .map(|c| blueprint_graph::BlueprintComment {
+            id: c.id.clone(),
+            text: c.text.clone(),
+            position: (c.position[0], c.position[1]),
+            size: (c.size[0], c.size[1]),
+            color: c.color,
+            contained_node_ids: c.nodes.clone(),
+        })
+        .collect();
+
     let mut blueprint = BlueprintAsset::new();
     blueprint.main_graph = graph;
     Ok(blueprint)
@@ -294,6 +319,18 @@ pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry)
             .map(|c| Connection {
                 from: PinRef::new(&c.source_node, &c.source_pin),
                 to: PinRef::new(&c.target_node, &c.target_pin),
+            })
+            .collect(),
+        comments: graph
+            .comments
+            .iter()
+            .map(|c| helio_graph_asset::GraphComment {
+                id: c.id.clone(),
+                text: c.text.clone(),
+                position: [c.position.0, c.position.1],
+                size: [c.size.0, c.size.1],
+                color: c.color,
+                nodes: c.contained_node_ids.clone(),
             })
             .collect(),
         ..GraphAsset::default()
@@ -417,6 +454,47 @@ pub fn live_asset(graph: &blueprint_editor_plugin::BlueprintGraph) -> GraphAsset
     asset_from_live("", &nodes, &wires, registry())
 }
 
+/// Arranges the editor's graph: positions every node and replaces the lane
+/// comments, keeping comments the author made. Reroute nodes are the editor's own
+/// and keep where they are.
+pub fn auto_layout_graph(graph: &mut blueprint_editor_plugin::BlueprintGraph) -> bool {
+    let mut asset = live_asset(graph);
+    helio_graph_asset::auto_layout(&mut asset, registry());
+
+    let positions: HashMap<String, [f32; 2]> =
+        asset.nodes.iter().map(|n| (n.id.clone(), n.position)).collect();
+    for node in graph.nodes.iter_mut() {
+        if let Some(position) = positions.get(&node.id) {
+            node.position = gpui::Point::new(position[0], position[1]);
+        }
+    }
+
+    let lanes: Vec<blueprint_editor_plugin::BlueprintComment> = asset
+        .comments
+        .iter()
+        .map(|c| blueprint_editor_plugin::BlueprintComment {
+            id: c.id.clone(),
+            text: c.text.clone(),
+            position: gpui::Point::new(c.position[0], c.position[1]),
+            size: gpui::Size::new(c.size[0], c.size[1]),
+            color: gpui::Hsla::from(gpui::Rgba {
+                r: c.color[0],
+                g: c.color[1],
+                b: c.color[2],
+                a: c.color[3],
+            }),
+            contained_node_ids: c.nodes.clone(),
+            is_selected: false,
+            color_picker_state: None,
+        })
+        .collect();
+    graph.comments.with_mut(|comments| {
+        comments.retain(|c| !c.id.starts_with(helio_graph_asset::LANE_PREFIX));
+        comments.extend(lanes);
+    });
+    true
+}
+
 /// Problems that stop a graph from building, as one line each.
 pub fn problems(asset: &GraphAsset, registry: &NodeRegistry) -> Vec<String> {
     helio_graph_asset::validate(asset, registry)
@@ -462,11 +540,26 @@ fn editor_pins(
     pins.iter()
         .map(|pin| blueprint_editor_plugin::Pin {
             id: pin.name.clone(),
-            name: if pin.ty.kind == PinKind::Flow { String::new() } else { pin.resource.clone() },
+            name: pin_label(pin),
             pin_type: direction.clone(),
             data_type: blueprint_editor_plugin::PinDataType::from_type_str(pin_type_string(pin)),
         })
         .collect()
+}
+
+/// The title of a Get or Set Buffer node: what it does and to which buffer
+/// (`Get pre_aa`). `None` for any other node or a node without a buffer yet.
+pub fn buffer_title(
+    definition_id: &str,
+    properties: &std::collections::HashMap<String, String>,
+) -> Option<String> {
+    let verb = match definition_id {
+        helio_graph_asset::core_nodes::BUFFER_GET => "Get",
+        helio_graph_asset::core_nodes::BUFFER_SET => "Set",
+        _ => return None,
+    };
+    let (_, name) = helio_graph_asset::buffers::parse_entry(properties.get("buffer")?)?;
+    Some(format!("{verb} {name}"))
 }
 
 /// Re-derives a node's pins after one of its parameters changed. A resource
@@ -505,6 +598,9 @@ pub fn refresh_pins(
     if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_id) {
         node.inputs = inputs;
         node.outputs = outputs;
+        if let Some(title) = buffer_title(&node.definition_id, &node.properties) {
+            node.title = title;
+        }
     }
     for connection in graph.connections.iter_mut() {
         if connection.source_node == node_id {
@@ -522,7 +618,7 @@ pub fn refresh_pins(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helio_default_graphs::nodes::{base_registry, default_graph_asset};
+    use helio_default_passes::graphs::{base_registry, deferred_graph_asset};
     use helio_graph_asset::Probe;
 
     #[test]
@@ -567,7 +663,7 @@ mod tests {
     #[test]
     fn the_default_graph_survives_the_editor_model_both_ways() {
         let registry = base_registry();
-        let asset = default_graph_asset(&Probe::default());
+        let asset = deferred_graph_asset(&base_registry());
         let blueprint = to_blueprint_asset(&asset, &registry).unwrap();
         assert_eq!(blueprint.main_graph.nodes.len(), asset.nodes.len());
         assert_eq!(blueprint.main_graph.connections.len(), asset.connections.len());

@@ -14,7 +14,7 @@ this file is the map of how the pieces fit together in Pulsar-Native.
 | `helio-lens-optics` | CPU lens tracer and baker (`Prescription`, `LensBake`); example lenses in `data/*.json` |
 | `helio-pass-lens` | `LensPass`, `lens.wgsl`, the row types (`LensComponent`, `LensElementComponent`), `PrescriptionBank`, masks, the CPU twin of the ray map (`ray_map`), the bundled resources (`bundled`) |
 | `helio-component` (`components/camera_lens_component.rs`) | the authored `CameraLensComponent` / `LensElementProps` / presets, and `camera_lens_view_overscan` |
-| `helio-default-graphs` | places the pass and asks for the bundled resources |
+| `helio-default-passes` | places the pass and asks for the bundled resources |
 | `helio` (`camera.rs`) | `Camera::with_overscan` |
 | `engine_backend`, `pulsar_game` | register the GPU columns (`helio_bridge`) and apply the overscan to the frame camera |
 
@@ -30,7 +30,7 @@ FogComposite -> Transparent -> TSR / FXAA -> LensPass -> LensFlarePass -> PostPr
 ```
 
 The lens works in scene-linear radiance, before anything is metered, bloomed or
-tone mapped (`add_scene_linear_chain` in `helio-default-graphs`). It reads the AA
+tone mapped (`add_scene_linear_chain` in `helio-default-passes`). It reads the AA
 output (`tsr_color` / `fxaa_color` / `fogged_hdr`) and the scene depth, writes
 `lens_color` and publishes `lens_resolved` (`ResolvedLens`, 88 bytes) for the
 flare pass. The old DoF pass is gone.
@@ -140,7 +140,7 @@ sources) use the widened camera; mouse picking uses the unwidened projection.
 ## User WGSL hook
 
 `USER` elements run WGSL the project compiles into the lens shader:
-`helio_default_graphs::build_default_graph_with_lens_user_with_context(ctx,
+`helio_default_passes::build_default_graph_with_lens_user_with_context(ctx,
 snippet, user_effects)` (or `LensPass::new_with_user`). The snippet may define
 `user_ray_map(uv, params, t)`, `user_transmission(uv, params)` and
 `user_focus(uv, params, s)`; a hook it omits is the identity. The element's hook

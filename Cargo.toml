@@ -240,7 +240,7 @@ plugin_manager        = { path = "crates/core/plugin_manager" }
 # ---------- Helio Renderer (external git dep) ----------
 helio                      = { path = "crates/renderer/helio/crates/helio" }
 helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-compat" }
-helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
+helio-default-passes       = { path = "crates/renderer/helio/crates/helio-default-passes" }
 helio-graph-asset           = { path = "crates/renderer/helio/crates/helio-graph-asset" }
 helio-voxel-data = { path = "crates/renderer/helio/crates/helio-voxel-data" }
 helio-pass-voxel-planet = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-voxel-planet", features = ["engine"] }

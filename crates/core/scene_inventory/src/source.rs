@@ -543,14 +543,14 @@ pub struct PassCrate {
     pub package: String,
     /// Repository-relative directory.
     pub dir: String,
-    /// `helio-default-graphs` depends on it.
+    /// `helio-default-passes` depends on it.
     pub in_default_graph: bool,
 }
 
 pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
     let helio = root.join("crates/renderer/helio/crates");
     let default_graph: BTreeSet<String> =
-        fs::read_to_string(helio.join("helio-default-graphs/Cargo.toml"))
+        fs::read_to_string(helio.join("helio-default-passes/Cargo.toml"))
             .ok()
             .and_then(|text| text.parse::<toml::Table>().ok())
             .and_then(|t| t.get("dependencies").and_then(|d| d.as_table()).cloned())

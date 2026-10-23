@@ -19,6 +19,7 @@ use gpui::*;
 use plugin_editor_api::*;
 use ui::dock::PanelView;
 
+mod buffers_panel;
 mod model;
 mod preview;
 
@@ -63,7 +64,17 @@ impl EditorProfile for RenderProfile {
     }
 
     fn decode(&self, text: &str) -> Result<blueprint_graph::BlueprintAsset, String> {
-        let asset = helio_graph_asset::GraphAsset::from_json(text)?;
+        let marker: serde_json::Value =
+            serde_json::from_str(text).map_err(|error| format!("invalid render graph: {error}"))?;
+        let is_empty = marker
+            .get("nodes")
+            .and_then(serde_json::Value::as_array)
+            .map_or(true, |nodes| nodes.is_empty());
+        let asset = if is_empty && marker.get("template").and_then(serde_json::Value::as_str) == Some("deferred") {
+            helio_default_passes::graphs::deferred_graph_asset(model::registry())
+        } else {
+            helio_graph_asset::GraphAsset::from_json(text)?
+        };
         model::to_blueprint_asset(&asset, model::registry())
     }
 
@@ -81,6 +92,29 @@ impl EditorProfile for RenderProfile {
 
     fn parameter_changed(&self, graph: &mut BlueprintGraph, node_id: &str) {
         model::refresh_pins(graph, node_id, model::registry());
+    }
+
+    fn node_title(
+        &self,
+        definition_id: &str,
+        properties: &HashMap<String, String>,
+    ) -> Option<String> {
+        model::buffer_title(definition_id, properties)
+    }
+
+    fn left_panel(
+        &self,
+        editor: WeakEntity<BlueprintEditorPanel>,
+        _file: Option<&std::path::Path>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Arc<dyn PanelView>> {
+        let panel = cx.new(|cx| buffers_panel::BuffersPanel::new(editor, window, cx));
+        Some(Arc::new(panel))
+    }
+
+    fn auto_layout(&self, graph: &mut BlueprintGraph) -> bool {
+        model::auto_layout_graph(graph)
     }
 
     fn preview_panel(
@@ -113,11 +147,10 @@ impl EditorProfile for RenderProfile {
 }
 
 pub(crate) fn file_type() -> FileTypeDefinition {
-    // A new graph starts as the stage chain. The editor can show every resource
-    // and SceneDB buffer pin, but a file made at startup cannot wait for the pin
-    // probe, so the wires between them are drawn by the author, or taken from
-    // `default_graph_template`.
-    let template = helio_default_graphs::nodes::default_graph_asset(&helio_graph_asset::Probe::default());
+    // A new graph is a marker the editor expands when it opens the file: the
+    // default deferred pipeline, wired from the pins its passes declare. Those
+    // are known only once the pin probe has run, which a file written at startup
+    // cannot wait for.
     FileTypeDefinition {
         id: FileTypeId::new(FILE_TYPE),
         extension: EXTENSION.to_string(),
@@ -125,8 +158,10 @@ pub(crate) fn file_type() -> FileTypeDefinition {
         icon: ui::IconName::Component,
         color: gpui::rgb(0x2B6CB0).into(),
         structure: FileStructure::Standalone,
-        default_content: serde_json::from_str(&template.to_json())
-            .unwrap_or(serde_json::Value::Null),
+        default_content: serde_json::json!({
+            "format_version": helio_graph_asset::FORMAT_VERSION,
+            "template": "deferred",
+        }),
         creation_directory: None,
         categories: vec!["Rendering".to_string()],
     }

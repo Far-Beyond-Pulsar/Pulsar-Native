@@ -1634,13 +1634,13 @@ impl HelioRenderer {
                 super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
             let custom_pipeline = chosen_pipeline
                 .as_deref()
-                .filter(|id| *id != helio_default_graphs::pipelines::DEFAULT)
+                .filter(|id| *id != helio_default_passes::pipelines::DEFAULT)
                 .and_then(|id| super::pipelines::create_pipeline(Some(id)));
             self.applied_pipeline = chosen_pipeline;
             let builder = match custom_pipeline {
                 Some(pipeline) => builder.with_boxed_graph(pipeline),
                 None => builder.with_pass_build_context(Box::new(move |ctx| {
-                    helio_default_graphs::build_default_graph_external_with_voxel_passes(
+                    helio_default_passes::build_default_graph_external_with_voxel_passes(
                         ctx,
                         voxel_passes,
                     )

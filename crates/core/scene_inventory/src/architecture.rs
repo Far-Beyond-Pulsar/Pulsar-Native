@@ -126,7 +126,7 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "journals_to_compact: the editor's level save folds long voxel edit journals, once per save, not the frame path",
     ),
     (
-        "crates/renderer/helio/crates/helio-default-graphs/src/ray_tracing.rs",
+        "crates/renderer/helio/crates/helio-default-passes/src/ray_tracing.rs",
         3,
         "HLFS acceleration structure: one full build, then change cursors",
     ),

@@ -36,7 +36,7 @@ pulsar_script_object_model = { workspace = true }
 
 # Windowed rendering (Helio + winit + wgpu)
 helio   = { workspace = true }
-helio-default-graphs = { workspace = true }
+helio-default-passes = { workspace = true }
 winit   = { workspace = true }
 wgpu    = { workspace = true }
 glam    = { workspace = true }

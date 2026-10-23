@@ -118,7 +118,7 @@ vector and fallback publication path remain and prevent Phase 13 acceptance.
 
 Coverage is compile-checked by the pass component tests and by the Helio
 nested-workspace checks for `helio`, `helio-pass-billboard`, and
-`helio-default-graphs`. A GPU readback/integration test for this exact Helio
+`helio-default-passes`. A GPU readback/integration test for this exact Helio
 pass path is not present yet.
 
 ### Renderer-owned library/component callers

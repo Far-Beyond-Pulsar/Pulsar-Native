@@ -3107,7 +3107,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-core",
- "helio-default-graphs",
+ "helio-default-passes",
  "helio-graph-asset",
  "helio-mats",
  "helio-pass-billboard",
@@ -4796,7 +4796,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "helio-default-graphs"
+name = "helio-default-passes"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
@@ -4852,6 +4852,7 @@ dependencies = [
  "image",
  "log",
  "pulsar_scenedb",
+ "serde_json",
  "twox-hash",
  "wgpu",
 ]
@@ -5444,7 +5445,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-asset-compat",
- "helio-default-graphs",
+ "helio-default-passes",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "image",
@@ -9756,7 +9757,7 @@ dependencies = [
  "engine_state",
  "glam 0.33.5",
  "helio",
- "helio-default-graphs",
+ "helio-default-passes",
  "helio_component",
  "inventory",
  "libloading 0.9.0",
@@ -10604,7 +10605,7 @@ dependencies = [
  "blueprint_graph",
  "engine_backend",
  "gpui-ce",
- "helio-default-graphs",
+ "helio-default-passes",
  "helio-graph-asset",
  "log",
  "parking_lot",
