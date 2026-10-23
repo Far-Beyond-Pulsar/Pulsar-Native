@@ -398,7 +398,7 @@
           "override_bloom": false,
           "override_color_grading": true,
           "override_tonemap": true,
-          "override_vignette": true,
+          "override_vignette": false,
           "override_chromatic_aberration": false,
           "override_film_grain": false,
           "override_depth_of_field": false,
@@ -423,14 +423,14 @@
             1.0
           ],
           "color_saturation": [
-            0.85,
-            0.85,
-            0.85
+            1.0,
+            1.0,
+            1.0
           ],
           "color_contrast": [
-            1.15,
-            1.15,
-            1.15
+            1.06,
+            1.06,
+            1.06
           ],
           "color_gamma": [
             1.0,
@@ -450,11 +450,11 @@
           "white_balance_enabled": false,
           "white_temp": 6500.0,
           "white_tint": 0.0,
-          "tonemap_operator": "Aces",
-          "tonemap_exposure": 1.1,
+          "tonemap_operator": "AgxPunchy",
+          "tonemap_exposure": 2.0,
           "tonemap_white_point": 1.0,
-          "vignette_enabled": true,
-          "vignette_intensity": 0.2,
+          "vignette_enabled": false,
+          "vignette_intensity": 0.0,
           "vignette_smoothness": 0.5,
           "vignette_roundness": 0.5,
           "vignette_color": [

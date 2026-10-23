@@ -1227,7 +1227,12 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
     fn pass_factory(&self) -> Option<VoxelPassFactory> {
         let frame = Arc::clone(&self.frame);
         Some(Arc::new(move |_, _, _, _| {
-            Box::new(ChunkPass::new(Arc::clone(&frame)))
+            // The project's residency settings; changing them rebuilds the
+            // graph, and with it this pass.
+            let config = helio_pass_voxel_planet::chunks::ResidencyConfig::from_settings(
+                &super::project_settings::voxels(),
+            );
+            Box::new(ChunkPass::with_config(Arc::clone(&frame), config))
         }))
     }
 

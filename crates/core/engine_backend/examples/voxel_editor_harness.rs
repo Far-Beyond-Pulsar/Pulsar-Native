@@ -210,6 +210,14 @@ impl Harness {
         let path = self.out.join(format!("{name}.png"));
         image::save_buffer(&path, &pixels, w, h, image::ColorType::Rgba8).expect("write capture");
         eprintln!("HARNESS captured {}", path.display());
+        // The view as Helio's voxel_flight takes it (HELIO_VOXEL_FLIGHT_EYE,
+        // HELIO_VOXEL_FLIGHT_SUN), for the same frame rendered by Helio's
+        // own path.
+        let camera = self.camera();
+        let forward = self.renderer.camera_forward();
+        let [x, y, z] = camera.position;
+        let sun = self.renderer.sun_direction().map_or_else(|| "none".to_owned(), |[a, b, c]| format!("{a},{b},{c}"));
+        println!("HARNESS view {name}: eye {x},{y},{z},{},{},{} sun {sun}", forward.x, forward.y, forward.z);
     }
 
     fn camera(&self) -> EditorCameraState {
@@ -409,6 +417,38 @@ fn main() {
         engine_backend::scene::RuntimeLevel::load_into(Path::new(&level), &mut scene.world)
             .expect("load the level")
     };
+    // What the level lights and grades with (parity checks against Helio's
+    // examples).
+    {
+        use helio_component::components::{
+            AtmosphereComponent, CameraPostProcessComponent, GlobalFogComponent, LightComponent,
+            PostProcessVolumeComponent,
+        };
+        let world = &scene.read().world;
+        for (_, light) in world.query::<&LightComponent>() {
+            println!(
+                "HARNESS scene light: {:?} enabled {} intensity {} {:?} color {:?}",
+                light.general.light_type,
+                light.general.enabled,
+                light.intensity.intensity,
+                light.intensity.intensity_units,
+                light.color.color
+            );
+        }
+        let short = |s: String| s.chars().take(600).collect::<String>();
+        for (_, c) in world.query::<&CameraPostProcessComponent>() {
+            println!("HARNESS scene camera post: {}", short(format!("{c:?}")));
+        }
+        for (_, c) in world.query::<&PostProcessVolumeComponent>() {
+            println!("HARNESS scene post volume: {}", short(format!("{c:?}")));
+        }
+        for (_, c) in world.query::<&AtmosphereComponent>() {
+            println!("HARNESS scene atmosphere: {}", short(format!("{c:?}")));
+        }
+        for (_, c) in world.query::<&GlobalFogComponent>() {
+            println!("HARNESS scene fog: {}", short(format!("{c:?}")));
+        }
+    }
     let mut renderer = HelioRenderer::new(scene.clone());
     if let Some(camera) = extras.editor_camera {
         renderer.set_editor_camera_state(EditorCameraState {

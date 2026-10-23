@@ -3,6 +3,7 @@
 mod animated_content;
 pub mod core;
 pub mod material_sampler;
+pub mod project_settings;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;

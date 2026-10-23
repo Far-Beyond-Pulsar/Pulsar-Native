@@ -10,75 +10,20 @@ use engine_backend::scene::{
 };
 use helio::{Renderer, RendererBuilder, RendererConfig};
 
-/// The standalone game's renderer settings, from the project's
-/// `rendering` settings (render scale, reflections, shadows, TSR, mode).
+/// The game's renderer settings: the project's, as the editor viewport
+/// reads them (`project_settings`). "Automatic" TSR is off here: the game's
+/// graph has no voxel passes to prefer a preset.
 pub fn project_renderer_config(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
 ) -> RendererConfig {
-    let project_setting = |key: &str| {
-        engine_state::settings::global_config().get(
-            engine_state::settings::NS_PROJECT,
-            "rendering",
-            key,
-        )
-    };
-    let project_string = |key: &str, fallback: &str| {
-        project_setting(key)
-            .ok()
-            .and_then(|value| value.as_str().ok().map(str::to_owned))
-            .unwrap_or_else(|| fallback.to_owned())
-    };
-    let project_bool = |key: &str, fallback: bool| {
-        project_setting(key)
-            .ok()
-            .and_then(|value| value.as_bool().ok())
-            .unwrap_or(fallback)
-    };
-    let render_scale = project_setting("render_scale")
-        .ok()
-        .and_then(|value| value.as_float().ok())
-        .filter(|value| value.is_finite())
-        .unwrap_or(0.75) as f32;
-    let mut config = RendererConfig::new(width, height, format)
-        .with_render_scale(render_scale.clamp(0.25, 1.0))
-        .with_ssr(project_bool("screen_space_reflections", false))
-        .with_planar_reflections(project_bool("planar_reflections", false));
-    config =
-        config.with_shadow_quality(match project_string("shadow_quality", "medium").as_str() {
-            "low" => helio::ShadowQuality::Low,
-            "high" => helio::ShadowQuality::High,
-            "ultra" => helio::ShadowQuality::Ultra,
-            _ => helio::ShadowQuality::Medium,
-        });
-    config.shadow_atlas_size = project_setting("shadow_atlas_size")
-        .ok()
-        .and_then(|value| {
-            value
-                .as_str()
-                .ok()
-                .and_then(|value| value.parse::<u32>().ok())
-                .or_else(|| {
-                    value
-                        .as_int()
-                        .ok()
-                        .and_then(|value| u32::try_from(value).ok())
-                })
-        })
-        .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
-        .unwrap_or(1024);
-    config = match project_string("tsr_quality", "off").as_str() {
-        "performance" => config.with_tsr_quality(helio::TsrQuality::Performance),
-        "balanced" => config.with_tsr_quality(helio::TsrQuality::Balanced),
-        "quality" => config.with_tsr_quality(helio::TsrQuality::Quality),
-        "native" => config.with_tsr_quality(helio::TsrQuality::Native),
-        _ => config.without_tsr(),
-    };
-    match project_string("render_mode", "deferred").as_str() {
-        "forward_opaque" => config.with_render_mode(helio::RenderMode::ForwardOpaque),
-        "forward_only" => config.with_render_mode(helio::RenderMode::ForwardOnly),
-        _ => config.with_render_mode(helio::RenderMode::Deferred),
+    use engine_backend::subsystems::render::helio_renderer::project_settings;
+    let settings = project_settings::renderer();
+    let config = project_settings::renderer_config(width, height, format, &settings);
+    match project_settings::tsr_quality(&settings, None) {
+        Some(quality) => config.with_tsr_quality(quality),
+        None => config,
     }
 }
 

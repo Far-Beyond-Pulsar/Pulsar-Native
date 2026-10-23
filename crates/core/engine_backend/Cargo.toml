@@ -55,6 +55,8 @@ bitflags = "2"
 pulsar_reflection.workspace = true
 pulsar_events.workspace = true
 engine_state.workspace = true
+# Helio's settings, as the project registers them (`project_settings`).
+pulsar_settings.workspace = true
 
 # World/Entity storage (Phase B1, Pulsar-Native#553) -- the editor's live
 # scene store is moving onto this instead of the hand-rolled SceneDb/

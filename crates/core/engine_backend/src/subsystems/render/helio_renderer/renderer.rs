@@ -1118,59 +1118,24 @@ struct HelioInner {
     voxel_world_sync: Option<crate::scene::voxel_frame::VoxelWorldSync>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// The project settings the renderer's graph is built from: a change to
+/// any of them rebuilds it (live ones apply per frame).
+#[derive(Clone)]
 struct ProjectGraphSettings {
-    shadow_quality: String,
-    shadow_atlas_size: u32,
-    screen_space_reflections: bool,
-    planar_reflections: bool,
-    render_mode: String,
+    renderer: helio::helio_settings::Resolved,
+    voxels: helio::helio_settings::Resolved,
 }
 
 impl ProjectGraphSettings {
     fn load() -> Self {
-        let setting = |key: &str| {
-            engine_state::settings::global_config().get(
-                engine_state::settings::NS_PROJECT,
-                "rendering",
-                key,
-            )
-        };
-        let text = |key: &str, fallback: &str| {
-            setting(key)
-                .ok()
-                .and_then(|value| value.as_str().ok().map(str::to_owned))
-                .unwrap_or_else(|| fallback.to_owned())
-        };
-        let boolean = |key: &str, fallback| {
-            setting(key)
-                .ok()
-                .and_then(|value| value.as_bool().ok())
-                .unwrap_or(fallback)
-        };
-        let shadow_atlas_size = setting("shadow_atlas_size")
-            .ok()
-            .and_then(|value| {
-                value
-                    .as_str()
-                    .ok()
-                    .and_then(|value| value.parse::<u32>().ok())
-                    .or_else(|| {
-                        value
-                            .as_int()
-                            .ok()
-                            .and_then(|value| u32::try_from(value).ok())
-                    })
-            })
-            .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
-            .unwrap_or(1024);
         Self {
-            shadow_quality: text("shadow_quality", "medium"),
-            shadow_atlas_size,
-            screen_space_reflections: boolean("screen_space_reflections", false),
-            planar_reflections: boolean("planar_reflections", false),
-            render_mode: text("render_mode", "deferred"),
+            renderer: super::project_settings::renderer(),
+            voxels: super::project_settings::voxels(),
         }
+    }
+
+    fn same_graph(&self, other: &Self) -> bool {
+        self.renderer.same_graph(&other.renderer) && self.voxels.same_graph(&other.voxels)
     }
 }
 
@@ -1324,6 +1289,12 @@ impl HelioRenderer {
         })
     }
 
+    /// The direction towards the scene's sun as the voxel terrain traces it
+    /// (the last read of the scene), if it has one.
+    pub fn sun_direction(&self) -> Option<[f32; 3]> {
+        self.voxel_scene.as_ref().and_then(|(_, read)| read.sun)
+    }
+
     /// The camera's view direction in world space.
     pub fn camera_forward(&self) -> Vec3 {
         self.camera_basis().0
@@ -1385,7 +1356,7 @@ impl HelioRenderer {
             && self
                 .applied_graph_settings
                 .as_ref()
-                .is_some_and(|applied| applied != &graph_settings)
+                .is_some_and(|applied| !applied.same_graph(&graph_settings))
         {
             self.inner = None;
             self.applied_graph_settings = None;
@@ -1435,49 +1406,18 @@ impl HelioRenderer {
                 self.voxel_backends
                     .temporal_quality(&entries, [width, height])
             };
-            let project_setting = |key: &str| {
-                engine_state::settings::global_config()
-                    .get(engine_state::settings::NS_PROJECT, "rendering", key)
-                    .ok()
-            };
-            let project_string = |key: &str, default: &str| {
-                project_setting(key)
-                    .and_then(|value| value.as_str().ok().map(str::to_owned))
-                    .unwrap_or_else(|| default.to_owned())
-            };
-            let project_float = |key: &str, default: f32| {
-                project_setting(key)
-                    .and_then(|value| value.as_float().ok())
-                    .filter(|value| value.is_finite())
-                    .unwrap_or(default as f64) as f32
-            };
-            let mut config = RendererConfig::new(width, height, format)
-                .with_render_scale(project_float("render_scale", 0.75).clamp(0.25, 1.0))
-                .with_ssr(graph_settings.screen_space_reflections)
-                .with_planar_reflections(graph_settings.planar_reflections);
-            let shadow_quality = match graph_settings.shadow_quality.as_str() {
-                "low" => helio::ShadowQuality::Low,
-                "high" => helio::ShadowQuality::High,
-                "ultra" => helio::ShadowQuality::Ultra,
-                _ => helio::ShadowQuality::Medium,
-            };
-            config = config.with_shadow_quality(shadow_quality);
-            config.shadow_atlas_size = graph_settings.shadow_atlas_size;
-            config = match project_string("tsr_quality", "off").as_str() {
-                "performance" => config.with_tsr_quality(helio::TsrQuality::Performance),
-                "balanced" => config.with_tsr_quality(helio::TsrQuality::Balanced),
-                "quality" => config.with_tsr_quality(helio::TsrQuality::Quality),
-                "native" => config.with_tsr_quality(helio::TsrQuality::Native),
-                _ => config.without_tsr(),
-            };
-            config = match graph_settings.render_mode.as_str() {
-                "forward_opaque" => config.with_render_mode(helio::RenderMode::ForwardOpaque),
-                "forward_only" => config.with_render_mode(helio::RenderMode::ForwardOnly),
-                _ => config.with_render_mode(helio::RenderMode::Deferred),
-            };
-            // Voxel scenes have a workload-specific temporal preset and take
-            // precedence over the project's general TSR preference.
-            if let Some(quality) = voxel_quality {
+            // Every renderer setting comes from the project, through Helio's
+            // description of them; the voxel scene's temporal preset is the
+            // project's "Automatic" TSR.
+            let mut config = super::project_settings::renderer_config(
+                width,
+                height,
+                format,
+                &graph_settings.renderer,
+            );
+            if let Some(quality) =
+                super::project_settings::tsr_quality(&graph_settings.renderer, voxel_quality)
+            {
                 config = config.with_tsr_quality(quality);
             }
             // ── project/streaming → renderer translation (Helio#238 §5) ────
@@ -2052,38 +1992,17 @@ impl HelioRenderer {
             terrain_near
         };
         phases.mark("clip");
-        let voxel_tsr_quality = self
-            .voxel_backends
-            .temporal_quality(&voxel_entries, [width, height]);
-        let project_tsr_quality = engine_state::settings::global_config()
-            .get(
-                engine_state::settings::NS_PROJECT,
-                "rendering",
-                "tsr_quality",
-            )
-            .ok()
-            .and_then(|value| value.as_str().ok().map(str::to_owned))
-            .and_then(|quality| match quality.as_str() {
-                "performance" => Some(helio::TsrQuality::Performance),
-                "balanced" => Some(helio::TsrQuality::Balanced),
-                "quality" => Some(helio::TsrQuality::Quality),
-                "native" => Some(helio::TsrQuality::Native),
-                _ => None,
-            });
-        let effective_tsr_quality = voxel_tsr_quality.or(project_tsr_quality);
-        inner.renderer.set_tsr_quality(effective_tsr_quality);
-        if effective_tsr_quality.is_none() {
-            let render_scale = engine_state::settings::global_config()
-                .get(
-                    engine_state::settings::NS_PROJECT,
-                    "rendering",
-                    "render_scale",
-                )
-                .ok()
-                .and_then(|value| value.as_float().ok())
-                .filter(|value| value.is_finite())
-                .unwrap_or(0.75) as f32;
-            let render_scale = render_scale.clamp(0.25, 1.0);
+        // The live settings: the TSR preset (the voxel scene's under
+        // "Automatic") and the render scale while TSR is off.
+        let settings = super::project_settings::renderer();
+        let tsr_quality = super::project_settings::tsr_quality(
+            &settings,
+            self.voxel_backends
+                .temporal_quality(&voxel_entries, [width, height]),
+        );
+        inner.renderer.set_tsr_quality(tsr_quality);
+        if tsr_quality.is_none() {
+            let render_scale = (settings.number("render_scale") as f32).clamp(0.25, 1.0);
             if (inner.renderer.render_scale() - render_scale).abs() > f32::EPSILON {
                 inner.renderer.set_render_scale(render_scale);
             }
