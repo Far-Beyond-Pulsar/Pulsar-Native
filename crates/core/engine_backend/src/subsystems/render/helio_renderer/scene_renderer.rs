@@ -540,8 +540,6 @@ fn relative_camera_source_schema_compatible(
         | "builtin_mesh_index::handles"
         | "skeletal_skin_vertices::handles"
         | "skeletal_bone_palette::handles"
-        // Authored LOD thresholds and virtual-geometry overrides: no
-        // positions (the LOD selection measures distance in the frame).
         | "lod_component_levels::handles"
         | "vg_instance_overrides::handles" => {
             return store.buffer_registry().element_type(key)
@@ -610,7 +608,11 @@ fn relative_camera_source_compatible(
         | "builtin_mesh_index::handles"
         | "static_mesh_draw_sections::handles"
         | "skeletal_skin_vertices::handles"
-        | "skeletal_bone_palette::handles" => {
+        | "skeletal_bone_palette::handles"
+        // Authored LOD thresholds and virtual-geometry overrides: no
+        // positions (the LOD selection measures distance in the frame).
+        | "lod_component_levels::handles"
+        | "vg_instance_overrides::handles" => {
             kind == "row" && mode == Some(MirrorMode::DirtyTracked)
         }
         // Skin weights carry no positions, and the bone palette is in the
