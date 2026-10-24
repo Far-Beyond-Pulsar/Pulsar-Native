@@ -20,6 +20,7 @@ use crate::state::LevelEditorState;
 use crate::WorldSettingsPanel;
 
 mod environment_section;
+mod pipeline_section;
 mod sky_section;
 mod wind_section;
 
@@ -42,6 +43,9 @@ pub struct WorldSettingsPanelImpl {
     time_scale_input: Entity<InputState>,
     fixed_timestep_input: Entity<InputState>,
     game_mode_picker: Entity<SearchableList<String>>,
+    /// The render pipeline picker and the ids it currently lists.
+    pipeline_picker: Entity<SearchableList<String>>,
+    pipeline_ids: Vec<String>,
     catalog_state: BlueprintCatalogState,
     /// The Sky section's property rows (#1057).
     sky_property_state: ui_common::PropertyStateManager,
@@ -96,7 +100,28 @@ impl WorldSettingsPanelImpl {
                 .with_max_height(px(320.0))
         });
 
+        let pipeline_ids = Self::pipeline_ids();
+        let pipeline_picker = cx.new(|cx| {
+            SearchableList::<String>::new(
+                window,
+                cx,
+                pipeline_ids.clone(),
+                pipeline_section::pipeline_label,
+            )
+            .with_empty_text("No render pipelines")
+            .with_max_width(px(360.0))
+            .with_max_height(px(320.0))
+        });
+
         let mut subscriptions = Vec::new();
+        subscriptions.push(cx.subscribe(
+            &pipeline_picker,
+            |panel, _picker, event: &SearchableListEvent<String>, cx| {
+                if let SearchableListEvent::Select(id) = event {
+                    panel.world_settings.select_pipeline(id, cx);
+                }
+            },
+        ));
         for (input, field) in [
             (gravity_x_input.clone(), NumericSetting::GravityX),
             (gravity_y_input.clone(), NumericSetting::GravityY),
@@ -150,6 +175,8 @@ impl WorldSettingsPanelImpl {
             time_scale_input,
             fixed_timestep_input,
             game_mode_picker,
+            pipeline_picker,
+            pipeline_ids,
             catalog_state: BlueprintCatalogState::Loading,
             sky_property_state: ui_common::PropertyStateManager::new(),
             atmosphere_properties: None,
@@ -166,6 +193,7 @@ impl WorldSettingsPanelImpl {
         };
         panel.load_blueprint_catalog(cx);
         panel.watch_blueprint_index(cx);
+        panel.watch_render_graphs(cx);
         panel
     }
 
@@ -268,6 +296,7 @@ impl WorldSettingsPanelImpl {
             window,
             cx,
         );
+        let pipeline_section = self.render_pipeline_section(cx);
         let sky_section = self.render_sky_section(window, cx);
         let wind_section = self.render_wind_section(window, cx);
         let environment_tools = self.render_environment_tools(cx);
@@ -297,6 +326,8 @@ impl WorldSettingsPanelImpl {
                         .w_full()
                         .p_4()
                         .gap_4()
+                        .child(self.render_section_title("Render Pipeline"))
+                        .child(pipeline_section)
                         .child(self.render_section_title("Sky"))
                         .child(sky_section)
                         .child(self.render_section_title("Wind"))

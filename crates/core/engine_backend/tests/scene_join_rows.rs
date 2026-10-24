@@ -11,7 +11,7 @@ use engine_backend::scene::{attachments, SceneWorldExt, SpawnObject, Transform, 
 use helio_component::components::{
     LightComponent, MeshAssetPath, ObjectMovability, StaticMeshComponent,
 };
-use helio_default_graphs::scene_join::{
+use helio_default_passes::scene_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
     ENTITY_GENERATIONS_KEY,
 };
@@ -719,7 +719,7 @@ fn hierarchical_scenes_follow_only_what_moved() {
     assert_eq!(position_of(&join, &out, inner), [1.0, 0.0, 0.0]);
 
     let moved_generation = |out: &SceneBufferProjection| {
-        out.get(helio_default_graphs::scene_join::OBJECTS_MOVED_KEY)
+        out.get(helio_default_passes::scene_join::OBJECTS_MOVED_KEY)
             .map_or(0, |h| h.content_generation)
     };
     let mut last_moved_generation = 0;

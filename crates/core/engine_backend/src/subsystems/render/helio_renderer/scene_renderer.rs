@@ -6,7 +6,7 @@
 //! it.
 //!
 //! Per frame: [`SceneRenderer::step_scene`] advances the scene,
-//! [`SceneRenderer::prepare_frame`] places the camera (camera-relative over
+//! [`SceneRenderer::prepare_frame`] streams virtual geometry, places the camera (camera-relative over
 //! large worlds, clip planes the voxel worlds certify, the live TSR preset)
 //! and publishes the voxel worlds' frames, [`SceneRenderer::render`] uploads
 //! the scene and draws.
@@ -21,7 +21,8 @@ use super::voxel_backend::{
 };
 use super::voxel_mesh_backend::MeshVoxelBackend;
 use crate::scene::voxel_frame::{project_voxel_entries, VoxelWorldSync};
-use crate::scene::{SharedScene, SpaceSync};
+use crate::scene::{SharedScene, SpaceSync, VirtualGeometryHost};
+use pulsar_settings::project::virtual_geometry::VirtualGeometrySettings;
 
 /// Who owns the renderer's device.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -42,6 +43,12 @@ pub struct SceneRendererOptions {
     pub device: DeviceOwner,
     /// Where saves ask the voxel planet's renderer for its edited chunks.
     pub chunk_saves: VoxelChunkSaves,
+    /// The render pipeline asked for (a registered id, see
+    /// [`super::pipelines`]); `None`, an unregistered id or the default build
+    /// the engine's default graph with its voxel passes.
+    pub pipeline: Option<String>,
+    /// Virtual-geometry settings in place of the project's (tests, tools).
+    pub virtual_geometry: Option<VirtualGeometrySettings>,
 }
 
 impl SceneRendererOptions {
@@ -51,6 +58,9 @@ impl SceneRendererOptions {
             editor_mode,
             device,
             chunk_saves: VoxelChunkSaves::default(),
+            // The level's pipeline (World Settings).
+            pipeline: super::pipelines::level_pipeline(),
+            virtual_geometry: None,
         }
     }
 }
@@ -118,6 +128,13 @@ pub struct SceneRenderer {
     /// Drops voxel edits made on ground a terrain no longer has and keeps
     /// skies with their terrain; created with the first step.
     world_sync: Option<VoxelWorldSync>,
+    /// Builds, caches and streams the cluster assets of meshes whose owner
+    /// has a `VirtualGeometryComponent`; its runtime feeds the graph.
+    virtual_geometry: VirtualGeometryHost,
+    virtual_geometry_override: Option<VirtualGeometrySettings>,
+    /// The registered pipeline id the graph was built from (`None`: the
+    /// default).
+    pipeline: Option<String>,
 }
 
 impl SceneRenderer {
@@ -152,20 +169,28 @@ impl SceneRenderer {
             let (entries, _) = project_voxel_entries(&store.world);
             voxels.temporal_quality(&entries, [width, height])
         };
-        let mut config = super::project_settings::renderer_config(width, height, format, &settings);
+        let mut virtual_geometry = VirtualGeometryHost::new();
+        let mut config = super::project_settings::renderer_config(width, height, format, &settings)
+            .with_virtual_geometry(virtual_geometry.runtime());
         if let Some(quality) = super::project_settings::tsr_quality(&settings, voxel_quality) {
             config = config.with_tsr_quality(quality);
         }
 
         let scene_db = crate::scene::ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
         let spaces = SpaceSync::default();
-        let mut builder = helio::RendererBuilder::new(config, scene_db)
+        let mut builder = helio::RendererBuilder::new(config, scene_db.clone())
             .with_editor_mode(options.editor_mode)
             // Parent-relative transforms become world-space first, under the
             // same key, so the joins below read them unchanged.
             .with_scene_derivation(crate::scene::hierarchy_resolve(&device))
             // Meshes and lights: Helio joins the authored rows on the GPU.
             .with_scene_derivation(crate::scene::scene_join(&device, options.editor_mode))
+            // Virtual geometry: which assets are ready, then which instances
+            // are VG-active (both before the authored LOD, which they
+            // suppress).
+            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(&virtual_geometry, &device))
+            .with_scene_derivation(crate::scene::virtual_geometry_instances(&mut virtual_geometry, &device))
+            .with_scene_derivation(crate::scene::authored_lod_selection(&device, scene_db))
             .with_scene_derivation(crate::scene::environment_join(&device))
             // Authored portals, paired and projected each frame by `spaces`.
             .with_scene_derivation(crate::scene::portal_projection(&device, spaces.portal_input()))
@@ -174,15 +199,25 @@ impl SceneRenderer {
         if options.device == DeviceOwner::Host {
             builder = builder.with_external_device();
         }
-        let voxel_passes = voxels.pass_factories();
-        let mut renderer = builder
-            .with_pass_build_context(Box::new(move |ctx| {
-                helio_default_graphs::build_default_graph_external_with_voxel_passes(
-                    ctx,
-                    voxel_passes,
-                )
-            }))
-            .build(device, queue.clone(), width, height, format);
+        // The engine's default keeps its voxel passes; any other registered
+        // pipeline is built through `IntoGraph`.
+        let pipeline = super::pipelines::resolve_pipeline(options.pipeline.as_deref())
+            .filter(|id| *id != helio_default_passes::pipelines::DEFAULT);
+        let custom = pipeline.as_deref().and_then(|id| super::pipelines::create_pipeline(Some(id)));
+        let pipeline = custom.is_some().then_some(pipeline).flatten();
+        let builder = match custom {
+            Some(graph) => builder.with_boxed_graph(graph),
+            None => {
+                let voxel_passes = voxels.pass_factories();
+                builder.with_pass_build_context(Box::new(move |ctx| {
+                    helio_default_passes::build_default_graph_external_with_voxel_passes(
+                        ctx,
+                        voxel_passes,
+                    )
+                }))
+            }
+        };
+        let mut renderer = builder.build(device, queue.clone(), width, height, format);
         // Scene materials read through trilinear, anisotropic, repeating
         // filtering (project `streaming.texture_*` settings), not wgpu's
         // nearest/clamp default.
@@ -201,7 +236,27 @@ impl SceneRenderer {
             read: None,
             last_errors: Vec::new(),
             world_sync: None,
+            virtual_geometry,
+            virtual_geometry_override: options.virtual_geometry,
+            pipeline,
         }
+    }
+
+    /// The registered pipeline the graph was built from (`None`: the
+    /// engine's default).
+    pub fn pipeline(&self) -> Option<&str> {
+        self.pipeline.as_deref()
+    }
+
+    /// The virtual-geometry streaming runtime (readiness, settings).
+    pub fn virtual_geometry_runtime(&self) -> &helio_vg_stream::VgRuntime {
+        self.virtual_geometry.runtime()
+    }
+
+    /// Use `settings` instead of the project's virtual-geometry settings
+    /// (`None` restores them); takes effect next frame.
+    pub fn set_virtual_geometry_settings(&mut self, settings: Option<VirtualGeometrySettings>) {
+        self.virtual_geometry_override = settings;
     }
 
     /// The voxel worlds' renderers (picks, brush rays, the camera's ground).
@@ -266,6 +321,12 @@ impl SceneRenderer {
     /// it. `size` is the frame's in pixels.
     pub fn prepare_frame(&mut self, view: &FrameView, size: [u32; 2]) -> PreparedFrame {
         profiling::profile_scope!("helio_frame_prepare");
+        // Build and stream the virtual-geometry assets the scene asks for.
+        crate::scene::sync_virtual_geometry(
+            &mut self.virtual_geometry,
+            &self.scene,
+            self.virtual_geometry_override,
+        );
         let read = self.scene_read();
         let wants_relative = self.voxels.uses_camera_relative_frames(&read.entries);
         let camera_relative = wants_relative && {

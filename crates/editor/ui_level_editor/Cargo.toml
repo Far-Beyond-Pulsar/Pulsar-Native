@@ -97,6 +97,12 @@ pollster = "=0.4.0"
 tracing-subscriber = { workspace = true }
 # Calls a component's script natives in render acceptance (decal opacity).
 pulsar_script_vm = { workspace = true }
+# Virtual-geometry settings types and the helio-core vertex type used by the
+# virtual-geometry acceptance test.
+pulsar_settings = { workspace = true }
+helio-core = { workspace = true }
+# Writes the VG museum's textured material graphs (vg_museum generator test).
+psgc = { workspace = true }
 
 [lints]
 workspace = true

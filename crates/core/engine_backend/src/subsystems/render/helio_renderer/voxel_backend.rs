@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use glam::{DVec3, Vec3};
 use helio_component::{voxel_world::planet_brush, VoxelWorldShape};
-use helio_default_graphs::VoxelPassFactory;
+use helio_default_passes::VoxelPassFactory;
 use helio_pass_voxel_planet::{
     chunks::{pass::ChunkPass, KeptChunks},
     engine::{PlanetFrame, SharedKeptExport, SharedPlanetFrame},

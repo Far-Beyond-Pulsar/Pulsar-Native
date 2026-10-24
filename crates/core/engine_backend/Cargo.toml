@@ -55,7 +55,7 @@ bitflags = "2"
 pulsar_reflection.workspace = true
 pulsar_events.workspace = true
 engine_state.workspace = true
-# Helio's settings, as the project registers them (`project_settings`).
+# Project settings: Helio's as registered (`project_settings`), virtual geometry.
 pulsar_settings.workspace = true
 
 # World/Entity storage (Phase B1, Pulsar-Native#553) -- the editor's live
@@ -71,6 +71,8 @@ pulsar_script_object_model.workspace = true
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true
 helio_component.workspace = true
+helio-vg-stream = { path = "../../renderer/helio/crates/helio-vg-stream" }
+helio-vg-format = { path = "../../renderer/helio/crates/helio-vg-format" }
 helio-mats = { workspace = true, optional = true }
 psgc = { path = "../../third-party/psgc/crates/psgc", optional = true }
 image = { workspace = true, optional = true }
@@ -96,7 +98,10 @@ flume = { workspace = true, optional = true }
 # Helio rendering (wgpu-based)
 helio = { workspace = true, optional = true }
 helio-asset-compat = { workspace = true, optional = true }
-helio-default-graphs = { workspace = true, optional = true }
+helio-default-passes = { workspace = true, optional = true }
+helio-graph-asset = { workspace = true, optional = true }
+# Blocks on wgpu's adapter/device requests for the render graph pin probe.
+pollster = { version = "=0.4.0", optional = true }
 helio-pass-voxel-planet = { workspace = true, optional = true }
 helio-pass-sky = { workspace = true, optional = true }
 helio-pass-tsr = { workspace = true, optional = true }
@@ -135,7 +140,7 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-pass-portal-cull", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:helio-pass-postprocess", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-pass-voxel-planet", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-pass-volumetric-fog", "dep:helio-mats", "dep:psgc", "dep:image"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-pass-portal-cull", "dep:helio-asset-compat", "dep:helio-default-passes", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:helio-pass-postprocess", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-pass-voxel-planet", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-pass-volumetric-fog", "dep:helio-mats", "dep:psgc", "dep:image"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]

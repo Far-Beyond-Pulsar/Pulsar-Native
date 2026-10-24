@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform};
 use helio_component::components::{MeshAssetPath, ObjectMovability, StaticMeshComponent};
 use helio_core::{GpuCameraUniforms, PrepareContext, ResourceRegistry};
-use helio_default_graphs::scene_join::{
+use helio_default_passes::scene_join::{
     BufferHandle, SceneBufferProjection, SceneDerivation, ENTITY_GENERATIONS_KEY, MATERIALS_KEY,
     OBJECTS_KEY,
 };

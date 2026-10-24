@@ -40,7 +40,7 @@ grouping work.
 - `ObjectParent` (`components.rs`): a derived packed GPU row (`object_parent`,
   one `u32` per entity: parent entity index + 1, 0 = none), derived from
   `Parent` the same way `ObjectHidden` is derived from `Visibility`.
-- `HierarchyResolve` (`helio-default-graphs/src/hierarchy_resolve.rs`, shader
+- `HierarchyResolve` (`helio-default-passes/src/hierarchy_resolve.rs`, shader
   `shaders/hierarchy_resolve.wgsl`): a `SceneDerivation` installed **before**
   the scene and environment joins. Per object it walks the parent chain
   (cap 64) in one compute thread and writes the composed world transform.
@@ -99,7 +99,7 @@ Remaining limits of the as-built resolve:
 4. **Origin low half on some GPUs.** `relative_position` is
    `(position - hi) - lo`. On this machine's GPU the compiler drops `lo`
    (`camera_relative_frames_get_positions_relative_to_the_world_origin` in
-   `helio-default-graphs/tests/scene_join.rs` fails identically on the
+   `helio-default-passes/tests/scene_join.rs` fails identically on the
    committed Helio, before this work: 2.5 instead of 2.375). Up to ~0.25 m at
    planet radius. Pre-existing, affects every camera-relative consumer, not
    just the resolve; needs a shader fix that defeats reassociation.
@@ -403,7 +403,7 @@ Known, not fixed. Ordered roughly by how much they matter.
 1. **Origin low half dropped on some GPUs** (pre-existing). `relative_position`
    `(position - hi) - lo` loses `lo` on this machine's GPU:
    `camera_relative_frames_get_positions_relative_to_the_world_origin`
-   (`helio-default-graphs/tests/scene_join.rs`) fails identically on the
+   (`helio-default-passes/tests/scene_join.rs`) fails identically on the
    committed Helio. Up to ~0.25 m at planet radius, for every camera-relative
    consumer. Needs a shader formulation the compiler cannot reassociate.
 2. **Physics and scripts read parent-relative `Transform`.** Bodies and scripts

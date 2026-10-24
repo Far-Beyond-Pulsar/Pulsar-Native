@@ -30,7 +30,7 @@ use helio_component::voxel_mesh::{
     VoxelMeshGeometry, VOXEL_MESH_RENDERER,
 };
 use helio_component::VoxelComponent;
-use helio_default_graphs::VoxelPassFactory;
+use helio_default_passes::VoxelPassFactory;
 use helio_voxel_data::{
     VoxelChunkKey, VoxelMaterialChunk, VoxelPayloadStore, VOXEL_CHUNK_ENCODING_RAW,
     VOXEL_CHUNK_SAMPLES,

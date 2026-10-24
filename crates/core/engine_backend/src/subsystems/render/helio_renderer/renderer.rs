@@ -420,6 +420,7 @@ pub struct HelioEditorMailbox {
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
     voxel_chunk_saves: VoxelChunkSaves,
+    requested_pipeline: super::pipelines::RequestedPipeline,
 }
 
 /// A debug view advertised by a pass in the editor viewport's render graph.
@@ -434,6 +435,8 @@ pub struct ViewportDebugView {
     pub name: &'static str,
     pub debug_mode: u32,
     pub description: &'static str,
+    /// Menu group ("Virtual Geometry"); empty for the default group.
+    pub category: &'static str,
     pub legend: Option<ViewportDebugLegend>,
 }
 
@@ -520,6 +523,14 @@ impl HelioEditorMailbox {
     /// (one a pass advertises in its `debug_views`), or 0 for the lit image.
     pub fn set_viewport_debug_mode(&self, mode: u32) {
         self.viewport_debug_mode.store(mode, Ordering::Release);
+    }
+
+    /// The level's render pipeline (World Settings): a registered pipeline id
+    /// (see [`super::pipelines`]), or `None` for the default. The viewport
+    /// rebuilds its renderer from it at the next frame boundary; an id that is
+    /// not registered runs the default.
+    pub fn set_render_pipeline(&self, id: Option<String>) {
+        self.requested_pipeline.set(id);
     }
 
     /// Update world-anchored portal labels rendered by Helio's overlay pass.
@@ -659,12 +670,23 @@ pub struct HelioRenderer {
     /// answers them).
     voxel_chunk_saves: VoxelChunkSaves,
 
+    // ── Virtual geometry ──
+    /// Replaces the project's virtual-geometry settings (tests, tools); the
+    /// scene renderer owns the streaming host.
+    virtual_geometry_override:
+        Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
+
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
     pub pending_errors: Arc<Mutex<Vec<String>>>,
 
     inner: Option<HelioInner>,
     applied_graph_settings: Option<ProjectGraphSettings>,
+    /// The pipeline the level asks for (World Settings); see
+    /// [`HelioEditorMailbox::set_render_pipeline`].
+    requested_pipeline: super::pipelines::RequestedPipeline,
+    /// The registered id `inner` was built from.
+    applied_pipeline: Option<String>,
 
     // ── Camera State ──
     /// The perspective camera's pose: its frame follows the voxel ground's
@@ -773,6 +795,24 @@ impl ProjectGraphSettings {
 }
 
 impl HelioRenderer {
+    /// The virtual-geometry streaming runtime (readiness, settings), once
+    /// the renderer is built.
+    pub fn virtual_geometry_runtime(&self) -> Option<&helio_vg_stream::VgRuntime> {
+        self.inner.as_ref().map(|inner| inner.scene.virtual_geometry_runtime())
+    }
+
+    /// Use `settings` instead of the project's `project.virtual_geometry` ones
+    /// (`None` restores them). Tests and tools; takes effect next frame.
+    pub fn set_virtual_geometry_settings(
+        &mut self,
+        settings: Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
+    ) {
+        self.virtual_geometry_override = settings;
+        if let Some(inner) = self.inner.as_mut() {
+            inner.scene.set_virtual_geometry_settings(settings);
+        }
+    }
+
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         Self {
@@ -803,11 +843,14 @@ impl HelioRenderer {
             static_drag_warning: Arc::new(Mutex::new(None)),
             completed_drags: Arc::new(Mutex::new(Vec::new())),
             voxel_chunk_saves: VoxelChunkSaves::default(),
+            virtual_geometry_override: None,
             reset_taa_next_frame: false,
             device_loss: None,
             reported_device_loss: false,
             inner: None,
             applied_graph_settings: None,
+            requested_pipeline: Default::default(),
+            applied_pipeline: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
             cam: FlyCamera::new(DVec3::new(8.0, 6.0, 12.0), -0.5, -0.3),
             cam_local_velocity: Vec3::ZERO,
@@ -982,6 +1025,17 @@ impl HelioRenderer {
             self.reset_taa_next_frame = true;
         }
 
+        // A different level pipeline is a different pass topology: rebuild.
+        // Compared as resolved ids, so an unknown id and the default match.
+        let wanted_pipeline = super::pipelines::resolve_pipeline(
+            self.requested_pipeline.get().as_deref(),
+        );
+        if self.inner.is_some() && self.applied_pipeline != wanted_pipeline {
+            self.inner = None;
+            self.applied_graph_settings = None;
+            self.reset_taa_next_frame = true;
+        }
+
         // A frame for another device (the old one was lost and a new one
         // made) rebuilds the renderer there; `ensure_gpu_mirror` moves the
         // scene's GPU copy along. On a lost device nothing is drawn: every
@@ -1030,13 +1084,17 @@ impl HelioRenderer {
                     editor_mode: true,
                     device: DeviceOwner::Host,
                     chunk_saves: self.voxel_chunk_saves.clone(),
+                    pipeline: self.requested_pipeline.get(),
+                    virtual_geometry: self.virtual_geometry_override,
                 },
             );
             scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);
+            self.applied_pipeline = super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
 
             if let Ok(mut views) = self.viewport_debug_views.lock() {
                 let r = &scene.renderer;
                 let legends = r.available_debug_view_legends();
+                let categories = r.available_debug_view_categories();
                 *views = r
                     .available_debug_views()
                     .into_iter()
@@ -1044,6 +1102,10 @@ impl HelioRenderer {
                         name: view.name,
                         debug_mode: view.debug_mode,
                         description: view.description,
+                        category: categories
+                            .iter()
+                            .find(|(mode, _)| *mode == view.debug_mode)
+                            .map_or("", |(_, category)| *category),
                         legend: legends
                             .iter()
                             .find(|(mode, _)| *mode == view.debug_mode)
@@ -1108,7 +1170,6 @@ impl HelioRenderer {
         if !self.prepare_for_render(_device, _queue, width, height, format) {
             return None;
         }
-
         let previous_viewport_size = self.viewport_size;
         self.viewport_size = (width, height);
         self.configure_gizmo_view();
@@ -2281,6 +2342,7 @@ impl HelioRenderer {
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
             voxel_chunk_saves: self.voxel_chunk_saves.clone(),
+            requested_pipeline: self.requested_pipeline.clone(),
         }
     }
 

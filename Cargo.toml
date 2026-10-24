@@ -7,6 +7,10 @@ members = [
     "plugins/vendor/blueprint_editor/compiler",
     # Compatibility schema consumed by Shader Editor's legacy file model.
     "plugins/vendor/blueprint_editor/graph",
+    # Visual editor for Helio render graphs; reuses the Blueprint editor through
+    # its profile API. A plugin DLL: never link it into a binary that embeds the
+    # Blueprint editor (they would share one profile).
+    "plugins/vendor/render_bps",
     "plugins/trait_editor",
     "crates/core/*",
     "crates/editor/*",
@@ -100,6 +104,9 @@ helio-pass-voxel-planet = { opt-level = 3 }
 # The lens pass's bundled prescriptions are traced at renderer start-up
 # (about 2 s unoptimized, under 1 s optimized; see helio-pass-lens `bundled`).
 helio-lens-optics = { opt-level = 3 }
+# The virtual-geometry cluster-DAG builder runs on worker threads when a mesh
+# first gets a VirtualGeometryComponent; unoptimized it takes minutes.
+helio-vg-build = { opt-level = 3 }
 resvg = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
@@ -233,7 +240,8 @@ plugin_manager        = { path = "crates/core/plugin_manager" }
 # ---------- Helio Renderer (external git dep) ----------
 helio                      = { path = "crates/renderer/helio/crates/helio" }
 helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-compat" }
-helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
+helio-default-passes       = { path = "crates/renderer/helio/crates/helio-default-passes" }
+helio-graph-asset           = { path = "crates/renderer/helio/crates/helio-graph-asset" }
 helio-voxel-data = { path = "crates/renderer/helio/crates/helio-voxel-data" }
 helio-pass-voxel-planet = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-voxel-planet", features = ["engine"] }
 helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }

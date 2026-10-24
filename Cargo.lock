@@ -3107,7 +3107,8 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-core",
- "helio-default-graphs",
+ "helio-default-passes",
+ "helio-graph-asset",
  "helio-mats",
  "helio-pass-billboard",
  "helio-pass-decal",
@@ -3123,6 +3124,8 @@ dependencies = [
  "helio-pass-volumetric-fog",
  "helio-pass-voxel-planet",
  "helio-pass-water-sim",
+ "helio-vg-format",
+ "helio-vg-stream",
  "helio-voxel-data",
  "helio_component",
  "image",
@@ -4793,13 +4796,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "helio-default-graphs"
+name = "helio-default-passes"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio",
  "helio-core",
+ "helio-graph-asset",
  "helio-mats",
  "helio-pass-billboard",
  "helio-pass-buffer-view",
@@ -4850,7 +4854,20 @@ dependencies = [
  "image",
  "log",
  "pulsar_scenedb",
+ "serde_json",
  "twox-hash",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-graph-asset"
+version = "0.1.0"
+dependencies = [
+ "helio",
+ "helio-core",
+ "log",
+ "serde",
+ "serde_json",
  "wgpu",
 ]
 
@@ -5443,7 +5460,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-asset-compat",
- "helio-default-graphs",
+ "helio-default-passes",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "image",
@@ -9702,6 +9719,7 @@ dependencies = [
  "profiling 1.0.18",
  "pulsar_auth",
  "pulsar_std",
+ "render_bps_plugin",
  "rfd",
  "rust-embed",
  "rustls",
@@ -10595,6 +10613,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71fe3824f5629716b1589be05dacd749f6aa084c87e00e016714a8cdfccc997c"
 dependencies = [
  "bytecheck",
+]
+
+[[package]]
+name = "render_bps_plugin"
+version = "0.1.0"
+dependencies = [
+ "blueprint_editor_plugin",
+ "blueprint_graph",
+ "engine_backend",
+ "gpui-ce",
+ "helio-default-passes",
+ "helio-graph-asset",
+ "log",
+ "parking_lot",
+ "plugin_editor_api",
+ "plugin_manager",
+ "serde_json",
+ "tracing",
+ "ui",
+ "uuid",
+ "wgpu",
 ]
 
 [[package]]
@@ -14435,6 +14474,7 @@ dependencies = [
  "gpui-ce",
  "helio",
  "helio-asset-compat",
+ "helio-core",
  "helio-pass-buffer-view",
  "helio-voxel-data",
  "helio_component",
@@ -14447,6 +14487,7 @@ dependencies = [
  "plugin_manager",
  "pollster 0.4.0",
  "profiling 0.1.0",
+ "psgc",
  "pulsar_class",
  "pulsar_events",
  "pulsar_physics",
@@ -14455,6 +14496,7 @@ dependencies = [
  "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_script_vm",
+ "pulsar_settings",
  "pulsar_world_registry",
  "raw-window-handle",
  "rfd",

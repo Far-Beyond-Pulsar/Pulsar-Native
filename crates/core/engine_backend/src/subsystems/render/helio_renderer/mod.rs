@@ -8,6 +8,7 @@ pub mod project_settings;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
+pub mod pipelines;
 pub mod renderer;
 pub mod scene_renderer;
 pub mod voxel_backend;

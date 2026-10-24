@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use glam::{DMat4, DQuat, DVec3, Mat4};
 use helio_component::components::PortalComponent as AuthoredPortal;
-use helio_default_graphs::portal_projection::PortalProjectionInput;
+use helio_default_passes::portal_projection::PortalProjectionInput;
 use helio_pass_portal_cull::components::PortalComponent as PortalRow;
 use helio_pass_portal_cull::{
     PortalProjectionBridge, PortalProjectionConfig, SubLevelContents, SubLevelResolver,

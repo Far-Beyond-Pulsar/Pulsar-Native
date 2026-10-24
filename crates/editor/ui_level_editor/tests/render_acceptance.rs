@@ -21,8 +21,8 @@ use std::collections::HashMap;
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::{
-    MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent, StaticMeshMaterialSlot,
-    StaticMeshMaterialSlots,
+    LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability,
+    StaticMeshComponent, StaticMeshMaterialSlot, StaticMeshMaterialSlots,
 };
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
@@ -67,6 +67,18 @@ fn mesh_asset() -> String {
         .canonicalize()
         .expect("SM_Cube.fbx is checked in");
     // Windows canonical paths carry a `\\?\` prefix the asset resolver rejects.
+    let path = path.to_string_lossy();
+    path.strip_prefix(r"\\?\")
+        .unwrap_or(&path)
+        .replace('\\', "/")
+}
+
+fn mesh_asset_named(name: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../assets/meshes/primitives")
+        .join(name)
+        .canonicalize()
+        .expect("primitive mesh is checked in");
     let path = path.to_string_lossy();
     path.strip_prefix(r"\\?\")
         .unwrap_or(&path)
@@ -1151,7 +1163,8 @@ fn every_pass_of_the_editor_graph_runs() {
         "LightCull",
         "GBuffer",
         "DeferredLight",
-        "VirtualGeometry",
+        "VgStream",
+        "VgShade",
         "TransparentPass",
         "FXAA",
         "Lens",
@@ -1237,6 +1250,171 @@ fn set_light(
         },
     );
     assert!(result.changed, "light {property} edit was refused");
+}
+
+/// Authored mesh LOD selects a different mesh asset from the active render
+/// view. Removing the policy by disabling its component returns the ordinary
+/// StaticMeshComponent draw ranges unchanged.
+#[test]
+fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_mesh() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let near_distance = glam::DVec3::from_array(harness.camera.position).length() as f32;
+    let mut state = LevelEditorState::new();
+    let id = drop_mesh(&mut state);
+
+    let add_lod = execute_command(
+        &mut state,
+        SceneCommand::AddComponent {
+            id: id.clone(),
+            class_name: "LODComponent".into(),
+            value: None,
+        },
+    );
+    assert!(add_lod.changed, "LOD component insertion was refused");
+    let levels_edit = execute_command(
+        &mut state,
+        SceneCommand::SetComponentProperty {
+            id: id.clone(),
+            class_name: "LODComponent".into(),
+            component_index: 1,
+            prop_name: "lod_levels".into(),
+            value: Box::new(vec![
+                LODLevel {
+                    distance_threshold: 0.0,
+                    mesh_asset: MeshAssetPath::new(mesh_asset()),
+                },
+                LODLevel {
+                    distance_threshold: near_distance * 1.5,
+                    mesh_asset: MeshAssetPath::new(mesh_asset_named("SM_Sphere.fbx")),
+                },
+            ]),
+        },
+    );
+    assert!(levels_edit.changed, "LOD level edit was refused");
+    let disable_for_base = execute_command(
+        &mut state,
+        SceneCommand::SetComponentEnabled {
+            id: id.clone(),
+            component_index: 1,
+            enabled: false,
+        },
+    );
+    assert!(disable_for_base.changed, "disabling initial LOD component failed");
+    let mut renderer = harness.renderer(&state);
+    let base_mesh = harness.frames(&mut renderer, || {});
+    let enable_for_lod = execute_command(
+        &mut state,
+        SceneCommand::SetComponentEnabled {
+            id: id.clone(),
+            component_index: 1,
+            enabled: true,
+        },
+    );
+    assert!(enable_for_lod.changed, "enabling initial LOD component failed");
+
+    // At the default camera distance, level zero names the base cube, so the
+    // authored selector should leave the rendered frame equivalent to the
+    // ordinary mesh path.
+    let near_lod = harness.frames(&mut renderer, || {});
+    assert!(
+        near_lod.difference(&base_mesh).depth_texels < 8
+            && near_lod.difference(&base_mesh).color_pixels < (SIZE * SIZE / 100) as usize,
+        "the near authored level should preserve the base mesh ({:?})",
+        near_lod.difference(&base_mesh)
+    );
+
+    // A farther camera crosses the second level's threshold and selects the
+    // sphere. Compare against the base mesh at the same view so the test
+    // isolates mesh selection from the camera's changed projection.
+    let far = harness.camera.position[2] * 2.0;
+    renderer.set_editor_camera_state(EditorCameraState {
+        position: [0.0, far / 6.0, far],
+        ..harness.camera
+    });
+    let far_lod = harness.frames(&mut renderer, || {});
+    let disable_for_control = execute_command(
+        &mut state,
+        SceneCommand::SetComponentEnabled {
+            id: id.clone(),
+            component_index: 1,
+            enabled: false,
+        },
+    );
+    assert!(disable_for_control.changed, "disabling LOD control failed");
+    let far_base = harness.frames(&mut renderer, || {});
+    let enable_for_bias = execute_command(
+        &mut state,
+        SceneCommand::SetComponentEnabled {
+            id: id.clone(),
+            component_index: 1,
+            enabled: true,
+        },
+    );
+    assert!(enable_for_bias.changed, "re-enabling LOD component failed");
+    let distance_change = far_lod.difference(&far_base);
+    assert!(
+        distance_change.depth_texels > 0 && distance_change.color_pixels > 0,
+        "crossing the authored distance threshold did not change the drawn mesh: {distance_change:?}"
+    );
+
+    // Return to the near view and bias the distance threshold so level one is
+    // selected sooner; then restore the bias and disable the component.
+    renderer.set_editor_camera_state(harness.camera);
+    let bias_edit = execute_command(
+        &mut state,
+        SceneCommand::SetComponentProperty {
+            id: id.clone(),
+            class_name: "LODComponent".into(),
+            component_index: 1,
+            prop_name: "lod_bias".into(),
+            value: Box::new(2.0_f32),
+        },
+    );
+    assert!(bias_edit.changed, "LOD bias edit was refused");
+    let bias_value = components::read_live_component_property(
+        &state.scene.world(),
+        &id,
+        "LODComponent",
+        1,
+        "lod_bias",
+    )
+    .and_then(|value| value.downcast::<f32>().ok())
+    .map(|value| *value);
+    assert_eq!(bias_value, Some(2.0));
+    let biased_lod = harness.frames(&mut renderer, || {});
+    let bias_change = biased_lod.difference(&near_lod);
+    assert!(
+        bias_change.depth_texels > 0 && bias_change.color_pixels > 0,
+        "positive bias did not select the coarser authored mesh sooner: {bias_change:?}"
+    );
+
+    let disable = execute_command(
+        &mut state,
+        SceneCommand::SetComponentEnabled {
+            id,
+            component_index: 1,
+            enabled: false,
+        },
+    );
+    assert!(disable.changed, "disabling LOD component was refused");
+    let disabled_lod = harness.frames(&mut renderer, || {});
+    let fallback = disabled_lod.difference(&base_mesh);
+    assert!(
+        fallback.depth_texels < 8
+            && fallback.color_pixels < (SIZE * SIZE / 100) as usize,
+        "disabling authored LOD did not restore the base mesh: {fallback:?}"
+    );
 }
 
 /// Mesh/light regression (Pulsar-Native#1035 acceptance, #1081): scale,

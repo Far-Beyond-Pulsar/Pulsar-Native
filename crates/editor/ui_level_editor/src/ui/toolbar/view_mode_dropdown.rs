@@ -45,7 +45,11 @@ impl ViewModeDropdown {
         }];
         options.extend(debug_views.iter().map(|view| ViewModeOption {
             selection: ViewModeSelection::Debug(view.debug_mode),
-            name: view.name.into(),
+            name: if view.category.is_empty() {
+                view.name.into()
+            } else {
+                format!("{}: {}", view.category, view.name).into()
+            },
         }));
         options
     }

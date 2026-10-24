@@ -66,6 +66,11 @@ impl BlueprintTraitIndex {
     /// skipped with a warning. A failed project manifest or asset read aborts
     /// the rebuild before replacing the previous index.
     pub fn rebuild(project_root: &Path) -> Result<Self> {
+        // Built-in traits are registered before implementors are looked up. A
+        // failure to write one (a read-only project) must not stop the index.
+        if let Err(error) = crate::builtin_traits::ensure(project_root) {
+            tracing::warn!("Could not register built-in traits: {error:#}");
+        }
         let manifest = virtual_fs::manifest(project_root)
             .with_context(|| format!("Failed to scan project '{}'", project_root.display()))?;
 
