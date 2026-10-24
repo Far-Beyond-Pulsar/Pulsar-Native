@@ -539,7 +539,11 @@ fn relative_camera_source_schema_compatible(
         "builtin_mesh_vertex::handles"
         | "builtin_mesh_index::handles"
         | "skeletal_skin_vertices::handles"
-        | "skeletal_bone_palette::handles" => {
+        | "skeletal_bone_palette::handles"
+        // Authored LOD thresholds and virtual-geometry overrides: no
+        // positions (the LOD selection measures distance in the frame).
+        | "lod_component_levels::handles"
+        | "vg_instance_overrides::handles" => {
             return store.buffer_registry().element_type(key)
                 == Some(Some(std::any::TypeId::of::<
                     pulsar_scenedb::gpu::VarLenHandle,
@@ -616,7 +620,9 @@ fn relative_camera_source_compatible(
         | "builtin_mesh_index"
         | "static_mesh_draw_sections"
         | "skeletal_skin_vertices"
-        | "skeletal_bone_palette" => kind == "resource" && mode.is_none(),
+        | "skeletal_bone_palette"
+        | "lod_component_levels"
+        | "vg_instance_overrides" => kind == "resource" && mode.is_none(),
         _ => false,
     }
 }

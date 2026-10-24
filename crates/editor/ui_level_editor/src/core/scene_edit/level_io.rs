@@ -679,7 +679,7 @@ mod voxel_example_tests {
         assert_eq!(volumes.len(), 1);
         assert!(
             volumes[0].unbound
-                && volumes[0].settings.tonemap_operator == helio_component::TonemapOperator::Aces
+                && volumes[0].settings.tonemap_operator == helio_component::TonemapOperator::AgxPunchy
         );
     }
 }
