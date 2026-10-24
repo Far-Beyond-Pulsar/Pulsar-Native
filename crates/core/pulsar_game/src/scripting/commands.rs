@@ -43,7 +43,9 @@ pub enum WorldCommand {
         class: String,
         /// Parent object; `position` is then relative to it.
         parent: Option<Entity>,
-        position: [f32; 3],
+        /// f64, as `Transform.position`: a planet's surface is millions of
+        /// metres out.
+        position: [f64; 3],
     },
     /// End the scripts on `entity` and its descendants, then despawn them.
     Destroy { entity: Entity },
@@ -118,7 +120,7 @@ fn has_queue() -> bool {
     QUEUE.with(|q| q.borrow().is_some())
 }
 
-fn spawn(host: &mut Host<'_>, parent: Option<Entity>, class: String, position: [f32; 3]) -> Entity {
+fn spawn(host: &mut Host<'_>, parent: Option<Entity>, class: String, position: [f64; 3]) -> Entity {
     if !has_queue() {
         tracing::warn!(class = %class, "world::spawn called outside a script driver frame; nothing spawned");
         return Entity::DANGLING;
@@ -143,10 +145,6 @@ fn spawn(host: &mut Host<'_>, parent: Option<Entity>, class: String, position: [
     entity
 }
 
-fn position(x: f64, y: f64, z: f64) -> [f32; 3] {
-    [x as f32, y as f32, z as f32]
-}
-
 inventory::submit! {
     NativeRegistration {
         build: || {
@@ -159,7 +157,7 @@ inventory::submit! {
                 .attr("category", "World")
                 .params(["class", "x", "y", "z"])
                 .build(|host: &mut Host<'_>, class: String, x: f64, y: f64, z: f64| {
-                    spawn(host, None, class, position(x, y, z))
+                    spawn(host, None, class, [x, y, z])
                 })
         },
     }
@@ -177,7 +175,7 @@ inventory::submit! {
                 .attr("category", "World")
                 .params(["parent", "class", "x", "y", "z"])
                 .build(|host: &mut Host<'_>, parent: Entity, class: String, x: f64, y: f64, z: f64| {
-                    spawn(host, Some(parent), class, position(x, y, z))
+                    spawn(host, Some(parent), class, [x, y, z])
                 })
         },
     }

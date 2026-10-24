@@ -7,16 +7,21 @@
 //! |-------|--------|
 //! | W / S | Forward / Backward |
 //! | A / D | Strafe left / right |
-//! | Space | Ascend |
+//! | Space | Ascend (along the local vertical) |
 //! | Left Shift | Descend |
 //! | Mouse (captured) | Look |
 //! | Left-click | Capture / re-capture cursor |
 //! | Escape | Release cursor |
 //!
+//! It flies as the editor viewport's camera does ([`FlyCamera`]): an f64 eye,
+//! level with the ground below (over a planet its up is the local vertical,
+//! elsewhere +Y), and faster the higher it is above voxel ground.
+//!
 //! This is a *placeholder* — it is automatically superseded per-window as soon
 //! as the game pushes its own camera.
 
-use std::f32::consts::{FRAC_PI_2, PI};
+use engine_backend::subsystems::render::{altitude_speed_scale, FlyCamera, VoxelGround};
+use glam::{DVec3, Vec3};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::window::RenderCamera;
@@ -34,14 +39,11 @@ struct KeyState {
 
 /// Free-look camera — lives on the main thread, updated from winit events.
 pub struct FreeCam {
-    /// World-space position.
-    pub position: glam::Vec3,
-    /// Horizontal angle in radians (0 = +Z, increases counter-clockwise).
-    pub yaw: f32,
-    /// Vertical angle in radians (0 = level, positive = look up).
-    pub pitch: f32,
+    /// The pose: the eye, and yaw/pitch within the frame of the ground below.
+    pub pose: FlyCamera,
 
-    /// Movement speed in units per second.
+    /// Movement speed in units per second near the ground; it grows with the
+    /// height above voxel ground.
     pub move_speed: f32,
     /// Mouse sensitivity — pixels-to-radians scale.
     pub mouse_sensitivity: f32,
@@ -51,6 +53,8 @@ pub struct FreeCam {
     pub near: f32,
     pub far: f32,
 
+    /// The voxel ground under the eye, from the last frame.
+    ground: VoxelGround,
     keys: KeyState,
 }
 
@@ -58,28 +62,33 @@ impl Default for FreeCam {
     fn default() -> Self {
         Self {
             // Sane default — positioned slightly above and behind origin,
-            // facing toward the scene.  The first rendered frame will show
-            // something sensible even with an empty scene.
-            position: glam::Vec3::new(0.0, 3.0, 10.0),
-            yaw: 0.0,     // face -Z (into the scene)
-            pitch: -0.15, // very slight downward tilt
+            // facing toward the scene (yaw 0 faces -Z) with a very slight
+            // downward tilt. The first rendered frame will show something
+            // sensible even with an empty scene.
+            pose: FlyCamera::new(DVec3::new(0.0, 3.0, 10.0), 0.0, -0.15),
             move_speed: 8.0,
             mouse_sensitivity: 0.002,
             fov_y: std::f32::consts::FRAC_PI_4,
             near: 0.05,
             far: 2000.0,
+            ground: VoxelGround::default(),
             keys: KeyState::default(),
         }
     }
 }
 
 impl FreeCam {
-    /// Place the freecam at a specific world position and look-direction.
-    pub fn place(mut self, position: glam::Vec3, yaw: f32, pitch: f32) -> Self {
-        self.position = position;
-        self.yaw = yaw;
-        self.pitch = pitch;
+    /// Place the freecam at a world position, looking along world-space yaw
+    /// and pitch (about +Y, yaw 0 = -Z), as a level saves its camera. Over a
+    /// planet the view is kept once the frame there is known.
+    pub fn place(mut self, position: DVec3, yaw: f32, pitch: f32) -> Self {
+        self.pose = FlyCamera::new(position, yaw, pitch);
         self
+    }
+
+    /// The eye in world space.
+    pub fn position(&self) -> DVec3 {
+        self.pose.position
     }
 
     // ── Input ─────────────────────────────────────────────────────────────────
@@ -103,71 +112,110 @@ impl FreeCam {
     /// `dx` is raw horizontal pixels (right = positive), `dy` is raw vertical
     /// pixels (down = positive in winit).
     pub fn on_mouse_delta(&mut self, dx: f64, dy: f64) {
-        // Match the editor camera: moving the mouse right increases yaw.
-        self.yaw += dx as f32 * self.mouse_sensitivity;
-        // Invert dy: moving mouse down (dy > 0) should look down (pitch decreases).
-        self.pitch -= dy as f32 * self.mouse_sensitivity;
-
-        // Keep yaw in [-π, π] to avoid float drift.
-        self.yaw = (self.yaw + PI).rem_euclid(2.0 * PI) - PI;
-        // Clamp pitch to avoid gimbal flip at ±90°.
-        self.pitch = self.pitch.clamp(-FRAC_PI_2 + 0.01, FRAC_PI_2 - 0.01);
+        // Match the editor camera: moving the mouse right increases yaw, and
+        // moving it down (dy > 0) looks down.
+        self.pose.look(
+            dx as f32 * self.mouse_sensitivity,
+            -dy as f32 * self.mouse_sensitivity,
+        );
     }
 
     // ── Update ────────────────────────────────────────────────────────────────
 
-    /// Advance the camera by `dt` seconds according to currently-held keys.
+    /// Follow the voxel ground under the eye (`SceneRenderer::voxel_ground`):
+    /// its local vertical becomes the camera's up, its height the speed.
+    pub fn follow_ground(&mut self, ground: VoxelGround) {
+        self.pose.follow_ground(ground.up);
+        self.ground = ground;
+    }
+
+    /// Advance the camera by `dt` seconds according to currently-held keys:
+    /// level within the camera frame (no pitch for movement — FPS style),
+    /// up and down along the local vertical.
     pub fn update(&mut self, dt: f32) {
-        let speed = self.move_speed * dt;
-
-        // Forward direction lies in the XZ plane (no pitch for movement — FPS style).
-        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-        // Match the editor renderer's camera convention: yaw 0 faces -Z.
-        let forward = glam::Vec3::new(sin_yaw, 0.0, -cos_yaw);
-        let right = glam::Vec3::new(cos_yaw, 0.0, sin_yaw);
-        let world_up = glam::Vec3::Y;
-
-        if self.keys.forward {
-            self.position += forward * speed;
+        let axis = |positive: bool, negative: bool| f32::from(positive) - f32::from(negative);
+        let direction = Vec3::new(
+            axis(self.keys.right, self.keys.left),
+            axis(self.keys.up, self.keys.down),
+            axis(self.keys.forward, self.keys.backward),
+        );
+        if direction == Vec3::ZERO {
+            return;
         }
-        if self.keys.backward {
-            self.position -= forward * speed;
-        }
-        if self.keys.right {
-            self.position += right * speed;
-        }
-        if self.keys.left {
-            self.position -= right * speed;
-        }
-        if self.keys.up {
-            self.position += world_up * speed;
-        }
-        if self.keys.down {
-            self.position -= world_up * speed;
-        }
+        let speed = self.move_speed * altitude_speed_scale(&self.ground) as f32;
+        self.pose.fly(direction * speed, dt);
     }
 
     // ── Output ────────────────────────────────────────────────────────────────
 
-    /// Compute the look-at target point from current position + yaw + pitch.
-    fn look_dir(&self) -> glam::Vec3 {
-        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
-        // Standard spherical → Cartesian, Y-up convention.
-        // Match Helio's editor camera: yaw 0 looks down -Z.
-        glam::Vec3::new(cos_pitch * sin_yaw, sin_pitch, -cos_pitch * cos_yaw).normalize()
-    }
-
     /// Produce a [`RenderCamera`] for this frame.
     pub fn to_render_camera(&self) -> RenderCamera {
-        let dir = self.look_dir();
         RenderCamera {
-            position: self.position.to_array(),
-            target: (self.position + dir).to_array(),
-            up: [0.0, 1.0, 0.0],
+            position: self.pose.position,
+            forward: self.pose.forward(),
+            up: self.pose.frame_up(),
             fov_y: self.fov_y,
             near: self.near,
             far: self.far,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use engine_backend::subsystems::render::helio_renderer::fly_camera::yaw_pitch;
+
+    fn press(camera: &mut FreeCam, code: KeyCode) {
+        camera.on_key(&PhysicalKey::Code(code), true);
+    }
+
+    /// Without voxel ground the camera keeps +Y up and its base speed.
+    #[test]
+    fn a_flat_world_flies_with_y_up() {
+        let mut camera = FreeCam::default().place(DVec3::new(0.0, 2.0, 0.0), 0.0, 0.0);
+        camera.follow_ground(VoxelGround::default());
+        press(&mut camera, KeyCode::Space);
+        camera.update(1.0);
+        assert!(camera.to_render_camera().up.abs_diff_eq(Vec3::Y, 1e-6));
+        assert!((camera.position() - DVec3::new(0.0, 10.0, 0.0)).length() < 1e-5);
+    }
+
+    /// Over a planet the camera stands on the local vertical, keeps the view
+    /// it was placed with, flies level with the ground and speeds up with the
+    /// height above it; its eye is f64, millions of metres out.
+    #[test]
+    fn over_a_planet_the_camera_takes_the_local_vertical_and_altitude_speed() {
+        let up = DVec3::new(1.0, 1.0, 0.3).normalize();
+        let eye = up * 6_371_002.0;
+        let forward = Vec3::new(-0.3, 0.2, 0.9).normalize();
+        let (yaw, pitch) = yaw_pitch(forward);
+        let mut camera = FreeCam::default().place(eye, yaw, pitch);
+        camera.follow_ground(VoxelGround {
+            up: Some(up),
+            altitude: Some(2.0),
+        });
+        let view = camera.to_render_camera();
+        assert_eq!(view.position, eye, "the eye is kept exactly");
+        assert!(view.up.abs_diff_eq(up.as_vec3(), 1e-5));
+        assert!(view.forward.abs_diff_eq(forward, 1e-5));
+
+        // 2 m above the ground: the base speed, level. A millimetre step
+        // stays a millimetre (an f32 eye there moves by half metres).
+        press(&mut camera, KeyCode::KeyW);
+        camera.update(0.001 / camera.move_speed);
+        let moved = camera.position() - eye;
+        assert!((moved.length() - 0.001).abs() < 1e-6, "{moved:?}");
+        assert!(moved.dot(up).abs() < 1e-6, "level with the ground");
+
+        // 1 km up: fifty times faster.
+        camera.follow_ground(VoxelGround {
+            up: Some(up),
+            altitude: Some(1_000.0),
+        });
+        let before = camera.position();
+        camera.update(1.0);
+        let moved = (camera.position() - before).length();
+        assert!((moved - 50.0 * f64::from(camera.move_speed)).abs() < 1e-3, "{moved}");
     }
 }

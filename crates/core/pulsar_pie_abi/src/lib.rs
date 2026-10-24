@@ -105,7 +105,9 @@ use core::ffi::c_void;
 /// v3 (#653) appends [`EngineContext::session_flags`] so the host can tell a
 /// hot-reload session (same world, actors re-bound to their existing entities)
 /// apart from a fresh play session.
-pub const PIE_ABI_VERSION: u64 = 3;
+/// v4 appends [`EngineContext::view`]: the editor camera at Play, with an f64
+/// eye, which the game's free camera starts from.
+pub const PIE_ABI_VERSION: u64 = 4;
 
 /// Bit flags carried in [`EngineContext::session_flags`].
 ///
@@ -228,6 +230,26 @@ pub struct EngineContext {
     /// hot-reload: the world carries this project's entities from a previous
     /// session and actor registration must re-bind, not re-spawn.
     pub session_flags: u64,
+
+    // ── ABI v4 additions: the editor view ──────────────────────────────────
+    /// Where the editor camera was when Play was pressed; the game's free
+    /// camera starts there.
+    pub view: PieView,
+}
+
+/// A camera pose handed host → game ([`EngineContext::view`]).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PieView {
+    /// The eye in world space, f64: a planet's surface is millions of metres
+    /// from the origin.
+    pub position: [f64; 3],
+    /// World-space yaw (about +Y, 0 = -Z) and pitch, in radians.
+    pub yaw: f32,
+    pub pitch: f32,
+    /// `1` when this pose is set, `0` when the host has none.
+    pub present: u32,
+    pub _reserved: u32,
 }
 
 // ── Input (host → game) ─────────────────────────────────────────────────────

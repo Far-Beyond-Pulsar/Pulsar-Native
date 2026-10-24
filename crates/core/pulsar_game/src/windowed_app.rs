@@ -168,7 +168,13 @@ impl GameWindow {
     /// `ecs_camera` is whatever the ECS thread last wrote via
     /// `WindowManager::set_camera`.  If `None`, the built-in freecam is used.
     fn render(&mut self, ecs_camera: Option<RenderCamera>) {
-        let cam = ecs_camera.unwrap_or_else(|| self.freecam.to_render_camera());
+        let cam = ecs_camera.unwrap_or_else(|| {
+            // The freecam stands on the voxel ground's local vertical and
+            // flies faster the higher it is, as the editor camera does.
+            let ground = self.renderer.voxel_ground(self.freecam.position());
+            self.freecam.follow_ground(ground);
+            self.freecam.to_render_camera()
+        });
 
         // `Renderer::render` tracks its own frame delta internally (wind/TAA/
         // foliage clocks all advance from that), so there is nothing to push
@@ -595,7 +601,7 @@ impl PulsarApp {
                     // editor view.
                     if let Some(cam) = extras.editor_camera {
                         game_window.freecam = FreeCam::default().place(
-                            glam::Vec3::from_array(cam.position),
+                            glam::DVec3::from_array(cam.position),
                             cam.yaw,
                             cam.pitch,
                         );

@@ -18,14 +18,10 @@
 //! });
 //!
 //! // Update the camera every tick:
-//! wm.set_camera(handle, RenderCamera {
-//!     position: [0.0, 2.0, 8.0],
-//!     target:   [0.0, 0.0, 0.0],
-//!     up:       [0.0, 1.0, 0.0],
-//!     fov_y:    std::f32::consts::FRAC_PI_4,
-//!     near:     0.1,
-//!     far:      1000.0,
-//! });
+//! wm.set_camera(
+//!     handle,
+//!     RenderCamera::look_at(glam::DVec3::new(0.0, 2.0, 8.0), glam::DVec3::ZERO, glam::Vec3::Y),
+//! );
 //!
 //! // Close when done:
 //! wm.close(handle);
@@ -83,13 +79,20 @@ impl Default for WindowDescriptor {
 
 /// A camera description pushed from game code into the render thread.
 ///
+/// The eye is f64 world space, as `Transform.position` and the editor
+/// camera are: a planet's surface is millions of metres from the origin,
+/// where f32 keeps only half a metre. The renderer draws it camera-relative.
+///
 /// Aspect ratio is computed automatically from the window dimensions at render
 /// time, so you never need to update the camera just because a window resized.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct RenderCamera {
-    pub position: [f32; 3],
-    pub target: [f32; 3],
-    pub up: [f32; 3],
+    /// The eye in world space.
+    pub position: glam::DVec3,
+    /// The view direction in world space.
+    pub forward: glam::Vec3,
+    /// The view's up in world space (over a planet, its local vertical).
+    pub up: glam::Vec3,
     /// Vertical field of view in radians.
     pub fov_y: f32,
     pub near: f32,
@@ -97,14 +100,26 @@ pub struct RenderCamera {
 }
 
 impl RenderCamera {
+    /// At `position` looking at `target`, with the default lens (45 degree
+    /// field of view, 0.1 to 1000).
+    pub fn look_at(position: glam::DVec3, target: glam::DVec3, up: glam::Vec3) -> Self {
+        Self {
+            position,
+            forward: (target - position).as_vec3().normalize_or(glam::Vec3::NEG_Z),
+            up,
+            fov_y: std::f32::consts::FRAC_PI_4,
+            near: 0.1,
+            far: 1000.0,
+        }
+    }
+
     /// The frame this camera sees, `aspect` (width over height) wide.
     pub fn frame_view(&self, aspect: f32) -> engine_backend::subsystems::render::FrameView {
         use engine_backend::subsystems::render::{FrameProjection, FrameView};
-        let position = glam::Vec3::from_array(self.position);
         FrameView {
-            eye: position.as_dvec3(),
-            forward: (glam::Vec3::from_array(self.target) - position).normalize_or(glam::Vec3::NEG_Z),
-            up: glam::Vec3::from_array(self.up),
+            eye: self.position,
+            forward: self.forward.normalize_or(glam::Vec3::NEG_Z),
+            up: self.up.normalize_or(glam::Vec3::Y),
             aspect,
             projection: FrameProjection::Perspective {
                 fov_y: self.fov_y,
@@ -117,14 +132,7 @@ impl RenderCamera {
 
 impl Default for RenderCamera {
     fn default() -> Self {
-        Self {
-            position: [0.0, 2.0, 8.0],
-            target: [0.0, 0.0, 0.0],
-            up: [0.0, 1.0, 0.0],
-            fov_y: std::f32::consts::FRAC_PI_4,
-            near: 0.1,
-            far: 1000.0,
-        }
+        Self::look_at(glam::DVec3::new(0.0, 2.0, 8.0), glam::DVec3::ZERO, glam::Vec3::Y)
     }
 }
 

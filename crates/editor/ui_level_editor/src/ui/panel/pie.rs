@@ -13,17 +13,20 @@ use std::path::Path;
 use std::sync::Arc;
 use ui::{notification::Notification, ContextModal as _};
 
+use crate::scene_edit::LevelEditorCameraState;
 use crate::state::{LevelEditorState, PieStartRequest};
 
 // ── Play In Editor build helpers (issue #243) ───────────────────────────────
 
-/// Enter play mode and kick off the Play-In-Editor build.
+/// Enter play mode and kick off the Play-In-Editor build. The game's free
+/// camera starts at `view`, the editor camera.
 ///
 /// Free function (not a panel method) so BOTH the `PlayScene` action handler and
 /// the toolbar "Start Simulation" button (`playback_controls`) can share one
 /// code path — they previously diverged, and only the action handler had PiE.
 pub(crate) fn begin_pie(
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+    view: Option<LevelEditorCameraState>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -60,7 +63,7 @@ pub(crate) fn begin_pie(
         crate::scene_edit::level_io::save_to_file_with_settings(
             &world,
             &scene_path,
-            None,
+            view.clone(),
             state.scene.world_settings.clone(),
         )
     };
@@ -114,8 +117,14 @@ pub(crate) fn begin_pie(
         ),
         move |task| {
             task.report_progress(0.02, "Preparing project build");
-            let result =
-                build_pie_dylib(&root, &scene_path, reload, loaded_artifact.as_ref(), &task);
+            let result = build_pie_dylib(
+                &root,
+                &scene_path,
+                view.clone(),
+                reload,
+                loaded_artifact.as_ref(),
+                &task,
+            );
             let mut st = shared.write();
             st.play.pie.building = false;
             match result {
@@ -201,6 +210,7 @@ pub(crate) fn finish_stop(state: &mut LevelEditorState, game_stopped: bool) -> b
 fn build_pie_dylib(
     root: &Path,
     scene_path: &Path,
+    view: Option<LevelEditorCameraState>,
     reload: bool,
     loaded_artifact: Option<&(std::path::PathBuf, std::time::SystemTime)>,
     task: &editor_task_queue::TaskContext,
@@ -247,6 +257,7 @@ fn build_pie_dylib(
                 dylib_path,
                 project_root: root.to_path_buf(),
                 scene_path: scene_path.to_path_buf(),
+                view,
                 reload,
                 scripts_only,
             });
@@ -289,6 +300,7 @@ fn build_pie_dylib(
         dylib_path,
         project_root: root.to_path_buf(),
         scene_path: scene_path.to_path_buf(),
+        view,
         reload,
         scripts_only: false,
     })

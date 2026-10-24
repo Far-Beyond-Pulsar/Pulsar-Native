@@ -12,9 +12,10 @@ use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 #[cfg(test)]
 use super::scene_renderer::ortho_frame_camera;
+use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
 use super::scene_renderer::{
     ortho_depth_range, DeviceOwner, FrameProjection, FrameView, SceneRenderer,
-    SceneRendererOptions,
+    SceneRendererOptions, VoxelGround,
 };
 use super::voxel_backend::{
     VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint, UNPICKED_REACH_M,
@@ -666,20 +667,9 @@ pub struct HelioRenderer {
     applied_graph_settings: Option<ProjectGraphSettings>,
 
     // ── Camera State ──
-    cam_pos: DVec3,
-    /// Yaw and pitch relative to `cam_frame`.
-    cam_yaw: f32,
-    cam_pitch: f32,
-    /// The camera's reference frame (local to world): world axes, or over a
-    /// voxel world a frame whose up follows the local vertical, carried along
-    /// by the smallest rotation as the camera moves, so the horizon stays
-    /// level and "up" is away from the ground anywhere on a planet.
-    cam_frame: glam::Quat,
-    /// Local vertical of the voxel world at the camera, from the last frame.
-    voxel_up: Option<DVec3>,
-    /// A world-space view direction to restore once the frame at a newly set
-    /// camera position is known.
-    pending_view_direction: Option<Vec3>,
+    /// The perspective camera's pose: its frame follows the voxel ground's
+    /// local vertical (the game's free camera flies the same way).
+    cam: FlyCamera,
     // Smoothed local-space velocity: x=right, y=up, z=forward (units/sec).
     cam_local_velocity: Vec3,
     viewport_size: (u32, u32),
@@ -727,8 +717,9 @@ pub struct HelioRenderer {
     voxel_stroke_level: Option<(u64, f64)>,
     /// Brush samples waiting for the renderer's hit under them, in order.
     voxel_brush_picks: std::collections::VecDeque<PendingBrush>,
-    /// Camera height above the voxel ground below it, from the last frame.
-    voxel_altitude: Option<f64>,
+    /// The voxel ground under the camera (local vertical, height above it),
+    /// from the last frame.
+    voxel_ground: VoxelGround,
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
@@ -818,12 +809,7 @@ impl HelioRenderer {
             inner: None,
             applied_graph_settings: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
-            cam_pos: DVec3::new(8.0, 6.0, 12.0),
-            cam_yaw: -0.5,
-            cam_pitch: -0.3,
-            cam_frame: glam::Quat::IDENTITY,
-            voxel_up: None,
-            pending_view_direction: None,
+            cam: FlyCamera::new(DVec3::new(8.0, 6.0, 12.0), -0.5, -0.3),
             cam_local_velocity: Vec3::ZERO,
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
@@ -842,7 +828,7 @@ impl HelioRenderer {
             voxel_stroke_last: None,
             voxel_stroke_level: None,
             voxel_brush_picks: Default::default(),
-            voxel_altitude: None,
+            voxel_ground: VoxelGround::default(),
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
@@ -858,19 +844,18 @@ impl HelioRenderer {
         let (forward, _, _) = self.camera_basis();
         let (yaw, pitch) = yaw_pitch(forward);
         EditorCameraState {
-            position: self.cam_pos.to_array(),
+            position: self.cam.position.to_array(),
             yaw,
             pitch,
         }
     }
 
     pub fn set_editor_camera_state(&mut self, state: EditorCameraState) {
-        self.cam_pos = DVec3::from_array(state.position);
-        let forward = direction(state.yaw, state.pitch);
-        self.cam_frame = glam::Quat::IDENTITY;
-        self.set_view_direction(forward);
         // Over a voxel world the frame at the new position is known next frame.
-        self.pending_view_direction = Some(forward);
+        self.cam.set_pose(
+            DVec3::from_array(state.position),
+            direction(state.yaw, state.pitch),
+        );
         self.cam_local_velocity = Vec3::ZERO;
 
         if let Ok(mut input) = self.camera_input.lock() {
@@ -884,7 +869,7 @@ impl HelioRenderer {
     /// Height of the camera above the voxel ground below it, when a voxel
     /// terrain is shown (what the camera's speed scales with).
     pub fn voxel_altitude(&self) -> Option<f64> {
-        self.voxel_altitude
+        self.voxel_ground.altitude
     }
 
     /// The last measured frame's GPU milliseconds in all and by pass, for
@@ -931,7 +916,7 @@ impl HelioRenderer {
     pub fn camera_up(&self) -> Vec3 {
         self.active_view
             .axis_basis()
-            .map_or(self.cam_frame * Vec3::Y, |(_, _, up)| up)
+            .map_or(self.cam.frame_up(), |(_, _, up)| up)
     }
 
     /// The voxel worlds' renderers, once the renderer is built.
@@ -943,12 +928,7 @@ impl HelioRenderer {
     fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
         self.active_view
             .axis_basis()
-            .unwrap_or_else(|| basis(self.cam_frame, self.cam_yaw, self.cam_pitch))
-    }
-
-    /// Point the camera along a world-space direction within its frame.
-    fn set_view_direction(&mut self, forward: Vec3) {
-        (self.cam_yaw, self.cam_pitch) = local_yaw_pitch(self.cam_frame, forward);
+            .unwrap_or_else(|| self.cam.basis())
     }
 
     /// Configure cheap frame-spike warning cadence independently from deep
@@ -1087,11 +1067,10 @@ impl HelioRenderer {
             self.applied_graph_settings = Some(graph_settings.clone());
             self.viewport_size = (width, height);
 
+            let (yaw, pitch) = self.cam.local_yaw_pitch();
             tracing::info!(
-                "[HELIO] Renderer initialized - camera at {:?}, yaw={}, pitch={}",
-                self.cam_pos,
-                self.cam_yaw,
-                self.cam_pitch
+                "[HELIO] Renderer initialized - camera at {:?}, yaw={yaw}, pitch={pitch}",
+                self.cam.position,
             );
             // First frame must render (lazy init includes nothing visible)
         }
@@ -1454,36 +1433,21 @@ impl HelioRenderer {
         // ── Camera / gizmo / render ─────────────────────────────────────────────
         // The camera's frame follows the voxel ground's local vertical, and
         // its speed the height above it.
-        let ground = inner.scene.voxel_ground(self.cam_pos);
-        self.voxel_altitude = ground.altitude;
-        self.voxel_up = ground.up;
+        let ground = inner.scene.voxel_ground(self.cam.position);
+        self.voxel_ground = ground;
         phases.mark("ground");
-        let target = self
-            .voxel_up
-            .map_or(Vec3::Y, |up| up.as_vec3())
-            .normalize_or(Vec3::Y);
-        match self.pending_view_direction.take() {
-            // A pose set from outside: its view direction within the frame at it.
-            Some(forward) => {
-                self.cam_frame = glam::Quat::from_rotation_arc(Vec3::Y, target);
-                (self.cam_yaw, self.cam_pitch) = local_yaw_pitch(self.cam_frame, forward);
-            }
-            None => self.cam_frame = transported(self.cam_frame, target),
-        }
+        self.cam.follow_ground(ground.up);
         let t_prepare = Instant::now();
         let (forward, frame_up) = match self.active_view.axis_basis() {
             Some((forward, _, up)) => (forward, up),
-            None => (
-                basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0,
-                self.cam_frame * Vec3::Y,
-            ),
+            None => (self.cam.forward(), self.cam.frame_up()),
         };
         let frame = {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
             inner.scene.prepare_frame(
                 &FrameView {
-                    eye: self.cam_pos,
+                    eye: self.cam.position,
                     forward,
                     up: frame_up,
                     aspect: width as f32 / height.max(1) as f32,
@@ -1544,14 +1508,13 @@ impl HelioRenderer {
             let slowest = self.voxel_stats_frames.1;
             self.voxel_stats_frames = (0, 0.0);
             self.last_voxel_stats_log = Instant::now();
-            let (forward, _, up) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
+            let (forward, _, up) = self.cam.basis();
             for line in inner.scene.voxel_diagnostics() {
                 tracing::info!(
                     "VOXEL_STATS fps={fps:.1} slowest_frame_ms={slowest:.1} altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} camera_relative={} graph_gpu_ms={:?}",
-                    self.voxel_altitude.unwrap_or(f64::NAN),
-                    self.voxel_altitude
-                        .map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
-                    self.cam_pos.to_array(),
+                    self.voxel_ground.altitude.unwrap_or(f64::NAN),
+                    altitude_speed_scale(&self.voxel_ground),
+                    self.cam.position.to_array(),
                     forward.to_array(),
                     up.to_array(),
                     width,
@@ -1746,21 +1709,14 @@ impl HelioRenderer {
             }
         }
 
-        self.cam_yaw += input.mouse_delta_x * LOOK;
-        self.cam_pitch -= input.mouse_delta_y * LOOK;
-        self.cam_pitch = self.cam_pitch.clamp(-1.5, 1.5);
+        self.cam
+            .look(input.mouse_delta_x * LOOK, -input.mouse_delta_y * LOOK);
 
         // Movement is level within the camera frame: W/S along the horizontal
         // view direction, Q/E along the local vertical.
-        let (sy, cy) = self.cam_yaw.sin_cos();
-        let fwd = self.cam_frame * Vec3::new(sy, 0.0, -cy);
-        let right = self.cam_frame * Vec3::new(cy, 0.0, sy);
-        let frame_up = self.cam_frame * Vec3::Y;
-        // Over voxel worlds speed grows with height above the ground: the
-        // base speed within 20 m of it, 50x at 1 km, orbit in seconds.
-        let altitude = self
-            .voxel_altitude
-            .map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6) as f32);
+        let (fwd, right, frame_up) = self.cam.level_axes();
+        // Over voxel worlds speed grows with height above the ground.
+        let altitude = altitude_speed_scale(&self.voxel_ground) as f32;
         let speed = altitude
             * if input.boost {
                 input.move_speed * 3.0
@@ -1780,13 +1736,13 @@ impl HelioRenderer {
         // instant velocity step produces no visible jump.
         self.cam_local_velocity = target_velocity;
 
-        let before = self.cam_pos;
+        let before = self.cam.position;
         let steps = [
             (right * self.cam_local_velocity.x * dt).as_dvec3(),
             (frame_up * self.cam_local_velocity.y * dt).as_dvec3(),
             (fwd * self.cam_local_velocity.z * dt).as_dvec3(),
         ];
-        self.cam_pos += steps[0] + steps[1] + steps[2];
+        self.cam.position += steps[0] + steps[1] + steps[2];
         // The editor camera never enters solid voxel terrain. From air (a
         // cave, a dig, above ground) it slides along what it touches: each
         // axis of the move is kept only if it stays in air. Lifting to the
@@ -1797,7 +1753,7 @@ impl HelioRenderer {
                 .voxels()
                 .and_then(|voxels| voxels.lift_out_of_ground(eye))
         };
-        if lift(self, self.cam_pos).is_some() {
+        if lift(self, self.cam.position).is_some() {
             if lift(self, before).is_none() {
                 let mut pos = before;
                 for step in steps {
@@ -1805,9 +1761,9 @@ impl HelioRenderer {
                         pos += step;
                     }
                 }
-                self.cam_pos = pos;
-            } else if let Some(lifted) = lift(self, self.cam_pos) {
-                self.cam_pos = lifted;
+                self.cam.position = pos;
+            } else if let Some(lifted) = lift(self, self.cam.position) {
+                self.cam.position = lifted;
             }
         }
 
@@ -1821,8 +1777,8 @@ impl HelioRenderer {
             let pan_speed = PAN * input.move_speed.max(1.0);
             // Grab convention: dragging right moves content right (camera goes left);
             // dragging down moves content down (camera goes up).
-            self.cam_pos += (right * (-input.pan_delta_x) * pan_speed).as_dvec3();
-            self.cam_pos += (screen_up * input.pan_delta_y * pan_speed).as_dvec3();
+            self.cam.position += (right * (-input.pan_delta_x) * pan_speed).as_dvec3();
+            self.cam.position += (screen_up * input.pan_delta_y * pan_speed).as_dvec3();
         }
     }
 
@@ -1843,15 +1799,15 @@ impl HelioRenderer {
     /// the perspective camera looks at a point [`CAMERA_PIVOT_DISTANCE`] ahead.
     fn sync_anchor(&self) -> DVec3 {
         if self.active_view.is_orthographic() {
-            self.cam_pos
+            self.cam.position
         } else {
-            self.cam_pos + self.camera_basis().0.as_dvec3() * self.sync_pivot_distance()
+            self.cam.position + self.camera_basis().0.as_dvec3() * self.sync_pivot_distance()
         }
     }
 
     /// Move the camera so the viewport is centred on `anchor`.
     fn set_sync_anchor(&mut self, anchor: DVec3) {
-        self.cam_pos = if self.active_view.is_orthographic() {
+        self.cam.position = if self.active_view.is_orthographic() {
             anchor
         } else {
             anchor - self.camera_basis().0.as_dvec3() * self.sync_pivot_distance()
@@ -1965,14 +1921,14 @@ impl HelioRenderer {
                 input.move_speed
             };
         self.cam_local_velocity = Vec3::new(input.right * speed, input.up * speed, 0.0);
-        self.cam_pos +=
+        self.cam.position +=
             ((right * self.cam_local_velocity.x + up * self.cam_local_velocity.y) * dt).as_dvec3();
 
         // Grab convention: dragging right moves the content right, so the
         // camera goes left; dragging down moves it down, so the camera goes up.
         let drag_x = input.mouse_delta_x + input.pan_delta_x;
         let drag_y = input.mouse_delta_y + input.pan_delta_y;
-        self.cam_pos += ((-right * drag_x + up * drag_y) * units_per_pixel).as_dvec3();
+        self.cam.position += ((-right * drag_x + up * drag_y) * units_per_pixel).as_dvec3();
     }
 
     /// Hand the graph the view mode the toolbar chose. Returns whether it
@@ -2144,7 +2100,7 @@ impl HelioRenderer {
             answer: None,
             requested: Instant::now(),
             stroke: self.voxel_stroke,
-            origin: self.cam_pos,
+            origin: self.cam.position,
             direction,
             request,
         };
@@ -2429,7 +2385,7 @@ impl HelioRenderer {
         let direction = forward
             + right * ((norm_x * 2.0 - 1.0) * tan * aspect)
             + up * ((1.0 - norm_y * 2.0) * tan);
-        (self.cam_pos, direction.normalize_or_zero())
+        (self.cam.position, direction.normalize_or_zero())
     }
 
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
@@ -2572,99 +2528,9 @@ impl HelioRenderer {
             // objects on both sides of the focus (this is not the render eye).
             let (forward, _, _) = self.camera_basis();
             let range = ortho_depth_range(self.ortho_half_height());
-            self.cam_pos - forward.as_dvec3() * f64::from(range)
+            self.cam.position - forward.as_dvec3() * f64::from(range)
         } else {
-            self.cam_pos
-        }
-    }
-}
-
-/// View direction for yaw (about +Y, 0 = -Z) and pitch.
-fn direction(yaw: f32, pitch: f32) -> Vec3 {
-    let (sy, cy) = yaw.sin_cos();
-    let (sp, cp) = pitch.sin_cos();
-    Vec3::new(sy * cp, sp, -cy * cp)
-}
-
-/// Inverse of [`direction`].
-fn yaw_pitch(forward: Vec3) -> (f32, f32) {
-    let f = forward.normalize_or(Vec3::NEG_Z);
-    (f.x.atan2(-f.z), f.y.clamp(-1.0, 1.0).asin())
-}
-
-/// Yaw and (clamped) pitch of a world-space direction within `frame`.
-fn local_yaw_pitch(frame: glam::Quat, forward: Vec3) -> (f32, f32) {
-    let (yaw, pitch) = yaw_pitch(frame.inverse() * forward);
-    (yaw, pitch.clamp(-1.5, 1.5))
-}
-
-/// World-space forward, right and up for yaw and pitch within `frame`.
-fn basis(frame: glam::Quat, yaw: f32, pitch: f32) -> (Vec3, Vec3, Vec3) {
-    let forward = frame * direction(yaw, pitch);
-    let (sy, cy) = yaw.sin_cos();
-    let right = frame * Vec3::new(cy, 0.0, sy);
-    let up = right.cross(forward).normalize_or_zero();
-    (forward, right, up)
-}
-
-/// `frame` turned by the smallest rotation that takes its up to `up`.
-fn transported(frame: glam::Quat, up: Vec3) -> glam::Quat {
-    (glam::Quat::from_rotation_arc(frame * Vec3::Y, up) * frame).normalize()
-}
-
-#[cfg(test)]
-mod camera_frame_tests {
-    use super::*;
-
-    #[test]
-    fn world_frame_matches_the_legacy_yaw_pitch_convention() {
-        let (forward, right, up) = basis(glam::Quat::IDENTITY, 0.0, 0.0);
-        assert!(
-            forward.abs_diff_eq(Vec3::NEG_Z, 1e-6)
-                && right.abs_diff_eq(Vec3::X, 1e-6)
-                && up.abs_diff_eq(Vec3::Y, 1e-6)
-        );
-        let d = direction(0.7, -0.3);
-        let (yaw, pitch) = yaw_pitch(d);
-        assert!((yaw - 0.7).abs() < 1e-5 && (pitch + 0.3).abs() < 1e-5);
-    }
-
-    #[test]
-    fn the_frame_follows_the_local_vertical_with_a_level_horizon() {
-        // 30 degrees from the pole of a planet centred at the origin.
-        let local_up = Vec3::new(0.5, 0.866_025_4, 0.0);
-        let frame = transported(glam::Quat::IDENTITY, local_up);
-        assert!((frame * Vec3::Y).abs_diff_eq(local_up, 1e-5));
-        for yaw in [0.0, 1.0, 2.5, -2.0] {
-            let (forward, right, up) = basis(frame, yaw, 0.0);
-            // Level: forward and right horizontal, up is the local vertical.
-            assert!(
-                forward.dot(local_up).abs() < 1e-5 && right.dot(local_up).abs() < 1e-5,
-                "yaw {yaw}"
-            );
-            assert!(up.abs_diff_eq(local_up, 1e-5), "yaw {yaw}");
-        }
-        // A world-space direction survives the round trip through the frame.
-        let wanted = Vec3::new(0.3, -0.4, -0.8).normalize();
-        let (yaw, pitch) = local_yaw_pitch(frame, wanted);
-        assert!(basis(frame, yaw, pitch).0.abs_diff_eq(wanted, 1e-5));
-    }
-
-    #[test]
-    fn carrying_the_frame_over_the_planet_has_no_jumps() {
-        let mut frame = glam::Quat::IDENTITY;
-        let mut previous = basis(frame, 0.4, -0.2).0;
-        for step in 1..=450 {
-            let angle = (step as f32 * 0.1).to_radians();
-            let up = Vec3::new(angle.sin(), angle.cos(), 0.0);
-            frame = transported(frame, up);
-            let forward = basis(frame, 0.4, -0.2).0;
-            // The view turns only as much as the vertical does.
-            assert!(
-                forward.angle_between(previous) <= 0.1f32.to_radians() * 1.01,
-                "step {step}"
-            );
-            previous = forward;
+            self.cam.position
         }
     }
 }
@@ -2839,9 +2705,9 @@ mod camera_sync_tests {
         join(&mut perspective, &group);
         join(&mut top, &group);
 
-        let ahead = perspective.cam_pos
+        let ahead = perspective.cam.position
             + perspective.camera_basis().0.as_dvec3() * CAMERA_PIVOT_DISTANCE;
-        assert!(near(top.cam_pos, ahead), "{:?} vs {ahead:?}", top.cam_pos);
+        assert!(near(top.cam.position, ahead), "{:?} vs {ahead:?}", top.cam.position);
         // The perspective camera itself does not move.
         assert!(near(perspective.sync_anchor(), ahead));
     }
@@ -2850,14 +2716,14 @@ mod camera_sync_tests {
     fn locked_cameras_follow_the_one_the_user_moved() {
         let group = Arc::new(CameraSync::default());
         let (mut a, mut b) = (renderer(), renderer());
-        b.cam_pos = a.cam_pos;
+        b.cam.position = a.cam.position;
         join(&mut a, &group);
         join(&mut b, &group);
 
-        a.cam_pos += DVec3::new(5.0, 0.0, -3.0);
+        a.cam.position += DVec3::new(5.0, 0.0, -3.0);
         assert!(!a.sync_camera(), "the one that moved is not moved again");
         assert!(b.sync_camera());
-        assert!(near(b.cam_pos, a.cam_pos));
+        assert!(near(b.cam.position, a.cam.position));
         // Nothing left to follow, and no echo back.
         assert!(!b.sync_camera());
         assert!(!a.sync_camera());
@@ -2871,12 +2737,12 @@ mod camera_sync_tests {
         top.apply_view_kind();
         join(&mut perspective, &group);
         join(&mut top, &group);
-        let eye = perspective.cam_pos;
+        let eye = perspective.cam.position;
 
-        top.cam_pos += DVec3::new(4.0, 0.0, 9.0);
+        top.cam.position += DVec3::new(4.0, 0.0, 9.0);
         top.sync_camera();
         assert!(perspective.sync_camera());
-        assert!(near(perspective.cam_pos, eye + DVec3::new(4.0, 0.0, 9.0)));
+        assert!(near(perspective.cam.position, eye + DVec3::new(4.0, 0.0, 9.0)));
         // Still looking the same way, so no ping-pong.
         assert!(!perspective.sync_camera());
         assert!(!top.sync_camera());
@@ -2886,26 +2752,26 @@ mod camera_sync_tests {
     fn an_unlocked_camera_neither_follows_nor_leads() {
         let group = Arc::new(CameraSync::default());
         let (mut a, mut b) = (renderer(), renderer());
-        b.cam_pos = a.cam_pos;
+        b.cam.position = a.cam.position;
         join(&mut a, &group);
         join(&mut b, &group);
 
         b.editor_mailbox().set_camera_sync_locked(false);
         assert!(!b.sync_camera());
-        let before = b.cam_pos;
-        a.cam_pos += DVec3::X * 10.0;
+        let before = b.cam.position;
+        a.cam.position += DVec3::X * 10.0;
         a.sync_camera();
         assert!(!b.sync_camera());
-        assert_eq!(b.cam_pos, before, "unlocked cameras stay put");
+        assert_eq!(b.cam.position, before, "unlocked cameras stay put");
 
-        b.cam_pos += DVec3::Y * 7.0;
+        b.cam.position += DVec3::Y * 7.0;
         assert!(!b.sync_camera());
         assert!(!a.sync_camera(), "an unlocked move is not published");
 
         // Locking again rejoins the group where it is.
         b.editor_mailbox().set_camera_sync_locked(true);
         assert!(b.sync_camera());
-        assert!(near(b.cam_pos, a.cam_pos));
+        assert!(near(b.cam.position, a.cam.position));
     }
 
     #[test]
@@ -2952,7 +2818,7 @@ mod pivot_distance_tests {
         let expected = 900.0 * std::f32::consts::FRAC_PI_8.tan();
         assert!((side.ortho_half_height() - expected).abs() < 1e-2);
         // And centres on the point 900 ahead of the perspective camera.
-        let ahead = perspective.cam_pos + perspective.camera_basis().0.as_dvec3() * 900.0;
-        assert!((side.cam_pos - ahead).length() < 1e-6);
+        let ahead = perspective.cam.position + perspective.camera_basis().0.as_dvec3() * 900.0;
+        assert!((side.cam.position - ahead).length() < 1e-6);
     }
 }

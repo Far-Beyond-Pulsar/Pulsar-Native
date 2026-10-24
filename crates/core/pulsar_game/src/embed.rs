@@ -387,10 +387,17 @@ impl EmbeddedGame {
             SceneRendererOptions::game(DeviceOwner::Host, false),
         );
 
-        // Under v2 the world comes pre-hydrated by the host, so the old
-        // editor-camera file seeding is gone too -- camera selection prefers
-        // Camera-typed entities from the shared world instead.
-        let freecam = FreeCam::default();
+        // Camera selection prefers Camera-typed entities from the shared
+        // world; the free camera starts where the editor view was (ABI v4).
+        let freecam = if ctx.view.present != 0 {
+            FreeCam::default().place(
+                glam::DVec3::from_array(ctx.view.position),
+                ctx.view.yaw,
+                ctx.view.pitch,
+            )
+        } else {
+            FreeCam::default()
+        };
         engine_state::set_project_path(project_root.display().to_string());
         // Advisory only under v2 (the world comes pre-hydrated); it names
         // the level `LevelLoaded` reports.
@@ -446,9 +453,15 @@ impl EmbeddedGame {
 
         // 3. Camera. A Camera-typed entity in the shared world drives the
         //    view when present (#637 -- no more unconditional freecam); the
-        //    freecam seeded from the editor view remains the fallback.
-        let cam = select_world_camera(&self.scene_store.read())
-            .unwrap_or_else(|| self.freecam.to_render_camera());
+        //    freecam seeded from the editor view remains the fallback, on
+        //    the voxel ground's local vertical.
+        // The world's read lock is released before the ground is read.
+        let world_camera = select_world_camera(&self.scene_store.read());
+        let cam = world_camera.unwrap_or_else(|| {
+            let ground = self.renderer.voxel_ground(self.freecam.position());
+            self.freecam.follow_ground(ground);
+            self.freecam.to_render_camera()
+        });
         let aspect = self.width as f32 / self.height.max(1) as f32;
         let frame = self
             .renderer

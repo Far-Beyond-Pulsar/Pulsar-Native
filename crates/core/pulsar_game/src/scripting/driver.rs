@@ -1589,7 +1589,7 @@ impl ScriptDriver {
         entity: Entity,
         class: &str,
         parent: Option<Entity>,
-        position: [f32; 3],
+        position: [f64; 3],
         report: &mut DriverReport,
     ) {
         if !world.is_alive(entity) {
@@ -1622,7 +1622,7 @@ impl ScriptDriver {
         let parent = parent.filter(|p| world.is_alive(*p));
         // Parent-relative: a spawn under a parent is placed in that parent's space.
         let transform = Transform {
-            position: position.map(f64::from),
+            position,
             ..Transform::default()
         };
         let def = &template.def;
