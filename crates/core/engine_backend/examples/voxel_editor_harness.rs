@@ -24,6 +24,9 @@
 //!   drag stroke across the view through the editor's pointer queue (op:
 //!   dig, build, paint; tool: stamp, flatten, smooth), then release, settle
 //!   and capture; logs per-frame times and the edits the journal gained.
+//! - `set:<group>.<key>=<value>`: a project setting (`rendering.foliage_range=200`;
+//!   the groups are Helio's, `helio_settings::GROUPS`), applied before the
+//!   first frame wherever the step stands.
 //! - `debug:<mode>`: later views render the renderer's debug view `mode`
 //!   (the toolbar's view mode: 0 lit, 26 the voxel sun's visibility).
 //! - `at:<x>:<y>:<z>`: later views are placed over this direction from the
@@ -448,6 +451,43 @@ fn main() {
         for (_, c) in world.query::<&GlobalFogComponent>() {
             println!("HARNESS scene fog: {}", short(format!("{c:?}")));
         }
+        for (_, c) in world.query::<&helio_component::components::WindComponent>() {
+            println!("HARNESS scene wind: {}", short(format!("{c:?}")));
+        }
+        let foliage = world.query::<&helio_component::components::FoliageComponent>().count();
+        if foliage > 0 {
+            println!("HARNESS scene foliage: {foliage} types");
+        }
+        for (_, c) in world.query::<&helio_component::components::VoxelTerrainComponent>() {
+            println!(
+                "HARNESS scene terrain: seed {} voxel {} air {:?} haze {} features {}",
+                c.seed,
+                c.voxel_size,
+                c.air,
+                c.air_haze,
+                c.features.len()
+            );
+        }
+    }
+    // `set:` steps: project settings, before the renderer reads them.
+    let config = engine_state::settings::global_config();
+    pulsar_settings::project::rendering::register(config);
+    for step in steps.iter().filter_map(|s| s.strip_prefix("set:")) {
+        let (path, value) = step.split_once('=').expect("set:<group>.<key>=<value>");
+        let (group, key) = path.split_once('.').expect("set:<group>.<key>=<value>");
+        let value = match value {
+            "true" | "false" => engine_state::settings::ConfigValue::Bool(value == "true"),
+            _ => value.parse().map_or_else(
+                |_| engine_state::settings::ConfigValue::String(value.into()),
+                engine_state::settings::ConfigValue::Float,
+            ),
+        };
+        config
+            .owner_handle(engine_state::settings::NS_PROJECT, group)
+            .unwrap_or_else(|| panic!("no project settings group {group}"))
+            .set(key, value.clone())
+            .unwrap_or_else(|e| panic!("set {path}: {e:?}"));
+        println!("HARNESS setting {path} = {value:?}");
     }
     let mut renderer = HelioRenderer::new(scene.clone());
     if let Some(camera) = extras.editor_camera {
@@ -610,6 +650,8 @@ fn main() {
                 println!("HARNESS drag: journal {} -> {} edits", before, h.edits());
                 h.capture(&format!("drag_{n}"));
             }
+            // Applied before the first frame.
+            "set" => {}
             "debug" => {
                 // The renderer's debug view for the views after (the
                 // toolbar's view mode; 0 lit, 26 the voxel sun).

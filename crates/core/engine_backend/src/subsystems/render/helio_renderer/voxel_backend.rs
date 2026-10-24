@@ -527,7 +527,8 @@ impl Default for VoxelBackendRegistry {
     }
 }
 
-/// The world recipe of an entry: its form, voxel size and terrain source.
+/// The world recipe of an entry: its form, voxel size, terrain source and
+/// features.
 fn world_recipe(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> PlanetRecipe {
     helio_component::voxel_world::world_recipe(
         entry.world.shape,
@@ -540,6 +541,7 @@ fn world_recipe(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> Pl
             seed: generator.seed,
             settings: generator.parameters.clone(),
         },
+        &generator.features,
     )
 }
 
@@ -1816,6 +1818,42 @@ mod tests {
             helio_pass_voxel_planet::layers::LayerKind::Mountains
         );
         assert_eq!(settings.layers[2].scale_km, 55.0);
+    }
+
+    /// A terrain's features are part of its world: they grow with its seed
+    /// into the recipe the renderer draws, and a change they cannot grow
+    /// from (spawns out of spacing order) is rejected while the last good
+    /// world stays on screen.
+    #[test]
+    fn features_grow_into_the_world_and_bad_ones_are_rejected() {
+        use helio_pass_voxel_planet::feature_recipe::FeatureRecipe;
+        let mut scene = World::new();
+        let owner = scene.spawn();
+        let mut terrain = planet_terrain();
+        terrain.features = helio_component::feature_spawns(&FeatureRecipe::earth());
+        let instance = attach(&mut scene, owner, terrain);
+        let eye = DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0);
+        let mut backend = PlanetVoxelBackend::blocking();
+        let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        backend.publish_frame(&[&entries[0]], view(eye)).unwrap();
+        let grown = frame_planet(&backend).recipe().features.clone();
+        assert_eq!(
+            grown,
+            FeatureRecipe::earth().grow(0.1, TerrainSource::default().seed)
+        );
+        scene
+            .get_mut::<VoxelTerrainComponent>(instance)
+            .unwrap()
+            .features
+            .reverse();
+        let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        let error = backend.publish_frame(&[&entries[0]], view(eye)).unwrap_err();
+        assert!(error.contains("widest spacing"), "{error}");
+        assert_eq!(
+            frame_planet(&backend).recipe().features,
+            grown,
+            "the last good world stays"
+        );
     }
 
     #[test]

@@ -1,0 +1,811 @@
+{
+  "version": "2.1",
+  "objects": [
+    {
+      "id": "voxel_planet",
+      "name": "Voxel Planet",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Voxel Planet",
+      "props": {}
+    },
+    {
+      "id": "voxel_sun",
+      "name": "Sun",
+      "object_type": {
+        "Light": "Directional"
+      },
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          58.0,
+          -56.7,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Sun",
+      "props": {}
+    },
+    {
+      "id": "post_process",
+      "name": "Post Process",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Post Process",
+      "props": {}
+    }
+  ],
+  "components": {
+    "voxel_planet": [
+      {
+        "class_name": "VoxelTerrainComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "shape": "Sphere",
+          "planet_radius": 6371000.0,
+          "voxel_size": 0.1,
+          "generator_id": "helio.terrain",
+          "generator_version": 1,
+          "seed": 75,
+          "generator_parameters": "",
+          "air": "Custom",
+          "air_density": 1.0,
+          "air_tint": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "air_haze": 1.0,
+          "editable": true,
+          "source_revision": 0,
+          "edits": {
+            "terrain": 0,
+            "edits": []
+          },
+          "features": [
+            {
+              "name": "sandstone boulders",
+              "growths": [
+                {
+                  "form": "Boulder",
+                  "species": "Oak",
+                  "material": 8,
+                  "second_material": 0,
+                  "min_size_m": 1.5,
+                  "max_size_m": 3.5,
+                  "blocks": 0,
+                  "seed": 50,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 36.0,
+              "density": 0.25,
+              "field_scale_m": 900.0,
+              "field_threshold": -0.2,
+              "surfaces": [],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1000000000.0,
+              "height_wander_m": 0.0,
+              "height_wander_scale_m": 0.0,
+              "max_relief_m": 0.0,
+              "sink_m": 0.0,
+              "far_material": 0,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "rocks",
+              "growths": [
+                {
+                  "form": "Boulder",
+                  "species": "Oak",
+                  "material": 3,
+                  "second_material": 9,
+                  "min_size_m": 0.25,
+                  "max_size_m": 0.9,
+                  "blocks": 0,
+                  "seed": 51,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 8.0,
+              "density": 0.07,
+              "field_scale_m": 0.0,
+              "field_threshold": -1.0,
+              "surfaces": [],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1000000000.0,
+              "height_wander_m": 0.0,
+              "height_wander_scale_m": 0.0,
+              "max_relief_m": 0.0,
+              "sink_m": 0.0,
+              "far_material": 0,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "shrubs",
+              "growths": [
+                {
+                  "form": "Shrub",
+                  "species": "Oak",
+                  "material": 25,
+                  "second_material": 24,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 52,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 6.0,
+              "density": 0.12,
+              "field_scale_m": 450.0,
+              "field_threshold": -0.35,
+              "surfaces": [],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1000000000.0,
+              "height_wander_m": 0.0,
+              "height_wander_scale_m": 0.0,
+              "max_relief_m": 1.0,
+              "sink_m": 0.0,
+              "far_material": 0,
+              "far_height_m": 0.0
+            }
+          ],
+          "appearance_parameters": "{\"materials\":[{\"colour\":[0.78431374,0.0,0.78431374,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.41568628,0.49411765,0.26666668,0.94],\"patches\":[[0.627451,0.5882353,0.3764706],[0.41568628,0.49411765,0.26666668],[0.24313726,0.38431373,0.21960784]],\"lip\":2,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.5019608,0.3764706,0.25882354,0.96],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":1,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.52156866,0.54509807,0.5568628,0.84],\"patches\":[[0.627451,0.6156863,0.58431375],[0.52156866,0.54509807,0.5568628],[0.38431373,0.40784314,0.43137255]],\"lip\":null,\"fleck\":[2,0.125],\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.79607844,0.7372549,0.5921569,0.93],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":1,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.8509804,0.89411765,0.9254902,0.78],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.10980392,0.28235295,0.36078432,0.35],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.45490196,0.43529412,0.4,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.7254902,0.5568628,0.40784314,0.88],\"patches\":null,\"lip\":null,\"fleck\":[2,0.125],\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.32156864,0.34509805,0.37254903,0.82],\"patches\":[[0.54901963,0.5411765,0.5137255],[0.43137255,0.4509804,0.46666667],[0.32156864,0.34117648,0.36862746]],\"lip\":null,\"fleck\":[2,0.125],\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.39607844,0.29411766,0.20784314,0.97],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.23137255,0.4,0.20392157,0.94],\"patches\":[[0.3372549,0.4392157,0.19607843],[0.23137255,0.4,0.20392157],[0.15686275,0.3137255,0.15686275]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.65,\"emission\":0.0},{\"colour\":[0.60784316,0.44313726,0.34901962,0.92],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.5803922,0.3019608,0.24705882,0.86],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.61960787,0.46666667,0.30980393,0.86],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.4745098,0.49411765,0.50980395,0.85],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.5568628,0.54901963,0.5294118,0.95],\"patches\":[[0.61960787,0.6117647,0.5882353],[0.5568628,0.54901963,0.5294118],[0.4627451,0.45882353,0.44313726]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.32941177,0.32941177,0.3372549,0.95],\"patches\":[[0.38431373,0.38431373,0.3882353],[0.32941177,0.32941177,0.3372549],[0.26666668,0.26666668,0.2784314]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.76862746,0.7607843,0.7372549,0.93],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":16,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.4392157,0.43137255,0.41568628,0.85],\"patches\":[[0.50980395,0.5019608,0.48235294],[0.4392157,0.43137255,0.41568628],[0.3529412,0.34901962,0.3372549]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.22745098,0.23137255,0.24705882,0.8],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.65882355,0.6509804,0.61960787,0.85],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.16470589,0.26666668,0.1882353,0.9],\"patches\":[[0.24313726,0.32941177,0.21176471],[0.16470589,0.26666668,0.1882353],[0.11764706,0.21176471,0.16470589]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.5,\"emission\":0.0},{\"colour\":[0.83137256,0.8156863,0.76862746,0.8],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.57254905,0.5882353,0.45490196,0.92],\"patches\":[[0.6666667,0.6431373,0.4862745],[0.57254905,0.5882353,0.45490196],[0.45490196,0.49411765,0.3764706]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.4,\"emission\":0.0},{\"colour\":[0.43137255,0.36862746,0.30588236,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0}],\"detail\":[0.3,0.4,0.08,0.0]}"
+        }
+      },
+      {
+        "class_name": "VoxelTerrainLayersComponent",
+        "enabled": true,
+        "data": {
+          "layers": [
+            {
+              "kind": "Warp",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 100.0,
+              "base_m": 0.0,
+              "scale_km": 40.0,
+              "octaves": 4,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Plateau",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 400.0,
+              "base_m": 0.0,
+              "scale_km": 10.0,
+              "octaves": 4,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Mountains",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 2400.0,
+              "base_m": 0.0,
+              "scale_km": 20.0,
+              "octaves": 7,
+              "persistence": 0.47,
+              "coverage": 0.45,
+              "region_km": 240.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Erosion",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 40.0,
+              "base_m": 0.0,
+              "scale_km": 1.6,
+              "octaves": 6,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.5,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Hills",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 140.0,
+              "base_m": 0.0,
+              "scale_km": 9.0,
+              "octaves": 4,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Roughness",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 100.0,
+              "base_m": 0.0,
+              "scale_km": 0.512,
+              "octaves": 9,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.035,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            }
+          ],
+          "caves": {
+            "enabled": true,
+            "depth_m": 120.0,
+            "share": 0.45,
+            "region_km": 6.0,
+            "tunnel_radius_m": 2.5,
+            "tunnel_wavelength_m": 160.0,
+            "cavern_wavelength_m": 160.0,
+            "cavern_share": 0.04,
+            "cover_m": 6.0,
+            "entrance_share": 0.05,
+            "entrance_spacing_m": 80.0
+          },
+          "overhangs": {
+            "enabled": true,
+            "height_m": 6.0,
+            "wavelength_m": 6.0,
+            "region_km": 3.0,
+            "share": 0.3
+          },
+          "materials": "Rules",
+          "snowline_m": 100000.0,
+          "soil_depth_m": 0.7,
+          "surface": "Grass",
+          "soil": "Dirt",
+          "rock": "Sandstone",
+          "rules": [
+            {
+              "material": "Gravel",
+              "min_height_m": -1000000.0,
+              "max_height_m": 1000000.0,
+              "min_slope": 0.2,
+              "max_slope": 1000.0,
+              "min_depth_m": 0.0,
+              "max_depth_m": 0.3,
+              "min_moisture": 0.0,
+              "max_moisture": 1.0,
+              "min_erosion": -1.0,
+              "max_erosion": -0.4,
+              "patch_km": 0.0,
+              "patch_share": 0.5,
+              "band_m": 0.0,
+              "odd_bands": false,
+              "speck_share": 1.0
+            },
+            {
+              "material": "Sand",
+              "min_height_m": -1000000.0,
+              "max_height_m": 1000000.0,
+              "min_slope": 0.0,
+              "max_slope": 0.6,
+              "min_depth_m": 0.0,
+              "max_depth_m": 1.5,
+              "min_moisture": 0.0,
+              "max_moisture": 1.0,
+              "min_erosion": -1.0,
+              "max_erosion": 1.0,
+              "patch_km": 0.0,
+              "patch_share": 0.5,
+              "band_m": 0.0,
+              "odd_bands": false,
+              "speck_share": 1.0
+            },
+            {
+              "material": "DarkStone",
+              "min_height_m": -1000000.0,
+              "max_height_m": 1000000.0,
+              "min_slope": 0.0,
+              "max_slope": 1000.0,
+              "min_depth_m": 0.0,
+              "max_depth_m": 0.0,
+              "min_moisture": 0.0,
+              "max_moisture": 1.0,
+              "min_erosion": -1.0,
+              "max_erosion": 1.0,
+              "patch_km": 0.0,
+              "patch_share": 0.5,
+              "band_m": 0.0,
+              "odd_bands": false,
+              "speck_share": 0.06
+            },
+            {
+              "material": "Stone",
+              "min_height_m": -1000000.0,
+              "max_height_m": 1000000.0,
+              "min_slope": 0.0,
+              "max_slope": 1000.0,
+              "min_depth_m": 0.0,
+              "max_depth_m": 1000000.0,
+              "min_moisture": 0.0,
+              "max_moisture": 1.0,
+              "min_erosion": -1.0,
+              "max_erosion": 1.0,
+              "patch_km": 0.05,
+              "patch_share": 0.15,
+              "band_m": 0.0,
+              "odd_bands": false,
+              "speck_share": 1.0
+            },
+            {
+              "material": "Clay",
+              "min_height_m": -1000000.0,
+              "max_height_m": 1000000.0,
+              "min_slope": 0.0,
+              "max_slope": 1000.0,
+              "min_depth_m": 0.0,
+              "max_depth_m": 1000000.0,
+              "min_moisture": 0.0,
+              "max_moisture": 1.0,
+              "min_erosion": -1.0,
+              "max_erosion": 1.0,
+              "patch_km": 0.0,
+              "patch_share": 0.5,
+              "band_m": 2.5,
+              "odd_bands": true,
+              "speck_share": 1.0
+            }
+          ]
+        }
+      },
+      {
+        "class_name": "AtmosphereComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "placement": "PlanetAtOwner",
+          "planet_radius_km": 6371.0,
+          "thickness_km": 100.0,
+          "ground_albedo": [
+            0.45,
+            0.38,
+            0.28
+          ],
+          "sun_angular_radius_deg": 0.26786,
+          "rayleigh_scattering": [
+            0.005802,
+            0.013558,
+            0.0331
+          ],
+          "rayleigh_scale_height_km": 8.0,
+          "mie_scattering": [
+            0.009,
+            0.008,
+            0.0065
+          ],
+          "mie_absorption": [
+            0.006,
+            0.007,
+            0.009
+          ],
+          "mie_scale_height_km": 1.6,
+          "mie_anisotropy": 0.8,
+          "ozone_absorption": [
+            0.00065,
+            0.001881,
+            8.5e-05
+          ],
+          "ozone_center_km": 25.0,
+          "ozone_width_km": 30.0,
+          "clouds_enabled": true,
+          "cloud_bottom_km": 4.5,
+          "cloud_top_km": 6.0,
+          "cloud_coverage": 0.2,
+          "cloud_type": 0.4,
+          "cloud_extinction_per_km": 40.0,
+          "cloud_weather_km": 24.0,
+          "cloud_shape_km": 6.0,
+          "cloud_detail_km": 0.8,
+          "cloud_erosion": 0.45,
+          "cloud_wind": [
+            8.0,
+            0.0,
+            3.0
+          ],
+          "cloud_albedo": [
+            0.99,
+            0.99,
+            0.99
+          ]
+        }
+      },
+      {
+        "class_name": "GlobalFogComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "mode": "HeightBased",
+          "extinction": 0.0012,
+          "albedo": [
+            0.95,
+            0.84,
+            0.68
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "anisotropy": 0.7,
+          "height_falloff": 0.003,
+          "height": 0.0,
+          "planet_center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "planet_radius": 6371000.0
+        }
+      }
+    ],
+    "voxel_sun": [
+      {
+        "class_name": "LightComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "affects_world": true,
+            "light_type": "Directional",
+            "light_channels": 255,
+            "lighting_channel_0": true,
+            "lighting_channel_1": false,
+            "lighting_channel_2": false
+          },
+          "intensity": {
+            "intensity": 3.0,
+            "intensity_units": "Lumens",
+            "exposure_compensation": 0.0,
+            "inverse_squared_falloff": true,
+            "indirect_intensity": 1.0,
+            "max_draw_distance": 0.0,
+            "max_distance_fade_range": 0.0
+          },
+          "color": {
+            "color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "use_temperature": false,
+            "temperature_kelvin": 6500.0,
+            "temperature_tint": 0.0,
+            "color_saturation": 1.0,
+            "color_contrast": 1.0,
+            "use_physical_light_color": true
+          },
+          "attenuation": {
+            "range": 4.0,
+            "falloff_start": 0.0,
+            "attenuation_exponent": 2.0,
+            "source_radius": 0.0,
+            "source_length": 0.0,
+            "inner_cone_angle": 30.0,
+            "outer_cone_angle": 45.0
+          },
+          "shadows": {
+            "cast_shadows": false,
+            "cast_static_shadows": false,
+            "cast_dynamic_shadows": false,
+            "cast_volumetric_shadow": true,
+            "cast_contact_shadows": false,
+            "shadow_bias": 0.5,
+            "shadow_normal_bias": 0.5,
+            "shadow_slope_bias": 0.5,
+            "shadow_filter_sharpen": 0.0,
+            "shadow_softness": 1.0,
+            "shadow_resolution_scale": 1.0,
+            "contact_shadow_non_shadow_casting_intensity": 0.0
+          },
+          "volumetrics": {
+            "affects_volumetric_fog": true,
+            "volumetric_scattering_intensity": 1.0,
+            "volumetric_shadow_intensity": 1.0,
+            "fog_inscattering_intensity": 1.0,
+            "contact_shadow_length": 0.0
+          },
+          "light_function": {
+            "light_function_material": "",
+            "light_function_scale": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "light_function_fade_distance": 0.0,
+            "light_function_disabled_brightness": 0.0
+          },
+          "performance": {
+            "mobile_quality_level": "High",
+            "ray_tracing_inclusion": true,
+            "virtual_shadow_map_enabled": true,
+            "shadow_cache_mode": "Auto",
+            "per_view_visibility_mask": 65535
+          },
+          "advanced": {
+            "affects_translucency": true,
+            "affects_reflections": true,
+            "affects_global_illumination": true,
+            "specular_scale": 1.0,
+            "diffuse_scale": 1.0
+          }
+        }
+      }
+    ],
+    "post_process": [
+      {
+        "class_name": "PostProcessVolumeComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "size": [
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "priority": 0.0,
+          "blend_radius": 200.0,
+          "blend_weight": 1.0,
+          "unbound": true,
+          "override_exposure": false,
+          "override_bloom": false,
+          "override_color_grading": true,
+          "override_tonemap": true,
+          "override_vignette": false,
+          "override_chromatic_aberration": false,
+          "override_film_grain": false,
+          "override_depth_of_field": false,
+          "override_motion_blur": false,
+          "override_hdr_output": false,
+          "override_volumetric_fog": false,
+          "override_lens_flare": false,
+          "exposure_mode": "Manual",
+          "exposure_compensation": 0.0,
+          "exposure_min": -4.0,
+          "exposure_max": 4.0,
+          "exposure_speed_up": 0.5,
+          "exposure_speed_down": 1.0,
+          "bloom_enabled": false,
+          "bloom_intensity": 0.3,
+          "bloom_threshold": 1.0,
+          "bloom_knee": 0.1,
+          "bloom_radius": 1.0,
+          "bloom_tint": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "color_saturation": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "color_contrast": [
+            1.06,
+            1.06,
+            1.06
+          ],
+          "color_gamma": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "color_gain": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "color_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "white_balance_enabled": false,
+          "white_temp": 6500.0,
+          "white_tint": 0.0,
+          "tonemap_operator": "AgxPunchy",
+          "tonemap_exposure": 2.0,
+          "tonemap_white_point": 1.0,
+          "vignette_enabled": false,
+          "vignette_intensity": 0.0,
+          "vignette_smoothness": 0.5,
+          "vignette_roundness": 0.5,
+          "vignette_color": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "ca_enabled": false,
+          "ca_intensity": 0.0,
+          "ca_start_offset": 0.0,
+          "grain_enabled": false,
+          "grain_intensity": 0.0,
+          "grain_response": 1.0,
+          "grain_size": 1.0,
+          "dof_enabled": false,
+          "dof_focal_distance": 100.0,
+          "dof_focal_region": 50.0,
+          "dof_near_transition": 100.0,
+          "dof_far_transition": 100.0,
+          "dof_scale": 1.0,
+          "dof_max_bokeh_size": 10.0,
+          "dof_aperture_blades": 5,
+          "dof_aperture_rotation": 0.0,
+          "dof_sensor_diagonal": 43.3,
+          "motion_blur_enabled": false,
+          "motion_blur_amount": 0.0,
+          "motion_blur_max": 64.0,
+          "blend_weight_bloom": 1.0,
+          "blend_weight_dof": 1.0,
+          "blend_weight_motion_blur": 1.0,
+          "blend_weight_vignette": 1.0,
+          "blend_weight_ca": 1.0,
+          "blend_weight_grain": 1.0,
+          "blend_weight_exposure": 1.0,
+          "hdr_output_mode": "Ldr",
+          "hdr_max_nits": 1000.0,
+          "hdr_ui_brightness": 200.0,
+          "fog_enabled": false,
+          "fog_mode": "Uniform",
+          "fog_density": 0.02,
+          "fog_height_falloff": 0.05,
+          "fog_start_distance": 0.0,
+          "fog_max_distance": 1000.0,
+          "fog_height": 0.0,
+          "fog_scattering_anisotropy": 0.0,
+          "fog_color": [
+            0.5,
+            0.6,
+            0.7
+          ],
+          "fog_emissive": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "lift_color": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gamma_color": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gain_color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "shadows_max": 0.3,
+          "highlights_min": 0.7,
+          "shadow_highlight_balance": 0.5,
+          "hue_shift": 0.0,
+          "lut_intensity": 1.0,
+          "lens_flare": {
+            "enabled": false,
+            "quality": "Economical",
+            "profile": "Spherical",
+            "intensity": 0.3,
+            "threshold": 2.0,
+            "soft_knee": 1.0,
+            "ghost_count": 4,
+            "ghost_intensity": 1.0,
+            "halo_intensity": 0.5,
+            "glare_intensity": 0.3,
+            "streak_intensity": 0.5,
+            "dispersion": 0.01,
+            "aperture_f_number": 2.8,
+            "focal_length_mm": 50.0,
+            "sensor_width_mm": 36.0,
+            "vignette": 1.0,
+            "starburst_intensity": 0.3,
+            "starburst_length": 0.25,
+            "aperture_blades": 6,
+            "aperture_rotation_degrees": 0.0,
+            "coating_strength": 0.8,
+            "ghost_rim": 0.5,
+            "dirt_intensity": 0.0,
+            "light_sources": true,
+            "light_intensity": 1.0,
+            "field_margin": 0.35,
+            "response_time": 0.06
+          }
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "created": "2026-09-24T00:00:00Z",
+    "modified": "2026-10-23T00:00:00Z",
+    "editor_version": "0.1.34"
+  },
+  "editor": {
+    "camera": {
+      "position": [
+        0.0,
+        6371631.0,
+        0.0
+      ],
+      "yaw": -3.052,
+      "pitch": -0.07
+    }
+  }
+}
