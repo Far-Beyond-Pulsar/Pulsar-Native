@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use helio::{Camera, Renderer, RendererConfig};
+use engine_backend::subsystems::render::{DeviceOwner, SceneRenderer, SceneRendererOptions};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
     EngineContext as PieContext, InputEvent, LogFn, INIT_ERR, INIT_OK, LOG_ERROR, LOG_INFO,
@@ -209,7 +209,8 @@ const MAX_PENDING_PROBLEMS: usize = 256;
 /// renderer sharing the editor's GPU device.
 pub struct EmbeddedGame {
     session: PieSession,
-    renderer: Renderer,
+    /// The scene's renderer, as the editor viewport builds it.
+    renderer: SceneRenderer,
     device: Arc<wgpu::Device>,
     #[allow(dead_code)]
     queue: Arc<wgpu::Queue>,
@@ -225,10 +226,6 @@ pub struct EmbeddedGame {
     /// from the host and remains SceneDB-resident
     /// for gameplay and rendering.
     scene_store: engine_backend::scene::SharedScene,
-    /// Uploads the rigid-frame table when a frame moved.
-    spaces: engine_backend::scene::SpaceSync,
-    /// Builds and streams the cluster assets of virtual-geometry meshes.
-    vg: engine_backend::scene::VirtualGeometryHost,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
     /// Where the pointer last was (normalized), for motion deltas.
@@ -377,26 +374,30 @@ impl EmbeddedGame {
         // ── Renderer seam onto the shared world (#637/#634) ──────────────────
         // The world already holds the level (the host hydrated it before Play,
         // and under v2 we adopted that very store). The renderer is the
-        // standalone game's (`crate::game_renderer`) on the host's device; its
-        // GPU mirror is the editor viewport's when that already attached one.
+        // editor viewport's construction on the host's device; its GPU mirror
+        // is the viewport's when that already attached one.
         let scene_store = Arc::clone(&tick_loop.scene_store);
-        let spaces = engine_backend::scene::SpaceSync::default();
-        let mut vg = engine_backend::scene::VirtualGeometryHost::new();
-        let renderer = crate::game_renderer::build_game_renderer_with_virtual_geometry(
+        let renderer = SceneRenderer::new(
             device.clone(),
             queue.clone(),
             &scene_store,
-            RendererConfig::new(width, height, color_format),
-            false,
-            crate::game_renderer::DeviceOwner::Host,
-            spaces.portal_input(),
-            &mut vg,
+            width,
+            height,
+            color_format,
+            SceneRendererOptions::game(DeviceOwner::Host, false),
         );
 
-        // Under v2 the world comes pre-hydrated by the host, so the old
-        // editor-camera file seeding is gone too -- camera selection prefers
-        // Camera-typed entities from the shared world instead.
-        let freecam = FreeCam::default();
+        // Camera selection prefers Camera-typed entities from the shared
+        // world; the free camera starts where the editor view was (ABI v4).
+        let freecam = if ctx.view.present != 0 {
+            FreeCam::default().place(
+                glam::DVec3::from_array(ctx.view.position),
+                ctx.view.yaw,
+                ctx.view.pitch,
+            )
+        } else {
+            FreeCam::default()
+        };
         engine_state::set_project_path(project_root.display().to_string());
         // Advisory only under v2 (the world comes pre-hydrated); it names
         // the level `LevelLoaded` reports.
@@ -413,8 +414,6 @@ impl EmbeddedGame {
             out_texture,
             out_view,
             scene_store,
-            spaces,
-            vg,
             freecam,
             last_pointer: None,
             userdata: ctx.userdata,
@@ -439,6 +438,7 @@ impl EmbeddedGame {
         // `time`) runs on the game clock: it stops while the game is paused
         // and advances by exactly a stepped frame.
         self.renderer
+            .renderer
             .set_frame_clock_delta(Some(time.delta.as_secs_f32()));
 
         // 2. Advance the shared world's authoritative SceneDB state and flush
@@ -449,38 +449,28 @@ impl EmbeddedGame {
         //    therefore shows up on the very next frame. Meshes that finished
         //    loading are bound first, so they upload with it (SceneDB#84).
         engine_backend::scene::pump_assets(&self.scene_store);
-        self.scene_store.write().step();
+        self.renderer.step_scene(&mut self.scene_store.write());
 
         // 3. Camera. A Camera-typed entity in the shared world drives the
         //    view when present (#637 -- no more unconditional freecam); the
-        //    freecam seeded from the editor view remains the fallback.
-        let cam = select_world_camera(&self.scene_store.read())
-            .unwrap_or_else(|| self.freecam.to_render_camera());
+        //    freecam seeded from the editor view remains the fallback, on
+        //    the voxel ground's local vertical.
+        // The world's read lock is released before the ground is read.
+        let world_camera = select_world_camera(&self.scene_store.read());
+        let cam = world_camera.unwrap_or_else(|| {
+            let ground = self.renderer.voxel_ground(self.freecam.position());
+            self.freecam.follow_ground(ground);
+            self.freecam.to_render_camera()
+        });
         let aspect = self.width as f32 / self.height.max(1) as f32;
-        let helio_cam = Camera::perspective_look_at(
-            glam::Vec3::from_array(cam.position),
-            glam::Vec3::from_array(cam.target),
-            glam::Vec3::from_array(cam.up),
-            cam.fov_y,
-            aspect,
-            cam.near,
-            cam.far,
-        );
-        // A camera lens that maps past the frame needs a wider render, which
-        // the lens crops back (the editor viewport does the same).
-        let overscan = helio_component::components::camera_lens_view_overscan(
-            &self.scene_store.read().world,
-            helio_cam.view_id,
-            aspect,
-        );
-        let helio_cam = helio_cam.with_overscan(overscan);
+        let frame = self
+            .renderer
+            .prepare_frame(&cam.frame_view(aspect), [self.width, self.height]);
 
         // 4. Render into the offscreen target the editor samples. ABI v2
         //    requires the host's authoritative SceneDB-backed store above, so
         //    simulation and rendering observe the same hydrated world.
-        engine_backend::scene::sync_virtual_geometry(&mut self.vg, &self.scene_store, None);
-        self.spaces.sync(&self.scene_store, glam::DVec3::ZERO, &mut self.renderer);
-        if let Err(e) = self.renderer.render(&helio_cam, &self.out_view) {
+        if let Err(e) = self.renderer.render(&frame.camera, &self.out_view) {
             tracing::error!("PiE render error: {:?}", e);
         }
     }
@@ -496,7 +486,7 @@ impl EmbeddedGame {
         let (tex, view) = make_target(&self.device, self.color_format, width, height);
         self.out_texture = tex;
         self.out_view = view;
-        self.renderer.set_render_size(width, height);
+        self.renderer.renderer.set_render_size(width, height);
     }
 
     fn input(&mut self, ev: &InputEvent) {

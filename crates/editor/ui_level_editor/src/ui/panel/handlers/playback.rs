@@ -7,7 +7,12 @@ impl LevelEditorPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        begin_pie(self.shared_state.clone(), window, cx);
+        begin_pie(
+            self.shared_state.clone(),
+            self.current_editor_camera_state(),
+            window,
+            cx,
+        );
         self.sync_gizmo_to_helio();
         cx.notify();
     }

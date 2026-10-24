@@ -86,6 +86,34 @@
       "children": [],
       "scene_path": "Post Process",
       "props": {}
+    },
+    {
+      "id": "meadow",
+      "name": "Meadow",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Meadow",
+      "props": {}
     }
   ],
   "components": {
@@ -115,7 +143,269 @@
           "edits": {
             "terrain": 0,
             "edits": []
-          }
+          },
+          "features": [
+            {
+              "name": "broadleaf woods",
+              "growths": [
+                {
+                  "form": "Tree",
+                  "species": "Oak",
+                  "material": 10,
+                  "second_material": 11,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 1,
+                  "variants": 6
+                },
+                {
+                  "form": "Tree",
+                  "species": "Oak",
+                  "material": 10,
+                  "second_material": 11,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 2,
+                  "variants": 6
+                },
+                {
+                  "form": "Tree",
+                  "species": "DarkOak",
+                  "material": 10,
+                  "second_material": 11,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 3,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 9.0,
+              "density": 0.85,
+              "field_scale_m": 2400.0,
+              "field_threshold": 0.05,
+              "surfaces": [
+                1,
+                2
+              ],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1100.0,
+              "height_wander_m": 150.0,
+              "height_wander_scale_m": 500.0,
+              "max_relief_m": 3.0,
+              "sink_m": 0.0,
+              "far_material": 11,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "birch woods",
+              "growths": [
+                {
+                  "form": "Tree",
+                  "species": "Birch",
+                  "material": 23,
+                  "second_material": 11,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 4,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 9.0,
+              "density": 0.85,
+              "field_scale_m": 900.0,
+              "field_threshold": 0.45,
+              "surfaces": [
+                1,
+                2
+              ],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1100.0,
+              "height_wander_m": 150.0,
+              "height_wander_scale_m": 500.0,
+              "max_relief_m": 3.0,
+              "sink_m": 0.0,
+              "far_material": 11,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "conifers",
+              "growths": [
+                {
+                  "form": "Tree",
+                  "species": "Spruce",
+                  "material": 10,
+                  "second_material": 22,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 5,
+                  "variants": 6
+                },
+                {
+                  "form": "Tree",
+                  "species": "Pine",
+                  "material": 10,
+                  "second_material": 22,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 6,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 9.0,
+              "density": 0.85,
+              "field_scale_m": 1600.0,
+              "field_threshold": -0.25,
+              "surfaces": [
+                1,
+                2
+              ],
+              "min_height_m": 1100.0,
+              "max_height_m": 2600.0,
+              "height_wander_m": 200.0,
+              "height_wander_scale_m": 450.0,
+              "max_relief_m": 3.0,
+              "sink_m": 0.0,
+              "far_material": 22,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "boulders",
+              "growths": [
+                {
+                  "form": "Boulder",
+                  "species": "Oak",
+                  "material": 3,
+                  "second_material": 9,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 8,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 7.0,
+              "density": 0.1,
+              "field_scale_m": 0.0,
+              "field_threshold": -1.0,
+              "surfaces": [
+                3,
+                9,
+                7,
+                5,
+                1
+              ],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1000000000.0,
+              "height_wander_m": 0.0,
+              "height_wander_scale_m": 0.0,
+              "max_relief_m": 0.0,
+              "sink_m": 0.0,
+              "far_material": 0,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "dry rocks",
+              "growths": [
+                {
+                  "form": "Boulder",
+                  "species": "Oak",
+                  "material": 8,
+                  "second_material": 0,
+                  "min_size_m": 0.3,
+                  "max_size_m": 0.9,
+                  "blocks": 0,
+                  "seed": 11,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 7.0,
+              "density": 0.08,
+              "field_scale_m": 0.0,
+              "field_threshold": -1.0,
+              "surfaces": [
+                4,
+                8
+              ],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1000000000.0,
+              "height_wander_m": 0.0,
+              "height_wander_scale_m": 0.0,
+              "max_relief_m": 0.0,
+              "sink_m": 0.0,
+              "far_material": 0,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "dry shrubs",
+              "growths": [
+                {
+                  "form": "Shrub",
+                  "species": "Oak",
+                  "material": 25,
+                  "second_material": 24,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 10,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 5.0,
+              "density": 0.18,
+              "field_scale_m": 300.0,
+              "field_threshold": -0.4,
+              "surfaces": [
+                4
+              ],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 1000000000.0,
+              "height_wander_m": 0.0,
+              "height_wander_scale_m": 0.0,
+              "max_relief_m": 1.0,
+              "sink_m": 0.0,
+              "far_material": 0,
+              "far_height_m": 0.0
+            },
+            {
+              "name": "bushes",
+              "growths": [
+                {
+                  "form": "Bush",
+                  "species": "Oak",
+                  "material": 11,
+                  "second_material": 0,
+                  "min_size_m": 0.5,
+                  "max_size_m": 1.3,
+                  "blocks": 0,
+                  "seed": 9,
+                  "variants": 6
+                }
+              ],
+              "spacing_m": 3.0,
+              "density": 0.12,
+              "field_scale_m": 200.0,
+              "field_threshold": -0.2,
+              "surfaces": [
+                1,
+                2
+              ],
+              "min_height_m": -1000000000.0,
+              "max_height_m": 2600.0,
+              "height_wander_m": 200.0,
+              "height_wander_scale_m": 450.0,
+              "max_relief_m": 1.0,
+              "sink_m": 0.0,
+              "far_material": 0,
+              "far_height_m": 0.0
+            }
+          ],
+          "appearance_parameters": "{\"materials\":[{\"colour\":[0.78431374,0.0,0.78431374,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.41568628,0.49411765,0.26666668,0.94],\"patches\":[[0.627451,0.5882353,0.3764706],[0.41568628,0.49411765,0.26666668],[0.24313726,0.38431373,0.21960784]],\"lip\":2,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.5019608,0.3764706,0.25882354,0.96],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":1,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.52156866,0.54509807,0.5568628,0.84],\"patches\":[[0.627451,0.6156863,0.58431375],[0.52156866,0.54509807,0.5568628],[0.38431373,0.40784314,0.43137255]],\"lip\":null,\"fleck\":[2,0.125],\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.79607844,0.7372549,0.5921569,0.93],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":1,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.8509804,0.89411765,0.9254902,0.78],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.10980392,0.28235295,0.36078432,0.35],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.45490196,0.43529412,0.4,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.7254902,0.5568628,0.40784314,0.88],\"patches\":null,\"lip\":null,\"fleck\":[2,0.125],\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.32156864,0.34509805,0.37254903,0.82],\"patches\":[[0.54901963,0.5411765,0.5137255],[0.43137255,0.4509804,0.46666667],[0.32156864,0.34117648,0.36862746]],\"lip\":null,\"fleck\":[2,0.125],\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.39607844,0.29411766,0.20784314,0.97],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.23137255,0.4,0.20392157,0.94],\"patches\":[[0.3372549,0.4392157,0.19607843],[0.23137255,0.4,0.20392157],[0.15686275,0.3137255,0.15686275]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.65,\"emission\":0.0},{\"colour\":[0.60784316,0.44313726,0.34901962,0.92],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.5803922,0.3019608,0.24705882,0.86],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.61960787,0.46666667,0.30980393,0.86],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.4745098,0.49411765,0.50980395,0.85],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.5568628,0.54901963,0.5294118,0.95],\"patches\":[[0.61960787,0.6117647,0.5882353],[0.5568628,0.54901963,0.5294118],[0.4627451,0.45882353,0.44313726]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.32941177,0.32941177,0.3372549,0.95],\"patches\":[[0.38431373,0.38431373,0.3882353],[0.32941177,0.32941177,0.3372549],[0.26666668,0.26666668,0.2784314]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.76862746,0.7607843,0.7372549,0.93],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":16,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.4392157,0.43137255,0.41568628,0.85],\"patches\":[[0.50980395,0.5019608,0.48235294],[0.4392157,0.43137255,0.41568628],[0.3529412,0.34901962,0.3372549]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.22745098,0.23137255,0.24705882,0.8],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.65882355,0.6509804,0.61960787,0.85],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.16470589,0.26666668,0.1882353,0.9],\"patches\":[[0.24313726,0.32941177,0.21176471],[0.16470589,0.26666668,0.1882353],[0.11764706,0.21176471,0.16470589]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.5,\"emission\":0.0},{\"colour\":[0.83137256,0.8156863,0.76862746,0.8],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[0.57254905,0.5882353,0.45490196,0.92],\"patches\":[[0.6666667,0.6431373,0.4862745],[0.57254905,0.5882353,0.45490196],[0.45490196,0.49411765,0.3764706]],\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.4,\"emission\":0.0},{\"colour\":[0.43137255,0.36862746,0.30588236,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0},{\"colour\":[1.0,0.0,1.0,0.9],\"patches\":null,\"lip\":null,\"fleck\":null,\"speck_host\":null,\"transmission\":0.0,\"emission\":0.0}],\"detail\":[0.3,0.4,0.08,0.0]}"
         }
       },
       {
@@ -281,7 +571,71 @@
             8.5e-05
           ],
           "ozone_center_km": 25.0,
-          "ozone_width_km": 30.0
+          "ozone_width_km": 30.0,
+          "clouds_enabled": true,
+          "cloud_bottom_km": 1.5,
+          "cloud_top_km": 4.0,
+          "cloud_coverage": 0.45,
+          "cloud_type": 0.85,
+          "cloud_extinction_per_km": 40.0,
+          "cloud_weather_km": 24.0,
+          "cloud_shape_km": 6.0,
+          "cloud_detail_km": 0.8,
+          "cloud_erosion": 0.45,
+          "cloud_wind": [
+            8.0,
+            0.0,
+            3.0
+          ],
+          "cloud_albedo": [
+            0.99,
+            0.99,
+            0.99
+          ]
+        }
+      },
+      {
+        "class_name": "GlobalFogComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "mode": "HeightBased",
+          "extinction": 0.0006,
+          "albedo": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "anisotropy": 0.6,
+          "height_falloff": 0.004,
+          "height": 0.0,
+          "planet_center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "planet_radius": 6371000.0
+        }
+      },
+      {
+        "class_name": "WindComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "direction": [
+            1.0,
+            0.0,
+            0.35
+          ],
+          "speed": 4.5,
+          "gust_amplitude": 0.8,
+          "gust_frequency": 0.15,
+          "turbulence_scale": 0.06
         }
       }
     ],
@@ -398,7 +752,7 @@
           "override_bloom": false,
           "override_color_grading": true,
           "override_tonemap": true,
-          "override_vignette": true,
+          "override_vignette": false,
           "override_chromatic_aberration": false,
           "override_film_grain": false,
           "override_depth_of_field": false,
@@ -423,14 +777,14 @@
             1.0
           ],
           "color_saturation": [
-            0.85,
-            0.85,
-            0.85
+            1.0,
+            1.0,
+            1.0
           ],
           "color_contrast": [
-            1.15,
-            1.15,
-            1.15
+            1.06,
+            1.06,
+            1.06
           ],
           "color_gamma": [
             1.0,
@@ -450,11 +804,11 @@
           "white_balance_enabled": false,
           "white_temp": 6500.0,
           "white_tint": 0.0,
-          "tonemap_operator": "Aces",
-          "tonemap_exposure": 1.1,
+          "tonemap_operator": "AgxPunchy",
+          "tonemap_exposure": 2.0,
           "tonemap_white_point": 1.0,
-          "vignette_enabled": true,
-          "vignette_intensity": 0.2,
+          "vignette_enabled": false,
+          "vignette_intensity": 0.0,
           "vignette_smoothness": 0.5,
           "vignette_roundness": 0.5,
           "vignette_color": [
@@ -561,11 +915,505 @@
           }
         }
       }
+    ],
+    "meadow": [
+      {
+        "class_name": "FoliageComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "density": 6.0,
+            "density_layer": 0,
+            "kind": "Block"
+          },
+          "placement": {
+            "height_min": 0.12,
+            "height_max": 0.3,
+            "width_min": 0.05,
+            "width_max": 0.05,
+            "slope_min_degrees": 0.0,
+            "slope_max_degrees": 180.0,
+            "altitude_min": -3.4028234663852886e+38,
+            "altitude_max": 3.4028234663852886e+38,
+            "layer_extent": 120.0,
+            "has_infinite_extent": true,
+            "grows_on": [
+              1
+            ]
+          },
+          "tufts": {
+            "blades_min": 6,
+            "blades_max": 11,
+            "lean_center": 0.03,
+            "lean_rim": 0.35,
+            "curve": 0.15,
+            "fall_chance": 0.05,
+            "tip_colored": false,
+            "tip_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "patch_scale": 12.0,
+            "patch_strength": 0.35
+          },
+          "wind": {
+            "trunk_sway": 0.7,
+            "branch_flutter": 0.35,
+            "leaf_jitter": 0.1,
+            "interaction_stiffness": 1.0,
+            "use_global_wind": true,
+            "wind_enabled": true,
+            "wind_direction": [
+              1.0,
+              0.0,
+              0.35
+            ],
+            "wind_speed": 2.0,
+            "gust_amplitude": 0.6,
+            "gust_frequency": 0.25,
+            "turbulence_scale": 0.05
+          },
+          "interaction": {
+            "receives_interaction": true,
+            "interactor_enabled": false,
+            "interactor_radius": 1.2
+          },
+          "rendering": {
+            "two_sided": false,
+            "casts_shadow": false,
+            "lod_distance_0": 6.0,
+            "lod_distance_1": 0.0,
+            "lod_distance_2": 0.0,
+            "lod_distance_3": 0.0,
+            "base_color": [
+              0.58,
+              0.62,
+              0.5,
+              1.0
+            ],
+            "roughness": 0.9,
+            "metallic": 0.0,
+            "ground_colour": true
+          }
+        }
+      },
+      {
+        "class_name": "FoliageComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "density": 5.0,
+            "density_layer": 0,
+            "kind": "Block"
+          },
+          "placement": {
+            "height_min": 0.3,
+            "height_max": 0.6,
+            "width_min": 0.05,
+            "width_max": 0.05,
+            "slope_min_degrees": 0.0,
+            "slope_max_degrees": 180.0,
+            "altitude_min": -3.4028234663852886e+38,
+            "altitude_max": 3.4028234663852886e+38,
+            "layer_extent": 120.0,
+            "has_infinite_extent": true,
+            "grows_on": [
+              1
+            ]
+          },
+          "tufts": {
+            "blades_min": 8,
+            "blades_max": 14,
+            "lean_center": 0.03,
+            "lean_rim": 0.3,
+            "curve": 0.2,
+            "fall_chance": 0.1,
+            "tip_colored": false,
+            "tip_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "patch_scale": 22.0,
+            "patch_strength": 0.5
+          },
+          "wind": {
+            "trunk_sway": 0.7,
+            "branch_flutter": 0.35,
+            "leaf_jitter": 0.1,
+            "interaction_stiffness": 1.0,
+            "use_global_wind": true,
+            "wind_enabled": true,
+            "wind_direction": [
+              1.0,
+              0.0,
+              0.35
+            ],
+            "wind_speed": 2.0,
+            "gust_amplitude": 0.6,
+            "gust_frequency": 0.25,
+            "turbulence_scale": 0.05
+          },
+          "interaction": {
+            "receives_interaction": true,
+            "interactor_enabled": false,
+            "interactor_radius": 1.2
+          },
+          "rendering": {
+            "two_sided": false,
+            "casts_shadow": false,
+            "lod_distance_0": 6.0,
+            "lod_distance_1": 0.0,
+            "lod_distance_2": 0.0,
+            "lod_distance_3": 0.0,
+            "base_color": [
+              0.62,
+              0.62,
+              0.45,
+              1.0
+            ],
+            "roughness": 0.9,
+            "metallic": 0.0,
+            "ground_colour": true
+          }
+        }
+      },
+      {
+        "class_name": "FoliageComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "density": 0.7,
+            "density_layer": 0,
+            "kind": "Block"
+          },
+          "placement": {
+            "height_min": 0.1,
+            "height_max": 0.2,
+            "width_min": 0.05,
+            "width_max": 0.15,
+            "slope_min_degrees": 0.0,
+            "slope_max_degrees": 180.0,
+            "altitude_min": -3.4028234663852886e+38,
+            "altitude_max": 3.4028234663852886e+38,
+            "layer_extent": 120.0,
+            "has_infinite_extent": true,
+            "grows_on": [
+              1
+            ]
+          },
+          "tufts": {
+            "blades_min": 4,
+            "blades_max": 7,
+            "lean_center": 0.9,
+            "lean_rim": 1.6,
+            "curve": 0.3,
+            "fall_chance": 0.0,
+            "tip_colored": false,
+            "tip_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "patch_scale": 9.0,
+            "patch_strength": 0.9
+          },
+          "wind": {
+            "trunk_sway": 0.7,
+            "branch_flutter": 0.35,
+            "leaf_jitter": 0.1,
+            "interaction_stiffness": 1.0,
+            "use_global_wind": true,
+            "wind_enabled": true,
+            "wind_direction": [
+              1.0,
+              0.0,
+              0.35
+            ],
+            "wind_speed": 2.0,
+            "gust_amplitude": 0.6,
+            "gust_frequency": 0.25,
+            "turbulence_scale": 0.05
+          },
+          "interaction": {
+            "receives_interaction": true,
+            "interactor_enabled": false,
+            "interactor_radius": 1.2
+          },
+          "rendering": {
+            "two_sided": false,
+            "casts_shadow": false,
+            "lod_distance_0": 6.0,
+            "lod_distance_1": 0.0,
+            "lod_distance_2": 0.0,
+            "lod_distance_3": 140.0,
+            "base_color": [
+              0.4,
+              0.52,
+              0.38,
+              1.0
+            ],
+            "roughness": 0.9,
+            "metallic": 0.0,
+            "ground_colour": true
+          }
+        }
+      },
+      {
+        "class_name": "FoliageComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "density": 0.35,
+            "density_layer": 0,
+            "kind": "Block"
+          },
+          "placement": {
+            "height_min": 0.22,
+            "height_max": 0.4,
+            "width_min": 0.05,
+            "width_max": 0.05,
+            "slope_min_degrees": 0.0,
+            "slope_max_degrees": 180.0,
+            "altitude_min": -3.4028234663852886e+38,
+            "altitude_max": 3.4028234663852886e+38,
+            "layer_extent": 120.0,
+            "has_infinite_extent": true,
+            "grows_on": [
+              1
+            ]
+          },
+          "tufts": {
+            "blades_min": 3,
+            "blades_max": 6,
+            "lean_center": 0.05,
+            "lean_rim": 0.3,
+            "curve": 0.2,
+            "fall_chance": 0.0,
+            "tip_colored": true,
+            "tip_color": [
+              0.843369722366333,
+              0.6253447532653809,
+              0.038472745567560196
+            ],
+            "patch_scale": 7.0,
+            "patch_strength": 0.95
+          },
+          "wind": {
+            "trunk_sway": 0.7,
+            "branch_flutter": 0.35,
+            "leaf_jitter": 0.1,
+            "interaction_stiffness": 1.0,
+            "use_global_wind": true,
+            "wind_enabled": true,
+            "wind_direction": [
+              1.0,
+              0.0,
+              0.35
+            ],
+            "wind_speed": 2.0,
+            "gust_amplitude": 0.6,
+            "gust_frequency": 0.25,
+            "turbulence_scale": 0.05
+          },
+          "interaction": {
+            "receives_interaction": true,
+            "interactor_enabled": false,
+            "interactor_radius": 1.2
+          },
+          "rendering": {
+            "two_sided": false,
+            "casts_shadow": false,
+            "lod_distance_0": 6.0,
+            "lod_distance_1": 0.0,
+            "lod_distance_2": 0.0,
+            "lod_distance_3": 90.0,
+            "base_color": [
+              0.45,
+              0.55,
+              0.4,
+              1.0
+            ],
+            "roughness": 0.9,
+            "metallic": 0.0,
+            "ground_colour": true
+          }
+        }
+      },
+      {
+        "class_name": "FoliageComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "density": 0.25,
+            "density_layer": 0,
+            "kind": "Block"
+          },
+          "placement": {
+            "height_min": 0.18,
+            "height_max": 0.34,
+            "width_min": 0.05,
+            "width_max": 0.05,
+            "slope_min_degrees": 0.0,
+            "slope_max_degrees": 180.0,
+            "altitude_min": -3.4028234663852886e+38,
+            "altitude_max": 3.4028234663852886e+38,
+            "layer_extent": 120.0,
+            "has_infinite_extent": true,
+            "grows_on": [
+              1
+            ]
+          },
+          "tufts": {
+            "blades_min": 3,
+            "blades_max": 5,
+            "lean_center": 0.05,
+            "lean_rim": 0.3,
+            "curve": 0.2,
+            "fall_chance": 0.0,
+            "tip_colored": true,
+            "tip_color": [
+              0.859173595905304,
+              0.843369722366333,
+              0.7667436003684998
+            ],
+            "patch_scale": 6.0,
+            "patch_strength": 0.95
+          },
+          "wind": {
+            "trunk_sway": 0.7,
+            "branch_flutter": 0.35,
+            "leaf_jitter": 0.1,
+            "interaction_stiffness": 1.0,
+            "use_global_wind": true,
+            "wind_enabled": true,
+            "wind_direction": [
+              1.0,
+              0.0,
+              0.35
+            ],
+            "wind_speed": 2.0,
+            "gust_amplitude": 0.6,
+            "gust_frequency": 0.25,
+            "turbulence_scale": 0.05
+          },
+          "interaction": {
+            "receives_interaction": true,
+            "interactor_enabled": false,
+            "interactor_radius": 1.2
+          },
+          "rendering": {
+            "two_sided": false,
+            "casts_shadow": false,
+            "lod_distance_0": 6.0,
+            "lod_distance_1": 0.0,
+            "lod_distance_2": 0.0,
+            "lod_distance_3": 90.0,
+            "base_color": [
+              0.45,
+              0.55,
+              0.4,
+              1.0
+            ],
+            "roughness": 0.9,
+            "metallic": 0.0,
+            "ground_colour": true
+          }
+        }
+      },
+      {
+        "class_name": "FoliageComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "density": 4.0,
+            "density_layer": 0,
+            "kind": "Block"
+          },
+          "placement": {
+            "height_min": 0.6,
+            "height_max": 1.1,
+            "width_min": 0.05,
+            "width_max": 0.05,
+            "slope_min_degrees": 0.0,
+            "slope_max_degrees": 180.0,
+            "altitude_min": -3.4028234663852886e+38,
+            "altitude_max": 3.4028234663852886e+38,
+            "layer_extent": 120.0,
+            "has_infinite_extent": true,
+            "grows_on": [
+              1
+            ]
+          },
+          "tufts": {
+            "blades_min": 7,
+            "blades_max": 13,
+            "lean_center": 0.04,
+            "lean_rim": 0.28,
+            "curve": 0.25,
+            "fall_chance": 0.08,
+            "tip_colored": false,
+            "tip_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "patch_scale": 34.0,
+            "patch_strength": 0.97
+          },
+          "wind": {
+            "trunk_sway": 0.7,
+            "branch_flutter": 0.35,
+            "leaf_jitter": 0.1,
+            "interaction_stiffness": 1.0,
+            "use_global_wind": true,
+            "wind_enabled": true,
+            "wind_direction": [
+              1.0,
+              0.0,
+              0.35
+            ],
+            "wind_speed": 2.0,
+            "gust_amplitude": 0.6,
+            "gust_frequency": 0.25,
+            "turbulence_scale": 0.05
+          },
+          "interaction": {
+            "receives_interaction": true,
+            "interactor_enabled": false,
+            "interactor_radius": 1.2
+          },
+          "rendering": {
+            "two_sided": false,
+            "casts_shadow": false,
+            "lod_distance_0": 6.0,
+            "lod_distance_1": 0.0,
+            "lod_distance_2": 0.0,
+            "lod_distance_3": 0.0,
+            "base_color": [
+              0.66,
+              0.64,
+              0.42,
+              1.0
+            ],
+            "roughness": 0.9,
+            "metallic": 0.0,
+            "ground_colour": true
+          }
+        }
+      }
     ]
   },
   "metadata": {
     "created": "2026-09-24T00:00:00Z",
-    "modified": "2026-09-24T00:00:00Z",
+    "modified": "2026-10-23T00:00:00Z",
     "editor_version": "0.1.34"
   },
   "editor": {

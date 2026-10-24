@@ -369,13 +369,15 @@ mod tests {
     }
 
     #[test]
-    fn cursor_capture_load_resolves_legacy_conflict_to_rotation() {
+    fn cursor_capture_load_reads_both_buttons_as_a_right_drag_pan() {
+        // Shift + right-drag pans while keeping the right button as the
+        // capture's initiator: `PanRight` stores both flags.
         let right = AtomicBool::new(true);
         let middle = AtomicBool::new(true);
 
         assert_eq!(
             ViewportCursorCapture::load(&right, &middle),
-            ViewportCursorCapture::Rotate
+            ViewportCursorCapture::PanRight
         );
     }
 }

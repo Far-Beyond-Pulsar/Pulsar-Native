@@ -194,6 +194,8 @@ impl PieHost {
     /// state is still in `shared_world`, so the guest re-binds actor
     /// registrations to their existing entities instead of spawning duplicates
     /// (the flag rides `EngineContext::session_flags`; see ABI v3).
+    /// `view` is the editor camera at Play, which the game's free camera
+    /// starts from (ABI v4).
     ///
     /// # Safety
     /// `device`/`queue` must be valid and outlive the call; the loaded library
@@ -211,6 +213,7 @@ impl PieHost {
         scene_path: Option<&Path>,
         shared_world: crate::scene::SharedScene,
         reload: bool,
+        view: Option<crate::subsystems::render::EditorCameraState>,
     ) -> Result<Self, String> {
         if !dylib_path.exists() {
             return Err(format!("Game library not found: {}", dylib_path.display()));
@@ -248,8 +251,7 @@ impl PieHost {
             return Err(if lib_abi < PIE_ABI_VERSION {
                 format!(
                     "Game was built against PiE ABI v{lib_abi}, editor expects v{PIE_ABI_VERSION}. \
-                     v1 games predate the shared-world bridge (#635) and cannot adopt this \
-                     session's world -- rebuild the project (Build Core)."
+                     Rebuild the project (Build Core)."
                 )
             } else {
                 format!(
@@ -339,6 +341,13 @@ impl PieHost {
             } else {
                 0
             },
+            view: view.map_or_else(Default::default, |view| pulsar_pie_abi::PieView {
+                position: view.position,
+                yaw: view.yaw,
+                pitch: view.pitch,
+                present: 1,
+                _reserved: 0,
+            }),
         });
 
         let ok = init(&mut *ctx as *mut PieContext);

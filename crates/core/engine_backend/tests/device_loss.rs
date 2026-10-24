@@ -12,12 +12,20 @@ use engine_backend::services::device_loss::DeviceLoss;
 
 type Gpu = (Arc<wgpu::Device>, Arc<wgpu::Queue>);
 
-/// `count` devices from one adapter of one instance, as a process gets them
-/// (wgpu tells devices apart within an instance).
-fn devices(count: usize) -> Option<Vec<Gpu>> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+/// `count` devices from one adapter of the process's one instance, as the
+/// engine gets them: wgpu tells devices apart only within an instance, and
+/// devices of separate instances compare equal (one test's watcher answered
+/// for another's device). The tests take turns: devices destroyed on
+/// parallel threads hung or crashed the process now and then.
+fn devices(count: usize) -> Option<(std::sync::MutexGuard<'static, ()>, Vec<Gpu>)> {
+    static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let turn = TURN.lock().unwrap_or_else(|poison| poison.into_inner());
+    static INSTANCE: std::sync::OnceLock<wgpu::Instance> = std::sync::OnceLock::new();
+    let instance = INSTANCE.get_or_init(|| {
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle())
+    });
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-    (0..count)
+    let gpus = (0..count)
         .map(|_| {
             let (device, queue) =
                 pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -27,7 +35,8 @@ fn devices(count: usize) -> Option<Vec<Gpu>> {
                 .ok()?;
             Some((Arc::new(device), Arc::new(queue)))
         })
-        .collect()
+        .collect::<Option<_>>()?;
+    Some((turn, gpus))
 }
 
 /// A buffer wgpu rejects (mappable for reading and a storage buffer).
@@ -42,7 +51,9 @@ fn invalid_buffer(device: &wgpu::Device) {
 
 #[test]
 fn a_lost_device_is_noticed_and_its_errors_do_not_panic() {
-    let Some((device, _queue)) = devices(1).and_then(|mut gpus| gpus.pop()) else {
+    let Some((_turn, (device, _queue))) =
+        devices(1).and_then(|(turn, mut gpus)| Some((turn, gpus.pop()?)))
+    else {
         eprintln!("no GPU adapter; skipping");
         return;
     };
@@ -72,7 +83,9 @@ fn a_lost_device_is_noticed_and_its_errors_do_not_panic() {
 
 #[test]
 fn an_owner_watching_its_device_keeps_its_callbacks() {
-    let Some((device, _queue)) = devices(1).and_then(|mut gpus| gpus.pop()) else {
+    let Some((_turn, (device, _queue))) =
+        devices(1).and_then(|(turn, mut gpus)| Some((turn, gpus.pop()?)))
+    else {
         eprintln!("no GPU adapter; skipping");
         return;
     };
@@ -98,7 +111,7 @@ fn an_owner_watching_its_device_keeps_its_callbacks() {
 
 #[test]
 fn the_scene_gpu_copy_follows_the_renderer_onto_a_new_device() {
-    let Some(mut gpus) = devices(2) else {
+    let Some((_turn, mut gpus)) = devices(2) else {
         eprintln!("no GPU adapter; skipping");
         return;
     };

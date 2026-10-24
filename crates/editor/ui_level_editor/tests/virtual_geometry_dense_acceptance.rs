@@ -299,7 +299,7 @@ impl Harness {
         let start = Instant::now();
         loop {
             let _ = self.frames(renderer, 4);
-            if renderer.virtual_geometry_runtime().any_ready() {
+            if renderer.virtual_geometry_runtime().expect("the viewport renderer is built").any_ready() {
                 let _ = self.frames(renderer, 12);
                 return;
             }
@@ -319,7 +319,7 @@ impl Harness {
         let start = Instant::now();
         loop {
             let _ = self.frames(renderer, 6);
-            let stats = renderer.virtual_geometry_runtime().tier3_stats();
+            let stats = renderer.virtual_geometry_runtime().expect("the viewport renderer is built").tier3_stats();
             if done(stats.frames_rt) {
                 return;
             }
@@ -367,7 +367,7 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     // ── NonRT: the baseline, and the proof that tiles go dense ───────────
     renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
     harness.until_ready(&mut renderer);
-    let runtime = renderer.virtual_geometry_runtime().clone();
+    let runtime = renderer.virtual_geometry_runtime().expect("the viewport renderer is built").clone();
     let nonrt = validated(&harness, "ForceNonRtFallback", || harness.frames(&mut renderer, 12));
     nonrt.dump("nonrt");
     let covered = nonrt.difference(&nonrt).covered;
@@ -498,7 +498,7 @@ fn auto_without_ray_queries_is_the_fallback() {
     renderer.set_editor_camera_state(harness.camera);
     renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::Auto)));
     harness.until_ready(&mut renderer);
-    let runtime = renderer.virtual_geometry_runtime().clone();
+    let runtime = renderer.virtual_geometry_runtime().expect("the viewport renderer is built").clone();
     let frame = validated(&harness, "Auto without RT", || harness.frames(&mut renderer, 16));
     let stats = runtime.tier3_stats();
     println!("Auto without ray queries: {stats:?}");
@@ -523,7 +523,7 @@ fn dense_mask_is_stable_on_a_static_scene_and_the_peel_drops_nothing() {
     renderer.set_editor_camera_state(harness.camera);
     renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
     harness.until_ready(&mut renderer);
-    let runtime = renderer.virtual_geometry_runtime().clone();
+    let runtime = renderer.virtual_geometry_runtime().expect("the viewport renderer is built").clone();
     let mailbox = renderer.editor_mailbox();
 
     // Streaming refines the crowd; wait for the dense mask (raster classification).

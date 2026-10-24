@@ -97,9 +97,12 @@ class instantiation, scripts and the editor clone and write typed values.
   SceneDB replays existing rows on attach.
 - Helio has no renderer-owned scene registry; the legacy `Scene`/`SceneActor`
   API is gone ([HELIO_SCENE_API_MIGRATION.md](HELIO_SCENE_API_MIGRATION.md)).
-- The standalone game and the Play-in-Editor viewport build their renderer
-  with `pulsar_game::game_renderer`: the same joins and graph as the editor
-  viewport, over the same `SharedScene`.
+- The editor viewport, the standalone game and the Play-in-Editor viewport
+  render through one construction, `helio_renderer::SceneRenderer`: the
+  joins, the graph with its voxel passes, the project's settings (TSR preset
+  included), the voxel worlds' frames, camera-relative frames and clip
+  planes. The editor's `HelioRenderer` adds only gizmos, picking, brushes,
+  billboards and debug views on top.
 
 ## Assets
 

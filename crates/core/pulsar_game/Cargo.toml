@@ -36,7 +36,6 @@ pulsar_script_object_model = { workspace = true }
 
 # Windowed rendering (Helio + winit + wgpu)
 helio   = { workspace = true }
-helio-default-passes = { workspace = true }
 winit   = { workspace = true }
 wgpu    = { workspace = true }
 glam    = { workspace = true }
@@ -81,6 +80,8 @@ tempfile = { workspace = true }
 # Loads pulsar_events' separately compiled test plugin (script events from
 # a plugin library, #924).
 libloading = { workspace = true }
+# The voxel parity test (tests/voxel_render_parity.rs) writes its frames.
+image = { workspace = true }
 # The end-to-end generated-project check exports a class through the real generator.
 pulsar_script_codegen = { workspace = true }
 # The random world example (tests/random_world_blueprint.rs): its saved

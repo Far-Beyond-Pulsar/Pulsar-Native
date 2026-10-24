@@ -7,6 +7,8 @@ description = "All engine and project settings registrations for Pulsar Engine"
 
 [dependencies]
 pulsar-config.workspace = true
+# The renderer's settings, described by Helio.
+helio-settings.workspace = true
 
 [lints]
 workspace = true

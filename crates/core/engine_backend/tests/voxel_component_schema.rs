@@ -70,6 +70,7 @@ fn the_inspector_shows_the_whole_world_description() {
             "voxel_size",
             "generator",
             "seed",
+            "features",
             "air",
             "air_density",
             "air_tint",
@@ -98,6 +99,19 @@ fn the_inspector_shows_the_whole_world_description() {
         json.get("generator").is_none(),
         "the generator reference is flattened"
     );
+    // The features list and its nested lists have the inspector's editors.
+    for type_id in [
+        std::any::TypeId::of::<Vec<helio_component::VoxelFeatureSpawn>>(),
+        std::any::TypeId::of::<Vec<helio_component::VoxelFeatureGrowth>>(),
+        std::any::TypeId::of::<helio_component::VoxelMaterialList>(),
+    ] {
+        assert!(
+            pulsar_reflection::inventory::iter::<pulsar_reflection::UiPropertyEditorHint>
+                .into_iter()
+                .any(|hint| hint.type_id == type_id),
+            "{type_id:?} has an editor"
+        );
+    }
 }
 
 #[test]

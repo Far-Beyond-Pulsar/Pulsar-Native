@@ -171,8 +171,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "8b5b1144c4ef80411592985fcd9767134ee03941", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "8b5b1144c4ef80411592985fcd9767134ee03941" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -258,6 +258,7 @@ helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
 helio-pass-lens = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-lens" }
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
+helio-settings = { path = "crates/renderer/helio/crates/helio-settings" }
 helio-pass-object-batch = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-object-batch" }
 helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-volumetric-fog" }
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
@@ -458,10 +459,6 @@ profiling         = { path = "crates/profiling" }
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling"]
 profiling = { path = "crates/profiling" }
 
-[patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { path = "../SceneDB/crates/pulsar_scenedb" }
-pulsar_scenedb_derive = { path = "../SceneDB/crates/pulsar_scenedb_derive" }
-
 [patch."https://github.com/Far-Beyond-Pulsar/Graphy"]
 graphy = { path = "crates/third-party/graphy" }
 
@@ -490,3 +487,10 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
+# SceneDB: Pulsar, Helio and the plugins pin it by git rev; every copy in the
+# graph resolves to the one rev Pulsar names (the `//` URL spelling lets a
+# patch point at a different rev of the same repository), so SceneDB's types
+# are one set of types for all of them.
+[patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }

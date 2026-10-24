@@ -271,7 +271,7 @@ impl Harness {
         let start = Instant::now();
         loop {
             let frame = self.frames(renderer, 4);
-            if renderer.virtual_geometry_runtime().any_ready() {
+            if renderer.virtual_geometry_runtime().expect("the viewport renderer is built").any_ready() {
                 // The instance derivation and the cull see it a couple of
                 // frames later.
                 return self.frames(renderer, 12);
@@ -358,7 +358,7 @@ fn virtual_geometry_matches_the_classic_render_and_off_restores_it() {
     let classic = harness.frames(&mut classic_renderer, 12);
     classic.dump("classic");
     assert!(classic.difference(&classic).covered > 1000, "the classic sphere is not drawn");
-    assert!(!classic_renderer.virtual_geometry_runtime().any_ready());
+    assert!(!classic_renderer.virtual_geometry_runtime().expect("the viewport renderer is built").any_ready());
 
     // VG-active.
     let (state, _) = scene(Some(VirtualGeometryComponent::default()));

@@ -471,7 +471,7 @@ impl AuthoredLodSelection {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct SelectionUniforms {
     component_rows: u32,
-    use_origin_relative: u32,
+    add_origin_to_camera: u32,
     _pad: [u32; 2],
     origin_hi: [f32; 4],
     origin_lo: [f32; 4],
@@ -559,12 +559,11 @@ impl SceneDerivation for AuthoredLodSelection {
                     input_signature ^= signature(&[suppressed]).rotate_left(21);
                     input_signature = input_signature.wrapping_mul(0x0100_0000_01b3);
                 }
-                if projection.contains(BufferKey::of("transforms_origin_relative")) {
-                    if let Some(origin) = ctx.world_origin {
-                        for bits in [origin.x.to_bits(), origin.y.to_bits(), origin.z.to_bits()] {
-                            input_signature ^= bits;
-                            input_signature = input_signature.wrapping_mul(0x0100_0000_01b3);
-                        }
+                // A moved frame origin moves the eye in the camera rows.
+                if let Some(origin) = ctx.world_origin {
+                    for bits in [origin.x.to_bits(), origin.y.to_bits(), origin.z.to_bits()] {
+                        input_signature ^= bits;
+                        input_signature = input_signature.wrapping_mul(0x0100_0000_01b3);
                     }
                 }
                 let should_run = component_rows > 0
@@ -573,12 +572,16 @@ impl SceneDerivation for AuthoredLodSelection {
                     self.last_signature = Some(input_signature);
                     self.output_generation = self.output_generation.wrapping_add(1).max(1);
                     encoder.clear_buffer(&output, 0, None);
+                    // The camera rows are relative to the frame's world
+                    // origin. Transform rows already made origin-relative
+                    // upstream compare with them directly; world rows need
+                    // the origin added back to the eye.
                     let relative = projection.contains(BufferKey::of("transforms_origin_relative"));
-                    let (origin_hi, origin_lo) =
-                        origin_pair(if relative { ctx.world_origin } else { None });
+                    let camera_origin = if relative { None } else { ctx.world_origin };
+                    let (origin_hi, origin_lo) = origin_pair(camera_origin);
                     let uniforms = SelectionUniforms {
                         component_rows,
-                        use_origin_relative: u32::from(relative),
+                        add_origin_to_camera: u32::from(camera_origin.is_some()),
                         _pad: [0; 2],
                         origin_hi,
                         origin_lo,
@@ -973,6 +976,7 @@ mod tests {
         device: &Arc<wgpu::Device>,
         queue: &Arc<wgpu::Queue>,
         projection: &mut helio_core::SceneBufferProjection,
+        world_origin: Option<glam::DVec3>,
     ) -> LodSelectionRow {
         let mut encoder = device.create_command_encoder(&Default::default());
         let output = derivation.derive(
@@ -980,7 +984,7 @@ mod tests {
                 device,
                 queue,
                 inputs: projection,
-                world_origin: None,
+                world_origin,
             },
             &mut encoder,
         );
@@ -1080,7 +1084,7 @@ mod tests {
             (keys.camera, upload(&device, &queue, keys.camera, &[camera])),
         ]);
 
-        let far = selection(&mut lod, &device, &queue, &mut projection);
+        let far = selection(&mut lod, &device, &queue, &mut projection, None);
         assert_eq!(far.level_index, 1);
         assert_eq!(far.mesh_asset, [2, 0, 0, 0]);
         assert_eq!(far.camera_distance, 100.0);
@@ -1094,7 +1098,7 @@ mod tests {
                 ..camera_handle
             },
         );
-        let near = selection(&mut lod, &device, &queue, &mut projection);
+        let near = selection(&mut lod, &device, &queue, &mut projection, None);
         assert_eq!(near.level_index, 0);
         assert_eq!(near.mesh_asset, [1, 0, 0, 0]);
         assert_eq!(near.camera_distance, 0.0);
@@ -1105,7 +1109,7 @@ mod tests {
             LOD_SUPPRESSED_KEY,
             upload(&device, &queue, LOD_SUPPRESSED_KEY, &[1u32, 0]),
         );
-        let suppressed = selection(&mut lod, &device, &queue, &mut projection);
+        let suppressed = selection(&mut lod, &device, &queue, &mut projection, None);
         assert_eq!(suppressed.valid, 0);
         projection.insert(
             LOD_SUPPRESSED_KEY,
@@ -1114,7 +1118,43 @@ mod tests {
                 ..upload(&device, &queue, LOD_SUPPRESSED_KEY, &[0u32; 2])
             },
         );
-        let released = selection(&mut lod, &device, &queue, &mut projection);
+        let released = selection(&mut lod, &device, &queue, &mut projection, None);
         assert_eq!((released.valid, released.level_index), (1, 0));
+
+        // A camera-relative frame: the camera rows hold the eye relative to
+        // the frame's world origin. The eye at the world origin again, with
+        // the frame's origin 60 m away, measures 100 m to the object, both
+        // from world-space transform rows and from origin-relative ones.
+        let origin = glam::DVec3::new(0.0, 0.0, 60.0);
+        camera.position_near = [0.0, 0.0, -60.0, 0.1];
+        projection.insert(
+            keys.camera,
+            BufferHandle {
+                content_generation: 3,
+                ..upload(&device, &queue, keys.camera, &[camera])
+            },
+        );
+        let world_rows = selection(&mut lod, &device, &queue, &mut projection, Some(origin));
+        assert_eq!((world_rows.level_index, world_rows.camera_distance), (1, 100.0));
+        projection.insert(
+            keys.transforms,
+            BufferHandle {
+                content_generation: 2,
+                ..upload(
+                    &device,
+                    &queue,
+                    keys.transforms,
+                    &[[
+                        0.0f32, 0.0, 40.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+                    ]],
+                )
+            },
+        );
+        projection.insert(
+            BufferKey::of("transforms_origin_relative"),
+            upload(&device, &queue, BufferKey::of("transforms_origin_relative"), &[0u32]),
+        );
+        let relative_rows = selection(&mut lod, &device, &queue, &mut projection, Some(origin));
+        assert_eq!((relative_rows.level_index, relative_rows.camera_distance), (1, 100.0));
     }
 }

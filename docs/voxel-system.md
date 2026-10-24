@@ -39,16 +39,17 @@ chunk trees: residency, drawing, lighting) is documented in Helio's
 ## Data: components and the edit journal
 
 **`VoxelTerrainComponent`** is the whole description of a voxel world, in
-five inspector categories:
+six inspector categories:
 
 - **World:** enabled, shape (`Sphere`, `Plane`, `InfinitePlane`), planet
   radius or plane size, voxel size.
 - **Generation:** generator (a `VoxelGeneratorRef` of id and version,
   serialized flat as `generator_id` / `generator_version`), seed.
+- **Features:** what grows and lies on the ground (below).
 - **Environment:** air (`VoxelAir`): `Custom` keeps the object's
-  `AtmosphereComponent` as authored; `None` (a moon), `Earthlike`, `Thin`
-  (Mars) and `Dense` (Titan) derive it, scaled by air density, sky tint and
-  haze.
+  `AtmosphereComponent` and `GlobalFogComponent` as authored; `None` (a
+  moon), `Earthlike`, `Thin` (Mars) and `Dense` (Titan) derive them, scaled
+  by air density, sky tint and haze (see Sky and haze).
 - **Appearance:** the terrain appearance JSON (below).
 - **Editing:** editable, and the edit journal.
 
@@ -64,6 +65,26 @@ which must sit at the origin without rotation and with a uniform scale
 three `[sRGB red, green, blue, 0]` entries (dry, meadow, lush), and `detail`
 is `[patch contrast, pigment variation, edge shading, 0]`. Omitted fields
 inherit defaults; an empty value restores them. The viewport resets colour history on changes.
+
+**Features.** `features` is a list of spawns: what grows (growths of the
+engine's flora: trees of a species, bushes, shrubs, cacti, boulders,
+craters, each with its materials, sizes, seed salt and variant count) and
+where (spacing, density, a noise field, ground materials, heights and how
+they wander, relief, sink, a far form drawn as canopy past the near
+levels), sizes in metres. Its JSON is Helio's
+`helio_pass_voxel_planet::feature_recipe::FeatureRecipe`, field for field
+(`VoxelFeatureSpawn` and `VoxelFeatureGrowth` are its reflected form for
+the inspector's lists; a growth's card shows the fields its form reads,
+material lists are edited as names or ids, "Grass, Dirt, 22"). The world
+grows it with its seed in cells of its voxel size into the planet's
+`FeatureSet` (`voxel_world::world_recipe`), so a level saves a few
+kilobytes for forests to the horizon. Features are part of the ground: a
+change rebuilds the world (a set the planet rejects, such as spawns out of
+spacing order, keeps the last good world with the error), and edits made
+before it are dropped. `FeatureRecipe::earth()`, `moon()` and `desert()`
+are Helio's setups (`use_feature_preset`). Materials past the built-in
+ones (the presets' needles, birch bark, sage and dry wood, ids 22 to 25)
+get their look from the appearance JSON (`FeatureRecipe::appearance`).
 
 **Generator settings** live in a separate component instance on the same
 object, named by the generator (`VoxelTerrainLayersComponent` for Helio's
@@ -93,12 +114,17 @@ defaults (the generator's `Layer::new`), keeping only whether it is on and
 its mask. While the stack is invalid the viewport keeps the last world that
 built (the error says what to fix); it is not rebuilt every frame.
 
-**The Earth example.** `assets/examples/voxel_planet.level` is the Earth
-preset with seed 75: the editor spawns 60 m over foothills at the north
-pole, facing a range 23 km away, under a sun 32 degrees high (an overhead
-sun lights terrain flat). An unbound `PostProcessVolumeComponent` gives it
-an outdoor look: ACES tone map, exposure 1.1, contrast 1.15, saturation
-0.85 and a light vignette. Without tone mapping, grass and sky clip flat.
+**The examples.** `assets/examples/voxel_planet.level` (Earth),
+`voxel_moon.level` and `voxel_desert.level` are Helio's voxel_flight setups
+(`examples/voxel_flight/worlds.rs`) with seed 75, generically: layer stack,
+features and their look, air, clouds, haze, and on Earth the engine meadow
+(six `FoliageComponent`s on a Meadow object, a `WindComponent` of 4.5 m/s).
+The editor spawns over the north pole under a sun 32 degrees high. An
+unbound `PostProcessVolumeComponent` gives voxel_flight's look: AgX punchy,
+exposure 2 (3.5 on the Moon, sunlit regolith under a black sky), contrast
+1.06. The `voxel_example_levels` test loads each and compares it with
+Helio's values. voxel_flight writes a preset's layers, features and look
+as a level holds them (`HELIO_VOXEL_FLIGHT_EXPORT=<dir>`).
 
 **Random worlds.** `assets/examples/random_world.blueprint.json` is a
 Blueprint that builds a planet, a moon or a desert world from its `seed`
@@ -122,18 +148,39 @@ prefix-hashed, so copying it is nearly free and "equal" / "only grew" are
 O(1) checks. That matters because the projection copies it every frame.
 
 Edits belong to the ground they were made on: the journal records that
-terrain's fingerprint (`PlanetRecipe::fingerprint`: form, voxel size,
-generator, seed and settings). When any of these change, the projection
-shows none of the old edits and the scene step drops them from the journal
-(`VoxelWorldSync`: change cursors over the terrain, layer and atmosphere
-components, so frames that change none of them cost nothing), so they are
-not saved either. A journal with no terrain yet adopts the first one.
+terrain's fingerprint (`voxel_world::ground_fingerprint`: form, voxel size,
+generator, seed, settings and the features' recipe). When any of these
+change, the projection shows none of the old edits and the scene step drops
+them from the journal (`VoxelWorldSync`: change cursors over the terrain,
+layer, atmosphere and fog components, so frames that change none of them
+cost nothing), so they are not saved either. A journal with no terrain yet
+adopts the first one.
 
-**Sky.** The same sync keeps an `AtmosphereComponent` on a world's object on
-its ground: centred on a sphere at its radius, flat ground for a plane. A
-world whose air is a preset derives the rest of the sky from it
-(`AtmosphereComponent::for_air`), so hand edits to such a sky revert;
-`Custom` air leaves it as authored.
+**Sky and haze.** The same sync keeps an `AtmosphereComponent` and a
+`GlobalFogComponent` on a world's object on its ground: the sky centred on
+a sphere at its radius, flat ground for a plane; the fog's heights over the
+sphere, along world Y on a plane. A world whose air is a preset derives the
+rest of both from it (`AtmosphereComponent::for_air`,
+`GlobalFogComponent::for_air`: a ground haze thinning with altitude, its
+extinction times air density and haze, Earth's the one voxel_flight flies
+through), so hand edits to them revert; `Custom` air leaves them as
+authored, and `None` turns both off. A level has the haze only if the
+object has a `GlobalFogComponent`. The clouds are the atmosphere's (its
+Clouds category: layer heights, coverage, type, extinction, weather,
+billows, wisps, wind, albedo): every air keeps them as authored, so a
+world's clouds are edited on its sky.
+
+**Meadows.** The engine's foliage grows on the voxel ground the chunk pass
+draws (the default graph links `ChunkPass::foliage_ground` to the placement
+pass). A `FoliageComponent` is one foliage type: on voxel ground its Kind
+`Block` draws stacks of cubes (Width min the cube), Grows on names the
+terrain materials it grows on, Tufts gathers blades (count, lean at the
+centre and rim, curve, fall, flower tips, patches) and Ground colour tints
+each tuft by the turf. The level's `WindComponent` moves them. How much
+foliage the renderer holds is the project's (Rendering > Foliage: range,
+max density in tufts a square metre, blades a tuft); the Earth meadow
+wants 200 m, 16 and 10 (the defaults thin it to 8 tufts a square metre
+over 160 m).
 
 **Sculpting.** A brush sample asks the renderer for the terrain hit under
 the pointer (`request_pick`); when the answer arrives (a few frames later)
@@ -147,7 +194,8 @@ reaches at most 500 m.
 
 1. **Projection.** `project_voxel_entries(world)` maps enabled terrain
    instances to `VoxelSceneEntry`: id, visibility, shape and size, voxel size,
-   generator config (id, version, seed, settings JSON) and the edit journal;
+   generator config (id, version, seed, settings JSON, features recipe) and
+  the edit journal;
    a voxel object adds its chunk store (`VoxelObjectChunks`). Nothing large
    is copied. The renderer reads it once per
    world revision (`VoxelSceneRead`), with the sun and what keeps the scene
@@ -263,8 +311,9 @@ positions in world metres, material ids from `terrain::material` (0 is air):
 | `planet_radius()`, `set_planet_radius(m)`; `plane_size()`, `set_plane_size(m)` | The world's size. |
 | `set_voxel_size(m)` | The base voxel edge (0.1 to 1 m). |
 | `seed()`, `set_seed(seed)` | The generator's seed. |
+| `use_feature_preset(name)`, `feature_spawn_count()` | Features: `"earth"`, `"moon"`, `"desert"` or `"none"`. |
 | `air()`, `set_air(name)` | `"custom"`, `"none"`, `"earthlike"`, `"thin"` or `"dense"`. |
-| `air_density()`, `air_haze()`, `air_tint_red/green/blue()` and their `set_*` | How much air, its haze and the sky's tint. |
+| `air_density()`, `air_haze()`, `air_tint_red/green/blue()` and their `set_*` | How much air, its haze (the sky's aerosols and the ground haze) and the sky's tint. |
 | `is_editable()`, `set_editable(on)` | Whether the world can be dug and built. |
 
 Setters refuse invalid values (a negative radius, an unknown air) and leave
@@ -368,7 +417,12 @@ and gameplay agree on every block. On generated terrain the older
 - The editor's own renderer, driven headless:
   `cargo run --release -p engine_backend --example voxel_editor_harness`
   (views, flights, drag strokes, stress flights with a per-frame CSV,
-  per-pass GPU profiles; its module doc lists the steps).
+  per-pass GPU profiles, project settings with `set:`; its module doc lists
+  the steps). Its `view` prints the eye and sun, and voxel_flight renders
+  the same view (`HELIO_VOXEL_FLIGHT_HOLD=eye`, `_EYE`, `_SUN`, `_LAYERS`,
+  `_SEED`, `HELIO_VOXEL_CHUNKS_ENGINE=1`) for parity.
+- `cargo test -p engine_backend --test voxel_example_levels`: the example
+  levels against voxel_flight's setups.
 
 ## Extending
 

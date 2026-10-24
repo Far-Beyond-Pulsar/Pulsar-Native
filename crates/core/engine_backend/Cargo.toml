@@ -55,6 +55,8 @@ bitflags = "2"
 pulsar_reflection.workspace = true
 pulsar_events.workspace = true
 engine_state.workspace = true
+# Project settings: Helio's as registered (`project_settings`), virtual geometry.
+pulsar_settings.workspace = true
 
 # World/Entity storage (Phase B1, Pulsar-Native#553) -- the editor's live
 # scene store is moving onto this instead of the hand-rolled SceneDb/
@@ -71,7 +73,6 @@ pulsar_scene.workspace = true
 helio_component.workspace = true
 helio-vg-stream = { path = "../../renderer/helio/crates/helio-vg-stream" }
 helio-vg-format = { path = "../../renderer/helio/crates/helio-vg-format" }
-pulsar_settings = { workspace = true }
 helio-mats = { workspace = true, optional = true }
 psgc = { path = "../../third-party/psgc/crates/psgc", optional = true }
 image = { workspace = true, optional = true }

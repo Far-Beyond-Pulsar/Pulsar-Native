@@ -24,6 +24,11 @@
 //!   drag stroke across the view through the editor's pointer queue (op:
 //!   dig, build, paint; tool: stamp, flatten, smooth), then release, settle
 //!   and capture; logs per-frame times and the edits the journal gained.
+//! - `set:<group>.<key>=<value>`: a project setting (`rendering.foliage_range=200`;
+//!   the groups are Helio's, `helio_settings::GROUPS`), applied before the
+//!   first frame wherever the step stands.
+//! - `debug:<mode>`: later views render the renderer's debug view `mode`
+//!   (the toolbar's view mode: 0 lit, 26 the voxel sun's visibility).
 //! - `at:<x>:<y>:<z>`: later views are placed over this direction from the
 //!   planet's centre (an editor session's `eye` from its logs).
 //! - `down:<metres>`: move the camera that far down the local vertical (into
@@ -208,6 +213,14 @@ impl Harness {
         let path = self.out.join(format!("{name}.png"));
         image::save_buffer(&path, &pixels, w, h, image::ColorType::Rgba8).expect("write capture");
         eprintln!("HARNESS captured {}", path.display());
+        // The view as Helio's voxel_flight takes it (HELIO_VOXEL_FLIGHT_EYE,
+        // HELIO_VOXEL_FLIGHT_SUN), for the same frame rendered by Helio's
+        // own path.
+        let camera = self.camera();
+        let forward = self.renderer.camera_forward();
+        let [x, y, z] = camera.position;
+        let sun = self.renderer.sun_direction().map_or_else(|| "none".to_owned(), |[a, b, c]| format!("{a},{b},{c}"));
+        println!("HARNESS view {name}: eye {x},{y},{z},{},{},{} sun {sun}", forward.x, forward.y, forward.z);
     }
 
     fn camera(&self) -> EditorCameraState {
@@ -407,10 +420,79 @@ fn main() {
         engine_backend::scene::RuntimeLevel::load_into(Path::new(&level), &mut scene.world)
             .expect("load the level")
     };
+    // What the level lights and grades with (parity checks against Helio's
+    // examples).
+    {
+        use helio_component::components::{
+            AtmosphereComponent, CameraPostProcessComponent, GlobalFogComponent, LightComponent,
+            PostProcessVolumeComponent,
+        };
+        let world = &scene.read().world;
+        for (_, light) in world.query::<&LightComponent>() {
+            println!(
+                "HARNESS scene light: {:?} enabled {} intensity {} {:?} color {:?}",
+                light.general.light_type,
+                light.general.enabled,
+                light.intensity.intensity,
+                light.intensity.intensity_units,
+                light.color.color
+            );
+        }
+        let short = |s: String| s.chars().take(600).collect::<String>();
+        for (_, c) in world.query::<&CameraPostProcessComponent>() {
+            println!("HARNESS scene camera post: {}", short(format!("{c:?}")));
+        }
+        for (_, c) in world.query::<&PostProcessVolumeComponent>() {
+            println!("HARNESS scene post volume: {}", short(format!("{c:?}")));
+        }
+        for (_, c) in world.query::<&AtmosphereComponent>() {
+            println!("HARNESS scene atmosphere: {}", short(format!("{c:?}")));
+        }
+        for (_, c) in world.query::<&GlobalFogComponent>() {
+            println!("HARNESS scene fog: {}", short(format!("{c:?}")));
+        }
+        for (_, c) in world.query::<&helio_component::components::WindComponent>() {
+            println!("HARNESS scene wind: {}", short(format!("{c:?}")));
+        }
+        let foliage = world.query::<&helio_component::components::FoliageComponent>().count();
+        if foliage > 0 {
+            println!("HARNESS scene foliage: {foliage} types");
+        }
+        for (_, c) in world.query::<&helio_component::components::VoxelTerrainComponent>() {
+            println!(
+                "HARNESS scene terrain: seed {} voxel {} air {:?} haze {} features {}",
+                c.seed,
+                c.voxel_size,
+                c.air,
+                c.air_haze,
+                c.features.len()
+            );
+        }
+    }
+    // `set:` steps: project settings, before the renderer reads them.
+    let config = engine_state::settings::global_config();
+    pulsar_settings::project::rendering::register(config);
+    for step in steps.iter().filter_map(|s| s.strip_prefix("set:")) {
+        let (path, value) = step.split_once('=').expect("set:<group>.<key>=<value>");
+        let (group, key) = path.split_once('.').expect("set:<group>.<key>=<value>");
+        let value = match value {
+            "true" | "false" => engine_state::settings::ConfigValue::Bool(value == "true"),
+            _ => value.parse().map_or_else(
+                |_| engine_state::settings::ConfigValue::String(value.into()),
+                engine_state::settings::ConfigValue::Float,
+            ),
+        };
+        config
+            .owner_handle(engine_state::settings::NS_PROJECT, group)
+            .unwrap_or_else(|| panic!("no project settings group {group}"))
+            .set(key, value.clone())
+            .unwrap_or_else(|e| panic!("set {path}: {e:?}"));
+        println!("HARNESS setting {path} = {value:?}");
+    }
     let mut renderer = HelioRenderer::new(scene.clone());
     if let Some(camera) = extras.editor_camera {
         renderer.set_editor_camera_state(EditorCameraState {
-            position: camera.position.map(f64::from),
+            position: camera.position,
             yaw: camera.yaw,
             pitch: camera.pitch,
         });
@@ -567,6 +649,15 @@ fn main() {
                 h.report("drag settle", &times);
                 println!("HARNESS drag: journal {} -> {} edits", before, h.edits());
                 h.capture(&format!("drag_{n}"));
+            }
+            // Applied before the first frame.
+            "set" => {}
+            "debug" => {
+                // The renderer's debug view for the views after (the
+                // toolbar's view mode; 0 lit, 26 the voxel sun).
+                let mode = number(1, 0.0) as u32;
+                h.renderer.editor_mailbox().set_viewport_debug_mode(mode);
+                println!("HARNESS debug view {mode}");
             }
             "at" => {
                 direction =
