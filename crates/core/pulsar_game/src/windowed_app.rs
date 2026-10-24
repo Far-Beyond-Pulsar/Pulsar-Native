@@ -19,9 +19,8 @@ use winit::{
 };
 
 use engine_backend::scene::RuntimeLevel;
-use helio::{
-    required_wgpu_features, required_wgpu_limits, usable_adapter_features, Camera, Renderer,
-};
+use engine_backend::subsystems::render::{DeviceOwner, SceneRenderer, SceneRendererOptions};
+use helio::{required_wgpu_features, required_wgpu_limits, usable_adapter_features};
 
 use crate::camera_selection::select_world_camera;
 use crate::freecam::FreeCam;
@@ -37,7 +36,8 @@ struct GameWindow {
     device: Arc<wgpu::Device>,
     /// wgpu 30 moved `SurfaceTexture::present()` to `Queue::present()`.
     queue: Arc<wgpu::Queue>,
-    renderer: Renderer,
+    /// The scene's renderer, as the editor viewport builds it.
+    renderer: SceneRenderer,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
     /// Whether the OS says this window has input focus.
@@ -48,10 +48,6 @@ struct GameWindow {
     next_redraw: Instant,
     /// Built with the editor's overlays (kept to rebuild it on a new device).
     editor_mode: bool,
-    /// The shared world, for the camera lens's overscan.
-    scene_store: engine_backend::scene::SharedScene,
-    /// Uploads the rigid-frame table when a frame moved.
-    spaces: engine_backend::scene::SpaceSync,
 }
 
 /// Frame interval of an unfocused window when several game copies are running.
@@ -114,22 +110,17 @@ impl GameWindow {
         };
         surface.configure(&device, &surface_config);
 
-        // Build the Helio renderer. `pulsar_game` owns its device (unlike the
-        // editor's wgpui-hosted viewport, which shares GPUI's device), and
-        // takes its settings from the project (`crate::game_renderer`).
-        let spaces = engine_backend::scene::SpaceSync::default();
-        let renderer = crate::game_renderer::build_game_renderer_with_portals(
+        // The scene's renderer, built as the editor viewport's with the
+        // project's settings. `pulsar_game` owns its device (unlike the
+        // editor's wgpui-hosted viewport, which shares GPUI's device).
+        let renderer = SceneRenderer::new(
             device.clone(),
             queue.clone(),
             scene_store,
-            crate::game_renderer::project_renderer_config(
-                surface_config.width,
-                surface_config.height,
-                surface_format,
-            ),
-            editor_mode,
-            crate::game_renderer::DeviceOwner::Game,
-            spaces.portal_input(),
+            surface_config.width,
+            surface_config.height,
+            surface_format,
+            SceneRendererOptions::game(DeviceOwner::Renderer, editor_mode),
         );
 
         Self {
@@ -144,8 +135,6 @@ impl GameWindow {
             focused: true,
             next_redraw: Instant::now(),
             editor_mode,
-            scene_store: scene_store.clone(),
-            spaces,
         }
     }
 
@@ -156,7 +145,7 @@ impl GameWindow {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(device, &self.surface_config);
-        self.renderer.set_render_size(width, height);
+        self.renderer.renderer.set_render_size(width, height);
     }
 
     fn acquire_after_surface_recovery(&self) -> Option<wgpu::SurfaceTexture> {
@@ -186,24 +175,6 @@ impl GameWindow {
         // in from here.
         let size = self.window.inner_size();
         let aspect = size.width as f32 / size.height.max(1) as f32;
-
-        let helio_cam = Camera::perspective_look_at(
-            glam::Vec3::from_array(cam.position),
-            glam::Vec3::from_array(cam.target),
-            glam::Vec3::from_array(cam.up),
-            cam.fov_y,
-            aspect,
-            cam.near,
-            cam.far,
-        );
-        // A camera lens that maps past the frame needs a wider render, which
-        // the lens crops back (the editor viewport does the same).
-        let overscan = helio_component::components::camera_lens_view_overscan(
-            &self.scene_store.read().world,
-            helio_cam.view_id,
-            aspect,
-        );
-        let helio_cam = helio_cam.with_overscan(overscan);
 
         // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
         // `CurrentSurfaceTexture` enum (see wgpui's
@@ -252,8 +223,11 @@ impl GameWindow {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        self.spaces.sync(&self.scene_store, glam::DVec3::ZERO, &mut self.renderer);
-        if let Err(e) = self.renderer.render(&helio_cam, &view) {
+        let frame = self.renderer.prepare_frame(
+            &cam.frame_view(aspect),
+            [self.surface_config.width, self.surface_config.height],
+        );
+        if let Err(e) = self.renderer.render(&frame.camera, &view) {
             tracing::error!(window = self.handle.id(), "Render error: {:?}", e);
         }
 
@@ -880,7 +854,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // viewport renderer uses). Bind the meshes that finished
                 // loading first, so they upload with this frame (SceneDB#84).
                 engine_backend::scene::pump_assets(&self.scene_store);
-                self.scene_store.write().step();
+                if let Some(gw) = self.windows.get_mut(&handle) {
+                    gw.renderer.step_scene(&mut self.scene_store.write());
+                }
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,
                 // then a Camera-typed entity in the SHARED world (#637 --
