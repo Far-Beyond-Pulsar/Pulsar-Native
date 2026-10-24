@@ -19,34 +19,34 @@ use crate::window::RenderCamera;
 use engine_backend::scene::SceneWorldExt;
 
 /// Resolve the shared-world camera, if any: the first live
-/// `ObjectType::Camera` entity's transform as a [`RenderCamera`].
+/// `ObjectType::Camera` entity's world transform as a [`RenderCamera`].
 ///
-/// Rotation convention matches the scene format's (`Transform.rotation` =
-/// Euler degrees YXZ, `[pitch, yaw, roll]`), reusing [`FreeCam`]'s look-dir
-/// math so a world camera and the freecam agree on orientation semantics.
+/// The camera looks down its own -Z with its own +Y up, rotated as every
+/// object is (`Transform.rotation` = Euler degrees YXZ, `[pitch, yaw,
+/// roll]`), so a camera placed on a planet's side stands on it. The eye is
+/// the f64 world position. Anything a bare transform can't express
+/// (fov/near/far) is the freecam's.
 pub fn select_world_camera(store: &pulsar_scenedb::SceneDb) -> Option<RenderCamera> {
     let world = &store.world;
     for entity in world.camera_entities() {
-        let Some(transform) =
-            engine_backend::scene::hierarchy_transform::world_transform_of(world, entity)
+        let Some(matrix) =
+            engine_backend::scene::hierarchy_transform::world_matrix_of(world, entity)
         else {
             continue;
         };
-        // Degrees -> radians; yaw around Y, pitch around X (FPS-style).
-        let yaw = transform.rotation[1].to_radians();
-        let pitch = transform.rotation[0].to_radians();
-        // The game camera is f32 world space.
-        return Some(camera_from_pose(transform.position.map(|v| v as f32), yaw, pitch));
+        let (_, rotation, position) = matrix.to_scale_rotation_translation();
+        let rotation = rotation.as_quat();
+        let lens = FreeCam::default();
+        return Some(RenderCamera {
+            position,
+            forward: rotation * glam::Vec3::NEG_Z,
+            up: rotation * glam::Vec3::Y,
+            fov_y: lens.fov_y,
+            near: lens.near,
+            far: lens.far,
+        });
     }
     None
-}
-
-/// Build a [`RenderCamera`] from a world-space position + yaw/pitch, with
-/// the same defaults the freecam uses for anything a bare transform can't
-/// express (fov/near/far).
-fn camera_from_pose(position: [f32; 3], yaw: f32, pitch: f32) -> RenderCamera {
-    let freecam = FreeCam::default().place(glam::Vec3::from_array(position), yaw, pitch);
-    freecam.to_render_camera()
 }
 
 #[cfg(test)]
@@ -75,12 +75,41 @@ mod tests {
         );
 
         let resolved = select_world_camera(&store).expect("world camera");
-        assert_eq!(resolved.position, [3.0, 4.0, 5.0]);
+        assert_eq!(resolved.position, glam::DVec3::new(3.0, 4.0, 5.0));
         // Zero rotation looks down -Z, matching the editor camera convention.
         assert!(
-            resolved.target[2] < resolved.position[2],
+            resolved.forward.abs_diff_eq(glam::Vec3::NEG_Z, 1e-6),
             "must face -Z at zero yaw"
         );
+        assert!(resolved.up.abs_diff_eq(glam::Vec3::Y, 1e-6));
+    }
+
+    /// A camera on a planet's surface, millions of metres out and rolled to
+    /// stand on it, keeps its f64 eye and its own up.
+    #[test]
+    fn a_camera_on_a_planet_keeps_its_eye_and_its_up() {
+        let mut store = engine_backend::scene::new_scene();
+        let cam = store
+            .world
+            .spawn_object(engine_backend::scene::SpawnObject::new("Surface").with_id("surface"))
+            .unwrap();
+        store.world.insert(cam, ObjectType::Camera);
+        // On the planet's -X side (radius 6371 km), 1.7 m above it: rolled
+        // 90 degrees, its up is -X.
+        let eye = [-6_371_001.7, 0.25, 0.125];
+        store.world.insert(
+            cam,
+            Transform {
+                position: eye,
+                rotation: [0.0, 0.0, 90.0],
+                scale: [1.0; 3],
+            },
+        );
+
+        let resolved = select_world_camera(&store).expect("world camera");
+        assert!((resolved.position - glam::DVec3::from_array(eye)).length() < 1e-6);
+        assert!(resolved.up.abs_diff_eq(glam::Vec3::NEG_X, 1e-5), "{:?}", resolved.up);
+        assert!(resolved.forward.abs_diff_eq(glam::Vec3::NEG_Z, 1e-5));
     }
 
     #[test]

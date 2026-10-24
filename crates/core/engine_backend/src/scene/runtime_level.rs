@@ -61,11 +61,12 @@ pub enum RuntimeLevelError {
 }
 
 /// Editor camera state persisted in the level file (`editor.camera`) --
-/// position + yaw/pitch in radians, the same convention `FreeCam::place`
-/// uses. Lets a play-mode camera start where the editor view was.
+/// position (f64: a planet's surface is millions of metres out) + world
+/// yaw/pitch in radians, the convention `FlyCamera::new` takes. Lets a
+/// play-mode camera start where the editor view was.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EditorCamera {
-    pub position: [f32; 3],
+    pub position: [f64; 3],
     pub yaw: f32,
     pub pitch: f32,
 }
@@ -617,11 +618,7 @@ fn editor_camera(editor: &Value) -> Option<EditorCamera> {
         return None;
     }
     Some(EditorCamera {
-        position: [
-            pos[0].as_f64()? as f32,
-            pos[1].as_f64()? as f32,
-            pos[2].as_f64()? as f32,
-        ],
+        position: [pos[0].as_f64()?, pos[1].as_f64()?, pos[2].as_f64()?],
         yaw: cam.get("yaw").and_then(Value::as_f64).unwrap_or(0.0) as f32,
         pitch: cam.get("pitch").and_then(Value::as_f64).unwrap_or(0.0) as f32,
     })

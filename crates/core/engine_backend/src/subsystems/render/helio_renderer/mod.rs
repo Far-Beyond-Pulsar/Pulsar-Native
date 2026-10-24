@@ -2,6 +2,7 @@
 
 mod animated_content;
 pub mod core;
+pub mod fly_camera;
 pub mod material_sampler;
 pub mod project_settings;
 mod gizmo_geometry;
@@ -12,6 +13,7 @@ pub mod scene_renderer;
 pub mod voxel_backend;
 pub mod voxel_mesh_backend;
 
+pub use fly_camera::{altitude_speed_scale, FlyCamera};
 pub use core::{
     CameraInput, DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData, RenderMetrics,
     RenderSpikeLogConfig,

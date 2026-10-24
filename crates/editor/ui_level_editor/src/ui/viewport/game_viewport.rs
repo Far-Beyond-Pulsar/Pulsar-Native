@@ -421,6 +421,13 @@ impl GameViewport {
                     Some(&req.scene_path),
                     shared_world,
                     req.reload,
+                    req.view.as_ref().map(|view| {
+                        engine_backend::subsystems::render::EditorCameraState {
+                            position: view.position,
+                            yaw: view.yaw,
+                            pitch: view.pitch,
+                        }
+                    }),
                 )
             };
             match loaded {

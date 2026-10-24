@@ -90,6 +90,9 @@ pub struct PieStartRequest {
     pub project_root: PathBuf,
     /// Path to the `.level` written from the editor's current `SceneDb`.
     pub scene_path: PathBuf,
+    /// The editor camera when Play was pressed: the game's free camera
+    /// starts there.
+    pub view: Option<crate::scene_edit::LevelEditorCameraState>,
     /// True when this load replaces a STILL-RUNNING game (#653): the shared
     /// world keeps its entities/components, and the guest re-binds actor
     /// registrations instead of spawning duplicates (native hot reload).

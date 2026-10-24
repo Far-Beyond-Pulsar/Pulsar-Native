@@ -492,7 +492,7 @@ fn main() {
     let mut renderer = HelioRenderer::new(scene.clone());
     if let Some(camera) = extras.editor_camera {
         renderer.set_editor_camera_state(EditorCameraState {
-            position: camera.position.map(f64::from),
+            position: camera.position,
             yaw: camera.yaw,
             pitch: camera.pitch,
         });
