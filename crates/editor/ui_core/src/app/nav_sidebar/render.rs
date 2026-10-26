@@ -732,6 +732,7 @@ impl NavSidebar {
             (ElementId::Name(group), "tab-preview"),
             row,
             move |window, cx| {
+                let preview_title = preview_title.clone();
                 let image = preview_sidebar
                     .read_with(cx, |sidebar, _| sidebar.preview_for(&preview_key))
                     .ok()
