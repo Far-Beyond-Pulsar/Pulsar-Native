@@ -24,7 +24,8 @@ pub(crate) fn render_diff_panel(
     let split = gm.diff_mode == DiffViewMode::SideBySide;
 
     let Some(target) = gm.target.clone() else {
-        return placeholder(IconName::Code, "Select a file to see its changes", cx).into_any_element();
+        return placeholder(IconName::Code, "Select a file to see its changes", cx)
+            .into_any_element();
     };
     let path = target.path().to_string();
     let (name, directory) = match path.rsplit_once('/') {
@@ -71,10 +72,18 @@ pub(crate) fn render_diff_panel(
         )
         .child(
             Button::new("toggle-diff-mode")
-                .icon(if split { IconName::AlignLeft } else { IconName::ViewColumns2 })
+                .icon(if split {
+                    IconName::AlignLeft
+                } else {
+                    IconName::ViewColumns2
+                })
                 .ghost()
                 .compact()
-                .tooltip(if split { "Unified view" } else { "Side-by-side view" })
+                .tooltip(if split {
+                    "Unified view"
+                } else {
+                    "Side-by-side view"
+                })
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_diff_view_mode(cx))),
         );
 

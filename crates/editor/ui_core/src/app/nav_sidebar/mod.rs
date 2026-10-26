@@ -55,14 +55,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use engine_state::settings::{ConfigValue, GlobalSettings, NS_EDITOR, global_config};
+use engine_state::settings::{global_config, ConfigValue, GlobalSettings, NS_EDITOR};
 use gpui::{AppContext as _, Context, Entity, Subscription, Task, WeakEntity, Window};
 use sha2::{Digest as _, Sha256};
 use ui::dock::{DockPlacement, DragPanel, PanelView, TabPanel};
 use ui::input::{InputEvent, InputState};
 use ui_file_manager::FileManagerDrawer;
 
-use self::model::{HOVER_CLOSE_DELAY, HoverAction, HoverState, SidebarModel, SidebarTab, TabKey};
+use self::model::{HoverAction, HoverState, SidebarModel, SidebarTab, TabKey, HOVER_CLOSE_DELAY};
 use self::panes::PaneKind;
 use super::PulsarApp;
 
@@ -843,11 +843,10 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let element_id = gpui::ElementId::NamedInteger(
-            "tab-content".into(),
-            panel.panel_id(cx).as_u64(),
-        );
-        let Some(capture) = window.capture_element_from_last_frame(element_id, gpui::size(320, 180))
+        let element_id =
+            gpui::ElementId::NamedInteger("tab-content".into(), panel.panel_id(cx).as_u64());
+        let Some(capture) =
+            window.capture_element_from_last_frame(element_id, gpui::size(320, 180))
         else {
             return;
         };

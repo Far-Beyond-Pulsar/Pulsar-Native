@@ -1,7 +1,7 @@
 //! Exporting a session: the statistics table as CSV, the whole trace as a
 //! Chrome trace (`chrome://tracing`, Perfetto, Speedscope all open it).
 
-use crate::analysis::{FunctionStats, aggregate, compute_self_times};
+use crate::analysis::{aggregate, compute_self_times, FunctionStats};
 use crate::trace_data::TraceFrame;
 use std::fmt::Write as _;
 
@@ -21,7 +21,11 @@ fn ms(ns: u64) -> String {
 pub fn stats_csv(frame: &TraceFrame) -> String {
     let self_ns = compute_self_times(frame);
     let mut stats: Vec<FunctionStats> = aggregate(frame, &self_ns);
-    stats.sort_by(|a, b| b.total_ns.cmp(&a.total_ns).then_with(|| a.name.cmp(&b.name)));
+    stats.sort_by(|a, b| {
+        b.total_ns
+            .cmp(&a.total_ns)
+            .then_with(|| a.name.cmp(&b.name))
+    });
 
     let mut out = String::from("Function,Calls,Total (ms),Self (ms),Avg (ms),Min (ms),Max (ms)\n");
     for stat in &stats {
@@ -131,8 +135,14 @@ mod tests {
     fn csv_quotes_fields_and_reports_self_time() {
         let csv = stats_csv(&sample());
         let lines: Vec<&str> = csv.lines().collect();
-        assert_eq!(lines[0], "Function,Calls,Total (ms),Self (ms),Avg (ms),Min (ms),Max (ms)");
-        assert_eq!(lines[1], "update,1,2.000000,1.500000,2.000000,2.000000,2.000000");
+        assert_eq!(
+            lines[0],
+            "Function,Calls,Total (ms),Self (ms),Avg (ms),Min (ms),Max (ms)"
+        );
+        assert_eq!(
+            lines[1],
+            "update,1,2.000000,1.500000,2.000000,2.000000,2.000000"
+        );
         assert!(lines[2].starts_with("\"physics, step\",1,0.500000"));
     }
 

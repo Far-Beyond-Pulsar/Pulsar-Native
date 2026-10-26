@@ -254,9 +254,16 @@ mod tests {
             .entity_for(&format!("{door_id}/hall"))
             .expect("ids are prefixed by the display's id");
         assert!(is_member(&world, hall));
-        assert_eq!(world.parent_of(hall), Some(shown), "the level's origin is the object's origin");
+        assert_eq!(
+            world.parent_of(hall),
+            Some(shown),
+            "the level's origin is the object's origin"
+        );
         // The level's own transforms are kept, relative to that origin.
-        assert_eq!(world.get::<Transform>(hall).unwrap().position, [5.0, 0.0, 0.0]);
+        assert_eq!(
+            world.get::<Transform>(hall).unwrap().position,
+            [5.0, 0.0, 0.0]
+        );
         let lamp = world.entity_for(&format!("{door_id}/lamp")).unwrap();
         assert_eq!(world.parent_of(lamp), Some(hall));
         // Placed by one matrix: the display object is a space.
@@ -264,10 +271,17 @@ mod tests {
 
         // Disabling the display removes its contents.
         let attached = pulsar_scene_model::attachments::instances(&world, shown)[0];
-        world.get_mut::<SubLevelDisplayComponent>(attached).unwrap().enabled = false;
+        world
+            .get_mut::<SubLevelDisplayComponent>(attached)
+            .unwrap()
+            .enabled = false;
         assert!(sync_level_instances(&mut world));
         assert!(members_of(&world, shown).is_empty());
-        assert_eq!(members_of(&world, other).len(), 2, "the other display is untouched");
+        assert_eq!(
+            members_of(&world, other).len(),
+            2,
+            "the other display is untouched"
+        );
         assert!(world.entity_for(&format!("{door_id}/hall")).is_none());
     }
 
@@ -283,7 +297,10 @@ mod tests {
                 loaded: false
             })
         );
-        assert!(!needs_level_instance_sync(&world), "not retried every frame");
+        assert!(
+            !needs_level_instance_sync(&world),
+            "not retried every frame"
+        );
     }
 
     #[test]
@@ -311,7 +328,10 @@ mod tests {
             .entity_for(&format!("{door_id}/self"))
             .expect("the first level loaded");
         assert!(is_member(&world, inner));
-        assert!(members_of(&world, inner).is_empty(), "the nested display did not expand");
+        assert!(
+            members_of(&world, inner).is_empty(),
+            "the nested display did not expand"
+        );
         assert_eq!(members_of(&world, door).len(), 1);
     }
 }

@@ -4,7 +4,9 @@ use gpui::*;
 use profiling::remote::{TargetConnection, TargetInfo};
 use rust_i18n::t;
 use std::sync::Arc;
-use ui::{button::Button, checkbox::Checkbox, h_flex, v_flex, ActiveTheme, Icon, IconName, TitleBar};
+use ui::{
+    button::Button, checkbox::Checkbox, h_flex, v_flex, ActiveTheme, Icon, IconName, TitleBar,
+};
 
 mod session;
 mod start_screen;
@@ -665,7 +667,9 @@ impl Render for FlamegraphWindow {
                         this.child(self.render_profiling_overlay(cx))
                     })
                     .when_some(
-                        self.session_ui.as_ref().filter(|_| has_data && !is_profiling),
+                        self.session_ui
+                            .as_ref()
+                            .filter(|_| has_data && !is_profiling),
                         |this, ui| {
                             this.child(
                                 v_flex()

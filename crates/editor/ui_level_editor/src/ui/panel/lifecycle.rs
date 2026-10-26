@@ -388,7 +388,12 @@ impl LevelEditorPanel {
                 // The level's render pipeline (World Settings) reaches every
                 // viewport's renderer; a change rebuilds it at a frame boundary.
                 {
-                    let pipeline = poll_state.read().scene.world_settings.render_pipeline.clone();
+                    let pipeline = poll_state
+                        .read()
+                        .scene
+                        .world_settings
+                        .render_pipeline
+                        .clone();
                     for mailbox in poll_mailbox
                         .iter()
                         .chain(extras.iter().map(|extra| &extra.mailbox))

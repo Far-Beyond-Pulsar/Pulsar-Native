@@ -40,7 +40,11 @@ impl ImportCompanion for Stub {
 
 fn wait(id: editor_task_queue::TaskId) -> TaskStatus {
     for _ in 0..600 {
-        if let Some(s) = editor_task_queue::global().snapshots().into_iter().find(|s| s.id == id) {
+        if let Some(s) = editor_task_queue::global()
+            .snapshots()
+            .into_iter()
+            .find(|s| s.id == id)
+        {
             if !matches!(s.status, TaskStatus::Queued | TaskStatus::Running) {
                 return s.status;
             }
@@ -77,15 +81,21 @@ fn accepted_companions_run_record_outputs_and_fill_only_empty_slots() {
     let db = ImportDb::load(root);
     let record = db.find_source("cube.fbx").unwrap();
     assert_eq!(record.companions, ["test.stub"]);
-    assert!(record.outputs.iter().any(|o| o.path == "made.thing" && o.kind == "thing"));
+    assert!(record
+        .outputs
+        .iter()
+        .any(|o| o.path == "made.thing" && o.kind == "thing"));
     let mesh = std::fs::read(root.join("cube.mesh")).unwrap();
     let (decoded, _) = helio_component::mesh_cache::decode_asset(&mesh).unwrap();
     assert_eq!(decoded.material_slots[0].material_asset, "made.thing");
 
     // The user reassigns the slot; a reimport (which re-runs the companion)
     // leaves their choice alone.
-    helio_component::mesh_cache::set_default_materials(&root.join("cube.mesh"), &["mine.mat".into()])
-        .unwrap();
+    helio_component::mesh_cache::set_default_materials(
+        &root.join("cube.mesh"),
+        &["mine.mat".into()],
+    )
+    .unwrap();
     let mut bytes = std::fs::read(root.join("cube.fbx")).unwrap();
     bytes.push(0);
     std::fs::write(root.join("cube.fbx"), bytes).unwrap();

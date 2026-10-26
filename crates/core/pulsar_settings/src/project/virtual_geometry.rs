@@ -151,9 +151,7 @@ impl VirtualGeometrySettings {
     /// As [`Self::from_config`], over any key lookup.
     pub fn from_lookup(get: &dyn Fn(&str) -> Option<ConfigValue>) -> Self {
         let defaults = Self::default();
-        let text = |key: &str| {
-            get(key).and_then(|value| value.as_str().ok().map(str::to_owned))
-        };
+        let text = |key: &str| get(key).and_then(|value| value.as_str().ok().map(str::to_owned));
         let int = |key: &str| get(key).and_then(|value| value.as_int().ok());
         Self {
             mode: text("mode")
@@ -377,7 +375,10 @@ mod tests {
             ("max_visible_clusters", ConfigValue::from(i64::MAX)),
         ]));
         assert_eq!(settings.tau_pixels, VirtualGeometrySettings::TAU_RANGE.0);
-        assert_eq!(settings.page_budget_mb, VirtualGeometrySettings::PAGE_BUDGET_RANGE_MB.0);
+        assert_eq!(
+            settings.page_budget_mb,
+            VirtualGeometrySettings::PAGE_BUDGET_RANGE_MB.0
+        );
         // i64::MAX does not fit a u32, so the default applies, not a clamp.
         assert_eq!(settings.max_visible_clusters, 4_194_304);
         let huge = lookup(HashMap::from([(
@@ -385,10 +386,13 @@ mod tests {
             ConfigValue::from(1_i64 << 30),
         )]));
         assert_eq!(huge.max_visible_clusters, MAX_VISIBLE_CLUSTERS_LIMIT);
-        assert!(VirtualGeometrySettings { tau_pixels: f32::NAN, ..Default::default() }
-            .sanitized()
-            .tau_pixels
-            .is_finite());
+        assert!(VirtualGeometrySettings {
+            tau_pixels: f32::NAN,
+            ..Default::default()
+        }
+        .sanitized()
+        .tau_pixels
+        .is_finite());
     }
 
     #[test]

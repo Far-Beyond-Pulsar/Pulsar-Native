@@ -78,7 +78,8 @@ impl DiffLayout {
                 DiffOp::Delete {
                     old_index, old_len, ..
                 } => layout.push_change(
-                    &old_lines[old_index.min(old_lines.len())..(old_index + old_len).min(old_lines.len())],
+                    &old_lines[old_index.min(old_lines.len())
+                        ..(old_index + old_len).min(old_lines.len())],
                     &[],
                     &mut first_unified,
                     &mut first_split,
@@ -87,7 +88,8 @@ impl DiffLayout {
                     new_index, new_len, ..
                 } => layout.push_change(
                     &[],
-                    &new_lines[new_index.min(new_lines.len())..(new_index + new_len).min(new_lines.len())],
+                    &new_lines[new_index.min(new_lines.len())
+                        ..(new_index + new_len).min(new_lines.len())],
                     &mut first_unified,
                     &mut first_split,
                 ),
@@ -97,8 +99,10 @@ impl DiffLayout {
                     new_index,
                     new_len,
                 } => layout.push_change(
-                    &old_lines[old_index.min(old_lines.len())..(old_index + old_len).min(old_lines.len())],
-                    &new_lines[new_index.min(new_lines.len())..(new_index + new_len).min(new_lines.len())],
+                    &old_lines[old_index.min(old_lines.len())
+                        ..(old_index + old_len).min(old_lines.len())],
+                    &new_lines[new_index.min(new_lines.len())
+                        ..(new_index + new_len).min(new_lines.len())],
                     &mut first_unified,
                     &mut first_split,
                 ),
@@ -198,9 +202,11 @@ impl DiffPane {
     pub fn link_scrolling(&self, cx: &mut Context<GitManager>) {
         let (left, right) = (self.left.clone(), self.right.clone());
         let (a, b) = (left.clone(), right.clone());
-        cx.observe(&left, move |_, _, cx| follow(&a, &b, cx)).detach();
+        cx.observe(&left, move |_, _, cx| follow(&a, &b, cx))
+            .detach();
         let (a, b) = (right.clone(), left.clone());
-        cx.observe(&right, move |_, _, cx| follow(&a, &b, cx)).detach();
+        cx.observe(&right, move |_, _, cx| follow(&a, &b, cx))
+            .detach();
     }
 
     /// Show `old` → `new` for the file at `path`.
@@ -344,9 +350,18 @@ const SYNTAX_MAP: &[(&str, &[&str])] = &[
     ("variable.parameter", &["variable"]),
     ("variable.builtin", &["variable.special", "variable"]),
     ("operator", &["operator"]),
-    ("punctuation.bracket", &["punctuation.bracket", "punctuation"]),
-    ("punctuation.delimiter", &["punctuation.delimiter", "punctuation"]),
-    ("punctuation.list_marker", &["punctuation.list_marker", "punctuation"]),
+    (
+        "punctuation.bracket",
+        &["punctuation.bracket", "punctuation"],
+    ),
+    (
+        "punctuation.delimiter",
+        &["punctuation.delimiter", "punctuation"],
+    ),
+    (
+        "punctuation.list_marker",
+        &["punctuation.list_marker", "punctuation"],
+    ),
     ("label", &["label"]),
     ("tag", &["tag"]),
     ("title", &["title"]),

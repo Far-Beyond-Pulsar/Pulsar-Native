@@ -16,11 +16,10 @@ use std::sync::Arc;
 use helio_component::components::{
     AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow,
     FoliageSourceRow, GlobalFogSourceRow, GlobalWindSourceRow, LODComponent, LightSourceRow,
-    LocalFogSourceRow,
-    PostProcessVolumeSourceRow, SkeletalMeshComponent, SpriteSourceRow, StaticMeshComponent,
-    StaticMeshDraw, VirtualGeometryComponent, WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER,
-    CAMERA_POST_PROCESS_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER, DECAL_SOURCES_BUFFER,
-    FOLIAGE_SOURCES_BUFFER, GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER,
+    LocalFogSourceRow, PostProcessVolumeSourceRow, SkeletalMeshComponent, SpriteSourceRow,
+    StaticMeshComponent, StaticMeshDraw, VirtualGeometryComponent, WaterVolumeSourceRow,
+    ATMOSPHERE_SOURCES_BUFFER, CAMERA_POST_PROCESS_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER,
+    DECAL_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER, GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER,
     LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
     POST_PROCESS_VOLUME_SOURCES_BUFFER, SKELETAL_PALETTE_HANDLES_BUFFER,
     SKELETAL_SKIN_HANDLES_BUFFER, SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER,
@@ -348,7 +347,6 @@ fn install_derived_cache() {
     });
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -595,9 +593,7 @@ pub fn portal_projection(
     device: &wgpu::Device,
     input: helio_default_passes::portal_projection::PortalProjectionInput,
 ) -> Box<helio_default_passes::portal_projection::PortalProjection> {
-    Box::new(helio_default_passes::portal_projection::PortalProjection::new(
-        device, input,
-    ))
+    Box::new(helio_default_passes::portal_projection::PortalProjection::new(device, input))
 }
 
 // ── Virtual geometry ────────────────────────────────────────────────────────
@@ -669,5 +665,9 @@ pub fn sync_virtual_geometry(
     let Some(mirror) = scene.world.gpu_mirror() else {
         return;
     };
-    host.sync(&scene.world, mirror, virtual_geometry_runtime_settings(settings));
+    host.sync(
+        &scene.world,
+        mirror,
+        virtual_geometry_runtime_settings(settings),
+    );
 }

@@ -41,7 +41,10 @@ fn a_rigid_frames_static_members_stay_fixed_in_its_space() {
     let ship = object(&mut world, None);
     let wall = object(&mut world, Some(ship));
     with_mesh(&mut world, wall, ObjectMovability::Static);
-    assert!(first_fixed_in_group(&world, ship).is_some(), "an ordinary group moves it");
+    assert!(
+        first_fixed_in_group(&world, ship).is_some(),
+        "an ordinary group moves it"
+    );
 
     make_frame(&mut world, ship).unwrap();
     assert!(
@@ -52,7 +55,10 @@ fn a_rigid_frames_static_members_stay_fixed_in_its_space() {
     let hull = object(&mut world, None);
     with_mesh(&mut world, hull, ObjectMovability::Static);
     make_frame(&mut world, hull).unwrap();
-    assert!(first_fixed_in_group(&world, hull).is_some(), "the frame's own mesh is fixed");
+    assert!(
+        first_fixed_in_group(&world, hull).is_some(),
+        "the frame's own mesh is fixed"
+    );
 }
 
 #[test]

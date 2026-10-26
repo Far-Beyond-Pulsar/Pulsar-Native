@@ -595,10 +595,14 @@ mod interactive_hydration_tests {
         let scene = Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
         {
             let mut store = scene.write();
-            store.world.reload_asset(pulsar_scenedb::AssetId::declare(KIND, "held"));
+            store
+                .world
+                .reload_asset(pulsar_scenedb::AssetId::declare(KIND, "held"));
             store.world.pump_assets();
         }
-        start.recv_timeout(Duration::from_secs(5)).expect("loader starts");
+        start
+            .recv_timeout(Duration::from_secs(5))
+            .expect("loader starts");
 
         let loading_scene = scene.clone();
         let (finished, finish) = mpsc::channel();
@@ -631,8 +635,14 @@ mod interactive_hydration_tests {
             .is_some_and(|store| store.world.asset_work_pending());
         let _ = release.send(());
         worker.join().unwrap();
-        assert!(returned_before_asset, "finalization waited for an asset worker");
-        assert!(readable_while_loading, "the UI could not read the loading scene");
+        assert!(
+            returned_before_asset,
+            "finalization waited for an asset worker"
+        );
+        assert!(
+            readable_while_loading,
+            "the UI could not read the loading scene"
+        );
     }
 }
 
@@ -679,7 +689,8 @@ mod voxel_example_tests {
         assert_eq!(volumes.len(), 1);
         assert!(
             volumes[0].unbound
-                && volumes[0].settings.tonemap_operator == helio_component::TonemapOperator::AgxPunchy
+                && volumes[0].settings.tonemap_operator
+                    == helio_component::TonemapOperator::AgxPunchy
         );
     }
 }

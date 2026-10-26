@@ -206,7 +206,10 @@ pub fn run_companions(
     };
     let mut outputs = Vec::new();
     let mut assignments = Vec::new();
-    for companion in companions.iter().filter(|c| ids.iter().any(|id| id == c.id())) {
+    for companion in companions
+        .iter()
+        .filter(|c| ids.iter().any(|id| id == c.id()))
+    {
         let written: Vec<CompanionOutput> = match companion.run(&context) {
             Ok(written) => written,
             Err(error) => {
@@ -338,6 +341,9 @@ mod tests {
     #[test]
     fn metallic_roughness_is_not_mistaken_for_a_plain_role() {
         let (prefix, role) = role_of("Rock_MetallicRoughness").unwrap();
-        assert_eq!((prefix.as_str(), role), ("rock", SourceImageRole::MetallicRoughness));
+        assert_eq!(
+            (prefix.as_str(), role),
+            ("rock", SourceImageRole::MetallicRoughness)
+        );
     }
 }

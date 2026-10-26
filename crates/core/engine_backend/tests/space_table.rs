@@ -65,9 +65,19 @@ fn frames_and_a_portal_projection_share_one_table_without_overlap() {
         .unwrap();
 
     let matrices = table.matrices();
-    assert_eq!(matrices.len(), 5, "world, two frames, two projection spaces");
-    assert_eq!(matrices[ship_slot as usize].w_axis.x, 10.0, "the ship's slot is untouched");
-    assert_eq!(matrices[room_slot as usize].w_axis.x, 20.0, "the room's slot is untouched");
+    assert_eq!(
+        matrices.len(),
+        5,
+        "world, two frames, two projection spaces"
+    );
+    assert_eq!(
+        matrices[ship_slot as usize].w_axis.x, 10.0,
+        "the ship's slot is untouched"
+    );
+    assert_eq!(
+        matrices[room_slot as usize].w_axis.x, 20.0,
+        "the room's slot is untouched"
+    );
     assert!(
         projection
             .portal_views

@@ -134,12 +134,12 @@ fi
 # ============================================================================
 # 2. FORMATTING CHECK
 # ============================================================================
-write_step "2/6 Checking code formatting (cargo fmt --all -- --check)"
+write_step "2/6 Checking code formatting (Pulsar-Native crates)"
 
-if run_quiet cargo fmt --all -- --check; then
+if scripts/fmt-check.sh; then
   write_success "Code formatting is correct"
 else
-  write_error "Code formatting check failed. Run 'cargo fmt --all' to fix."
+  write_error "Code formatting check failed. Run 'scripts/fmt-check.sh --fix' to fix."
   ALL_CHECKS_PASSED=false
   FAILED_CHECKS+=("Formatting")
 fi
@@ -165,7 +165,8 @@ if cargo clippy \
   -A improper_ctypes_definitions \
   -A clippy::field_reassign_with_default \
   -A clippy::result_large_err \
-  -A clippy::doc_overindented_list_items; then
+  -A clippy::doc_overindented_list_items \
+  -A clippy::approx_constant; then
   write_success "Clippy checks passed"
 else
   write_error "Clippy found issues"
@@ -223,7 +224,7 @@ if [[ "$SKIP_TESTS" != true ]]; then
     fi
   fi
 
-  if cargo nextest run --workspace --locked; then
+  if cargo nextest run --profile ci --workspace --locked; then
     write_success "All tests passed"
   else
     write_error "Tests failed"

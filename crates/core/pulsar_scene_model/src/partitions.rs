@@ -48,9 +48,10 @@ pub fn assign_space(world: &mut World, root: Entity, space: u32) {
             if space == 0 {
                 props.props.remove(CONTENT_SPACE_PROP);
             } else {
-                props
-                    .props
-                    .insert(CONTENT_SPACE_PROP.to_string(), serde_json::Value::from(space));
+                props.props.insert(
+                    CONTENT_SPACE_PROP.to_string(),
+                    serde_json::Value::from(space),
+                );
             }
         }
     }
@@ -96,7 +97,10 @@ pub fn space_roots(world: &World, space: u32) -> Vec<Entity> {
 
 /// The content spaces present, in order (the default level, 0, is not listed).
 pub fn spaces_present(world: &World) -> BTreeSet<u32> {
-    world.query::<&ContentSpace>().map(|(_, tag)| tag.0).collect()
+    world
+        .query::<&ContentSpace>()
+        .map(|(_, tag)| tag.0)
+        .collect()
 }
 
 /// Unload a space: despawn every object of it (with its component instances).

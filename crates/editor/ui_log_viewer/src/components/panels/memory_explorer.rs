@@ -13,8 +13,8 @@
 //! The GPU and Process views work without it.
 
 use crate::utils::gpu_alloc_report::{self, GpuReport};
-use crate::utils::memory_report;
 use crate::utils::large_allocs::{self, LargeSnapshot};
+use crate::utils::memory_report;
 use crate::utils::process_memory::{self, ProcessMemory, RegionKind};
 use crate::utils::tracking_allocator::{disable_tracking, enable_tracking, is_tracking_active};
 use gpui::*;
@@ -61,18 +61,17 @@ impl MemoryExplorerPanel {
         let data = Arc::new(RwLock::new(Data::default()));
         let refresh = cx.spawn(async move |this, cx| loop {
             smol::Timer::after(Duration::from_secs(1)).await;
-            let state = cx
-                .update(|cx| {
-                    this.upgrade().map(|this| {
-                        this.update(cx, |panel, _| {
-                            (
-                                panel.view,
-                                panel.data.clone(),
-                                panel.last_render.elapsed() < Duration::from_secs(3),
-                            )
-                        })
+            let state = cx.update(|cx| {
+                this.upgrade().map(|this| {
+                    this.update(cx, |panel, _| {
+                        (
+                            panel.view,
+                            panel.data.clone(),
+                            panel.last_render.elapsed() < Duration::from_secs(3),
+                        )
                     })
-                });
+                })
+            });
             let Some((view, data, visible)) = state else {
                 break;
             };
@@ -226,12 +225,18 @@ impl Render for MemoryExplorerPanel {
             .bg(theme.sidebar)
             .border_b_1()
             .border_color(theme.border)
-            .child(self.chip("view-heap", "Heap", self.view == View::Heap, cx, |this, cx| {
-                this.set_view(View::Heap, cx)
-            }))
-            .child(self.chip("view-gpu", "GPU", self.view == View::Gpu, cx, |this, cx| {
-                this.set_view(View::Gpu, cx)
-            }))
+            .child(self.chip(
+                "view-heap",
+                "Heap",
+                self.view == View::Heap,
+                cx,
+                |this, cx| this.set_view(View::Heap, cx),
+            ))
+            .child(
+                self.chip("view-gpu", "GPU", self.view == View::Gpu, cx, |this, cx| {
+                    this.set_view(View::Gpu, cx)
+                }),
+            )
             .child(self.chip(
                 "view-process",
                 "Process",
@@ -404,7 +409,11 @@ impl MemoryExplorerPanel {
                 format!("{} / {}", snapshot.total_allocs, snapshot.total_frees),
                 cx,
             ))
-            .child(self.stat("Threshold", fmt_bytes(snapshot.threshold.max(large_allocs::threshold()) as u64), cx))
+            .child(self.stat(
+                "Threshold",
+                fmt_bytes(snapshot.threshold.max(large_allocs::threshold()) as u64),
+                cx,
+            ))
             .child({
                 // SceneDB's budgeted cache of rebuildable data (decoded
                 // images): resident bytes stay within the budget, and
@@ -550,7 +559,16 @@ impl MemoryExplorerPanel {
         v_flex()
             .child(summary)
             .children(hint)
-            .child(header_row(&theme, &["Call site (attributed frame)", "Count", "Largest", "Live", "Oldest"]))
+            .child(header_row(
+                &theme,
+                &[
+                    "Call site (attributed frame)",
+                    "Count",
+                    "Largest",
+                    "Live",
+                    "Oldest",
+                ],
+            ))
             .children(rows)
             .children(empty)
             .into_any_element()
@@ -587,7 +605,10 @@ impl MemoryExplorerPanel {
                             .child(self.stat("Reserved", fmt_bytes(device.reserved), cx))
                             .child(self.stat("Blocks", device.blocks.len().to_string(), cx)),
                     )
-                    .child(header_row(&theme, &["Allocation name", "Count", "Largest", "Total", ""]))
+                    .child(header_row(
+                        &theme,
+                        &["Allocation name", "Count", "Largest", "Total", ""],
+                    ))
                     .children(device.groups.iter().map(|group| {
                         h_flex()
                             .w_full()
@@ -648,7 +669,10 @@ impl MemoryExplorerPanel {
                                 format!("{} / {}", fmt_bytes(block.used), fmt_bytes(block.size)),
                                 theme.muted_foreground,
                             ))
-                            .child(cell(format!("{}×", block.allocations), theme.muted_foreground))
+                            .child(cell(
+                                format!("{}×", block.allocations),
+                                theme.muted_foreground,
+                            ))
                     }))
             }))
             .into_any_element()
@@ -682,7 +706,10 @@ impl MemoryExplorerPanel {
                         cx,
                     )),
             )
-            .child(header_row(&theme, &["Type · protection", "Regions", "", "Size", ""]))
+            .child(header_row(
+                &theme,
+                &["Type · protection", "Regions", "", "Size", ""],
+            ))
             .children(memory.totals.iter().take(24).map(|total| {
                 h_flex()
                     .w_full()
@@ -734,11 +761,14 @@ impl MemoryExplorerPanel {
                                 process_memory::describe_protection(region.protect)
                             )),
                     )
-                    .child(cell(fmt_bytes(region.bytes), if region.kind == RegionKind::Private {
-                        theme.danger
-                    } else {
-                        theme.muted_foreground
-                    }))
+                    .child(cell(
+                        fmt_bytes(region.bytes),
+                        if region.kind == RegionKind::Private {
+                            theme.danger
+                        } else {
+                            theme.muted_foreground
+                        },
+                    ))
             }))
             .into_any_element()
     }

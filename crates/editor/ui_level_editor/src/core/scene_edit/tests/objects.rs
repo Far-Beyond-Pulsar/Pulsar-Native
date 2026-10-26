@@ -149,7 +149,10 @@ fn a_folders_contents_follow_it_without_being_rewritten() {
         None
     ));
     assert_eq!(
-        objects::get_object(world, &item).unwrap().transform.position,
+        objects::get_object(world, &item)
+            .unwrap()
+            .transform
+            .position,
         [1.0, 2.0, 3.0]
     );
     let moved = world_transform_of(world, entity).unwrap().position;
@@ -177,7 +180,10 @@ fn reparenting_to_the_root_keeps_the_world_pose() {
     assert!(objects::reparent_object(world, &item, None));
 
     assert_eq!(
-        objects::get_object(world, &item).unwrap().transform.position[0],
+        objects::get_object(world, &item)
+            .unwrap()
+            .transform
+            .position[0],
         11.0
     );
 }
@@ -195,12 +201,23 @@ fn duplicating_a_folder_duplicates_its_contents_into_the_copy() {
 
     let copy = objects::duplicate_object(world, &folder).expect("duplicated");
 
-    assert_eq!(objects::get_all_objects(world).len(), before * 2, "every object was copied");
+    assert_eq!(
+        objects::get_all_objects(world).len(),
+        before * 2,
+        "every object was copied"
+    );
     let copy_data = objects::get_object(world, &copy).unwrap();
     assert_eq!(copy_data.name, "folder (Copy)");
-    assert_eq!(copy_data.children.len(), 2, "the copy holds copies of both contents");
+    assert_eq!(
+        copy_data.children.len(),
+        2,
+        "the copy holds copies of both contents"
+    );
     // The originals still hold theirs, untouched.
-    assert_eq!(objects::get_object(world, &folder).unwrap().children, [item.clone(), inner.clone()]);
+    assert_eq!(
+        objects::get_object(world, &folder).unwrap().children,
+        [item.clone(), inner.clone()]
+    );
     assert_eq!(objects::get_object(world, &inner).unwrap().children, [deep]);
 
     let mut names = Vec::new();
@@ -209,11 +226,18 @@ fn duplicating_a_folder_duplicates_its_contents_into_the_copy() {
         assert_ne!(*id, item);
         assert_ne!(*id, inner);
         if child.name == "item" {
-            assert_eq!(child.transform.position, [1.0, 2.0, 3.0], "same place in the new folder");
+            assert_eq!(
+                child.transform.position,
+                [1.0, 2.0, 3.0],
+                "same place in the new folder"
+            );
         }
         if child.name == "inner" {
             assert_eq!(child.children.len(), 1, "nested contents are copied too");
-            assert_eq!(objects::get_object(world, &child.children[0]).unwrap().name, "deep");
+            assert_eq!(
+                objects::get_object(world, &child.children[0]).unwrap().name,
+                "deep"
+            );
         }
         names.push(child.name);
     }
@@ -241,7 +265,10 @@ fn the_rigid_frame_prop_makes_a_frame_and_copies_keep_it() {
     let inside = objects::add_folder(world, "inside", Some(ship.clone()));
     let copy = objects::duplicate_object(world, &ship).expect("copy");
     let copy_entity = world.entity_for(&copy).unwrap();
-    let copy_slot = world.get::<SpaceSlot>(copy_entity).expect("the copy is a frame").slot;
+    let copy_slot = world
+        .get::<SpaceSlot>(copy_entity)
+        .expect("the copy is a frame")
+        .slot;
     assert_ne!(slot, copy_slot);
     let _ = inside;
 
@@ -250,5 +277,8 @@ fn the_rigid_frame_prop_makes_a_frame_and_copies_keep_it() {
     data.props.remove(FRAME_PROP);
     assert!(objects::update_object(world, data));
     assert!(world.get::<SpaceSlot>(entity).is_none());
-    assert!(world.get::<SpaceSlot>(copy_entity).is_some(), "the copy is untouched");
+    assert!(
+        world.get::<SpaceSlot>(copy_entity).is_some(),
+        "the copy is untouched"
+    );
 }

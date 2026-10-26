@@ -46,24 +46,25 @@ impl BuiltinEditorProvider for RenderBpsBuiltinProvider {
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
         ensure_profile(Some(&*window));
-        let panel = cx.new(|cx| {
-            match blueprint_editor_plugin::BlueprintEditorPanel::new_with_path(
-                file_path.clone(),
-                window,
-                cx,
-            ) {
-                Ok(panel) => panel,
-                Err(error) => {
-                    tracing::error!("Failed to open render graph {file_path:?}: {error}");
-                    blueprint_editor_plugin::BlueprintEditorPanel::new_with_load_error(
-                        file_path.clone(),
-                        error.to_string(),
-                        window,
-                        cx,
-                    )
+        let panel =
+            cx.new(|cx| {
+                match blueprint_editor_plugin::BlueprintEditorPanel::new_with_path(
+                    file_path.clone(),
+                    window,
+                    cx,
+                ) {
+                    Ok(panel) => panel,
+                    Err(error) => {
+                        tracing::error!("Failed to open render graph {file_path:?}: {error}");
+                        blueprint_editor_plugin::BlueprintEditorPanel::new_with_load_error(
+                            file_path.clone(),
+                            error.to_string(),
+                            window,
+                            cx,
+                        )
+                    }
                 }
-            }
-        });
+            });
         if let Some(project_root) = editor_context.project_root.clone() {
             panel.update(cx, |panel, _cx| {
                 panel.project_root = Some(project_root);

@@ -892,7 +892,10 @@ fn a_normal_map_graph_compiles_with_its_helper_and_feeds_the_normal_pin() {
     assert_eq!(source.matches("fn pn_normal_map").count(), 1, "{source}");
     assert!(source.contains("pn_normal_map("), "{source}");
     let uses = material_graph::texture_uses(&graph);
-    assert_eq!(uses["test.png"], helio_component::cooked_texture::TextureUse::Normal);
+    assert_eq!(
+        uses["test.png"],
+        helio_component::cooked_texture::TextureUse::Normal
+    );
 }
 
 #[test]
@@ -904,11 +907,17 @@ fn a_normal_map_renders_unit_world_space_normals_on_the_gpu() {
     for column in 0..4 {
         let [x, y, z, _] = pixels[8 + column];
         let length = (x * x + y * y + z * z).sqrt();
-        assert!(length.is_finite() && (length - 1.0).abs() < 0.01, "column {column}: {x} {y} {z}");
+        assert!(
+            length.is_finite() && (length - 1.0).abs() < 0.01,
+            "column {column}: {x} {y} {z}"
+        );
     }
     let left = pixels[8];
     assert!(
-        (left[0] - geometric[0]).abs() + (left[1] - geometric[1]).abs() + (left[2] - geometric[2]).abs() > 0.1,
+        (left[0] - geometric[0]).abs()
+            + (left[1] - geometric[1]).abs()
+            + (left[2] - geometric[2]).abs()
+            > 0.1,
         "a non-flat texel must bend the normal away from the geometric one: {left:?}"
     );
 }

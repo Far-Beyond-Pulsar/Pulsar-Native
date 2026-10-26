@@ -31,12 +31,18 @@ fn a_handle_taken_before_registration_sees_later_changes() {
     let path = std::path::Path::new("scene/player.skeleton");
     assert_eq!(lookup.load().file_type_for_path(path), None);
 
-    registry.register(definition("skeleton", "skeleton", FileStructure::Standalone), plugin());
+    registry.register(
+        definition("skeleton", "skeleton", FileStructure::Standalone),
+        plugin(),
+    );
     assert_eq!(
         lookup.load().file_type_for_path(path),
         Some(FileTypeId::new("skeleton"))
     );
-    assert_eq!(registry.get_file_type_for_path(path), Some(FileTypeId::new("skeleton")));
+    assert_eq!(
+        registry.get_file_type_for_path(path),
+        Some(FileTypeId::new("skeleton"))
+    );
 
     registry.unregister_by_plugin(&plugin());
     assert_eq!(lookup.load().file_type_for_path(path), None);
@@ -45,7 +51,10 @@ fn a_handle_taken_before_registration_sees_later_changes() {
 #[test]
 fn compound_extensions_resolve() {
     let mut registry = FileTypeRegistry::new();
-    registry.register(definition("struct", "struct.json", FileStructure::Standalone), plugin());
+    registry.register(
+        definition("struct", "struct.json", FileStructure::Standalone),
+        plugin(),
+    );
     assert_eq!(
         registry.get_file_type_for_path(std::path::Path::new("a/b/Player.struct.json")),
         Some(FileTypeId::new("struct"))
@@ -70,13 +79,19 @@ fn folder_based_types_resolve_by_extension_and_by_marker() {
 
     let by_extension = dir.path().join("Enemy.class");
     std::fs::create_dir(&by_extension).unwrap();
-    assert_eq!(registry.get_file_type_for_path(&by_extension), Some(FileTypeId::new("class")));
+    assert_eq!(
+        registry.get_file_type_for_path(&by_extension),
+        Some(FileTypeId::new("class"))
+    );
 
     let by_marker = dir.path().join("Plain");
     std::fs::create_dir(&by_marker).unwrap();
     assert_eq!(registry.get_file_type_for_path(&by_marker), None);
     std::fs::write(by_marker.join("graph_save.json"), "{}").unwrap();
-    assert_eq!(registry.get_file_type_for_path(&by_marker), Some(FileTypeId::new("class")));
+    assert_eq!(
+        registry.get_file_type_for_path(&by_marker),
+        Some(FileTypeId::new("class"))
+    );
 }
 
 /// The reason the lookup exists: reading it must work while the same thread
@@ -85,14 +100,19 @@ fn folder_based_types_resolve_by_extension_and_by_marker() {
 #[test]
 fn reading_the_lookup_never_waits_on_the_registry_lock() {
     let mut registry = FileTypeRegistry::new();
-    registry.register(definition("skeleton", "skeleton", FileStructure::Standalone), plugin());
+    registry.register(
+        definition("skeleton", "skeleton", FileStructure::Standalone),
+        plugin(),
+    );
     let lookup = registry.lookup_handle();
     let guarded = parking_lot::RwLock::new(registry);
 
     let (done, finished) = mpsc::channel();
     std::thread::spawn(move || {
         let _write = guarded.write();
-        let found = lookup.load().file_type_for_path(std::path::Path::new("x.skeleton"));
+        let found = lookup
+            .load()
+            .file_type_for_path(std::path::Path::new("x.skeleton"));
         done.send(found).unwrap();
     });
     let found = finished

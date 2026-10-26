@@ -34,7 +34,12 @@ pub(crate) fn load_layout() -> GitLayout {
     let stored = settings_path()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-        .and_then(|value| value.get("layout").and_then(|v| v.as_str()).map(str::to_string));
+        .and_then(|value| {
+            value
+                .get("layout")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        });
     match stored.as_deref() {
         Some("desktop") => GitLayout::Desktop,
         _ => GitLayout::Tree,
@@ -299,7 +304,8 @@ impl GitManager {
                         }
                         Err(error) => {
                             gm.commits_exhausted = true;
-                            gm.op_error = Some(format!("Could not load history: {}", error.message()));
+                            gm.op_error =
+                                Some(format!("Could not load history: {}", error.message()));
                         }
                     }
                     cx.notify();
@@ -339,7 +345,12 @@ impl GitManager {
                     commit.author,
                     commit.email,
                     commit.hash,
-                    commit.refs.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(" ")
+                    commit
+                        .refs
+                        .iter()
+                        .map(|r| r.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
                 )
                 .to_lowercase();
                 words.iter().all(|word| haystack.contains(word))
@@ -467,7 +478,11 @@ impl GitManager {
             if files.is_empty() {
                 continue;
             }
-            let section_key = if is_staged { "section:staged" } else { "section:changes" };
+            let section_key = if is_staged {
+                "section:staged"
+            } else {
+                "section:changes"
+            };
             let collapsed = self.collapsed_changes.contains(section_key);
             rows.push(ChangeRow::Section {
                 staged: is_staged,
@@ -513,7 +528,10 @@ impl GitManager {
 
         // Sidebar: local / remote sections as a tree of `feature/…` folders.
         let mut rows = Vec::new();
-        for (remote, title, key) in [(false, "Local", "branches:local"), (true, "Remote", "branches:remote")] {
+        for (remote, title, key) in [
+            (false, "Local", "branches:local"),
+            (true, "Remote", "branches:remote"),
+        ] {
             let items: Vec<(String, Branch)> = branches
                 .iter()
                 .filter(|b| b.is_remote == remote && !b.name.ends_with("/HEAD"))
@@ -547,7 +565,12 @@ impl GitManager {
                         collapsed,
                     },
                     TreeItem::Leaf { item, depth } => BranchRow::Branch {
-                        label: item.name.rsplit('/').next().unwrap_or(&item.name).to_string(),
+                        label: item
+                            .name
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(&item.name)
+                            .to_string(),
                         branch: item,
                         depth,
                     },
@@ -564,7 +587,10 @@ impl GitManager {
         if !typed.is_empty() && !exists && self.repo_state.has_commits {
             menu.push(BranchRow::Create { name: typed });
         }
-        for (remote, title, key) in [(false, "Local", "menu:local"), (true, "Remote", "menu:remote")] {
+        for (remote, title, key) in [
+            (false, "Local", "menu:local"),
+            (true, "Remote", "menu:remote"),
+        ] {
             let mut matching: Vec<&Branch> = branches
                 .iter()
                 .filter(|b| b.is_remote == remote && !b.name.ends_with("/HEAD"))
@@ -671,7 +697,12 @@ impl GitManager {
     // ── Selection and diffs ──────────────────────────────────────────────
 
     /// Show the diff of a working-tree file.
-    pub(crate) fn select_working_file(&mut self, change: &FileChange, staged: bool, cx: &mut Context<Self>) {
+    pub(crate) fn select_working_file(
+        &mut self,
+        change: &FileChange,
+        staged: bool,
+        cx: &mut Context<Self>,
+    ) {
         self.detail_focus = DetailFocus::Working;
         let target = if staged {
             DiffTarget::Staged {
@@ -824,7 +855,10 @@ impl GitManager {
         };
         let make_unstaged = || DiffTarget::Unstaged { path: path.clone() };
         let next = if was_staged {
-            staged.clone().map(make_staged).or_else(|| unstaged.then(make_unstaged))
+            staged
+                .clone()
+                .map(make_staged)
+                .or_else(|| unstaged.then(make_unstaged))
         } else if unstaged {
             Some(make_unstaged())
         } else {
@@ -884,7 +918,11 @@ impl GitManager {
 
     pub(crate) fn discard_file_changes(&mut self, path: &str, cx: &mut Context<Self>) {
         let file_path = path.to_string();
-        self.run_blocking("Discard", move |repo| discard_file_changes(repo, &file_path), cx);
+        self.run_blocking(
+            "Discard",
+            move |repo| discard_file_changes(repo, &file_path),
+            cx,
+        );
     }
 
     pub(crate) fn append_gitignore(&mut self, line: String, cx: &mut Context<Self>) {
@@ -1013,7 +1051,11 @@ impl GitManager {
     pub(crate) fn create_branch(&mut self, name: String, cx: &mut Context<Self>) {
         self.branch_menu_open = false;
         cx.notify();
-        self.run_blocking("Create branch", move |repo| history::create_branch(repo, &name), cx);
+        self.run_blocking(
+            "Create branch",
+            move |repo| history::create_branch(repo, &name),
+            cx,
+        );
     }
 
     // ── Remote operations ────────────────────────────────────────────────
@@ -1086,11 +1128,13 @@ impl GitManager {
                                 gm.pending_auth = Some(PendingAuth { op, context });
                                 gm.op_error = Some("Authentication required".to_string());
                             } else {
-                                gm.op_error = Some(format!("{} failed: {}", op.label(), error.message()));
+                                gm.op_error =
+                                    Some(format!("{} failed: {}", op.label(), error.message()));
                             }
                         }
                         Err(error) => {
-                            gm.op_error = Some(format!("{} failed: {}", op.label(), error.message()));
+                            gm.op_error =
+                                Some(format!("{} failed: {}", op.label(), error.message()));
                         }
                     }
                     gm.refresh(true, cx);

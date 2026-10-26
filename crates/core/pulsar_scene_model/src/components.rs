@@ -87,7 +87,12 @@ fn transform_row_dispatch(
     // SAFETY: SceneDB reaches this only through `Transform`'s own
     // `ComponentId`, with a pointer to a live `Transform`.
     let transform = unsafe { &*(data as *const Transform) };
-    pulsar_scenedb::gpu::write_derived_row(mirror, row, &TransformRow::from(transform), is_new_insert);
+    pulsar_scenedb::gpu::write_derived_row(
+        mirror,
+        row,
+        &TransformRow::from(transform),
+        is_new_insert,
+    );
 }
 
 fn transform_row_clear(mirror: &pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {

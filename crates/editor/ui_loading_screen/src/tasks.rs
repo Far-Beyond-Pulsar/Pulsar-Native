@@ -381,7 +381,6 @@ fn task_warm_open_tabs(project: &Path) -> TaskResult {
         *slot = absolute.clone();
     }
 
-
     let bytes: usize = std::thread::scope(|scope| {
         let workers: Vec<_> = absolute
             .iter()
@@ -429,7 +428,8 @@ fn warm_path(path: &Path, depth: usize) -> usize {
 
 /// The files the last session's open tabs refer to, absolute. Filled by
 /// [`task_warm_open_tabs`], read by [`task_preload_plugin_assets`].
-static OPEN_TAB_FILES: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+static OPEN_TAB_FILES: std::sync::Mutex<Vec<std::path::PathBuf>> =
+    std::sync::Mutex::new(Vec::new());
 
 /// Let every plugin preload what its editors will need for the open tabs
 /// (`EditorPlugin::preload`). Waits for the UI thread to install the plugins.

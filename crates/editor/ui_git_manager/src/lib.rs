@@ -388,7 +388,11 @@ impl GitManager {
 
         let commit_filter_input = cx.new(|cx| {
             let mut input = InputState::new(window, cx);
-            input.set_placeholder("Filter commits by message, author, hash or branch", window, cx);
+            input.set_placeholder(
+                "Filter commits by message, author, hash or branch",
+                window,
+                cx,
+            );
             input
         });
         cx.subscribe(
@@ -503,8 +507,12 @@ impl Render for GitManager {
 
         let body: AnyElement = match self.phase.clone() {
             RepoPhase::Loading => views::render_loading(cx).into_any_element(),
-            RepoPhase::NotARepository => views::render_not_a_repository(self, cx).into_any_element(),
-            RepoPhase::Failed(message) => views::render_failed(self, message, cx).into_any_element(),
+            RepoPhase::NotARepository => {
+                views::render_not_a_repository(self, cx).into_any_element()
+            }
+            RepoPhase::Failed(message) => {
+                views::render_failed(self, message, cx).into_any_element()
+            }
             RepoPhase::Ready => match self.layout {
                 GitLayout::Tree => views::render_tree_layout(self, cx).into_any_element(),
                 GitLayout::Desktop => views::render_desktop_layout(self, cx).into_any_element(),

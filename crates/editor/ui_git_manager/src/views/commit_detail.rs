@@ -1,15 +1,15 @@
 //! Selected-commit detail: message header, changed files and the diff.
 
-use super::common::{FONT_MONO, avatar, commit_file_menu, placeholder, relative_time, status_color, virtual_panel};
+use super::common::{
+    FONT_MONO, avatar, commit_file_menu, placeholder, relative_time, status_color, virtual_panel,
+};
 use super::diff::render_diff_panel;
 use crate::history::DiffTarget;
 use crate::tree::TreeItem;
 use crate::{GitLayout, GitManager};
 use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
-    ActiveTheme as _, Icon, IconName,
-    menu::context_menu::ContextMenuExt as _,
-    h_flex, v_flex,
+    ActiveTheme as _, Icon, IconName, h_flex, menu::context_menu::ContextMenuExt as _, v_flex,
 };
 
 const ROW_HEIGHT: f32 = 26.0;
@@ -23,8 +23,12 @@ pub(crate) fn render_commit_detail(
     let border = cx.theme().border;
 
     if gm.selected_commit.is_none() {
-        return placeholder(IconName::GitCommit, "Select a commit to see what it changed", cx)
-            .into_any_element();
+        return placeholder(
+            IconName::GitCommit,
+            "Select a commit to see what it changed",
+            cx,
+        )
+        .into_any_element();
     }
     if let Some(error) = gm.commit_detail_error.clone() {
         return placeholder(IconName::CircleX, error, cx).into_any_element();
@@ -66,8 +70,12 @@ fn render_header(gm: &mut GitManager, cx: &mut Context<GitManager>) -> AnyElemen
     let image = gm.avatar_cache.get(&detail.email).and_then(|v| v.clone());
 
     let theme = cx.theme();
-    let (border, foreground, muted_fg, primary) =
-        (theme.border, theme.foreground, theme.muted_foreground, theme.primary);
+    let (border, foreground, muted_fg, primary) = (
+        theme.border,
+        theme.foreground,
+        theme.muted_foreground,
+        theme.primary,
+    );
 
     let mut lines = detail.message.lines();
     let summary = lines.next().unwrap_or("").to_string();
@@ -165,8 +173,12 @@ fn render_files(gm: &mut GitManager, cx: &mut Context<GitManager>) -> AnyElement
         })
         .unwrap_or_default();
     let theme = cx.theme();
-    let (border, muted_fg, success, danger) =
-        (theme.border, theme.muted_foreground, theme.success, theme.danger);
+    let (border, muted_fg, success, danger) = (
+        theme.border,
+        theme.muted_foreground,
+        theme.success,
+        theme.danger,
+    );
 
     let summary = h_flex()
         .h(px(28.))
@@ -182,10 +194,24 @@ fn render_files(gm: &mut GitManager, cx: &mut Context<GitManager>) -> AnyElement
                 .text_xs()
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(muted_fg)
-                .child(format!("{} file{} changed", count, if count == 1 { "" } else { "s" })),
+                .child(format!(
+                    "{} file{} changed",
+                    count,
+                    if count == 1 { "" } else { "s" }
+                )),
         )
-        .child(div().text_size(px(10.)).text_color(success).child(format!("+{}", added)))
-        .child(div().text_size(px(10.)).text_color(danger).child(format!("-{}", removed)));
+        .child(
+            div()
+                .text_size(px(10.))
+                .text_color(success)
+                .child(format!("+{}", added)),
+        )
+        .child(
+            div()
+                .text_size(px(10.))
+                .text_color(danger)
+                .child(format!("-{}", removed)),
+        );
 
     let body: AnyElement = if gm.commit_file_rows.is_empty() {
         placeholder(IconName::Check, "No file changes", cx).into_any_element()
@@ -204,7 +230,11 @@ fn render_files(gm: &mut GitManager, cx: &mut Context<GitManager>) -> AnyElement
         virtual_panel(list, &gm.commit_files_list).into_any_element()
     };
 
-    v_flex().size_full().child(summary).child(body).into_any_element()
+    v_flex()
+        .size_full()
+        .child(summary)
+        .child(body)
+        .into_any_element()
 }
 
 fn render_file_row(
@@ -251,20 +281,32 @@ fn render_file_row(
                     }),
                 )
                 .child(
-                    Icon::new(if collapsed { IconName::ChevronRight } else { IconName::ChevronDown })
-                        .size(px(12.))
-                        .text_color(muted_fg),
+                    Icon::new(if collapsed {
+                        IconName::ChevronRight
+                    } else {
+                        IconName::ChevronDown
+                    })
+                    .size(px(12.))
+                    .text_color(muted_fg),
                 )
                 .child(
-                    Icon::new(if collapsed { IconName::Folder } else { IconName::FolderOpen })
-                        .size(px(13.))
-                        .text_color(muted_fg),
+                    Icon::new(if collapsed {
+                        IconName::Folder
+                    } else {
+                        IconName::FolderOpen
+                    })
+                    .size(px(13.))
+                    .text_color(muted_fg),
                 )
                 .child(div().text_xs().text_color(foreground).child(name))
                 .into_any_element()
         }
-        TreeItem::Leaf { item: change, depth } => {
-            let selected = matches!(&gm.target, Some(DiffTarget::Commit { path, .. }) if *path == change.path);
+        TreeItem::Leaf {
+            item: change,
+            depth,
+        } => {
+            let selected =
+                matches!(&gm.target, Some(DiffTarget::Commit { path, .. }) if *path == change.path);
             let status_fg = status_color(change.status, cx);
             let for_select = change.clone();
             let menu_path = change.path.clone();
@@ -273,13 +315,19 @@ fn render_file_row(
                 .id(SharedString::from(format!("commit-file-{}", change.path)))
                 .w_full()
                 .h(px(ROW_HEIGHT))
-                .pl(px(6.0 + INDENT * depth as f32 + if tree { 16.0 } else { 0.0 }))
+                .pl(px(6.0
+                    + INDENT * depth as f32
+                    + if tree { 16.0 } else { 0.0 }))
                 .pr_2()
                 .gap_1p5()
                 .items_center()
                 .rounded(radius)
                 .cursor_pointer()
-                .bg(if selected { list_active } else { transparent_black() })
+                .bg(if selected {
+                    list_active
+                } else {
+                    transparent_black()
+                })
                 .hover(move |s| s.bg(if selected { list_active } else { list_hover }))
                 .when(selected, |this| this.border_l_2().border_color(accent))
                 .on_mouse_down(

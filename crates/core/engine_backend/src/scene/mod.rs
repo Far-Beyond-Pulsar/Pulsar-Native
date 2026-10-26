@@ -43,10 +43,10 @@ mod authored_lod;
 // and Helio's scene join over the authored rows.
 pub mod helio_bridge;
 #[cfg(feature = "render")]
-pub mod sublevels;
-#[cfg(feature = "render")]
 pub mod portals;
 pub mod sublevel_display;
+#[cfg(feature = "render")]
+pub mod sublevels;
 
 #[cfg(feature = "render")]
 pub use authored_lod::{
@@ -78,10 +78,10 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }
 pub use pulsar_scene_model::{
-    attachments, components, frames, hierarchy_transform, instance, level_instances, partitions, world_ext, ComponentAttachments, ComponentInstance,
-    EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps,
-    SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId, Transform,
-    Visibility,
+    attachments, components, frames, hierarchy_transform, instance, level_instances, partitions,
+    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, LightType, MeshType, Name,
+    ObjectId, ObjectType, Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex,
+    SpawnObject, StableId, Transform, Visibility,
 };
 pub use render_resources::{
     insert_render_resources, MaterialComponent, MaterialResource, MaterialTextureResource,

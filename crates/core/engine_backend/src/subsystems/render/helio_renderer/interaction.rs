@@ -315,9 +315,7 @@ impl SceneInteraction {
         };
         let plane_start = ray_plane_intersection(o, d, pivot, plane_normal).unwrap_or(pivot);
         let axis_start = match handle {
-            Handle::Axis(_) => {
-                axis_param(o, d, pivot, axis, self.view.forward).unwrap_or(0.0)
-            }
+            Handle::Axis(_) => axis_param(o, d, pivot, axis, self.view.forward).unwrap_or(0.0),
             _ => 0.0,
         };
         let previous_angle = if let Handle::Axis(i) = handle {
@@ -657,35 +655,15 @@ impl SceneInteraction {
                         let inner_b = pivot + (radial(b) * 0.81 + axis_vector * 0.008) * length;
                         let outer_a = pivot + (radial(a) * 0.89 + axis_vector * 0.008) * length;
                         let outer_b = pivot + (radial(b) * 0.89 + axis_vector * 0.008) * length;
-                        batch.tri(
-                            vertex(inner_a),
-                            vertex(inner_b),
-                            vertex(outer_b),
-                            color,
-                        );
-                        batch.tri(
-                            vertex(inner_a),
-                            vertex(outer_b),
-                            vertex(outer_a),
-                            color,
-                        );
+                        batch.tri(vertex(inner_a), vertex(inner_b), vertex(outer_b), color);
+                        batch.tri(vertex(inner_a), vertex(outer_b), vertex(outer_a), color);
 
                         let inner_a = pivot + (radial(a) * 0.81 - axis_vector * 0.008) * length;
                         let inner_b = pivot + (radial(b) * 0.81 - axis_vector * 0.008) * length;
                         let outer_a = pivot + (radial(a) * 0.89 - axis_vector * 0.008) * length;
                         let outer_b = pivot + (radial(b) * 0.89 - axis_vector * 0.008) * length;
-                        batch.tri(
-                            vertex(inner_a),
-                            vertex(outer_b),
-                            vertex(inner_b),
-                            color,
-                        );
-                        batch.tri(
-                            vertex(inner_a),
-                            vertex(outer_a),
-                            vertex(outer_b),
-                            color,
-                        );
+                        batch.tri(vertex(inner_a), vertex(outer_b), vertex(inner_b), color);
+                        batch.tri(vertex(inner_a), vertex(outer_a), vertex(outer_b), color);
                     }
                 }
             }
@@ -999,7 +977,10 @@ mod tests {
             "the contents are not rewritten"
         );
         let world_x = world_transform_of(&world, inside).unwrap().position[0];
-        assert!((world_x - moved).abs() < 1e-4, "contents follow: {world_x} vs {moved}");
+        assert!(
+            (world_x - moved).abs() < 1e-4,
+            "contents follow: {world_x} vs {moved}"
+        );
         assert_eq!(world.get::<Transform>(outside).unwrap().position[0], 0.0);
     }
 
@@ -1025,7 +1006,10 @@ mod tests {
 
         let after = world_transform_of(&world, child).unwrap();
         let local = world.get::<Transform>(child).unwrap().position[0];
-        assert!(after.position[0] > 0.0, "the child moved right in the world");
+        assert!(
+            after.position[0] > 0.0,
+            "the child moved right in the world"
+        );
         assert!(
             (local - (after.position[0] - 4.0)).abs() < 1e-3,
             "stored relative to the folder at x = 4: local {local}, world {}",

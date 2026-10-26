@@ -4,9 +4,7 @@ use super::chrome::TOP_BAR_HEIGHT;
 use super::common::{pill, placeholder, virtual_panel};
 use crate::{BranchRow, GitManager, ListState};
 use gpui::{prelude::FluentBuilder as _, *};
-use ui::{
-    ActiveTheme as _, Icon, IconName, input::TextInput, h_flex, v_flex,
-};
+use ui::{ActiveTheme as _, Icon, IconName, h_flex, input::TextInput, v_flex};
 
 const ROW_HEIGHT: f32 = 26.0;
 const INDENT: f32 = 12.0;
@@ -56,8 +54,12 @@ pub(crate) fn render_branch_menu(
     cx: &mut Context<GitManager>,
 ) -> impl IntoElement + use<> {
     let theme = cx.theme();
-    let (background, border, muted_fg, radius) =
-        (theme.background, theme.border, theme.muted_foreground, theme.radius);
+    let (background, border, muted_fg, radius) = (
+        theme.background,
+        theme.border,
+        theme.muted_foreground,
+        theme.radius,
+    );
 
     let body: AnyElement = if gm.menu_rows.is_empty() {
         div()
@@ -189,14 +191,22 @@ fn render_row(row: BranchRow, cx: &mut Context<GitManager>) -> AnyElement {
                     }),
                 )
                 .child(
-                    Icon::new(if collapsed { IconName::ChevronRight } else { IconName::ChevronDown })
-                        .size(px(12.))
-                        .text_color(muted_fg),
+                    Icon::new(if collapsed {
+                        IconName::ChevronRight
+                    } else {
+                        IconName::ChevronDown
+                    })
+                    .size(px(12.))
+                    .text_color(muted_fg),
                 )
                 .child(
-                    Icon::new(if collapsed { IconName::Folder } else { IconName::FolderOpen })
-                        .size(px(13.))
-                        .text_color(muted_fg),
+                    Icon::new(if collapsed {
+                        IconName::Folder
+                    } else {
+                        IconName::FolderOpen
+                    })
+                    .size(px(13.))
+                    .text_color(muted_fg),
                 )
                 .child(div().text_xs().text_color(foreground).child(name))
                 .into_any_element()
@@ -209,7 +219,10 @@ fn render_row(row: BranchRow, cx: &mut Context<GitManager>) -> AnyElement {
             let target = branch.name.clone();
             let current = branch.is_current;
             h_flex()
-                .id(SharedString::from(format!("branch-{}-{}", branch.is_remote, branch.name)))
+                .id(SharedString::from(format!(
+                    "branch-{}-{}",
+                    branch.is_remote, branch.name
+                )))
                 .w_full()
                 .h(px(ROW_HEIGHT))
                 .pl(px(8.0 + INDENT * depth as f32 + 16.0))
@@ -217,7 +230,11 @@ fn render_row(row: BranchRow, cx: &mut Context<GitManager>) -> AnyElement {
                 .gap_1p5()
                 .items_center()
                 .cursor_pointer()
-                .bg(if current { list_active } else { transparent_black() })
+                .bg(if current {
+                    list_active
+                } else {
+                    transparent_black()
+                })
                 .hover(move |s| s.bg(if current { list_active } else { list_hover }))
                 .on_mouse_down(
                     MouseButton::Left,
@@ -230,9 +247,13 @@ fn render_row(row: BranchRow, cx: &mut Context<GitManager>) -> AnyElement {
                     }),
                 )
                 .child(
-                    Icon::new(if current { IconName::Check } else { IconName::GitBranch })
-                        .size(px(12.))
-                        .text_color(if current { success } else { muted_fg }),
+                    Icon::new(if current {
+                        IconName::Check
+                    } else {
+                        IconName::GitBranch
+                    })
+                    .size(px(12.))
+                    .text_color(if current { success } else { muted_fg }),
                 )
                 .child(
                     div()
@@ -241,7 +262,11 @@ fn render_row(row: BranchRow, cx: &mut Context<GitManager>) -> AnyElement {
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_xs()
-                        .font_weight(if current { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                        .font_weight(if current {
+                            FontWeight::SEMIBOLD
+                        } else {
+                            FontWeight::NORMAL
+                        })
                         .text_color(foreground)
                         .child(label),
                 )

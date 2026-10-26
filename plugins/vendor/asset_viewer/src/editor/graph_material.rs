@@ -65,7 +65,7 @@ struct ViewerVertex {
 /// default Radiant template declares): `frame: u32` first, and the shared
 /// graph clock in its last field.
 const GLOBALS_FRAME_OFFSET: u64 = 0;
-const GLOBALS_TIME_OFFSET: u64 = 92;
+const GLOBALS_TIME_OFFSET: u64 = 60;
 /// Room for the whole `Globals` block.
 pub const GLOBALS_SIZE: u64 = 256;
 

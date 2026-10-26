@@ -54,7 +54,9 @@ impl Transform {
     /// Fails if the object is not allowed to move.
     #[world_method(category = "Transform")]
     fn set_position(world: &mut World, entity: Entity, position: Vec3) -> Result<(), String> {
-        write(world, entity, |t| t.position = position.as_dvec3().to_array())
+        write(world, entity, |t| {
+            t.position = position.as_dvec3().to_array()
+        })
     }
 
     /// Move by `delta`. Fails if the object is not allowed to move.

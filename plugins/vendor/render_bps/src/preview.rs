@@ -180,8 +180,9 @@ impl PipelinePreview {
         let engine = self.engine.clone();
         let stop = self.stop.clone();
         let frames = self.frames.clone();
-        let spawned = std::thread::Builder::new().name("Render graph preview".into()).spawn(
-            move || {
+        let spawned = std::thread::Builder::new()
+            .name("Render graph preview".into())
+            .spawn(move || {
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     while !stop.load(Ordering::Acquire) {
                         std::thread::sleep(Duration::from_millis(16));
@@ -204,8 +205,8 @@ impl PipelinePreview {
                         let Some((view, (width, height))) = surface.back_view_with_size() else {
                             continue;
                         };
-                        let submission =
-                            engine.render_frame_to_surface(device, queue, &view, width, height, format);
+                        let submission = engine
+                            .render_frame_to_surface(device, queue, &view, width, height, format);
                         drop(view);
                         drop(engine);
                         if let Some(index) = submission {
@@ -218,8 +219,7 @@ impl PipelinePreview {
                 if outcome.is_err() {
                     tracing::error!("Render graph preview thread panicked");
                 }
-            },
-        );
+            });
         if let Err(error) = spawned {
             tracing::error!("Render graph preview thread did not start: {error}");
         }
@@ -232,7 +232,9 @@ impl PipelinePreview {
         }
         self.pump_started = true;
         cx.spawn_in(window, async move |this, cx| loop {
-            cx.background_executor().timer(Duration::from_millis(16)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(16))
+                .await;
             let alive = this.update_in(cx, |this, _window, cx| {
                 let published = this.frames.load(Ordering::Acquire);
                 if published != this.last_frame {
@@ -249,8 +251,10 @@ impl PipelinePreview {
 }
 
 fn write_test_scene() -> std::io::Result<PathBuf> {
-    let path = std::env::temp_dir()
-        .join(format!("pulsar_render_preview_{}.level.json", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "pulsar_render_preview_{}.level.json",
+        std::process::id()
+    ));
     std::fs::write(&path, TEST_SCENE)?;
     Ok(path)
 }
@@ -289,7 +293,10 @@ impl Render for PipelinePreview {
         }
 
         let view = match self.surface.clone() {
-            Some(surface) => wgpu_surface(surface).absolute().inset_0().into_any_element(),
+            Some(surface) => wgpu_surface(surface)
+                .absolute()
+                .inset_0()
+                .into_any_element(),
             None => div().into_any_element(),
         };
         let status = self.status.clone().map(|(is_error, text)| {
@@ -380,7 +387,10 @@ pub fn previews_for(file: Option<&std::path::Path>) -> Vec<WeakEntity<PipelinePr
         // The path can be unknown while the workspace is built (a file still
         // loading); then every open preview is as good as any.
         if matching.is_empty() {
-            previews.iter().map(|(_, preview)| preview.clone()).collect()
+            previews
+                .iter()
+                .map(|(_, preview)| preview.clone())
+                .collect()
         } else {
             matching
         }

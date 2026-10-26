@@ -76,7 +76,10 @@ pub fn render(input: &ReportInput) -> String {
         fmt_bytes(process.write_combined)
     );
     let _ = writeln!(out);
-    let _ = writeln!(out, "| type · protection | regions | size |\n|---|---:|---:|");
+    let _ = writeln!(
+        out,
+        "| type · protection | regions | size |\n|---|---:|---:|"
+    );
     for total in process.totals.iter().take(16) {
         let _ = writeln!(
             out,
@@ -91,7 +94,10 @@ pub fn render(input: &ReportInput) -> String {
         let _ = writeln!(out);
         let _ = writeln!(out, "Largest regions:");
         let _ = writeln!(out);
-        let _ = writeln!(out, "| base | kind | protection | size |\n|---|---|---|---:|");
+        let _ = writeln!(
+            out,
+            "| base | kind | protection | size |\n|---|---|---|---:|"
+        );
         for region in process.largest.iter().take(20) {
             let _ = writeln!(
                 out,
@@ -121,7 +127,10 @@ pub fn render(input: &ReportInput) -> String {
             device.blocks.len()
         );
         let _ = writeln!(out);
-        let _ = writeln!(out, "| allocation name | count | largest | total |\n|---|---:|---:|---:|");
+        let _ = writeln!(
+            out,
+            "| allocation name | count | largest | total |\n|---|---:|---:|---:|"
+        );
         for group in device.groups.iter().take(30) {
             let _ = writeln!(
                 out,
@@ -137,7 +146,11 @@ pub fn render(input: &ReportInput) -> String {
 
     // ── Heap ────────────────────────────────────────────────────────────────
     let heap = input.heap;
-    let _ = writeln!(out, "## Heap: live allocations of {} or more", fmt_bytes(heap.threshold as u64));
+    let _ = writeln!(
+        out,
+        "## Heap: live allocations of {} or more",
+        fmt_bytes(heap.threshold as u64)
+    );
     let _ = writeln!(out);
     let _ = writeln!(
         out,
@@ -149,7 +162,10 @@ pub fn render(input: &ReportInput) -> String {
         heap.total_frees
     );
     let _ = writeln!(out);
-    let _ = writeln!(out, "| attributed frame | count | largest | live |\n|---|---:|---:|---:|");
+    let _ = writeln!(
+        out,
+        "| attributed frame | count | largest | live |\n|---|---:|---:|---:|"
+    );
     for group in heap.groups.iter().take(30) {
         let _ = writeln!(
             out,
@@ -210,7 +226,10 @@ pub fn render(input: &ReportInput) -> String {
 
 /// Where reports go: `<project>/.pulsar/profiling/memory`.
 pub fn report_dir(project_root: &Path) -> PathBuf {
-    project_root.join(".pulsar").join("profiling").join("memory")
+    project_root
+        .join(".pulsar")
+        .join("profiling")
+        .join("memory")
 }
 
 /// Write `markdown` as a new report under `project_root`. Returns the path.
@@ -235,7 +254,10 @@ mod tests {
             groups: vec![LargeGroup {
                 key: 1,
                 label: "helio_component::texture_assets::decode_rgba | odd".into(),
-                stack: vec!["alloc::vec::Vec::resize".into(), "helio_component::decode_rgba".into()],
+                stack: vec![
+                    "alloc::vec::Vec::resize".into(),
+                    "helio_component::decode_rgba".into(),
+                ],
                 count: 3,
                 live_bytes: 48 * MB,
                 largest: 16 * MB,
@@ -255,7 +277,12 @@ mod tests {
                 allocated: 100 * MB,
                 reserved: 256 * MB,
                 blocks: vec![],
-                groups: vec![GpuNameGroup { name: "Scene Texture".into(), count: 6, bytes: 96 * MB, largest: 16 * MB }],
+                groups: vec![GpuNameGroup {
+                    name: "Scene Texture".into(),
+                    count: 6,
+                    bytes: 96 * MB,
+                    largest: 16 * MB,
+                }],
             }],
             unsupported: 0,
         };

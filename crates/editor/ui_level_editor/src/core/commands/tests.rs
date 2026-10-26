@@ -836,7 +836,13 @@ mod undo_redo_tests {
 
         // Removing the display removes what it shows.
         assert!(
-            execute_command(&mut state, SceneCommand::RemoveObject { id: display.clone() }).changed
+            execute_command(
+                &mut state,
+                SceneCommand::RemoveObject {
+                    id: display.clone()
+                }
+            )
+            .changed
         );
         assert_eq!(count(&state), 3, "the copy and its level remain");
     }
@@ -877,7 +883,11 @@ mod undo_redo_tests {
         assert_eq!(held, 2);
 
         assert!(state.scene.undo());
-        assert_eq!(count(&state), 3, "one undo removes the copy and its contents");
+        assert_eq!(
+            count(&state),
+            3,
+            "one undo removes the copy and its contents"
+        );
         assert!(state.scene.redo());
         assert_eq!(count(&state), 6);
     }

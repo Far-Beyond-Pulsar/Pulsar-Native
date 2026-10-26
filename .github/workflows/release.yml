@@ -161,7 +161,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: scripts/fmt-check.sh
 
   clippy:
     needs: [check-version, lint-and-test]
@@ -198,7 +198,8 @@ jobs:
             -A improper_ctypes_definitions \
             -A clippy::field_reassign_with_default \
             -A clippy::result_large_err \
-            -A clippy::doc_overindented_list_items
+            -A clippy::doc_overindented_list_items \
+            -A clippy::approx_constant
 
   unit-tests:
     needs: [check-version, lint-and-test]

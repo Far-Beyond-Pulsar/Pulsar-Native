@@ -5,14 +5,14 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
-pub use helio::PortalDebugText;
 use crate::scene::{GizmoType, SceneWorldExt};
+pub use helio::PortalDebugText;
 
+use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 #[cfg(test)]
 use super::scene_renderer::ortho_camera;
-use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
 use super::scene_renderer::{
     ortho_depth_range, DeviceOwner, FrameProjection, FrameView, SceneRenderer,
     SceneRendererOptions, VoxelGround,
@@ -21,7 +21,6 @@ use super::voxel_backend::{
     VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint, UNPICKED_REACH_M,
 };
 type GizmoMode = GizmoType;
-
 
 /// Camera velocity squared below this threshold is considered stopped.
 const CAMERA_IDLE_EPSILON: f32 = 0.001;
@@ -798,7 +797,9 @@ impl HelioRenderer {
     /// The virtual-geometry streaming runtime (readiness, settings), once
     /// the renderer is built.
     pub fn virtual_geometry_runtime(&self) -> Option<&helio_vg_stream::VgRuntime> {
-        self.inner.as_ref().map(|inner| inner.scene.virtual_geometry_runtime())
+        self.inner
+            .as_ref()
+            .map(|inner| inner.scene.virtual_geometry_runtime())
     }
 
     /// Use `settings` instead of the project's `project.virtual_geometry` ones
@@ -1027,9 +1028,8 @@ impl HelioRenderer {
 
         // A different level pipeline is a different pass topology: rebuild.
         // Compared as resolved ids, so an unknown id and the default match.
-        let wanted_pipeline = super::pipelines::resolve_pipeline(
-            self.requested_pipeline.get().as_deref(),
-        );
+        let wanted_pipeline =
+            super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
         if self.inner.is_some() && self.applied_pipeline != wanted_pipeline {
             self.inner = None;
             self.applied_graph_settings = None;
@@ -1089,7 +1089,8 @@ impl HelioRenderer {
                 },
             );
             scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);
-            self.applied_pipeline = super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
+            self.applied_pipeline =
+                super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
 
             if let Ok(mut views) = self.viewport_debug_views.lock() {
                 let r = &scene.renderer;
@@ -1472,7 +1473,10 @@ impl HelioRenderer {
                     helio_component::components::SplineLines::new(&scene_store.world)
                 });
                 if let Some(lines) = spline_lines.poll(&scene_store.world) {
-                    inner.scene.renderer.debug_set_editor_lines("splines", lines);
+                    inner
+                        .scene
+                        .renderer
+                        .debug_set_editor_lines("splines", lines);
                 }
             }
             // Voxel worlds' dependents follow them (edits their ground,
@@ -2573,15 +2577,13 @@ impl HelioRenderer {
         let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, up);
         let eye = self.view_eye();
         if let Some(inner) = &mut self.inner {
-            inner
-                .interaction
-                .set_view(
-                    eye,
-                    forward,
-                    projection * view,
-                    size,
-                    10_000.0f32.max(4.0 * ortho_depth_range(half_height_for_range)),
-                );
+            inner.interaction.set_view(
+                eye,
+                forward,
+                projection * view,
+                size,
+                10_000.0f32.max(4.0 * ortho_depth_range(half_height_for_range)),
+            );
             inner.interaction.set_orthographic(ortho);
         }
     }
@@ -2747,7 +2749,9 @@ mod camera_sync_tests {
     use super::*;
 
     fn renderer() -> HelioRenderer {
-        HelioRenderer::new(Arc::new(parking_lot::RwLock::new(crate::scene::new_scene())))
+        HelioRenderer::new(Arc::new(
+            parking_lot::RwLock::new(crate::scene::new_scene()),
+        ))
     }
 
     fn join(renderer: &mut HelioRenderer, group: &Arc<CameraSync>) {
@@ -2767,13 +2771,20 @@ mod camera_sync_tests {
         top.apply_view_kind();
 
         let state = perspective.editor_camera_state();
-        let group = Arc::new(CameraSync::at(state.focus_point(CAMERA_PIVOT_DISTANCE), CAMERA_PIVOT_DISTANCE));
+        let group = Arc::new(CameraSync::at(
+            state.focus_point(CAMERA_PIVOT_DISTANCE),
+            CAMERA_PIVOT_DISTANCE,
+        ));
         join(&mut perspective, &group);
         join(&mut top, &group);
 
         let ahead = perspective.cam.position
             + perspective.camera_basis().0.as_dvec3() * CAMERA_PIVOT_DISTANCE;
-        assert!(near(top.cam.position, ahead), "{:?} vs {ahead:?}", top.cam.position);
+        assert!(
+            near(top.cam.position, ahead),
+            "{:?} vs {ahead:?}",
+            top.cam.position
+        );
         // The perspective camera itself does not move.
         assert!(near(perspective.sync_anchor(), ahead));
     }
@@ -2798,7 +2809,12 @@ mod camera_sync_tests {
     #[test]
     fn panning_an_orthographic_view_moves_the_perspective_camera() {
         let (mut perspective, mut top) = (renderer(), renderer());
-        let group = Arc::new(CameraSync::at(perspective.editor_camera_state().focus_point(CAMERA_PIVOT_DISTANCE), CAMERA_PIVOT_DISTANCE));
+        let group = Arc::new(CameraSync::at(
+            perspective
+                .editor_camera_state()
+                .focus_point(CAMERA_PIVOT_DISTANCE),
+            CAMERA_PIVOT_DISTANCE,
+        ));
         top.editor_mailbox().set_view_kind(ViewKind::Top);
         top.apply_view_kind();
         join(&mut perspective, &group);
@@ -2808,7 +2824,10 @@ mod camera_sync_tests {
         top.cam.position += DVec3::new(4.0, 0.0, 9.0);
         top.sync_camera();
         assert!(perspective.sync_camera());
-        assert!(near(perspective.cam.position, eye + DVec3::new(4.0, 0.0, 9.0)));
+        assert!(near(
+            perspective.cam.position,
+            eye + DVec3::new(4.0, 0.0, 9.0)
+        ));
         // Still looking the same way, so no ping-pong.
         assert!(!perspective.sync_camera());
         assert!(!top.sync_camera());
@@ -2852,10 +2871,16 @@ mod camera_sync_tests {
 
         top.camera_input.lock().unwrap().zoom_delta = 5.0;
         top.apply_camera_input(0.016);
-        assert!(top.ortho_half_height() < before, "scrolling in shortens the boom");
+        assert!(
+            top.ortho_half_height() < before,
+            "scrolling in shortens the boom"
+        );
         top.camera_input.lock().unwrap().zoom_delta = -50.0;
         top.apply_camera_input(0.016);
-        assert!(top.ortho_half_height() > before, "scrolling out lengthens it");
+        assert!(
+            top.ortho_half_height() > before,
+            "scrolling out lengthens it"
+        );
     }
 }
 
@@ -2864,7 +2889,9 @@ mod pivot_distance_tests {
     use super::*;
 
     fn renderer() -> HelioRenderer {
-        HelioRenderer::new(Arc::new(parking_lot::RwLock::new(crate::scene::new_scene())))
+        HelioRenderer::new(Arc::new(
+            parking_lot::RwLock::new(crate::scene::new_scene()),
+        ))
     }
 
     #[test]

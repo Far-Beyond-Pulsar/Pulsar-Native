@@ -105,7 +105,9 @@ impl RenderCamera {
     pub fn look_at(position: glam::DVec3, target: glam::DVec3, up: glam::Vec3) -> Self {
         Self {
             position,
-            forward: (target - position).as_vec3().normalize_or(glam::Vec3::NEG_Z),
+            forward: (target - position)
+                .as_vec3()
+                .normalize_or(glam::Vec3::NEG_Z),
             up,
             fov_y: std::f32::consts::FRAC_PI_4,
             near: 0.1,
@@ -132,7 +134,11 @@ impl RenderCamera {
 
 impl Default for RenderCamera {
     fn default() -> Self {
-        Self::look_at(glam::DVec3::new(0.0, 2.0, 8.0), glam::DVec3::ZERO, glam::Vec3::Y)
+        Self::look_at(
+            glam::DVec3::new(0.0, 2.0, 8.0),
+            glam::DVec3::ZERO,
+            glam::Vec3::Y,
+        )
     }
 }
 

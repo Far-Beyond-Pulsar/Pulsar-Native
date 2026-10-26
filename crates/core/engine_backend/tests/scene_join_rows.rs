@@ -76,11 +76,7 @@ impl Join {
     }
 
     /// [`Self::run`] in a frame whose world origin is `origin`.
-    fn run_at(
-        &mut self,
-        scene: &mut SceneDb,
-        origin: glam::DVec3,
-    ) -> SceneBufferProjection {
+    fn run_at(&mut self, scene: &mut SceneDb, origin: glam::DVec3) -> SceneBufferProjection {
         scene.step();
         let mirror = scene.world.gpu_mirror().expect("mirror attached").clone();
         let mut inputs = SceneBufferProjection::from_store_all(mirror.store());
@@ -410,12 +406,7 @@ fn every_path_addresses_one_instance_and_a_reused_index_is_a_new_one() {
     );
 }
 
-
-fn mesh_on(
-    scene: &mut SceneDb,
-    parent: Option<Entity>,
-    transform: Transform,
-) -> (Entity, Entity) {
+fn mesh_on(scene: &mut SceneDb, parent: Option<Entity>, transform: Transform) -> (Entity, Entity) {
     let object = scene
         .world
         .spawn_object(
@@ -683,10 +674,14 @@ fn parented_lights_are_offset_by_the_origin_once() {
     let folder = place(&mut scene, "folder", [FAR, 0.0, 0.0]);
     let lamp = scene
         .world
-        .spawn_object(SpawnObject::new("lamp").with_parent(Some(folder)).with_transform(Transform {
-            position: [0.25, 2.0, 0.0],
-            ..Transform::default()
-        }))
+        .spawn_object(
+            SpawnObject::new("lamp")
+                .with_parent(Some(folder))
+                .with_transform(Transform {
+                    position: [0.25, 2.0, 0.0],
+                    ..Transform::default()
+                }),
+        )
         .unwrap();
     let mut light = LightComponent::default();
     light.general.enabled = true;
@@ -694,7 +689,10 @@ fn parented_lights_are_offset_by_the_origin_once() {
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = join_for(&device, &queue);
     let out = join.run_at(&mut scene, glam::DVec3::new(FAR, 0.0, 0.0));
-    assert_eq!(&join.light_row(&out, light).position_range[..3], &[0.25, 2.0, 0.0]);
+    assert_eq!(
+        &join.light_row(&out, light).position_range[..3],
+        &[0.25, 2.0, 0.0]
+    );
     // Its editor icon sits with it, in the frame's space.
     let billboard = join.read::<[f32; 12]>(&out, "billboard_instances")[light.index() as usize];
     assert_eq!(&billboard[..3], &[0.25, 2.0, 0.0]);
@@ -766,9 +764,21 @@ fn hierarchical_scenes_follow_only_what_moved() {
             .unwrap()
             .position[1] = f64::from(step);
         let out = join.run(&mut scene);
-        assert_eq!(position_of(&join, &out, inner), [1.0, step, 0.0], "child, frame {frame}");
-        assert_eq!(position_of(&join, &out, other_inner), [2.0, 0.0, 0.0], "sibling untouched");
-        assert_eq!(position_of(&join, &out, loose), [50.0, 0.0, 0.0], "loose untouched");
+        assert_eq!(
+            position_of(&join, &out, inner),
+            [1.0, step, 0.0],
+            "child, frame {frame}"
+        );
+        assert_eq!(
+            position_of(&join, &out, other_inner),
+            [2.0, 0.0, 0.0],
+            "sibling untouched"
+        );
+        assert_eq!(
+            position_of(&join, &out, loose),
+            [50.0, 0.0, 0.0],
+            "loose untouched"
+        );
         last_moved_generation = moved_generation(&out);
     }
     assert_ne!(
@@ -791,7 +801,11 @@ fn hierarchical_scenes_follow_only_what_moved() {
     )
     .unwrap();
     let out = join.run(&mut scene);
-    assert_eq!(position_of(&join, &out, loose), [50.0, 0.0, 0.0], "same place after reparenting");
+    assert_eq!(
+        position_of(&join, &out, loose),
+        [50.0, 0.0, 0.0],
+        "same place after reparenting"
+    );
     // Now it moves with the folder.
     scene.world.get_mut::<Transform>(folder).unwrap().position = [20.0, 0.0, 0.0];
     let out = join.run(&mut scene);
@@ -801,7 +815,10 @@ fn hierarchical_scenes_follow_only_what_moved() {
 
 fn row_model(join: &Join, out: &SceneBufferProjection, instance: Entity) -> (glam::Mat4, u32) {
     let row = join.mesh_rows(out, instance)[0];
-    (glam::Mat4::from_cols_array_2d(&row.transform), (row.flags >> 8) & 0xFF)
+    (
+        glam::Mat4::from_cols_array_2d(&row.transform),
+        (row.flags >> 8) & 0xFF,
+    )
 }
 
 fn assert_close(got: glam::Mat4, want: glam::Mat4, what: &str) {
@@ -874,7 +891,11 @@ fn frame_members_are_placed_in_their_frame_and_follow_the_table() {
     );
     let (loose_row, loose_space) = row_model(&join, &out, loose_mesh);
     assert_eq!(loose_space, 0, "an unparented object is in the world");
-    assert_close(loose_row, world_matrix_of(&scene.world, loose).unwrap().as_mat4(), "loose");
+    assert_close(
+        loose_row,
+        world_matrix_of(&scene.world, loose).unwrap().as_mat4(),
+        "loose",
+    );
 
     // The ship moves and turns: only the table changes.
     {
@@ -885,7 +906,11 @@ fn frame_members_are_placed_in_their_frame_and_follow_the_table() {
     let out = join.run(&mut scene);
     let (after_row, after_space) = row_model(&join, &out, leaf_mesh);
     assert_eq!(after_space, 2);
-    assert_close(after_row, leaf_row, "a frame moving rewrites none of its members' rows");
+    assert_close(
+        after_row,
+        leaf_row,
+        "a frame moving rewrites none of its members' rows",
+    );
     let table = frame_table(&scene.world, glam::DVec3::ZERO);
     assert_close(
         table[after_space as usize] * after_row,
@@ -935,8 +960,16 @@ fn static_meshes_inside_a_frame_are_movable_in_the_world() {
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = join_for(&device, &queue);
     let out = join.run(&mut scene);
-    assert_ne!(join.mesh_rows(&out, inside)[0].flags & MOVABLE, 0, "static in a frame");
-    assert_eq!(join.mesh_rows(&out, outside)[0].flags & MOVABLE, 0, "static in the world");
+    assert_ne!(
+        join.mesh_rows(&out, inside)[0].flags & MOVABLE,
+        0,
+        "static in a frame"
+    );
+    assert_eq!(
+        join.mesh_rows(&out, outside)[0].flags & MOVABLE,
+        0,
+        "static in the world"
+    );
 }
 
 /// Parent and frame rows are keyed by entity index. An index freed by a

@@ -232,7 +232,10 @@ mod pacer_tests {
         let t = Instant::now();
         pacer.wait_for_next_frame_aligned(&mut seen);
         ui.join().unwrap();
-        assert!(t.elapsed() < Duration::from_millis(250), "woke on the UI frame, not the deadline");
+        assert!(
+            t.elapsed() < Duration::from_millis(250),
+            "woke on the UI frame, not the deadline"
+        );
         // The cadence follows the UI's phase from here.
         assert!(pacer.next_deadline < Instant::now() + Duration::from_millis(150));
     }

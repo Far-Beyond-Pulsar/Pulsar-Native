@@ -8,9 +8,7 @@ use chrono::{DateTime, Utc};
 use gpui::*;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme as _, Icon, IconName, h_flex,
-    menu::popup_menu::PopupMenu,
-    scroll::Scrollbar,
+    ActiveTheme as _, Icon, IconName, h_flex, menu::popup_menu::PopupMenu, scroll::Scrollbar,
     v_flex,
 };
 
@@ -222,7 +220,10 @@ pub(crate) fn file_menu(
                 "Copy Relative Path",
                 Box::new(CopyRelativePath { path: fp.clone() }),
             )
-            .menu("Copy Full Path", Box::new(CopyFullPath { path: fp.clone() }))
+            .menu(
+                "Copy Full Path",
+                Box::new(CopyFullPath { path: fp.clone() }),
+            )
             .separator()
             .menu("Show in Explorer", Box::new(OpenInExplorer { path: fp }))
     }
@@ -237,6 +238,9 @@ pub(crate) fn commit_file_menu(
             "Copy Relative Path",
             Box::new(CopyRelativePath { path: path.clone() }),
         )
-        .menu("Copy Full Path", Box::new(CopyFullPath { path: path.clone() }))
+        .menu(
+            "Copy Full Path",
+            Box::new(CopyFullPath { path: path.clone() }),
+        )
     }
 }

@@ -7,6 +7,8 @@ use gpui::{
     div, prelude::*, px, uniform_list, AnyElement, App, Context, ElementId, Hsla, IntoElement,
     MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, SharedString, WeakEntity, Window,
 };
+use std::sync::Arc;
+use std::time::Duration;
 use ui::button::{Button, ButtonVariants as _};
 use ui::dock::{DragPanel, PanelView};
 use ui::input::TextInput;
@@ -15,8 +17,6 @@ use ui::menu::PopupMenuItem;
 use ui::scroll::Scrollbar;
 use ui::tooltip::{HoverTooltip, Tooltip};
 use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
-use std::sync::Arc;
-use std::time::Duration;
 
 use super::model::{SectionId, SidebarTab, TabSection};
 use super::panes::{Pane, PaneKind};
@@ -50,7 +50,10 @@ pub(crate) fn decorate_horizontal_tab_preview(
     });
 
     HoverTooltip::new(
-        (ElementId::NamedInteger("tab-preview".into(), preview_id), "horizontal"),
+        (
+            ElementId::NamedInteger("tab-preview".into(), preview_id),
+            "horizontal",
+        ),
         trigger,
         move |window, cx| {
             let title = title.clone();
@@ -75,11 +78,9 @@ pub(crate) fn decorate_horizontal_tab_preview(
     )
     .with_delay_from({
         let sidebar = sidebar.clone();
-        move |cx| {
-            match sidebar.read_with(cx, |sidebar, _| sidebar.preview_hover_ready) {
-                Ok(true) => Duration::ZERO,
-                _ => Duration::from_millis(1200),
-            }
+        move |cx| match sidebar.read_with(cx, |sidebar, _| sidebar.preview_hover_ready) {
+            Ok(true) => Duration::ZERO,
+            _ => Duration::from_millis(1200),
         }
     })
     .into_any_element()

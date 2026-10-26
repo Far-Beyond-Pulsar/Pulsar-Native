@@ -164,8 +164,11 @@ impl Bench {
                 .world
                 .spawn_object(SpawnObject::new(format!("o{i}")))
                 .expect("spawn");
-            scene.world.get_mut::<Transform>(object).unwrap().position =
-                [(i % 100) as f64, (i / 100 % 100) as f64, (i / 10_000) as f64];
+            scene.world.get_mut::<Transform>(object).unwrap().position = [
+                (i % 100) as f64,
+                (i / 100 % 100) as f64,
+                (i / 10_000) as f64,
+            ];
             pulsar_world_registry::attach_value(&mut scene.world, object, mesh()).unwrap();
             objects.push(object);
         }
@@ -213,7 +216,11 @@ impl Bench {
         for k in 0..moved {
             // A spread-out set, not a run of neighbours.
             let object = self.objects[(k * 7919) % count];
-            self.scene.world.get_mut::<Transform>(object).unwrap().position[1] = f64::from(phase + k as f32);
+            self.scene
+                .world
+                .get_mut::<Transform>(object)
+                .unwrap()
+                .position[1] = f64::from(phase + k as f32);
         }
         stages.mutate = start.elapsed();
 
@@ -453,16 +460,30 @@ fn the_moved_rows_path_matches_a_full_rebuild() {
                 let slot = &instances[i * STRIDE..(i + 1) * STRIDE];
                 // Bounds centre, then the whole slot but the previous
                 // transform (a fresh pass has no history).
-                (slot[112..124].to_vec(), (slot[..64].to_vec(), slot[192..].to_vec()))
+                (
+                    slot[112..124].to_vec(),
+                    (slot[..64].to_vec(), slot[192..].to_vec()),
+                )
             })
             .collect::<std::collections::HashMap<_, _>>()
     };
-    let got = by_position(&read_buffer(&bench.device, &bench.queue, bench.batch.instances_buffer()));
-    let want = by_position(&read_buffer(&bench.device, &bench.queue, fresh.instances_buffer()));
+    let got = by_position(&read_buffer(
+        &bench.device,
+        &bench.queue,
+        bench.batch.instances_buffer(),
+    ));
+    let want = by_position(&read_buffer(
+        &bench.device,
+        &bench.queue,
+        fresh.instances_buffer(),
+    ));
     assert_eq!(got.len(), live, "every object has its own position");
     assert_eq!(want.len(), live);
     for (position, expected) in &want {
-        assert!(got.get(position) == Some(expected), "instance at {position:?} differs");
+        assert!(
+            got.get(position) == Some(expected),
+            "instance at {position:?} differs"
+        );
     }
 }
 

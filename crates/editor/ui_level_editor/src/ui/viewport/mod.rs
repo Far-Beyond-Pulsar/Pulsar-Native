@@ -18,8 +18,8 @@ pub(crate) mod input_latch;
 pub mod input_state;
 mod input_thread;
 mod overlays;
-pub(crate) mod view_settings;
 pub mod performance;
+pub(crate) mod view_settings;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -91,7 +91,11 @@ impl ViewportCursorCapture {
 
     #[cfg(target_os = "windows")]
     fn initiating_button_vk(self) -> i32 {
-        if self == Self::Pan { 0x04 } else { 0x02 }
+        if self == Self::Pan {
+            0x04
+        } else {
+            0x02
+        }
     }
 
     fn is_active(self) -> bool {

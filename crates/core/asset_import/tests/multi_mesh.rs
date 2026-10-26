@@ -9,7 +9,11 @@ use parking_lot::Mutex;
 
 fn wait(id: editor_task_queue::TaskId) -> TaskStatus {
     for _ in 0..600 {
-        if let Some(s) = editor_task_queue::global().snapshots().into_iter().find(|s| s.id == id) {
+        if let Some(s) = editor_task_queue::global()
+            .snapshots()
+            .into_iter()
+            .find(|s| s.id == id)
+        {
             if !matches!(s.status, TaskStatus::Queued | TaskStatus::Running) {
                 return s.status;
             }
@@ -49,12 +53,25 @@ fn each_mesh_of_a_source_gets_its_own_file() {
     );
     assert_eq!(wait(ids[0]), TaskStatus::Succeeded);
 
-    let record = ImportDb::load(root).find_source("props.obj").unwrap().clone();
+    let record = ImportDb::load(root)
+        .find_source("props.obj")
+        .unwrap()
+        .clone();
     let mut meshes: Vec<String> = std::iter::once(record.asset.clone())
-        .chain(record.outputs.iter().filter(|o| o.kind == "mesh").map(|o| o.path.clone()))
+        .chain(
+            record
+                .outputs
+                .iter()
+                .filter(|o| o.kind == "mesh")
+                .map(|o| o.path.clone()),
+        )
         .collect();
     meshes.sort();
-    assert_eq!(meshes, ["props_Barrel.mesh", "props_Crate.mesh"], "{record:?}");
+    assert_eq!(
+        meshes,
+        ["props_Barrel.mesh", "props_Crate.mesh"],
+        "{record:?}"
+    );
     for mesh in &meshes {
         assert!(root.join(mesh).exists(), "{mesh} was written");
     }
@@ -70,7 +87,14 @@ fn each_mesh_of_a_source_gets_its_own_file() {
     assert_eq!(crate_mesh.geometry.vertices.len(), 3);
     assert_eq!(barrel.geometry.vertices.len(), 3);
     let min_x = |m: &helio_component::mesh_cache::MeshAssetUpload| {
-        m.geometry.vertices.iter().map(|v| v.position[0]).fold(f32::MAX, f32::min)
+        m.geometry
+            .vertices
+            .iter()
+            .map(|v| v.position[0])
+            .fold(f32::MAX, f32::min)
     };
-    assert!(min_x(&crate_mesh) < 5.0 && min_x(&barrel) > 5.0, "geometry kept in place");
+    assert!(
+        min_x(&crate_mesh) < 5.0 && min_x(&barrel) > 5.0,
+        "geometry kept in place"
+    );
 }

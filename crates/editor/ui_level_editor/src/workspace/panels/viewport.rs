@@ -66,19 +66,23 @@ impl Render for ViewportPanelWrapper {
             let mut last = self
                 .viewport_panel
                 .controls_signature(&self.state.read(), cx);
-            crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, move |this, window, cx| {
-                // Before the signature: a changed camera mode must reach the
-                // renderer and re-draw the controls on the same tick.
-                this.viewport_panel
-                    .sync_view_settings(&this.state, window, cx);
-                let next = this
-                    .viewport_panel
-                    .controls_signature(&this.state.read(), cx);
-                if next != last {
-                    last = next;
-                    cx.notify();
-                }
-            });
+            crate::ui::frame_pump::spawn_frame_pump(
+                &cx.entity(),
+                window,
+                move |this, window, cx| {
+                    // Before the signature: a changed camera mode must reach the
+                    // renderer and re-draw the controls on the same tick.
+                    this.viewport_panel
+                        .sync_view_settings(&this.state, window, cx);
+                    let next = this
+                        .viewport_panel
+                        .controls_signature(&this.state.read(), cx);
+                    if next != last {
+                        last = next;
+                        cx.notify();
+                    }
+                },
+            );
         }
 
         let state = self.state.read();

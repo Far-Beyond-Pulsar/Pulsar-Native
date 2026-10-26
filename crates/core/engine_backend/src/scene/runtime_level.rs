@@ -186,10 +186,12 @@ impl RuntimeLevel {
                 let _ = world.reparent(entity, Some(parent));
             }
         }
-        Ok(crate::scene::hierarchy_transform::descendants_of(world, parent)
-            .into_iter()
-            .filter(|entity| !before.contains(entity))
-            .collect())
+        Ok(
+            crate::scene::hierarchy_transform::descendants_of(world, parent)
+                .into_iter()
+                .filter(|entity| !before.contains(entity))
+                .collect(),
+        )
     }
 
     /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
@@ -703,8 +705,16 @@ mod tests {
             let cube = scene.world.entity_for("cube").unwrap();
             scene.world.get::<Transform>(cube).unwrap().position
         };
-        assert_eq!(local_of_cube(&level("2.1")), [1.0, 2.0, 3.0], "2.1 held world values");
-        assert_eq!(local_of_cube(&level("2.2")), [11.0, 2.0, 3.0], "2.2 holds local values");
+        assert_eq!(
+            local_of_cube(&level("2.1")),
+            [1.0, 2.0, 3.0],
+            "2.1 held world values"
+        );
+        assert_eq!(
+            local_of_cube(&level("2.2")),
+            [11.0, 2.0, 3.0],
+            "2.2 holds local values"
+        );
     }
 
     /// #637: objects land in the shared store with transforms/hierarchy/

@@ -200,9 +200,9 @@ fn save(dir: &Path, name: &str, frame: &[u8]) {
     .expect("write a frame");
 }
 
-
 fn level_path() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/examples/voxel_planet/scene/default.level")
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../assets/examples/voxel_planet/scene/default.level")
 }
 
 fn load_level() -> SharedScene {
@@ -214,8 +214,7 @@ fn load_level() -> SharedScene {
 /// An editor viewport over its own copy of the level, as the harness drives
 /// it: clock stopped, no jitter, rendering only while it is not idle.
 fn editor() -> HelioRenderer {
-    let scene: SharedScene =
-        Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
+    let scene: SharedScene = Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
     RuntimeLevel::load_into(&level_path(), &mut scene.write().world)
         .expect("the example planet loads");
     let mut renderer = HelioRenderer::new(scene);
@@ -227,11 +226,9 @@ fn editor() -> HelioRenderer {
 
 /// The level's saved camera.
 fn level_pose() -> EditorCameraState {
-    let extras = RuntimeLevel::load_into(
-        &level_path(),
-        &mut engine_backend::scene::new_scene().world,
-    )
-    .expect("the example planet loads");
+    let extras =
+        RuntimeLevel::load_into(&level_path(), &mut engine_backend::scene::new_scene().world)
+            .expect("the example planet loads");
     let camera = extras.editor_camera.expect("the level saves its camera");
     EditorCameraState {
         position: camera.position,
@@ -249,7 +246,14 @@ fn near_ground_pose(target: &Target) -> EditorCameraState {
     renderer.set_editor_camera_state(level_pose());
     let mut sun = None;
     for _ in 0..240 {
-        renderer.render_frame(&target.device, &target.queue, &target.view, WIDTH, HEIGHT, FORMAT);
+        renderer.render_frame(
+            &target.device,
+            &target.queue,
+            &target.view,
+            WIDTH,
+            HEIGHT,
+            FORMAT,
+        );
         target.wait();
         sun = renderer.sun_direction();
         if sun.is_some() {
@@ -281,7 +285,14 @@ fn near_ground_pose(target: &Target) -> EditorCameraState {
         // built, at any detail.
         let mut altitude = None;
         for _ in 0..240 {
-            renderer.render_frame(&target.device, &target.queue, &target.view, WIDTH, HEIGHT, FORMAT);
+            renderer.render_frame(
+                &target.device,
+                &target.queue,
+                &target.view,
+                WIDTH,
+                HEIGHT,
+                FORMAT,
+            );
             target.wait();
             altitude = renderer.voxel_altitude();
             if altitude.is_some() {
@@ -330,7 +341,14 @@ fn editor_frame(target: &Target, pose: EditorCameraState) -> EditorShot {
     renderer.set_editor_camera_state(pose);
     let mut frames = 0;
     while renderer
-        .render_frame(&target.device, &target.queue, &target.view, WIDTH, HEIGHT, FORMAT)
+        .render_frame(
+            &target.device,
+            &target.queue,
+            &target.view,
+            WIDTH,
+            HEIGHT,
+            FORMAT,
+        )
         .is_some()
     {
         target.wait();
@@ -392,15 +410,22 @@ fn game_frame(
         SceneRendererOptions::game(owner, false),
     );
     renderer.renderer.set_frame_clock_delta(Some(0.0));
-    renderer.renderer.set_frame_delta_override(Some(FRAME_DELTA));
-    renderer.renderer.set_camera_jitter_override(Some([0.0, 0.0]));
+    renderer
+        .renderer
+        .set_frame_delta_override(Some(FRAME_DELTA));
+    renderer
+        .renderer
+        .set_camera_jitter_override(Some([0.0, 0.0]));
     let mut camera =
         FreeCam::default().place(DVec3::from_array(pose.position), pose.yaw, pose.pitch);
     let mut frames = 0;
     let view = loop {
         let tick = game_tick(target, &scene, &mut renderer, &mut camera);
         frames += 1;
-        assert!(frames < SETTLE_LIMIT, "the game's voxel worlds never settled");
+        assert!(
+            frames < SETTLE_LIMIT,
+            "the game's voxel worlds never settled"
+        );
         // A world's first frames may not have asked for chunks yet.
         if frames > 8 && !renderer.needs_frame() {
             break tick;
@@ -428,7 +453,10 @@ fn game_frame(
         view.forward.to_array(),
         view.up.to_array(),
     );
-    assert_eq!(view.eye, editor.eye, "the game's eye is the editor's, in f64");
+    assert_eq!(
+        view.eye, editor.eye,
+        "the game's eye is the editor's, in f64"
+    );
     assert!(
         view.forward.abs_diff_eq(editor.forward, 1e-5) && view.up.abs_diff_eq(editor.up, 1e-5),
         "the game's free camera looks as the editor's does"
@@ -502,16 +530,29 @@ fn report(out: &Path, name: &str, editor: &[u8], frame: &[u8]) -> Diff {
 fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) {
     let editor = editor_frame(target, pose);
     save(out, &format!("{name}_editor"), &editor.frame);
-    assert!(colours(&editor.frame) > 32, "the editor drew nothing at {name}");
+    assert!(
+        colours(&editor.frame) > 32,
+        "the editor drew nothing at {name}"
+    );
     // The noise floor: the editor again, the same construction run twice.
     let again = editor_frame(target, pose);
-    let floor = report(out, &format!("{name}_editor_again"), &editor.frame, &again.frame);
+    let floor = report(
+        out,
+        &format!("{name}_editor_again"),
+        &editor.frame,
+        &again.frame,
+    );
     for (runtime, owner) in [
         ("standalone", DeviceOwner::Renderer),
         ("embedded", DeviceOwner::Host),
     ] {
         let game = game_frame(target, owner, pose, &editor);
-        let d = report(out, &format!("{name}_{runtime}"), &editor.frame, &game.frame);
+        let d = report(
+            out,
+            &format!("{name}_{runtime}"),
+            &editor.frame,
+            &game.frame,
+        );
         println!(
             "VOXEL PARITY {name}_{runtime} still frames: {:.3} % pixels changed, mean {:.3}/255, PSNR {:.1} dB",
             game.still.changed * 100.0,

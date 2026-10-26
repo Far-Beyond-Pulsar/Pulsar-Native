@@ -20,7 +20,6 @@ pub struct PreloadContext<'a> {
     pub open_files: &'a [std::path::PathBuf],
 }
 
-
 /// Core trait that all editor plugins must implement.
 ///
 /// Minimal required surface — only methods every plugin needs.  Optional

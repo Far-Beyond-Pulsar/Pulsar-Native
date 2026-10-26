@@ -471,7 +471,14 @@ pub fn commit_staged_changes(repo_path: &Path, message: &str) -> Result<(), git2
     }
     let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
 
-    repo.commit(Some("HEAD"), &signature, &signature, message, &tree, &parent_refs)?;
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        message,
+        &tree,
+        &parent_refs,
+    )?;
     if repo.state() == git2::RepositoryState::Merge {
         repo.cleanup_state()?;
     }
