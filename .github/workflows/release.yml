@@ -5,7 +5,7 @@ name: Release
 # ============================================================================
 env:
   # Crates to build on each platform (newline-separated list)
-  # Examples: "crates/engine", "crates/plugin_manager", etc.
+  # Examples: "crates/core/engine", "crates/core/plugin_manager", etc.
   # First crate is used for version checking
   CRATES_TO_BUILD: |
     crates/core/engine

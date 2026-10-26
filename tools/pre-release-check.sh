@@ -86,14 +86,14 @@ echo -e "${CYAN}║${RESET}  Mirrors GitHub Actions release pipeline requirement
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${RESET}"
 printf "\n"
 
-cd "$SCRIPT_DIR" || exit_with_error "Failed to change to repository root"
+cd "$(dirname "$SCRIPT_DIR")" || exit_with_error "Failed to change to repository root"
 
 # ============================================================================
 # 1. VERSION CHECK
 # ============================================================================
-write_step "1/6 Checking version bump in crates/engine/Cargo.toml"
+write_step "1/6 Checking version bump in crates/core/engine/Cargo.toml"
 
-FIRST_CRATE="crates/engine"
+FIRST_CRATE="crates/core/engine"
 CARGO_TOML="$FIRST_CRATE/Cargo.toml"
 
 if [[ ! -f "$CARGO_TOML" ]]; then

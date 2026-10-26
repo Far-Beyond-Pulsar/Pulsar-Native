@@ -6,7 +6,7 @@
 .DESCRIPTION
     This script runs all the same checks that the release pipeline runs, allowing you to
     validate locally before pushing. It checks:
-    - Version bump in crates/engine/Cargo.toml
+    - Version bump in crates/core/engine/Cargo.toml
     - Code formatting (cargo fmt)
     - Clippy lints
     - Unit tests (cargo nextest)
@@ -79,14 +79,14 @@ Write-Host "${Cyan}╚═══════════════════�
 Write-Host ""
 
 # Change to repository root
-Set-Location $PSScriptRoot
+Set-Location (Split-Path -Parent $PSScriptRoot)
 
 # ============================================================================
 # 1. VERSION CHECK
 # ============================================================================
-Write-Step "1/6 Checking version bump in crates/engine/Cargo.toml"
+Write-Step "1/6 Checking version bump in crates/core/engine/Cargo.toml"
 
-$FirstCrate = "crates/engine"
+$FirstCrate = "crates/core/engine"
 $CargoToml = "$FirstCrate/Cargo.toml"
 
 if (-not (Test-Path $CargoToml)) {
