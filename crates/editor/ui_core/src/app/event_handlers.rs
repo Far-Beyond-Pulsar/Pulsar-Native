@@ -615,7 +615,7 @@ pub fn on_tab_panel_event(
     app: &mut PulsarApp,
     _tabs: &Entity<ui::dock::TabPanel>,
     event: &PanelEvent,
-    _window: &mut Window,
+    window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
     tracing::trace!(
@@ -632,7 +632,7 @@ pub fn on_tab_panel_event(
                 )
             }
             PanelEvent::TabClosed(id) => format!("TabClosed({:?})", id),
-            PanelEvent::TabChanged { active_index } => format!("TabChanged({})", active_index),
+            PanelEvent::TabChanged { active_index, .. } => format!("TabChanged({})", active_index),
             PanelEvent::ZoomIn => "ZoomIn".to_string(),
             PanelEvent::ZoomOut => "ZoomOut".to_string(),
             PanelEvent::LayoutChanged => "LayoutChanged".to_string(),
@@ -659,7 +659,15 @@ pub fn on_tab_panel_event(
             // Update Discord presence when tab is closed
             app.update_discord_presence(cx);
         }
-        PanelEvent::TabChanged { active_index: _ } => {
+        PanelEvent::TabChanged {
+            active_index: _,
+            previous_index,
+        } => {
+            if let Some(previous_index) = previous_index {
+                if let Some(panel) = _tabs.read(cx).all_panels().get(*previous_index).cloned() {
+                    app.capture_panel_preview(panel, window, cx);
+                }
+            }
             // Keep engine-level open-editor snapshot in sync.
             app.refresh_open_editor_snapshot(cx);
             // Update Discord presence when active tab changes

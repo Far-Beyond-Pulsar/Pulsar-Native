@@ -50,22 +50,40 @@ mod render;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
-use engine_state::settings::{global_config, ConfigValue, GlobalSettings, NS_EDITOR};
+use engine_state::settings::{ConfigValue, GlobalSettings, NS_EDITOR, global_config};
 use gpui::{AppContext as _, Context, Entity, Subscription, Task, WeakEntity, Window};
+use sha2::{Digest as _, Sha256};
 use ui::dock::{DockPlacement, DragPanel, PanelView, TabPanel};
 use ui::input::{InputEvent, InputState};
 use ui_file_manager::FileManagerDrawer;
 
-use self::model::{HoverAction, HoverState, SidebarModel, SidebarTab, TabKey, HOVER_CLOSE_DELAY};
+use self::model::{HOVER_CLOSE_DELAY, HoverAction, HoverState, SidebarModel, SidebarTab, TabKey};
 use self::panes::PaneKind;
 use super::PulsarApp;
 
-pub(crate) use self::render::NavSidebarOverlay;
+pub(crate) use self::render::{decorate_horizontal_tab_preview, NavSidebarOverlay};
 
 const OWNER: &str = "navigation";
+
+pub(crate) fn preview_path(project: &Path, key: &TabKey) -> Option<PathBuf> {
+    let identity = serde_json::to_vec(key).ok()?;
+    let digest = Sha256::digest(identity);
+    let name = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Some(
+        project
+            .join(".pulsar")
+            .join("tab_previews")
+            .join(format!("{name}.png")),
+    )
+}
 
 fn setting(key: &str) -> bool {
     global_config()
@@ -102,6 +120,7 @@ pub(crate) fn pinned_open() -> bool {
 pub struct NavSidebar {
     app: WeakEntity<PulsarApp>,
     drawer: Entity<FileManagerDrawer>,
+    project_path: Option<PathBuf>,
     pub(crate) model: SidebarModel,
     pub(crate) hover: HoverState,
     close_task: Option<Task<()>>,
@@ -125,6 +144,11 @@ pub struct NavSidebar {
     content_key: Option<(u64, u64)>,
     /// The editors pane's rows, set each time the drawer is drawn.
     editor_list: std::rc::Rc<render::EditorList>,
+    previews: HashMap<TabKey, Arc<gpui::RenderImage>>,
+    preview_hover_key: Option<TabKey>,
+    preview_hovered: Option<TabKey>,
+    preview_hover_ready: bool,
+    preview_hover_task: Option<Task<()>>,
     /// How many times it has rendered, for tests that check it replays.
     #[cfg(test)]
     pub(crate) renders: usize,
@@ -148,10 +172,15 @@ struct BorderDrag {
 }
 
 impl NavSidebar {
-    pub(crate) fn new(app: WeakEntity<PulsarApp>, drawer: Entity<FileManagerDrawer>) -> Self {
+    pub(crate) fn new(
+        app: WeakEntity<PulsarApp>,
+        drawer: Entity<FileManagerDrawer>,
+        project_path: Option<PathBuf>,
+    ) -> Self {
         Self {
             app,
             drawer,
+            project_path,
             model: SidebarModel::default(),
             hover: HoverState::default(),
             close_task: None,
@@ -176,9 +205,120 @@ impl NavSidebar {
             content_root_row: None,
             content_key: None,
             editor_list: Default::default(),
+            previews: HashMap::new(),
+            preview_hover_key: None,
+            preview_hovered: None,
+            preview_hover_ready: false,
+            preview_hover_task: None,
             #[cfg(test)]
             renders: 0,
         }
+    }
+
+    pub(crate) fn store_preview(
+        &mut self,
+        key: TabKey,
+        image: Arc<gpui::RenderImage>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.previews.len() >= 64 && !self.previews.contains_key(&key) {
+            if let Some(evict) = self.previews.keys().next().cloned() {
+                self.previews.remove(&evict);
+            }
+        }
+        self.previews.insert(key.clone(), image);
+        if self.preview_hover_ready && self.preview_hover_key.as_ref() == Some(&key) {
+            self.preview_hovered = Some(key);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn preview_area_hovered(&mut self, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            return;
+        }
+
+        self.preview_hover_key = None;
+        self.preview_hovered = None;
+        self.preview_hover_ready = false;
+        self.preview_hover_task = None;
+        cx.notify();
+    }
+
+    pub(crate) fn hover_preview(&mut self, key: TabKey, hovered: bool, cx: &mut Context<Self>) {
+        if !hovered {
+            if self.preview_hover_key.as_ref() == Some(&key) {
+                self.preview_hover_key = None;
+                self.preview_hovered = None;
+                self.preview_hover_task = None;
+                cx.notify();
+            }
+            return;
+        }
+
+        if self.preview_hover_key.as_ref() == Some(&key) {
+            return;
+        }
+        self.preview_hover_key = Some(key.clone());
+        self.preview_hovered = None;
+        self.preview_hover_task = None;
+        if self.preview_hover_ready && self.previews.contains_key(&key) {
+            self.preview_hovered = Some(key);
+            cx.notify();
+            return;
+        }
+        let cached = self.previews.contains_key(&key);
+        let wait_for_hover = !self.preview_hover_ready;
+        let path = self
+            .project_path
+            .as_deref()
+            .and_then(|project| preview_path(project, &key));
+        self.preview_hover_task = Some(cx.spawn(async move |sidebar, cx| {
+            if wait_for_hover {
+                cx.background_executor()
+                    .timer(Duration::from_millis(1200))
+                    .await;
+                let _ = sidebar.update(cx, |sidebar, cx| {
+                    if sidebar.preview_hover_key.as_ref() == Some(&key) {
+                        sidebar.preview_hover_ready = true;
+                        cx.notify();
+                    }
+                });
+            }
+            let loaded = if cached {
+                None
+            } else if let Some(path) = path {
+                cx.background_spawn(
+                    async move { image::open(path).ok().map(|image| image.to_rgba8()) },
+                )
+                .await
+            } else {
+                None
+            };
+            let _ = sidebar.update(cx, |sidebar, cx| {
+                if sidebar.preview_hover_key.as_ref() != Some(&key) {
+                    return;
+                }
+                if let Some(image) = loaded {
+                    let frame = image::Frame::new(image);
+                    sidebar.store_preview(
+                        key.clone(),
+                        Arc::new(gpui::RenderImage::new([frame])),
+                        cx,
+                    );
+                }
+                if sidebar.previews.contains_key(&key) {
+                    sidebar.preview_hovered = Some(key);
+                    cx.notify();
+                }
+            });
+        }));
+    }
+
+    pub(crate) fn preview_for(&self, key: &TabKey) -> Option<Arc<gpui::RenderImage>> {
+        (self.preview_hovered.as_ref() == Some(key))
+            .then(|| self.previews.get(key).cloned())
+            .flatten()
     }
 
     /// Redraw when the project's folders or files change on disk, so the
@@ -640,13 +780,16 @@ impl PulsarApp {
                 let panel = &open.panel;
                 let kind = panel.panel_name(cx).to_string();
                 let file = panel.panel_file_path(cx);
+                let title = file
+                    .as_deref()
+                    .and_then(Path::file_name)
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .or_else(|| panel.tab_name(cx).map(|name| name.to_string()))
+                    .unwrap_or_else(|| kind.clone());
                 SidebarTab {
                     key: TabKey::of(&kind, file.as_deref()),
                     index: Some(index),
-                    title: panel
-                        .tab_name(cx)
-                        .map(|name| name.to_string())
-                        .unwrap_or_else(|| kind.clone()),
+                    title,
                     icon: panel.tab_icon(cx),
                     active: open.tabs.read(cx).active_tab_index() == Some(open.local_ix),
                     unsaved: panel.tab_unsaved(cx),
@@ -692,6 +835,66 @@ impl PulsarApp {
                     .child(self.state.nav_overlay.clone()),
             )
             .into_any_element()
+    }
+
+    pub(crate) fn capture_panel_preview(
+        &mut self,
+        panel: Arc<dyn PanelView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let element_id = gpui::ElementId::NamedInteger(
+            "tab-content".into(),
+            panel.panel_id(cx).as_u64(),
+        );
+        let Some(capture) = window.capture_element_from_last_frame(element_id, gpui::size(320, 180))
+        else {
+            return;
+        };
+        let key = TabKey::of(panel.panel_name(cx), panel.panel_file_path(cx).as_deref());
+        let preview_path = self
+            .state
+            .project_path
+            .as_deref()
+            .and_then(|project| preview_path(project, &key));
+        let sidebar = self.state.nav_sidebar.downgrade();
+        cx.spawn(async move |_, cx| {
+            let Ok(capture) = capture.await else {
+                return;
+            };
+            if let Some(path) = preview_path {
+                let pixels = capture.rgba.clone();
+                let width = capture.width;
+                let height = capture.height;
+                cx.background_spawn(async move {
+                    if let Some(parent) = path.parent() {
+                        if let Err(error) = std::fs::create_dir_all(parent) {
+                            tracing::warn!(%error, "could not create tab preview cache");
+                            return;
+                        }
+                    }
+                    if let Err(error) = image::save_buffer_with_format(
+                        path,
+                        &pixels,
+                        width,
+                        height,
+                        image::ColorType::Rgba8,
+                        image::ImageFormat::Png,
+                    ) {
+                        tracing::warn!(%error, "could not save tab preview");
+                    }
+                })
+                .detach();
+            }
+            let image = image::RgbaImage::from_raw(capture.width, capture.height, capture.rgba);
+            if let Some(image) = image {
+                let render_image = Arc::new(gpui::RenderImage::new(vec![image::Frame::new(image)]));
+                let _ = sidebar.update(cx, |sidebar, cx| {
+                    sidebar.store_preview(key, render_image, cx)
+                });
+            }
+        })
+        .detach();
     }
 
     /// Show the tab a sidebar row stands for, reopening a closed pinned file.

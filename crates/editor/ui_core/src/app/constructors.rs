@@ -5,8 +5,8 @@ use gpui::{AppContext, Context, Entity, Window};
 use plugin_manager::PluginManager;
 use rust_i18n::t;
 use std::{collections::VecDeque, path::PathBuf, sync::Arc};
-use ui::dock::DockItem;
 use ui::ContextModal;
+use ui::dock::DockItem;
 use ui_file_manager::FileManagerDrawer;
 use ui_level_editor::LevelEditorPanel;
 use ui_log_viewer::MissionControlPanel;
@@ -14,7 +14,7 @@ use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
 use super::{
-    agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel, PulsarApp,
+    PulsarApp, agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel,
 };
 
 impl PulsarApp {
@@ -208,11 +208,32 @@ impl PulsarApp {
             let app = cx.weak_entity();
             let drawer = file_manager_drawer.clone();
             cx.new(|cx| {
-                let mut sidebar = super::nav_sidebar::NavSidebar::new(app, drawer);
+                let mut sidebar =
+                    super::nav_sidebar::NavSidebar::new(app, drawer, project_path.clone());
                 sidebar.observe_drawer(cx);
                 sidebar
             })
         };
+        let preview_sidebar = nav_sidebar.downgrade();
+        let preview_area_sidebar = nav_sidebar.downgrade();
+        center_tabs.update(cx, |tabs, cx| {
+            tabs.set_tab_preview_callbacks(
+                move |panel, trigger, _window, app| {
+                    super::nav_sidebar::decorate_horizontal_tab_preview(
+                        preview_sidebar.clone(),
+                        panel,
+                        trigger,
+                        app,
+                    )
+                },
+                move |hovered, _window, app| {
+                    let _ = preview_area_sidebar.update(app, |sidebar, cx| {
+                        sidebar.preview_area_hovered(hovered, cx);
+                    });
+                },
+                cx,
+            );
+        });
         let nav_overlay = {
             let sidebar = nav_sidebar.clone();
             cx.new(|_| super::nav_sidebar::NavSidebarOverlay::new(sidebar))
@@ -392,7 +413,6 @@ impl PulsarApp {
             "[PulsarApp] built-in physics registered in {:?}",
             t_plugins.elapsed()
         );
-
 
         let multiuser_refresh_task = cx.spawn(async move |this, cx| {
             let multiuser = engine_state::EngineContext::global()
@@ -728,7 +748,6 @@ impl PulsarApp {
                         cx,
                     );
                 }
-
 
                 // Fast path: use the file list that the loading-screen background
                 // thread already scanned — no disk I/O on the main thread.

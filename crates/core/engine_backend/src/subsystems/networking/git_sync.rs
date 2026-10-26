@@ -126,6 +126,7 @@ Thumbs.db
 
 # Per-user editor state (tabs, dock layout, window geometry)
 .pulsar/layout.json
+.pulsar/tab_previews/
 ";
                 virtual_fs::write_file(&gitignore_path, default_ignore.as_bytes());
             }

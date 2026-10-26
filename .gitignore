@@ -39,6 +39,7 @@ blueprint_graph_debug.json
 .env
 *.db
 /.pulsar/cache/
+/.pulsar/tab_previews/
 
 # Local validation outputs and evidence archives.
 /docs/validation/
