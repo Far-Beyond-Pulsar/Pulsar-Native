@@ -147,6 +147,7 @@ pub struct NavSidebar {
     previews: HashMap<TabKey, Arc<gpui::RenderImage>>,
     preview_hover_key: Option<TabKey>,
     preview_hovered: Option<TabKey>,
+    preview_hover_ready: bool,
     preview_hover_task: Option<Task<()>>,
     /// How many times it has rendered, for tests that check it replays.
     #[cfg(test)]
@@ -207,6 +208,7 @@ impl NavSidebar {
             previews: HashMap::new(),
             preview_hover_key: None,
             preview_hovered: None,
+            preview_hover_ready: false,
             preview_hover_task: None,
             #[cfg(test)]
             renders: 0,
@@ -224,7 +226,22 @@ impl NavSidebar {
                 self.previews.remove(&evict);
             }
         }
-        self.previews.insert(key, image);
+        self.previews.insert(key.clone(), image);
+        if self.preview_hover_ready && self.preview_hover_key.as_ref() == Some(&key) {
+            self.preview_hovered = Some(key);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn preview_area_hovered(&mut self, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            return;
+        }
+
+        self.preview_hover_key = None;
+        self.preview_hovered = None;
+        self.preview_hover_ready = false;
+        self.preview_hover_task = None;
         cx.notify();
     }
 
@@ -239,18 +256,35 @@ impl NavSidebar {
             return;
         }
 
+        if self.preview_hover_key.as_ref() == Some(&key) {
+            return;
+        }
         self.preview_hover_key = Some(key.clone());
         self.preview_hovered = None;
         self.preview_hover_task = None;
+        if self.preview_hover_ready && self.previews.contains_key(&key) {
+            self.preview_hovered = Some(key);
+            cx.notify();
+            return;
+        }
         let cached = self.previews.contains_key(&key);
+        let wait_for_hover = !self.preview_hover_ready;
         let path = self
             .project_path
             .as_deref()
             .and_then(|project| preview_path(project, &key));
         self.preview_hover_task = Some(cx.spawn(async move |sidebar, cx| {
-            cx.background_executor()
-                .timer(Duration::from_millis(1200))
-                .await;
+            if wait_for_hover {
+                cx.background_executor()
+                    .timer(Duration::from_millis(1200))
+                    .await;
+                let _ = sidebar.update(cx, |sidebar, cx| {
+                    if sidebar.preview_hover_key.as_ref() == Some(&key) {
+                        sidebar.preview_hover_ready = true;
+                        cx.notify();
+                    }
+                });
+            }
             let loaded = if cached {
                 None
             } else if let Some(path) = path {
@@ -858,7 +892,7 @@ impl PulsarApp {
                                                 tracing::warn!(%error, "could not save tab preview");
                                             }
                                         })
-                                        .await;
+                                        .detach();
                                     }
                                     let image = image::RgbaImage::from_raw(
                                         capture.width,

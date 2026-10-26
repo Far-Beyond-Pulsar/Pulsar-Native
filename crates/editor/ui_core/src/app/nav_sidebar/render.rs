@@ -13,8 +13,9 @@ use ui::input::TextInput;
 use ui::menu::context_menu::ContextMenuExt as _;
 use ui::menu::PopupMenuItem;
 use ui::scroll::Scrollbar;
-use ui::tooltip::Tooltip;
+use ui::tooltip::{HoverTooltip, Tooltip};
 use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
+use std::time::Duration;
 
 use super::model::{SectionId, SidebarTab, TabSection};
 use super::panes::{Pane, PaneKind};
@@ -470,20 +471,27 @@ impl NavSidebar {
     /// are built.
     fn render_editors_pane(&self, cx: &mut Context<Self>) -> AnyElement {
         let count = self.editor_list.rows.len();
-        uniform_list(
-            "nav-editors-list",
-            count,
-            cx.processor(|sidebar, range: std::ops::Range<usize>, _window, cx| {
-                let list = sidebar.editor_list.clone();
-                range
-                    .filter_map(|ix| list.rows.get(ix).copied())
-                    .map(|row| sidebar.render_editor_row(&list, row, cx))
-                    .collect::<Vec<_>>()
-            }),
-        )
-        .track_scroll(&self.pane_view(PaneKind::Editors).scroll)
-        .size_full()
-        .into_any_element()
+        div()
+            .size_full()
+            .on_hover(cx.listener(|sidebar, hovered: &bool, _, cx| {
+                sidebar.preview_area_hovered(*hovered, cx)
+            }))
+            .child(
+                uniform_list(
+                    "nav-editors-list",
+                    count,
+                    cx.processor(|sidebar, range: std::ops::Range<usize>, _window, cx| {
+                        let list = sidebar.editor_list.clone();
+                        range
+                            .filter_map(|ix| list.rows.get(ix).copied())
+                            .map(|row| sidebar.render_editor_row(&list, row, cx))
+                            .collect::<Vec<_>>()
+                    }),
+                )
+                .track_scroll(&self.pane_view(PaneKind::Editors).scroll)
+                .size_full(),
+            )
+            .into_any_element()
     }
 
     /// One row of the editors pane, in a cell of the list's fixed row height.
@@ -638,10 +646,17 @@ impl NavSidebar {
         let pin_key = tab.key.clone();
         let hover_key = tab.key.clone();
         let preview_title = tab.title.clone();
+        let preview_key = tab.key.clone();
+        let preview_sidebar = cx.entity().downgrade();
+        let preview_delay = if self.preview_hover_ready {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(1200)
+        };
         let close_index = tab.index;
         let menu = self.tab_row_menu(tab, cx);
 
-        h_flex()
+        let row = h_flex()
             .id(ElementId::Name(group.clone()))
             .group(group.clone())
             .h(px(ROW_HEIGHT))
@@ -707,25 +722,37 @@ impl NavSidebar {
             .on_hover(cx.listener(move |sidebar, hovered: &bool, _, cx| {
                 sidebar.hover_preview(hover_key.clone(), *hovered, cx)
             }))
-            .when_some(self.preview_for(&tab.key), |el, image| {
-                el.tooltip(move |window, cx| {
-                    let preview_title = preview_title.clone();
-                    let image = image.clone();
-                    Tooltip::element(move |_, _| {
-                        v_flex().gap_1().p_2().child(preview_title.clone()).child(
-                            gpui::img(gpui::ImageSource::Render(image.clone()))
-                                .w(px(320.))
-                                .h(px(180.)),
-                        )
-                    })
-                    .build(window, cx)
-                })
-            })
             .on_click(cx.listener(move |sidebar, _, window, cx| {
                 sidebar.activate_tab(&activate, window, cx)
             }))
             .context_menu(menu)
-            .into_any_element()
+            .into_any_element();
+
+        HoverTooltip::new(
+            (ElementId::Name(group), "tab-preview"),
+            row,
+            move |window, cx| {
+                let image = preview_sidebar
+                    .read_with(cx, |sidebar, _| sidebar.preview_for(&preview_key))
+                    .ok()
+                    .flatten();
+                Tooltip::element(move |_, _| {
+                    let content = v_flex().gap_1().p_2().child(preview_title.clone());
+                    if let Some(image) = image.clone() {
+                        content.child(
+                            gpui::img(gpui::ImageSource::Render(image))
+                                .w(px(320.))
+                                .h(px(180.)),
+                        )
+                    } else {
+                        content
+                    }
+                })
+                .build(window, cx)
+            },
+        )
+        .with_delay(preview_delay)
+        .into_any_element()
     }
 
     /// A row's right-click menu: pin, group and close.
