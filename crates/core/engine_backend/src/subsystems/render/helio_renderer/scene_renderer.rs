@@ -6,8 +6,9 @@
 //! it.
 //!
 //! Per frame: [`SceneRenderer::step_scene`] advances the scene,
-//! [`SceneRenderer::prepare_frame`] streams virtual geometry, places the camera (camera-relative over
-//! large worlds, clip planes the voxel worlds certify, the live TSR preset)
+//! [`SceneRenderer::prepare_frame`] streams virtual geometry, places the
+//! camera (at its f64 eye; Helio's frames are camera-relative, their origin
+//! following it), clip planes the voxel worlds certify, the live TSR preset)
 //! and publishes the voxel worlds' frames, [`SceneRenderer::render`] uploads
 //! the scene and draws.
 
@@ -84,15 +85,13 @@ pub enum FrameProjection {
     /// planes; over a voxel world the planes it certifies replace them.
     Perspective { fov_y: f32, near: f32, far: f32 },
     /// Looking at the eye from both sides, `half_height` up and down
-    /// ([`ortho_frame_camera`]).
+    /// ([`ortho_camera`]).
     Orthographic { half_height: f32 },
 }
 
 /// A frame placed by [`SceneRenderer::prepare_frame`].
 pub struct PreparedFrame {
     pub camera: Camera,
-    /// Whether the frame is camera-relative (its world origin near the eye).
-    pub camera_relative: bool,
     /// The voxel worlds' problems, when they changed this frame (an empty
     /// list: they were fixed). Already logged.
     pub new_errors: Option<Vec<String>>,
@@ -115,12 +114,6 @@ pub struct SceneRenderer {
     /// The rigid-frame table last handed to the renderer (slot 0 is the
     /// world), so it is re-uploaded only when a frame moved.
     spaces: SpaceSync,
-    relative_camera_gate: RelativeCameraGate,
-    /// Coordinate space of the last frame (camera-relative or world).
-    last_camera_relative: Option<bool>,
-    /// This frame's world origin when it renders camera-relative
-    /// ([`frame_world_origin`]).
-    world_origin: Option<DVec3>,
     /// What the frame reads from the scene, and the world revision it was
     /// read at: camera-only frames reuse it.
     read: Option<(u64, Arc<VoxelSceneRead>)>,
@@ -230,9 +223,6 @@ impl SceneRenderer {
             queue,
             voxels,
             spaces,
-            relative_camera_gate: RelativeCameraGate::default(),
-            last_camera_relative: None,
-            world_origin: None,
             read: None,
             last_errors: Vec::new(),
             world_sync: None,
@@ -328,30 +318,6 @@ impl SceneRenderer {
             self.virtual_geometry_override,
         );
         let read = self.scene_read();
-        let wants_relative = self.voxels.uses_camera_relative_frames(&read.entries);
-        let camera_relative = wants_relative && {
-            let store = self.scene.read();
-            self.relative_camera_gate
-                .compatible(&store.world, read.relative_camera_refusals.is_empty())
-        };
-        if self.last_camera_relative != Some(camera_relative) {
-            // A switch of coordinate space discards temporal history and
-            // changes how the planet and sky are placed: visible as a flash.
-            // It must only follow a real scene change. A large world refused
-            // camera-relative frames from the start renders in f32 world
-            // coordinates far from the origin (jitter, blocks, broken view
-            // rays): name what refused it.
-            if self.last_camera_relative.is_some() || (wants_relative && !camera_relative) {
-                let store = self.scene.read();
-                tracing::warn!(
-                    camera_relative,
-                    world = ?read.relative_camera_refusals,
-                    incompatible = ?relative_camera_incompatible_sources(&store.world),
-                    "VOXEL_CAMERA_SPACE changed"
-                );
-            }
-            self.last_camera_relative = Some(camera_relative);
-        }
 
         // The live settings: the TSR preset (the voxel scene's under
         // "Automatic") and the render scale while TSR is off.
@@ -368,11 +334,11 @@ impl SceneRenderer {
             }
         }
 
-        // Canonical voxel coordinates stay global (`view.eye`, `VoxelView`);
-        // only the frame camera is origin-relative.
-        self.world_origin = camera_relative.then(|| frame_world_origin(self.world_origin, view.eye));
-        self.renderer.set_world_origin(self.world_origin);
-        let origin = self.world_origin.unwrap_or(DVec3::ZERO);
+        // Every frame is camera-relative: its world origin follows the eye
+        // (Helio's `Renderer::origin_for`), and the rows the joins derive are
+        // relative to it. Voxel coordinates stay global (`view.eye`,
+        // `VoxelView`).
+        let origin = self.renderer.origin_for(view.eye);
         let camera = match view.projection {
             FrameProjection::Perspective { fov_y, near, far } => {
                 // Over a voxel world the planes it certifies: its empty space
@@ -385,10 +351,10 @@ impl SceneRenderer {
                     Some(range) => range,
                     None => (near, far),
                 };
-                native_frame_camera(view.eye, view.forward, view.up, fov_y, view.aspect, near, far, origin)
+                Camera::perspective_look_to(view.eye, view.forward, view.up, fov_y, view.aspect, near, far)
             }
             FrameProjection::Orthographic { half_height } => {
-                ortho_frame_camera(view.eye, view.forward, view.up, view.aspect, half_height, origin)
+                ortho_camera(view.eye, view.forward, view.up, view.aspect, half_height)
             }
         };
         // A lens that maps past the frame (fisheye, barrel distortion) needs
@@ -407,7 +373,7 @@ impl SceneRenderer {
         // Rigid frames: one matrix each, relative to the same origin. Their
         // members' rows never change when a frame moves; this table does.
         // Portal chains are built for the portals this camera can see.
-        self.spaces.set_view(camera.proj * camera.view, camera.position);
+        self.spaces.set_view(camera.view_proj_in(origin), camera.position_in(origin));
         self.spaces.sync(&self.scene, origin, &mut self.renderer);
 
         let mut errors = read.errors.clone();
@@ -426,11 +392,7 @@ impl SceneRenderer {
             self.last_errors = errors.clone();
             errors
         });
-        PreparedFrame {
-            camera,
-            camera_relative,
-            new_errors,
-        }
+        PreparedFrame { camera, new_errors }
     }
 
     /// Bring the GPU up to date with the scene: bind the assets that
@@ -455,321 +417,14 @@ impl SceneRenderer {
     }
 }
 
-// Camera-relative frames (the world origin at the eye) keep a planet's
-// coordinates exact in f32. Only consumers audited to use the same origin
-// may share such a frame: any unreviewed authored component or GPU source
-// keeps the frame in world coordinates.
-#[derive(Default)]
-struct RelativeCameraGate {
-    /// The GPU store and its registry length the sources were classified at.
-    snapshot: Option<(usize, usize)>,
-    sources_compatible: bool,
-}
-
-impl RelativeCameraGate {
-    /// Whether this frame may be camera-relative: the scene, classified once
-    /// per revision (`VoxelSceneRead`), and every registered GPU source.
-    fn compatible(&mut self, world: &pulsar_scenedb::World, scene_compatible: bool) -> bool {
-        let Some(mirror) = world.gpu_mirror() else {
-            return false;
-        };
-        let store = mirror.store();
-        // Registrations are append-only: a new one re-classifies.
-        let snapshot = (store as *const _ as usize, store.buffer_registry().len());
-        if self.snapshot != Some(snapshot) {
-            self.sources_compatible = relative_camera_incompatible_sources(world).is_empty();
-            self.snapshot = Some(snapshot);
-        }
-        scene_compatible && self.sources_compatible
-    }
-}
-
-/// GPU-mirror buffers that keep a frame out of camera-relative coordinates.
-fn relative_camera_incompatible_sources(world: &pulsar_scenedb::World) -> Vec<String> {
-    let Some(mirror) = world.gpu_mirror() else {
-        return vec!["<no gpu mirror>".into()];
-    };
-    let store = mirror.store();
-    store
-        .buffer_registry()
-        .telemetry_entries()
-        .into_iter()
-        .filter(|(key, kind, _, access, mode, _, _)| {
-            !(relative_camera_source_compatible(key.as_str(), kind, *mode, *access)
-                && relative_camera_source_schema_compatible(store, *key))
-        })
-        .map(|(key, kind, _, access, mode, _, _)| {
-            format!("{} ({kind}, {mode:?}, {access:?})", key.as_str())
-        })
-        .collect()
-}
-
-/// A registered buffer holds the schema its key names (a host-provided
-/// mirror could register another type under a reviewed key).
-fn relative_camera_source_schema_compatible(
-    store: &pulsar_scenedb::gpu::SceneGpuStore,
-    key: pulsar_scenedb::gpu::BufferKey,
-) -> bool {
-    use helio_component::components as c;
-    use pulsar_scenedb::component::type_of;
-    let expected = match key.as_str() {
-        "component_owners" => {
-            pulsar_scene_model::attachments::ComponentOwner::packed_gpu_component_id()
-        }
-        "object_hidden" => pulsar_scene_model::ObjectHidden::packed_gpu_component_id(),
-        "object_transforms" => pulsar_scene_model::TransformRow::packed_gpu_component_id(),
-        "light_sources" => c::LightSourceRow::packed_gpu_component_id(),
-        "water_hitbox_sources" => pulsar_physics::WaterHitboxSourceRow::packed_gpu_component_id(),
-        "global_fog_sources" => c::GlobalFogSourceRow::packed_gpu_component_id(),
-        "local_fog_sources" => c::LocalFogSourceRow::packed_gpu_component_id(),
-        "post_process_volume_sources" => c::PostProcessVolumeSourceRow::packed_gpu_component_id(),
-        "camera_postprocess_sources" => c::CameraPostProcessSourceRow::packed_gpu_component_id(),
-        "camera_lens_sources" | "lens_elements" => {
-            return c::lens_buffer_component_id(key.as_str()).is_some_and(|id| {
-                store.buffer_registry().element_type(key) == Some(Some(type_of(id)))
-            });
-        }
-        "water_volume_sources" => c::WaterVolumeSourceRow::packed_gpu_component_id(),
-        "foliage_sources" => c::FoliageSourceRow::packed_gpu_component_id(),
-        "atmosphere_sources" => c::AtmosphereSourceRow::packed_gpu_component_id(),
-        "decal_sources" => c::DecalSourceRow::packed_gpu_component_id(),
-        "corona_emitter_sources" => c::CoronaEmitterSourceRow::packed_gpu_component_id(),
-        "wind_sources" => c::GlobalWindSourceRow::packed_gpu_component_id(),
-        "sprite_sources" => c::SpriteSourceRow::packed_gpu_component_id(),
-        "builtin_mesh_vertex::handles"
-        | "builtin_mesh_index::handles"
-        | "skeletal_skin_vertices::handles"
-        | "skeletal_bone_palette::handles"
-        | "lod_component_levels::handles"
-        | "vg_instance_overrides::handles" => {
-            return store.buffer_registry().element_type(key)
-                == Some(Some(std::any::TypeId::of::<
-                    pulsar_scenedb::gpu::VarLenHandle,
-                >()));
-        }
-        // SceneDB's execution metadata and the mesh payload and draw fields
-        // are checked by kind; their components are gated in the World.
-        _ => return true,
-    };
-    store.buffer_registry().element_type(key) == Some(Some(type_of(expected)))
-}
-
-/// Whether a registered buffer may feed a camera-relative frame. The
-/// buffers here are the scene and environment joins' inputs: what the passes
-/// draw from them is decided by the authored components in the World
-/// (`relative_camera_world_incompatibilities`), so a registered but unused
-/// source is harmless. Anything else (a plugin's own pass rows) is not
-/// reviewed for a moved origin.
-fn relative_camera_source_compatible(
-    key: &str,
-    kind: &str,
-    mode: Option<pulsar_scenedb::MirrorMode>,
-    access: pulsar_scenedb::gpu::BufferAccess,
-) -> bool {
-    use pulsar_scenedb::{gpu::BufferAccess, MirrorMode};
-    // Material textures: no positions; uploads write them.
-    if key == "builtin_texture" {
-        return kind == "texture_array" && mode.is_none();
-    }
-    if access != BufferAccess::ReadOnly {
-        return false;
-    }
-    match key {
-        "scenedb-instances"
-        | "scenedb-instance-info"
-        | "builtin_generation"
-        | "builtin_slot_mirror"
-        | "builtin_cell_metadata"
-        | "component_owners"
-        | "object_hidden"
-        // Parent indices, no positions; the hierarchy resolve composes the
-        // (camera-relative-safe) transform rows with them.
-        | "object_parent"
-        | "object_frame"
-        | "object_transforms"
-        | "light_sources"
-        | "decal_sources"
-        | "water_hitbox_sources"
-        | "global_fog_sources"
-        | "local_fog_sources"
-        | "post_process_volume_sources"
-        | "camera_postprocess_sources"
-        | "camera_lens_sources"
-        | "lens_elements"
-        | "water_volume_sources"
-        | "foliage_sources"
-        | "atmosphere_sources"
-        | "corona_emitter_sources"
-        | "wind_sources"
-        | "sprite_sources"
-        | "static_mesh_draw_bounds"
-        | "static_mesh_draw_flags"
-        | "builtin_mesh_vertex::handles"
-        | "builtin_mesh_index::handles"
-        | "static_mesh_draw_sections::handles"
-        | "skeletal_skin_vertices::handles"
-        | "skeletal_bone_palette::handles"
-        // Authored LOD thresholds and virtual-geometry overrides: no
-        // positions (the LOD selection measures distance in the frame).
-        | "lod_component_levels::handles"
-        | "vg_instance_overrides::handles" => {
-            kind == "row" && mode == Some(MirrorMode::DirtyTracked)
-        }
-        // Skin weights carry no positions, and the bone palette is in the
-        // mesh's own space: passes apply it before the instance's model
-        // matrix, which is what a moved origin rebases.
-        "builtin_mesh_vertex"
-        | "builtin_mesh_index"
-        | "static_mesh_draw_sections"
-        | "skeletal_skin_vertices"
-        | "skeletal_bone_palette"
-        | "lod_component_levels"
-        | "vg_instance_overrides" => kind == "resource" && mode.is_none(),
-        _ => false,
-    }
-}
-
-/// What keeps the scene out of camera-relative frames: every component type
-/// not reviewed for a moved origin. Empty when the scene is compatible.
-fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec<String> {
-    use crate::scene::{
-        ComponentAttachments, Name, ObjectType, Parent, RenderProps, Selected, SiblingIndex,
-        StableId, Transform, Visibility,
-    };
-    use pulsar_scenedb::component_id;
-    let mut found = Vec::new();
-    let allowed = [
-        // Objects and their component instances.
-        component_id::<StableId>(),
-        component_id::<Name>(),
-        component_id::<Parent>(),
-        component_id::<SiblingIndex>(),
-        component_id::<Selected>(),
-        component_id::<Transform>(),
-        component_id::<Visibility>(),
-        component_id::<ObjectType>(),
-        // Editor metadata of an object: no position.
-        component_id::<RenderProps>(),
-        component_id::<ComponentAttachments>(),
-        component_id::<helio::Movability>(),
-        component_id::<pulsar_scene_model::ObjectHidden>(),
-        component_id::<pulsar_scene_model::attachments::ComponentOwner>(),
-        component_id::<pulsar_scene_model::attachments::ComponentMeta>(),
-        // Kept data of an unregistered class: nothing draws it.
-        component_id::<pulsar_scene_model::attachments::UnresolvedComponent>(),
-        // The voxel world itself, traced camera-relative.
-        component_id::<helio_component::VoxelTerrainComponent>(),
-        component_id::<helio_component::VoxelTerrainLayersComponent>(),
-        // A free-standing voxel object: its chunks are its mesh rows, which
-        // the scene join places like any mesh (below).
-        component_id::<helio_component::VoxelComponent>(),
-        // Lights of every type: the scene join writes their positions
-        // relative to the world origin, so culling and shadow matrices are
-        // in the frame's space; their editor icons are billboards, which
-        // subtract the origin themselves.
-        component_id::<helio_component::components::LightComponent>(),
-        // Meshes: the scene join writes their model matrices and bounds
-        // relative to the world origin (Pulsar-Native#1127).
-        component_id::<helio_component::components::StaticMeshComponent>(),
-        // The atmosphere pass subtracts the world origin from the planet's
-        // centre; volume blending rebases volume bounds by it; a camera's
-        // post-process baseline has no position.
-        component_id::<helio_component::AtmosphereComponent>(),
-        component_id::<helio_component::PostProcessVolumeComponent>(),
-        component_id::<helio_component::CameraPostProcessComponent>(),
-        // A camera lens has no position.
-        component_id::<helio_component::CameraLensComponent>(),
-        // The environment join places decals, particle emitters, water
-        // volumes and the water bodies push relative to the world origin;
-        // the Corona pass moves live particles, and the water simulation
-        // its waves and previous body bounds, with the origin.
-        component_id::<helio_component::components::DecalComponent>(),
-        component_id::<helio_component::components::ParticleEmitterComponent>(),
-        component_id::<helio_component::WaterVolumeComponent>(),
-        component_id::<pulsar_physics::PhysicsComponent>(),
-        // Fog volumes stay in world space: the fog pass adds the world
-        // origin to the positions it reconstructs.
-        component_id::<helio_component::components::GlobalFogComponent>(),
-        component_id::<helio_component::components::LocalFogVolumeComponent>(),
-        // Splines draw as world-space lines in the editor overlay, which
-        // subtracts the world origin; LOD settings draw nothing.
-        component_id::<helio_component::components::SplineComponent>(),
-        component_id::<helio_component::components::LODComponent>(),
-        // The global wind: a direction and speed, no position.
-        component_id::<helio_component::components::WindComponent>(),
-        // Foliage: its types and wind have no position; the environment
-        // join writes its layers relative to the world origin, and the
-        // placement pass writes its tile frames in the frame's space.
-        component_id::<helio_component::components::FoliageComponent>(),
-        // 2D sprites: screen space, drawn by their own camera.
-        component_id::<helio_component::components::SpriteComponent>(),
-    ];
-    for archetype in world
-        .archetypes
-        .iter()
-        .filter(|archetype| !archetype.entities.is_empty())
-    {
-        for &id in archetype.key.0.iter() {
-            if !allowed.contains(&id) {
-                let name = pulsar_scenedb::component::type_name(id).to_string();
-                if !found.contains(&name) {
-                    found.push(name);
-                }
-            }
-        }
-    }
-    found
-}
-
-/// The frame camera at `eye`, looking along `forward`, in coordinates
-/// relative to `origin` (the frame's world origin; zero for a world-space
-/// frame). Orientation is built before translation, and the translation in
-/// f64: adding a unit direction to a large f32 world position can round
-/// away the look direction.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn native_frame_camera(
-    eye: DVec3,
-    forward: Vec3,
-    up: Vec3,
-    fov_y: f32,
-    aspect: f32,
-    near: f32,
-    far: f32,
-    origin: DVec3,
-) -> Camera {
-    let mut camera = Camera::perspective_look_at(
-        Vec3::ZERO,
-        forward,
-        up,
-        fov_y,
-        aspect,
-        near,
-        far,
-    );
-    let local = eye - origin;
-    if local != DVec3::ZERO {
-        camera.position = local.as_vec3();
-        camera.view = (camera.view.as_dmat4() * glam::DMat4::from_translation(-local)).as_mat4();
-    }
-    camera
-}
-
-/// An orthographic frame camera looking at `focus` along `forward`, in
-/// coordinates relative to `origin` like [`native_frame_camera`]. The eye is
-/// the focus itself and the view volume reaches [`ortho_depth_range`] to both
+/// An orthographic camera looking at `focus` along `forward`. The eye is the
+/// focus itself and the view volume reaches [`ortho_depth_range`] to both
 /// sides of it (a near plane behind the eye).
 ///
 /// The eye must stay at the focus: depth-based effects (volumetric fog,
 /// atmosphere) integrate along the distance from the eye, so an eye held far
 /// back would bury the scene in haze.
-pub(super) fn ortho_frame_camera(
-    focus: DVec3,
-    forward: Vec3,
-    up: Vec3,
-    aspect: f32,
-    half_height: f32,
-    origin: DVec3,
-) -> Camera {
+pub(super) fn ortho_camera(focus: DVec3, forward: Vec3, up: Vec3, aspect: f32, half_height: f32) -> Camera {
     let range = ortho_depth_range(half_height);
     let half_width = half_height * aspect;
     // The engine's reversed-Z convention (`helio_core::depth::orthographic`):
@@ -782,12 +437,10 @@ pub(super) fn ortho_frame_camera(
         range,
         -range,
     );
-    let local = focus - origin;
-    let rotation = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, up);
-    let view = (rotation.as_dmat4() * glam::DMat4::from_translation(-local)).as_mat4();
+    let rotation = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, forward, up);
     // `near` and `far` are for the passes that read them as distances from the
     // eye (effect ranges, shadow splits), not the clip planes above.
-    Camera::from_matrices(view, proj, local.as_vec3(), 0.1, range)
+    Camera::new(focus, rotation, proj, 0.1, range)
 }
 
 /// How far an orthographic view reaches ahead of and behind its focus.
@@ -799,34 +452,15 @@ pub(super) fn ortho_depth_range(half_height: f32) -> f32 {
 /// on both sides of the focus is in front of the near plane.
 const ORTHO_STANDOFF: f32 = 4096.0;
 
-/// Side of the cells camera-relative frames snap their world origin to.
-/// Within one cell of the origin, an f32 position steps by under 0.2 mm.
-const WORLD_ORIGIN_CELL: f64 = 1024.0;
-
-/// The world origin for a camera-relative frame with the camera at `eye`:
-/// `previous` while the camera stays within a cell of it, else the cell
-/// corner nearest the camera. Positions the scene join rebases are
-/// recomputed only when it moves, not every frame the camera does, so
-/// static draws and shadow caches survive camera motion.
-fn frame_world_origin(previous: Option<DVec3>, eye: DVec3) -> DVec3 {
-    match previous {
-        Some(origin) if (eye - origin).abs().max_element() <= WORLD_ORIGIN_CELL => origin,
-        _ => (eye / WORLD_ORIGIN_CELL).round() * WORLD_ORIGIN_CELL,
-    }
-}
-
 /// What the voxel path reads from the scene: the voxel entries, whether any
-/// enabled static mesh exists, the sun direction, and what keeps the scene
-/// out of camera-relative frames. Read once per world revision.
+/// enabled static mesh exists and the sun direction. Read once per world
+/// revision.
 #[derive(Clone)]
 struct VoxelSceneRead {
     entries: Vec<crate::scene::voxel_frame::VoxelSceneEntry>,
     errors: Vec<String>,
     authored_meshes: bool,
     sun: Option<[f32; 3]>,
-    /// Empty when the scene may render camera-relative
-    /// (`relative_camera_world_incompatibilities`).
-    relative_camera_refusals: Vec<String>,
 }
 
 impl VoxelSceneRead {
@@ -876,355 +510,6 @@ impl VoxelSceneRead {
             errors,
             authored_meshes,
             sun,
-            relative_camera_refusals: relative_camera_world_incompatibilities(world),
         }
-    }
-}
-
-#[cfg(test)]
-mod native_relative_camera_tests {
-    use super::*;
-    use crate::scene::{SceneWorldExt, SpawnObject};
-    use glam::Mat4;
-
-    const FOV: f32 = std::f32::consts::FRAC_PI_4;
-    use helio_component::components::{LightComponent, LightType};
-
-    /// The example planet's objects: a terrain with its layers and air, a
-    /// post-process volume and a directional sun, attached as instances.
-    /// Returns the scene and the sun's light instance.
-    fn planet_scene() -> (pulsar_scenedb::SceneDb, pulsar_scenedb::Entity) {
-        let mut scene = pulsar_scenedb::SceneDb::new();
-        let world = &mut scene.world;
-        let planet = world
-            .spawn_object(SpawnObject::new("voxel_planet"))
-            .unwrap();
-        pulsar_world_registry::attach_value(
-            world,
-            planet,
-            helio_component::VoxelTerrainComponent::default(),
-        )
-        .unwrap();
-        pulsar_world_registry::attach_value(
-            world,
-            planet,
-            helio_component::VoxelTerrainLayersComponent::default(),
-        )
-        .unwrap();
-        pulsar_world_registry::attach_value(
-            world,
-            planet,
-            helio_component::AtmosphereComponent::default(),
-        )
-        .unwrap();
-        let volume = world
-            .spawn_object(SpawnObject::new("post_process"))
-            .unwrap();
-        pulsar_world_registry::attach_value(
-            world,
-            volume,
-            helio_component::PostProcessVolumeComponent::default(),
-        )
-        .unwrap();
-        let sun_object = world.spawn_object(SpawnObject::new("sun")).unwrap();
-        let mut sun = LightComponent::default();
-        sun.general.enabled = true;
-        sun.general.light_type = LightType::Directional;
-        let sun = pulsar_world_registry::attach_value(world, sun_object, sun).unwrap();
-        (scene, sun)
-    }
-
-    /// The shipped example levels (Earth with its meadow, Moon, Desert)
-    /// render camera-relative: none holds a component the frame refuses.
-    /// Refused, a planet is drawn in f32 world coordinates 6 371 km from the
-    /// origin and breaks apart as the camera moves.
-    #[test]
-    fn the_example_levels_render_camera_relative() {
-        for level in ["voxel_planet", "voxel_moon", "voxel_desert"] {
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../../assets/examples")
-                .join(format!("{level}.level"));
-            let mut scene = crate::scene::new_scene();
-            crate::scene::RuntimeLevel::load_into(&path, &mut scene.world)
-                .unwrap_or_else(|e| panic!("{level}: {e}"));
-            let read = VoxelSceneRead::of(&scene.world);
-            assert_eq!(read.relative_camera_refusals, Vec::<String>::new(), "{level}");
-        }
-    }
-
-    #[test]
-    fn the_example_planet_scene_renders_camera_relative() {
-        let (mut scene, sun) = planet_scene();
-        let read = VoxelSceneRead::of(&scene.world);
-        assert!(
-            read.relative_camera_refusals.is_empty(),
-            "{:?}",
-            read.relative_camera_refusals
-        );
-        assert!(read.sun.is_some(), "the directional light is the sun");
-        assert_eq!(read.entries.len(), 1);
-        // A new, unreviewed world-space consumer fails closed; retiring its
-        // last live row restores eligibility.
-        struct UnknownWorldSpaceProvider;
-        let entity = scene.world.spawn();
-        scene.world.insert(entity, UnknownWorldSpaceProvider);
-        assert!(!VoxelSceneRead::of(&scene.world)
-            .relative_camera_refusals
-            .is_empty());
-        scene.world.despawn(entity);
-        assert!(VoxelSceneRead::of(&scene.world)
-            .relative_camera_refusals
-            .is_empty());
-        // Meshes and positional lights are rebased by the scene join
-        // (Pulsar-Native#1127): a tower and a lamp on the planet keep the
-        // frame camera-relative.
-        let tower = scene.world.spawn_object(SpawnObject::new("tower")).unwrap();
-        pulsar_world_registry::attach_value(
-            &mut scene.world,
-            tower,
-            helio_component::components::StaticMeshComponent::default(),
-        )
-        .unwrap();
-        scene
-            .world
-            .get_mut::<LightComponent>(sun)
-            .unwrap()
-            .general
-            .light_type = LightType::Point;
-        let read = VoxelSceneRead::of(&scene.world);
-        assert!(
-            read.relative_camera_refusals.is_empty(),
-            "{:?}",
-            read.relative_camera_refusals
-        );
-        assert!(read.authored_meshes);
-        assert!(read.sun.is_none(), "a point light is not the sun");
-
-        // So are decals, particles, water and the bodies that push it, fog,
-        // splines and free-standing voxel objects.
-        let props = scene.world.spawn_object(SpawnObject::new("props")).unwrap();
-        let world = &mut scene.world;
-        use helio_component::components as c;
-        pulsar_world_registry::attach_value(world, props, c::DecalComponent::default()).unwrap();
-        pulsar_world_registry::attach_value(world, props, c::ParticleEmitterComponent::default())
-            .unwrap();
-        pulsar_world_registry::attach_value(
-            world,
-            props,
-            helio_component::WaterVolumeComponent::default(),
-        )
-        .unwrap();
-        pulsar_world_registry::attach_value(
-            world,
-            props,
-            pulsar_physics::PhysicsComponent::default(),
-        )
-        .unwrap();
-        pulsar_world_registry::attach_value(world, props, c::GlobalFogComponent::default())
-            .unwrap();
-        pulsar_world_registry::attach_value(world, props, c::LocalFogVolumeComponent::default())
-            .unwrap();
-        pulsar_world_registry::attach_value(world, props, c::SplineComponent::default()).unwrap();
-        pulsar_world_registry::attach_value(world, props, c::LODComponent::default()).unwrap();
-        pulsar_world_registry::attach_value(
-            world,
-            props,
-            helio_component::VoxelComponent::default(),
-        )
-        .unwrap();
-        let read = VoxelSceneRead::of(&scene.world);
-        assert!(
-            read.relative_camera_refusals.is_empty(),
-            "{:?}",
-            read.relative_camera_refusals
-        );
-
-        // Foliage grows in the frame's space (its tile frames and, from the
-        // environment join, its layers): a meadow keeps frames
-        // camera-relative.
-        pulsar_world_registry::attach_value(
-            &mut scene.world,
-            props,
-            c::FoliageComponent::default(),
-        )
-        .unwrap();
-        let read = VoxelSceneRead::of(&scene.world);
-        assert!(
-            read.relative_camera_refusals.is_empty(),
-            "{:?}",
-            read.relative_camera_refusals
-        );
-    }
-
-    /// The origin follows the camera a cell at a time, so the positions the
-    /// scene join rebases are recomputed when it moves rather than every
-    /// frame the camera does, and the camera stays close to it.
-    #[test]
-    fn the_world_origin_snaps_to_cells_and_follows_the_camera() {
-        let eye = DVec3::new(-3_426_954.1, 4_769_291.6, -2_476_450.5);
-        let origin = frame_world_origin(None, eye);
-        assert_eq!(origin, DVec3::new(-3_427_328.0, 4_769_792.0, -2_476_032.0));
-        assert!((eye - origin).abs().max_element() <= WORLD_ORIGIN_CELL / 2.0);
-        // Moving within a cell keeps it; leaving moves it to the new cell.
-        let near = eye + DVec3::new(500.0, -400.0, 300.0);
-        assert_eq!(frame_world_origin(Some(origin), near), origin);
-        let far = eye + DVec3::new(5_000.0, 0.0, 0.0);
-        let moved = frame_world_origin(Some(origin), far);
-        assert_ne!(moved, origin);
-        assert!((far - moved).abs().max_element() <= WORLD_ORIGIN_CELL / 2.0);
-    }
-
-    /// A mesh vertex on the planet's surface, in a frame relative to the
-    /// snapped origin, lands where the exact (f64) projection puts it: what
-    /// a world-space frame got 0.5 m out (the jagged mesh in #1127).
-    #[test]
-    fn surface_geometry_projects_exactly_in_a_camera_relative_frame() {
-        let eye = DVec3::new(
-            -3_426_954.099417845,
-            4_769_291.620032467,
-            -2_476_450.5275892294,
-        );
-        let forward = Vec3::new(0.9167773, 0.29777223, -0.2661786);
-        let up = Vec3::new(-0.39032218, 0.8092439, -0.43905908);
-        let origin = frame_world_origin(None, eye);
-        let relative = native_frame_camera(eye, forward, up, FOV, 1.5, 0.1, 46_371_000.0, origin);
-        let world = native_frame_camera(eye, forward, up, FOV, 1.5, 0.1, 46_371_000.0, DVec3::ZERO);
-        // A vertex 25 m in front of the camera, 0.3 m off a 0.5 m grid line.
-        let vertex = eye + forward.as_dvec3().normalize() * 25.0 + DVec3::new(0.3, 0.0, 0.0);
-        let exact = {
-            let view = glam::DMat4::look_to_rh(eye, forward.as_dvec3(), up.as_dvec3());
-            let clip = relative.proj.as_dmat4() * view * vertex.extend(1.0);
-            clip.truncate() / clip.w
-        };
-        let ndc = |camera: &Camera, point: Vec3| {
-            let clip = camera.proj * camera.view * point.extend(1.0);
-            (clip.truncate() / clip.w).as_dvec3()
-        };
-        let rebased = ndc(&relative, (vertex - origin).as_vec3());
-        let absolute = ndc(&world, vertex.as_vec3());
-        assert!(
-            (rebased - exact).truncate().length() < 1e-4,
-            "{rebased} vs {exact}"
-        );
-        assert!(
-            (absolute - exact).truncate().length() > 1e-3,
-            "the world-space frame snaps it"
-        );
-    }
-
-    /// Every buffer this engine registers in the GPU mirror is reviewed:
-    /// a frame of the example planet is not refused by its own sources.
-    #[test]
-    fn the_engines_gpu_sources_are_camera_relative_compatible() {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let Some(adapter) = pollster::block_on(instance.request_adapter(&Default::default())).ok()
-        else {
-            eprintln!("skipping: no GPU adapter available");
-            return;
-        };
-        let Ok((device, queue)) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-                required_limits: helio::required_wgpu_limits(adapter.limits()),
-                ..Default::default()
-            }))
-        else {
-            eprintln!("skipping: no GPU device available");
-            return;
-        };
-        let (mut scene, _) = planet_scene();
-        crate::scene::ensure_gpu_mirror(&mut scene, Arc::new(device), Arc::new(queue));
-        scene.step();
-        assert_eq!(
-            relative_camera_incompatible_sources(&scene.world),
-            Vec::<String>::new()
-        );
-        let read = VoxelSceneRead::of(&scene.world);
-        let mut gate = RelativeCameraGate::default();
-        assert!(gate.compatible(&scene.world, read.relative_camera_refusals.is_empty()));
-    }
-
-    #[test]
-    fn unknown_or_raw_render_sources_do_not_activate_relative_camera() {
-        use pulsar_scenedb::{gpu::BufferAccess::ReadOnly, MirrorMode};
-        assert!(relative_camera_source_compatible(
-            "component_owners",
-            "row",
-            Some(MirrorMode::DirtyTracked),
-            ReadOnly
-        ));
-        assert!(!relative_camera_source_compatible(
-            "component_owners",
-            "resource",
-            None,
-            ReadOnly
-        ));
-        for key in [
-            "reflection_captures",
-            "portal_views",
-            "corona_emitters",
-            "foliage_layers",
-            "custom_render_source",
-        ] {
-            assert!(
-                !relative_camera_source_compatible(
-                    key,
-                    "row",
-                    Some(MirrorMode::DirtyTracked),
-                    ReadOnly
-                ),
-                "{key}"
-            );
-        }
-    }
-
-    #[test]
-    fn earth_scale_terrain_depth_reprojects_in_local_camera_space() {
-        let eye = DVec3::new(-3426954.099417845, 4769291.620032467, -2476450.5275892294);
-        let forward = Vec3::new(0.9167773, 0.29777223, -0.2661786);
-        let up = Vec3::new(-0.39032218, 0.8092439, -0.43905908);
-        let local = native_frame_camera(eye, forward, up, FOV, 1196.0 / 729.0, 2.4, 46_371_000.0, eye);
-        let global = native_frame_camera(
-            eye,
-            forward,
-            up,
-            FOV,
-            1196.0 / 729.0,
-            2.4,
-            46_371_000.0,
-            DVec3::ZERO,
-        );
-        assert_eq!(local.position, Vec3::ZERO);
-        assert_eq!(global.position, eye.as_vec3());
-        let local_vp = local.proj * local.view;
-        let global_vp = global.proj * global.view;
-        // A surface 10 m ahead, reconstructed from its depth texel (as TSR
-        // and the deferred pass do) in either frame.
-        let point = (forward.normalize() * 10.0).extend(1.0);
-        let clip = local_vp * point;
-        let raster = clip / clip.w;
-        let reconstruct = |vp: Mat4| {
-            let h = vp.inverse() * raster;
-            (h.truncate() / h.w).as_dvec3()
-        };
-        let surface = eye + point.truncate().as_dvec3();
-        // Global f32 frames at Earth radius step by half a metre: the
-        // surface lands metres away. The camera's own frame is exact.
-        let global_error = (reconstruct(global_vp) - surface).length();
-        let local_error = (reconstruct(local_vp) + eye - surface).length();
-        eprintln!("reconstruction error: global {global_error} m, local {local_error} m");
-        assert!(
-            global_error > 0.1,
-            "regression trigger must expose global-f32 cancellation"
-        );
-        assert!(local_error < 1.0e-4, "{local_error} m");
-        // Express the current relative point in the previous frame's origin
-        // exactly once; sub-voxel camera movement must survive Earth-scale
-        // positions.
-        let previous_eye = eye - DVec3::new(0.01, -0.03, 0.02);
-        let shift = eye - previous_eye;
-        let previous_view =
-            (local.view.as_dmat4() * glam::DMat4::from_translation(shift)).as_mat4();
-        let expected = (local.view.as_dmat4() * (point.as_dvec4() + shift.extend(0.0))).as_vec4();
-        assert!((previous_view * point - expected).length() < 0.00001);
     }
 }

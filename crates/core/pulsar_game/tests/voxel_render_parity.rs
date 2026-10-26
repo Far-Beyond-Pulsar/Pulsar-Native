@@ -397,7 +397,7 @@ fn game_frame(
     let mut camera =
         FreeCam::default().place(DVec3::from_array(pose.position), pose.yaw, pose.pitch);
     let mut frames = 0;
-    let (camera_relative, view) = loop {
+    let view = loop {
         let tick = game_tick(target, &scene, &mut renderer, &mut camera);
         frames += 1;
         assert!(frames < SETTLE_LIMIT, "the game's voxel worlds never settled");
@@ -423,12 +423,11 @@ fn game_frame(
     let frame = target.read();
     let diagnostics = renderer.voxel_diagnostics().join(" | ");
     println!(
-        "VOXEL PARITY game ({owner:?}): settled in {settled} frames, {frames} in all; camera-relative {camera_relative}; eye {:?} forward {:?} up {:?}; {diagnostics}",
+        "VOXEL PARITY game ({owner:?}): settled in {settled} frames, {frames} in all; eye {:?} forward {:?} up {:?}; {diagnostics}",
         view.eye.to_array(),
         view.forward.to_array(),
         view.up.to_array(),
     );
-    assert!(camera_relative, "the planet renders camera-relative in the game");
     assert_eq!(view.eye, editor.eye, "the game's eye is the editor's, in f64");
     assert!(
         view.forward.abs_diff_eq(editor.forward, 1e-5) && view.up.abs_diff_eq(editor.up, 1e-5),
@@ -448,13 +447,13 @@ fn game_frame(
 
 /// One game frame, as the game loop and the PIE tick render it: bind the
 /// loaded assets, step the world, place the free camera on the ground under
-/// it, draw. Whether the frame was camera-relative, and its view.
+/// it, draw. The frame's view.
 fn game_tick(
     target: &Target,
     scene: &SharedScene,
     renderer: &mut SceneRenderer,
     camera: &mut FreeCam,
-) -> (bool, FrameView) {
+) -> FrameView {
     engine_backend::scene::pump_assets(scene);
     renderer.step_scene(&mut scene.write());
     camera.follow_ground(renderer.voxel_ground(camera.position()));
@@ -471,7 +470,7 @@ fn game_tick(
         .render(&prepared.camera, &target.view)
         .expect("render");
     target.wait();
-    (prepared.camera_relative, view)
+    view
 }
 
 /// Save `frame` as `name` with its difference from `editor` (x8), and print

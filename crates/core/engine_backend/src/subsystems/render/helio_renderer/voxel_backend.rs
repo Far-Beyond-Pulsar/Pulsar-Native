@@ -183,11 +183,6 @@ pub trait VoxelRenderBackend: Send {
     fn temporal_quality(&self, _size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
         None
     }
-    /// Worlds whose coordinates outgrow f32 precision render camera-relative
-    /// frames (world origin at the eye) when every scene source allows it.
-    fn camera_relative_frames(&self) -> bool {
-        false
-    }
     /// Local vertical at `eye` (a planet's radial): the camera's up.
     fn local_up(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<DVec3> {
         None
@@ -289,19 +284,6 @@ impl VoxelBackendRegistry {
             .iter()
             .filter_map(|backend| backend.pass_factory())
             .collect()
-    }
-
-    pub fn uses_camera_relative_frames(&self, entries: &[VoxelSceneEntry]) -> bool {
-        let mut selected = self.backends.iter().filter(|backend| {
-            entries.iter().any(|entry| {
-                if entry.renderer_id.is_empty() {
-                    backend.supports(entry)
-                } else {
-                    entry.renderer_id == backend.renderer_id()
-                }
-            })
-        });
-        selected.any(|backend| backend.camera_relative_frames())
     }
 
     pub fn configure_appearance(
@@ -1079,10 +1061,6 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         })
     }
 
-    fn camera_relative_frames(&self) -> bool {
-        true
-    }
-
     fn lift_out_of_ground(&self, eye: DVec3) -> Option<DVec3> {
         let planet = &self.cached.as_ref()?.planet;
         let grid = planet.grid();
@@ -1458,7 +1436,6 @@ mod tests {
         let (hidden, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty());
         assert!(!hidden[0].visible);
-        assert!(registry.uses_camera_relative_frames(&hidden));
         assert!(registry.publish_frame(&hidden, view(eye)).is_empty());
         assert!(frame.lock().unwrap().is_none());
     }

@@ -11,7 +11,7 @@ use crate::scene::{GizmoType, SceneWorldExt};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 #[cfg(test)]
-use super::scene_renderer::ortho_frame_camera;
+use super::scene_renderer::ortho_camera;
 use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
 use super::scene_renderer::{
     ortho_depth_range, DeviceOwner, FrameProjection, FrameView, SceneRenderer,
@@ -1572,7 +1572,7 @@ impl HelioRenderer {
             let (forward, _, up) = self.cam.basis();
             for line in inner.scene.voxel_diagnostics() {
                 tracing::info!(
-                    "VOXEL_STATS fps={fps:.1} slowest_frame_ms={slowest:.1} altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} camera_relative={} graph_gpu_ms={:?}",
+                    "VOXEL_STATS fps={fps:.1} slowest_frame_ms={slowest:.1} altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} graph_gpu_ms={:?}",
                     self.voxel_ground.altitude.unwrap_or(f64::NAN),
                     altitude_speed_scale(&self.voxel_ground),
                     self.cam.position.to_array(),
@@ -1581,7 +1581,6 @@ impl HelioRenderer {
                     width,
                     height,
                     inner.scene.renderer.render_scale(),
-                    frame.camera_relative,
                     inner.scene.renderer.gpu_frame_ms(),
                 );
             }
@@ -2705,9 +2704,9 @@ mod view_kind_tests {
     fn the_orthographic_camera_centres_its_focus_and_scales_by_half_height() {
         let focus = DVec3::new(100.0, 5.0, -40.0);
         let (forward, _, up) = ViewKind::Front.axis_basis().unwrap();
-        let camera = ortho_frame_camera(focus, forward, up, 2.0, 10.0, DVec3::ZERO);
+        let camera = ortho_camera(focus, forward, up, 2.0, 10.0);
         let ndc = |p: Vec3| {
-            let clip = camera.proj * camera.view * p.extend(1.0);
+            let clip = camera.view_proj_in(DVec3::ZERO) * p.extend(1.0);
             clip.truncate() / clip.w
         };
 
@@ -2728,10 +2727,10 @@ mod view_kind_tests {
     #[test]
     fn the_orthographic_projection_follows_the_reversed_depth_convention() {
         let (forward, _, up) = ViewKind::Top.axis_basis().unwrap();
-        let camera = ortho_frame_camera(DVec3::ZERO, forward, up, 1.0, 5.0, DVec3::ZERO);
+        let camera = ortho_camera(DVec3::ZERO, forward, up, 1.0, 5.0);
         // Nearer to the eye (higher in a top view) gets the larger depth.
         let depth = |y: f32| {
-            let clip = camera.proj * camera.view * Vec3::new(0.0, y, 0.0).extend(1.0);
+            let clip = camera.view_proj_in(DVec3::ZERO) * Vec3::new(0.0, y, 0.0).extend(1.0);
             clip.z / clip.w
         };
         assert!(depth(100.0) > depth(-100.0));

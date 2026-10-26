@@ -72,14 +72,14 @@ impl Join {
     /// Flush the scene and run the join over the frame's buffers, as the
     /// renderer does; returns the published buffers.
     fn run(&mut self, scene: &mut SceneDb) -> SceneBufferProjection {
-        self.run_at(scene, None)
+        self.run_at(scene, glam::DVec3::ZERO)
     }
 
-    /// [`Self::run`] in a camera-relative frame whose world origin is `origin`.
+    /// [`Self::run`] in a frame whose world origin is `origin`.
     fn run_at(
         &mut self,
         scene: &mut SceneDb,
-        origin: Option<glam::DVec3>,
+        origin: glam::DVec3,
     ) -> SceneBufferProjection {
         scene.step();
         let mirror = scene.world.gpu_mirror().expect("mirror attached").clone();
@@ -598,7 +598,7 @@ fn a_mesh_on_a_planet_keeps_its_millimetres() {
         let step = f64::from(frame) * 0.001;
         scene.world.get_mut::<Transform>(folder).unwrap().position =
             [1000.0 + step, 6_371_002.371, -300.0 - step];
-        let out = join.run_at(&mut scene, Some(origin));
+        let out = join.run_at(&mut scene, origin);
         let got = glam::Vec3::from_slice(&position_of(&join, &out, instance));
         let world = engine_backend::scene::hierarchy_transform::world_matrix_of(&scene.world, leaf)
             .unwrap()
@@ -622,8 +622,9 @@ fn join_for(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Join {
 }
 
 /// Far from the origin, a parent's children keep the precision of their
-/// offset: the chain is composed relative to the frame's origin, not in
-/// absolute f32 (whose step at this distance is half a metre).
+/// offset: the chain is composed in f32 pairs and the join takes the frame's
+/// origin off pair-wise, not in absolute f32 (whose step at this distance is
+/// half a metre).
 #[test]
 fn nested_objects_far_from_the_origin_keep_their_offsets() {
     let Some((device, queue)) = device() else {
@@ -653,7 +654,7 @@ fn nested_objects_far_from_the_origin_keep_their_offsets() {
     );
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = join_for(&device, &queue);
-    let out = join.run_at(&mut scene, Some(origin));
+    let out = join.run_at(&mut scene, origin);
     assert_eq!(
         position_of(&join, &out, near),
         [0.25, 0.0, 0.0],
@@ -666,8 +667,41 @@ fn nested_objects_far_from_the_origin_keep_their_offsets() {
     );
 }
 
-/// A flat scene in a camera-relative frame is still offset by the joins
-/// themselves (no hierarchy resolve runs).
+/// A light (and its editor icon) under a parent far from the origin is offset
+/// by the frame's origin exactly once: the hierarchy resolve publishes world rows, and the join
+/// takes the origin off them as it does for a flat scene. (When the resolve
+/// published origin-relative rows, a light parented on a planet was offset
+/// twice and lit from 6 400 km away.)
+#[test]
+fn parented_lights_are_offset_by_the_origin_once() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    const FAR: f64 = 6_400_000.0;
+    let mut scene = SceneDb::new();
+    let folder = place(&mut scene, "folder", [FAR, 0.0, 0.0]);
+    let lamp = scene
+        .world
+        .spawn_object(SpawnObject::new("lamp").with_parent(Some(folder)).with_transform(Transform {
+            position: [0.25, 2.0, 0.0],
+            ..Transform::default()
+        }))
+        .unwrap();
+    let mut light = LightComponent::default();
+    light.general.enabled = true;
+    let light = pulsar_world_registry::attach_value(&mut scene.world, lamp, light).unwrap();
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = join_for(&device, &queue);
+    let out = join.run_at(&mut scene, glam::DVec3::new(FAR, 0.0, 0.0));
+    assert_eq!(&join.light_row(&out, light).position_range[..3], &[0.25, 2.0, 0.0]);
+    // Its editor icon sits with it, in the frame's space.
+    let billboard = join.read::<[f32; 12]>(&out, "billboard_instances")[light.index() as usize];
+    assert_eq!(&billboard[..3], &[0.25, 2.0, 0.0]);
+}
+
+/// A flat scene (no hierarchy resolve runs) is offset by the joins the same
+/// way.
 #[test]
 fn a_flat_scene_is_still_made_origin_relative_by_the_join() {
     let Some((device, queue)) = device() else {
@@ -686,7 +720,7 @@ fn a_flat_scene_is_still_made_origin_relative_by_the_join() {
     );
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = join_for(&device, &queue);
-    let out = join.run_at(&mut scene, Some(glam::DVec3::new(FAR, 0.0, 0.0)));
+    let out = join.run_at(&mut scene, glam::DVec3::new(FAR, 0.0, 0.0));
     assert_eq!(position_of(&join, &out, flat), [4.0, 0.0, 0.0]);
 }
 

@@ -63,9 +63,10 @@ impl View {
     fn world(self, v: Vec3) -> [f64; 3] {
         (self.origin + v.as_dvec3()).to_array()
     }
-    /// `v` as a debug line vertex: debug geometry is world-space f32.
-    fn vertex(self, v: Vec3) -> [f32; 3] {
-        (self.origin + v.as_dvec3()).as_vec3().to_array()
+    /// `v` as a debug line vertex: world space, in f64 (Helio draws debug
+    /// geometry relative to its frame's origin).
+    fn vertex(self, v: Vec3) -> DVec3 {
+        self.origin + v.as_dvec3()
     }
     fn project(self, point: Vec3) -> Option<Vec2> {
         let p = self.matrix * point.extend(1.0);

@@ -243,7 +243,7 @@ impl Bench {
             &self.device,
             &self.queue,
             &mut inputs,
-            None,
+            glam::DVec3::ZERO,
         );
 
         let mut head = self.device.create_command_encoder(&Default::default());
@@ -272,7 +272,7 @@ impl Bench {
                 delta_time: 0.016,
                 time: 0.0,
                 time_delta: 0.016,
-                world_origin: None,
+                world_origin: glam::DVec3::ZERO,
                 owns_device: true,
             },
             &mut batch,
@@ -418,7 +418,7 @@ fn the_moved_rows_path_matches_a_full_rebuild() {
         &bench.device,
         &bench.queue,
         &mut reference_inputs,
-        None,
+        glam::DVec3::ZERO,
     ) {
         bench.queue.submit([commands]);
     }
