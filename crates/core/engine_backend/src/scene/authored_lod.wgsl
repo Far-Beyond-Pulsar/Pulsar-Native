@@ -42,7 +42,8 @@ struct Selection {
 
 struct Uniforms {
     component_rows: u32,
-    add_origin_to_camera: u32,
+    // 1.0, unknown to the compiler: keeps the pair's halves apart.
+    one: f32,
     _pad: vec2<u32>,
     origin_hi: vec4<f32>,
     origin_lo: vec4<f32>,
@@ -99,19 +100,16 @@ fn cs_select_authored_lod(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
+    // The object in the frame's space, like the eye: its world position (an
+    // f32 pair) less the frame's world origin, pair-wise, so it keeps its
+    // precision however far from the world's origin both are. Each half goes
+    // through `u.one`: a driver reassociating the sum to `(hi + lo) - origin`
+    // rounds the low half away (NVIDIA's Vulkan driver does).
     let transform = transforms[owner.owner_index];
-    let object_position = vec3<f32>(
-        transform.position_hi[0] + transform.position_lo[0],
-        transform.position_hi[1] + transform.position_lo[1],
-        transform.position_hi[2] + transform.position_lo[2],
-    );
-    var camera_position = cameras[0].position_near.xyz;
-    // The eye is relative to the frame's world origin; world-space transform
-    // rows need it back in world space (origin-relative rows do not).
-    if u.add_origin_to_camera != 0u {
-        camera_position = camera_position + u.origin_hi.xyz + u.origin_lo.xyz;
-    }
-    let distance = length(object_position - camera_position);
+    let near_hi = (vec3<f32>(transform.position_hi[0], transform.position_hi[1], transform.position_hi[2]) - u.origin_hi.xyz) * u.one;
+    let near_lo = (vec3<f32>(transform.position_lo[0], transform.position_lo[1], transform.position_lo[2]) - u.origin_lo.xyz) * u.one;
+    let object_position = near_hi + near_lo;
+    let distance = length(object_position - cameras[0].position_near.xyz);
     if handle.count == 0u || handle.offset > arrayLength(&levels)
         || handle.count > arrayLength(&levels) - handle.offset {
         return;
