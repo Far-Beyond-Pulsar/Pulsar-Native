@@ -1,0 +1,2 @@
+# Pulsar project: Earth: a voxel planet with woods, meadow, clouds and haze.
+# Open it with: cargo run --release -p pulsar_engine -- --project-path assets/examples/voxel_planet

@@ -1,0 +1,2 @@
+# Pulsar project: Desert: a voxel desert planet.
+# Open it with: cargo run --release -p pulsar_engine -- --project-path assets/examples/voxel_desert

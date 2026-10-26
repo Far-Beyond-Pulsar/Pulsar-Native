@@ -96,6 +96,17 @@ sudo apt install -y \
 cargo build --release
 ```
 
+### Open an example
+
+The voxel worlds are ready-made projects in `assets/examples`: `voxel_planet`
+(Earth with woods, meadow, clouds and haze), `voxel_moon` and `voxel_desert`.
+
+```bash
+cargo run --release -p pulsar_engine -- --project-path assets/examples/voxel_planet
+```
+
+With [just](https://github.com/casey/just): `just example voxel_planet`.
+
 ## 🛰️ Related Ecosystems
 
 ### **Helio Renderer**

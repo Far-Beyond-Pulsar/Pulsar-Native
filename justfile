@@ -26,6 +26,10 @@ release:
 run:
     cargo run -p {{project}}
 
+# Open an example project from assets/examples (voxel_planet, voxel_moon, voxel_desert)
+example name="voxel_planet":
+    cargo run -p {{project}} --release -- --project-path assets/examples/{{name}}
+
 # ── Test ──────────────────────────────────────────────────────────────────────
 
 # Run all workspace tests
