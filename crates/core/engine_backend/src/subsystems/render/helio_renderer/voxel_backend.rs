@@ -12,7 +12,8 @@ use helio_default_passes::VoxelPassFactory;
 use helio_pass_voxel_planet::{
     chunks::{pass::ChunkPass, KeptChunks},
     engine::{PlanetFrame, SharedKeptExport, SharedPlanetFrame},
-    terrain, Planet, PlanetRecipe, TerrainSource,
+    queries::{Resident, WorldQueries},
+    terrain, Matter, Planet, PlanetRecipe, TerrainSource,
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
 
@@ -228,6 +229,8 @@ pub trait VoxelRenderBackend: Send {
     ) -> Result<Option<VoxelBrushCommit>, String> {
         Ok(None)
     }
+    /// The host applied `commits` (`edit_ray`'s) to their worlds' journals.
+    fn stamped(&self, _commits: &[VoxelBrushCommit]) {}
     /// Used only when a source leaves its renderer ID empty. Explicit IDs
     /// always win, and an ambiguous automatic match is reported to the host.
     fn supports(&self, _source: &VoxelSceneEntry) -> bool {
@@ -407,6 +410,14 @@ impl VoxelBackendRegistry {
             .iter()
             .flat_map(|backend| backend.take_picks())
             .collect()
+    }
+
+    /// The host applied `commits` (from [`Self::edit_ray`]) to their worlds'
+    /// journals.
+    pub fn stamped(&self, commits: &[VoxelBrushCommit]) {
+        for backend in &self.backends {
+            backend.stamped(commits);
+        }
     }
 
     pub fn edit_ray(
@@ -619,6 +630,13 @@ fn level_stamp(
     })
 }
 
+/// Worker threads answering a world's CPU queries.
+const QUERY_THREADS: usize = 2;
+/// The query focus that follows a sculpting camera, and its radius: stamps
+/// within it walk the world's bricks at once, farther ones take the pick.
+const SCULPT_FOCUS: u64 = 1;
+const SCULPT_FOCUS_M: f64 = 16.0;
+
 /// Built planet for one source revision.
 #[derive(Clone)]
 struct CachedPlanet {
@@ -771,6 +789,10 @@ fn build_world(
 pub struct PlanetVoxelBackend {
     frame: SharedPlanetFrame,
     cached: Option<CachedPlanet>,
+    /// The built world's CPU queries (`helio_pass_voxel_planet::queries`),
+    /// for the world it answers: brush rays walk its bricks around the
+    /// sculpting camera instead of the planet on the frame.
+    queries: Option<(VoxelEntryId, WorldQueries)>,
     /// Pick requests and answers shared with the pass through each frame.
     picks: helio_pass_voxel_planet::engine::SharedPicks,
     next_pick: std::sync::atomic::AtomicU64,
@@ -791,6 +813,7 @@ impl PlanetVoxelBackend {
         Self {
             frame: Arc::new(Mutex::new(None)),
             cached: None,
+            queries: None,
             picks: Default::default(),
             next_pick: std::sync::atomic::AtomicU64::new(1),
             saves,
@@ -812,6 +835,7 @@ impl PlanetVoxelBackend {
 
     fn clear(&mut self) -> Result<(), String> {
         self.cached = None;
+        self.queries = None;
         self.rejected = None;
         self.unshown()
     }
@@ -856,6 +880,102 @@ impl PlanetVoxelBackend {
             None => export.wanted = true,
         }
         Ok(())
+    }
+
+    /// The stamp a brush ray makes (`VoxelRenderBackend::edit_ray`), if its
+    /// ray hits.
+    fn brush_commit(
+        &self,
+        source: &VoxelSceneEntry,
+        origin: DVec3,
+        direction: DVec3,
+        hint: VoxelRayHint,
+        request: VoxelBrushRequest,
+    ) -> Result<Option<VoxelBrushCommit>, String> {
+        Self::validate_source(source)?;
+        // The world on screen: a stroke's earlier stamps may not be
+        // published yet, so a world the journal only grew from is it.
+        let Some(planet) = self.shown_planet(source) else {
+            return Ok(None);
+        };
+        let d = direction.normalize();
+        let hit = match hint {
+            VoxelRayHint::Drawn(pick) => Some(planet.drawn_hit(
+                origin,
+                d,
+                pick.distance,
+                pick.cell,
+                pick.level,
+                pick.entered,
+            )),
+            // The world's bricks around the sculpting camera: a ray past
+            // them stamps nothing now (the renderer's pick takes it).
+            VoxelRayHint::Reach(reach) => {
+                let Some((_, queries)) = self.queries.as_ref().filter(|(id, _)| *id == source.id) else {
+                    return Ok(None);
+                };
+                queries.focus(SCULPT_FOCUS, origin, SCULPT_FOCUS_M);
+                loop {
+                    match queries.raycast(origin, d, reach, Matter::All) {
+                        Resident::Ready(hit) => break hit,
+                        Resident::Pending if self.blocking => std::thread::sleep(std::time::Duration::from_millis(1)),
+                        Resident::Pending => return Ok(None),
+                    }
+                }
+            }
+        };
+        let Some(hit) = hit else {
+            return Ok(None);
+        };
+        let material = helio_pass_voxel_planet::terrain::material::ID & request.material;
+        if request.op != VoxelBrushOp::Remove
+            && !(1..helio_pass_voxel_planet::terrain::material::COUNT).contains(&material)
+        {
+            return Err(format!(
+                "material {} is not a solid terrain material",
+                request.material
+            ));
+        }
+        // Building fills the empty block in front of the hit face.
+        let cell = if request.op == VoxelBrushOp::Add {
+            hit.previous
+        } else {
+            hit.cell
+        };
+        let grid = planet.grid();
+        if request.tool != VoxelBrushTool::Stamp {
+            return Ok(Some(level_stamp(
+                planet, source.id, &hit, request, material,
+            )?));
+        }
+        let (radius, shape) = if request.single_block {
+            (grid.voxel_size() * 0.5, VoxelBrushShape::Cube)
+        } else {
+            (
+                f64::from(request.radius).max(grid.voxel_size() * 0.5),
+                request.shape,
+            )
+        };
+        let edit = VoxelBrushEdit {
+            center: grid.cell_center(cell).to_array(),
+            radius,
+            shape,
+            op: request.op,
+            material: if request.op == VoxelBrushOp::Remove {
+                0
+            } else {
+                material
+            },
+            height: Default::default(),
+        };
+        planet_brush(&edit).resolve(grid)?;
+        Ok(Some(VoxelBrushCommit {
+            id: source.id,
+            distance: hit.distance,
+            edit,
+            then: Vec::new(),
+            level: grid.layer_radius(f64::from(hit.cell.k + 1)),
+        }))
     }
 
     fn validate_source(entry: &VoxelSceneEntry) -> Result<&VoxelGeneratorConfig, String> {
@@ -949,6 +1069,12 @@ impl PlanetVoxelBackend {
         match result.built {
             Ok(world) => {
                 self.rejected = None;
+                match &self.queries {
+                    Some((id, queries)) if *id == world.id => queries.publish(world.planet.clone()),
+                    _ => {
+                        self.queries = Some((world.id, WorldQueries::new(world.planet.clone(), QUERY_THREADS)));
+                    }
+                }
                 self.cached = Some(world);
             }
             Err(error) => {
@@ -1131,76 +1257,20 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         hint: VoxelRayHint,
         request: VoxelBrushRequest,
     ) -> Result<Option<VoxelBrushCommit>, String> {
-        Self::validate_source(source)?;
-        // The world on screen: a stroke's earlier stamps may not be
-        // published yet, so a world the journal only grew from is it.
-        let Some(planet) = self.shown_planet(source) else {
-            return Ok(None);
-        };
-        let d = direction.normalize();
-        let hit = match hint {
-            VoxelRayHint::Drawn(pick) => Some(planet.drawn_hit(
-                origin,
-                d,
-                pick.distance,
-                pick.cell,
-                pick.level,
-                pick.entered,
-            )),
-            VoxelRayHint::Reach(reach) => planet.raycast(origin, d, reach),
-        };
-        let Some(hit) = hit else {
-            return Ok(None);
-        };
-        let material = helio_pass_voxel_planet::terrain::material::ID & request.material;
-        if request.op != VoxelBrushOp::Remove
-            && !(1..helio_pass_voxel_planet::terrain::material::COUNT).contains(&material)
-        {
-            return Err(format!(
-                "material {} is not a solid terrain material",
-                request.material
-            ));
-        }
-        // Building fills the empty block in front of the hit face.
-        let cell = if request.op == VoxelBrushOp::Add {
-            hit.previous
-        } else {
-            hit.cell
-        };
-        let grid = planet.grid();
-        if request.tool != VoxelBrushTool::Stamp {
-            return Ok(Some(level_stamp(
-                planet, source.id, &hit, request, material,
-            )?));
-        }
-        let (radius, shape) = if request.single_block {
-            (grid.voxel_size() * 0.5, VoxelBrushShape::Cube)
-        } else {
-            (
-                f64::from(request.radius).max(grid.voxel_size() * 0.5),
-                request.shape,
-            )
-        };
-        let edit = VoxelBrushEdit {
-            center: grid.cell_center(cell).to_array(),
-            radius,
-            shape,
-            op: request.op,
-            material: if request.op == VoxelBrushOp::Remove {
-                0
-            } else {
-                material
-            },
-            height: Default::default(),
-        };
-        planet_brush(&edit).resolve(grid)?;
-        Ok(Some(VoxelBrushCommit {
-            id: source.id,
-            distance: hit.distance,
-            edit,
-            then: Vec::new(),
-            level: grid.layer_radius(f64::from(hit.cell.k + 1)),
-        }))
+        self.brush_commit(source, origin, direction, hint, request)
+    }
+
+    fn stamped(&self, commits: &[VoxelBrushCommit]) {
+        // The next stamps of the stroke walk the world with these in it,
+        // before the world rebuilt with them is published.
+        let Some((id, queries)) = &self.queries else { return };
+        let brushes: Vec<_> = commits
+            .iter()
+            .filter(|commit| commit.id == *id)
+            .flat_map(|commit| std::iter::once(&commit.edit).chain(&commit.then))
+            .map(planet_brush)
+            .collect();
+        queries.edit(&brushes);
     }
 
     fn supports(&self, source: &VoxelSceneEntry) -> bool {
@@ -1438,6 +1508,39 @@ mod tests {
         assert!(!hidden[0].visible);
         assert!(registry.publish_frame(&hidden, view(eye)).is_empty());
         assert!(frame.lock().unwrap().is_none());
+    }
+
+    /// A stamp the host applied shows to the stroke's next ray at once,
+    /// before the world rebuilt with it is published; one it did not apply
+    /// does not.
+    #[test]
+    fn applied_stamps_show_to_the_next_ray() {
+        let mut scene = World::new();
+        let owner = scene.spawn();
+        attach(&mut scene, owner, planet_terrain());
+        let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert!(errors.is_empty());
+        let original = Planet::new(PlanetRecipe::default()).unwrap();
+        let eye = original.surface_point(DVec3::new(0.2, 1.0, 0.3), 3.0);
+        let down = -eye.normalize();
+        let mut registry = VoxelBackendRegistry::new();
+        registry
+            .register(Box::new(PlanetVoxelBackend::blocking()))
+            .unwrap();
+        assert!(registry.publish_frame(&entries, view(eye)).is_empty());
+        let ray = |registry: &VoxelBackendRegistry| {
+            registry
+                .edit_ray(&entries, eye, down, VoxelRayHint::Reach(UNPICKED_REACH_M), dig(0.5))
+                .unwrap()
+                .unwrap()
+        };
+        let first = ray(&registry);
+        // Not applied: the next ray hits the same ground.
+        assert_eq!(ray(&registry).distance, first.distance);
+        // Applied: it walks into the hole the dig made.
+        registry.stamped(std::slice::from_ref(&first));
+        let next = ray(&registry);
+        assert!(next.distance > first.distance + 0.3, "{} after {}", next.distance, first.distance);
     }
 
     #[test]

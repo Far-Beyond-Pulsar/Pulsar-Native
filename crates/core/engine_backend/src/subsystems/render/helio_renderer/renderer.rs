@@ -2292,16 +2292,21 @@ impl HelioRenderer {
                         super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel)
                     })
                     .unwrap_or_default();
-                let mut scene = self.scene_store.write();
-                for edit in fill {
-                    let stamp = VoxelBrushCommit {
+                let mut stamps: Vec<VoxelBrushCommit> = fill
+                    .into_iter()
+                    .map(|edit| VoxelBrushCommit {
                         edit,
                         ..commit.clone()
-                    };
-                    self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, stamp);
-                }
-                self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit.clone());
+                    })
+                    .collect();
+                stamps.push(commit.clone());
+                let mut scene = self.scene_store.write();
+                stamps.retain(|stamp| apply_voxel_brush_commit(&mut scene.world, stamp.clone()));
+                self.gizmo_dirty |= !stamps.is_empty();
                 drop(scene);
+                if let Some(voxels) = self.voxels() {
+                    voxels.stamped(&stamps);
+                }
                 slow(Some(commit.distance));
                 self.voxel_stroke_last = Some((brush.stroke, commit));
                 true
