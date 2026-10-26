@@ -41,6 +41,7 @@ pub(crate) fn decorate_horizontal_tab_preview(
         .unwrap_or_else(|| panel.panel_name(cx).to_string());
     let preview_id = panel.panel_id(cx).as_u64();
     let hover_sidebar = sidebar.clone();
+    let tooltip_sidebar = sidebar.clone();
     let hover_key = key.clone();
     let trigger = div().child(trigger).on_hover(move |hovered, _, cx| {
         let _ = hover_sidebar.update(cx, |sidebar, cx| {
@@ -53,7 +54,7 @@ pub(crate) fn decorate_horizontal_tab_preview(
         trigger,
         move |window, cx| {
             let title = title.clone();
-            let image = sidebar
+            let image = tooltip_sidebar
                 .read_with(cx, |sidebar, _| sidebar.preview_for(&key))
                 .ok()
                 .flatten();
