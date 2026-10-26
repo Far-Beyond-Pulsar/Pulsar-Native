@@ -636,6 +636,8 @@ impl NavSidebar {
         let group: SharedString = format!("nav-tab-{:?}", tab.key).into();
         let activate = tab.clone();
         let pin_key = tab.key.clone();
+        let hover_key = tab.key.clone();
+        let preview_title = tab.title.clone();
         let close_index = tab.index;
         let menu = self.tab_row_menu(tab, cx);
 
@@ -702,6 +704,23 @@ impl NavSidebar {
                     }),
             )
             .when_some(drag, |el, drag| el.on_drag(drag, drag_preview))
+            .on_hover(cx.listener(move |sidebar, hovered: &bool, _, cx| {
+                sidebar.hover_preview(hover_key.clone(), *hovered, cx)
+            }))
+            .when_some(self.preview_for(&tab.key), |el, image| {
+                el.tooltip(move |window, cx| {
+                    let preview_title = preview_title.clone();
+                    let image = image.clone();
+                    Tooltip::element(move |_, _| {
+                        v_flex().gap_1().p_2().child(preview_title.clone()).child(
+                            gpui::img(gpui::ImageSource::Render(image.clone()))
+                                .w(px(320.))
+                                .h(px(180.)),
+                        )
+                    })
+                    .build(window, cx)
+                })
+            })
             .on_click(cx.listener(move |sidebar, _, window, cx| {
                 sidebar.activate_tab(&activate, window, cx)
             }))
