@@ -61,9 +61,8 @@ struct ViewerVertex {
 }
 "#;
 
-/// Byte offsets inside the template's `Globals` (the G-buffer layout the
-/// default Radiant template declares): `frame: u32` first, and the shared
-/// graph clock in its last field.
+/// Byte offsets inside the default Radiant template's G-buffer `Globals`:
+/// `frame: u32` is first and `time: f32` follows `screen_height`.
 const GLOBALS_FRAME_OFFSET: u64 = 0;
 const GLOBALS_TIME_OFFSET: u64 = 60;
 /// Room for the whole `Globals` block.
