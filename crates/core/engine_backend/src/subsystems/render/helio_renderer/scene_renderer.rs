@@ -697,6 +697,10 @@ fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec
         component_id::<helio_component::components::LODComponent>(),
         // The global wind: a direction and speed, no position.
         component_id::<helio_component::components::WindComponent>(),
+        // Foliage: its types and wind have no position; the environment
+        // join writes its layers relative to the world origin, and the
+        // placement pass writes its tile frames in the frame's space.
+        component_id::<helio_component::components::FoliageComponent>(),
         // 2D sprites: screen space, drawn by their own camera.
         component_id::<helio_component::components::SpriteComponent>(),
     ];
@@ -930,6 +934,24 @@ mod native_relative_camera_tests {
         (scene, sun)
     }
 
+    /// The shipped example levels (Earth with its meadow, Moon, Desert)
+    /// render camera-relative: none holds a component the frame refuses.
+    /// Refused, a planet is drawn in f32 world coordinates 6 371 km from the
+    /// origin and breaks apart as the camera moves.
+    #[test]
+    fn the_example_levels_render_camera_relative() {
+        for level in ["voxel_planet", "voxel_moon", "voxel_desert"] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../assets/examples")
+                .join(format!("{level}.level"));
+            let mut scene = crate::scene::new_scene();
+            crate::scene::RuntimeLevel::load_into(&path, &mut scene.world)
+                .unwrap_or_else(|e| panic!("{level}: {e}"));
+            let read = VoxelSceneRead::of(&scene.world);
+            assert_eq!(read.relative_camera_refusals, Vec::<String>::new(), "{level}");
+        }
+    }
+
     #[test]
     fn the_example_planet_scene_renders_camera_relative() {
         let (mut scene, sun) = planet_scene();
@@ -1017,7 +1039,9 @@ mod native_relative_camera_tests {
             read.relative_camera_refusals
         );
 
-        // Foliage is grown in world tiles: it keeps frames in world space.
+        // Foliage grows in the frame's space (its tile frames and, from the
+        // environment join, its layers): a meadow keeps frames
+        // camera-relative.
         pulsar_world_registry::attach_value(
             &mut scene.world,
             props,
@@ -1026,9 +1050,7 @@ mod native_relative_camera_tests {
         .unwrap();
         let read = VoxelSceneRead::of(&scene.world);
         assert!(
-            read.relative_camera_refusals
-                .iter()
-                .any(|name| name.contains("Foliage")),
+            read.relative_camera_refusals.is_empty(),
             "{:?}",
             read.relative_camera_refusals
         );

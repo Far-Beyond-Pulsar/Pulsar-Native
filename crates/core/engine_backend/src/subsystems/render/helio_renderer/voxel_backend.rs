@@ -201,7 +201,8 @@ pub trait VoxelRenderBackend: Send {
         None
     }
     /// Where an editor camera at `eye` should be instead, if `eye` is inside
-    /// solid voxels of the last published world: just above the ground.
+    /// the ground (terrain and edits; features such as trees are flown
+    /// through) of the last published world: just above it.
     /// Air the user dug (tunnels, caves) is not solid, so the camera can fly
     /// into it.
     fn lift_out_of_ground(&self, _eye: DVec3) -> Option<DVec3> {
@@ -1088,13 +1089,18 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         if !eye.is_finite() || grid.radial(eye) > planet.outer_radius() {
             return None;
         }
+        // The ground, not features: the editor camera flies through a
+        // forest (whose far crowns draw as canopy) and stops at the terrain.
         let (cell, _) = grid.locate(eye);
-        planet.solid(cell).then(|| planet.surface_point(eye, 0.5))
+        let ground = helio_pass_voxel_planet::Matter::Ground;
+        planet
+            .solid_of(cell, ground)
+            .then(|| planet.surface_point_of(eye, 0.5, ground))
     }
 
     fn altitude(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<f64> {
         self.camera_planet(source)
-            .map(|planet| planet.ground_height(eye))
+            .map(|planet| planet.ground_height_of(eye, helio_pass_voxel_planet::Matter::Ground))
     }
 
     fn local_up(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
