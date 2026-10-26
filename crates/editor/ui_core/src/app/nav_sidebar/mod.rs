@@ -66,7 +66,7 @@ use self::model::{HOVER_CLOSE_DELAY, HoverAction, HoverState, SidebarModel, Side
 use self::panes::PaneKind;
 use super::PulsarApp;
 
-pub(crate) use self::render::NavSidebarOverlay;
+pub(crate) use self::render::{decorate_horizontal_tab_preview, NavSidebarOverlay};
 
 const OWNER: &str = "navigation";
 
@@ -837,6 +837,66 @@ impl PulsarApp {
             .into_any_element()
     }
 
+    pub(crate) fn capture_panel_preview(
+        &mut self,
+        panel: Arc<dyn PanelView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let element_id = gpui::ElementId::NamedInteger(
+            "tab-content".into(),
+            panel.panel_id(cx).as_u64(),
+        );
+        let Some(capture) = window.capture_element_from_last_frame(element_id, gpui::size(320, 180))
+        else {
+            return;
+        };
+        let key = TabKey::of(panel.panel_name(cx), panel.panel_file_path(cx).as_deref());
+        let preview_path = self
+            .state
+            .project_path
+            .as_deref()
+            .and_then(|project| preview_path(project, &key));
+        let sidebar = self.state.nav_sidebar.downgrade();
+        cx.spawn(async move |_, cx| {
+            let Ok(capture) = capture.await else {
+                return;
+            };
+            if let Some(path) = preview_path {
+                let pixels = capture.rgba.clone();
+                let width = capture.width;
+                let height = capture.height;
+                cx.background_spawn(async move {
+                    if let Some(parent) = path.parent() {
+                        if let Err(error) = std::fs::create_dir_all(parent) {
+                            tracing::warn!(%error, "could not create tab preview cache");
+                            return;
+                        }
+                    }
+                    if let Err(error) = image::save_buffer_with_format(
+                        path,
+                        &pixels,
+                        width,
+                        height,
+                        image::ColorType::Rgba8,
+                        image::ImageFormat::Png,
+                    ) {
+                        tracing::warn!(%error, "could not save tab preview");
+                    }
+                })
+                .detach();
+            }
+            let image = image::RgbaImage::from_raw(capture.width, capture.height, capture.rgba);
+            if let Some(image) = image {
+                let render_image = Arc::new(gpui::RenderImage::new(vec![image::Frame::new(image)]));
+                let _ = sidebar.update(cx, |sidebar, cx| {
+                    sidebar.store_preview(key, render_image, cx)
+                });
+            }
+        })
+        .detach();
+    }
+
     /// Show the tab a sidebar row stands for, reopening a closed pinned file.
     pub(crate) fn activate_sidebar_tab(
         &mut self,
@@ -847,71 +907,6 @@ impl PulsarApp {
         match tab.index {
             Some(index) => {
                 if let Some(open) = self.center_tab_list(cx).into_iter().nth(index) {
-                    if open.tabs.read(cx).active_tab_index() != Some(open.local_ix) {
-                        if let Some(outgoing) = open.tabs.read(cx).active_panel(cx) {
-                            let element_id = gpui::ElementId::NamedInteger(
-                                "tab-content".into(),
-                                outgoing.panel_id(cx).as_u64(),
-                            );
-                            if let Some(capture) = window
-                                .capture_element_from_last_frame(element_id, gpui::size(320, 180))
-                            {
-                                let key = TabKey::of(
-                                    outgoing.panel_name(cx),
-                                    outgoing.panel_file_path(cx).as_deref(),
-                                );
-                                let preview_path = self
-                                    .state
-                                    .project_path
-                                    .as_deref()
-                                    .and_then(|project| preview_path(project, &key));
-                                let sidebar = self.state.nav_sidebar.downgrade();
-                                cx.spawn(async move |_, cx| {
-                                    let Ok(capture) = capture.await else {
-                                        return;
-                                    };
-                                    if let Some(path) = preview_path {
-                                        let pixels = capture.rgba.clone();
-                                        let width = capture.width;
-                                        let height = capture.height;
-                                        cx.background_spawn(async move {
-                                            if let Some(parent) = path.parent() {
-                                                if let Err(error) = std::fs::create_dir_all(parent) {
-                                                    tracing::warn!(%error, "could not create tab preview cache");
-                                                    return;
-                                                }
-                                            }
-                                            if let Err(error) = image::save_buffer_with_format(
-                                                path,
-                                                &pixels,
-                                                width,
-                                                height,
-                                                image::ColorType::Rgba8,
-                                                image::ImageFormat::Png,
-                                            ) {
-                                                tracing::warn!(%error, "could not save tab preview");
-                                            }
-                                        })
-                                        .detach();
-                                    }
-                                    let image = image::RgbaImage::from_raw(
-                                        capture.width,
-                                        capture.height,
-                                        capture.rgba,
-                                    );
-                                    if let Some(image) = image {
-                                        let render_image = Arc::new(gpui::RenderImage::new(vec![
-                                            image::Frame::new(image),
-                                        ]));
-                                        let _ = sidebar.update(cx, |sidebar, cx| {
-                                            sidebar.store_preview(key, render_image, cx)
-                                        });
-                                    }
-                                })
-                                .detach();
-                            }
-                        }
-                    }
                     open.tabs.update(cx, |tabs, cx| {
                         tabs.set_active_tab(open.local_ix, window, cx)
                     });

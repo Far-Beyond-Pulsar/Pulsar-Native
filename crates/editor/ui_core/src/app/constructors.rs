@@ -214,6 +214,26 @@ impl PulsarApp {
                 sidebar
             })
         };
+        let preview_sidebar = nav_sidebar.downgrade();
+        let preview_area_sidebar = nav_sidebar.downgrade();
+        center_tabs.update(cx, |tabs, cx| {
+            tabs.set_tab_preview_callbacks(
+                move |panel, trigger, _window, app| {
+                    super::nav_sidebar::decorate_horizontal_tab_preview(
+                        preview_sidebar.clone(),
+                        panel,
+                        trigger,
+                        app,
+                    )
+                },
+                move |hovered, _window, app| {
+                    let _ = preview_area_sidebar.update(app, |sidebar, cx| {
+                        sidebar.preview_area_hovered(hovered, cx);
+                    });
+                },
+                cx,
+            );
+        });
         let nav_overlay = {
             let sidebar = nav_sidebar.clone();
             cx.new(|_| super::nav_sidebar::NavSidebarOverlay::new(sidebar))

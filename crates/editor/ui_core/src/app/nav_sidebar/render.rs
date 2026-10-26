@@ -4,17 +4,18 @@
 //! groups and closes. The content tree is drawn by [`super::content`].
 
 use gpui::{
-    div, prelude::*, px, uniform_list, AnyElement, Context, ElementId, Hsla, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, SharedString, Window,
+    div, prelude::*, px, uniform_list, AnyElement, App, Context, ElementId, Hsla, IntoElement,
+    MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, SharedString, WeakEntity, Window,
 };
 use ui::button::{Button, ButtonVariants as _};
-use ui::dock::DragPanel;
+use ui::dock::{DragPanel, PanelView};
 use ui::input::TextInput;
 use ui::menu::context_menu::ContextMenuExt as _;
 use ui::menu::PopupMenuItem;
 use ui::scroll::Scrollbar;
 use ui::tooltip::{HoverTooltip, Tooltip};
 use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::model::{SectionId, SidebarTab, TabSection};
@@ -23,6 +24,65 @@ use super::{pinned_open, NavSidebar};
 
 /// Width of the collapsed icon rail.
 pub(crate) const RAIL_WIDTH: f32 = 48.;
+
+pub(crate) fn decorate_horizontal_tab_preview(
+    sidebar: WeakEntity<NavSidebar>,
+    panel: Arc<dyn PanelView>,
+    trigger: AnyElement,
+    cx: &mut App,
+) -> AnyElement {
+    let file_path = panel.panel_file_path(cx);
+    let key = super::model::TabKey::of(panel.panel_name(cx), file_path.as_deref());
+    let title = file_path
+        .as_deref()
+        .and_then(std::path::Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned())
+        .or_else(|| panel.tab_name(cx).map(|name| name.to_string()))
+        .unwrap_or_else(|| panel.panel_name(cx).to_string());
+    let preview_id = panel.panel_id(cx).as_u64();
+    let hover_sidebar = sidebar.clone();
+    let hover_key = key.clone();
+    let trigger = div().child(trigger).on_hover(move |hovered, _, cx| {
+        let _ = hover_sidebar.update(cx, |sidebar, cx| {
+            sidebar.hover_preview(hover_key.clone(), *hovered, cx)
+        });
+    });
+
+    HoverTooltip::new(
+        (ElementId::NamedInteger("tab-preview".into(), preview_id), "horizontal"),
+        trigger,
+        move |window, cx| {
+            let title = title.clone();
+            let image = sidebar
+                .read_with(cx, |sidebar, _| sidebar.preview_for(&key))
+                .ok()
+                .flatten();
+            Tooltip::element(move |_, _| {
+                let content = v_flex().gap_1().p_2().child(title.clone());
+                if let Some(image) = image.clone() {
+                    content.child(
+                        gpui::img(gpui::ImageSource::Render(image))
+                            .w(px(320.))
+                            .h(px(180.)),
+                    )
+                } else {
+                    content
+                }
+            })
+            .build(window, cx)
+        },
+    )
+    .with_delay_from({
+        let sidebar = sidebar.clone();
+        move |cx| {
+            match sidebar.read_with(cx, |sidebar, _| sidebar.preview_hover_ready) {
+                Ok(true) => Duration::ZERO,
+                _ => Duration::from_millis(1200),
+            }
+        }
+    })
+    .into_any_element()
+}
 /// Width of the open sidebar.
 pub(crate) const DRAWER_WIDTH: f32 = 272.;
 const ROW_HEIGHT: f32 = 28.;
