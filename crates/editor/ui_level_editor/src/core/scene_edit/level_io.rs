@@ -643,7 +643,7 @@ mod voxel_example_tests {
     #[test]
     fn voxel_planet_example_loads_as_a_scenedb_backend_source() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../assets/examples/voxel_planet.level");
+            .join("../../../assets/examples/voxel_planet/scene/default.level");
         let mut world = World::new();
         let camera = load_from_file_with_editor_camera(&mut world, path)
             .expect("example level loads")

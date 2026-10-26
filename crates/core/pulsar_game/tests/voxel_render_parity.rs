@@ -1,5 +1,5 @@
 //! A played voxel world renders as the editor shows it: the example planet
-//! (`assets/examples/voxel_planet.level`, an Earth-size planet) drawn by the
+//! (`assets/examples/voxel_planet`, an Earth-size planet) drawn by the
 //! game's renderer (the standalone window's and the PIE viewport's
 //! `SceneRenderer`) and by the editor viewport's (`HelioRenderer`, as
 //! `voxel_editor_harness` drives it), both settled, differ by no more than
@@ -202,7 +202,7 @@ fn save(dir: &Path, name: &str, frame: &[u8]) {
 
 
 fn level_path() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/examples/voxel_planet.level")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/examples/voxel_planet/scene/default.level")
 }
 
 fn load_level() -> SharedScene {

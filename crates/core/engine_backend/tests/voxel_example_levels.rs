@@ -15,10 +15,10 @@ use helio_pass_sky::CloudLayer;
 use helio_pass_voxel_planet::feature_recipe::FeatureRecipe;
 use pulsar_scenedb::World;
 
-/// The level `name` in `assets/examples`, loaded and its voxel world's
+/// The level of example project `name` in `assets/examples`, loaded and its voxel world's
 /// dependents synced (as the editor's scene step does).
 fn level(name: &str) -> World {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../../assets/examples/{name}.level"));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../../assets/examples/{name}/scene/default.level"));
     let mut scene = engine_backend::scene::new_scene();
     engine_backend::scene::RuntimeLevel::load_into(&path, &mut scene.world).expect("load the level");
     let mut world = scene.world;

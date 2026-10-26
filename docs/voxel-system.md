@@ -114,8 +114,10 @@ defaults (the generator's `Layer::new`), keeping only whether it is on and
 its mask. While the stack is invalid the viewport keeps the last world that
 built (the error says what to fix); it is not rebuilt every frame.
 
-**The examples.** `assets/examples/voxel_planet.level` (Earth),
-`voxel_moon.level` and `voxel_desert.level` are Helio's voxel_flight setups
+**The examples.** The projects `assets/examples/voxel_planet` (Earth),
+`voxel_moon` and `voxel_desert` (each a `Pulsar.toml` and its
+`scene/default.level`; open one with `just example voxel_planet`, or
+`--project-path`) are Helio's voxel_flight setups
 (`examples/voxel_flight/worlds.rs`) with seed 75, generically: layer stack,
 features and their look, air, clouds, haze, and on Earth the engine meadow
 (six `FoliageComponent`s on a Meadow object, a `WindComponent` of 4.5 m/s).
