@@ -50,8 +50,9 @@
 //!   second is captured (`stress_<n>_<s>.png`), then each view again once
 //!   settled (`stress_<n>_<s>_ref.png`).
 //!
-//! Every frame's wall time (CPU and GPU, the queue drained) is written to
-//! `frames.csv`, and a summary per step to stdout.
+//! Every frame's wall time (CPU and GPU, the queue drained) and the render
+//! thread's phases (`pointer`, `scene`, `publish`, `render`, ...) are
+//! written to `frames.csv`, and a summary per step to stdout.
 
 use engine_backend::subsystems::render::{
     EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest, VoxelBrushTool,
@@ -142,21 +143,39 @@ impl Harness {
         }
         let ms = started.elapsed().as_secs_f64() * 1e3;
         self.frame += 1;
+        // The render thread's phases over half a millisecond (a slow
+        // frame's owner).
+        let phases: Vec<String> = if submitted.is_some() {
+            self.renderer
+                .last_frame_phases()
+                .iter()
+                .filter(|(_, ms)| *ms >= 0.5)
+                .map(|(name, ms)| format!("{name}={ms:.1}"))
+                .collect()
+        } else {
+            Vec::new()
+        };
         writeln!(
             self.csv,
-            "{},{},{:.3},{}",
+            "{},{},{:.3},{},{}",
             self.frame,
             self.step,
             ms,
-            u8::from(submitted.is_some())
+            u8::from(submitted.is_some()),
+            phases.join(";")
         )
         .ok();
         submitted.map(|_| ms)
     }
 
-    /// Render until the editor goes idle (at most `limit` frames); the
-    /// frame times of the frames it rendered.
+    /// Render until the editor goes idle (at most `limit` frames, or
+    /// `HARNESS_SETTLE_FRAMES`: a world with wind or clouds never idles);
+    /// the frame times of the frames it rendered.
     fn settle(&mut self, limit: usize) -> Vec<f64> {
+        let limit = std::env::var("HARNESS_SETTLE_FRAMES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .map_or(limit, |cap: usize| cap.min(limit));
         let mut times = Vec::new();
         for _ in 0..limit {
             match self.frame() {
@@ -332,6 +351,24 @@ impl Harness {
                 top.join(", ")
             );
         }
+    }
+
+    /// One line of memory: the Rust heap, and what the device's allocator
+    /// holds (allocated, reserved in blocks, allocation count).
+    fn memory_line(&self, label: &str) {
+        let device = self.device.generate_allocator_report().map_or_else(String::new, |r| {
+            format!(
+                ", device allocated {:.0} MB in {} allocations, reserved {:.0} MB in {} blocks",
+                r.total_allocated_bytes as f64 / 1048576.0,
+                r.allocations.len(),
+                r.total_reserved_bytes as f64 / 1048576.0,
+                r.blocks.len()
+            )
+        });
+        println!(
+            "HARNESS memory {label}: heap {:.0} MB{device}",
+            HEAP_LIVE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1048576.0
+        );
     }
 
     /// The chunk pass's `name=value` from its diagnostics (NaN: none).
@@ -551,7 +588,7 @@ fn main() {
         frame: 0,
         in_flight: Default::default(),
     };
-    writeln!(h.csv, "frame,step,ms,rendered").ok();
+    writeln!(h.csv, "frame,step,ms,rendered,phases").ok();
 
     // Start: the level's own camera, as the editor opens it.
     let started = Instant::now();
@@ -705,12 +742,20 @@ fn main() {
                 let mut totals = Vec::new();
                 let started = Instant::now();
                 let mut k = 0u32;
+                let mut next_memory = 0.0;
                 while started.elapsed().as_secs_f64() < seconds {
                     let mut nudged = camera;
                     nudged.position[1] += f64::from(k % 2) * 1e-3;
                     k += 1;
                     mailbox.queue_camera(nudged);
                     h.frame();
+                    // Memory over a long hold: a growth the heap and the
+                    // device's allocations don't show is the driver's.
+                    let t = started.elapsed().as_secs_f64();
+                    if t >= next_memory {
+                        next_memory += 60.0;
+                        h.memory_line(&format!("profile t={t:.0}s frame={k}"));
+                    }
                     if let Some((total, by)) = h.renderer.gpu_timings() {
                         totals.push(f64::from(total));
                         for (name, ms) in by {

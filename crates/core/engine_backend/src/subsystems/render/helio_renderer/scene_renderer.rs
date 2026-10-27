@@ -175,15 +175,15 @@ impl SceneRenderer {
             // Virtual geometry: which assets are ready, then which instances
             // are VG-active (both before the authored LOD, which they
             // suppress).
-            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(
-                &virtual_geometry,
+            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(&virtual_geometry, &device))
+            .with_scene_derivation(crate::scene::virtual_geometry_instances(&mut virtual_geometry, &device))
+            .with_scene_derivation(crate::scene::authored_lod_selection(
                 &device,
+                scene_db,
+                // Pulsar's derivations record into one encoder: they share
+                // one staging pool.
+                crate::gpu::Uploads::new(&device),
             ))
-            .with_scene_derivation(crate::scene::virtual_geometry_instances(
-                &mut virtual_geometry,
-                &device,
-            ))
-            .with_scene_derivation(crate::scene::authored_lod_selection(&device, scene_db))
             .with_scene_derivation(crate::scene::environment_join(&device))
             // Authored portals, paired and projected each frame by `spaces`.
             .with_scene_derivation(crate::scene::portal_projection(
@@ -284,7 +284,10 @@ impl SceneRenderer {
     }
 
     /// What the frame reads from the scene, read once per world revision.
-    fn scene_read(&mut self) -> Arc<VoxelSceneRead> {
+    /// The voxel entries (and what else the frame reads with them) of the
+    /// scene's current revision: projected once per revision, shared by the
+    /// frame and every brush sample until the scene changes.
+    pub(super) fn scene_read(&mut self) -> Arc<VoxelSceneRead> {
         let store = self.scene.read();
         let revision = store.world.revision();
         match &self.read {
@@ -479,8 +482,8 @@ const ORTHO_STANDOFF: f32 = 4096.0;
 /// enabled static mesh exists and the sun direction. Read once per world
 /// revision.
 #[derive(Clone)]
-struct VoxelSceneRead {
-    entries: Vec<crate::scene::voxel_frame::VoxelSceneEntry>,
+pub(super) struct VoxelSceneRead {
+    pub(super) entries: Vec<crate::scene::voxel_frame::VoxelSceneEntry>,
     errors: Vec<String>,
     authored_meshes: bool,
     sun: Option<[f32; 3]>,

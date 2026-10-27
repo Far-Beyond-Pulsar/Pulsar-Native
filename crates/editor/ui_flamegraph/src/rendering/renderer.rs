@@ -1,4 +1,5 @@
 use super::types::{FlamegraphUniforms, GpuSpan, RectInstance};
+use engine_backend::gpu::{BindGroupCache, Uploads};
 
 const PALETTE: [[f32; 4]; 16] = palette_float4();
 
@@ -57,6 +58,13 @@ struct Pipe {
     /// Tracking pointer + len of last uploaded span data to skip redundant uploads.
     span_data_ptr: *const u8,
     span_data_len: u64,
+    /// The bytes last uploaded: unchanged ones are not written again.
+    written_uniforms: Option<FlamegraphUniforms>,
+    written_text: Vec<u8>,
+    /// Rebuilt only when the span storage grows (the other buffers are fixed).
+    group: BindGroupCache<wgpu::Buffer>,
+    /// This renderer's staging pool: its writes go into its own encoder.
+    uploads: Uploads,
 }
 
 pub struct FlamegraphRenderer {
@@ -83,17 +91,26 @@ impl FlamegraphRenderer {
         let pipe = self
             .pipe
             .get_or_insert_with(|| Self::create_pipe(device, fmt));
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("flamegraph_encoder"),
+        });
 
         // One-shot palette upload
         if !pipe.pal_written {
             let pal_bytes = bytemuck::cast_slice::<[f32; 4], u8>(&PALETTE);
-            queue.write_buffer(&pipe.pal_buf, 0, pal_bytes);
+            pipe.uploads.write(&mut encoder, &pipe.pal_buf, 0, pal_bytes);
             pipe.pal_written = true;
         }
 
-        // Upload uniforms
+        // Uniforms change with pan and zoom only.
         let uni_bytes = bytemuck::bytes_of(uniforms);
-        queue.write_buffer(&pipe.uni_buf, 0, uni_bytes);
+        if pipe
+            .written_uniforms
+            .is_none_or(|written| bytemuck::bytes_of(&written) != uni_bytes)
+        {
+            pipe.uploads.write(&mut encoder, &pipe.uni_buf, 0, uni_bytes);
+            pipe.written_uniforms = Some(*uniforms);
+        }
 
         // Span storage buffer — skip upload if data hasn't changed
         let span_count = spans.len() as u32;
@@ -110,7 +127,7 @@ impl FlamegraphRenderer {
                     span_bytes,
                     wgpu::BufferUsages::STORAGE,
                 );
-                queue.write_buffer(&pipe.span_buf, 0, span_bytes);
+                pipe.uploads.write(&mut encoder, &pipe.span_buf, 0, span_bytes);
                 pipe.span_data_ptr = data_ptr;
                 pipe.span_data_len = data_len;
             }
@@ -120,47 +137,50 @@ impl FlamegraphRenderer {
         let text_count = text.len() as u32;
         if text_count > 0 {
             let text_bytes = bytemuck::cast_slice(text);
-            Self::ensure_buf(
+            let grew = Self::ensure_buf(
                 device,
                 &mut pipe.text_buf,
                 &mut pipe.text_cap,
                 text_bytes,
                 wgpu::BufferUsages::VERTEX,
             );
-            queue.write_buffer(&pipe.text_buf, 0, text_bytes);
+            if grew || pipe.written_text != text_bytes {
+                pipe.uploads.write(&mut encoder, &pipe.text_buf, 0, text_bytes);
+                pipe.written_text.clear();
+                pipe.written_text.extend_from_slice(text_bytes);
+            }
         }
 
-        // Bind group — rebuilt each frame (cheap) in case buffers were resized
         let pal_size = wgpu::BufferSize::new((std::mem::size_of::<[f32; 4]>() * 16) as u64);
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("flamegraph_bg"),
-            layout: &pipe.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: pipe.uni_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &pipe.span_buf,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &pipe.pal_buf,
-                        offset: 0,
-                        size: pal_size,
-                    }),
-                },
-            ],
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("flamegraph_encoder"),
+        let (uni_buf, pal_buf, bgl) = (&pipe.uni_buf, &pipe.pal_buf, &pipe.bgl);
+        let bg = pipe.group.get_or_build(pipe.span_buf.clone(), |span_buf| {
+            let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("flamegraph_bg"),
+                layout: bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uni_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: span_buf,
+                            offset: 0,
+                            size: None,
+                        }),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: pal_buf,
+                            offset: 0,
+                            size: pal_size,
+                        }),
+                    },
+                ],
+            });
+            (group, ())
         });
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -185,7 +205,7 @@ impl FlamegraphRenderer {
             multiview_mask: None,
         });
 
-        pass.set_bind_group(0, &bg, &[]);
+        pass.set_bind_group(0, bg, &[]);
 
         // 1. Draw spans via vertex-pulling (no vertex buffer needed)
         if span_count > 0 {
@@ -201,7 +221,9 @@ impl FlamegraphRenderer {
         }
 
         drop(pass);
+        pipe.uploads.finish();
         queue.submit(std::iter::once(encoder.finish()));
+        pipe.uploads.recall();
     }
 
     fn ensure_buf(
@@ -210,9 +232,10 @@ impl FlamegraphRenderer {
         cap: &mut u64,
         data: &[u8],
         usage: wgpu::BufferUsages,
-    ) {
+    ) -> bool {
         let needed = data.len() as u64;
-        if needed > *cap {
+        let grow = needed > *cap;
+        if grow {
             *cap = (needed * 2).max(256);
             *buf = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
@@ -221,6 +244,7 @@ impl FlamegraphRenderer {
                 mapped_at_creation: false,
             });
         }
+        grow
     }
 
     fn create_pipe(device: &wgpu::Device, fmt: wgpu::TextureFormat) -> Pipe {
@@ -384,6 +408,10 @@ impl FlamegraphRenderer {
             text_cap: text_init,
             span_data_ptr: std::ptr::null(),
             span_data_len: 0,
+            written_uniforms: None,
+            written_text: Vec::new(),
+            group: BindGroupCache::default(),
+            uploads: Uploads::new(device),
         }
     }
 }

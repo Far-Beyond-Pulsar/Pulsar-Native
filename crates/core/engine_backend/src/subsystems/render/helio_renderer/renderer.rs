@@ -2236,10 +2236,11 @@ impl HelioRenderer {
     fn apply_voxel_brush(&mut self, brush: &PendingBrush, hint: VoxelRayHint) -> bool {
         profiling::profile_scope!("voxel_apply_brush");
         let started = Instant::now();
-        let entries = {
-            let scene = self.scene_store.read();
-            crate::scene::voxel_frame::project_voxel_entries(&scene.world).0
+        // The frame's projection of this revision (a stamp moves it on).
+        let Some(read) = self.inner.as_mut().map(|inner| inner.scene.scene_read()) else {
+            return false;
         };
+        let entries = &read.entries;
         // Flatten levels every stamp of a stroke to its first stamp's ground.
         let mut request = brush.request;
         if request.tool == VoxelBrushTool::Flatten {
@@ -2256,15 +2257,19 @@ impl HelioRenderer {
             })
         };
         let walked = started.elapsed();
-        let slow = |hit: Option<f64>| {
+        // `journaled`: when the stamps were in the terrain's journal (the
+        // rest of the commit is the backend's own world update).
+        let slow = |hit: Option<f64>, journaled: Option<std::time::Duration>| {
             let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
             if started.elapsed().as_millis() >= 20 {
+                let journaled = journaled.unwrap_or(walked);
                 tracing::warn!(
-                    "VOXEL_BRUSH slow: {:.1} ms (entries {:.1}, ray {:.1}, commit {:.1}) hint={hint:?} hit={hit:?}",
+                    "VOXEL_BRUSH slow: {:.1} ms (entries {:.1}, ray {:.1}, journal {:.1}, backend {:.1}) hint={hint:?} hit={hit:?}",
                     ms(started.elapsed()),
                     ms(projected),
                     ms(walked - projected),
-                    ms(started.elapsed() - walked)
+                    ms(journaled - walked),
+                    ms(started.elapsed() - journaled)
                 );
             }
         };
@@ -2305,15 +2310,16 @@ impl HelioRenderer {
                 stamps.retain(|stamp| apply_voxel_brush_commit(&mut scene.world, stamp.clone()));
                 self.gizmo_dirty |= !stamps.is_empty();
                 drop(scene);
+                let journaled = started.elapsed();
                 if let Some(voxels) = self.voxels() {
                     voxels.stamped(&stamps);
                 }
-                slow(Some(commit.distance));
+                slow(Some(commit.distance), Some(journaled));
                 self.voxel_stroke_last = Some((brush.stroke, commit));
                 true
             }
             Ok(_) => {
-                slow(None);
+                slow(None, None);
                 false
             }
             Err(error) => {

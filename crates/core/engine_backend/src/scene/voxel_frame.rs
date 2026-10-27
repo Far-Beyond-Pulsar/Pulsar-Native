@@ -352,6 +352,29 @@ pub(super) fn terrain_entry(
         return Err("voxel_size must be finite and positive");
     }
     let voxel_size = component.voxel_size * scale;
+    // Where a slow projection's time goes (`VOXEL_ENTRIES slow`).
+    let started = std::time::Instant::now();
+    let generator = (!component.generator.id.is_empty()).then(|| {
+        let parameters = helio_component::voxel_world::generator_settings(world, entity, component);
+        let settings_ms = started.elapsed().as_secs_f64() * 1e3;
+        let features = helio_component::feature_recipe(&component.features);
+        let features_ms = started.elapsed().as_secs_f64() * 1e3 - settings_ms;
+        (
+            VoxelGeneratorConfig {
+                id: component.generator.id.clone(),
+                version: component.generator.version,
+                seed: component.seed,
+                parameters,
+                features,
+            },
+            settings_ms,
+            features_ms,
+        )
+    });
+    let (generator, settings_ms, features_ms) = match generator {
+        Some((generator, settings_ms, features_ms)) => (Some(generator), settings_ms, features_ms),
+        None => (None, 0.0, 0.0),
+    };
     Ok(VoxelSceneEntry {
         id: VoxelEntryId {
             entity_bits: entity.bits(),
@@ -361,13 +384,7 @@ pub(super) fn terrain_entry(
         editable: component.editable,
         origin,
         voxel_size,
-        generator: (!component.generator.id.is_empty()).then(|| VoxelGeneratorConfig {
-            id: component.generator.id.clone(),
-            version: component.generator.version,
-            seed: component.seed,
-            parameters: helio_component::voxel_world::generator_settings(world, entity, component),
-            features: helio_component::feature_recipe(&component.features),
-        }),
+        generator,
         world: VoxelWorldForm {
             shape: component.shape,
             planet_radius: component.planet_radius * scale,
@@ -379,10 +396,19 @@ pub(super) fn terrain_entry(
     .map(|mut entry| {
         // Edits made on other ground are not this terrain's (the scene step
         // drops them from the journal: `sync_edit_journals`).
+        let fingerprinted = std::time::Instant::now();
         let fingerprint = terrain_fingerprint(&entry);
         if entry.edits.terrain() != 0 && entry.edits.terrain() != fingerprint {
             entry.edits = VoxelEditJournal::default();
             entry.edits.made_on(fingerprint);
+        }
+        let ms = started.elapsed().as_secs_f64() * 1e3;
+        if ms >= 5.0 {
+            tracing::warn!(
+                "VOXEL_ENTRIES slow: terrain {} in {ms:.1} ms (settings {settings_ms:.1}, features {features_ms:.1}, fingerprint {:.1})",
+                entity.bits(),
+                fingerprinted.elapsed().as_secs_f64() * 1e3
+            );
         }
         entry
     })
