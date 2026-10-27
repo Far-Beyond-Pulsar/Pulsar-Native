@@ -63,7 +63,10 @@ impl std::fmt::Display for PortalProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Alone { link_id } => {
-                write!(f, "portal Link ID {link_id} has no partner (needs exactly two)")
+                write!(
+                    f,
+                    "portal Link ID {link_id} has no partner (needs exactly two)"
+                )
             }
             Self::Crowded { link_id, count } => write!(
                 f,
@@ -132,7 +135,11 @@ fn pose_of(world: &World, portal: &Portal, origin: DVec3) -> Option<(Mat4, [f32;
         return None;
     }
     let pose = DMat4::from_rotation_translation(
-        if rotation.is_finite() { rotation } else { DQuat::IDENTITY },
+        if rotation.is_finite() {
+            rotation
+        } else {
+            DQuat::IDENTITY
+        },
         translation - origin,
     );
     let half = [
@@ -238,7 +245,10 @@ impl PortalSync {
             match built {
                 Ok(frame) => {
                     self.input.set(&frame, table.matrices());
-                    (frame.counts.portal_view_count, frame.counts.portal_chain_count)
+                    (
+                        frame.counts.portal_view_count,
+                        frame.counts.portal_chain_count,
+                    )
                 }
                 Err(error) => {
                     tracing::warn!("portals not drawn: {error}");
@@ -286,7 +296,11 @@ mod tests {
         portal_at(&mut world, 5, [20.0, 0.0, 0.0]);
         portal_at(&mut world, 0, [1.0, 0.0, 0.0]);
         let pairing = pair_portals(&world);
-        assert_eq!(pairing.pairs.len(), 1, "an unlinked portal pairs with nothing");
+        assert_eq!(
+            pairing.pairs.len(),
+            1,
+            "an unlinked portal pairs with nothing"
+        );
         assert!(pairing.problems.is_empty());
     }
 
@@ -303,7 +317,10 @@ mod tests {
             pairing.problems,
             [
                 PortalProblem::Alone { link_id: 1 },
-                PortalProblem::Crowded { link_id: 2, count: 3 }
+                PortalProblem::Crowded {
+                    link_id: 2,
+                    count: 3
+                }
             ]
         );
     }
@@ -314,10 +331,7 @@ mod tests {
         let a = portal_at(&mut world, 7, [0.0; 3]);
         portal_at(&mut world, 7, [5.0, 0.0, 0.0]);
         assert_eq!(pair_portals(&world).pairs.len(), 1);
-        world
-            .get_mut::<Visibility>(a)
-            .unwrap()
-            .visible = false;
+        world.get_mut::<Visibility>(a).unwrap().visible = false;
         let pairing = pair_portals(&world);
         assert!(pairing.pairs.is_empty());
         assert_eq!(pairing.problems, [PortalProblem::Alone { link_id: 7 }]);
@@ -332,10 +346,20 @@ mod tests {
         let mut table = crate::scene::SpaceTable::new(vec![Mat4::IDENTITY, Mat4::IDENTITY]);
         let counts = sync.apply(&world, DVec3::ZERO, &mut table);
         let (views, chains) = counts.expect("the counts changed from nothing");
-        assert!(views >= 2 && chains >= 2, "a view and a chain per direction ({views}, {chains})");
-        assert!(table.matrices().len() > 2, "the projection's spaces came after the frame slot");
+        assert!(
+            views >= 2 && chains >= 2,
+            "a view and a chain per direction ({views}, {chains})"
+        );
+        assert!(
+            table.matrices().len() > 2,
+            "the projection's spaces came after the frame slot"
+        );
         assert_eq!(
-            sync.apply(&world, DVec3::ZERO, &mut crate::scene::SpaceTable::new(vec![Mat4::IDENTITY, Mat4::IDENTITY])),
+            sync.apply(
+                &world,
+                DVec3::ZERO,
+                &mut crate::scene::SpaceTable::new(vec![Mat4::IDENTITY, Mat4::IDENTITY])
+            ),
             None,
             "unchanged counts are not reported again"
         );

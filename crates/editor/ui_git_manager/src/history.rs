@@ -295,7 +295,10 @@ pub fn load_commit_detail(repo_path: &Path, hash: &str) -> Result<CommitDetail, 
             .old_file()
             .path()
             .map(|p| p.to_string_lossy().replace('\\', "/"));
-        let path = new_path.clone().or_else(|| old_path.clone()).unwrap_or_default();
+        let path = new_path
+            .clone()
+            .or_else(|| old_path.clone())
+            .unwrap_or_default();
         let status = delta_status(delta.status());
         let mut change = FileChange::new(path, status);
         if matches!(status, ChangeStatus::Renamed | ChangeStatus::Copied) {
@@ -336,7 +339,10 @@ pub fn create_branch(repo_path: &Path, name: &str) -> Result<(), git2::Error> {
     let repo = open_repo(repo_path)?;
     let name = name.trim();
     if !git2::Branch::name_is_valid(name)? {
-        return Err(git2::Error::from_str(&format!("\"{}\" is not a valid branch name", name)));
+        return Err(git2::Error::from_str(&format!(
+            "\"{}\" is not a valid branch name",
+            name
+        )));
     }
     let head = repo
         .head()
@@ -353,7 +359,10 @@ pub fn create_branch(repo_path: &Path, name: &str) -> Result<(), git2::Error> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiffTarget {
     /// The index against HEAD.
-    Staged { path: String, old_path: Option<String> },
+    Staged {
+        path: String,
+        old_path: Option<String>,
+    },
     /// The working tree against the index.
     Unstaged { path: String },
     /// A commit against its first parent.
@@ -377,7 +386,10 @@ impl DiffTarget {
 /// The two sides of a file diff.
 #[derive(Debug, Clone)]
 pub enum DiffTexts {
-    Text { old: String, new: String },
+    Text {
+        old: String,
+        new: String,
+    },
     /// Binary or oversized; the reason is shown in place of the diff.
     Unsupported(String),
 }
@@ -575,8 +587,8 @@ mod repository_tests {
         stage_file(dir.path(), "a.txt").expect("stage");
         commit_staged_changes(dir.path(), "first").expect("first commit has no parent");
 
-        let page = load_commit_page(dir.path(), 0, COMMIT_PAGE, GraphBuilder::default())
-            .expect("history");
+        let page =
+            load_commit_page(dir.path(), 0, COMMIT_PAGE, GraphBuilder::default()).expect("history");
         assert_eq!(page.commits.len(), 1);
         assert_eq!(page.commits[0].summary, "first");
         assert!(page.exhausted);

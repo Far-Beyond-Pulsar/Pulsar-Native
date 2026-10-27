@@ -129,7 +129,11 @@ impl FlamegraphView {
                 .unwrap_or_else(|| format!("Thread {}", span.thread_id)),
             start_ns: span.start_ns.saturating_sub(frame.min_time_ns),
             duration_ns: span.duration_ns,
-            self_ns: cache.self_ns.get(index).copied().unwrap_or(span.duration_ns),
+            self_ns: cache
+                .self_ns
+                .get(index)
+                .copied()
+                .unwrap_or(span.duration_ns),
             depth: span.depth,
         })
     }
@@ -152,9 +156,7 @@ impl FlamegraphView {
         let visible_end_ns = to_ns(width - vs.pan_x);
         let centre = frame.min_time_ns + (visible_start_ns + visible_end_ns) / 2;
         let boundaries = &frame.frame_boundaries_ns;
-        let frame_index = boundaries
-            .partition_point(|b| *b <= centre)
-            .checked_sub(1);
+        let frame_index = boundaries.partition_point(|b| *b <= centre).checked_sub(1);
 
         ViewStatus {
             session_ns: duration,
@@ -165,8 +167,12 @@ impl FlamegraphView {
             px_per_ms: zoom * 1_000_000.0,
             frame_index,
             frame_count: boundaries.len(),
-            hovered: vs.hovered_span.and_then(|i| self.span_info(frame, cache, i)),
-            selected: vs.selected_span.and_then(|i| self.span_info(frame, cache, i)),
+            hovered: vs
+                .hovered_span
+                .and_then(|i| self.span_info(frame, cache, i)),
+            selected: vs
+                .selected_span
+                .and_then(|i| self.span_info(frame, cache, i)),
         }
     }
 
@@ -245,7 +251,8 @@ impl FlamegraphView {
 
         // Ancestors: one enclosing span per shallower depth, found walking back
         // from the selected span's start.
-        let at_or_before = indices.partition_point(|i| frame.spans[*i as usize].start_ns <= span.start_ns);
+        let at_or_before =
+            indices.partition_point(|i| frame.spans[*i as usize].start_ns <= span.start_ns);
         let mut ancestors: Vec<Option<usize>> = vec![None; span.depth as usize];
         let mut missing = span.depth as usize;
         for k in (at_or_before.saturating_sub(SCAN_LIMIT)..at_or_before).rev() {
@@ -286,7 +293,10 @@ impl FlamegraphView {
             if candidate.start_ns >= span.end_ns() {
                 break;
             }
-            if index != selected && candidate.depth == span.depth + 1 && candidate.end_ns() <= span.end_ns() {
+            if index != selected
+                && candidate.depth == span.depth + 1
+                && candidate.end_ns() <= span.end_ns()
+            {
                 stack.extend(make(index, FrameRole::Child));
                 children += 1;
                 if children == MAX_CHILDREN {

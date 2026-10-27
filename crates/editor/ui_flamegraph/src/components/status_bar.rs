@@ -55,7 +55,11 @@ impl Render for StatusBar {
             "{} → {}  ({})",
             format_duration(status.visible_start_ns),
             format_duration(status.visible_end_ns),
-            format_duration(status.visible_end_ns.saturating_sub(status.visible_start_ns)),
+            format_duration(
+                status
+                    .visible_end_ns
+                    .saturating_sub(status.visible_start_ns)
+            ),
         );
         let frame = match status.frame_index {
             Some(index) if status.frame_count > 0 => {
@@ -88,7 +92,11 @@ impl Render for StatusBar {
                     .whitespace_nowrap()
                     .text_size(px(11.))
                     .text_color(foreground)
-                    .child(format!("{}  {}", span.name, format_duration(span.duration_ns))),
+                    .child(format!(
+                        "{}  {}",
+                        span.name,
+                        format_duration(span.duration_ns)
+                    )),
             );
         }
         bar

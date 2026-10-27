@@ -42,7 +42,14 @@ pub(crate) fn render_desktop_layout(
                 .child(tabs)
                 .child(div().flex_1().min_h_0().overflow_hidden().child(left)),
         )
-        .child(div().flex_1().min_w_0().h_full().overflow_hidden().child(right))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .overflow_hidden()
+                .child(right),
+        )
 }
 
 fn render_tabs(gm: &mut GitManager, cx: &mut Context<GitManager>) -> impl IntoElement + use<> {
@@ -68,10 +75,18 @@ fn render_tabs(gm: &mut GitManager, cx: &mut Context<GitManager>) -> impl IntoEl
             .justify_center()
             .cursor_pointer()
             .text_xs()
-            .font_weight(if selected { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+            .font_weight(if selected {
+                FontWeight::SEMIBOLD
+            } else {
+                FontWeight::NORMAL
+            })
             .text_color(if selected { foreground } else { muted_fg })
             .border_b_2()
-            .border_color(if selected { primary } else { transparent_black() })
+            .border_color(if selected {
+                primary
+            } else {
+                transparent_black()
+            })
             .hover(move |s| s.bg(hover))
             .on_mouse_down(
                 MouseButton::Left,
@@ -89,8 +104,16 @@ fn render_tabs(gm: &mut GitManager, cx: &mut Context<GitManager>) -> impl IntoEl
         .border_color(border)
         .child(tab(
             "tab-changes",
-            if changes > 0 { format!("Changes ({})", changes) } else { "Changes".to_string() },
+            if changes > 0 {
+                format!("Changes ({})", changes)
+            } else {
+                "Changes".to_string()
+            },
             DesktopTab::Changes,
         ))
-        .child(tab("tab-history", "History".to_string(), DesktopTab::History))
+        .child(tab(
+            "tab-history",
+            "History".to_string(),
+            DesktopTab::History,
+        ))
 }

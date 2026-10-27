@@ -238,7 +238,9 @@ impl Render for VoxelSculptPanel {
                                 )
                                 .child(
                                     Button::new("voxel-create-terrain")
-                                        .label(t!("LevelEditor.VoxelPanel.CreateTerrain").to_string())
+                                        .label(
+                                            t!("LevelEditor.VoxelPanel.CreateTerrain").to_string(),
+                                        )
                                         .icon(IconName::Globe)
                                         .small()
                                         .primary()

@@ -72,7 +72,10 @@ pub struct SpaceDefiner {
 inventory::collect!(SpaceDefiner);
 
 fn rigid_frames(world: &World) -> Vec<Entity> {
-    world.query::<&RigidFrame>().map(|(entity, _)| entity).collect()
+    world
+        .query::<&RigidFrame>()
+        .map(|(entity, _)| entity)
+        .collect()
 }
 
 inventory::submit! {
@@ -301,24 +304,35 @@ mod tests {
 
     fn at(world: &mut World, parent: Option<Entity>, position: [f64; 3]) -> Entity {
         world
-            .spawn_object(SpawnObject::new("o").with_parent(parent).with_transform(Transform {
-                position,
-                ..Transform::default()
-            }))
+            .spawn_object(
+                SpawnObject::new("o")
+                    .with_parent(parent)
+                    .with_transform(Transform {
+                        position,
+                        ..Transform::default()
+                    }),
+            )
             .unwrap()
     }
 
     #[test]
     fn slots_are_distinct_and_reused() {
         let mut world = World::new();
-        let (a, b) = (at(&mut world, None, [0.0; 3]), at(&mut world, None, [0.0; 3]));
+        let (a, b) = (
+            at(&mut world, None, [0.0; 3]),
+            at(&mut world, None, [0.0; 3]),
+        );
         let sa = make_frame(&mut world, a).unwrap();
         let sb = make_frame(&mut world, b).unwrap();
         assert_eq!((sa, sb), (1, 2));
         assert_eq!(make_frame(&mut world, a).unwrap(), 1, "idempotent");
         clear_frame(&mut world, a);
         let c = at(&mut world, None, [0.0; 3]);
-        assert_eq!(make_frame(&mut world, c).unwrap(), 1, "the freed slot is reused");
+        assert_eq!(
+            make_frame(&mut world, c).unwrap(),
+            1,
+            "the freed slot is reused"
+        );
     }
 
     #[test]
@@ -344,7 +358,11 @@ mod tests {
         let loose = at(&mut world, None, [0.0; 3]);
         make_frame(&mut world, ship).unwrap();
         assert_eq!(space_of(&world, crate_), 1);
-        assert_eq!(space_of(&world, ship), 0, "a space is itself placed in its parent's space");
+        assert_eq!(
+            space_of(&world, ship),
+            0,
+            "a space is itself placed in its parent's space"
+        );
         assert_eq!(space_of(&world, loose), 0);
         make_frame(&mut world, deck).unwrap();
         assert_eq!(space_of(&world, crate_), 2, "the nearest one wins");
@@ -358,7 +376,10 @@ mod tests {
         assert!(prop_marks_frame(&world, ship));
         world.remove::<RigidFrame>(ship);
         sync_frames_from_props(&mut world, &[ship]);
-        assert!(world.get::<SpaceSlot>(ship).is_some(), "the prop makes it a space again");
+        assert!(
+            world.get::<SpaceSlot>(ship).is_some(),
+            "the prop makes it a space again"
+        );
         set_rigid_frame(&mut world, ship, false).unwrap();
         assert!(!prop_marks_frame(&world, ship));
         assert!(world.get::<SpaceSlot>(ship).is_none());
@@ -377,7 +398,9 @@ mod tests {
     }
 
     fn placement_is_folded(world: &World, entity: Entity) -> bool {
-        world.get::<TestPlacement>(entity).is_none_or(|p| p.offset == 0.0)
+        world
+            .get::<TestPlacement>(entity)
+            .is_none_or(|p| p.offset == 0.0)
     }
 
     fn fold_placement(world: &mut World, entity: Entity) {

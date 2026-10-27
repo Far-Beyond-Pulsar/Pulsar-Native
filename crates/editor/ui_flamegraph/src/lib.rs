@@ -26,7 +26,7 @@ mod state;
 mod profiler;
 
 pub use flamegraph_view::FlamegraphView;
-pub use panels::{FlamegraphPanel, CallstackPanel, ScriptsPanel, StatisticsPanel};
+pub use panels::{CallstackPanel, FlamegraphPanel, ScriptsPanel, StatisticsPanel};
 pub use profiler::{convert_profile_events_to_trace, InstrumentationCollector};
 pub use trace_data::{ThreadInfo, TraceData, TraceFrame, TraceSpan};
 pub use window::FlamegraphWindow;

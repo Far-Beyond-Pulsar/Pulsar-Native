@@ -63,8 +63,7 @@ impl InputState {
                     .ok()
                     .and_then(|value| value.as_float().ok())
                     .filter(|value| value.is_finite())
-                    .unwrap_or(10.0)
-                    as f32;
+                    .unwrap_or(10.0) as f32;
                 (if speed.is_finite() {
                     speed.max(MIN_MOVE_SPEED)
                 } else {

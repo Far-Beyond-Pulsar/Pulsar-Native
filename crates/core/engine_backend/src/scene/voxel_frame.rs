@@ -643,8 +643,9 @@ mod tests {
         let mut planet = VoxelTerrainComponent::planet(6_371_000.0);
         planet.air = VoxelAir::Earthlike;
         let terrain = pulsar_world_registry::attach_value(&mut world, object, planet).unwrap();
-        let fog = pulsar_world_registry::attach_value(&mut world, object, GlobalFogComponent::default())
-            .unwrap();
+        let fog =
+            pulsar_world_registry::attach_value(&mut world, object, GlobalFogComponent::default())
+                .unwrap();
         let mut sync = VoxelWorldSync::new(&world);
         let haze = |world: &World| world.get::<GlobalFogComponent>(fog).unwrap().clone();
         sync.poll(&mut world);
@@ -656,8 +657,15 @@ mod tests {
             ..Default::default()
         }
         .around_planet([0.0; 3], 6_371_000.0);
-        assert_eq!(haze(&world).medium.to_medium(), earth, "Earth's air, over the planet");
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air_haze = 2.0;
+        assert_eq!(
+            haze(&world).medium.to_medium(),
+            earth,
+            "Earth's air, over the planet"
+        );
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .air_haze = 2.0;
         sync.poll(&mut world);
         assert!((haze(&world).medium.extinction - 0.0012).abs() < 1e-9);
         world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air = VoxelAir::None;
@@ -665,13 +673,24 @@ mod tests {
         assert!(!haze(&world).enabled, "a moon has no haze");
         // Custom air keeps an authored medium, placed on the ground.
         world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().air = VoxelAir::Custom;
-        world.get_mut::<GlobalFogComponent>(fog).unwrap().medium.albedo = [0.9, 0.8, 0.7];
+        world
+            .get_mut::<GlobalFogComponent>(fog)
+            .unwrap()
+            .medium
+            .albedo = [0.9, 0.8, 0.7];
         sync.poll(&mut world);
         assert_eq!(haze(&world).medium.albedo, [0.9, 0.8, 0.7]);
         assert_eq!(haze(&world).medium.planet_radius, 6_371_000.0);
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().shape = VoxelWorldShape::Plane;
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .shape = VoxelWorldShape::Plane;
         sync.poll(&mut world);
-        assert_eq!(haze(&world).medium.planet_radius, 0.0, "a plane's heights are along Y");
+        assert_eq!(
+            haze(&world).medium.planet_radius,
+            0.0,
+            "a plane's heights are along Y"
+        );
         assert_eq!(sync_air_to_terrains(&mut world), 0);
     }
 
@@ -688,14 +707,18 @@ mod tests {
             VoxelTerrainComponent::planet(1_000.0),
         )
         .unwrap();
-        let entry = |world: &World| {
-            terrain_entry(world, terrain, world.get(terrain).unwrap()).unwrap()
-        };
+        let entry =
+            |world: &World| terrain_entry(world, terrain, world.get(terrain).unwrap()).unwrap();
         let bare = terrain_fingerprint(&entry(&world));
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().features =
-            helio_component::feature_spawns(&FeatureRecipe::moon());
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .features = helio_component::feature_spawns(&FeatureRecipe::moon());
         let moon = entry(&world);
-        assert_eq!(moon.generator.as_ref().unwrap().features, FeatureRecipe::moon());
+        assert_eq!(
+            moon.generator.as_ref().unwrap().features,
+            FeatureRecipe::moon()
+        );
         assert_ne!(terrain_fingerprint(&moon), bare);
         let mut sync = VoxelWorldSync::new(&world);
         world
@@ -711,7 +734,11 @@ mod tests {
                 height: Default::default(),
             });
         assert_eq!(sync.poll(&mut world), 0, "the journal adopts its ground");
-        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().features[0].density = 0.9;
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .features[0]
+            .density = 0.9;
         assert_eq!(sync.poll(&mut world), 1, "other features are other ground");
     }
 

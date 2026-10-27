@@ -13,7 +13,10 @@ pub fn compute_self_times(frame: &TraceFrame) -> Vec<u64> {
 
     let mut by_thread: HashMap<u64, Vec<u32>> = HashMap::new();
     for (index, span) in frame.spans.iter().enumerate() {
-        by_thread.entry(span.thread_id).or_default().push(index as u32);
+        by_thread
+            .entry(span.thread_id)
+            .or_default()
+            .push(index as u32);
     }
 
     for (_, mut indices) in by_thread {

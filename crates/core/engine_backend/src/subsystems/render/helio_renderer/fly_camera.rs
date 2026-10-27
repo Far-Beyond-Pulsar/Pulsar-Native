@@ -127,7 +127,9 @@ impl FlyCamera {
 /// How much faster than its base speed a camera flies at `ground`: the base
 /// speed within 20 m of the voxel ground, 50x at 1 km, orbit in seconds.
 pub fn altitude_speed_scale(ground: &VoxelGround) -> f64 {
-    ground.altitude.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6))
+    ground
+        .altitude
+        .map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6))
 }
 
 /// View direction for yaw (about +Y, 0 = -Z) and pitch.
@@ -251,10 +253,7 @@ mod tests {
 
     #[test]
     fn speed_grows_with_altitude() {
-        let at = |altitude| VoxelGround {
-            up: None,
-            altitude,
-        };
+        let at = |altitude| VoxelGround { up: None, altitude };
         assert_eq!(altitude_speed_scale(&at(None)), 1.0);
         assert_eq!(altitude_speed_scale(&at(Some(2.0))), 1.0);
         assert_eq!(altitude_speed_scale(&at(Some(1_000.0))), 50.0);

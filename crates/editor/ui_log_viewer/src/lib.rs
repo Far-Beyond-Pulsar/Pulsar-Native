@@ -9,11 +9,13 @@ mod utils;
 pub use components::log_drawer::LogDrawer;
 pub use components::panels::{
     AdvancedMetricsPanel, CallerSitesPanel, GpuMetricsPanel, LogsPanel, MemoryBreakdownPanel,
-    MemoryExplorerPanel,
-    ResourceMonitorPanel, SystemInfoPanel,
+    MemoryExplorerPanel, ResourceMonitorPanel, SystemInfoPanel,
 };
 pub use screen::MissionControlPanel;
 pub use utils::atomic_memory_tracking::{AllocationEntry, SizeBucket, ATOMIC_MEMORY_COUNTERS};
+pub use utils::large_allocs::{
+    build_snapshot as large_allocation_snapshot, LargeGroup, LargeSnapshot,
+};
 pub use utils::live_logs::{publish_live_log, subscribe_live_logs};
 pub use utils::memory_tracking::{
     create_memory_tracker, MemoryCategory, MemoryStatsSnapshot, MemoryTracker, SharedMemoryTracker,
@@ -22,7 +24,6 @@ pub use utils::performance_metrics::{
     create_shared_metrics, PerformanceMetrics, SharedPerformanceMetrics,
 };
 pub use utils::system_info::{create_shared_info, SharedSystemInfo, SystemInfo};
-pub use utils::large_allocs::{build_snapshot as large_allocation_snapshot, LargeGroup, LargeSnapshot};
 pub use utils::tracking_allocator::{
     disable_tracking, enable_tracking, is_tracking_active, MemoryCategoryGuard, TrackingAllocator,
 };

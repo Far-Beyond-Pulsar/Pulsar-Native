@@ -8,8 +8,8 @@ use helio_core::{
     BufferHandle, BufferKey, SceneDerivation, SceneDerivationContext, SceneDerivationOutput,
 };
 use pulsar_scenedb::AssetId;
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
 
@@ -182,11 +182,12 @@ impl AuthoredLodSelection {
             label: Some("Authored LOD Apply"),
             source: wgpu::ShaderSource::Wgsl(include_str!("authored_lod_apply.wgsl").into()),
         });
-        let apply_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Authored LOD Apply Pipeline Layout"),
-            bind_group_layouts: &[Some(&apply_layout)],
-            immediate_size: 0,
-        });
+        let apply_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Authored LOD Apply Pipeline Layout"),
+                bind_group_layouts: &[Some(&apply_layout)],
+                immediate_size: 0,
+            });
         let apply_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Authored LOD Apply"),
             layout: Some(&apply_pipeline_layout),
@@ -288,9 +289,11 @@ impl AuthoredLodSelection {
                     });
                 }
             } else {
-                sections.extend(active._mesh.upload.sections.iter().map(|section| AssetSectionRow {
-                    first_index: section.first_index,
-                    index_count: section.index_count,
+                sections.extend(active._mesh.upload.sections.iter().map(|section| {
+                    AssetSectionRow {
+                        first_index: section.first_index,
+                        index_count: section.index_count,
+                    }
                 }));
             }
             let section_count = sections.len() as u32 - section_offset;
@@ -335,14 +338,16 @@ impl AuthoredLodSelection {
         }));
         if let Some(buffer) = &self.asset_table {
             if assets.is_empty() {
-                ctx.queue.write_buffer(buffer, 0, bytemuck::bytes_of(&AssetGeometryRow::default()));
+                ctx.queue
+                    .write_buffer(buffer, 0, bytemuck::bytes_of(&AssetGeometryRow::default()));
             } else {
                 ctx.queue.write_buffer(buffer, 0, asset_bytes);
             }
         }
         if let Some(buffer) = &self.section_table {
             if sections.is_empty() {
-                ctx.queue.write_buffer(buffer, 0, bytemuck::bytes_of(&AssetSectionRow::default()));
+                ctx.queue
+                    .write_buffer(buffer, 0, bytemuck::bytes_of(&AssetSectionRow::default()));
             } else {
                 ctx.queue.write_buffer(buffer, 0, section_bytes);
             }
@@ -412,7 +417,10 @@ impl AuthoredLodSelection {
             }));
             self.patched_object_epoch = self.patched_object_epoch.wrapping_add(1).max(1);
         }
-        let output = self.patched_objects.as_ref().expect("patched object output");
+        let output = self
+            .patched_objects
+            .as_ref()
+            .expect("patched object output");
         let run_signature = signature(&[
             objects,
             owners,
@@ -433,7 +441,8 @@ impl AuthoredLodSelection {
                 object_rows: rows,
                 _pad: [0; 3],
             };
-            ctx.queue.write_buffer(&self.apply_uniforms, 0, bytemuck::bytes_of(&uniforms));
+            ctx.queue
+                .write_buffer(&self.apply_uniforms, 0, bytemuck::bytes_of(&uniforms));
             let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Authored LOD Apply Bind Group"),
                 layout: &self.apply_layout,
@@ -566,8 +575,8 @@ impl SceneDerivation for AuthoredLodSelection {
                     input_signature ^= bits;
                     input_signature = input_signature.wrapping_mul(0x0100_0000_01b3);
                 }
-                let should_run = component_rows > 0
-                    && (grew || self.last_signature != Some(input_signature));
+                let should_run =
+                    component_rows > 0 && (grew || self.last_signature != Some(input_signature));
                 if should_run {
                     self.last_signature = Some(input_signature);
                     self.output_generation = self.output_generation.wrapping_add(1).max(1);
@@ -583,7 +592,8 @@ impl SceneDerivation for AuthoredLodSelection {
                         origin_hi,
                         origin_lo,
                     };
-                    ctx.queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(&uniforms));
+                    ctx.queue
+                        .write_buffer(&self.uniforms, 0, bytemuck::bytes_of(&uniforms));
                     let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("Authored LOD Selection Bind Group"),
                         layout: &self.layout,
@@ -648,7 +658,9 @@ impl SceneDerivation for AuthoredLodSelection {
             self.asset_table_generation,
         );
         let section_table = table_handle(
-            self.section_table.as_ref().expect("section table allocated"),
+            self.section_table
+                .as_ref()
+                .expect("section table allocated"),
             self.section_table_epoch,
             SECTION_ROW_BYTES,
             self.section_table_generation,
@@ -677,17 +689,13 @@ impl SceneDerivation for AuthoredLodSelection {
                 buffers.push((OBJECTS_KEY, patched));
                 recorded |= apply_recorded;
                 if let Some(source_structure) = projection.get(OBJECTS_STRUCTURE_KEY) {
-                    let structure_signature = signature(&[
-                        source_structure,
-                        &asset_table,
-                        &section_table,
-                    ]) ^ self.lod_selection_generation.rotate_left(37);
+                    let structure_signature =
+                        signature(&[source_structure, &asset_table, &section_table])
+                            ^ self.lod_selection_generation.rotate_left(37);
                     if self.last_structure_signature != Some(structure_signature) {
                         self.last_structure_signature = Some(structure_signature);
-                        self.output_structure_generation = self
-                            .output_structure_generation
-                            .wrapping_add(1)
-                            .max(1);
+                        self.output_structure_generation =
+                            self.output_structure_generation.wrapping_add(1).max(1);
                     }
                     buffers.push((
                         OBJECTS_STRUCTURE_KEY,
@@ -729,12 +737,11 @@ impl AuthoredLodSelection {
         let Some(mirror) = self.mirror.as_ref() else {
             return;
         };
-        self.active_assets
-            .retain(|asset, active| {
-                self.requested_assets.contains(asset)
-                    && helio_component::components::mesh_asset_content_version(*asset)
-                        == Some(active._mesh.content_id)
-            });
+        self.active_assets.retain(|asset, active| {
+            self.requested_assets.contains(asset)
+                && helio_component::components::mesh_asset_content_version(*asset)
+                    == Some(active._mesh.content_id)
+        });
         for asset in self.requested_assets.iter().copied() {
             if self.active_assets.contains_key(&asset) {
                 continue;
@@ -748,16 +755,19 @@ impl AuthoredLodSelection {
             let Ok(mesh) = residency.get() else {
                 continue;
             };
-            match helio_component::components::acquire_mesh_asset_gpu_lease(
-                mirror,
-                asset,
-                &mesh,
-            ) {
+            match helio_component::components::acquire_mesh_asset_gpu_lease(mirror, asset, &mesh) {
                 Ok(gpu) => {
-                    self.active_assets
-                        .insert(asset, ActiveLodAsset { _mesh: mesh, _gpu: gpu });
+                    self.active_assets.insert(
+                        asset,
+                        ActiveLodAsset {
+                            _mesh: mesh,
+                            _gpu: gpu,
+                        },
+                    );
                 }
-                Err(error) => tracing::warn!(?asset, %error, "authored LOD GPU residency failed; drawing the base mesh"),
+                Err(error) => {
+                    tracing::warn!(?asset, %error, "authored LOD GPU residency failed; drawing the base mesh")
+                }
             }
         }
     }
@@ -1080,7 +1090,13 @@ mod tests {
             (keys.camera, upload(&device, &queue, keys.camera, &[camera])),
         ]);
 
-        let far = selection(&mut lod, &device, &queue, &mut projection, glam::DVec3::ZERO);
+        let far = selection(
+            &mut lod,
+            &device,
+            &queue,
+            &mut projection,
+            glam::DVec3::ZERO,
+        );
         assert_eq!(far.level_index, 1);
         assert_eq!(far.mesh_asset, [2, 0, 0, 0]);
         assert_eq!(far.camera_distance, 100.0);
@@ -1094,7 +1110,13 @@ mod tests {
                 ..camera_handle
             },
         );
-        let near = selection(&mut lod, &device, &queue, &mut projection, glam::DVec3::ZERO);
+        let near = selection(
+            &mut lod,
+            &device,
+            &queue,
+            &mut projection,
+            glam::DVec3::ZERO,
+        );
         assert_eq!(near.level_index, 0);
         assert_eq!(near.mesh_asset, [1, 0, 0, 0]);
         assert_eq!(near.camera_distance, 0.0);
@@ -1105,7 +1127,13 @@ mod tests {
             LOD_SUPPRESSED_KEY,
             upload(&device, &queue, LOD_SUPPRESSED_KEY, &[1u32, 0]),
         );
-        let suppressed = selection(&mut lod, &device, &queue, &mut projection, glam::DVec3::ZERO);
+        let suppressed = selection(
+            &mut lod,
+            &device,
+            &queue,
+            &mut projection,
+            glam::DVec3::ZERO,
+        );
         assert_eq!(suppressed.valid, 0);
         projection.insert(
             LOD_SUPPRESSED_KEY,
@@ -1114,7 +1142,13 @@ mod tests {
                 ..upload(&device, &queue, LOD_SUPPRESSED_KEY, &[0u32; 2])
             },
         );
-        let released = selection(&mut lod, &device, &queue, &mut projection, glam::DVec3::ZERO);
+        let released = selection(
+            &mut lod,
+            &device,
+            &queue,
+            &mut projection,
+            glam::DVec3::ZERO,
+        );
         assert_eq!((released.valid, released.level_index), (1, 0));
 
         // The camera rows hold the eye relative to the frame's world origin:
@@ -1147,7 +1181,9 @@ mod tests {
                     &device,
                     &queue,
                     keys.transforms,
-                    &[[hi.x, hi.y, hi.z, lo.x, lo.y, lo.z, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]],
+                    &[[
+                        hi.x, hi.y, hi.z, lo.x, lo.y, lo.z, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+                    ]],
                 )
             },
         );
@@ -1160,6 +1196,10 @@ mod tests {
             },
         );
         let rows = selection(&mut lod, &device, &queue, &mut projection, surface);
-        assert!((rows.camera_distance - 100.3).abs() < 1e-3, "{}", rows.camera_distance);
+        assert!(
+            (rows.camera_distance - 100.3).abs() < 1e-3,
+            "{}",
+            rows.camera_distance
+        );
     }
 }

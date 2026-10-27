@@ -71,7 +71,9 @@ impl EditorProfile for RenderProfile {
             .get("nodes")
             .and_then(serde_json::Value::as_array)
             .map_or(true, |nodes| nodes.is_empty());
-        let asset = if is_empty && marker.get("template").and_then(serde_json::Value::as_str) == Some("deferred") {
+        let asset = if is_empty
+            && marker.get("template").and_then(serde_json::Value::as_str) == Some("deferred")
+        {
             helio_default_passes::graphs::deferred_graph_asset(model::registry())
         } else {
             helio_graph_asset::GraphAsset::from_json(text)?
@@ -130,7 +132,12 @@ impl EditorProfile for RenderProfile {
         Some(Arc::new(preview))
     }
 
-    fn graph_applied(&self, file: Option<&std::path::Path>, asset: &blueprint_graph::BlueprintAsset, cx: &mut App) {
+    fn graph_applied(
+        &self,
+        file: Option<&std::path::Path>,
+        asset: &blueprint_graph::BlueprintAsset,
+        cx: &mut App,
+    ) {
         for preview in preview::previews_for(file) {
             let _ = preview.update(cx, |preview, cx| preview.apply_graph(asset, cx));
         }
@@ -141,7 +148,9 @@ impl EditorProfile for RenderProfile {
         let asset = model::buildable_asset(document, registry);
         let mut problems = model::problems(&asset, registry);
         // Without the probe the stage nodes have no resource pins; say why.
-        if let Some(reason) = engine_backend::subsystems::render::helio_renderer::pipelines::graph_pin_probe_error() {
+        if let Some(reason) =
+            engine_backend::subsystems::render::helio_renderer::pipelines::graph_pin_probe_error()
+        {
             problems.insert(0, format!("node pins unavailable: {reason}"));
         }
         problems
@@ -178,7 +187,10 @@ pub struct RenderBpsPlugin {
 
 impl Default for RenderBpsPlugin {
     fn default() -> Self {
-        Self { editors: Default::default(), next_id: Default::default() }
+        Self {
+            editors: Default::default(),
+            next_id: Default::default(),
+        }
     }
 }
 
@@ -219,22 +231,25 @@ impl RenderBpsPlugin {
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
         ensure_profile(Some(&*window));
-        let panel = cx.new(|cx| {
-            match BlueprintEditorPanel::new_with_path(file_path.clone(), window, cx) {
-                Ok(panel) => panel,
-                Err(error) => {
-                    tracing::error!("Failed to open render graph {file_path:?}: {error}");
-                    BlueprintEditorPanel::new_with_load_error(
-                        file_path.clone(),
-                        error.to_string(),
-                        window,
-                        cx,
-                    )
-                }
-            }
-        });
+        let panel =
+            cx.new(
+                |cx| match BlueprintEditorPanel::new_with_path(file_path.clone(), window, cx) {
+                    Ok(panel) => panel,
+                    Err(error) => {
+                        tracing::error!("Failed to open render graph {file_path:?}: {error}");
+                        BlueprintEditorPanel::new_with_load_error(
+                            file_path.clone(),
+                            error.to_string(),
+                            window,
+                            cx,
+                        )
+                    }
+                },
+            );
         let panel: Arc<dyn PanelView> = Arc::new(panel);
-        let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = self
+            .next_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.editors.lock().unwrap().insert(id, panel.clone());
         Ok(panel)
     }

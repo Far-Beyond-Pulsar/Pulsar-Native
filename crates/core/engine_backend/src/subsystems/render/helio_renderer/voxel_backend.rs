@@ -413,7 +413,11 @@ impl VoxelBackendRegistry {
             .iter()
             .filter(|entry| entry.visible && entry.editable)
         {
-            for backend in self.backends.iter().filter(|backend| backend.supports(entry)) {
+            for backend in self
+                .backends
+                .iter()
+                .filter(|backend| backend.supports(entry))
+            {
                 if let Some(commit) = backend.edit_ray(entry, origin, direction, hint, request)? {
                     if closest
                         .as_ref()
@@ -874,14 +878,17 @@ impl PlanetVoxelBackend {
             // The world's bricks around the sculpting camera: a ray past
             // them stamps nothing now (the renderer's pick takes it).
             VoxelRayHint::Reach(reach) => {
-                let Some((_, queries)) = self.queries.as_ref().filter(|(id, _)| *id == source.id) else {
+                let Some((_, queries)) = self.queries.as_ref().filter(|(id, _)| *id == source.id)
+                else {
                     return Ok(None);
                 };
                 queries.focus(SCULPT_FOCUS, origin, SCULPT_FOCUS_M);
                 loop {
                     match queries.raycast(origin, d, reach, Matter::All) {
                         Resident::Ready(hit) => break hit,
-                        Resident::Pending if self.blocking => std::thread::sleep(std::time::Duration::from_millis(1)),
+                        Resident::Pending if self.blocking => {
+                            std::thread::sleep(std::time::Duration::from_millis(1))
+                        }
                         Resident::Pending => return Ok(None),
                     }
                 }
@@ -1035,7 +1042,10 @@ impl PlanetVoxelBackend {
                 match &self.queries {
                     Some((id, queries)) if *id == world.id => queries.publish(world.planet.clone()),
                     _ => {
-                        self.queries = Some((world.id, WorldQueries::new(world.planet.clone(), QUERY_THREADS)));
+                        self.queries = Some((
+                            world.id,
+                            WorldQueries::new(world.planet.clone(), QUERY_THREADS),
+                        ));
                     }
                 }
                 self.cached = Some(world);
@@ -1226,7 +1236,9 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
     fn stamped(&self, commits: &[VoxelBrushCommit]) {
         // The next stamps of the stroke walk the world with these in it,
         // before the world rebuilt with them is published.
-        let Some((id, queries)) = &self.queries else { return };
+        let Some((id, queries)) = &self.queries else {
+            return;
+        };
         let brushes: Vec<_> = commits
             .iter()
             .filter(|commit| commit.id == *id)
@@ -1493,7 +1505,13 @@ mod tests {
         assert!(registry.publish_frame(&entries, view(eye)).is_empty());
         let ray = |registry: &VoxelBackendRegistry| {
             registry
-                .edit_ray(&entries, eye, down, VoxelRayHint::Reach(UNPICKED_REACH_M), dig(0.5))
+                .edit_ray(
+                    &entries,
+                    eye,
+                    down,
+                    VoxelRayHint::Reach(UNPICKED_REACH_M),
+                    dig(0.5),
+                )
                 .unwrap()
                 .unwrap()
         };
@@ -1503,7 +1521,12 @@ mod tests {
         // Applied: it walks into the hole the dig made.
         registry.stamped(std::slice::from_ref(&first));
         let next = ray(&registry);
-        assert!(next.distance > first.distance + 0.3, "{} after {}", next.distance, first.distance);
+        assert!(
+            next.distance > first.distance + 0.3,
+            "{} after {}",
+            next.distance,
+            first.distance
+        );
     }
 
     #[test]
@@ -1896,7 +1919,9 @@ mod tests {
             .features
             .reverse();
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
-        let error = backend.publish_frame(&[&entries[0]], view(eye)).unwrap_err();
+        let error = backend
+            .publish_frame(&[&entries[0]], view(eye))
+            .unwrap_err();
         assert!(error.contains("widest spacing"), "{error}");
         assert_eq!(
             frame_planet(&backend).recipe().features,

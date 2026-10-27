@@ -88,20 +88,43 @@ mod tests {
             .unwrap();
 
         assert!(sync_spaces(&mut world));
-        let slot = world.get::<SpaceSlot>(actor).expect("the placement has a slot").slot;
+        let slot = world
+            .get::<SpaceSlot>(actor)
+            .expect("the placement has a slot")
+            .slot;
         assert_eq!(space_of(&world, wall), slot);
         // The authored placement now lives in the object's transform, once.
-        assert!(near(world.get::<Transform>(actor).unwrap().position.map(|v| v as f32), [10.0, 0.0, 0.0]));
+        assert!(near(
+            world
+                .get::<Transform>(actor)
+                .unwrap()
+                .position
+                .map(|v| v as f32),
+            [10.0, 0.0, 0.0]
+        ));
         assert_eq!(
-            world.get::<SubLevelActorComponent>(actor).unwrap().transform(),
+            world
+                .get::<SubLevelActorComponent>(actor)
+                .unwrap()
+                .transform(),
             Mat4::IDENTITY
         );
         // The table places the whole sublevel by that one matrix.
         let table = frame_table(&world, glam::DVec3::ZERO);
-        assert!(near(table[slot as usize].w_axis.truncate().to_array(), [10.0, 0.0, 0.0]));
+        assert!(near(
+            table[slot as usize].w_axis.truncate().to_array(),
+            [10.0, 0.0, 0.0]
+        ));
 
         assert!(!sync_spaces(&mut world), "idempotent");
-        assert!(near(world.get::<Transform>(actor).unwrap().position.map(|v| v as f32), [10.0, 0.0, 0.0]));
+        assert!(near(
+            world
+                .get::<Transform>(actor)
+                .unwrap()
+                .position
+                .map(|v| v as f32),
+            [10.0, 0.0, 0.0]
+        ));
     }
 
     #[test]

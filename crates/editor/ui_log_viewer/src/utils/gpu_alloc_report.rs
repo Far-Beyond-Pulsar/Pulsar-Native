@@ -126,8 +126,14 @@ mod tests {
                 allocation("", 1 * mb),
             ],
             blocks: vec![
-                MemoryBlockReport { size: 256 * mb, allocations: 0..3 },
-                MemoryBlockReport { size: 64 * mb, allocations: 3..4 },
+                MemoryBlockReport {
+                    size: 256 * mb,
+                    allocations: 0..3,
+                },
+                MemoryBlockReport {
+                    size: 64 * mb,
+                    allocations: 3..4,
+                },
             ],
             total_allocated_bytes: 193 * mb,
             total_reserved_bytes: 320 * mb,

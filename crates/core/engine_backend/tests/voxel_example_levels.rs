@@ -29,8 +29,9 @@ use flight::Preset;
 /// voxel world's dependents synced (as the editor's scene step does), and
 /// its camera.
 fn level(name: &str) -> (World, EditorCamera) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("../../../assets/examples/{name}/scene/default.level"));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "../../../assets/examples/{name}/scene/default.level"
+    ));
     let mut scene = engine_backend::scene::new_scene();
     let extras = engine_backend::scene::RuntimeLevel::load_into(&path, &mut scene.world)
         .expect("load the level");
@@ -64,14 +65,36 @@ fn check(name: &str, world: Preset, flat: bool) {
     if flat {
         assert_eq!(terrain.shape, VoxelWorldShape::InfinitePlane, "{name}");
     } else {
-        assert_eq!((terrain.shape, terrain.planet_radius), (VoxelWorldShape::Sphere, radius), "{name}");
+        assert_eq!(
+            (terrain.shape, terrain.planet_radius),
+            (VoxelWorldShape::Sphere, radius),
+            "{name}"
+        );
     }
     let settings = helio_component::voxel_world::generator_settings(&level, *instance, terrain);
     let layers: TerrainLayers = serde_json::from_str(&settings).unwrap();
-    assert_eq!(layers, if flat { TerrainLayers::flat_at(0.0) } else { world.stack() }, "{name}");
-    assert_eq!(helio_component::feature_recipe(&terrain.features), world.features(), "{name}");
-    assert!(terrain.appearance_parameters.contains("\"materials\""), "{name}: the look of the features' materials");
-    assert!(terrain.enabled && terrain.editable, "{name}: sculpted as it is");
+    assert_eq!(
+        layers,
+        if flat {
+            TerrainLayers::flat_at(0.0)
+        } else {
+            world.stack()
+        },
+        "{name}"
+    );
+    assert_eq!(
+        helio_component::feature_recipe(&terrain.features),
+        world.features(),
+        "{name}"
+    );
+    assert!(
+        terrain.appearance_parameters.contains("\"materials\""),
+        "{name}: the look of the features' materials"
+    );
+    assert!(
+        terrain.enabled && terrain.editable,
+        "{name}: sculpted as it is"
+    );
 
     // The air: sky and clouds, the ground haze.
     let sky = one!(level, AtmosphereComponent);
@@ -100,7 +123,10 @@ fn check(name: &str, world: Preset, flat: bool) {
         Some(want) => {
             // Over flat ground heights are along world Y.
             let want = if flat {
-                helio_pass_volumetric_fog::GlobalFogComponent { planet: [0.0; 4], ..want }
+                helio_pass_volumetric_fog::GlobalFogComponent {
+                    planet: [0.0; 4],
+                    ..want
+                }
             } else {
                 want
             };
@@ -114,7 +140,9 @@ fn check(name: &str, world: Preset, flat: bool) {
         .query::<&FoliageComponent>()
         .map(|(_, foliage)| {
             let row = FoliageSourceRow::of(foliage);
-            bytemuck::pod_read_unaligned(&bytemuck::bytes_of(&row)[..std::mem::size_of::<GpuFoliageType>()])
+            bytemuck::pod_read_unaligned(
+                &bytemuck::bytes_of(&row)[..std::mem::size_of::<GpuFoliageType>()],
+            )
         })
         .collect();
     match world.meadow() {
@@ -124,7 +152,11 @@ fn check(name: &str, world: Preset, flat: bool) {
                 let want = GpuFoliageType::from(*want);
                 // The component's rows carry no impostor (the meadow's is unused).
                 row.mesh_or_impostor_id = want.mesh_or_impostor_id;
-                assert_eq!(bytemuck::bytes_of(row), bytemuck::bytes_of(&want), "{name}: {row:?}\n{want:?}");
+                assert_eq!(
+                    bytemuck::bytes_of(row),
+                    bytemuck::bytes_of(&want),
+                    "{name}: {row:?}\n{want:?}"
+                );
             }
             let wind = one!(level, WindComponent).expect("a wind").to_row();
             for (a, b) in wind
@@ -133,7 +165,11 @@ fn check(name: &str, world: Preset, flat: bool) {
                 .chain(&wind.gust)
                 .zip(meadow.wind.direction_speed.iter().chain(&meadow.wind.gust))
             {
-                assert!((a - b).abs() < 1e-6, "{name}: {wind:?} vs {:?}", meadow.wind);
+                assert!(
+                    (a - b).abs() < 1e-6,
+                    "{name}: {wind:?} vs {:?}",
+                    meadow.wind
+                );
             }
         }
         None => assert!(rows.is_empty(), "{name}: no plants"),
@@ -150,7 +186,10 @@ fn check(name: &str, world: Preset, flat: bool) {
     let (ground, _) = helio_component::voxel_world::frame_view(&planet, eye, DVec3::X, 0.0);
     let up = if flat { DVec3::Y } else { ground.normalize() };
     let height = (eye - ground).dot(up);
-    assert!((2.0..1_000.0).contains(&height), "{name}: the camera is {height} m over the ground");
+    assert!(
+        (2.0..1_000.0).contains(&height),
+        "{name}: the camera is {height} m over the ground"
+    );
 }
 
 #[test]
@@ -176,6 +215,12 @@ fn the_blocks_level_is_voxel_flights_earth_on_flat_ground() {
 /// Every ready-made world is one of these examples.
 #[test]
 fn the_presets_are_the_examples() {
-    let examples: Vec<&str> = VoxelWorldPreset::ALL.iter().map(|preset| preset.example()).collect();
-    assert_eq!(examples, ["voxel_planet", "voxel_moon", "voxel_desert", "voxel_blocks"]);
+    let examples: Vec<&str> = VoxelWorldPreset::ALL
+        .iter()
+        .map(|preset| preset.example())
+        .collect();
+    assert_eq!(
+        examples,
+        ["voxel_planet", "voxel_moon", "voxel_desert", "voxel_blocks"]
+    );
 }

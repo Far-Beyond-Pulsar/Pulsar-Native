@@ -1,7 +1,7 @@
 //! Per-function statistics: a sortable, filterable table that windows its rows
 //! so any number of functions stays cheap.
 
-use crate::analysis::{FunctionStats, aggregate, compute_self_times};
+use crate::analysis::{aggregate, compute_self_times, FunctionStats};
 use crate::format::format_duration;
 use crate::trace_data::{TraceData, TraceFrame};
 use gpui::*;
@@ -51,18 +51,14 @@ pub struct StatisticsPanel {
 
 impl StatisticsPanel {
     pub fn new(trace_data: Arc<TraceData>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let filter_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Filter functions"));
-        let subscription = cx.subscribe(
-            &filter_input,
-            |this, input, event: &InputEvent, cx| {
-                if let InputEvent::Change = event {
-                    this.filter = input.read(cx).text().to_string();
-                    this.rebuild_rows();
-                    cx.notify();
-                }
-            },
-        );
+        let filter_input = cx.new(|cx| InputState::new(window, cx).placeholder("Filter functions"));
+        let subscription = cx.subscribe(&filter_input, |this, input, event: &InputEvent, cx| {
+            if let InputEvent::Change = event {
+                this.filter = input.read(cx).text().to_string();
+                this.rebuild_rows();
+                cx.notify();
+            }
+        });
         Self {
             trace_data,
             frame: None,
@@ -127,7 +123,11 @@ impl StatisticsPanel {
         if self.sort_by == SortColumn::Name {
             rows.sort_by_key(|&index| all[index].name.to_lowercase());
         } else {
-            rows.sort_by(|a, b| key(b).cmp(&key(a)).then_with(|| all[*a].name.cmp(&all[*b].name)));
+            rows.sort_by(|a, b| {
+                key(b)
+                    .cmp(&key(a))
+                    .then_with(|| all[*a].name.cmp(&all[*b].name))
+            });
         }
         if self.sort_ascending {
             rows.reverse();
@@ -218,7 +218,11 @@ impl StatisticsPanel {
                 .border_b_1()
                 .border_color(border.opacity(0.25))
                 .cursor_pointer()
-                .bg(if is_selected { selected_bg } else { transparent_black() })
+                .bg(if is_selected {
+                    selected_bg
+                } else {
+                    transparent_black()
+                })
                 .hover(move |style| style.bg(if is_selected { selected_bg } else { hover_bg }))
                 .on_mouse_down(
                     MouseButton::Left,
@@ -344,10 +348,12 @@ impl Render for StatisticsPanel {
                     .border_b_1()
                     .border_color(border)
                     .child(div().flex_1().child(TextInput::new(&self.filter_input)))
-                    .child(div().text_xs().text_color(muted).child(format!(
-                        "{} of {} functions",
-                        shown, total
-                    ))),
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(format!("{} of {} functions", shown, total)),
+                    ),
             )
             .child(header)
             .child(body)

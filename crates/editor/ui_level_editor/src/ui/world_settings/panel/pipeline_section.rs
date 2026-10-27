@@ -24,7 +24,10 @@ pub(super) fn pipeline_label(id: &String) -> String {
 impl WorldSettingsPanelImpl {
     /// Registered pipeline ids, built-ins first.
     pub(super) fn pipeline_ids() -> Vec<String> {
-        pipelines::list_pipelines().into_iter().map(|p| p.id).collect()
+        pipelines::list_pipelines()
+            .into_iter()
+            .map(|p| p.id)
+            .collect()
     }
 
     /// Keeps the picker in step with what is registered: a project's
@@ -43,7 +46,13 @@ impl WorldSettingsPanelImpl {
         cx: &mut Context<WorldSettingsPanel>,
     ) -> AnyElement {
         self.refresh_pipeline_items(cx);
-        let requested = self.state.read().scene.world_settings.render_pipeline.clone();
+        let requested = self
+            .state
+            .read()
+            .scene
+            .world_settings
+            .render_pipeline
+            .clone();
         let resolved = pipelines::resolve_pipeline(requested.as_deref());
         let infos = pipelines::list_pipelines();
         let info = resolved
@@ -90,14 +99,17 @@ impl WorldSettingsPanelImpl {
             let mut reload = true;
             loop {
                 if reload {
-                    if let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from)
+                    if let Some(root) =
+                        engine_state::get_project_path().map(std::path::PathBuf::from)
                     {
                         let report = cx
                             .background_executor()
                             .spawn(async move { pipelines::refresh_project_pipelines(&root) })
                             .await;
                         for (path, error) in &report.failed {
-                            tracing::warn!("Render graph {path} is not offered as a pipeline: {error}");
+                            tracing::warn!(
+                                "Render graph {path} is not offered as a pipeline: {error}"
+                            );
                         }
                         cx.update(|cx| {
                             let _ = this.update(cx, |_, cx| cx.notify());

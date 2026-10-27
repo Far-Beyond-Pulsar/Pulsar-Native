@@ -27,17 +27,16 @@ pub use attachments::{
     ComponentOwner, InstanceError, NewInstance, UnresolvedComponent,
 };
 pub use components::{
-    Name, ObjectFrame, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex, StableId,
-    Transform, TransformRow,
-    Visibility,
+    Name, ObjectFrame, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex,
+    StableId, Transform, TransformRow, Visibility,
 };
+pub use frames::{RigidFrame, SpaceSlot};
 pub use instance::{ComponentInstance, EditorObjectId};
+pub use level_instances::{LevelInstanceMember, LevelInstanceRoot};
+pub use partitions::ContentSpace;
 pub use payload_catalog::{
     ContentId, PayloadCatalog, PayloadCatalogError, PayloadMutation, PayloadRef,
 };
-pub use frames::{RigidFrame, SpaceSlot};
-pub use level_instances::{LevelInstanceMember, LevelInstanceRoot};
-pub use partitions::ContentSpace;
 pub use world_ext::{SceneError, SceneWorldExt, SpawnObject};
 
 /// Same type as [`EditorObjectId`]; the alias the editor spells it as.

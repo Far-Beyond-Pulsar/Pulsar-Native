@@ -28,7 +28,13 @@ impl CallstackPanel {
         }
     }
 
-    fn frame_row(&self, position: usize, depth_base: usize, frame: &CallFrame, cx: &mut Context<Self>) -> AnyElement {
+    fn frame_row(
+        &self,
+        position: usize,
+        depth_base: usize,
+        frame: &CallFrame,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme();
         let (foreground, muted, accent, hover, border) = (
             theme.foreground,
@@ -55,8 +61,18 @@ impl CallstackPanel {
             .cursor_pointer()
             .border_b_1()
             .border_color(border.opacity(0.2))
-            .bg(if selected { accent.opacity(0.18) } else { transparent_black() })
-            .hover(move |s| s.bg(if selected { accent.opacity(0.18) } else { hover }))
+            .bg(if selected {
+                accent.opacity(0.18)
+            } else {
+                transparent_black()
+            })
+            .hover(move |s| {
+                s.bg(if selected {
+                    accent.opacity(0.18)
+                } else {
+                    hover
+                })
+            })
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _: &MouseDownEvent, _, cx| {
@@ -70,8 +86,16 @@ impl CallstackPanel {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_xs()
-                    .font_weight(if selected { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-                    .text_color(if frame.role == FrameRole::Child { muted } else { foreground })
+                    .font_weight(if selected {
+                        FontWeight::SEMIBOLD
+                    } else {
+                        FontWeight::NORMAL
+                    })
+                    .text_color(if frame.role == FrameRole::Child {
+                        muted
+                    } else {
+                        foreground
+                    })
                     .child(frame.info.name.clone()),
             )
             .child(
@@ -121,7 +145,10 @@ impl Render for CallstackPanel {
                 .into_any_element();
         }
 
-        let ancestors = stack.iter().filter(|f| f.role == FrameRole::Ancestor).count();
+        let ancestors = stack
+            .iter()
+            .filter(|f| f.role == FrameRole::Ancestor)
+            .count();
         let children = stack.iter().filter(|f| f.role == FrameRole::Child).count();
         let rows: Vec<AnyElement> = stack
             .iter()

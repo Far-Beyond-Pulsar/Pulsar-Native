@@ -108,7 +108,11 @@ mod tests {
 
         let resolved = select_world_camera(&store).expect("world camera");
         assert!((resolved.position - glam::DVec3::from_array(eye)).length() < 1e-6);
-        assert!(resolved.up.abs_diff_eq(glam::Vec3::NEG_X, 1e-5), "{:?}", resolved.up);
+        assert!(
+            resolved.up.abs_diff_eq(glam::Vec3::NEG_X, 1e-5),
+            "{:?}",
+            resolved.up
+        );
         assert!(resolved.forward.abs_diff_eq(glam::Vec3::NEG_Z, 1e-5));
     }
 

@@ -1,6 +1,6 @@
 use gpui::Window;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::OnceLock;
 
 static RAW_MOUSE_READY: OnceLock<bool> = OnceLock::new();
 static RAW_MOUSE_CAPTURED: AtomicBool = AtomicBool::new(false);
@@ -22,9 +22,9 @@ pub fn prepare_relative_mouse_mode() -> bool {
             use winapi::shared::windef::HWND;
             use winapi::um::libloaderapi::GetModuleHandleW;
             use winapi::um::winuser::{
-                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG,
-                RAWINPUTDEVICE, RIDEV_INPUTSINK, RegisterClassW, RegisterRawInputDevices,
-                TranslateMessage, WM_INPUT, WNDCLASSW,
+                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
+                RegisterRawInputDevices, TranslateMessage, HWND_MESSAGE, MSG, RAWINPUTDEVICE,
+                RIDEV_INPUTSINK, WM_INPUT, WNDCLASSW,
             };
 
             const CLASS_NAME: &[u16] = &[

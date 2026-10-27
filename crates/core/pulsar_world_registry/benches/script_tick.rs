@@ -92,7 +92,7 @@ fn world_with(count: usize) -> (World, Vec<Entity>) {
             world.insert(
                 e,
                 Transform {
-                    position: [i as f32, 0.0, 0.0],
+                    position: [i as f64, 0.0, 0.0],
                     ..Default::default()
                 },
             );

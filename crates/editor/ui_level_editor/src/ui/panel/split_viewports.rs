@@ -234,7 +234,8 @@ impl LevelEditorPanel {
         let scene = self.shared_state.read().scene.shared_scene();
         let scene = scene.read();
         let id = scene.world.selected_id()?;
-        let position = crate::scene_edit::objects::get_object_transform(&scene.world, &id)?.position;
+        let position =
+            crate::scene_edit::objects::get_object_transform(&scene.world, &id)?.position;
         let distance = position
             .iter()
             .zip(eye)
@@ -260,10 +261,7 @@ impl LevelEditorPanel {
             builder = builder.physics(physics);
         }
         let gpu = Arc::new(Mutex::new(builder.build()));
-        let mailbox = gpu
-            .lock()
-            .ok()
-            .and_then(|engine| engine.editor_mailbox())?;
+        let mailbox = gpu.lock().ok().and_then(|engine| engine.editor_mailbox())?;
 
         mailbox.join_camera_sync(camera_group.clone());
 
@@ -280,9 +278,8 @@ impl LevelEditorPanel {
         mailbox.queue_gizmo(gizmo_mode);
 
         let shared_state = self.shared_state.clone();
-        let viewport = cx.new(|cx| {
-            HelioViewport::new(gpu.clone(), shared_state.clone(), false, cx)
-        });
+        let viewport =
+            cx.new(|cx| HelioViewport::new(gpu.clone(), shared_state.clone(), false, cx));
         let inner = ViewportPanel::new(
             viewport,
             self.render_enabled.clone(),
@@ -294,9 +291,8 @@ impl LevelEditorPanel {
             window,
             cx,
         );
-        let panel = cx.new(|cx| {
-            ViewportPanelWrapper::new(inner, shared_state, gpu.clone(), cx).split_off()
-        });
+        let panel = cx
+            .new(|cx| ViewportPanelWrapper::new(inner, shared_state, gpu.clone(), cx).split_off());
         let extra = ExtraViewport {
             gpu,
             mailbox,

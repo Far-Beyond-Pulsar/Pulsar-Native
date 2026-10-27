@@ -107,9 +107,11 @@ pub fn clear_members(world: &mut World, root: Entity) -> usize {
     let tops: Vec<Entity> = members
         .into_iter()
         .filter(|&entity| {
-            world
-                .parent_of(entity)
-                .is_none_or(|parent| world.get::<LevelInstanceMember>(parent).is_none_or(|m| m.root != root))
+            world.parent_of(entity).is_none_or(|parent| {
+                world
+                    .get::<LevelInstanceMember>(parent)
+                    .is_none_or(|m| m.root != root)
+            })
         })
         .collect();
     for top in tops {
@@ -142,23 +144,39 @@ mod tests {
     fn an_in_memory_instance_is_a_space_holding_what_is_added_to_it() {
         let mut world = World::new();
         let root = create_level_instance(&mut world, "temporary").unwrap();
-        let slot = world.get::<SpaceSlot>(root).expect("the root is a space").slot;
+        let slot = world
+            .get::<SpaceSlot>(root)
+            .expect("the root is a space")
+            .slot;
 
-        let wall = spawn_in_level_instance(&mut world, root, SpawnObject::new("wall").with_transform(at(2.0)))
-            .unwrap();
+        let wall = spawn_in_level_instance(
+            &mut world,
+            root,
+            SpawnObject::new("wall").with_transform(at(2.0)),
+        )
+        .unwrap();
         let lamp = spawn_in_level_instance(
             &mut world,
             root,
-            SpawnObject::new("lamp").with_parent(Some(wall)).with_transform(at(1.0)),
+            SpawnObject::new("lamp")
+                .with_parent(Some(wall))
+                .with_transform(at(1.0)),
         )
         .unwrap();
         assert!(is_member(&world, wall) && is_member(&world, lamp));
-        assert_eq!(space_of(&world, lamp), slot, "drawn through the instance's one matrix");
+        assert_eq!(
+            space_of(&world, lamp),
+            slot,
+            "drawn through the instance's one matrix"
+        );
         assert_eq!(members_of(&world, root).len(), 2);
 
         // Placing the root places the instance: one matrix, no member rewritten.
         world.get_mut::<Transform>(root).unwrap().position = [100.0, 0.0, 0.0];
-        assert_eq!(world.get::<Transform>(wall).unwrap().position, [2.0, 0.0, 0.0]);
+        assert_eq!(
+            world.get::<Transform>(wall).unwrap().position,
+            [2.0, 0.0, 0.0]
+        );
         let table = frame_table(&world, glam::DVec3::ZERO);
         assert_eq!(table[slot as usize].w_axis.x, 100.0);
     }
@@ -168,7 +186,12 @@ mod tests {
         let mut world = World::new();
         let root = create_level_instance(&mut world, "temporary").unwrap();
         let wall = spawn_in_level_instance(&mut world, root, SpawnObject::new("wall")).unwrap();
-        spawn_in_level_instance(&mut world, root, SpawnObject::new("lamp").with_parent(Some(wall))).unwrap();
+        spawn_in_level_instance(
+            &mut world,
+            root,
+            SpawnObject::new("lamp").with_parent(Some(wall)),
+        )
+        .unwrap();
         let outside = world.spawn_object(SpawnObject::new("outside")).unwrap();
 
         assert_eq!(clear_members(&mut world, root), 2);

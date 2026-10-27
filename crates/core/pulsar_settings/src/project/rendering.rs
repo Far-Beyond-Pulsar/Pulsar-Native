@@ -22,7 +22,12 @@ pub fn config_value(value: &Value) -> ConfigValue {
         Value::Text(t) => ConfigValue::String(t.to_string()),
         Value::Color(c) => {
             let [r, g, b] = [c[0], c[1], c[2]].map(|x| (linear_to_srgb(x) * 255.0).round() as u8);
-            ConfigValue::Color(Color { r, g, b, a: (c[3].clamp(0.0, 1.0) * 255.0).round() as u8 })
+            ConfigValue::Color(Color {
+                r,
+                g,
+                b,
+                a: (c[3].clamp(0.0, 1.0) * 255.0).round() as u8,
+            })
         }
     }
 }
@@ -45,12 +50,20 @@ pub fn helio_value(value: ConfigValue) -> Option<Value> {
 }
 
 fn srgb_to_linear(c: f32) -> f32 {
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 fn linear_to_srgb(c: f32) -> f32 {
     let c = c.clamp(0.0, 1.0);
-    if c <= 0.003_130_8 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 }
+    if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
 }
 
 fn entry(group: &helio_settings::Group, setting: &Setting) -> SchemaEntry {
@@ -68,7 +81,10 @@ fn entry(group: &helio_settings::Group, setting: &Setting) -> SchemaEntry {
             step: Some(1.0),
         }),
         Kind::Choice(options) => entry.field_type(FieldType::Dropdown {
-            options: options.iter().map(|o| DropdownOption::new(o.label, o.value)).collect(),
+            options: options
+                .iter()
+                .map(|o| DropdownOption::new(o.label, o.value))
+                .collect(),
         }),
         Kind::Color => entry.field_type(FieldType::ColorPicker),
     }
@@ -76,12 +92,10 @@ fn entry(group: &helio_settings::Group, setting: &Setting) -> SchemaEntry {
 
 pub fn register(cfg: &'static ConfigManager) {
     for group in helio_settings::GROUPS {
-        let schema = group
-            .settings
-            .iter()
-            .fold(NamespaceSchema::new(group.title, group.description), |schema, setting| {
-                schema.setting(setting.key, entry(group, setting))
-            });
+        let schema = group.settings.iter().fold(
+            NamespaceSchema::new(group.title, group.description),
+            |schema, setting| schema.setting(setting.key, entry(group, setting)),
+        );
         let _ = cfg.register(NS, group.key, schema);
     }
 }
@@ -94,8 +108,15 @@ mod tests {
     fn every_default_round_trips_through_the_config() {
         for group in helio_settings::GROUPS {
             for setting in group.settings {
-                let back = helio_value(config_value(&setting.default)).and_then(|v| setting.accept(v));
-                assert_eq!(back.as_ref(), Some(&setting.default), "{}.{}", group.key, setting.key);
+                let back =
+                    helio_value(config_value(&setting.default)).and_then(|v| setting.accept(v));
+                assert_eq!(
+                    back.as_ref(),
+                    Some(&setting.default),
+                    "{}.{}",
+                    group.key,
+                    setting.key
+                );
             }
         }
     }

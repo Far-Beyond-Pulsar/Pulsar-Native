@@ -213,7 +213,10 @@ fn run_companions(
     }
     for (asset, assignments) in assigned {
         if let Err(error) = crate::companion::assign_default_materials(asset, &assignments) {
-            tracing::warn!("could not assign companion outputs to {}: {error}", asset.display());
+            tracing::warn!(
+                "could not assign companion outputs to {}: {error}",
+                asset.display()
+            );
         }
     }
 }
@@ -307,7 +310,13 @@ pub fn submit_reimport(project_root: PathBuf, source: &str) -> Option<TaskId> {
                     outputs: &record.outputs,
                 },
             )?;
-            run_companions(&project_root, &source, &record.companions, &mut imported, &task);
+            run_companions(
+                &project_root,
+                &source,
+                &record.companions,
+                &mut imported,
+                &task,
+            );
             task.report_progress(0.9, "Recording");
             with_db(&project_root, |db| {
                 db.upsert(ImportRecord {

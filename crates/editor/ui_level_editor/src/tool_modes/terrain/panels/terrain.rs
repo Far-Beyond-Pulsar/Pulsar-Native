@@ -217,7 +217,9 @@ impl Render for TerrainPanel {
         let subtitle = match signature.terrains.as_slice() {
             [] => t!("LevelEditor.TerrainPanel.NoTerrain").to_string(),
             [terrain] => format!("{} · {}", terrain.name, terrain.kind()),
-            terrains => t!("LevelEditor.TerrainPanel.Terrains", count => terrains.len()).to_string(),
+            terrains => {
+                t!("LevelEditor.TerrainPanel.Terrains", count => terrains.len()).to_string()
+            }
         };
 
         v_flex()
@@ -257,8 +259,16 @@ impl Render for TerrainPanel {
 impl TerrainPanel {
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let tabs = [
-            (Tab::World, IconName::Globe, "LevelEditor.TerrainPanel.Tab.World"),
-            (Tab::Foliage, IconName::Leaf, "LevelEditor.FoliagePanel.Title"),
+            (
+                Tab::World,
+                IconName::Globe,
+                "LevelEditor.TerrainPanel.Tab.World",
+            ),
+            (
+                Tab::Foliage,
+                IconName::Leaf,
+                "LevelEditor.FoliagePanel.Title",
+            ),
         ];
         let mut bar = h_flex()
             .w_full()
@@ -314,7 +324,8 @@ impl TerrainPanel {
                     .hover(move |style| style.bg(hover_bg))
                     .on_click(move |_, _, _| {
                         let mut st = state.write();
-                        let result = execute_command(&mut st, SceneCommand::AddVoxelWorld { preset });
+                        let result =
+                            execute_command(&mut st, SceneCommand::AddVoxelWorld { preset });
                         if !result.changed {
                             tracing::warn!("Create voxel terrain: {}", result.no_op_reason);
                         }

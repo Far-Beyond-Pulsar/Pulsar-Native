@@ -123,7 +123,6 @@ fn voxel_terrain_hydrates_as_a_typed_scenedb_world_row() {
         hydrated.appearance_parameters,
         terrain.appearance_parameters
     );
-
 }
 
 /// The layer stack component serializes to the generator's settings JSON:

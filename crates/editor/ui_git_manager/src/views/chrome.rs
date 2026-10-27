@@ -18,7 +18,9 @@ fn source_build_root() -> Option<std::path::PathBuf> {
         .map(|ctx| {
             let dev = ctx.store.get_or_init::<engine_state::DevContext>();
             let dev = dev.read();
-            dev.is_source_build.then(|| dev.source_path.clone()).flatten()
+            dev.is_source_build
+                .then(|| dev.source_path.clone())
+                .flatten()
         })
         .flatten()
 }
@@ -59,7 +61,11 @@ pub(crate) fn render_top_bar(
             h_flex()
                 .gap_1p5()
                 .items_center()
-                .child(Icon::new(IconName::Folder).size(px(14.)).text_color(muted_fg))
+                .child(
+                    Icon::new(IconName::Folder)
+                        .size(px(14.))
+                        .text_color(muted_fg),
+                )
                 .child(
                     div()
                         .text_sm()
@@ -96,7 +102,11 @@ pub(crate) fn render_top_bar(
                             this.toggle_branch_menu(window, cx);
                         }),
                     )
-                    .child(Icon::new(IconName::GitBranch).size(px(13.)).text_color(primary))
+                    .child(
+                        Icon::new(IconName::GitBranch)
+                            .size(px(13.))
+                            .text_color(primary),
+                    )
                     .child(
                         div()
                             .text_xs()
@@ -216,13 +226,22 @@ pub(crate) fn render_top_bar(
 fn layout_toggle(layout: GitLayout, cx: &mut Context<GitManager>) -> impl IntoElement + use<> {
     let button = |id: &'static str, icon: IconName, tip: &'static str, active: bool| {
         let button = Button::new(id).icon(icon).compact().tooltip(tip);
-        if active { button.primary() } else { button.ghost() }
+        if active {
+            button.primary()
+        } else {
+            button.ghost()
+        }
     };
     h_flex()
         .gap_px()
         .child(
-            button("layout-tree", IconName::Tree, "Tree layout", layout == GitLayout::Tree)
-                .on_click(cx.listener(|this, _, _, cx| this.set_layout(GitLayout::Tree, cx))),
+            button(
+                "layout-tree",
+                IconName::Tree,
+                "Tree layout",
+                layout == GitLayout::Tree,
+            )
+            .on_click(cx.listener(|this, _, _, cx| this.set_layout(GitLayout::Tree, cx))),
         )
         .child(
             button(
@@ -260,7 +279,11 @@ pub(crate) fn render_banners(
                 h_flex()
                     .gap_1()
                     .items_center()
-                    .child(Icon::new(IconName::TriangleAlert).size(px(12.)).text_color(warning))
+                    .child(
+                        Icon::new(IconName::TriangleAlert)
+                            .size(px(12.))
+                            .text_color(warning),
+                    )
                     .child(
                         div()
                             .text_xs()
@@ -272,8 +295,16 @@ pub(crate) fn render_banners(
             .child(
                 h_flex()
                     .gap_2()
-                    .child(div().flex_1().child(TextInput::new(&gm.auth_username_input)))
-                    .child(div().flex_1().child(TextInput::new(&gm.auth_password_input)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(TextInput::new(&gm.auth_username_input)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(TextInput::new(&gm.auth_password_input)),
+                    )
                     .child(
                         Button::new("auth-retry")
                             .label(op.label())
@@ -305,7 +336,11 @@ pub(crate) fn render_banners(
             .bg(danger.opacity(0.1))
             .border_1()
             .border_color(danger.opacity(0.25))
-            .child(Icon::new(IconName::CircleX).size(px(12.)).text_color(danger))
+            .child(
+                Icon::new(IconName::CircleX)
+                    .size(px(12.))
+                    .text_color(danger),
+            )
             .child(
                 div()
                     .flex_1()
@@ -334,7 +369,12 @@ pub(crate) fn render_loading(cx: &mut Context<GitManager>) -> impl IntoElement +
         .justify_center()
         .gap_2()
         .child(Icon::new(IconName::Loader).size(px(22.)).text_color(muted))
-        .child(div().text_xs().text_color(muted).child("Reading repository…"))
+        .child(
+            div()
+                .text_xs()
+                .text_color(muted)
+                .child("Reading repository…"),
+        )
 }
 
 /// The folder is not a git repository: offer to turn it into one.
@@ -404,7 +444,11 @@ pub(crate) fn render_failed(
         .items_center()
         .justify_center()
         .gap_3()
-        .child(Icon::new(IconName::CircleX).size(px(36.)).text_color(danger))
+        .child(
+            Icon::new(IconName::CircleX)
+                .size(px(36.))
+                .text_color(danger),
+        )
         .child(
             div()
                 .max_w(px(560.))

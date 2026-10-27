@@ -27,7 +27,9 @@ pub fn registry() -> &'static Arc<NodeRegistry> {
     // (the first call waits for the probe that reads them), and every node any
     // crate in this binary registered.
     REGISTRY.get_or_init(|| {
-        Arc::new(engine_backend::subsystems::render::helio_renderer::pipelines::graph_node_registry())
+        Arc::new(
+            engine_backend::subsystems::render::helio_renderer::pipelines::graph_node_registry(),
+        )
     })
 }
 
@@ -52,7 +54,9 @@ pub fn pin_type_string(pin: &PinDesc) -> String {
 
 /// The inverse of [`pin_type_string`] for the part that decides appearance.
 fn pin_type_of(type_name: &str) -> PinType {
-    let prefix = type_name.split_once(':').map_or(type_name, |(prefix, _)| prefix);
+    let prefix = type_name
+        .split_once(':')
+        .map_or(type_name, |(prefix, _)| prefix);
     match prefix {
         "tex" => PinType::TEXTURE,
         "ptex" => PinType::PERSISTENT_TEXTURE,
@@ -114,7 +118,10 @@ fn param_string(value: &Value) -> String {
     }
 }
 
-fn definition_pins(pins: &[PinDesc], pin_type: blueprint_editor_plugin::PinType) -> Vec<PinDefinition> {
+fn definition_pins(
+    pins: &[PinDesc],
+    pin_type: blueprint_editor_plugin::PinType,
+) -> Vec<PinDefinition> {
     pins.iter()
         .map(|pin| PinDefinition {
             id: pin.name.clone(),
@@ -137,7 +144,10 @@ fn node_definition(descriptor: &NodeDescriptor) -> NodeDefinition {
         documentation: descriptor.description.clone(),
         inputs: definition_pins(&pins.inputs, blueprint_editor_plugin::PinType::Input),
         outputs: definition_pins(&pins.outputs, blueprint_editor_plugin::PinType::Output),
-        properties: params.iter().map(|(k, v)| (k.clone(), param_string(v))).collect(),
+        properties: params
+            .iter()
+            .map(|(k, v)| (k.clone(), param_string(v)))
+            .collect(),
         color: Some(color.to_string()),
         is_event: false,
     }
@@ -170,7 +180,10 @@ pub fn catalog(registry: &NodeRegistry) -> NodeDefinitions {
 fn param_from_text(ty: &ParamType, text: &str) -> Value {
     match ty {
         ParamType::Bool => Value::from(text.trim().eq_ignore_ascii_case("true")),
-        ParamType::Int { .. } => text.trim().parse::<i64>().map_or(Value::from(text), Value::from),
+        ParamType::Int { .. } => text
+            .trim()
+            .parse::<i64>()
+            .map_or(Value::from(text), Value::from),
         ParamType::Float { .. } => text
             .trim()
             .parse::<f64>()
@@ -215,13 +228,18 @@ fn called_section(definition_id: &str) -> Option<&str> {
     let rest = definition_id
         .strip_prefix("subgraph:")
         .or_else(|| definition_id.strip_prefix("macro:"))?;
-    let rest = rest.strip_prefix("collapsed:").or_else(|| rest.strip_prefix("macro:")).unwrap_or(rest);
+    let rest = rest
+        .strip_prefix("collapsed:")
+        .or_else(|| rest.strip_prefix("macro:"))
+        .unwrap_or(rest);
     (!rest.is_empty()).then_some(rest)
 }
 
 /// Ports from the pins of a node placing a collapsed graph.
 fn ports_from_pins(pins: &[blueprint_editor_plugin::Pin]) -> Vec<helio_graph_asset::SectionPort> {
-    pins.iter().map(|pin| port_from_type(&pin.id, &pin.data_type.type_name)).collect()
+    pins.iter()
+        .map(|pin| port_from_type(&pin.id, &pin.data_type.type_name))
+        .collect()
 }
 
 fn port_from_type(name: &str, type_name: &str) -> helio_graph_asset::SectionPort {
@@ -273,14 +291,19 @@ fn build_description(
         let mut instance = DescNode::new(
             &node.id,
             &definition,
-            Position { x: node.position[0], y: node.position[1] },
+            Position {
+                x: node.position[0],
+                y: node.position[1],
+            },
         );
         let pins = if let Some(section) = section {
             Some(helio_graph_asset::sections::section_pins(section))
         } else if let Some(descriptor) = registry.get(&node.kind) {
             let params = descriptor.effective_params(&node.params);
             for (key, value) in &params {
-                instance.properties.insert(key.clone(), Value::from(param_string(value)));
+                instance
+                    .properties
+                    .insert(key.clone(), Value::from(param_string(value)));
             }
             Some(descriptor.pins(&params))
         } else {
@@ -306,13 +329,33 @@ fn build_description(
                 nodes.iter().map(|n| n.position[1]).fold(f32::MAX, f32::min),
             )
         };
-        let entry_pins: Vec<PinDesc> =
-            section.inputs.iter().map(helio_graph_asset::SectionPort::to_pin).collect();
-        let exit_pins: Vec<PinDesc> =
-            section.outputs.iter().map(helio_graph_asset::SectionPort::to_pin).collect();
-        let mut entry = DescNode::new(ENTRY_ID, ENTRY_TYPE, Position { x: left - 360.0, y: top });
+        let entry_pins: Vec<PinDesc> = section
+            .inputs
+            .iter()
+            .map(helio_graph_asset::SectionPort::to_pin)
+            .collect();
+        let exit_pins: Vec<PinDesc> = section
+            .outputs
+            .iter()
+            .map(helio_graph_asset::SectionPort::to_pin)
+            .collect();
+        let mut entry = DescNode::new(
+            ENTRY_ID,
+            ENTRY_TYPE,
+            Position {
+                x: left - 360.0,
+                y: top,
+            },
+        );
         entry.outputs = pin_instances(&entry_pins, DescPinType::Output);
-        let mut exit = DescNode::new(EXIT_ID, EXIT_TYPE, Position { x: right + 560.0, y: top });
+        let mut exit = DescNode::new(
+            EXIT_ID,
+            EXIT_TYPE,
+            Position {
+                x: right + 560.0,
+                y: top,
+            },
+        );
         exit.inputs = pin_instances(&exit_pins, DescPinType::Input);
         for pin in &entry_pins {
             pin_kinds.insert((ENTRY_ID.to_string(), pin.name.clone()), pin.ty.kind);
@@ -332,8 +375,13 @@ fn build_description(
         }
     };
     for (index, connection) in connections.iter().enumerate() {
-        let (from_node, to_node) = (node_name(&connection.from.node), node_name(&connection.to.node));
-        let kind = pin_kinds.get(&(from_node.clone(), connection.from.pin.clone())).copied();
+        let (from_node, to_node) = (
+            node_name(&connection.from.node),
+            node_name(&connection.to.node),
+        );
+        let kind = pin_kinds
+            .get(&(from_node.clone(), connection.from.pin.clone()))
+            .copied();
         let wire = DescConnection {
             id: format!("wire{index}"),
             source_node: from_node,
@@ -369,8 +417,15 @@ fn build_description(
 
 /// A render graph as the editor document model: the main graph, and each
 /// section as a collapsed graph of its own.
-pub fn to_blueprint_asset(asset: &GraphAsset, registry: &NodeRegistry) -> Result<BlueprintAsset, String> {
-    let name = if asset.name.is_empty() { "Render Graph" } else { &asset.name };
+pub fn to_blueprint_asset(
+    asset: &GraphAsset,
+    registry: &NodeRegistry,
+) -> Result<BlueprintAsset, String> {
+    let name = if asset.name.is_empty() {
+        "Render Graph"
+    } else {
+        &asset.name
+    };
     let mut graph = build_description(
         name,
         &asset.nodes,
@@ -436,12 +491,16 @@ fn nodes_of(graph: &GraphDescription, registry: &NodeRegistry) -> Vec<NodeInstan
         .filter(|id| !matches!(graph.nodes[*id].node_type.as_str(), ENTRY_TYPE | EXIT_TYPE))
         .map(|id| {
             let node = &graph.nodes[id];
-            let kind = called_section(&node.node_type)
-                .map_or_else(|| node.node_type.clone(), helio_graph_asset::sections::section_kind);
+            let kind = called_section(&node.node_type).map_or_else(
+                || node.node_type.clone(),
+                helio_graph_asset::sections::section_kind,
+            );
             let params = registry.get(&kind).map_or_else(Params::new, |descriptor| {
                 params_from_text(
                     descriptor,
-                    node.properties.iter().map(|(key, value)| (key, param_string(value))),
+                    node.properties
+                        .iter()
+                        .map(|(key, value)| (key, param_string(value))),
                 )
             });
             NodeInstance {
@@ -493,7 +552,9 @@ fn comments_of(graph: &GraphDescription) -> Vec<helio_graph_asset::GraphComment>
 pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry) -> GraphAsset {
     let graph = &blueprint.main_graph;
     let ports = |pins: &[blueprint_graph::SubGraphPin]| -> Vec<helio_graph_asset::SectionPort> {
-        pins.iter().map(|pin| port_from_type(&pin.id, &pin.data_type.to_string())).collect()
+        pins.iter()
+            .map(|pin| port_from_type(&pin.id, &pin.data_type.to_string()))
+            .collect()
     };
     let sections = blueprint
         .subgraphs
@@ -522,13 +583,19 @@ pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry)
 /// Wires through reroute nodes (the editor tidying device) joined end to end, and
 /// the reroutes removed.
 fn bypass_reroutes(nodes: &mut Vec<NodeInstance>, connections: &mut Vec<Connection>) {
-    let reroutes: HashSet<String> =
-        nodes.iter().filter(|n| n.kind == REROUTE).map(|n| n.id.clone()).collect();
+    let reroutes: HashSet<String> = nodes
+        .iter()
+        .filter(|n| n.kind == REROUTE)
+        .map(|n| n.id.clone())
+        .collect();
     if reroutes.is_empty() {
         return;
     }
     let mut joined = Vec::new();
-    for wire in connections.iter().filter(|w| !reroutes.contains(&w.from.node)) {
+    for wire in connections
+        .iter()
+        .filter(|w| !reroutes.contains(&w.from.node))
+    {
         if !reroutes.contains(&wire.to.node) {
             joined.push(wire.clone());
             continue;
@@ -543,7 +610,10 @@ fn bypass_reroutes(nodes: &mut Vec<NodeInstance>, connections: &mut Vec<Connecti
                 if reroutes.contains(&next.to.node) {
                     pending.push(next.to.node.clone());
                 } else {
-                    joined.push(Connection { from: wire.from.clone(), to: next.to.clone() });
+                    joined.push(Connection {
+                        from: wire.from.clone(),
+                        to: next.to.clone(),
+                    });
                 }
             }
         }
@@ -590,8 +660,11 @@ pub fn asset_from_live(
     wires: &[LiveWire],
     registry: &NodeRegistry,
 ) -> GraphAsset {
-    let reroutes: HashSet<&str> =
-        nodes.iter().filter(|n| n.definition_id == REROUTE).map(|n| n.id.as_str()).collect();
+    let reroutes: HashSet<&str> = nodes
+        .iter()
+        .filter(|n| n.definition_id == REROUTE)
+        .map(|n| n.id.as_str())
+        .collect();
 
     // Follow a wire's end through any reroutes to the real pins it reaches.
     let reaches = |start_node: &str| -> Vec<(String, String)> {
@@ -614,7 +687,10 @@ pub fn asset_from_live(
     };
 
     let mut connections = Vec::new();
-    for wire in wires.iter().filter(|w| !reroutes.contains(w.source_node.as_str())) {
+    for wire in wires
+        .iter()
+        .filter(|w| !reroutes.contains(w.source_node.as_str()))
+    {
         if reroutes.contains(wire.target_node.as_str()) {
             for (node, pin) in reaches(&wire.target_node) {
                 connections.push(Connection {
@@ -636,16 +712,21 @@ pub fn asset_from_live(
             .iter()
             .filter(|n| n.definition_id != REROUTE)
             .map(|n| {
-                let params = registry.get(&n.definition_id).map_or_else(Params::new, |descriptor| {
-                    params_from_text(
-                        descriptor,
-                        n.properties.iter().map(|(key, value)| (key, value.clone())),
-                    )
-                });
+                let params =
+                    registry
+                        .get(&n.definition_id)
+                        .map_or_else(Params::new, |descriptor| {
+                            params_from_text(
+                                descriptor,
+                                n.properties.iter().map(|(key, value)| (key, value.clone())),
+                            )
+                        });
                 NodeInstance {
                     id: n.id.clone(),
-                    kind: called_section(&n.definition_id)
-                        .map_or_else(|| n.definition_id.clone(), helio_graph_asset::sections::section_kind),
+                    kind: called_section(&n.definition_id).map_or_else(
+                        || n.definition_id.clone(),
+                        helio_graph_asset::sections::section_kind,
+                    ),
                     params,
                     position: n.position,
                 }
@@ -703,8 +784,11 @@ pub fn auto_layout_graph(graph: &mut blueprint_editor_plugin::BlueprintGraph) ->
         .collect();
     helio_graph_asset::auto_layout(&mut asset, registry());
 
-    let positions: HashMap<String, [f32; 2]> =
-        asset.nodes.iter().map(|n| (n.id.clone(), n.position)).collect();
+    let positions: HashMap<String, [f32; 2]> = asset
+        .nodes
+        .iter()
+        .map(|n| (n.id.clone(), n.position))
+        .collect();
     for node in graph.nodes.iter_mut() {
         if let Some(position) = positions.get(&node.id) {
             node.position = gpui::Point::new(position[0], position[1]);
@@ -747,7 +831,6 @@ pub fn problems(asset: &GraphAsset, registry: &NodeRegistry) -> Vec<String> {
         .collect()
 }
 
-
 // ── Editing ───────────────────────────────────────────────────────────────────
 
 /// The parameters the editor shows for a node type.
@@ -756,23 +839,25 @@ pub fn parameter_fields(
     registry: &NodeRegistry,
 ) -> Vec<blueprint_editor_plugin::profile::ParamField> {
     use blueprint_editor_plugin::profile::{ParamField, ParamKind};
-    registry.get(definition_id).map_or_else(Vec::new, |descriptor| {
-        descriptor
-            .params
-            .iter()
-            .map(|param| ParamField {
-                key: param.key.clone(),
-                label: param.label.clone(),
-                kind: match &param.ty {
-                    ParamType::Bool => ParamKind::Bool,
-                    ParamType::Choice(options) => ParamKind::Choice(options.clone()),
-                    ParamType::Text | ParamType::Int { .. } | ParamType::Float { .. } => {
-                        ParamKind::Text
-                    }
-                },
-            })
-            .collect()
-    })
+    registry
+        .get(definition_id)
+        .map_or_else(Vec::new, |descriptor| {
+            descriptor
+                .params
+                .iter()
+                .map(|param| ParamField {
+                    key: param.key.clone(),
+                    label: param.label.clone(),
+                    kind: match &param.ty {
+                        ParamType::Bool => ParamKind::Bool,
+                        ParamType::Choice(options) => ParamKind::Choice(options.clone()),
+                        ParamType::Text | ParamType::Int { .. } | ParamType::Float { .. } => {
+                            ParamKind::Text
+                        }
+                    },
+                })
+                .collect()
+        })
 }
 
 fn editor_pins(
@@ -820,7 +905,9 @@ pub fn refresh_pins(
     };
     let params = params_from_text(
         descriptor,
-        node.properties.iter().map(|(key, value)| (key, value.clone())),
+        node.properties
+            .iter()
+            .map(|(key, value)| (key, value.clone())),
     );
     let pins = descriptor.pins(&params);
     let inputs = editor_pins(&pins.inputs, blueprint_editor_plugin::PinType::Input);
@@ -846,12 +933,18 @@ pub fn refresh_pins(
     }
     for connection in graph.connections.iter_mut() {
         if connection.source_node == node_id {
-            if let Some((_, new)) = renamed_outputs.iter().find(|(old, _)| *old == connection.source_pin) {
+            if let Some((_, new)) = renamed_outputs
+                .iter()
+                .find(|(old, _)| *old == connection.source_pin)
+            {
                 connection.source_pin = new.clone();
             }
         }
         if connection.target_node == node_id {
-            if let Some((_, new)) = renamed_inputs.iter().find(|(old, _)| *old == connection.target_pin) {
+            if let Some((_, new)) = renamed_inputs
+                .iter()
+                .find(|(old, _)| *old == connection.target_pin)
+            {
                 connection.target_pin = new.clone();
             }
         }
@@ -875,11 +968,18 @@ mod tests {
 
     #[test]
     fn each_pin_kind_has_its_own_shape_and_persistence_rings() {
-        let shapes: Vec<_> =
-            ["execution", "tex:a", "depth:a", "buf:a", "scene:a"].map(|t| pin_style(t).shape).into();
+        let shapes: Vec<_> = ["execution", "tex:a", "depth:a", "buf:a", "scene:a"]
+            .map(|t| pin_style(t).shape)
+            .into();
         assert_eq!(
             shapes,
-            [PinShape::Arrow, PinShape::Circle, PinShape::Diamond, PinShape::Square, PinShape::Hexagon]
+            [
+                PinShape::Arrow,
+                PinShape::Circle,
+                PinShape::Diamond,
+                PinShape::Square,
+                PinShape::Hexagon
+            ]
         );
         assert!(pin_style("ptex:a").ringed && pin_style("pbuf:a").ringed);
         assert!(!pin_style("tex:a").ringed && !pin_style("buf:a").ringed);
@@ -908,7 +1008,10 @@ mod tests {
         let asset = deferred_graph_asset(&base_registry());
         let blueprint = to_blueprint_asset(&asset, &registry).unwrap();
         assert_eq!(blueprint.main_graph.nodes.len(), asset.nodes.len());
-        assert_eq!(blueprint.main_graph.connections.len(), asset.connections.len());
+        assert_eq!(
+            blueprint.main_graph.connections.len(),
+            asset.connections.len()
+        );
 
         let back = from_blueprint_asset(&blueprint, &registry);
         let mut expected = asset.clone();
@@ -974,12 +1077,18 @@ mod tests {
             node("r", "reroute"),
             node("out", "core.output"),
         ];
-        let wires = [wire("early", "out", "r", "input"), wire("r", "output", "out", "in")];
+        let wires = [
+            wire("early", "out", "r", "input"),
+            wire("r", "output", "out", "in"),
+        ];
         let asset = asset_from_live("g", &nodes, &wires, &registry);
         assert_eq!(asset.nodes.len(), 2);
         assert_eq!(
             asset.connections,
-            vec![Connection { from: PinRef::new("early", "out"), to: PinRef::new("out", "in") }]
+            vec![Connection {
+                from: PinRef::new("early", "out"),
+                to: PinRef::new("out", "in")
+            }]
         );
     }
 

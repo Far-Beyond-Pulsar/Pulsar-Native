@@ -216,6 +216,9 @@ mod tests {
         let before = camera.position();
         camera.update(1.0);
         let moved = (camera.position() - before).length();
-        assert!((moved - 50.0 * f64::from(camera.move_speed)).abs() < 1e-3, "{moved}");
+        assert!(
+            (moved - 50.0 * f64::from(camera.move_speed)).abs() < 1e-3,
+            "{moved}"
+        );
     }
 }

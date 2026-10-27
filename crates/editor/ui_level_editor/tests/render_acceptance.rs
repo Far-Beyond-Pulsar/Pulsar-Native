@@ -21,8 +21,8 @@ use std::collections::HashMap;
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::{
-    LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability,
-    StaticMeshComponent, StaticMeshMaterialSlot, StaticMeshMaterialSlots,
+    LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent,
+    StaticMeshMaterialSlot, StaticMeshMaterialSlots,
 };
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
@@ -1310,7 +1310,10 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
             enabled: false,
         },
     );
-    assert!(disable_for_base.changed, "disabling initial LOD component failed");
+    assert!(
+        disable_for_base.changed,
+        "disabling initial LOD component failed"
+    );
     let mut renderer = harness.renderer(&state);
     let base_mesh = harness.frames(&mut renderer, || {});
     let enable_for_lod = execute_command(
@@ -1321,7 +1324,10 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
             enabled: true,
         },
     );
-    assert!(enable_for_lod.changed, "enabling initial LOD component failed");
+    assert!(
+        enable_for_lod.changed,
+        "enabling initial LOD component failed"
+    );
 
     // At the default camera distance, level zero names the base cube, so the
     // authored selector should leave the rendered frame equivalent to the
@@ -1411,8 +1417,7 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
     let disabled_lod = harness.frames(&mut renderer, || {});
     let fallback = disabled_lod.difference(&base_mesh);
     assert!(
-        fallback.depth_texels < 8
-            && fallback.color_pixels < (SIZE * SIZE / 100) as usize,
+        fallback.depth_texels < 8 && fallback.color_pixels < (SIZE * SIZE / 100) as usize,
         "disabling authored LOD did not restore the base mesh: {fallback:?}"
     );
 }
@@ -3524,7 +3529,13 @@ fn portal_scene(radius: f32, near_id: i32, far_id: i32, content: bool) -> LevelE
 }
 
 /// A portal object named `name` with Link ID `link`, `radius * 3` across.
-fn add_portal(state: &mut LevelEditorState, radius: f32, name: &str, position: [f32; 3], link: i32) -> String {
+fn add_portal(
+    state: &mut LevelEditorState,
+    radius: f32,
+    name: &str,
+    position: [f32; 3],
+    link: i32,
+) -> String {
     let id = add_object(state, name, ObjectType::Empty);
     if position != [0.0; 3] {
         move_to(state, &id, position);
@@ -3582,7 +3593,11 @@ fn portal_scene_at(
 fn mean_color_of_difference(frame: &Frame, reference: &Frame) -> Option<[f32; 3]> {
     let mut sum = [0.0f64; 3];
     let mut count = 0u64;
-    for (a, b) in frame.color.chunks_exact(4).zip(reference.color.chunks_exact(4)) {
+    for (a, b) in frame
+        .color
+        .chunks_exact(4)
+        .zip(reference.color.chunks_exact(4))
+    {
         if (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD {
             for i in 0..3 {
                 sum[i] += f64::from(a[i]);
@@ -3705,7 +3720,10 @@ fn mean_of_red_pixels(frame: &Frame) -> Option<([f32; 3], usize)> {
     let mut sum = [0.0f64; 3];
     let mut count = 0usize;
     for p in frame.color.chunks_exact(4) {
-        if p[0] > 120 && u32::from(p[0]) > 2 * u32::from(p[1]) + 40 && u32::from(p[0]) > 2 * u32::from(p[2]) + 40 {
+        if p[0] > 120
+            && u32::from(p[0]) > 2 * u32::from(p[1]) + 40
+            && u32::from(p[0]) > 2 * u32::from(p[2]) + 40
+        {
             for i in 0..3 {
                 sum[i] += f64::from(p[i]);
             }
@@ -3820,7 +3838,6 @@ fn diag_portal_cost() {
     }
 }
 
-
 fn rotate_y(state: &mut LevelEditorState, id: &str, degrees: f32) {
     if degrees == 0.0 {
         return;
@@ -3836,7 +3853,6 @@ fn rotate_y(state: &mut LevelEditorState, id: &str, degrees: f32) {
     );
     assert!(result.changed, "rotation edit was refused");
 }
-
 
 /// What a portal shows is lit by the lights of the world it shows, not of the
 /// world it is seen from. The far portal is far enough from the near one that a

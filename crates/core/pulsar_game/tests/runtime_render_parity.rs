@@ -359,7 +359,9 @@ fn the_game_clock_drives_animation_and_pause_freezes_it() {
     // Temporal filters and rasterization deterministic: what changes is the
     // game clock's doing.
     renderer.renderer.set_frame_delta_override(Some(1.0 / 30.0));
-    renderer.renderer.set_camera_jitter_override(Some([0.0, 0.0]));
+    renderer
+        .renderer
+        .set_camera_jitter_override(Some([0.0, 0.0]));
     let camera = look_at(
         glam::Vec3::new(0.0, 1.0, 5.0),
         glam::Vec3::new(0.0, 0.5, 0.0),

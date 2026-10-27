@@ -242,7 +242,10 @@ static GLOBAL_FILE_TYPE_LOOKUP: OnceCell<std::sync::Arc<arc_swap::ArcSwap<FileTy
 /// `read()` from inside the editor's own thread waits on itself forever.
 /// Returns `None` until the manager is initialized.
 pub fn file_type_for_path(path: &std::path::Path) -> Option<plugin_editor_api::FileTypeId> {
-    GLOBAL_FILE_TYPE_LOOKUP.get()?.load().file_type_for_path(path)
+    GLOBAL_FILE_TYPE_LOOKUP
+        .get()?
+        .load()
+        .file_type_for_path(path)
 }
 
 /// Get a handle to the global plugin manager.
@@ -1829,10 +1832,7 @@ pub fn run_plugin_preloads(
             .iter()
             .map(|(id, plugin)| {
                 let plugin = *plugin;
-                (
-                    id.clone(),
-                    scope.spawn(move || plugin.preload(ctx)),
-                )
+                (id.clone(), scope.spawn(move || plugin.preload(ctx)))
             })
             .collect();
         workers

@@ -152,10 +152,9 @@ pub fn write(
 /// and the id are used afterwards; this is never written back.
 fn in_world(world: &pulsar_scenedb::World, mut object: SceneObjectData) -> SceneObjectData {
     use engine_backend::scene::SceneWorldExt;
-    if let Some(pose) = world
-        .entity_for(&object.id)
-        .and_then(|entity| engine_backend::scene::hierarchy_transform::world_transform_of(world, entity))
-    {
+    if let Some(pose) = world.entity_for(&object.id).and_then(|entity| {
+        engine_backend::scene::hierarchy_transform::world_transform_of(world, entity)
+    }) {
         object.transform = pose.into();
     }
     object

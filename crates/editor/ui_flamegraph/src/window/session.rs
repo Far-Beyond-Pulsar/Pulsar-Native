@@ -70,7 +70,8 @@ impl FlamegraphWindow {
 
         let timeline = cx.new(|cx| FlamegraphPanel::new(self.view.clone(), cx));
         let statistics = cx.new(|cx| StatisticsPanel::new(self.trace_data.clone(), window, cx));
-        let scripts = has_scripts.then(|| cx.new(|cx| ScriptsPanel::new(self.trace_data.clone(), cx)));
+        let scripts =
+            has_scripts.then(|| cx.new(|cx| ScriptsPanel::new(self.trace_data.clone(), cx)));
         let callstack = cx.new(|cx| CallstackPanel::new(self.view.clone(), cx));
 
         // Its own channel keeps tabs dragged here out of other docks.
@@ -111,8 +112,20 @@ impl FlamegraphWindow {
         });
         dock.update(cx, |dock, cx| {
             dock.set_center(center, window, cx);
-            dock.set_bottom_dock(bottom, Some(px(bottom_saved.size)), bottom_saved.open, window, cx);
-            dock.set_right_dock(right, Some(px(right_saved.size)), right_saved.open, window, cx);
+            dock.set_bottom_dock(
+                bottom,
+                Some(px(bottom_saved.size)),
+                bottom_saved.open,
+                window,
+                cx,
+            );
+            dock.set_right_dock(
+                right,
+                Some(px(right_saved.size)),
+                right_saved.open,
+                window,
+                cx,
+            );
         });
 
         let events = cx.subscribe_in(
@@ -129,9 +142,10 @@ impl FlamegraphWindow {
             &self.view,
             window,
             |this: &mut Self, _view, _event: &SpanSelected, window, cx| {
-                let closed = this.session_ui.as_ref().is_some_and(|ui| {
-                    !ui.dock.read(cx).is_dock_open(DockPlacement::Right, cx)
-                });
+                let closed = this
+                    .session_ui
+                    .as_ref()
+                    .is_some_and(|ui| !ui.dock.read(cx).is_dock_open(DockPlacement::Right, cx));
                 if closed {
                     this.toggle_dock(DockPlacement::Right, window, cx);
                 }
@@ -179,7 +193,12 @@ impl FlamegraphWindow {
         }
     }
 
-    fn toggle_dock(&mut self, placement: DockPlacement, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_dock(
+        &mut self,
+        placement: DockPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(ui) = &self.session_ui {
             ui.dock
                 .update(cx, |dock, cx| dock.toggle_dock(placement, window, cx));
@@ -198,8 +217,18 @@ impl FlamegraphWindow {
             .unwrap_or("session")
             .to_string();
         let (title, name, label, extension) = match kind {
-            ExportKind::StatsCsv => ("Export statistics", format!("{stem}-statistics.csv"), "CSV", "csv"),
-            ExportKind::ChromeTrace => ("Export Chrome trace", format!("{stem}-trace.json"), "Chrome trace", "json"),
+            ExportKind::StatsCsv => (
+                "Export statistics",
+                format!("{stem}-statistics.csv"),
+                "CSV",
+                "csv",
+            ),
+            ExportKind::ChromeTrace => (
+                "Export Chrome trace",
+                format!("{stem}-trace.json"),
+                "Chrome trace",
+                "json",
+            ),
         };
         let dialog = rfd::AsyncFileDialog::new()
             .set_title(title)
@@ -234,7 +263,10 @@ impl FlamegraphWindow {
         .detach();
     }
 
-    pub(super) fn render_session_toolbar(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    pub(super) fn render_session_toolbar(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let frame = self.trace_data.get_frame();
         let theme = cx.theme();
         let (sidebar, border, muted, foreground) = (
@@ -254,7 +286,10 @@ impl FlamegraphWindow {
             "{} spans · {} threads · {} frames · {}",
             frame.spans.len(),
             frame.threads.len(),
-            frame.frame_boundaries_ns.len().max(frame.frame_times_ms.len()),
+            frame
+                .frame_boundaries_ns
+                .len()
+                .max(frame.frame_times_ms.len()),
             format_duration(frame.duration_ns()),
         );
         let (bottom_open, right_open) = match &self.session_ui {
@@ -269,7 +304,11 @@ impl FlamegraphWindow {
         let divider = || div().w(px(1.)).h(px(18.)).mx_1().bg(border);
         let toggle = |id: &'static str, icon: IconName, tip: &'static str, open: bool| {
             let button = Button::new(id).icon(icon).compact().tooltip(tip);
-            if open { button.primary() } else { button.ghost() }
+            if open {
+                button.primary()
+            } else {
+                button.ghost()
+            }
         };
 
         h_flex()
@@ -282,7 +321,11 @@ impl FlamegraphWindow {
             .bg(sidebar)
             .border_b_1()
             .border_color(border)
-            .child(Icon::new(IconName::Database).size(px(13.)).text_color(muted))
+            .child(
+                Icon::new(IconName::Database)
+                    .size(px(13.))
+                    .text_color(muted),
+            )
             .child(
                 div()
                     .text_xs()
@@ -290,7 +333,13 @@ impl FlamegraphWindow {
                     .text_color(foreground)
                     .child(file),
             )
-            .child(div().text_size(px(11.)).text_color(muted).ml_2().child(summary))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(muted)
+                    .ml_2()
+                    .child(summary),
+            )
             .child(div().flex_1())
             .children(status.map(|text| {
                 div()
@@ -385,17 +434,26 @@ impl FlamegraphWindow {
             )
             .child(divider())
             .child(
-                toggle("toggle-bottom", IconName::PanelBottom, "Analysis panels", bottom_open)
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.toggle_dock(DockPlacement::Bottom, window, cx)
-                    })),
+                toggle(
+                    "toggle-bottom",
+                    IconName::PanelBottom,
+                    "Analysis panels",
+                    bottom_open,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.toggle_dock(DockPlacement::Bottom, window, cx)
+                })),
             )
             .child(
-                toggle("toggle-right", IconName::PanelRight, "Call stack", right_open).on_click(
-                    cx.listener(|this, _, window, cx| {
-                        this.toggle_dock(DockPlacement::Right, window, cx)
-                    }),
-                ),
+                toggle(
+                    "toggle-right",
+                    IconName::PanelRight,
+                    "Call stack",
+                    right_open,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.toggle_dock(DockPlacement::Right, window, cx)
+                })),
             )
     }
 }

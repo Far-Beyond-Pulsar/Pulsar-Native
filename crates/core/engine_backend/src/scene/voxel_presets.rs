@@ -126,7 +126,9 @@ impl Plan {
                     .into_iter()
                     .filter(|instance| {
                         world.get::<VoxelTerrainComponent>(*instance).is_some()
-                            || world.get::<VoxelTerrainLayersComponent>(*instance).is_some()
+                            || world
+                                .get::<VoxelTerrainLayersComponent>(*instance)
+                                .is_some()
                     }),
             );
         }
@@ -162,7 +164,9 @@ impl Plan {
 fn attached<T: pulsar_scenedb::Component>(world: &World, keep: impl Fn(&T) -> bool) -> Vec<Entity> {
     world
         .query::<&T>()
-        .filter(|(instance, value)| keep(value) && attachments::owner_of(world, *instance).is_some())
+        .filter(|(instance, value)| {
+            keep(value) && attachments::owner_of(world, *instance).is_some()
+        })
         .map(|(instance, _)| instance)
         .collect()
 }
@@ -182,7 +186,10 @@ fn ids(world: &World, objects: &[Entity]) -> Vec<String> {
 }
 
 /// Add `preset`'s world to the level in `world` (see the module doc).
-pub fn add_voxel_world(world: &mut World, preset: VoxelWorldPreset) -> Result<VoxelWorldSetup, String> {
+pub fn add_voxel_world(
+    world: &mut World,
+    preset: VoxelWorldPreset,
+) -> Result<VoxelWorldSetup, String> {
     let template = preset.template()?;
     let scene = template.scene();
     let scene = scene.read();
@@ -202,9 +209,11 @@ pub fn add_voxel_world(world: &mut World, preset: VoxelWorldPreset) -> Result<Vo
         let has_terrain = instances
             .iter()
             .any(|instance| source.get::<VoxelTerrainComponent>(*instance).is_some());
-        let light = instances
-            .iter()
-            .find(|instance| source.get::<LightComponent>(**instance).is_some_and(level_rules::is_directional));
+        let light = instances.iter().find(|instance| {
+            source
+                .get::<LightComponent>(**instance)
+                .is_some_and(level_rules::is_directional)
+        });
         let look = instances.iter().find(|instance| {
             source
                 .get::<PostProcessVolumeComponent>(**instance)
@@ -215,7 +224,8 @@ pub fn add_voxel_world(world: &mut World, preset: VoxelWorldPreset) -> Result<Vo
                 set_value(source, *light, world, sun)?;
                 // The sun shines along its object's rotation.
                 let rotation = source.get::<Transform>(object).map(|t| t.rotation);
-                if let (Some(owner), Some(rotation)) = (attachments::owner_of(world, sun), rotation) {
+                if let (Some(owner), Some(rotation)) = (attachments::owner_of(world, sun), rotation)
+                {
                     if let Some(mut transform) = world.get_mut::<Transform>(owner) {
                         transform.rotation = rotation;
                     }
@@ -249,15 +259,20 @@ pub fn add_voxel_world(world: &mut World, preset: VoxelWorldPreset) -> Result<Vo
         let bare = world.is_alive(object)
             && attachments::instances(world, object).is_empty()
             && world.children_of(Some(object)).is_empty()
-            && world.get::<ObjectType>(object).is_none_or(|kind| *kind == ObjectType::Empty);
+            && world
+                .get::<ObjectType>(object)
+                .is_none_or(|kind| *kind == ObjectType::Empty);
         if bare {
             world.despawn_tree(object);
         }
     }
 
-    let terrain = terrain.ok_or_else(|| format!("{} level has no voxel terrain", preset.example()))?;
+    let terrain =
+        terrain.ok_or_else(|| format!("{} level has no voxel terrain", preset.example()))?;
     // The world sits on its terrain's object: so does its camera.
-    let origin = world.get::<Transform>(terrain).map_or([0.0; 3], |t| t.position);
+    let origin = world
+        .get::<Transform>(terrain)
+        .map_or([0.0; 3], |t| t.position);
     let camera = template.editor_camera().map(|camera| EditorCamera {
         position: [0, 1, 2].map(|axis| camera.position[axis] + origin[axis]),
         ..camera
@@ -278,17 +293,31 @@ pub fn add_voxel_world(world: &mut World, preset: VoxelWorldPreset) -> Result<Vo
 fn copy_object(source: &World, object: Entity, world: &mut World) -> Result<Entity, String> {
     let spec = SpawnObject {
         stable_id: None,
-        name: source.get::<Name>(object).map(|name| name.0.clone()).unwrap_or_default(),
+        name: source
+            .get::<Name>(object)
+            .map(|name| name.0.clone())
+            .unwrap_or_default(),
         parent: None,
         transform: source.get::<Transform>(object).copied().unwrap_or_default(),
-        visibility: source.get::<Visibility>(object).cloned().unwrap_or_default(),
-        object_type: source.get::<ObjectType>(object).cloned().unwrap_or(ObjectType::Empty),
+        visibility: source
+            .get::<Visibility>(object)
+            .cloned()
+            .unwrap_or_default(),
+        object_type: source
+            .get::<ObjectType>(object)
+            .cloned()
+            .unwrap_or(ObjectType::Empty),
     };
     world.spawn_object(spec).map_err(|error| error.to_string())
 }
 
 /// Attach a copy of `source`'s `instance` to `owner` in `world`.
-fn copy_instance(source: &World, instance: Entity, world: &mut World, owner: Entity) -> Result<(), String> {
+fn copy_instance(
+    source: &World,
+    instance: Entity,
+    world: &mut World,
+    owner: Entity,
+) -> Result<(), String> {
     use pulsar_world_registry::{ComponentPayload, InstanceValue};
     let snapshot = pulsar_world_registry::snapshot_instance(source, instance)
         .ok_or("a preset component cannot be copied")?;
@@ -306,7 +335,12 @@ fn copy_instance(source: &World, instance: Entity, world: &mut World, owner: Ent
 }
 
 /// Give `world`'s `instance` the value of `source`'s `from` (same class).
-fn set_value(source: &World, from: Entity, world: &mut World, instance: Entity) -> Result<(), String> {
+fn set_value(
+    source: &World,
+    from: Entity,
+    world: &mut World,
+    instance: Entity,
+) -> Result<(), String> {
     let snapshot = pulsar_world_registry::snapshot_instance(source, from)
         .ok_or("a preset component cannot be copied")?;
     pulsar_world_registry::set_instance_value(world, instance, snapshot.value)
@@ -325,11 +359,16 @@ mod tests {
             .map(|object| {
                 let mut classes: Vec<String> = attachments::instances(world, object)
                     .into_iter()
-                    .filter_map(|instance| attachments::meta(world, instance).map(|m| m.class_name.clone()))
+                    .filter_map(|instance| {
+                        attachments::meta(world, instance).map(|m| m.class_name.clone())
+                    })
                     .collect();
                 classes.sort();
                 (
-                    world.get::<Name>(object).map(|n| n.0.clone()).unwrap_or_default(),
+                    world
+                        .get::<Name>(object)
+                        .map(|n| n.0.clone())
+                        .unwrap_or_default(),
                     classes,
                 )
             })
@@ -346,7 +385,11 @@ mod tests {
             let setup = add_voxel_world(&mut world, preset).unwrap();
             let template = preset.template().unwrap();
             let example = template.scene();
-            assert_eq!(level_of(&world), level_of(&example.read().world), "{preset:?}");
+            assert_eq!(
+                level_of(&world),
+                level_of(&example.read().world),
+                "{preset:?}"
+            );
             assert_eq!(setup.camera, template.editor_camera(), "{preset:?}");
             assert!(setup.changed.is_empty());
             assert_eq!(setup.added.len(), world.children_of(None).len());
@@ -394,7 +437,8 @@ mod tests {
         point.general.light_type = helio_component::LightType::Point;
         pulsar_world_registry::attach_value(&mut sky_only, lamp, point).unwrap();
         let sky = sky_only.spawn_object(SpawnObject::new("Sky")).unwrap();
-        pulsar_world_registry::attach_value(&mut sky_only, sky, AtmosphereComponent::default()).unwrap();
+        pulsar_world_registry::attach_value(&mut sky_only, sky, AtmosphereComponent::default())
+            .unwrap();
         assert_eq!(objects_changed_by(&sky_only), ids(&sky_only, &[sky]));
         add_voxel_world(&mut sky_only, VoxelWorldPreset::Earth).unwrap();
         assert!(!sky_only.is_alive(sky), "the bare sky object is removed");
@@ -413,11 +457,19 @@ mod tests {
                 ..Transform::default()
             }))
             .unwrap();
-        pulsar_world_registry::attach_value(&mut world, owner, VoxelTerrainComponent::plane(512.0)).unwrap();
+        pulsar_world_registry::attach_value(&mut world, owner, VoxelTerrainComponent::plane(512.0))
+            .unwrap();
         let setup = add_voxel_world(&mut world, VoxelWorldPreset::Blocks).unwrap();
         assert_eq!(world.entity_for(&setup.terrain), Some(owner));
         assert_eq!(setup.changed, ids(&world, &[owner]));
-        let example = VoxelWorldPreset::Blocks.template().unwrap().editor_camera().unwrap();
-        assert_eq!(setup.camera.unwrap().position[0], example.position[0] + 100.0);
+        let example = VoxelWorldPreset::Blocks
+            .template()
+            .unwrap()
+            .editor_camera()
+            .unwrap();
+        assert_eq!(
+            setup.camera.unwrap().position[0],
+            example.position[0] + 100.0
+        );
     }
 }

@@ -24,8 +24,8 @@ use std::time::{Duration, Instant};
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::{
-    MeshAssetPath, MeshGeometryKey, StaticMeshComponent,
-    StaticMeshMaterialSlot, StaticMeshMaterialSlots, VirtualGeometryComponent,
+    MeshAssetPath, MeshGeometryKey, StaticMeshComponent, StaticMeshMaterialSlot,
+    StaticMeshMaterialSlots, VirtualGeometryComponent,
 };
 use helio_component::mesh_cache::MeshSection;
 use pulsar_settings::project::virtual_geometry::{VirtualGeometryMode, VirtualGeometrySettings};
@@ -62,17 +62,27 @@ fn mesh_asset_named(name: &str) -> String {
         .canonicalize()
         .expect("primitive mesh is checked in");
     let path = path.to_string_lossy();
-    path.strip_prefix(r"\\?\").unwrap_or(&path).replace('\\', "/")
+    path.strip_prefix(r"\\?\")
+        .unwrap_or(&path)
+        .replace('\\', "/")
 }
 
 /// A UV sphere of `2 * rings * segments` triangles.
-fn dense_sphere(rings: u32, segments: u32, radius: f32) -> (Vec<helio_core::PackedVertex>, Vec<u32>) {
+fn dense_sphere(
+    rings: u32,
+    segments: u32,
+    radius: f32,
+) -> (Vec<helio_core::PackedVertex>, Vec<u32>) {
     let mut vertices = Vec::new();
     for ring in 0..=rings {
         let theta = std::f32::consts::PI * ring as f32 / rings as f32;
         for segment in 0..=segments {
             let phi = std::f32::consts::TAU * segment as f32 / segments as f32;
-            let normal = glam::Vec3::new(theta.sin() * phi.cos(), theta.cos(), theta.sin() * phi.sin());
+            let normal = glam::Vec3::new(
+                theta.sin() * phi.cos(),
+                theta.cos(),
+                theta.sin() * phi.sin(),
+            );
             let tangent = glam::Vec3::new(-phi.sin(), 0.0, phi.cos());
             vertices.push(helio_core::PackedVertex::from_components(
                 (normal * radius).into(),
@@ -120,7 +130,11 @@ fn dense_mesh() -> StaticMeshComponent {
                 ..Default::default()
             }],
         },
-        mesh_sections: vec![MeshSection { first_index: 0, index_count: indices.len() as u32, material_slot: 0 }],
+        mesh_sections: vec![MeshSection {
+            first_index: 0,
+            index_count: indices.len() as u32,
+            material_slot: 0,
+        }],
         vertices,
         indices,
         bounds_local: [0.0, 0.0, 0.0, RADIUS],
@@ -148,7 +162,9 @@ impl Frame {
             .color
             .chunks_exact(4)
             .zip(other.color.chunks_exact(4))
-            .filter(|(a, b)| (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD)
+            .filter(|(a, b)| {
+                (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD
+            })
             .count();
         let depth_texels = self
             .depth
@@ -157,14 +173,25 @@ impl Frame {
             .filter(|(a, b)| (**a - **b).abs() > 1e-3 * a.abs().max(b.abs()))
             .count();
         let background = &self.color[..4];
-        let covered = self.color.chunks_exact(4).filter(|px| *px != background).count();
-        Difference { color_pixels, depth_texels, covered }
+        let covered = self
+            .color
+            .chunks_exact(4)
+            .filter(|px| *px != background)
+            .count();
+        Difference {
+            color_pixels,
+            depth_texels,
+            covered,
+        }
     }
 
     fn dump(&self, name: &str) {
-        let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") else { return };
+        let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") else {
+            return;
+        };
         let path = std::path::Path::new(&dir).join(format!("vg_{name}.png"));
-        image::save_buffer(&path, &self.color, SIZE, SIZE, image::ColorType::Rgba8).expect("write dump");
+        image::save_buffer(&path, &self.color, SIZE, SIZE, image::ColorType::Rgba8)
+            .expect("write dump");
     }
 }
 
@@ -179,7 +206,11 @@ impl Harness {
     fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("vg-acceptance-target"),
-            size: wgpu::Extent3d { width: SIZE, height: SIZE, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: SIZE,
+                height: SIZE,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -194,7 +225,12 @@ impl Harness {
             yaw: 0.0,
             pitch: (-(height / distance)).atan() as f32,
         };
-        Self { device, queue, texture, camera }
+        Self {
+            device,
+            queue,
+            texture,
+            camera,
+        }
     }
 
     fn renderer(&self, state: &LevelEditorState) -> HelioRenderer {
@@ -213,11 +249,17 @@ impl Harness {
             let yaw = self.camera.yaw + if frame % 2 == 0 { 1e-3 } else { 0.0 };
             renderer.set_editor_camera_state(EditorCameraState { yaw, ..self.camera });
             renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
-            encoded |= renderer.render_frame(&self.device, &self.queue, &view, SIZE, SIZE, FORMAT).is_some();
-            self.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            encoded |= renderer
+                .render_frame(&self.device, &self.queue, &view, SIZE, SIZE, FORMAT)
+                .is_some();
+            self.device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .unwrap();
         }
         assert!(encoded, "no frame was encoded");
-        let depth = renderer.debug_depth_texture().expect("renderer initialized");
+        let depth = renderer
+            .debug_depth_texture()
+            .expect("renderer initialized");
         Frame {
             color: self.read_texture(&self.texture, wgpu::TextureAspect::All),
             depth: self
@@ -231,7 +273,8 @@ impl Harness {
     fn read_texture(&self, texture: &wgpu::Texture, aspect: wgpu::TextureAspect) -> Vec<u8> {
         let size = texture.size();
         let row = size.width * 4;
-        let padded = row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded =
+            row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("vg-acceptance-readback"),
             size: (padded * size.height) as u64,
@@ -240,7 +283,10 @@ impl Harness {
         });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo { aspect, ..texture.as_image_copy() },
+            wgpu::TexelCopyTextureInfo {
+                aspect,
+                ..texture.as_image_copy()
+            },
             wgpu::TexelCopyBufferInfo {
                 buffer: &buffer,
                 layout: wgpu::TexelCopyBufferLayout {
@@ -249,12 +295,18 @@ impl Harness {
                     rows_per_image: Some(size.height),
                 },
             },
-            wgpu::Extent3d { width: size.width, height: size.height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
         );
         self.queue.submit([encoder.finish()]);
         let slice = buffer.slice(..);
         slice.map_async(wgpu::MapMode::Read, |r| r.expect("map readback"));
-        self.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
         let mapped = slice.get_mapped_range().expect("mapped range");
         let data = mapped
             .chunks_exact(padded as usize)
@@ -271,7 +323,11 @@ impl Harness {
         let start = Instant::now();
         loop {
             let frame = self.frames(renderer, 4);
-            if renderer.virtual_geometry_runtime().expect("the viewport renderer is built").any_ready() {
+            if renderer
+                .virtual_geometry_runtime()
+                .expect("the viewport renderer is built")
+                .any_ready()
+            {
                 // The instance derivation and the cull see it a couple of
                 // frames later.
                 return self.frames(renderer, 12);
@@ -287,7 +343,10 @@ impl Harness {
 }
 
 fn vg_settings(mode: VirtualGeometryMode) -> VirtualGeometrySettings {
-    VirtualGeometrySettings { mode, ..Default::default() }
+    VirtualGeometrySettings {
+        mode,
+        ..Default::default()
+    }
 }
 
 /// A scene with the dense sphere, optionally carrying the VG component. The
@@ -323,7 +382,8 @@ fn scene(vg: Option<VirtualGeometryComponent>) -> (LevelEditorState, String) {
         let object = world.entity_for(&id).expect("object exists");
         pulsar_world_registry::attach_value(&mut world, object, dense_mesh()).expect("attach mesh");
         if let Some(vg) = vg {
-            pulsar_world_registry::attach_value(&mut world, object, vg).expect("attach VG component");
+            pulsar_world_registry::attach_value(&mut world, object, vg)
+                .expect("attach VG component");
         }
         object
     };
@@ -332,13 +392,18 @@ fn scene(vg: Option<VirtualGeometryComponent>) -> (LevelEditorState, String) {
 }
 
 fn setup() -> Option<Harness> {
-    let _ = tracing_subscriber::fmt().with_max_level(tracing::Level::WARN).with_test_writer().try_init();
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return None;
     };
     let limits = device.limits();
-    if limits.max_storage_buffers_per_shader_stage < 20 || limits.max_storage_textures_per_shader_stage < 8 {
+    if limits.max_storage_buffers_per_shader_stage < 20
+        || limits.max_storage_textures_per_shader_stage < 8
+    {
         eprintln!("skipping: the adapter lacks the virtual-geometry device limits");
         return None;
     }
@@ -357,8 +422,14 @@ fn virtual_geometry_matches_the_classic_render_and_off_restores_it() {
     classic_renderer.set_virtual_geometry_settings(Some(vg_settings(VirtualGeometryMode::Auto)));
     let classic = harness.frames(&mut classic_renderer, 12);
     classic.dump("classic");
-    assert!(classic.difference(&classic).covered > 1000, "the classic sphere is not drawn");
-    assert!(!classic_renderer.virtual_geometry_runtime().expect("the viewport renderer is built").any_ready());
+    assert!(
+        classic.difference(&classic).covered > 1000,
+        "the classic sphere is not drawn"
+    );
+    assert!(!classic_renderer
+        .virtual_geometry_runtime()
+        .expect("the viewport renderer is built")
+        .any_ready());
 
     // VG-active.
     let (state, _) = scene(Some(VirtualGeometryComponent::default()));
@@ -374,7 +445,10 @@ fn virtual_geometry_matches_the_classic_render_and_off_restores_it() {
         d.color_pixels * 100 <= d.covered * 3,
         "VG differs from the classic render on too many pixels: {d:?}"
     );
-    assert!(d.depth_texels * 100 <= d.covered * 5, "VG depth differs from the classic depth: {d:?}");
+    assert!(
+        d.depth_texels * 100 <= d.covered * 5,
+        "VG depth differs from the classic depth: {d:?}"
+    );
 
     // The cluster path is what draws: the coarsest cut alone is a visibly
     // different (low-poly) sphere.
@@ -416,7 +490,10 @@ fn authored_lod_is_ignored_while_virtual_geometry_is_active() {
     let Some(harness) = setup() else { return };
     let near_distance = glam::DVec3::from_array(harness.camera.position).length() as f32;
     let far = harness.camera.position[2] * 2.0;
-    let far_camera = EditorCameraState { position: [0.0, far / 6.0, far], ..harness.camera };
+    let far_camera = EditorCameraState {
+        position: [0.0, far / 6.0, far],
+        ..harness.camera
+    };
     // `frames` resets the pose each frame, so the far view needs its own harness.
     let harness = Harness {
         device: harness.device.clone(),
@@ -506,14 +583,19 @@ fn every_mode_renders_without_validation_errors() {
         VirtualGeometryMode::Off,
         VirtualGeometryMode::Auto,
     ] {
-        let scope = harness.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let scope = harness
+            .device
+            .push_error_scope(wgpu::ErrorFilter::Validation);
         renderer.set_virtual_geometry_settings(Some(vg_settings(mode)));
         let frame = harness.frames(&mut renderer, 10);
         let error = pollster::block_on(scope.pop());
         assert!(error.is_none(), "{mode:?}: GPU validation error: {error:?}");
         let covered = frame.difference(&frame).covered;
         println!("{mode:?}: covered pixels {covered}");
-        assert!(covered > 1000, "{mode:?}: the sphere vanished ({covered} pixels)");
+        assert!(
+            covered > 1000,
+            "{mode:?}: the sphere vanished ({covered} pixels)"
+        );
         frame.dump(&format!("mode_{}", mode.as_str()));
         frames.push(frame);
     }
@@ -522,7 +604,10 @@ fn every_mode_renders_without_validation_errors() {
     for (index, frame) in frames.iter().enumerate() {
         let d = frame.difference(&reference);
         println!("mode #{index} vs Off: {d:?}");
-        assert!(d.color_pixels * 100 <= d.covered * 5, "mode #{index} differs from classic: {d:?}");
+        assert!(
+            d.color_pixels * 100 <= d.covered * 5,
+            "mode #{index} differs from classic: {d:?}"
+        );
     }
 }
 
@@ -537,7 +622,14 @@ fn colour_stats(frame: &Frame) -> (usize, f32) {
         sum += (f64::from(px[0]) - f64::from(px[2])) / 255.0;
         count += 1;
     }
-    (colours.len(), if count == 0 { 0.0 } else { (sum / count as f64) as f32 })
+    (
+        colours.len(),
+        if count == 0 {
+            0.0
+        } else {
+            (sum / count as f64) as f32
+        },
+    )
 }
 
 #[test]
@@ -580,12 +672,17 @@ fn virtual_geometry_debug_views_register_and_render() {
 
     // Views with real per-pixel variation over the sphere.
     let varied = |view: D| {
-        matches!(view, D::TriangleId | D::ClusterId | D::Barycentrics | D::VisNormal | D::TriangleSize)
+        matches!(
+            view,
+            D::TriangleId | D::ClusterId | D::Barycentrics | D::VisNormal | D::TriangleSize
+        )
     };
     let mut lod_near = 0.0;
     let mut lod_far = 0.0;
     for view in ALL {
-        let scope = harness.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let scope = harness
+            .device
+            .push_error_scope(wgpu::ErrorFilter::Validation);
         mailbox.set_viewport_debug_mode(view.id());
         let near_frame = harness.frames(&mut renderer, 8);
         let far_frame = far.frames(&mut renderer, 8);
@@ -598,9 +695,15 @@ fn virtual_geometry_debug_views_register_and_render() {
         println!(
             "{view:?}: near {near_colours} colours heat {near_heat:.3}, far {far_colours} colours heat {far_heat:.3}"
         );
-        assert!(near_frame.difference(&near_frame).covered > 200, "{view:?}: nothing drawn");
+        assert!(
+            near_frame.difference(&near_frame).covered > 200,
+            "{view:?}: nothing drawn"
+        );
         if varied(view) {
-            assert!(near_colours > 8, "{view:?}: near view is uniform ({near_colours} colours)");
+            assert!(
+                near_colours > 8,
+                "{view:?}: near view is uniform ({near_colours} colours)"
+            );
         }
         if view == D::LodLevel {
             (lod_near, lod_far) = (near_heat, far_heat);

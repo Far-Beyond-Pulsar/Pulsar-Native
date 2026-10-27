@@ -667,7 +667,11 @@ impl PulsarApp {
                     // Inserting activates the new tab; keep the user's.
                     tabs.insert_panel_at(panel, at, window, cx);
                     if let Some(shown) = shown {
-                        tabs.set_active_tab(if at <= shown { shown + 1 } else { shown }, window, cx);
+                        tabs.set_active_tab(
+                            if at <= shown { shown + 1 } else { shown },
+                            window,
+                            cx,
+                        );
                     }
                 });
                 true

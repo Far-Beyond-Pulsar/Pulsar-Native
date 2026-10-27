@@ -17,9 +17,7 @@ use std::sync::Arc;
 use glam::{DVec3, Vec3};
 use helio::{Camera, Renderer};
 
-use super::voxel_backend::{
-    PlanetVoxelBackend, VoxelBackendRegistry, VoxelChunkSaves, VoxelView,
-};
+use super::voxel_backend::{PlanetVoxelBackend, VoxelBackendRegistry, VoxelChunkSaves, VoxelView};
 use crate::scene::voxel_frame::{project_voxel_entries, VoxelWorldSync};
 use crate::scene::{SharedScene, SpaceSync, VirtualGeometryHost};
 use pulsar_settings::project::virtual_geometry::VirtualGeometrySettings;
@@ -164,7 +162,8 @@ impl SceneRenderer {
             config = config.with_tsr_quality(quality);
         }
 
-        let scene_db = crate::scene::ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
+        let scene_db =
+            crate::scene::ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
         let spaces = SpaceSync::default();
         let mut builder = helio::RendererBuilder::new(config, scene_db.clone())
             .with_editor_mode(options.editor_mode)
@@ -176,12 +175,21 @@ impl SceneRenderer {
             // Virtual geometry: which assets are ready, then which instances
             // are VG-active (both before the authored LOD, which they
             // suppress).
-            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(&virtual_geometry, &device))
-            .with_scene_derivation(crate::scene::virtual_geometry_instances(&mut virtual_geometry, &device))
+            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(
+                &virtual_geometry,
+                &device,
+            ))
+            .with_scene_derivation(crate::scene::virtual_geometry_instances(
+                &mut virtual_geometry,
+                &device,
+            ))
             .with_scene_derivation(crate::scene::authored_lod_selection(&device, scene_db))
             .with_scene_derivation(crate::scene::environment_join(&device))
             // Authored portals, paired and projected each frame by `spaces`.
-            .with_scene_derivation(crate::scene::portal_projection(&device, spaces.portal_input()))
+            .with_scene_derivation(crate::scene::portal_projection(
+                &device,
+                spaces.portal_input(),
+            ))
             // No default ambient: all illumination comes from the scene.
             .with_ambient([0.0, 0.0, 0.0], 0.0);
         if options.device == DeviceOwner::Host {
@@ -191,7 +199,9 @@ impl SceneRenderer {
         // pipeline is built through `IntoGraph`.
         let pipeline = super::pipelines::resolve_pipeline(options.pipeline.as_deref())
             .filter(|id| *id != helio_default_passes::pipelines::DEFAULT);
-        let custom = pipeline.as_deref().and_then(|id| super::pipelines::create_pipeline(Some(id)));
+        let custom = pipeline
+            .as_deref()
+            .and_then(|id| super::pipelines::create_pipeline(Some(id)));
         let pipeline = custom.is_some().then_some(pipeline).flatten();
         let builder = match custom {
             Some(graph) => builder.with_boxed_graph(graph),
@@ -346,7 +356,15 @@ impl SceneRenderer {
                     Some(range) => range,
                     None => (near, far),
                 };
-                Camera::perspective_look_to(view.eye, view.forward, view.up, fov_y, view.aspect, near, far)
+                Camera::perspective_look_to(
+                    view.eye,
+                    view.forward,
+                    view.up,
+                    fov_y,
+                    view.aspect,
+                    near,
+                    far,
+                )
             }
             FrameProjection::Orthographic { half_height } => {
                 ortho_camera(view.eye, view.forward, view.up, view.aspect, half_height)
@@ -368,11 +386,15 @@ impl SceneRenderer {
         // Rigid frames: one matrix each, relative to the same origin. Their
         // members' rows never change when a frame moves; this table does.
         // Portal chains are built for the portals this camera can see.
-        self.spaces.set_view(camera.view_proj_in(origin), camera.position_in(origin));
+        self.spaces
+            .set_view(camera.view_proj_in(origin), camera.position_in(origin));
         self.spaces.sync(&self.scene, origin, &mut self.renderer);
 
         let mut errors = read.errors.clone();
-        errors.extend(self.voxels.configure_appearance(&mut self.renderer, &read.entries));
+        errors.extend(
+            self.voxels
+                .configure_appearance(&mut self.renderer, &read.entries),
+        );
         errors.extend(self.voxels.publish_frame(
             &read.entries,
             VoxelView {
@@ -419,7 +441,13 @@ impl SceneRenderer {
 /// The eye must stay at the focus: depth-based effects (volumetric fog,
 /// atmosphere) integrate along the distance from the eye, so an eye held far
 /// back would bury the scene in haze.
-pub(super) fn ortho_camera(focus: DVec3, forward: Vec3, up: Vec3, aspect: f32, half_height: f32) -> Camera {
+pub(super) fn ortho_camera(
+    focus: DVec3,
+    forward: Vec3,
+    up: Vec3,
+    aspect: f32,
+    half_height: f32,
+) -> Camera {
     let range = ortho_depth_range(half_height);
     let half_width = half_height * aspect;
     // The engine's reversed-Z convention (`helio_core::depth::orthographic`):
@@ -488,9 +516,7 @@ impl VoxelSceneRead {
             }
         }
         let sun = sun_owner
-            .and_then(|owner| {
-                crate::scene::hierarchy_transform::world_transform_of(world, owner)
-            })
+            .and_then(|owner| crate::scene::hierarchy_transform::world_transform_of(world, owner))
             .map(|transform| {
                 let rotation = glam::Quat::from_euler(
                     glam::EulerRot::YXZ,

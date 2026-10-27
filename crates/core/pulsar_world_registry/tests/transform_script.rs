@@ -340,5 +340,8 @@ fn a_script_write_reaches_the_gpu_row_like_a_typed_write() {
         .collect();
     let row = |e: Entity| words[e.index() as usize * 12..e.index() as usize * 12 + 12].to_vec();
     assert_eq!(row(scripted), row(typed));
-    assert_eq!(row(scripted), [5.0, 6.0, 7.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0]);
+    assert_eq!(
+        row(scripted),
+        [5.0, 6.0, 7.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0]
+    );
 }

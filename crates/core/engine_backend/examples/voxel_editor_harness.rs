@@ -223,8 +223,14 @@ impl Harness {
         let camera = self.camera();
         let forward = self.renderer.camera_forward();
         let [x, y, z] = camera.position;
-        let sun = self.renderer.sun_direction().map_or_else(|| "none".to_owned(), |[a, b, c]| format!("{a},{b},{c}"));
-        println!("HARNESS view {name}: eye {x},{y},{z},{},{},{} sun {sun}", forward.x, forward.y, forward.z);
+        let sun = self
+            .renderer
+            .sun_direction()
+            .map_or_else(|| "none".to_owned(), |[a, b, c]| format!("{a},{b},{c}"));
+        println!(
+            "HARNESS view {name}: eye {x},{y},{z},{},{},{} sun {sun}",
+            forward.x, forward.y, forward.z
+        );
     }
 
     fn camera(&self) -> EditorCameraState {
@@ -458,7 +464,9 @@ fn main() {
         for (_, c) in world.query::<&helio_component::components::WindComponent>() {
             println!("HARNESS scene wind: {}", short(format!("{c:?}")));
         }
-        let foliage = world.query::<&helio_component::components::FoliageComponent>().count();
+        let foliage = world
+            .query::<&helio_component::components::FoliageComponent>()
+            .count();
         if foliage > 0 {
             println!("HARNESS scene foliage: {foliage} types");
         }

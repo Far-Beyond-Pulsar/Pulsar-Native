@@ -5,8 +5,8 @@ use gpui::{AppContext, Context, Entity, Window};
 use plugin_manager::PluginManager;
 use rust_i18n::t;
 use std::{collections::VecDeque, path::PathBuf, sync::Arc};
-use ui::ContextModal;
 use ui::dock::DockItem;
+use ui::ContextModal;
 use ui_file_manager::FileManagerDrawer;
 use ui_level_editor::LevelEditorPanel;
 use ui_log_viewer::MissionControlPanel;
@@ -14,7 +14,7 @@ use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
 use super::{
-    PulsarApp, agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel,
+    agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel, PulsarApp,
 };
 
 impl PulsarApp {

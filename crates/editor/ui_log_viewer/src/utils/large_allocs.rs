@@ -333,7 +333,8 @@ mod tests {
         let stack = vec![
             "alloc::raw_vec::RawVec<T>::finish_grow".to_string(),
             "alloc::vec::Vec<T>::resize".to_string(),
-            "helio_component::texture_assets::load_texture_asset (texture_assets.rs:210)".to_string(),
+            "helio_component::texture_assets::load_texture_asset (texture_assets.rs:210)"
+                .to_string(),
             "pulsar_scenedb::assets::pump".to_string(),
         ];
         assert!(attribution(&stack).starts_with("helio_component::texture_assets"));

@@ -18,7 +18,10 @@ impl SectionsPanel {
         if let Some(entity) = editor.upgrade() {
             cx.observe(&entity, |_, _, cx| cx.notify()).detach();
         }
-        Self { editor, focus_handle: cx.focus_handle() }
+        Self {
+            editor,
+            focus_handle: cx.focus_handle(),
+        }
     }
 
     /// `(id, name, nodes inside)` of each section, in the order the editor holds them.
@@ -37,7 +40,9 @@ impl SectionsPanel {
                             .graph
                             .nodes
                             .values()
-                            .filter(|node| !matches!(node.node_type.as_str(), "macro_entry" | "macro_exit"))
+                            .filter(|node| {
+                                !matches!(node.node_type.as_str(), "macro_entry" | "macro_exit")
+                            })
                             .count();
                         (subgraph.id.clone(), subgraph.name.clone(), nodes)
                     })
@@ -71,7 +76,13 @@ impl Render for SectionsPanel {
         let muted = cx.theme().muted_foreground;
         let hover = cx.theme().muted.opacity(0.4);
 
-        let mut list = div().id("sections-list").flex().flex_col().gap_0p5().overflow_y_scroll().flex_1();
+        let mut list = div()
+            .id("sections-list")
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .overflow_y_scroll()
+            .flex_1();
         for (index, (id, name, nodes)) in sections.iter().enumerate() {
             let id = id.clone();
             list = list.child(
@@ -100,7 +111,12 @@ impl Render for SectionsPanel {
                         });
                     }))
                     .child(div().flex_1().text_sm().truncate().child(name.clone()))
-                    .child(div().text_xs().text_color(muted).child(format!("{nodes} nodes"))),
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(format!("{nodes} nodes")),
+                    ),
             );
         }
         if sections.is_empty() {

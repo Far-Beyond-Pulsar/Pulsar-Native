@@ -1,7 +1,9 @@
 //! Virtualized commit list: a graph variant (Tree layout) and a compact
 //! avatar variant (Desktop layout).
 
-use super::common::{FONT_MONO, avatar, lane_color, pill, placeholder, relative_time, virtual_panel};
+use super::common::{
+    FONT_MONO, avatar, lane_color, pill, placeholder, relative_time, virtual_panel,
+};
 use crate::models::*;
 use crate::{GitManager, manager::GRAPH_ROW_HEIGHT};
 use gpui::{prelude::FluentBuilder as _, *};
@@ -46,20 +48,32 @@ pub(crate) fn render_commit_list(
                 "{} matching commit{}{}",
                 shown,
                 if shown == 1 { "" } else { "s" },
-                if searching { " so far, searching history…" } else { "" }
+                if searching {
+                    " so far, searching history…"
+                } else {
+                    ""
+                }
             )))
         });
 
     let body: AnyElement = if shown == 0 {
         placeholder(
             IconName::Search,
-            if searching { "Searching history…" } else { "No commits match the filter" },
+            if searching {
+                "Searching history…"
+            } else {
+                "No commits match the filter"
+            },
             cx,
         )
         .into_any_element()
     } else {
         let list = uniform_list(
-            if graph { "commit-graph-list" } else { "commit-compact-list" },
+            if graph {
+                "commit-graph-list"
+            } else {
+                "commit-compact-list"
+            },
             shown,
             cx.processor(move |gm, range: std::ops::Range<usize>, _window, cx| {
                 // Start the next page well before the end is reached.
@@ -150,7 +164,11 @@ fn graph_row(gm: &mut GitManager, commit: GraphCommit, cx: &mut Context<GitManag
         .pr_3()
         .rounded(radius)
         .cursor_pointer()
-        .bg(if selected { list_active } else { transparent_black() })
+        .bg(if selected {
+            list_active
+        } else {
+            transparent_black()
+        })
         .hover(move |s| s.bg(if selected { list_active } else { list_hover }))
         .when(selected, |this| this.border_l_2().border_color(accent))
         .on_mouse_down(
@@ -232,7 +250,11 @@ fn compact_row(
         .items_center()
         .rounded(radius)
         .cursor_pointer()
-        .bg(if selected { list_active } else { transparent_black() })
+        .bg(if selected {
+            list_active
+        } else {
+            transparent_black()
+        })
         .hover(move |s| s.bg(if selected { list_active } else { list_hover }))
         .when(selected, |this| this.border_l_2().border_color(accent))
         .on_mouse_down(
@@ -302,13 +324,19 @@ fn stroke(window: &mut Window, from: Point<Pixels>, to: Point<Pixels>, color: Hs
 }
 
 /// The lane drawing of one row: through lines, merges in, parents out, node.
-fn graph_cell(row: GraphRow, lanes: usize, merge: bool, background: Hsla) -> impl IntoElement + use<> {
+fn graph_cell(
+    row: GraphRow,
+    lanes: usize,
+    merge: bool,
+    background: Hsla,
+) -> impl IntoElement + use<> {
     let width = lanes as f32 * LANE_WIDTH + 6.0;
     canvas(
         |_, _, _| (),
         move |bounds, _, window, _| {
             let lane_x = |lane: usize| {
-                bounds.origin.x + px(3.0 + LANE_WIDTH * lane.min(lanes - 1) as f32 + LANE_WIDTH / 2.0)
+                bounds.origin.x
+                    + px(3.0 + LANE_WIDTH * lane.min(lanes - 1) as f32 + LANE_WIDTH / 2.0)
             };
             let top = bounds.origin.y;
             let bottom = top + bounds.size.height;
@@ -322,10 +350,20 @@ fn graph_cell(row: GraphRow, lanes: usize, merge: bool, background: Hsla) -> imp
                 }
             }
             for &(lane, color) in &row.incoming {
-                stroke(window, point(lane_x(lane), top), point(node_x, mid), lane_color(color));
+                stroke(
+                    window,
+                    point(lane_x(lane), top),
+                    point(node_x, mid),
+                    lane_color(color),
+                );
             }
             for &(lane, color) in &row.outgoing {
-                stroke(window, point(node_x, mid), point(lane_x(lane), bottom), lane_color(color));
+                stroke(
+                    window,
+                    point(node_x, mid),
+                    point(lane_x(lane), bottom),
+                    lane_color(color),
+                );
             }
 
             let radius = px(4.5);

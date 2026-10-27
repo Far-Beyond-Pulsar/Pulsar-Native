@@ -5,8 +5,8 @@
 use blueprint_editor_plugin::BlueprintEditorPanel;
 use gpui::*;
 use helio_graph_asset::{buffers, core_nodes, PinType};
-use ui::input::{InputEvent, InputState, TextInput};
 use ui::dock::{Panel, PanelEvent};
+use ui::input::{InputEvent, InputState, TextInput};
 use ui::{ActiveTheme as _, StyledExt as _};
 
 use crate::model;
@@ -25,15 +25,30 @@ impl BuffersPanel {
         cx: &mut Context<Self>,
     ) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search buffers…"));
-        cx.subscribe_in(&search, window, |this, input, _event: &InputEvent, _window, cx| {
-            this.query = input.read(cx).text().to_string().to_lowercase();
-            cx.notify();
-        })
+        cx.subscribe_in(
+            &search,
+            window,
+            |this, input, _event: &InputEvent, _window, cx| {
+                this.query = input.read(cx).text().to_string().to_lowercase();
+                cx.notify();
+            },
+        )
         .detach();
-        Self { editor, search, query: String::new(), focus_handle: cx.focus_handle() }
+        Self {
+            editor,
+            search,
+            query: String::new(),
+            focus_handle: cx.focus_handle(),
+        }
     }
 
-    fn add(&self, definition: &'static str, entry: String, window: &Window, cx: &mut Context<Self>) {
+    fn add(
+        &self,
+        definition: &'static str,
+        entry: String,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
         // Clicks land while the dock is being updated; touch the editor afterwards.
         let editor = self.editor.clone();
         let window_handle = window.window_handle();
@@ -84,13 +99,21 @@ impl Render for BuffersPanel {
         let hover = cx.theme().muted.opacity(0.4);
         let accent = cx.theme().accent;
 
-        let mut list = div().id("buffers-list").flex().flex_col().gap_0p5().overflow_y_scroll().flex_1();
+        let mut list = div()
+            .id("buffers-list")
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .overflow_y_scroll()
+            .flex_1();
         let mut heading: Option<&'static str> = None;
         for (index, (ty, name)) in known.iter().enumerate() {
             if !self.query.is_empty() && !name.to_lowercase().contains(&self.query) {
                 continue;
             }
-            let Some(entry) = buffers::entry(*ty, name) else { continue };
+            let Some(entry) = buffers::entry(*ty, name) else {
+                continue;
+            };
             let group = Self::heading(*ty);
             if heading != Some(group) {
                 heading = Some(group);
@@ -116,16 +139,16 @@ impl Render for BuffersPanel {
                     .rounded_sm()
                     .hover(|style| style.bg(hover))
                     .child(div().flex_1().text_sm().truncate().child(name.clone()))
-                    .child(
-                        pill(("get", index), "Get", accent).on_click(cx.listener(move |this, _, window, cx| {
+                    .child(pill(("get", index), "Get", accent).on_click(cx.listener(
+                        move |this, _, window, cx| {
                             this.add(core_nodes::BUFFER_GET, get_entry.clone(), window, cx);
-                        })),
-                    )
-                    .child(
-                        pill(("set", index), "Set", accent).on_click(cx.listener(move |this, _, window, cx| {
+                        },
+                    )))
+                    .child(pill(("set", index), "Set", accent).on_click(cx.listener(
+                        move |this, _, window, cx| {
                             this.add(core_nodes::BUFFER_SET, set_entry.clone(), window, cx);
-                        })),
-                    ),
+                        },
+                    ))),
             );
         }
         if known.is_empty() {
@@ -145,13 +168,9 @@ impl Render for BuffersPanel {
             .gap_1()
             .p_1()
             .child(TextInput::new(&self.search).text_sm())
-            .child(
-                div()
-                    .px_2()
-                    .text_xs()
-                    .text_color(muted)
-                    .child("Buffers are variables. Add as many Get and Set nodes as keep the graph tidy."),
-            )
+            .child(div().px_2().text_xs().text_color(muted).child(
+                "Buffers are variables. Add as many Get and Set nodes as keep the graph tidy.",
+            ))
             .child(list)
     }
 }

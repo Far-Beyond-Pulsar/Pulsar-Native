@@ -1,7 +1,7 @@
 //! Startup compatibility notices for known hardware/driver issues.
 
-use std::{path::PathBuf, sync::Arc};
 use std::process::Command;
+use std::{path::PathBuf, sync::Arc};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt as _;
@@ -11,8 +11,7 @@ use serde::Deserialize;
 use ui::{
     button::{Button, ButtonVariants as _},
     dropdown::{Dropdown, DropdownState},
-    h_flex, v_flex, ActiveTheme as _,
-    IndexPath,
+    h_flex, v_flex, ActiveTheme as _, IndexPath,
 };
 use ui_common::PulsarWindowExt as _;
 use window_manager::{PulsarWindow, WindowConfig};
@@ -236,8 +235,8 @@ impl PulsarWindow for CompatibilityNotice {
             .iter()
             .map(|(label, _)| gpui::SharedString::from(label.clone()))
             .collect();
-        let initial_backend = (!backend_alternatives.is_empty())
-            .then(|| IndexPath::default().row(0));
+        let initial_backend =
+            (!backend_alternatives.is_empty()).then(|| IndexPath::default().row(0));
         let backend_dropdown =
             cx.new(|cx| DropdownState::new(backend_options, initial_backend, window, cx));
         cx.new(|_| Self {

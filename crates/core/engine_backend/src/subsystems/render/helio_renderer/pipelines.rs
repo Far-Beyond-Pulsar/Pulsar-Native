@@ -48,7 +48,10 @@ pub fn register_preview_pipeline(
     replacing: Option<&str>,
 ) -> String {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    let id = format!("{PREVIEW_PREFIX}{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let id = format!(
+        "{PREVIEW_PREFIX}{}",
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
     let asset = Arc::new(asset);
     let nodes = Arc::new(graph_node_registry());
     let factory: PipelineFactory = Arc::new(move || {
@@ -145,8 +148,10 @@ pub fn offer_probe_device(device: wgpu::Device, queue: wgpu::Queue) {
 
 /// Builds the default graph on `device` (without locking it) and returns the
 /// pins its passes declare, and the SceneDB buffers the mirror registers.
-fn probe_on(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<helio_graph_asset::Probe, String> {
-
+fn probe_on(
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+) -> Result<helio_graph_asset::Probe, String> {
     let mut scene = pulsar_scenedb::SceneDb::new();
     let scene_db = crate::scene::ensure_gpu_mirror(&mut scene, device.clone(), queue.clone());
 
@@ -163,8 +168,11 @@ fn probe_on(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<helio_
         (std::mem::size_of::<helio_core::GpuCameraUniforms>() * 2) as u64,
         wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     );
-    let debug_camera =
-        buffer("Probe Debug Camera", 64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
+    let debug_camera = buffer(
+        "Probe Debug Camera",
+        64,
+        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    );
     let cull_stats = buffer(
         "Probe Cull Stats",
         64,
@@ -185,7 +193,10 @@ fn probe_on(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<helio_
     );
     // The registry as it is now: its pin table is shared, so the nodes it holds
     // get their pins when the result is applied.
-    let registry = node_registry_cell().read().map(|r| r.clone()).map_err(|_| "node registry is poisoned".to_string())?;
+    let registry = node_registry_cell()
+        .read()
+        .map(|r| r.clone())
+        .map_err(|_| "node registry is poisoned".to_string())?;
     helio_default_passes::graphs::probe_pins(&registry, &mut env)
 }
 
@@ -210,14 +221,16 @@ pub fn graph_pin_probe_error() -> Option<&'static str> {
 pub fn graph_pin_probe() -> Option<&'static helio_graph_asset::Probe> {
     static PROBE: OnceLock<Option<helio_graph_asset::Probe>> = OnceLock::new();
     PROBE
-        .get_or_init(|| match std::panic::catch_unwind(probe_run)
-            .unwrap_or_else(|_| Err("building the passes panicked".to_string()))
-        {
-            Ok(probe) => Some(probe),
-            Err(error) => {
-                tracing::warn!("Render graph nodes have no resource pins: {error}");
-                let _ = PROBE_ERROR.set(error);
-                None
+        .get_or_init(|| {
+            match std::panic::catch_unwind(probe_run)
+                .unwrap_or_else(|_| Err("building the passes panicked".to_string()))
+            {
+                Ok(probe) => Some(probe),
+                Err(error) => {
+                    tracing::warn!("Render graph nodes have no resource pins: {error}");
+                    let _ = PROBE_ERROR.set(error);
+                    None
+                }
             }
         })
         .as_ref()
@@ -247,7 +260,10 @@ pub fn graph_node_registry() -> helio_graph_asset::NodeRegistry {
             }
         });
     }
-    node_registry_cell().read().map(|r| r.clone()).unwrap_or_default()
+    node_registry_cell()
+        .read()
+        .map(|r| r.clone())
+        .unwrap_or_default()
 }
 
 /// The default deferred pipeline as a graph, wired from the probed pins: the
@@ -357,7 +373,10 @@ pub fn set_level_pipeline(id: Option<String>) {
 }
 
 pub fn level_pipeline() -> Option<String> {
-    level_pipeline_cell().read().ok().and_then(|slot| slot.clone())
+    level_pipeline_cell()
+        .read()
+        .ok()
+        .and_then(|slot| slot.clone())
 }
 
 /// The `world_settings.render_pipeline` of a level file's JSON text, if it
@@ -404,13 +423,18 @@ mod tests {
     #[test]
     fn project_pipelines_list_after_built_ins_and_clear() {
         let factory: PipelineFactory = Arc::new(|| {
-            Box::new(|_ctx: helio::PassBuildContext<'_>| -> helio_core::RenderGraph {
-                unreachable!("not built in this test")
-            }) as Box<dyn IntoGraph>
+            Box::new(
+                |_ctx: helio::PassBuildContext<'_>| -> helio_core::RenderGraph {
+                    unreachable!("not built in this test")
+                },
+            ) as Box<dyn IntoGraph>
         });
         register_project_pipeline("a/x.rendergraph", "X", "", factory);
         let listed = list_pipelines();
-        assert_eq!(listed.last().map(|p| p.id.as_str()), Some("a/x.rendergraph"));
+        assert_eq!(
+            listed.last().map(|p| p.id.as_str()),
+            Some("a/x.rendergraph")
+        );
         assert_eq!(
             resolve_pipeline(Some("a/x.rendergraph")).as_deref(),
             Some("a/x.rendergraph")
@@ -427,9 +451,15 @@ mod level_tests {
     #[test]
     fn reads_the_pipeline_a_level_names() {
         let level = r#"{"world_settings":{"render_pipeline":"graphs/a.rendergraph"}}"#;
-        assert_eq!(render_pipeline_of_level(level).as_deref(), Some("graphs/a.rendergraph"));
+        assert_eq!(
+            render_pipeline_of_level(level).as_deref(),
+            Some("graphs/a.rendergraph")
+        );
         assert_eq!(render_pipeline_of_level(r#"{"world_settings":{}}"#), None);
-        assert_eq!(render_pipeline_of_level(r#"{"world_settings":{"render_pipeline":""}}"#), None);
+        assert_eq!(
+            render_pipeline_of_level(r#"{"world_settings":{"render_pipeline":""}}"#),
+            None
+        );
         assert_eq!(render_pipeline_of_level("not json"), None);
     }
 }

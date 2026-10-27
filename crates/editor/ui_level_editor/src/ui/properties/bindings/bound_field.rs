@@ -14,7 +14,9 @@ use ui::{
     v_flex, ActiveTheme, Sizable,
 };
 
-use super::field_bindings::{BoolFieldBinding, NumberFieldBinding, FieldBinding, StringFieldBinding};
+use super::field_bindings::{
+    BoolFieldBinding, FieldBinding, NumberFieldBinding, StringFieldBinding,
+};
 use engine_backend::scene::SharedScene;
 
 // ============================================================================

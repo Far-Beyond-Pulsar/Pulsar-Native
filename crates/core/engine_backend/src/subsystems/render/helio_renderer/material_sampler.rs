@@ -101,7 +101,11 @@ impl SamplerSettings {
                 self.anisotropy.max(1),
             ),
             Filter::Bilinear => (wgpu::FilterMode::Linear, wgpu::MipmapFilterMode::Nearest, 1),
-            Filter::Nearest => (wgpu::FilterMode::Nearest, wgpu::MipmapFilterMode::Nearest, 1),
+            Filter::Nearest => (
+                wgpu::FilterMode::Nearest,
+                wgpu::MipmapFilterMode::Nearest,
+                1,
+            ),
         };
         let address = match self.wrap {
             Wrap::Repeat => wgpu::AddressMode::Repeat,
@@ -146,20 +150,46 @@ mod tests {
             SamplerSettings::default(),
             "unknown words mean the defaults"
         );
-        assert_eq!(SamplerSettings::from_values(None, Some(0), None).anisotropy, 1);
-        assert_eq!(SamplerSettings::from_values(None, Some(99), None).anisotropy, 16);
+        assert_eq!(
+            SamplerSettings::from_values(None, Some(0), None).anisotropy,
+            1
+        );
+        assert_eq!(
+            SamplerSettings::from_values(None, Some(99), None).anisotropy,
+            16
+        );
     }
 
     #[test]
     fn anisotropy_only_goes_with_filters_wgpu_accepts_it_for() {
         for filter in [Filter::Bilinear, Filter::Nearest] {
-            let descriptor = SamplerSettings { filter, anisotropy: 16, wrap: Wrap::Repeat }.descriptor();
-            assert_eq!(descriptor.anisotropy_clamp, 1, "{filter:?} cannot be anisotropic");
+            let descriptor = SamplerSettings {
+                filter,
+                anisotropy: 16,
+                wrap: Wrap::Repeat,
+            }
+            .descriptor();
+            assert_eq!(
+                descriptor.anisotropy_clamp, 1,
+                "{filter:?} cannot be anisotropic"
+            );
         }
-        let nearest = SamplerSettings { filter: Filter::Nearest, ..Default::default() }.descriptor();
+        let nearest = SamplerSettings {
+            filter: Filter::Nearest,
+            ..Default::default()
+        }
+        .descriptor();
         assert_eq!(nearest.mag_filter, wgpu::FilterMode::Nearest);
-        let bilinear = SamplerSettings { filter: Filter::Bilinear, ..Default::default() }.descriptor();
-        assert_eq!(bilinear.mipmap_filter, wgpu::MipmapFilterMode::Nearest, "no blend between mips");
+        let bilinear = SamplerSettings {
+            filter: Filter::Bilinear,
+            ..Default::default()
+        }
+        .descriptor();
+        assert_eq!(
+            bilinear.mipmap_filter,
+            wgpu::MipmapFilterMode::Nearest,
+            "no blend between mips"
+        );
     }
 
     /// Every combination must be a sampler a real device accepts: wgpu panics
@@ -172,7 +202,8 @@ mod tests {
             eprintln!("no GPU adapter; skipping");
             return;
         };
-        let Ok((device, _queue)) = pollster::block_on(adapter.request_device(&Default::default())) else {
+        let Ok((device, _queue)) = pollster::block_on(adapter.request_device(&Default::default()))
+        else {
             eprintln!("no GPU device; skipping");
             return;
         };
@@ -180,9 +211,19 @@ mod tests {
             for wrap in [Wrap::Repeat, Wrap::Clamp] {
                 for anisotropy in [1, 2, 8, 16] {
                     let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-                    let _sampler = device.create_sampler(&SamplerSettings { filter, anisotropy, wrap }.descriptor());
+                    let _sampler = device.create_sampler(
+                        &SamplerSettings {
+                            filter,
+                            anisotropy,
+                            wrap,
+                        }
+                        .descriptor(),
+                    );
                     let error = pollster::block_on(scope.pop());
-                    assert!(error.is_none(), "{filter:?}/{wrap:?}/{anisotropy}: {error:?}");
+                    assert!(
+                        error.is_none(),
+                        "{filter:?}/{wrap:?}/{anisotropy}: {error:?}"
+                    );
                 }
             }
         }

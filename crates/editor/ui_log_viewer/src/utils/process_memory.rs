@@ -133,7 +133,9 @@ pub fn summarize(regions: impl IntoIterator<Item = RawRegion>) -> ProcessMemory 
     }
     memory.totals = totals.into_values().collect();
     memory.totals.sort_unstable_by(|a, b| b.bytes.cmp(&a.bytes));
-    memory.largest.sort_unstable_by(|a, b| b.bytes.cmp(&a.bytes));
+    memory
+        .largest
+        .sort_unstable_by(|a, b| b.bytes.cmp(&a.bytes));
     memory.largest.truncate(LARGEST_KEPT);
     memory
 }
@@ -200,9 +202,24 @@ mod tests {
     #[test]
     fn write_combined_regions_are_counted_apart_from_heap() {
         let memory = summarize([
-            RawRegion { base: 0x1000, bytes: 256 * MB, kind: RegionKind::Private, protect: 0x404 },
-            RawRegion { base: 0x2000, bytes: 64 * MB, kind: RegionKind::Private, protect: 0x04 },
-            RawRegion { base: 0x3000, bytes: 4 * MB, kind: RegionKind::Image, protect: 0x20 },
+            RawRegion {
+                base: 0x1000,
+                bytes: 256 * MB,
+                kind: RegionKind::Private,
+                protect: 0x404,
+            },
+            RawRegion {
+                base: 0x2000,
+                bytes: 64 * MB,
+                kind: RegionKind::Private,
+                protect: 0x04,
+            },
+            RawRegion {
+                base: 0x3000,
+                bytes: 4 * MB,
+                kind: RegionKind::Image,
+                protect: 0x20,
+            },
         ]);
         assert_eq!(memory.committed, 324 * MB);
         assert_eq!(memory.private, 320 * MB);

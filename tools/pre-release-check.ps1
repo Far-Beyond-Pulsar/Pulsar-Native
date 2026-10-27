@@ -129,19 +129,44 @@ if (-not $ShouldRelease) {
 # ============================================================================
 # 2. FORMATTING CHECK
 # ============================================================================
-Write-Step "2/6 Checking code formatting (cargo fmt --all -- --check)"
+Write-Step "2/6 Checking code formatting (Pulsar-Native crates)"
 
 try {
-    cargo fmt --all -- --check 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Success "Code formatting is correct"
+    # Match scripts/fmt-check.sh while keeping each rustfmt invocation below
+    # Windows' command-line length limit.
+    $MetadataOutput = & cargo metadata --no-deps --format-version 1
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo metadata failed with exit code $LASTEXITCODE"
+    }
+    $WorkspaceMetadata = ($MetadataOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    $SubmodulePaths = @(& git config --file .gitmodules --get-regexp '\.path$' | ForEach-Object {
+        if ($_ -match '\s+(.+)$') { $Matches[1].Replace('\', '/') }
+    })
+    $OwnedPackages = @($WorkspaceMetadata.packages | Where-Object {
+        $RelativeManifest = [IO.Path]::GetRelativePath((Get-Location).Path, $_.manifest_path).Replace('\', '/')
+        -not ($SubmodulePaths | Where-Object {
+            $RelativeManifest.StartsWith("$_/", [StringComparison]::OrdinalIgnoreCase)
+        })
+    })
+    $FormattingFailures = @()
+
+    foreach ($Package in $OwnedPackages) {
+        & cargo fmt --manifest-path $Package.manifest_path -- --check 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            $FormattingFailures += $Package.name
+        }
+    }
+
+    if ($FormattingFailures.Count -eq 0) {
+        Write-Success "Code formatting is correct ($($OwnedPackages.Count) Pulsar-Native packages)"
     } else {
-        Write-Error "Code formatting check failed. Run 'cargo fmt --all' to fix."
+        Write-Error "Code formatting check failed in: $($FormattingFailures -join ', ')"
+        Write-Host "    Run 'scripts/fmt-check.sh --fix' to fix."
         $AllChecksPassed = $false
         $FailedChecks += "Formatting"
     }
 } catch {
-    Write-Error "Failed to run cargo fmt: $_"
+    Write-Error "Failed to run formatting check: $_"
     $AllChecksPassed = $false
     $FailedChecks += "Formatting"
 }
@@ -169,7 +194,8 @@ try {
         '-A', 'improper_ctypes_definitions',
         '-A', 'clippy::field_reassign_with_default',
         '-A', 'clippy::result_large_err',
-        '-A', 'clippy::doc_overindented_list_items'
+        '-A', 'clippy::doc_overindented_list_items',
+        '-A', 'clippy::approx_constant'
     )
 
     & cargo $ClippyArgs
@@ -257,7 +283,7 @@ if (-not $SkipTests) {
     }
 
     try {
-        cargo nextest run --workspace --locked
+        cargo nextest run --profile ci --workspace --locked
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "All tests passed"

@@ -135,7 +135,10 @@ fn import_parts(
     surfaces: Vec<SourceSurface>,
 ) -> Result<Imported, String> {
     let dir = asset.parent().unwrap_or_else(|| Path::new("."));
-    let stem = source.file_stem().and_then(|s| s.to_str()).unwrap_or("model");
+    let stem = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model");
     let written = mesh_cache::write_mesh_parts(scene, dir, stem)?;
     let parts: Vec<ImportedPart> = written
         .iter()
@@ -212,7 +215,12 @@ fn surfaces_of(scene: &helio_asset_compat::ConvertedScene, source: &Path) -> Vec
                     })
                     .collect(),
             };
-            crate::companion::complete_from_siblings(&mut surface, model_stem, only_surface, &nearby);
+            crate::companion::complete_from_siblings(
+                &mut surface,
+                model_stem,
+                only_surface,
+                &nearby,
+            );
             surface
         })
         .collect()

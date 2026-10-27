@@ -49,7 +49,11 @@ pub fn from_matrix(m: DMat4) -> Transform {
     let (y, x, z) = rotation.to_euler(EulerRot::YXZ);
     Transform {
         position: translation.to_array(),
-        rotation: [x.to_degrees() as f32, y.to_degrees() as f32, z.to_degrees() as f32],
+        rotation: [
+            x.to_degrees() as f32,
+            y.to_degrees() as f32,
+            z.to_degrees() as f32,
+        ],
         scale: scale.as_vec3().to_array(),
     }
 }
@@ -158,8 +162,14 @@ pub const PARENT_RELATIVE_FILE_VERSION: &str = "2.2";
 /// objects are loaded.
 pub fn file_has_world_space_transforms(version: &str) -> bool {
     let mut parts = version.trim().split('.');
-    let major = parts.next().and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
-    let minor = parts.next().and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
+    let major = parts
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+        .unwrap_or(0);
+    let minor = parts
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+        .unwrap_or(0);
     (major, minor) < (2, 2)
 }
 
@@ -200,7 +210,10 @@ pub fn convert_legacy_world_transforms(world: &mut World, entities: &[Entity]) {
 
 /// [`convert_legacy_world_transforms`] over every object in `world`.
 pub fn convert_all_legacy_world_transforms(world: &mut World) {
-    let entities: Vec<Entity> = world.query::<&Transform>().map(|(entity, _)| entity).collect();
+    let entities: Vec<Entity> = world
+        .query::<&Transform>()
+        .map(|(entity, _)| entity)
+        .collect();
     convert_legacy_world_transforms(world, &entities);
 }
 
@@ -267,13 +280,23 @@ mod tests {
         let before = world_transform_of(&world, object).unwrap();
         reparent_keeping_world(&mut world, object, Some(folder)).unwrap();
         let after = world_transform_of(&world, object).unwrap();
-        assert!(near(before.position, after.position), "{before:?} {after:?}");
+        assert!(
+            near(before.position, after.position),
+            "{before:?} {after:?}"
+        );
         // Moving the folder now moves the object, and only because of the link.
         let mut moved = *world.get::<Transform>(folder).unwrap();
         moved.position[0] += 10.0;
         *world.get_mut::<Transform>(folder).unwrap() = moved;
         let later = world_transform_of(&world, object).unwrap();
-        assert!(near(later.position, [after.position[0] + 10.0, after.position[1], after.position[2]]));
+        assert!(near(
+            later.position,
+            [
+                after.position[0] + 10.0,
+                after.position[1],
+                after.position[2]
+            ]
+        ));
     }
 
     #[test]
@@ -282,7 +305,10 @@ mod tests {
         let parent = spawn(&mut world, None, at([10.0, 0.0, 0.0]));
         let child = spawn(&mut world, Some(parent), Transform::default());
         set_world_transform(&mut world, child, at([12.0, 0.0, 0.0]));
-        assert!(near(world.get::<Transform>(child).unwrap().position, [2.0, 0.0, 0.0]));
+        assert!(near(
+            world.get::<Transform>(child).unwrap().position,
+            [2.0, 0.0, 0.0]
+        ));
     }
 
     #[test]
@@ -292,7 +318,13 @@ mod tests {
         // Saved as world-space: the child sat at x = 11.
         let child = spawn(&mut world, Some(parent), at([11.0, 2.0, 3.0]));
         convert_all_legacy_world_transforms(&mut world);
-        assert!(near(world.get::<Transform>(child).unwrap().position, [1.0, 2.0, 3.0]));
-        assert!(near(world.get::<Transform>(parent).unwrap().position, [10.0, 0.0, 0.0]));
+        assert!(near(
+            world.get::<Transform>(child).unwrap().position,
+            [1.0, 2.0, 3.0]
+        ));
+        assert!(near(
+            world.get::<Transform>(parent).unwrap().position,
+            [10.0, 0.0, 0.0]
+        ));
     }
 }

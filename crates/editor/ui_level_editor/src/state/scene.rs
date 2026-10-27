@@ -472,7 +472,9 @@ impl SceneDomain {
         match restored {
             Ok(()) => {
                 // Displays that came back (or went) show (or drop) their levels.
-                engine_backend::scene::sublevel_display::sync_level_instances(&mut self.world_mut());
+                engine_backend::scene::sublevel_display::sync_level_instances(
+                    &mut self.world_mut(),
+                );
                 true
             }
             Err(error) => {

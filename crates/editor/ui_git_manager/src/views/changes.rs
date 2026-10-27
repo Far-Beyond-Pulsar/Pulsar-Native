@@ -33,7 +33,8 @@ pub(crate) fn render_changes_panel(
         + gm.repo_state.untracked_files.len();
     let body: AnyElement = if gm.changes_rows.is_empty() {
         if total > 0 {
-            placeholder(IconName::Search, "No changed files match the filter", cx).into_any_element()
+            placeholder(IconName::Search, "No changed files match the filter", cx)
+                .into_any_element()
         } else {
             placeholder(IconName::Check, "No local changes", cx).into_any_element()
         }
@@ -55,9 +56,17 @@ pub(crate) fn render_changes_panel(
     };
 
     let select_all = flat.then(|| {
-        let all_staged = changed_count > 0 && gm.changes_rows.iter().all(|row| {
-            matches!(row, ChangeRow::Flat { staged: true, unstaged: false, .. })
-        });
+        let all_staged = changed_count > 0
+            && gm.changes_rows.iter().all(|row| {
+                matches!(
+                    row,
+                    ChangeRow::Flat {
+                        staged: true,
+                        unstaged: false,
+                        ..
+                    }
+                )
+            });
         h_flex()
             .h(px(30.))
             .flex_shrink_0()
@@ -125,7 +134,11 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
             count,
             collapsed,
         } => {
-            let key = if staged { "section:staged" } else { "section:changes" };
+            let key = if staged {
+                "section:staged"
+            } else {
+                "section:changes"
+            };
             h_flex()
                 .id(SharedString::from(key))
                 .w_full()
@@ -142,9 +155,13 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
                     }),
                 )
                 .child(
-                    Icon::new(if collapsed { IconName::ChevronRight } else { IconName::ChevronDown })
-                        .size(px(12.))
-                        .text_color(muted_fg),
+                    Icon::new(if collapsed {
+                        IconName::ChevronRight
+                    } else {
+                        IconName::ChevronDown
+                    })
+                    .size(px(12.))
+                    .text_color(muted_fg),
                 )
                 .child(
                     div()
@@ -152,11 +169,22 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
                         .text_xs()
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(muted_fg)
-                        .child(format!("{} ({})", if staged { "Staged" } else { "Changes" }, count)),
+                        .child(format!(
+                            "{} ({})",
+                            if staged { "Staged" } else { "Changes" },
+                            count
+                        )),
                 )
                 .child(
                     Button::new(SharedString::from(format!("section-action-{}", staged)))
-                        .icon(Icon::new(if staged { IconName::Minus } else { IconName::Plus }).text_color(warning))
+                        .icon(
+                            Icon::new(if staged {
+                                IconName::Minus
+                            } else {
+                                IconName::Plus
+                            })
+                            .text_color(warning),
+                        )
                         .ghost()
                         .compact()
                         .tooltip(if staged { "Unstage all" } else { "Stage all" })
@@ -195,17 +223,30 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
                     }),
                 )
                 .child(
-                    Icon::new(if collapsed { IconName::ChevronRight } else { IconName::ChevronDown })
-                        .size(px(12.))
-                        .text_color(muted_fg),
+                    Icon::new(if collapsed {
+                        IconName::ChevronRight
+                    } else {
+                        IconName::ChevronDown
+                    })
+                    .size(px(12.))
+                    .text_color(muted_fg),
                 )
                 .child(
-                    Icon::new(if collapsed { IconName::Folder } else { IconName::FolderOpen })
-                        .size(px(13.))
-                        .text_color(muted_fg),
+                    Icon::new(if collapsed {
+                        IconName::Folder
+                    } else {
+                        IconName::FolderOpen
+                    })
+                    .size(px(13.))
+                    .text_color(muted_fg),
                 )
                 .child(div().flex_1().text_xs().text_color(foreground).child(name))
-                .child(div().text_size(px(10.)).text_color(muted_fg).child(count.to_string()))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(muted_fg)
+                        .child(count.to_string()),
+                )
                 .into_any_element()
         }
         ChangeRow::File {
@@ -223,7 +264,10 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
             let for_select = change.clone();
             let for_stage = change.path.clone();
             h_flex()
-                .id(SharedString::from(format!("file-{}-{}", staged, change.path)))
+                .id(SharedString::from(format!(
+                    "file-{}-{}",
+                    staged, change.path
+                )))
                 .w_full()
                 .h(px(ROW_HEIGHT))
                 .pl(px(4.0 + INDENT * depth as f32 + 16.0))
@@ -232,7 +276,11 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
                 .items_center()
                 .rounded(radius)
                 .cursor_pointer()
-                .bg(if selected { list_active } else { transparent_black() })
+                .bg(if selected {
+                    list_active
+                } else {
+                    transparent_black()
+                })
                 .hover(move |s| s.bg(if selected { list_active } else { list_hover }))
                 .when(selected, |this| this.border_l_2().border_color(accent))
                 .on_mouse_down(
@@ -259,23 +307,34 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
                         .text_xs()
                         .text_color(foreground)
                         .child(match &change.old_path {
-                            Some(old) => format!("{} → {}", old.rsplit('/').next().unwrap_or(old), change.file_name()),
+                            Some(old) => format!(
+                                "{} → {}",
+                                old.rsplit('/').next().unwrap_or(old),
+                                change.file_name()
+                            ),
                             None => change.file_name().to_string(),
                         }),
                 )
                 .child(
-                    Button::new(SharedString::from(format!("stage-{}-{}", staged, change.path)))
-                        .icon(if staged { IconName::Minus } else { IconName::Plus })
-                        .ghost()
-                        .compact()
-                        .tooltip(if staged { "Unstage" } else { "Stage" })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if staged {
-                                this.unstage_file(for_stage.clone(), cx);
-                            } else {
-                                this.stage_file(for_stage.clone(), cx);
-                            }
-                        })),
+                    Button::new(SharedString::from(format!(
+                        "stage-{}-{}",
+                        staged, change.path
+                    )))
+                    .icon(if staged {
+                        IconName::Minus
+                    } else {
+                        IconName::Plus
+                    })
+                    .ghost()
+                    .compact()
+                    .tooltip(if staged { "Unstage" } else { "Stage" })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if staged {
+                            this.unstage_file(for_stage.clone(), cx);
+                        } else {
+                            this.stage_file(for_stage.clone(), cx);
+                        }
+                    })),
                 )
                 .into_any_element()
         }
@@ -304,7 +363,11 @@ fn render_row(gm: &mut GitManager, row: ChangeRow, cx: &mut Context<GitManager>)
                 .items_center()
                 .rounded(radius)
                 .cursor_pointer()
-                .bg(if selected { list_active } else { transparent_black() })
+                .bg(if selected {
+                    list_active
+                } else {
+                    transparent_black()
+                })
                 .hover(move |s| s.bg(if selected { list_active } else { list_hover }))
                 .when(selected, |this| this.border_l_2().border_color(accent))
                 .on_mouse_down(
