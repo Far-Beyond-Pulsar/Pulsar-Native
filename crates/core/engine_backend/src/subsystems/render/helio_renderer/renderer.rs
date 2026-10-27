@@ -628,6 +628,7 @@ pub struct HelioRenderer {
     /// Left-click/left-release events queued by the UI thread, drained in
     /// order at the top of every `render_frame` -- see [`PendingPointerEvent`].
     pub pending_pointer_events: Arc<Mutex<Vec<PendingPointerEvent>>>,
+    pointer_events_scratch: Vec<PendingPointerEvent>,
     /// The toolbar's Bloom toggle; see [`HelioEditorMailbox::set_viewport_bloom`].
     pub viewport_bloom: Arc<AtomicBool>,
     /// The toolbar's Realtime toggle; see [`Self::set_viewport_realtime`].
@@ -680,7 +681,8 @@ pub struct HelioRenderer {
     pub pending_errors: Arc<Mutex<Vec<String>>>,
 
     inner: Option<HelioInner>,
-    applied_graph_settings: Option<ProjectGraphSettings>,
+    applied_graph_settings: Option<Arc<ProjectGraphSettings>>,
+    graph_settings_cache: ProjectGraphSettingsCache,
     /// The pipeline the level asks for (World Settings); see
     /// [`HelioEditorMailbox::set_render_pipeline`].
     requested_pipeline: super::pipelines::RequestedPipeline,
@@ -772,26 +774,7 @@ struct HelioInner {
     spline_lines: Option<helio_component::components::SplineLines>,
 }
 
-/// The project settings the renderer's graph is built from: a change to
-/// any of them rebuilds it (live ones apply per frame).
-#[derive(Clone)]
-struct ProjectGraphSettings {
-    renderer: helio::helio_settings::Resolved,
-    voxels: helio::helio_settings::Resolved,
-}
-
-impl ProjectGraphSettings {
-    fn load() -> Self {
-        Self {
-            renderer: super::project_settings::renderer(),
-            voxels: super::project_settings::voxels(),
-        }
-    }
-
-    fn same_graph(&self, other: &Self) -> bool {
-        self.renderer.same_graph(&other.renderer) && self.voxels.same_graph(&other.voxels)
-    }
-}
+use super::project_settings::{ProjectGraphSettings, ProjectGraphSettingsCache};
 
 impl HelioRenderer {
     /// The virtual-geometry streaming runtime (readiness, settings), once
@@ -825,6 +808,7 @@ impl HelioRenderer {
             pending_camera_state: Arc::new(Mutex::new(None)),
             pending_deselect: Arc::new(AtomicBool::new(false)),
             pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
+            pointer_events_scratch: Vec::new(),
             // Matches the toolbar's default until the UI reports its state.
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             viewport_realtime: Arc::new(AtomicBool::new(true)),
@@ -850,6 +834,7 @@ impl HelioRenderer {
             reported_device_loss: false,
             inner: None,
             applied_graph_settings: None,
+            graph_settings_cache: ProjectGraphSettingsCache::new(),
             requested_pipeline: Default::default(),
             applied_pipeline: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -1014,13 +999,15 @@ impl HelioRenderer {
 
         // Graph-affecting project settings rebuild at a frame boundary. This
         // keeps pass topology and its GPU allocations in sync with the UI.
-        let graph_settings = ProjectGraphSettings::load();
+        let graph_settings = self.graph_settings_cache.load();
         if self.inner.is_some()
-            && self
-                .applied_graph_settings
-                .as_ref()
-                .is_some_and(|applied| !applied.same_graph(&graph_settings))
+            && self.applied_graph_settings.as_ref().is_some_and(|applied| {
+                !Arc::ptr_eq(applied, &graph_settings) && !applied.same_graph(&graph_settings)
+            })
         {
+            tracing::info!(
+                "Rebuilding Helio renderer because graph-affecting project settings changed"
+            );
             self.inner = None;
             self.applied_graph_settings = None;
             self.reset_taa_next_frame = true;
@@ -1031,6 +1018,11 @@ impl HelioRenderer {
         let wanted_pipeline =
             super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
         if self.inner.is_some() && self.applied_pipeline != wanted_pipeline {
+            tracing::info!(
+                previous_pipeline = ?self.applied_pipeline,
+                wanted_pipeline = ?wanted_pipeline,
+                "Rebuilding Helio renderer because the selected render pipeline changed"
+            );
             self.inner = None;
             self.applied_graph_settings = None;
             self.reset_taa_next_frame = true;
@@ -1132,6 +1124,8 @@ impl HelioRenderer {
 
             let (yaw, pitch) = self.cam.local_yaw_pitch();
             tracing::info!(
+                width,
+                height,
                 "[HELIO] Renderer initialized - camera at {:?}, yaw={yaw}, pitch={pitch}",
                 self.cam.position,
             );
@@ -1191,12 +1185,13 @@ impl HelioRenderer {
         // `handle_left_release` already set `self.gizmo_dirty = true`
         // internally, so processing them here needs no extra plumbing to keep
         // this frame from idling out on a drag-release commit.
-        let pending_pointer_events = {
+        let mut pending_pointer_events = {
             profiling::profile_scope!("helio_take_pending_pointer_events");
-            self.pending_pointer_events
-                .lock()
-                .map(|mut events| std::mem::take(&mut *events))
-                .unwrap_or_default()
+            let mut batch = std::mem::take(&mut self.pointer_events_scratch);
+            if let Ok(mut events) = self.pending_pointer_events.lock() {
+                std::mem::swap(&mut batch, &mut *events);
+            }
+            batch
         };
         #[cfg(feature = "editor-ui")]
         let _pointer_events_profile = (!pending_pointer_events.is_empty()).then(|| {
@@ -1208,7 +1203,7 @@ impl HelioRenderer {
         });
         if !pending_pointer_events.is_empty() {
             profiling::profile_scope!("helio_pointer_events");
-            for event in pending_pointer_events {
+            for event in pending_pointer_events.drain(..) {
                 match event {
                     PendingPointerEvent::MouseMove { norm_x, norm_y } => {
                         profiling::profile_scope!("helio_handle_mouse_move");
@@ -1233,6 +1228,7 @@ impl HelioRenderer {
                 }
             }
         }
+        self.pointer_events_scratch = pending_pointer_events;
         self.resolve_voxel_brushes();
         phases.mark("pointer");
 
@@ -1416,6 +1412,11 @@ impl HelioRenderer {
             #[cfg(feature = "editor-ui")]
             let _engine_resize_diagnostic = (width, height, scene_revision, self.frame_count);
             profiling::profile_scope!("helio_resize");
+            tracing::debug!(
+                from = ?self.viewport_size,
+                to = ?(width, height),
+                "Resizing Helio renderer in place"
+            );
             inner.scene.renderer.set_render_size(width, height);
             self.viewport_size = (width, height);
         }
