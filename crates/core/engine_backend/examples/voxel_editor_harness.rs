@@ -24,6 +24,10 @@
 //!   drag stroke across the view through the editor's pointer queue (op:
 //!   dig, build, paint; tool: stamp, flatten, smooth), then release, settle
 //!   and capture; logs per-frame times and the edits the journal gained.
+//! - `world:<earth|moon|desert|blocks>`: a ready-made voxel world added to
+//!   the level as the editor's Create Voxel Terrain does
+//!   (`scene::voxel_presets`), its camera the level's; applied before the
+//!   first frame wherever the step stands.
 //! - `set:<group>.<key>=<value>`: a project setting (`rendering.foliage_range=200`;
 //!   the groups are Helio's, `helio_settings::GROUPS`), applied before the
 //!   first frame wherever the step stands.
@@ -489,8 +493,20 @@ fn main() {
             .unwrap_or_else(|e| panic!("set {path}: {e:?}"));
         println!("HARNESS setting {path} = {value:?}");
     }
+    // `world:` steps: ready-made worlds, as the editor adds them.
+    let mut camera = extras.editor_camera;
+    for step in steps.iter().filter_map(|s| s.strip_prefix("world:")) {
+        use engine_backend::scene::voxel_presets::{add_voxel_world, VoxelWorldPreset};
+        let preset = VoxelWorldPreset::ALL
+            .into_iter()
+            .find(|preset| format!("{preset:?}").eq_ignore_ascii_case(step))
+            .unwrap_or_else(|| panic!("world:{step}: no such world"));
+        let setup = add_voxel_world(&mut scene.write().world, preset).expect("add the world");
+        println!("HARNESS world {preset:?}: {setup:?}");
+        camera = setup.camera.or(camera);
+    }
     let mut renderer = HelioRenderer::new(scene.clone());
-    if let Some(camera) = extras.editor_camera {
+    if let Some(camera) = camera {
         renderer.set_editor_camera_state(EditorCameraState {
             position: camera.position,
             yaw: camera.yaw,
@@ -651,7 +667,7 @@ fn main() {
                 h.capture(&format!("drag_{n}"));
             }
             // Applied before the first frame.
-            "set" => {}
+            "set" | "world" => {}
             "debug" => {
                 // The renderer's debug view for the views after (the
                 // toolbar's view mode; 0 lit, 26 the voxel sun).

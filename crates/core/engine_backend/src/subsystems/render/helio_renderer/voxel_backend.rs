@@ -1,8 +1,6 @@
-//! Voxel renderers for SceneDB voxel sources: the planet renderer draws
-//! worlds (`VoxelTerrainComponent`) from their generator and journal, the
-//! mesh renderer draws voxel objects (`VoxelComponent`). Each takes the rows
-//! it supports, or an object's explicit `renderer_id`, and translates them
-//! into its frame.
+//! Voxel renderers for SceneDB voxel worlds: the planet renderer draws
+//! worlds (`VoxelTerrainComponent`) from their generator and journal. Each
+//! backend takes the rows it supports and translates them into its frame.
 
 use std::sync::{Arc, Mutex};
 
@@ -231,13 +229,12 @@ pub trait VoxelRenderBackend: Send {
     }
     /// The host applied `commits` (`edit_ray`'s) to their worlds' journals.
     fn stamped(&self, _commits: &[VoxelBrushCommit]) {}
-    /// Used only when a source leaves its renderer ID empty. Explicit IDs
-    /// always win, and an ambiguous automatic match is reported to the host.
+    /// Whether this backend draws `source`; a source two backends support
+    /// is reported to the host.
     fn supports(&self, _source: &VoxelSceneEntry) -> bool {
         false
     }
-    /// The backend's GBuffer pass, if it draws with one (a backend that
-    /// uploads ordinary mesh rows has none).
+    /// The backend's GBuffer pass, if it draws with one.
     fn pass_factory(&self) -> Option<VoxelPassFactory>;
     fn publish_frame(
         &mut self,
@@ -297,9 +294,7 @@ impl VoxelBackendRegistry {
         let mut errors = Vec::new();
         for entry in entries.iter().filter(|entry| entry.visible) {
             for backend in &self.backends {
-                if entry.renderer_id == backend.renderer_id()
-                    || (entry.renderer_id.is_empty() && backend.supports(entry))
-                {
+                if backend.supports(entry) {
                     if let Err(error) = backend.configure_appearance(renderer, entry) {
                         errors.push(error);
                     }
@@ -317,10 +312,7 @@ impl VoxelBackendRegistry {
             .find_map(|entry| {
                 self.backends
                     .iter()
-                    .filter(|backend| {
-                        entry.renderer_id == backend.renderer_id()
-                            || (entry.renderer_id.is_empty() && backend.supports(entry))
-                    })
+                    .filter(|backend| backend.supports(entry))
                     .find_map(|backend| backend.local_up(entry, eye))
             })
     }
@@ -342,10 +334,7 @@ impl VoxelBackendRegistry {
             .filter_map(|entry| {
                 self.backends
                     .iter()
-                    .filter(|backend| {
-                        entry.renderer_id == backend.renderer_id()
-                            || (entry.renderer_id.is_empty() && backend.supports(entry))
-                    })
+                    .filter(|backend| backend.supports(entry))
                     .find_map(|backend| backend.altitude(entry, eye))
             })
             .reduce(f64::min)
@@ -358,14 +347,7 @@ impl VoxelBackendRegistry {
     ) -> Option<helio_pass_tsr::TsrQuality> {
         let mut quality: Option<helio_pass_tsr::TsrQuality> = None;
         for backend in &self.backends {
-            let selected = entries.iter().any(|entry| {
-                if entry.renderer_id.is_empty() {
-                    backend.supports(entry)
-                } else {
-                    entry.renderer_id == backend.renderer_id()
-                }
-            });
-            if selected {
+            if entries.iter().any(|entry| backend.supports(entry)) {
                 if let Some(candidate) = backend.temporal_quality(size) {
                     if quality
                         .is_none_or(|current| candidate.render_scale() > current.render_scale())
@@ -382,9 +364,7 @@ impl VoxelBackendRegistry {
         let mut range: Option<(f32, f32)> = None;
         for entry in entries.iter().filter(|entry| entry.visible) {
             for backend in &self.backends {
-                if entry.renderer_id == backend.renderer_id()
-                    || (entry.renderer_id.is_empty() && backend.supports(entry))
-                {
+                if backend.supports(entry) {
                     if let Some((near, far)) = backend.camera_clip_range(entry, eye) {
                         if near.is_finite() && far.is_finite() && near > 0.0 && far > near {
                             range = Some(
@@ -433,15 +413,7 @@ impl VoxelBackendRegistry {
             .iter()
             .filter(|entry| entry.visible && entry.editable)
         {
-            for backend in &self.backends {
-                let matches = if entry.renderer_id.is_empty() {
-                    backend.supports(entry)
-                } else {
-                    entry.renderer_id == backend.renderer_id()
-                };
-                if !matches {
-                    continue;
-                }
+            for backend in self.backends.iter().filter(|backend| backend.supports(entry)) {
                 if let Some(commit) = backend.edit_ray(entry, origin, direction, hint, request)? {
                     if closest
                         .as_ref()
@@ -478,27 +450,18 @@ impl VoxelBackendRegistry {
                 .backends
                 .iter()
                 .enumerate()
-                .filter_map(|(index, backend)| {
-                    if (!entry.renderer_id.is_empty() && backend.renderer_id() == entry.renderer_id)
-                        || (entry.renderer_id.is_empty() && backend.supports(entry))
-                    {
-                        Some(index)
-                    } else {
-                        None
-                    }
-                })
+                .filter(|(_, backend)| backend.supports(entry))
+                .map(|(index, _)| index)
                 .collect();
             match matches.as_slice() {
                 [index] => selected[*index].push(entry),
-                [] if entry.renderer_id.is_empty()
-                    && entry.generator.is_none()
-                    && entry.chunks.is_none() => {}
+                [] if entry.generator.is_none() => {}
                 [] => errors.push(format!(
-                    "No compatible voxel renderer for source {:?} (requested '{}')",
-                    entry.id, entry.renderer_id
+                    "No compatible voxel renderer for source {:?}",
+                    entry.id
                 )),
                 _ => errors.push(format!(
-                    "Multiple voxel renderers match source {:?}; set renderer_id explicitly",
+                    "Multiple voxel renderers match source {:?}",
                     entry.id
                 )),
             }

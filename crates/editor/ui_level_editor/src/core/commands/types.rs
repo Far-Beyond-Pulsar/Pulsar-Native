@@ -223,6 +223,13 @@ pub enum SceneCommand {
         ids: Vec<String>,
         movability: helio_component::components::ObjectMovability,
     },
+    /// Add a ready-made voxel world to the level: its terrain, sky, sun,
+    /// haze, ground cover, wind and look, taking over the level's own
+    /// (`engine_backend::scene::voxel_presets`). One undo step; selects the
+    /// terrain and moves the camera over its ground.
+    AddVoxelWorld {
+        preset: engine_backend::scene::voxel_presets::VoxelWorldPreset,
+    },
 }
 
 impl std::fmt::Debug for SceneCommand {
@@ -418,6 +425,10 @@ impl std::fmt::Debug for SceneCommand {
                 .field("id", id)
                 .field("slot_id", slot_id)
                 .field("path", path)
+                .finish(),
+            Self::AddVoxelWorld { preset } => f
+                .debug_struct("AddVoxelWorld")
+                .field("preset", preset)
                 .finish(),
         }
     }

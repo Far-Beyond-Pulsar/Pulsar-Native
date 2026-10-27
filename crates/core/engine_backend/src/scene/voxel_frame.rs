@@ -1,30 +1,23 @@
 //! SceneDB voxel row projection for renderer-independent voxel sources.
 //!
 //! A voxel world (`VoxelTerrainComponent`) projects its description: form,
-//! generator and edit journal. A voxel object (`VoxelComponent`) projects
-//! its live sample chunks too ([`VoxelObjectChunks`]): Arc capabilities
-//! only; canonical payload bytes remain in the component row.
+//! generator and edit journal.
 
-use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelWorldShape};
+use helio_component::{VoxelTerrainComponent, VoxelWorldShape};
 use helio_voxel_data::VoxelEditJournal;
-use helio_voxel_data::{
-    VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
-    VoxelChunkUpdate, VoxelDomain, VoxelPayloadStore, VoxelSourceId, VoxelSourceWriter,
-    VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
-};
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
 
 use crate::scene::{Transform, Visibility};
 
-/// SceneDB entity bits include its generation; kind distinguishes source rows.
+/// A voxel world's terrain instance entity (its bits include the
+/// generation).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VoxelEntryId {
     pub entity_bits: u64,
-    pub kind: u8,
 }
 
-/// CPU description of one live SceneDB voxel source, independent of a renderer.
+/// CPU description of one live SceneDB voxel world, independent of a renderer.
 #[derive(Clone)]
 pub struct VoxelSceneEntry {
     pub appearance_parameters: String,
@@ -34,36 +27,16 @@ pub struct VoxelSceneEntry {
     pub visible: bool,
     pub source_revision: u64,
     pub editable: bool,
-    /// World position of the source's sample origin. A terrain must sit
+    /// World position of the world's sample origin. A terrain sits
     /// unrotated with a uniform scale, which `voxel_size` and the world
-    /// form include. A free-standing object ([`Self::is_object`]) may be
-    /// rotated and scaled freely: its renderer places it with the owner's
-    /// whole transform, so its `voxel_size` is the edge in the owner's
-    /// local space.
+    /// form include.
     pub origin: [f64; 3],
     pub voxel_size: f64,
-    /// A voxel object's renderer selection (`VoxelComponent::renderer_id`);
-    /// empty, as a world's always is, picks the one compatible renderer (a
-    /// world's: its generator's).
-    pub renderer_id: String,
-    /// A voxel object's live sample chunks; `None` for a world.
-    pub chunks: Option<VoxelObjectChunks>,
     pub generator: Option<VoxelGeneratorConfig>,
     /// Form and size of a terrain world (scaled with the entity).
     pub world: VoxelWorldForm,
     /// The terrain's ordered brush journal.
     pub edits: VoxelEditJournal,
-}
-
-/// The live sample chunks of a voxel object: the canonical store, its
-/// chunk domain (8³ chunks), the material palette and the cube a new
-/// object starts as.
-#[derive(Clone)]
-pub struct VoxelObjectChunks {
-    pub store: VoxelPayloadStore,
-    pub domain: VoxelDomain,
-    pub material_ids: Vec<u32>,
-    pub initial_cube: VoxelCubeInit,
 }
 
 /// Authored form of a voxel world: shape and size in metres.
@@ -95,113 +68,6 @@ pub struct VoxelGeneratorConfig {
     pub seed: u64,
     pub parameters: String,
     pub features: helio_pass_voxel_planet::feature_recipe::FeatureRecipe,
-}
-
-impl VoxelSceneEntry {
-    /// A free-standing `VoxelComponent` (not a terrain): a bounded volume
-    /// of live chunks, drawn at and with its owner's transform.
-    pub fn is_object(&self) -> bool {
-        self.id.kind == 0
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct VoxelCubeInit {
-    pub dimensions: [u32; 3],
-    pub material_slot: u8,
-}
-
-/// The LOD-zero chunks of an initial cube: `dimensions` samples from the
-/// origin filled with `material_slot`, edge chunks padded with air.
-pub fn initial_cube_chunks(init: VoxelCubeInit) -> Vec<(VoxelChunkKey, [u8; 512])> {
-    let mut chunks = Vec::new();
-    for z in 0..init.dimensions[2].div_ceil(8) {
-        for y in 0..init.dimensions[1].div_ceil(8) {
-            for x in 0..init.dimensions[0].div_ceil(8) {
-                let mut samples = [0u8; 512];
-                for lz in 0..8 {
-                    for ly in 0..8 {
-                        for lx in 0..8 {
-                            if x * 8 + lx < init.dimensions[0]
-                                && y * 8 + ly < init.dimensions[1]
-                                && z * 8 + lz < init.dimensions[2]
-                            {
-                                samples[(lz * 64 + ly * 8 + lx) as usize] = init.material_slot;
-                            }
-                        }
-                    }
-                }
-                chunks.push((
-                    VoxelChunkKey::new(i64::from(x), i64::from(y), i64::from(z), 0),
-                    samples,
-                ));
-            }
-        }
-    }
-    chunks
-}
-
-/// Initialize a deserialized object's chunks (of entity `entity_bits`)
-/// before source edits. This runs off-frame.
-pub fn initialize_empty_cube(entity_bits: u64, chunks: &VoxelObjectChunks) -> Result<bool, String> {
-    let init = chunks.initial_cube;
-    let state = chunks
-        .store
-        .read()
-        .map_err(|_| "voxel store lock poisoned".to_string())?;
-    let uninitialized = state.0 == 0 && state.1.is_empty();
-    drop(state);
-    if !uninitialized {
-        return Ok(false);
-    }
-    let writer = VoxelSourceWriter::new(
-        VoxelTerrainId(u128::from(entity_bits)),
-        VoxelSourceId(0),
-        chunks.store.clone(),
-    );
-    if init.dimensions.iter().any(|&size| size == 0 || size > 256)
-        || init.material_slot == 0
-        || usize::from(init.material_slot) > chunks.material_ids.len()
-    {
-        return Err("initial cube dimensions or material slot are invalid".into());
-    }
-    let cube = initial_cube_chunks(init);
-    let ops: Vec<_> = cube
-        .iter()
-        .map(|(key, samples)| {
-            VoxelChunkOp::Upsert(VoxelChunkUpdate {
-                key: *key,
-                payload: VoxelChunkPayload {
-                    encoding: VOXEL_CHUNK_ENCODING_RAW,
-                    schema_version: VOXEL_CHUNK_SCHEMA_VERSION,
-                    bytes: samples,
-                },
-            })
-        })
-        .collect();
-    match writer.publish_batch(&VoxelChunkBatch {
-        terrain: VoxelTerrainId(u128::from(entity_bits)),
-        source: VoxelSourceId(0),
-        revision: VoxelBatchRevision {
-            expected: 0,
-            publish: 1,
-        },
-        domain: chunks.domain,
-        ops: &ops,
-    }) {
-        Ok(_) => Ok(true),
-        Err(error) => {
-            let state = chunks
-                .store
-                .read()
-                .map_err(|_| "voxel store lock poisoned".to_string())?;
-            if state.0 > 0 || !state.1.is_empty() {
-                Ok(false)
-            } else {
-                Err(format!("initial cube publication failed: {error:?}"))
-            }
-        }
-    }
 }
 
 /// Fingerprint of the ground a terrain entry's generator and features make
@@ -437,18 +303,6 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
     profiling::profile_scope!("voxel_project_entries");
     let mut entries = Vec::new();
     let mut errors = Vec::new();
-    for (instance, owner, component) in attachments::enabled_components::<VoxelComponent>(world) {
-        if !component.enabled {
-            continue;
-        }
-        match object_entry(world, instance, component) {
-            Ok(mut entry) => {
-                entry.visible = world.get::<Visibility>(owner).is_none_or(|v| v.visible);
-                entries.push(entry);
-            }
-            Err(error) => errors.push(format!("voxel object {}: {error}", instance.bits())),
-        }
-    }
     for (instance, owner, component) in
         attachments::enabled_components::<VoxelTerrainComponent>(world)
     {
@@ -488,81 +342,6 @@ fn origin_scale(world: &World, instance: Entity) -> Result<([f64; 3], f64), &'st
     Ok((transform.position.map(f64::from), f64::from(sx)))
 }
 
-/// World position of `instance`'s owner object. Its rotation and scale
-/// (finite, positive on every axis) place a free-standing volume too, but
-/// the renderer applies those itself.
-fn object_origin(world: &World, instance: Entity) -> Result<[f64; 3], &'static str> {
-    let transform = attachments::owner_component::<Transform>(world, instance)
-        .copied()
-        .unwrap_or_default();
-    if transform.rotation.iter().any(|v| !v.is_finite()) {
-        return Err("voxel object rotation must be finite");
-    }
-    if transform.scale.iter().any(|v| !v.is_finite() || *v <= 0.0) {
-        return Err("voxel object scale must be finite and positive on every axis");
-    }
-    if transform.position.iter().any(|v| !v.is_finite()) {
-        return Err("voxel transform position must be finite");
-    }
-    Ok(transform.position.map(f64::from))
-}
-
-pub(super) fn object_entry(
-    world: &World,
-    entity: Entity,
-    component: &VoxelComponent,
-) -> Result<VoxelSceneEntry, &'static str> {
-    let origin = object_origin(world, entity)?;
-    if component.dimensions.iter().any(|&size| size == 0) {
-        return Err("dimensions must be positive");
-    }
-    if component.dimensions.iter().any(|&size| size > 256) {
-        return Err("cube dimensions exceed the supported 256 voxels per axis");
-    }
-    if !component.voxel_size.is_finite() || component.voxel_size <= 0.0 {
-        return Err("voxel_size must be finite and positive");
-    }
-    if component.material_ids.len() > 255 {
-        return Err("voxel material palette exceeds 255 IDs");
-    }
-    if component.default_material_slot == 0
-        || component.default_material_slot as usize > component.material_ids.len()
-    {
-        return Err("default_material_slot must name a material in the palette");
-    }
-    let max = component.dimensions.map(|size| i64::from((size - 1) / 8));
-    Ok(VoxelSceneEntry {
-        id: VoxelEntryId {
-            entity_bits: entity.bits(),
-            kind: 0,
-        },
-        visible: true,
-        source_revision: 0,
-        editable: component.editable,
-        origin,
-        voxel_size: component.voxel_size,
-        renderer_id: component.renderer_id.clone(),
-        chunks: Some(VoxelObjectChunks {
-            store: component.payload_store(),
-            domain: VoxelDomain::Bounded {
-                min: [0; 3],
-                max,
-                max_lod: 0,
-            },
-            material_ids: component.material_ids.clone(),
-            initial_cube: VoxelCubeInit {
-                dimensions: component.dimensions,
-                material_slot: u8::try_from(component.default_material_slot)
-                    .map_err(|_| "default_material_slot must fit in one byte")?,
-            },
-        }),
-        generator: None,
-        world: VoxelWorldForm::default(),
-        appearance_parameters: String::new(),
-        edits: VoxelEditJournal::default(),
-    })
-}
-
 pub(super) fn terrain_entry(
     world: &World,
     entity: Entity,
@@ -576,15 +355,12 @@ pub(super) fn terrain_entry(
     Ok(VoxelSceneEntry {
         id: VoxelEntryId {
             entity_bits: entity.bits(),
-            kind: 1,
         },
         visible: true,
         source_revision: component.source_revision,
         editable: component.editable,
         origin,
         voxel_size,
-        renderer_id: String::new(),
-        chunks: None,
         generator: (!component.generator.id.is_empty()).then(|| VoxelGeneratorConfig {
             id: component.generator.id.clone(),
             version: component.generator.version,
@@ -642,14 +418,6 @@ mod tests {
         world.insert(entity, component);
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
-        assert!(
-            entry.chunks.is_none() && !entry.is_object(),
-            "a world has no live chunks"
-        );
-        assert!(
-            entry.renderer_id.is_empty(),
-            "its generator picks its renderer"
-        );
         assert_eq!(
             entry.generator,
             Some(VoxelGeneratorConfig {
@@ -668,56 +436,26 @@ mod tests {
     }
 
     #[test]
-    fn projects_objects_and_worlds_and_reports_bad_rows() {
+    fn projects_worlds_and_reports_bad_rows() {
         let mut world = World::new();
-        let object = spawn_test_instance(&mut world, "VoxelComponent");
-        world.insert(object, VoxelComponent::default());
         let terrain = spawn_test_instance(&mut world, "VoxelTerrainComponent");
         world.insert(terrain, VoxelTerrainComponent::default());
         let (entries, errors) = project_voxel_entries(&world);
         assert!(errors.is_empty());
-        assert_eq!(entries.len(), 2);
-        let object_entry = entries
-            .iter()
-            .find(|entry| {
-                entry.id
-                    == VoxelEntryId {
-                        entity_bits: object.bits(),
-                        kind: 0,
-                    }
-            })
-            .unwrap();
+        assert_eq!(entries.len(), 1);
         assert_eq!(
-            object_entry.chunks.as_ref().unwrap().domain,
-            VoxelDomain::Bounded {
-                min: [0; 3],
-                max: [1; 3],
-                max_lod: 0
+            entries[0].id,
+            VoxelEntryId {
+                entity_bits: terrain.bits()
             }
         );
-        assert!(entries.iter().any(|entry| entry.id
-            == VoxelEntryId {
-                entity_bits: terrain.bits(),
-                kind: 1
-            }));
         world
             .get_mut::<VoxelTerrainComponent>(terrain)
             .unwrap()
             .voxel_size = f64::NAN;
         let (entries, errors) = project_voxel_entries(&world);
-        assert_eq!(entries.len(), 1);
-        assert_eq!(errors.len(), 1);
-        world
-            .get_mut::<VoxelTerrainComponent>(terrain)
-            .unwrap()
-            .voxel_size = 0.1;
-        world
-            .get_mut::<VoxelComponent>(object)
-            .unwrap()
-            .default_material_slot = 0;
-        let (entries, errors) = project_voxel_entries(&world);
-        assert_eq!(entries.len(), 1);
-        assert!(errors[0].contains("default_material_slot"));
+        assert!(entries.is_empty());
+        assert!(errors[0].contains("voxel_size"));
     }
 
     /// Edits belong to the ground they were made on: changing the seed or

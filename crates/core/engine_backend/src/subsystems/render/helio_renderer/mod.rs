@@ -12,7 +12,6 @@ pub mod pipelines;
 pub mod renderer;
 pub mod scene_renderer;
 pub mod voxel_backend;
-pub mod voxel_mesh_backend;
 
 pub use fly_camera::{altitude_speed_scale, FlyCamera};
 pub use core::{

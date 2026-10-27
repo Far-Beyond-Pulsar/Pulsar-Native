@@ -20,7 +20,6 @@ use helio::{Camera, Renderer};
 use super::voxel_backend::{
     PlanetVoxelBackend, VoxelBackendRegistry, VoxelChunkSaves, VoxelView,
 };
-use super::voxel_mesh_backend::MeshVoxelBackend;
 use crate::scene::voxel_frame::{project_voxel_entries, VoxelWorldSync};
 use crate::scene::{SharedScene, SpaceSync, VirtualGeometryHost};
 use pulsar_settings::project::virtual_geometry::VirtualGeometrySettings;
@@ -147,10 +146,6 @@ impl SceneRenderer {
         let mut voxels = VoxelBackendRegistry::new();
         voxels
             .register(Box::new(PlanetVoxelBackend::new(options.chunk_saves)))
-            .expect("built-in voxel renderer ID must be unique");
-        // Free-standing voxel objects: mesh rows in the shared scene.
-        voxels
-            .register(Box::new(MeshVoxelBackend::new(Some(scene.clone()))))
             .expect("built-in voxel renderer ID must be unique");
 
         // Every renderer setting comes from the project, through Helio's

@@ -4,6 +4,7 @@ use crate::state::{
     voxel::{VoxelSculptDomain, MAX_RADIUS_M, MIN_RADIUS_M},
     LevelEditorState,
 };
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use rust_i18n::t;
 use std::{collections::HashSet, sync::Arc};
@@ -27,6 +28,8 @@ pub struct VoxelSculptPanel {
     focus_handle: FocusHandle,
     kind: PanelKind,
     last_settings: VoxelSculptDomain,
+    /// Whether the level has a voxel terrain to sculpt.
+    has_terrain: bool,
     pump_started: bool,
     collapsed: HashSet<&'static str>,
     pub(super) radius: Entity<InputState>,
@@ -91,6 +94,7 @@ impl VoxelSculptPanel {
                 }
             });
         Self {
+            has_terrain: has_terrain(&state),
             state,
             focus_handle: cx.focus_handle(),
             kind,
@@ -182,14 +186,17 @@ impl Render for VoxelSculptPanel {
             self.pump_started = true;
             crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _, cx| {
                 let settings = this.state.read().editor.voxel;
-                if settings != this.last_settings {
+                let terrain = has_terrain(&this.state);
+                if settings != this.last_settings || terrain != this.has_terrain {
                     this.last_settings = settings;
+                    this.has_terrain = terrain;
                     cx.notify();
                 }
             });
         }
         let settings = self.state.read().editor.voxel;
         self.last_settings = settings;
+        self.has_terrain = has_terrain(&self.state);
         let theme = cx.theme().clone();
         let subtitle = match self.kind {
             PanelKind::Tools => "LevelEditor.VoxelPanel.ToolsSubtitle",
@@ -216,6 +223,37 @@ impl Render for VoxelSculptPanel {
                             .text_color(theme.muted_foreground)
                             .child(t!(subtitle).to_string()),
                     )
+                    .when(!self.has_terrain, |el| {
+                        el.child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .p_2()
+                                .rounded(px(4.0))
+                                .bg(theme.warning.opacity(0.12))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .child(t!("LevelEditor.VoxelPanel.NoTerrain").to_string()),
+                                )
+                                .child(
+                                    Button::new("voxel-create-terrain")
+                                        .label(t!("LevelEditor.VoxelPanel.CreateTerrain").to_string())
+                                        .icon(IconName::Globe)
+                                        .small()
+                                        .primary()
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            window.focus(&this.focus_handle, cx);
+                                            window.dispatch_action(
+                                                Box::new(crate::ui::SetToolMode(
+                                                    crate::tool_modes::ToolModeId::TERRAIN,
+                                                )),
+                                                cx,
+                                            );
+                                        })),
+                                ),
+                        )
+                    })
                     .child(
                         h_flex()
                             .w_full()
@@ -279,4 +317,15 @@ impl ui::dock::Panel for VoxelSculptPanel {
         };
         t!(key).to_string().into_any_element()
     }
+}
+
+/// Whether the level has a voxel terrain.
+fn has_terrain(state: &SharedState) -> bool {
+    state
+        .read()
+        .scene
+        .world()
+        .query::<&helio_component::VoxelTerrainComponent>()
+        .next()
+        .is_some()
 }

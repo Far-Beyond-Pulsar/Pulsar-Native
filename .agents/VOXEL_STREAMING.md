@@ -305,8 +305,9 @@ for worlds whose *player* edits are large.
 5. Authoritative page size (64x64 columns proposed) vs journal-only for the
    first cut.
 6. Does Pulsar's editor want the generated-layer path for authored
-   (non-procedural) content (e.g. imported voxel objects)? `VoxelObjectChunks`
-   already has its own chunk store; unify later, not now.
+   (non-procedural) content (e.g. imported voxel models)? Pulsar's old voxel
+   objects (`VoxelComponent`, their own chunk store) were removed: voxel
+   content is terrain worlds only.
 
 ## 9. Acceptance criteria
 

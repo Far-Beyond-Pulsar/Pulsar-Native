@@ -1,59 +1,10 @@
-//! Terrain Domain — sample sculpt brush, foliage brush and target
+//! Terrain Domain — the foliage brush
 //!
-//! Authoring settings of the terrain tool: sample sculpting and material
-//! painting on voxel objects (`VoxelComponent`), and foliage painting. The
-//! voxel data stays in its component; voxel worlds are sculpted with brushes
+//! Authoring settings of the terrain tool: foliage painting. Voxel worlds
+//! are created from the terrain tool's Manage tab and sculpted with brushes
 //! (the voxel sculpt tool, `super::voxel`).
 
 use serde::{Deserialize, Serialize};
-
-// ── Sculpt Mode ────────────────────────────────────────────────────────────
-
-/// Sculpt operation mode for voxel terrain editing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum SculptMode {
-    #[default]
-    Raise,
-    Lower,
-    Flatten,
-    Paint,
-}
-
-// ── Brush Shape ────────────────────────────────────────────────────────────
-
-/// The shape a sculpt stamp's samples fill: a ball or a box.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum BrushShape {
-    #[default]
-    Sphere,
-    Box,
-}
-
-// ── Sculpt Brush ───────────────────────────────────────────────────────────
-
-/// Brush parameters for voxel terrain sculpting.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SculptBrush {
-    pub mode: SculptMode,
-    pub shape: BrushShape,
-    pub radius_m: f32,
-    pub falloff: f32,
-    pub strength: f32,
-    pub material: u32,
-}
-
-impl Default for SculptBrush {
-    fn default() -> Self {
-        Self {
-            mode: SculptMode::default(),
-            shape: BrushShape::default(),
-            radius_m: 8.0,
-            falloff: 0.5,
-            strength: 1.0,
-            material: 1,
-        }
-    }
-}
 
 // ── Foliage Brush ──────────────────────────────────────────────────────────
 
@@ -138,28 +89,12 @@ impl Default for FoliageBrush {
     }
 }
 
-// ── Terrain Target ─────────────────────────────────────────────────────────
-
-/// The voxel object being edited (its instance entity's bits, hex).
-#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum TerrainTarget {
-    #[default]
-    None,
-    Volume(String),
-}
-
 // ── Terrain Domain ─────────────────────────────────────────────────────────
 
 /// Terrain authoring configuration state.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TerrainDomain {
-    pub sculpt: SculptBrush,
     pub foliage: FoliageBrush,
-    pub target: TerrainTarget,
-    /// Whether the terrain tool's live brush is the foliage stamp rather
-    /// than the sample sculpt brush: picking a foliage tool turns it on,
-    /// picking a sculpt tool or material off.
-    pub paint_foliage: bool,
     /// The sets/members the foliage brush paints from. See
     /// [`super::foliage_sets`].
     pub foliage_sets: super::foliage_sets::FoliageSetLibrary,
@@ -182,48 +117,13 @@ pub enum FoliageTool {
 }
 
 impl TerrainDomain {
-    pub fn set_brush_radius(&mut self, radius: f32) {
-        self.sculpt.radius_m = radius.clamp(1.0, 64.0);
-    }
-
-    pub fn set_brush_strength(&mut self, strength: f32) {
-        self.sculpt.strength = strength.clamp(0.1, 10.0);
-    }
-
-    pub fn set_brush_falloff(&mut self, falloff: f32) {
-        self.sculpt.falloff = falloff.clamp(0.0, 1.0);
-    }
-
-    pub fn set_brush_shape(&mut self, shape: BrushShape) {
-        self.sculpt.shape = shape;
-    }
-
-    /// Choose a sculpt tool and make the *terrain* brush the live one (a
-    /// tool button both selects and activates, like Unreal's tool row).
-    pub fn activate_sculpt_tool(&mut self, mode: SculptMode) {
-        self.sculpt.mode = mode;
-        self.paint_foliage = false;
-    }
-
-    /// Choose a paint material: switches to the Paint tool with that
-    /// material and makes the terrain brush live.
-    pub fn activate_paint_material(&mut self, material: u32) {
-        self.sculpt.material = material;
-        self.activate_sculpt_tool(SculptMode::Paint);
-    }
-
-    /// Choose a foliage action and make the foliage brush the live one.
+    /// Choose a foliage action.
     pub fn activate_foliage_tool(&mut self, tool: FoliageTool) {
         self.foliage_tool = tool;
-        self.paint_foliage = true;
     }
 
     pub fn set_foliage_radius(&mut self, radius: f32) {
         self.foliage.radius_m = radius.clamp(1.0, 64.0);
-    }
-
-    pub fn set_target(&mut self, target: TerrainTarget) {
-        self.target = target;
     }
 }
 
@@ -232,29 +132,10 @@ mod tool_activation_tests {
     use super::*;
 
     #[test]
-    fn a_sculpt_tool_selects_its_mode_and_makes_the_terrain_brush_live() {
-        let mut domain = TerrainDomain::default();
-        domain.paint_foliage = true;
-        domain.activate_sculpt_tool(SculptMode::Lower);
-        assert_eq!(domain.sculpt.mode, SculptMode::Lower);
-        assert!(!domain.paint_foliage);
-    }
-
-    #[test]
-    fn picking_a_material_switches_to_the_paint_tool_with_that_material() {
-        let mut domain = TerrainDomain::default();
-        domain.activate_paint_material(7);
-        assert_eq!(domain.sculpt.mode, SculptMode::Paint);
-        assert_eq!(domain.sculpt.material, 7);
-        assert!(!domain.paint_foliage);
-    }
-
-    #[test]
-    fn a_foliage_tool_selects_the_action_and_makes_the_foliage_brush_live() {
+    fn a_foliage_tool_selects_the_action() {
         let mut domain = TerrainDomain::default();
         domain.activate_foliage_tool(FoliageTool::Erase);
         assert_eq!(domain.foliage_tool, FoliageTool::Erase);
-        assert!(domain.paint_foliage);
     }
 
     #[test]

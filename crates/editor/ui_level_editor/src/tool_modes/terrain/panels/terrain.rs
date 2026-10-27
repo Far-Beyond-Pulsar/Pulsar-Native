@@ -1,107 +1,131 @@
-//! Terrain dock panel — one panel, three tabs, modelled on Unreal's
-//! Landscape mode:
+//! Terrain dock panel — one panel, two tabs:
 //!
-//! - **Manage** — the voxel objects in the level (`VoxelComponent`): create
-//!   one, pick the one being edited, inspect it. Voxel worlds are sculpted
-//!   with brushes (the voxel sculpt tool).
-//! - **Sculpt** — Raise / Lower / Flatten tool grid plus brush options.
-//! - **Paint**  — the Paint tool, brush options, and the material palette.
+//! - **World** — create the level's voxel world in one click from a
+//!   ready-made preset (Earth-like planet, Moon, desert planet, flat block
+//!   world: `engine_backend::scene::voxel_presets`), and the level's voxel
+//!   terrains, each selected with a click so the inspector shows its layers
+//!   and features. Worlds are sculpted with the voxel sculpt tool.
+//! - **Foliage** — foliage sets and their brush.
 //!
-//! Picking a tool or material both selects *and activates* it (the terrain
-//! brush becomes the live one), so there is no separate "use this brush"
-//! switch. Tabs and section collapse state are view-local; everything else
-//! lives in `TerrainDomain`.
+//! The tab and section collapse state are view-local.
 
 use std::collections::HashSet;
 
-use engine_backend::scene::attachments;
+use engine_backend::scene::voxel_presets::VoxelWorldPreset;
+use engine_backend::scene::{attachments, SceneWorldExt};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use helio_component::VoxelComponent;
+use helio_component::{VoxelTerrainComponent, VoxelWorldShape};
 use rust_i18n::t;
-use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
 
-use super::widgets::{
-    collapsible_header, info_row, segmented_row, stepper_row, swatch_color, tool_grid, SharedState,
-    ToolSpec,
-};
-use crate::commands::{execute_command, SceneCommand, TypedComponent};
-use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
-use crate::state::terrain::{BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget};
+use super::widgets::{collapsible_header, SharedState};
+use crate::commands::{execute_command, SceneCommand};
+use crate::tool_modes::ToolModeId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
-    Manage,
-    Sculpt,
-    Paint,
+    World,
     Foliage,
 }
 
-/// One voxel object as the Manage tab shows it.
+/// One voxel terrain as the World tab shows it.
 #[derive(Clone, Debug, PartialEq)]
-struct BodyRow {
-    hex: String,
-    /// The object's largest dimension, in metres.
+struct TerrainRow {
+    /// Its object's id.
+    id: String,
+    name: String,
+    shape: VoxelWorldShape,
+    /// Radius of a planet, edge of a plane, in metres.
     size_m: f64,
-    material: u8,
-    material_slots: u32,
+    edits: usize,
 }
 
-impl BodyRow {
-    fn short_id(&self) -> &str {
-        &self.hex[..self.hex.len().min(6)]
-    }
-
-    fn is_target(&self, target: &TerrainTarget) -> bool {
-        matches!(target, TerrainTarget::Volume(id) if *id == self.hex)
-    }
-
-    fn as_target(&self) -> TerrainTarget {
-        TerrainTarget::Volume(self.hex.clone())
+impl TerrainRow {
+    fn kind(&self) -> String {
+        match self.shape {
+            VoxelWorldShape::Sphere => t!(
+                "LevelEditor.TerrainPanel.Planet",
+                radius => format!("{:.0}", self.size_m / 1000.0)
+            )
+            .to_string(),
+            VoxelWorldShape::Plane => t!(
+                "LevelEditor.TerrainPanel.Plane",
+                size => format!("{:.0}", self.size_m)
+            )
+            .to_string(),
+            VoxelWorldShape::InfinitePlane => {
+                t!("LevelEditor.TerrainPanel.InfinitePlane").to_string()
+            }
+        }
     }
 }
 
 /// Everything the panel draws (view-local tab/collapse state is separate).
 #[derive(Clone, Debug, PartialEq)]
 struct Signature {
-    brush: SculptBrush,
-    terrain_brush_active: bool,
-    target: TerrainTarget,
-    bodies: Vec<BodyRow>,
+    terrains: Vec<TerrainRow>,
+    selected: Option<String>,
 }
 
 impl Signature {
     fn of(state: &SharedState) -> Self {
         let st = state.read();
-        let terrain = &st.editor.terrain;
+        let world = st.scene.world();
+        let mut terrains: Vec<TerrainRow> = world
+            .query::<&VoxelTerrainComponent>()
+            .filter_map(|(instance, terrain)| {
+                let owner = attachments::owner_of(&world, instance)?;
+                Some(TerrainRow {
+                    id: world.stable_id_of(owner)?.to_string(),
+                    name: world
+                        .get::<engine_backend::scene::Name>(owner)
+                        .map(|name| name.0.clone())
+                        .unwrap_or_default(),
+                    shape: terrain.shape,
+                    size_m: match terrain.shape {
+                        VoxelWorldShape::Sphere => terrain.planet_radius,
+                        _ => terrain.plane_size,
+                    },
+                    edits: terrain.edits.len(),
+                })
+            })
+            .collect();
+        terrains.sort_by(|a, b| a.id.cmp(&b.id));
         Self {
-            brush: terrain.sculpt,
-            terrain_brush_active: !terrain.paint_foliage,
-            target: terrain.target.clone(),
-            bodies: body_rows(&st),
+            terrains,
+            selected: world.selected_id(),
         }
     }
 }
 
-fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
-    let world = state.scene.world();
-    let mut rows = Vec::new();
-    for (entity, _, component) in attachments::enabled_components::<VoxelComponent>(&world) {
-        if component.enabled {
-            rows.push(BodyRow {
-                hex: format!("{:016x}", entity.bits()),
-                size_m: f64::from(*component.dimensions.iter().max().unwrap_or(&0))
-                    * component.voxel_size,
-                material: component.default_material_slot as u8,
-                material_slots: component.material_ids.len().min(u8::MAX as usize) as u32,
-            });
-        }
+/// A preset's button: its icon and locale keys (name, description).
+fn preset_entry(preset: VoxelWorldPreset) -> (IconName, &'static str, &'static str) {
+    match preset {
+        VoxelWorldPreset::Earth => (
+            IconName::Globe,
+            "LevelEditor.TerrainPanel.Preset.Earth",
+            "LevelEditor.TerrainPanel.Preset.EarthDesc",
+        ),
+        VoxelWorldPreset::Moon => (
+            IconName::Moon,
+            "LevelEditor.TerrainPanel.Preset.Moon",
+            "LevelEditor.TerrainPanel.Preset.MoonDesc",
+        ),
+        VoxelWorldPreset::Desert => (
+            IconName::Sun,
+            "LevelEditor.TerrainPanel.Preset.Desert",
+            "LevelEditor.TerrainPanel.Preset.DesertDesc",
+        ),
+        VoxelWorldPreset::Blocks => (
+            IconName::Box,
+            "LevelEditor.TerrainPanel.Preset.Blocks",
+            "LevelEditor.TerrainPanel.Preset.BlocksDesc",
+        ),
     }
-    rows
 }
 
 pub struct TerrainPanel {
@@ -128,7 +152,7 @@ impl TerrainPanel {
             focus_handle: cx.focus_handle(),
             last_signature,
             pump_started: false,
-            tab: Tab::Manage,
+            tab: Tab::World,
             collapsed: HashSet::new(),
         }
     }
@@ -160,14 +184,13 @@ impl TerrainPanel {
         cx: &mut Context<Self>,
         id: &'static str,
         label_key: &'static str,
-        trailing: Option<AnyElement>,
     ) -> AnyElement {
         collapsible_header(
             theme,
             id,
             label_key,
             self.collapsed.contains(id),
-            trailing,
+            None,
             cx.listener(move |this, _, _, cx| {
                 this.toggle_section(id);
                 cx.notify();
@@ -191,30 +214,10 @@ impl Render for TerrainPanel {
         let signature = self.last_signature.clone();
         let theme = cx.theme().clone();
 
-        let subtitle = signature
-            .bodies
-            .iter()
-            .find(|b| b.is_target(&signature.target))
-            .map(|b| {
-                format!(
-                    "{} {}",
-                    t!("LevelEditor.TerrainPanel.Kind.Volume"),
-                    b.short_id()
-                )
-            })
-            .unwrap_or_else(|| t!("LevelEditor.TerrainPalette.NoTarget").to_string());
-
-        let body = match self.tab {
-            Tab::Manage => Some(
-                self.render_manage(&signature, &theme, cx)
-                    .into_any_element(),
-            ),
-            Tab::Sculpt => Some(
-                self.render_sculpt(&signature, &theme, cx)
-                    .into_any_element(),
-            ),
-            Tab::Paint => Some(self.render_paint(&signature, &theme, cx).into_any_element()),
-            Tab::Foliage => None,
+        let subtitle = match signature.terrains.as_slice() {
+            [] => t!("LevelEditor.TerrainPanel.NoTerrain").to_string(),
+            [terrain] => format!("{} · {}", terrain.name, terrain.kind()),
+            terrains => t!("LevelEditor.TerrainPanel.Terrains", count => terrains.len()).to_string(),
         };
 
         v_flex()
@@ -236,18 +239,17 @@ impl Render for TerrainPanel {
                     )
                     .child(self.render_tab_bar(cx)),
             )
-            .child(if let Some(body) = body {
-                v_flex()
+            .child(match self.tab {
+                Tab::World => v_flex()
                     .id("terrain-panel-scroll")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
                     .p_3()
                     .gap_2()
-                    .child(body)
-                    .into_any_element()
-            } else {
-                self.foliage.clone().into_any_element()
+                    .child(self.render_world(&signature, &theme, cx))
+                    .into_any_element(),
+                Tab::Foliage => self.foliage.clone().into_any_element(),
             })
     }
 }
@@ -255,26 +257,8 @@ impl Render for TerrainPanel {
 impl TerrainPanel {
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let tabs = [
-            (
-                Tab::Manage,
-                IconName::Globe,
-                "LevelEditor.TerrainPanel.Tab.Manage",
-            ),
-            (
-                Tab::Sculpt,
-                IconName::ArrowUp,
-                "LevelEditor.TerrainPanel.Tab.Sculpt",
-            ),
-            (
-                Tab::Paint,
-                IconName::Palette,
-                "LevelEditor.TerrainPanel.Tab.Paint",
-            ),
-            (
-                Tab::Foliage,
-                IconName::Leaf,
-                "LevelEditor.FoliagePanel.Title",
-            ),
+            (Tab::World, IconName::Globe, "LevelEditor.TerrainPanel.Tab.World"),
+            (Tab::Foliage, IconName::Leaf, "LevelEditor.FoliagePanel.Title"),
         ];
         let mut bar = h_flex()
             .w_full()
@@ -301,69 +285,99 @@ impl TerrainPanel {
         bar
     }
 
-    // ── Manage ──────────────────────────────────────────────────────────
+    // ── World ───────────────────────────────────────────────────────────
 
-    fn render_manage(
+    fn render_world(
         &self,
         signature: &Signature,
         theme: &ui::Theme,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let state = self.state.clone();
-        let create = Button::new("terrain_create_voxel_source")
-            .icon(IconName::Plus)
-            .label(t!("LevelEditor.Terrain.CreateVolume"))
-            .xsmall()
-            .primary()
-            .on_click(move |_, _, _cx| {
-                let mut st = state.write();
-                let data = SceneObjectData {
-                    id: String::new(),
-                    name: "Voxel Volume".into(),
-                    object_type: ObjectType::Empty,
-                    transform: Transform::default(),
-                    visible: true,
-                    locked: false,
-                    parent: None,
-                    children: Vec::new(),
-                    scene_path: String::new(),
-                    props: Default::default(),
-                    component_instances: None,
-                };
-                execute_command(
-                    &mut st,
-                    SceneCommand::AddObjectWithComponents {
-                        data,
-                        parent_id: None,
-                        components: vec![TypedComponent::new(VoxelComponent::default())],
-                    },
-                );
-            })
-            .into_any_element();
+        let mut presets = v_flex().w_full().gap_1();
+        for preset in VoxelWorldPreset::ALL {
+            let (icon, name_key, description_key) = preset_entry(preset);
+            let state = self.state.clone();
+            let hover_bg = theme.muted.opacity(0.22);
+            presets = presets.child(
+                h_flex()
+                    .id(SharedString::from(format!("terrain_create_{preset:?}")))
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_1p5()
+                    .rounded(px(4.0))
+                    .border_1()
+                    .border_color(theme.border.opacity(0.5))
+                    .bg(theme.muted.opacity(0.08))
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(hover_bg))
+                    .on_click(move |_, _, _| {
+                        let mut st = state.write();
+                        let result = execute_command(&mut st, SceneCommand::AddVoxelWorld { preset });
+                        if !result.changed {
+                            tracing::warn!("Create voxel terrain: {}", result.no_op_reason);
+                        }
+                    })
+                    .child(Icon::new(icon).text_color(theme.primary))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(t!(name_key).to_string()),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(t!(description_key).to_string()),
+                            ),
+                    ),
+            );
+        }
+        let create_hint = if signature.terrains.is_empty() {
+            t!("LevelEditor.TerrainPanel.CreateHint")
+        } else {
+            t!("LevelEditor.TerrainPanel.ReplaceHint")
+        };
 
-        let mut actors = v_flex().w_full().gap_1();
-        if signature.bodies.is_empty() {
-            actors = actors.child(
+        let mut terrains = v_flex().w_full().gap_1();
+        if signature.terrains.is_empty() {
+            terrains = terrains.child(
                 div()
                     .py_2()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(t!("LevelEditor.TerrainPanel.NoActors").to_string()),
+                    .child(t!("LevelEditor.TerrainPanel.NoTerrain").to_string()),
             );
         }
-        for body in &signature.bodies {
-            let selected = body.is_target(&signature.target);
-            let state = self.state.clone();
-            let target = body.as_target();
+        for terrain in &signature.terrains {
+            let selected = signature.selected.as_deref() == Some(terrain.id.as_str());
             let (bg, border) = if selected {
                 (theme.primary.opacity(0.24), theme.primary)
             } else {
                 (theme.muted.opacity(0.08), theme.border.opacity(0.5))
             };
             let hover_bg = theme.muted.opacity(0.22);
-            actors = actors.child(
+            let state = self.state.clone();
+            let id = terrain.id.clone();
+            let details = if terrain.edits > 0 {
+                t!(
+                    "LevelEditor.TerrainPanel.WithEdits",
+                    kind => terrain.kind(),
+                    edits => terrain.edits
+                )
+                .to_string()
+            } else {
+                terrain.kind()
+            };
+            terrains = terrains.child(
                 h_flex()
-                    .id(SharedString::from(format!("actor_{}", body.hex)))
+                    .id(SharedString::from(format!("terrain_{}", terrain.id)))
                     .w_full()
                     .items_center()
                     .gap_2()
@@ -376,58 +390,47 @@ impl TerrainPanel {
                     .cursor_pointer()
                     .hover(move |style| style.bg(hover_bg))
                     .on_click(move |_, _, _| {
-                        state.write().editor.terrain.set_target(target.clone());
+                        execute_command(
+                            &mut state.write(),
+                            SceneCommand::SelectObject {
+                                id: Some(id.clone()),
+                            },
+                        );
                     })
-                    .child(Icon::new(IconName::Square))
+                    .child(Icon::new(IconName::Globe))
                     .child(
                         v_flex()
                             .flex_1()
+                            .min_w_0()
                             .child(
                                 div()
                                     .text_xs()
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child(t!("LevelEditor.TerrainPanel.Kind.Volume").to_string()),
+                                    .child(terrain.name.clone()),
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child(body.short_id().to_string()),
+                                    .child(details),
                             ),
                     ),
             );
         }
-
-        let details = signature
-            .bodies
-            .iter()
-            .find(|b| b.is_target(&signature.target))
-            .map(|b| {
-                v_flex()
-                    .w_full()
-                    .gap_1()
-                    .child(info_row(
-                        theme,
-                        t!("LevelEditor.TerrainPanel.Detail.Type").to_string(),
-                        t!("LevelEditor.TerrainPanel.Kind.Volume").to_string(),
-                    ))
-                    .child(info_row(
-                        theme,
-                        t!("LevelEditor.TerrainPanel.Detail.Id").to_string(),
-                        b.hex.clone(),
-                    ))
-                    .child(info_row(
-                        theme,
-                        t!("LevelEditor.TerrainPanel.Detail.Width").to_string(),
-                        format!("{:.1} m", b.size_m),
-                    ))
-                    .child(info_row(
-                        theme,
-                        t!("LevelEditor.TerrainPanel.Detail.Material").to_string(),
-                        b.material.to_string(),
-                    ))
-                    .into_any_element()
-            });
+        let sculpt = Button::new("terrain_sculpt")
+            .icon(IconName::Cube)
+            .label(t!("LevelEditor.TerrainPanel.Sculpt"))
+            .small()
+            .primary()
+            .w_full()
+            .on_click(cx.listener(|this, _, window, cx| {
+                // The voxel sculpt mode, through the editor's own mode switch.
+                window.focus(&this.focus_handle, cx);
+                window.dispatch_action(
+                    Box::new(crate::ui::SetToolMode(ToolModeId::VOXEL_SCULPT)),
+                    cx,
+                );
+            }));
 
         v_flex()
             .w_full()
@@ -435,274 +438,35 @@ impl TerrainPanel {
             .child(self.header(
                 theme,
                 cx,
-                "manage_actors",
-                "LevelEditor.TerrainPanel.Section.Actors",
-                Some(create),
+                "world_create",
+                "LevelEditor.TerrainPanel.Section.Create",
             ))
-            .when(!self.collapsed.contains("manage_actors"), |el| {
-                el.child(actors)
-            })
-            .child(self.header(
-                theme,
-                cx,
-                "manage_details",
-                "LevelEditor.TerrainPanel.Section.Details",
-                None,
-            ))
-            .when(!self.collapsed.contains("manage_details"), |el| {
-                el.child(details.unwrap_or_else(|| {
+            .when(!self.collapsed.contains("world_create"), |el| {
+                el.child(presets).child(
                     div()
+                        .pt_1()
                         .text_xs()
                         .text_color(theme.muted_foreground)
-                        .child(t!("LevelEditor.TerrainPanel.NoSelection").to_string())
-                        .into_any_element()
-                }))
-            })
-    }
-
-    // ── Sculpt ──────────────────────────────────────────────────────────
-
-    fn sculpt_tool(
-        id: &'static str,
-        icon: IconName,
-        label_key: &'static str,
-        mode: SculptMode,
-        signature: &Signature,
-    ) -> ToolSpec {
-        ToolSpec {
-            id,
-            icon,
-            label_key,
-            active: signature.terrain_brush_active && signature.brush.mode == mode,
-            apply: Arc::new(move |domain| domain.activate_sculpt_tool(mode)),
-        }
-    }
-
-    fn render_sculpt(
-        &self,
-        signature: &Signature,
-        theme: &ui::Theme,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let state = self.state.clone();
-        let brush = signature.brush;
-        v_flex()
-            .w_full()
-            .gap_2()
-            .child(self.header(
-                theme,
-                cx,
-                "sculpt_tools",
-                "LevelEditor.TerrainPanel.Section.Tools",
-                None,
-            ))
-            .when(!self.collapsed.contains("sculpt_tools"), |el| {
-                el.child(tool_grid(
-                    theme,
-                    state.clone(),
-                    vec![
-                        Self::sculpt_tool(
-                            "raise",
-                            IconName::ArrowUp,
-                            "LevelEditor.Terrain.Raise",
-                            SculptMode::Raise,
-                            signature,
-                        ),
-                        Self::sculpt_tool(
-                            "lower",
-                            IconName::ArrowDown,
-                            "LevelEditor.Terrain.Lower",
-                            SculptMode::Lower,
-                            signature,
-                        ),
-                        Self::sculpt_tool(
-                            "flatten",
-                            IconName::Ruler,
-                            "LevelEditor.Terrain.Flatten",
-                            SculptMode::Flatten,
-                            signature,
-                        ),
-                    ],
-                ))
+                        .child(create_hint.to_string()),
+                )
             })
             .child(self.header(
                 theme,
                 cx,
-                "sculpt_brush",
-                "LevelEditor.TerrainPanel.Section.BrushOptions",
-                None,
+                "world_terrains",
+                "LevelEditor.TerrainPanel.Section.Terrains",
             ))
-            .when(!self.collapsed.contains("sculpt_brush"), |el| {
-                el.child(self.brush_options(&state, brush, true, cx))
-            })
-    }
-
-    // ── Paint ───────────────────────────────────────────────────────────
-
-    fn render_paint(
-        &self,
-        signature: &Signature,
-        theme: &ui::Theme,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let state = self.state.clone();
-        let brush = signature.brush;
-        let paint_active = signature.terrain_brush_active && brush.mode == SculptMode::Paint;
-
-        let mut swatches = h_flex().w_full().flex_wrap().gap_1();
-        let material_slots = signature
-            .bodies
-            .iter()
-            .find(|body| body.is_target(&signature.target))
-            .map(|body| body.material_slots)
-            .unwrap_or(0);
-        for id in 1..=material_slots {
-            let selected = paint_active && brush.material == id;
-            let state = state.clone();
-            swatches = swatches.child(
-                div()
-                    .id(SharedString::from(format!("material_{id}")))
-                    .size(px(38.0))
-                    .rounded(px(4.0))
-                    .border_2()
-                    .border_color(if selected {
-                        theme.primary
-                    } else if brush.material == id {
-                        theme.border
-                    } else {
-                        theme.border.opacity(0.0)
+            .when(!self.collapsed.contains("world_terrains"), |el| {
+                el.child(terrains)
+                    .when(!signature.terrains.is_empty(), |el| {
+                        el.child(div().pt_1().child(sculpt)).child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child(t!("LevelEditor.TerrainPanel.TerrainsHint").to_string()),
+                        )
                     })
-                    .bg(swatch_color(id))
-                    .flex()
-                    .items_end()
-                    .justify_end()
-                    .p(px(2.0))
-                    .cursor_pointer()
-                    .on_click(move |_, _, _| {
-                        state.write().editor.terrain.activate_paint_material(id);
-                    })
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(white())
-                            .child(id.to_string()),
-                    ),
-            );
-        }
-
-        v_flex()
-            .w_full()
-            .gap_2()
-            .child(self.header(
-                theme,
-                cx,
-                "paint_tools",
-                "LevelEditor.TerrainPanel.Section.Tools",
-                None,
-            ))
-            .when(!self.collapsed.contains("paint_tools"), |el| {
-                el.child(tool_grid(
-                    theme,
-                    state.clone(),
-                    vec![ToolSpec {
-                        id: "paint",
-                        icon: IconName::Palette,
-                        label_key: "LevelEditor.Terrain.Paint",
-                        active: paint_active,
-                        apply: Arc::new(|domain| domain.activate_sculpt_tool(SculptMode::Paint)),
-                    }],
-                ))
             })
-            .child(self.header(
-                theme,
-                cx,
-                "paint_brush",
-                "LevelEditor.TerrainPanel.Section.BrushOptions",
-                None,
-            ))
-            .when(!self.collapsed.contains("paint_brush"), |el| {
-                el.child(self.brush_options(&state, brush, false, cx))
-            })
-            .child(self.header(
-                theme,
-                cx,
-                "paint_materials",
-                "LevelEditor.TerrainPanel.Section.Materials",
-                None,
-            ))
-            .when(!self.collapsed.contains("paint_materials"), |el| {
-                el.child(swatches)
-            })
-    }
-
-    /// Shape + size (+ strength for sculpting) + falloff. Paint has no
-    /// strength — a paint stamp only moves the material channel.
-    fn brush_options(
-        &self,
-        state: &SharedState,
-        brush: SculptBrush,
-        with_strength: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let mut column = v_flex()
-            .w_full()
-            .gap_2()
-            .px_1()
-            .child(segmented_row(
-                state.clone(),
-                cx,
-                "terrain_shape",
-                &[
-                    ("LevelEditor.Terrain.Shape.Sphere", "sphere"),
-                    ("LevelEditor.Terrain.Shape.Box", "box"),
-                ],
-                match brush.shape {
-                    BrushShape::Sphere => "sphere",
-                    BrushShape::Box => "box",
-                },
-                |domain, value| {
-                    domain.set_brush_shape(match value {
-                        "box" => BrushShape::Box,
-                        _ => BrushShape::Sphere,
-                    })
-                },
-            ))
-            .child(stepper_row(
-                state.clone(),
-                cx,
-                "terrain_size".into(),
-                t!("LevelEditor.TerrainPanel.BrushSize").to_string(),
-                brush.radius_m,
-                1.0,
-                64.0,
-                0.5,
-                TerrainDomain::set_brush_radius,
-            ));
-        if with_strength {
-            column = column.child(stepper_row(
-                state.clone(),
-                cx,
-                "terrain_strength".into(),
-                t!("LevelEditor.Terrain.Strength").to_string(),
-                brush.strength,
-                0.1,
-                10.0,
-                0.1,
-                TerrainDomain::set_brush_strength,
-            ));
-        }
-        column.child(stepper_row(
-            state.clone(),
-            cx,
-            "terrain_falloff".into(),
-            t!("LevelEditor.Terrain.Falloff").to_string(),
-            brush.falloff,
-            0.0,
-            1.0,
-            0.05,
-            TerrainDomain::set_brush_falloff,
-        ))
     }
 }
 

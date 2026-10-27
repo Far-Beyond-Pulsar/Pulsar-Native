@@ -369,6 +369,19 @@ impl LevelEditorPanel {
                     let mut s = poll_state.write();
                     crate::ui::panel::pie::finish_stop(&mut s, false);
                 }
+                // An edit asked for the camera elsewhere (a new voxel
+                // world's view of its ground).
+                let asked = poll_state.read().editor.camera_request.is_some();
+                let camera = asked
+                    .then(|| poll_state.write().editor.camera_request.take())
+                    .flatten();
+                if let (Some(camera), Some(mailbox)) = (camera, &poll_mailbox) {
+                    mailbox.queue_camera(EditorCameraState {
+                        position: camera.position,
+                        yaw: camera.yaw,
+                        pitch: camera.pitch,
+                    });
+                }
                 // Undo/redo from a caller without a renderer handle (the AI
                 // tools) may have changed the selection. Cleared only once
                 // the gizmo follows it.

@@ -69,9 +69,6 @@ pub(super) fn apply_voxel_brush_commit(
     world: &mut pulsar_scenedb::World,
     commit: VoxelBrushCommit,
 ) -> bool {
-    if commit.id.kind != 1 {
-        return false;
-    }
     let entity = pulsar_scenedb::Entity::from_bits(commit.id.entity_bits);
     let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else {
         return false;
