@@ -1,10 +1,10 @@
 # Graph canvas (Graphy render + interaction)
 
 The shared node-graph canvas lives in the Graphy submodule
-(`crates/third-party/graphy`). Blueprint, Shader and Render Graph editors are
-migrating onto it (Phases 4-6 of `docs/graphy-workspace-migration-plan.md`); until
-a consumer moves, its own renderer under `plugins/vendor/*/src/rendering/` is
-still the one in use.
+(`crates/third-party/graphy`). The Blueprint editor uses it (Phase 4, below); the Shader
+and Render Graph editors are migrating onto it (Phases 5-6 of
+`docs/graphy-workspace-migration-plan.md`); until Shader moves, its own renderer under
+`plugins/vendor/shader_editor/src/rendering/` is still the one in use.
 
 ## Crates
 
@@ -38,7 +38,10 @@ needs Pulsar's gpui and wgpu forks, so it has its own `[workspace]` and lockfile
 pin style + label + inline value chip, row heights, wire colour/routing,
 comment and section presentation. `GraphProfile`: connection policy and
 `TypeResolver`, catalogue + node factory, reroute factory, dynamic-pin refresh,
-macro/subgraph navigation, menu items, overlays (`decorate`). `GpuiProfile`:
+macro/subgraph navigation, menu items, overlays (`decorate`). `is_deletable` protects structural nodes. Header double-clicks
+reach the host as `Action::CommentActivated`; `CanvasEvent::Edited` carries the commands
+and the change set; `graphy::diff_commands` turns "this graph should become that graph" into
+commands. `GpuiProfile`:
 GPUI content for host rows (texture previews, custom bodies).
 
 ## Reviewing the visuals
@@ -50,14 +53,30 @@ cargo run --release -p graphy-render-wgpu --example render_scenes
 writes PNGs to `target/graphy-scenes/` (offscreen, no window). See
 `crates/graphy-render-wgpu/README.md` for the visual system and LOD tiers.
 
-## Blueprint (Phase 4, in progress)
+## Blueprint (Phase 4): the first consumer
 
-`plugins/vendor/blueprint_editor` is the first consumer. Landed so far: the
-authored-schema boundary `io::canvas_doc` (`from_authored` / `to_authored`, the only
-conversion between `.blueprint` and the editing `graphy::GraphDescription`) and
-`canvas_profile::BlueprintProfile` (catalogue, node factory, pin styles, type rules,
-reroute inference, subgraph navigation). The editor still draws and edits through its
-private `BlueprintGraph`/`rendering/` until the canvas is mounted; the removal order is
-in the Phase 4 hand-over note. Core `GraphComment` now carries `id`, `color` and
-`contained_node_ids`, and `Connection` an optional `id`, so authored assets round-trip
-without id churn.
+`plugins/vendor/blueprint_editor` draws and edits through `GraphCanvas`; it has no
+renderer, hit-testing, spatial index or input code of its own.
+
+- Each open tab is a `GraphCanvasPanel` (`editor/graph_canvas_panel.rs`) holding an
+  `Entity<GraphCanvas>`, which owns the tab's `graph::GraphDescription`. A tab without a
+  canvas yet carries a `TabDoc` that the canvas takes over when mounted.
+- `io::canvas_doc` is the only conversion between the `.blueprint` schema
+  (`graphy_blueprint`) and the editing document: `from_authored` on load, `to_authored`
+  for save, compile, prefab and AI snapshots. Comment/connection ids and the
+  authored-only fields (`AuthoredSidecar`) survive the round trip.
+- Edits are `GraphCommand` batches. `CanvasEvent::Edited` carries the commands and the
+  `ChangeSet`; the panel pushes `features::undo::Command` (change set to undo, commands to
+  redo) on the tab's host-registered history and marks the editor dirty. Editor-made
+  changes that are not user steps (macro interface and event sync) use `apply_system`.
+  Whole-document replacement (AI edits) is `graphy::diff_commands`.
+- `canvas_profile::BlueprintProfile` is the `GraphProfile`/`Presenter`: catalogue and node
+  factory, pin styles, type rules, reroute inference, macro navigation, deletion rules,
+  titles (custom events, subgraphs, engine events, foreign `EditorProfile::node_title`).
+  `ProfileData` carries what it reads from the editor (subgraphs, library, event names,
+  running nodes, wire style).
+- Blueprint-only chrome stays in the plugin: context-menu entries (breakpoint, collapse),
+  quick palette, comment title editing, breakpoint badges, debug HUD, macro pin editor,
+  inspector (over `NodeView`/`CommentView` snapshots of the document).
+- `EditorProfile::{parameter_changed, auto_layout}` return `GraphCommand`s; `render_bps`
+  builds them in `model.rs`.
