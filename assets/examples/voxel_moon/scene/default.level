@@ -520,25 +520,42 @@
               "ratio3": 0.15
             }
           ],
-          "caves": {
-            "enabled": false,
-            "depth_m": 120.0,
-            "share": 0.45,
-            "region_km": 6.0,
-            "tunnel_radius_m": 2.5,
-            "tunnel_wavelength_m": 160.0,
-            "cavern_wavelength_m": 160.0,
-            "cavern_share": 0.04,
-            "cover_m": 6.0,
-            "entrance_share": 0.05,
-            "entrance_spacing_m": 80.0
-          },
-          "overhangs": {
-            "enabled": false,
-            "height_m": 6.0,
-            "wavelength_m": 6.0,
-            "region_km": 3.0,
-            "share": 0.3
+          "volumes": {
+            "caves": {
+              "enabled": true,
+              "spacing_m": 400.0,
+              "share": 0.6,
+              "depth_min_m": 15.0,
+              "depth_max_m": 40.0,
+              "max_depth_m": 200.0,
+              "cover_m": 8.0,
+              "hub_chambers": 0.0,
+              "chambers": 0.0,
+              "chamber_min_m": 8.0,
+              "chamber_max_m": 22.0,
+              "chamber_height": 0.45,
+              "tunnel_min_m": 4.0,
+              "tunnel_max_m": 9.0,
+              "tunnel_height": 0.6,
+              "chamber_floor": 0.5,
+              "tunnel_floor": 0.4,
+              "links": 0.9,
+              "entrances": 0.6,
+              "entrance_lift_m": 20.0,
+              "bend_m": 6.0,
+              "roughness": 0.15,
+              "roughness_m": 5.0
+            },
+            "cliffs": {
+              "enabled": false,
+              "depth_m": 4.0,
+              "strata_m": 3.0,
+              "slope_min": 0.9,
+              "slope_max": 1.8,
+              "noise": 0.4,
+              "region_km": 3.0,
+              "share": 0.5
+            }
           },
           "materials": "Lunar",
           "snowline_m": 3000.0,
