@@ -195,7 +195,7 @@ pinned here (see "Submodule pins" below). They are not workspace members
 
 | Submodule | Path dep? | Notes |
 |---|---|---|
-| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); both headless, consumed as path deps |
+| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); plus `graphy-reflection` (the only crate that knows Pulsar: `TypeResolver` and node metadata over `pulsar_reflection`); all headless, consumed as path deps |
 | `pulsar-config/` | Yes | Configuration management |
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
 | `psgc/` | No | Shader Graph Compiler (has its own workspace) |
