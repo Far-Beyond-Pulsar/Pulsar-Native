@@ -32,7 +32,7 @@ A class is a directory containing `graph_save.json` (`src/io/save_load.rs`), eit
 `<project>/src/classes/<Name>/` or a `<Name>.class/` folder anywhere in the project
 (`src/features/class_dirs.rs`).
 
-The file is a `//` comment header followed by a `blueprint_graph::BlueprintAsset` as JSON
+The file is a `//` comment header followed by a `graphy_blueprint::BlueprintAsset` as JSON
 (`graph/src/lib.rs`): `format_version` (currently 2, see `graph/src/codec.rs`; v1 files are
 upgraded on load), `main_graph`, `subgraphs` (alias `local_macros`), `local_events`, `variables`,
 `editor_state` and `blueprint_metadata`. A component class also has a `prefab.json` sidecar.
@@ -42,7 +42,7 @@ upgraded on load), `main_graph`, `subgraphs` (alias `local_macros`), `local_even
 `run_validation_stage` in `src/features/compilation/compiler.rs` runs before every compile and
 aborts it on errors:
 
-1. The editor graph is converted to a `blueprint_graph::GraphDescription` and checked for
+1. The editor graph is converted to a `graphy_blueprint::GraphDescription` and checked for
    dangling connections and empty node types.
 2. `blueprint_compiler::authored::expand_graph` lowers it to a `graphy::GraphDescription` and
    inlines local and library macros.

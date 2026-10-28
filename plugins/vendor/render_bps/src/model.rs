@@ -1,6 +1,6 @@
 //! Render graphs in the graph editor's terms.
 //!
-//! The editor edits `blueprint_graph` descriptions; the engine reads
+//! The editor edits `graphy_blueprint` descriptions; the engine reads
 //! `helio_graph_asset::GraphAsset`. This module is the bridge, and it is pure
 //! (no UI), so it is unit tested: the node catalogue, the pin type strings the
 //! editor compares, pin styles, and the conversions both ways.
@@ -10,7 +10,7 @@ use std::sync::{Arc, OnceLock};
 
 use blueprint_editor_plugin::profile::{PinShape, PinStyle};
 use blueprint_editor_plugin::{NodeCategory, NodeDefinition, NodeDefinitions, PinDefinition};
-use blueprint_graph::{
+use graphy_blueprint::{
     BlueprintAsset, Connection as DescConnection, ConnectionType, DataType, GraphDescription,
     NodeInstance as DescNode, Pin as DescPin, PinInstance, PinType as DescPinType, Position,
 };
@@ -403,7 +403,7 @@ fn build_description(
 
     graph.comments = comments
         .iter()
-        .map(|c| blueprint_graph::BlueprintComment {
+        .map(|c| graphy_blueprint::BlueprintComment {
             id: c.id.clone(),
             text: c.text.clone(),
             position: (c.position[0], c.position[1]),
@@ -450,12 +450,12 @@ pub fn to_blueprint_asset(
             Some(section),
         )?;
         let interface_pins =
-            |ports: &[helio_graph_asset::SectionPort]| -> Vec<blueprint_graph::SubGraphPin> {
+            |ports: &[helio_graph_asset::SectionPort]| -> Vec<graphy_blueprint::SubGraphPin> {
                 ports
                     .iter()
                     .map(|port| {
                         let pin = port.to_pin();
-                        blueprint_graph::SubGraphPin {
+                        graphy_blueprint::SubGraphPin {
                             id: port.name.clone(),
                             name: pin_label(&pin),
                             data_type: DataType::from_type_str(&pin_type_string(&pin)),
@@ -467,11 +467,11 @@ pub fn to_blueprint_asset(
                     })
                     .collect()
             };
-        let mut subgraph = blueprint_graph::SubGraph::new(&section.id, &section.name);
-        subgraph.kind = blueprint_graph::SubGraphKind::Collapsed;
+        let mut subgraph = graphy_blueprint::SubGraph::new(&section.id, &section.name);
+        subgraph.kind = graphy_blueprint::SubGraphKind::Collapsed;
         subgraph.description = "A section of the render graph".to_string();
         subgraph.graph = inner;
-        subgraph.interface = blueprint_graph::SubGraphInterface {
+        subgraph.interface = graphy_blueprint::SubGraphInterface {
             inputs: interface_pins(&section.inputs),
             outputs: interface_pins(&section.outputs),
         };
@@ -551,7 +551,7 @@ fn comments_of(graph: &GraphDescription) -> Vec<helio_graph_asset::GraphComment>
 /// The inverse of [`to_blueprint_asset`]: each collapsed graph is a section.
 pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry) -> GraphAsset {
     let graph = &blueprint.main_graph;
-    let ports = |pins: &[blueprint_graph::SubGraphPin]| -> Vec<helio_graph_asset::SectionPort> {
+    let ports = |pins: &[graphy_blueprint::SubGraphPin]| -> Vec<helio_graph_asset::SectionPort> {
         pins.iter()
             .map(|pin| port_from_type(&pin.id, &pin.data_type.to_string()))
             .collect()
@@ -559,7 +559,7 @@ pub fn from_blueprint_asset(blueprint: &BlueprintAsset, registry: &NodeRegistry)
     let sections = blueprint
         .subgraphs
         .iter()
-        .filter(|subgraph| subgraph.kind == blueprint_graph::SubGraphKind::Collapsed)
+        .filter(|subgraph| subgraph.kind == graphy_blueprint::SubGraphKind::Collapsed)
         .map(|subgraph| helio_graph_asset::GraphSection {
             id: subgraph.id.clone(),
             name: subgraph.name.clone(),

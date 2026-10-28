@@ -2,7 +2,7 @@
 //! open without hunting for its node on the canvas.
 
 use blueprint_editor_plugin::BlueprintEditorPanel;
-use blueprint_graph::SubGraphKind;
+use graphy_blueprint::SubGraphKind;
 use gpui::*;
 use ui::dock::{Panel, PanelEvent};
 use ui::{ActiveTheme as _, StyledExt as _};

@@ -64,7 +64,7 @@ impl EditorProfile for RenderProfile {
         model::catalog(model::registry())
     }
 
-    fn decode(&self, text: &str) -> Result<blueprint_graph::BlueprintAsset, String> {
+    fn decode(&self, text: &str) -> Result<graphy_blueprint::BlueprintAsset, String> {
         let marker: serde_json::Value =
             serde_json::from_str(text).map_err(|error| format!("invalid render graph: {error}"))?;
         let is_empty = marker
@@ -81,7 +81,7 @@ impl EditorProfile for RenderProfile {
         model::to_blueprint_asset(&asset, model::registry())
     }
 
-    fn encode(&self, asset: &blueprint_graph::BlueprintAsset) -> Result<String, String> {
+    fn encode(&self, asset: &graphy_blueprint::BlueprintAsset) -> Result<String, String> {
         Ok(model::from_blueprint_asset(asset, model::registry()).to_json())
     }
 
@@ -135,7 +135,7 @@ impl EditorProfile for RenderProfile {
     fn graph_applied(
         &self,
         file: Option<&std::path::Path>,
-        asset: &blueprint_graph::BlueprintAsset,
+        asset: &graphy_blueprint::BlueprintAsset,
         cx: &mut App,
     ) {
         for preview in preview::previews_for(file) {
@@ -143,7 +143,7 @@ impl EditorProfile for RenderProfile {
         }
     }
 
-    fn validate(&self, document: &blueprint_graph::BlueprintAsset) -> Vec<String> {
+    fn validate(&self, document: &graphy_blueprint::BlueprintAsset) -> Vec<String> {
         let registry = model::registry();
         let asset = model::buildable_asset(document, registry);
         let mut problems = model::problems(&asset, registry);

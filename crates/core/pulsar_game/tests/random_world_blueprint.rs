@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use blueprint_compiler::{authored::expand_graph, compile, ClassSource, VariableSource};
-use blueprint_graph::codec::deserialize_blueprint;
+use graphy_blueprint::codec::deserialize_blueprint;
 use helio_component::voxel_world::terrain_world;
 use helio_component::{
     VoxelAir, VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent,

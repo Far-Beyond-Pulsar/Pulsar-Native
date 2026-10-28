@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use blueprint_graph::BlueprintAsset;
+use graphy_blueprint::BlueprintAsset;
 use engine_backend::scene::{new_scene, resolve_level_assets, RuntimeLevel};
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use engine_backend::subsystems::render::helio_renderer::pipelines;

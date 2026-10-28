@@ -34,12 +34,10 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `plugin_manager` | Plugin host — DLL loading, registries, tool bridge |
 | `profiling` | Performance tracing (Tracy) |
 | `pulsar_auth` | Authentication |
-| `pulsar_bp_executor` | Blueprint graph runtime executor |
 | `pulsar_core` | Core types, math, utilities |
 | `pulsar_docs` | Doc generation from reflected types |
 | `pulsar_events` | Event bus |
 | `pulsar_game` | Game mode abstractions |
-| `pulsar_graph` | Blueprint graph data model |
 | `pulsar_lsp` | LSP client integration. One engine-owned rust-analyzer; editors attach with `ensure_started` (never `start`), share documents by refcount, sync incrementally (`did_change_file_incremental`), and receive per-file `AnalyzerEvent::FileDiagnostics` |
 | `pulsar_macros` | Various derive macros |
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
@@ -197,7 +195,7 @@ pinned here (see "Submodule pins" below). They are not workspace members
 
 | Submodule | Path dep? | Notes |
 |---|---|---|
-| `graphy/` | Yes | Graph data model and compiler types |
+| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); both headless, consumed as path deps |
 | `pulsar-config/` | Yes | Configuration management |
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
 | `psgc/` | No | Shader Graph Compiler (has its own workspace) |

@@ -19,7 +19,6 @@ Engine platform crates. These live under `crates/core/` and are the backbone of 
 | `pulsar_ecs` | Entity-Component-System |
 | `pulsar_events` | Event bus |
 | `pulsar_game` | Game mode abstractions |
-| `pulsar_graph` | Blueprint graph data model |
 | `pulsar_lsp` | LSP client integration |
 | `pulsar_macros` | Proc macros for engine types |
 | `pulsar_reflection` | Runtime type reflection |
