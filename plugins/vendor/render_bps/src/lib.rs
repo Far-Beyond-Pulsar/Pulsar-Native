@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use blueprint_editor_plugin::profile::{install_profile, EditorProfile, ParamField, PinStyle};
-use blueprint_editor_plugin::{BlueprintEditorPanel, BlueprintGraph};
+use blueprint_editor_plugin::BlueprintEditorPanel;
 use gpui::*;
 use plugin_editor_api::*;
 use ui::dock::PanelView;
@@ -93,8 +93,12 @@ impl EditorProfile for RenderProfile {
         model::parameter_fields(definition_id, model::registry())
     }
 
-    fn parameter_changed(&self, graph: &mut BlueprintGraph, node_id: &str) {
-        model::refresh_pins(graph, node_id, model::registry());
+    fn parameter_changed(
+        &self,
+        graph: &graphy::GraphDescription,
+        node_id: &str,
+    ) -> Vec<graphy::GraphCommand> {
+        model::refresh_pins(graph, node_id, model::registry())
     }
 
     fn node_title(
@@ -117,7 +121,7 @@ impl EditorProfile for RenderProfile {
         vec![Arc::new(sections), Arc::new(buffers)]
     }
 
-    fn auto_layout(&self, graph: &mut BlueprintGraph) -> bool {
+    fn auto_layout(&self, graph: &graphy::GraphDescription) -> Vec<graphy::GraphCommand> {
         model::auto_layout_graph(graph)
     }
 

@@ -30,6 +30,7 @@ ui = { workspace = true }
 # editor shell's to turn on (pulsar_engine does), not this plugin's.
 blueprint_editor_plugin = { path = "../blueprint_editor", default-features = false }
 graphy-blueprint = { path = "../../../crates/third-party/graphy/crates/graphy-blueprint" }
+graphy = { workspace = true }
 
 # The render graph asset model, its node registry and compiler.
 helio-graph-asset = { workspace = true }

@@ -236,9 +236,15 @@ fn called_section(definition_id: &str) -> Option<&str> {
 }
 
 /// Ports from the pins of a node placing a collapsed graph.
-fn ports_from_pins(pins: &[blueprint_editor_plugin::Pin]) -> Vec<helio_graph_asset::SectionPort> {
+fn ports_from_pins(pins: &[graphy::PinInstance]) -> Vec<helio_graph_asset::SectionPort> {
     pins.iter()
-        .map(|pin| port_from_type(&pin.id, &pin.data_type.type_name))
+        .map(|pin| {
+            let type_name = match pin.data_type() {
+                graphy::DataType::Exec => "execution".to_string(),
+                graphy::DataType::Data(info) => info.type_string.clone(),
+            };
+            port_from_type(&pin.id, &type_name)
+        })
         .collect()
 }
 
@@ -737,16 +743,32 @@ pub fn asset_from_live(
     }
 }
 
+/// A stored node property as the text the node descriptors read.
+fn property_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// The asset the editor's graph describes.
-pub fn live_asset(graph: &blueprint_editor_plugin::BlueprintGraph) -> GraphAsset {
-    let nodes: Vec<LiveNode> = graph
-        .nodes
-        .iter()
-        .map(|node| LiveNode {
-            id: node.id.clone(),
-            definition_id: node.definition_id.clone(),
-            position: [node.position.x, node.position.y],
-            properties: node.properties.clone(),
+pub fn live_asset(graph: &graphy::GraphDescription) -> GraphAsset {
+    let mut ids: Vec<&String> = graph.nodes.keys().collect();
+    ids.sort();
+    let nodes: Vec<LiveNode> = ids
+        .into_iter()
+        .map(|id| {
+            let node = &graph.nodes[id];
+            LiveNode {
+                id: node.id.clone(),
+                definition_id: node.node_type.clone(),
+                position: [node.position.x as f32, node.position.y as f32],
+                properties: node
+                    .properties
+                    .iter()
+                    .map(|(k, v)| (k.clone(), property_text(v)))
+                    .collect(),
+            }
         })
         .collect();
     let wires: Vec<LiveWire> = graph
@@ -762,19 +784,21 @@ pub fn live_asset(graph: &blueprint_editor_plugin::BlueprintGraph) -> GraphAsset
     asset_from_live("", &nodes, &wires, registry())
 }
 
-/// Arranges the editor's graph: positions every node and replaces the lane
-/// comments, keeping comments the author made. Reroute nodes are the editor's own
-/// and keep where they are.
-pub fn auto_layout_graph(graph: &mut blueprint_editor_plugin::BlueprintGraph) -> bool {
+/// Arranges the editor's graph as edit commands: positions every node and
+/// replaces the lane comments, keeping comments the author made. Reroute nodes
+/// are the editor's own and keep where they are.
+pub fn auto_layout_graph(graph: &graphy::GraphDescription) -> Vec<graphy::GraphCommand> {
+    use graphy::GraphCommand;
+
     let mut asset = live_asset(graph);
     // Collapsed graphs are sections; their pins are what the nodes placing them show.
     asset.sections = graph
         .nodes
-        .iter()
+        .values()
         .filter_map(|node| {
-            called_section(&node.definition_id).map(|id| helio_graph_asset::GraphSection {
+            called_section(&node.node_type).map(|id| helio_graph_asset::GraphSection {
                 id: id.to_string(),
-                name: node.title.clone(),
+                name: id.to_string(),
                 inputs: ports_from_pins(&node.inputs),
                 outputs: ports_from_pins(&node.outputs),
                 nodes: Vec::new(),
@@ -789,36 +813,49 @@ pub fn auto_layout_graph(graph: &mut blueprint_editor_plugin::BlueprintGraph) ->
         .iter()
         .map(|n| (n.id.clone(), n.position))
         .collect();
-    for node in graph.nodes.iter_mut() {
-        if let Some(position) = positions.get(&node.id) {
-            node.position = gpui::Point::new(position[0], position[1]);
+    let mut commands = Vec::new();
+    let mut ids: Vec<&String> = graph.nodes.keys().collect();
+    ids.sort();
+    for id in ids {
+        if let Some(position) = positions.get(id) {
+            let node = &graph.nodes[id];
+            let target = (f64::from(position[0]), f64::from(position[1]));
+            if (node.position.x, node.position.y) != target {
+                commands.push(GraphCommand::MoveNode {
+                    id: id.clone(),
+                    x: target.0,
+                    y: target.1,
+                });
+            }
         }
     }
 
-    let lanes: Vec<blueprint_editor_plugin::BlueprintComment> = asset
+    // Drop the old lane comments (highest index first) and add the new ones.
+    for (index, comment) in graph.comments.iter().enumerate().rev() {
+        if comment.id.starts_with(helio_graph_asset::LANE_PREFIX) {
+            commands.push(GraphCommand::RemoveComment { index });
+        }
+    }
+    let kept = graph
         .comments
         .iter()
-        .map(|c| blueprint_editor_plugin::BlueprintComment {
-            id: c.id.clone(),
-            text: c.text.clone(),
-            position: gpui::Point::new(c.position[0], c.position[1]),
-            size: gpui::Size::new(c.size[0], c.size[1]),
-            color: gpui::Hsla::from(gpui::Rgba {
-                r: c.color[0],
-                g: c.color[1],
-                b: c.color[2],
-                a: c.color[3],
-            }),
-            contained_node_ids: c.nodes.clone(),
-            is_selected: false,
-            color_picker_state: None,
-        })
-        .collect();
-    graph.comments.with_mut(|comments| {
-        comments.retain(|c| !c.id.starts_with(helio_graph_asset::LANE_PREFIX));
-        comments.extend(lanes);
-    });
-    true
+        .filter(|c| !c.id.starts_with(helio_graph_asset::LANE_PREFIX))
+        .count();
+    for (offset, c) in asset.comments.iter().enumerate() {
+        let mut comment = graphy::core::GraphComment::new(
+            c.text.clone(),
+            graphy::Position::new(f64::from(c.position[0]), f64::from(c.position[1])),
+            (f64::from(c.size[0]), f64::from(c.size[1])),
+        );
+        comment.id = c.id.clone();
+        comment.color = c.color;
+        comment.contained_node_ids = c.nodes.clone();
+        commands.push(GraphCommand::AddComment {
+            index: kept + offset,
+            comment,
+        });
+    }
+    commands
 }
 
 /// Problems that stop a graph from building, as one line each.
@@ -860,16 +897,23 @@ pub fn parameter_fields(
         })
 }
 
-fn editor_pins(
-    pins: &[PinDesc],
-    direction: blueprint_editor_plugin::PinType,
-) -> Vec<blueprint_editor_plugin::Pin> {
+fn editor_pins(pins: &[PinDesc], direction: graphy::PinType) -> Vec<graphy::PinInstance> {
     pins.iter()
-        .map(|pin| blueprint_editor_plugin::Pin {
-            id: pin.name.clone(),
-            name: pin_label(pin),
-            pin_type: direction.clone(),
-            data_type: blueprint_editor_plugin::PinDataType::from_type_str(pin_type_string(pin)),
+        .map(|pin| {
+            let type_string = pin_type_string(pin);
+            graphy::PinInstance {
+                id: pin.name.clone(),
+                pin: graphy::Pin {
+                    id: pin.name.clone(),
+                    name: pin_label(pin),
+                    data_type: if type_string == "execution" {
+                        graphy::DataType::Exec
+                    } else {
+                        graphy::DataType::typed(type_string)
+                    },
+                    pin_type: direction,
+                },
+            }
         })
         .collect()
 }
@@ -889,32 +933,35 @@ pub fn buffer_title(
     Some(format!("{verb} {name}"))
 }
 
-/// Re-derives a node's pins after one of its parameters changed. A resource
-/// node's pin is named after the resource, so its wires are moved to the pin's
-/// new id rather than left pointing at one that no longer exists.
+/// Edit commands re-deriving a node's pins after one of its parameters
+/// changed. A resource node's pin is named after the resource, so its wires
+/// are moved to the pin's new id rather than left pointing at one that no
+/// longer exists.
 pub fn refresh_pins(
-    graph: &mut blueprint_editor_plugin::BlueprintGraph,
+    graph: &graphy::GraphDescription,
     node_id: &str,
     registry: &NodeRegistry,
-) {
-    let Some(node) = graph.nodes.iter().find(|n| n.id == node_id) else {
-        return;
+) -> Vec<graphy::GraphCommand> {
+    use graphy::GraphCommand;
+
+    let Some(node) = graph.nodes.get(node_id) else {
+        return Vec::new();
     };
-    let Some(descriptor) = registry.get(&node.definition_id) else {
-        return;
+    let Some(descriptor) = registry.get(&node.node_type) else {
+        return Vec::new();
     };
-    let params = params_from_text(
-        descriptor,
-        node.properties
-            .iter()
-            .map(|(key, value)| (key, value.clone())),
-    );
+    let texts: Vec<(&String, String)> = node
+        .properties
+        .iter()
+        .map(|(key, value)| (key, property_text(value)))
+        .collect();
+    let params = params_from_text(descriptor, texts.into_iter());
     let pins = descriptor.pins(&params);
-    let inputs = editor_pins(&pins.inputs, blueprint_editor_plugin::PinType::Input);
-    let outputs = editor_pins(&pins.outputs, blueprint_editor_plugin::PinType::Output);
+    let inputs = editor_pins(&pins.inputs, graphy::PinType::Input);
+    let outputs = editor_pins(&pins.outputs, graphy::PinType::Output);
 
     // Pins keep their position, so the i-th old pin becomes the i-th new one.
-    let renamed = |old: &[blueprint_editor_plugin::Pin], new: &[blueprint_editor_plugin::Pin]| {
+    let renamed = |old: &[graphy::PinInstance], new: &[graphy::PinInstance]| {
         old.iter()
             .zip(new)
             .filter(|(old, new)| old.id != new.id)
@@ -924,20 +971,19 @@ pub fn refresh_pins(
     let renamed_inputs = renamed(&node.inputs, &inputs);
     let renamed_outputs = renamed(&node.outputs, &outputs);
 
-    if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_id) {
-        node.inputs = inputs;
-        node.outputs = outputs;
-        if let Some(title) = buffer_title(&node.definition_id, &node.properties) {
-            node.title = title;
-        }
-    }
-    for connection in graph.connections.iter_mut() {
+    // Wires on renamed pins are lifted first and put back on the new ids.
+    let mut lifted = Vec::new();
+    let mut rewired = Vec::new();
+    for connection in &graph.connections {
+        let mut moved = connection.clone();
+        let mut changed = false;
         if connection.source_node == node_id {
             if let Some((_, new)) = renamed_outputs
                 .iter()
                 .find(|(old, _)| *old == connection.source_pin)
             {
-                connection.source_pin = new.clone();
+                moved.source_pin = new.clone();
+                changed = true;
             }
         }
         if connection.target_node == node_id {
@@ -945,10 +991,36 @@ pub fn refresh_pins(
                 .iter()
                 .find(|(old, _)| *old == connection.target_pin)
             {
-                connection.target_pin = new.clone();
+                moved.target_pin = new.clone();
+                changed = true;
             }
         }
+        if changed {
+            lifted.push(GraphCommand::Disconnect(connection.clone()));
+            rewired.push(GraphCommand::Connect(moved));
+        }
     }
+
+    let unchanged = node.inputs.len() == inputs.len()
+        && node.outputs.len() == outputs.len()
+        && node
+            .inputs
+            .iter()
+            .zip(&inputs)
+            .chain(node.outputs.iter().zip(&outputs))
+            .all(|(a, b)| a.id == b.id && a.pin.name == b.pin.name && a.pin.data_type == b.pin.data_type);
+    if unchanged {
+        return Vec::new();
+    }
+
+    let mut commands = lifted;
+    commands.push(GraphCommand::SetPins {
+        node: node_id.to_string(),
+        inputs,
+        outputs,
+    });
+    commands.extend(rewired);
+    commands
 }
 #[cfg(test)]
 mod tests {
