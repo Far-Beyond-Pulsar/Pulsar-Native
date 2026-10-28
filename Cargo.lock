@@ -1175,6 +1175,8 @@ dependencies = [
  "gpui-ce",
  "graphy",
  "graphy-blueprint",
+ "graphy-gpui",
+ "graphy-render",
  "log",
  "parking_lot",
  "plugin_editor_api",
@@ -4525,6 +4527,37 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "graphy-gpui"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "graphy",
+ "graphy-render",
+ "graphy-render-wgpu",
+ "serde",
+ "serde_json",
+ "wgpu",
+]
+
+[[package]]
+name = "graphy-render"
+version = "0.1.0"
+dependencies = [
+ "graphy",
+ "rstar 0.12.2",
+]
+
+[[package]]
+name = "graphy-render-wgpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "fontdue",
+ "graphy-render",
+ "wgpu",
 ]
 
 [[package]]

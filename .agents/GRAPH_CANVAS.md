@@ -49,3 +49,15 @@ cargo run --release -p graphy-render-wgpu --example render_scenes
 
 writes PNGs to `target/graphy-scenes/` (offscreen, no window). See
 `crates/graphy-render-wgpu/README.md` for the visual system and LOD tiers.
+
+## Blueprint (Phase 4, in progress)
+
+`plugins/vendor/blueprint_editor` is the first consumer. Landed so far: the
+authored-schema boundary `io::canvas_doc` (`from_authored` / `to_authored`, the only
+conversion between `.blueprint` and the editing `graphy::GraphDescription`) and
+`canvas_profile::BlueprintProfile` (catalogue, node factory, pin styles, type rules,
+reroute inference, subgraph navigation). The editor still draws and edits through its
+private `BlueprintGraph`/`rendering/` until the canvas is mounted; the removal order is
+in the Phase 4 hand-over note. Core `GraphComment` now carries `id`, `color` and
+`contained_node_ids`, and `Connection` an optional `id`, so authored assets round-trip
+without id churn.
