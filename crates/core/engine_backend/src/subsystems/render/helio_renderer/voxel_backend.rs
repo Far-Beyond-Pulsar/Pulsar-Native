@@ -9,7 +9,7 @@ use helio_component::{voxel_world::planet_brush, VoxelWorldShape};
 use helio_default_passes::VoxelPassFactory;
 use helio_pass_voxel_planet::{
     chunks::{pass::ChunkPass, KeptChunks},
-    engine::{PlanetFrame, SharedKeptExport, SharedPlanetFrame},
+    engine::{PlanetFrame, SharedKeptExport, SharedPlanetFrame, VolumeFrame},
     queries::{Resident, WorldQueries},
     terrain, Matter, Planet, PlanetRecipe, TerrainSource,
 };
@@ -1324,11 +1324,19 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             .lock()
             .map_err(|_| "frame mailbox was poisoned")? = Some(PlanetFrame {
             eye,
-            planet,
+            // One volume: the terrain's world, centred on the origin
+            // (`validate_source`), by the terrain's entity.
+            volumes: vec![VolumeFrame {
+                volume: helio_pass_voxel_planet::VoxelVolume::new(
+                    entry.id.entity_bits,
+                    planet,
+                    helio_pass_voxel_planet::VolumeTransform::IDENTITY,
+                ),
+                kept,
+                export: Some(self.export.clone()),
+            }],
             sun,
             picks: Some(self.picks.clone()),
-            kept,
-            export: Some(self.export.clone()),
         });
         self.serve_saves()?;
         error.map_or(Ok(()), Err)
@@ -1397,7 +1405,8 @@ mod tests {
             .unwrap()
             .as_ref()
             .unwrap()
-            .planet
+            .planet()
+            .unwrap()
             .clone()
     }
 
@@ -1586,6 +1595,8 @@ mod tests {
         let exact = original.raycast(eye, down, 100.0).unwrap();
         for distance in [2_000.0, 300_000.0, 1_000_000_000.0] {
             let pick = helio_pass_voxel_planet::engine::PickHit {
+                // The terrain's volume (published by its entity).
+                volume: entries[0].id.entity_bits,
                 distance: distance + exact.distance,
                 cell: target,
                 level: 0,
@@ -1993,7 +2004,7 @@ mod tests {
             registry.register(Box::new(backend)).unwrap();
             let eye = DVec3::new(10.0, 400.0, -20.0);
             assert!(registry.publish_frame(&entries, view(eye)).is_empty());
-            let planet = frame.lock().unwrap().as_ref().unwrap().planet.clone();
+            let planet = frame.lock().unwrap().as_ref().unwrap().planet().unwrap().clone();
             assert!(planet.grid().is_plane());
             if shape == VoxelWorldShape::Plane {
                 let edge = f64::from(planet.grid().cells()) * planet.grid().voxel_size();
@@ -2024,7 +2035,8 @@ mod tests {
                     .unwrap()
                     .as_ref()
                     .unwrap()
-                    .planet
+                    .planet()
+                    .unwrap()
                     .material(target),
                 0
             );
