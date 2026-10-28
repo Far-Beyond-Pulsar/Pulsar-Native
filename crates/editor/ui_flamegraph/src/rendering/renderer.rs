@@ -98,7 +98,8 @@ impl FlamegraphRenderer {
         // One-shot palette upload
         if !pipe.pal_written {
             let pal_bytes = bytemuck::cast_slice::<[f32; 4], u8>(&PALETTE);
-            pipe.uploads.write(&mut encoder, &pipe.pal_buf, 0, pal_bytes);
+            pipe.uploads
+                .write(&mut encoder, &pipe.pal_buf, 0, pal_bytes);
             pipe.pal_written = true;
         }
 
@@ -108,7 +109,8 @@ impl FlamegraphRenderer {
             .written_uniforms
             .is_none_or(|written| bytemuck::bytes_of(&written) != uni_bytes)
         {
-            pipe.uploads.write(&mut encoder, &pipe.uni_buf, 0, uni_bytes);
+            pipe.uploads
+                .write(&mut encoder, &pipe.uni_buf, 0, uni_bytes);
             pipe.written_uniforms = Some(*uniforms);
         }
 
@@ -127,7 +129,8 @@ impl FlamegraphRenderer {
                     span_bytes,
                     wgpu::BufferUsages::STORAGE,
                 );
-                pipe.uploads.write(&mut encoder, &pipe.span_buf, 0, span_bytes);
+                pipe.uploads
+                    .write(&mut encoder, &pipe.span_buf, 0, span_bytes);
                 pipe.span_data_ptr = data_ptr;
                 pipe.span_data_len = data_len;
             }
@@ -145,7 +148,8 @@ impl FlamegraphRenderer {
                 wgpu::BufferUsages::VERTEX,
             );
             if grew || pipe.written_text != text_bytes {
-                pipe.uploads.write(&mut encoder, &pipe.text_buf, 0, text_bytes);
+                pipe.uploads
+                    .write(&mut encoder, &pipe.text_buf, 0, text_bytes);
                 pipe.written_text.clear();
                 pipe.written_text.extend_from_slice(text_bytes);
             }

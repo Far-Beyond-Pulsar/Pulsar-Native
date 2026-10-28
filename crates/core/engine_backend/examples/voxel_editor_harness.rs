@@ -356,15 +356,18 @@ impl Harness {
     /// One line of memory: the Rust heap, and what the device's allocator
     /// holds (allocated, reserved in blocks, allocation count).
     fn memory_line(&self, label: &str) {
-        let device = self.device.generate_allocator_report().map_or_else(String::new, |r| {
-            format!(
-                ", device allocated {:.0} MB in {} allocations, reserved {:.0} MB in {} blocks",
-                r.total_allocated_bytes as f64 / 1048576.0,
-                r.allocations.len(),
-                r.total_reserved_bytes as f64 / 1048576.0,
-                r.blocks.len()
-            )
-        });
+        let device = self
+            .device
+            .generate_allocator_report()
+            .map_or_else(String::new, |r| {
+                format!(
+                    ", device allocated {:.0} MB in {} allocations, reserved {:.0} MB in {} blocks",
+                    r.total_allocated_bytes as f64 / 1048576.0,
+                    r.allocations.len(),
+                    r.total_reserved_bytes as f64 / 1048576.0,
+                    r.blocks.len()
+                )
+            });
         println!(
             "HARNESS memory {label}: heap {:.0} MB{device}",
             HEAP_LIVE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1048576.0

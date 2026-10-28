@@ -2004,7 +2004,14 @@ mod tests {
             registry.register(Box::new(backend)).unwrap();
             let eye = DVec3::new(10.0, 400.0, -20.0);
             assert!(registry.publish_frame(&entries, view(eye)).is_empty());
-            let planet = frame.lock().unwrap().as_ref().unwrap().planet().unwrap().clone();
+            let planet = frame
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .planet()
+                .unwrap()
+                .clone();
             assert!(planet.grid().is_plane());
             if shape == VoxelWorldShape::Plane {
                 let edge = f64::from(planet.grid().cells()) * planet.grid().voxel_size();

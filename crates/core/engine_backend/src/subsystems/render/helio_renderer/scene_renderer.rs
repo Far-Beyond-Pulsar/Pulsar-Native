@@ -175,8 +175,14 @@ impl SceneRenderer {
             // Virtual geometry: which assets are ready, then which instances
             // are VG-active (both before the authored LOD, which they
             // suppress).
-            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(&virtual_geometry, &device))
-            .with_scene_derivation(crate::scene::virtual_geometry_instances(&mut virtual_geometry, &device))
+            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(
+                &virtual_geometry,
+                &device,
+            ))
+            .with_scene_derivation(crate::scene::virtual_geometry_instances(
+                &mut virtual_geometry,
+                &device,
+            ))
             .with_scene_derivation(crate::scene::authored_lod_selection(
                 &device,
                 scene_db,

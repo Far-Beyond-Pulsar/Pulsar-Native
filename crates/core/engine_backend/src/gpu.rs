@@ -50,7 +50,11 @@ impl<K: PartialEq, Extra> BindGroupCache<K, Extra> {
         key: K,
         build: impl FnOnce(&K) -> (wgpu::BindGroup, Extra),
     ) -> &wgpu::BindGroup {
-        if self.built.as_ref().is_none_or(|(built, _, _)| *built != key) {
+        if self
+            .built
+            .as_ref()
+            .is_none_or(|(built, _, _)| *built != key)
+        {
             let (group, extra) = build(&key);
             self.built = Some((key, group, extra));
             self.created += 1;
@@ -208,7 +212,10 @@ impl ReadbackRing {
             slot.buffer
                 .slice(..slot.len)
                 .map_async(wgpu::MapMode::Read, move |result| {
-                    state.store(if result.is_ok() { READY } else { FAILED }, Ordering::Release);
+                    state.store(
+                        if result.is_ok() { READY } else { FAILED },
+                        Ordering::Release,
+                    );
                 });
         }
     }
@@ -365,14 +372,18 @@ mod tests {
             uploads.recall();
             ring.after_submit();
             let _ = device.poll(wgpu::PollType::Poll);
-            if let Some(value) = ring.read_latest(|bytes| bytemuck::cast_slice::<u8, u32>(bytes)[0]) {
+            if let Some(value) = ring.read_latest(|bytes| bytemuck::cast_slice::<u8, u32>(bytes)[0])
+            {
                 read.push(value);
             }
         }
         let _ = device.poll(wgpu::PollType::wait_indefinitely());
         read.extend(ring.read_latest(|bytes| bytemuck::cast_slice::<u8, u32>(bytes)[0]));
         assert_eq!(read.last(), Some(&59), "the last frame's value: {read:?}");
-        assert!(read.windows(2).all(|w| w[0] < w[1]), "newest first, never stale: {read:?}");
+        assert!(
+            read.windows(2).all(|w| w[0] < w[1]),
+            "newest first, never stale: {read:?}"
+        );
         assert!(ring.created() <= 3, "{} readback buffers", ring.created());
     }
 
