@@ -351,17 +351,6 @@ status = "verified"
 notes = "Phase 0's failures (no draw row when added after the first frame, panel ordering) are covered by the Phase 2 rendered-frame cases (13-phase-2.md)."
 
 [[class]]
-name = "VoxelComponent"
-category = "Voxel"
-world_registered = true
-own_gpu_columns = false
-owner = "helio_component::components::voxel_component_runtime"
-disposition = "removed from Pulsar: one voxel path, VoxelTerrainComponent. Pulsar no longer draws, edits or creates voxel objects (the mesh renderer, the terrain tool's sample sculpting and VoxelSourceSession are gone); a level row of this class loads and draws nothing until Helio deletes the class"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: the class is being deleted in Helio"
-status = "out-of-scope"
-
-[[class]]
 name = "VoxelTerrainLayersComponent"
 category = "Voxel/Terrain"
 world_registered = true
