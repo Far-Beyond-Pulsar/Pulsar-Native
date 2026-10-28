@@ -1036,7 +1036,7 @@ pub fn register_component_runtime(attr: TokenStream, item: TokenStream) -> Token
                     entity,
                 };
                 runtime.subscribe_instance(instance, owner, events, &[#(#handler_event_names),*]);
-                let mut context = pulsar_world_registry::ComponentContext::new(owner, events);
+                let mut context = pulsar_world_registry::ComponentContext::for_instance(entity, owner, events);
                 if first_frame { #begin_call }
                 for queued_event in runtime.take_events(instance) {
                     match queued_event.name.as_str() {

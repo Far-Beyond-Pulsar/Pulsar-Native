@@ -105,7 +105,10 @@ pub fn signature_of(descriptor: &EventDescriptor) -> Option<EventSignature> {
         .collect::<Option<Vec<_>>>()?;
     Some(EventSignature {
         id: descriptor.id,
-        name: descriptor.name.clone(),
+        name: descriptor.namespace.as_ref().map_or_else(
+            || descriptor.name.clone(),
+            |ns| format!("{ns}::{}", descriptor.name),
+        ),
         fields,
     })
 }
@@ -931,9 +934,14 @@ mod namespace_tests {
         let d = descriptor_of(&decl("physics::Collider.hit")).unwrap();
         assert_eq!(d.namespace.as_deref(), Some("physics"));
         assert_eq!(d.name, "Collider.hit");
+        let signature = signature_of(&d).unwrap();
+        assert_eq!(signature.name, "physics::Collider.hit");
+        assert_eq!(signature.id, d.id);
+        assert_eq!(signature.fields, decl("physics::Collider.hit").fields);
         // Plain names are the main namespace, as before.
         let plain = descriptor_of(&decl("Collider.hit")).unwrap();
         assert_eq!(plain.namespace, None);
+        assert_eq!(signature_of(&plain).unwrap().name, "Collider.hit");
         assert_ne!(plain.id, d.id);
         // The main namespace cannot be declared explicitly.
         assert!(descriptor_of(&decl("main::Collider.hit")).is_err());
