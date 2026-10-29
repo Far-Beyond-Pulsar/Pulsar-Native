@@ -24,6 +24,7 @@ pub fn set_locale(locale: &str) {
 }
 
 pub mod asset_picker;
+pub mod asset_ref_editor;
 pub mod asset_thumbnails;
 pub mod close_hooks;
 pub mod command_palette;
