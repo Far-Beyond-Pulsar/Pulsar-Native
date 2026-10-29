@@ -1,10 +1,10 @@
 # Graph canvas (Graphy render + interaction)
 
 The shared node-graph canvas lives in the Graphy submodule
-(`crates/third-party/graphy`). The Blueprint editor uses it (Phase 4, below); the Shader
-and Render Graph editors are migrating onto it (Phases 5-6 of
-`docs/graphy-workspace-migration-plan.md`); until Shader moves, its own renderer under
-`plugins/vendor/shader_editor/src/rendering/` is still the one in use.
+(`crates/third-party/graphy`). The Blueprint (Phase 4) and Render Graph (Phase 5) editors use it, each below; the
+Shader editor is migrating onto it (Phase 6 of `docs/graphy-workspace-migration-plan.md`),
+and until it moves its own renderer under `plugins/vendor/shader_editor/src/rendering/`
+is still the one in use.
 
 ## Crates
 
@@ -72,11 +72,36 @@ renderer, hit-testing, spatial index or input code of its own.
   Whole-document replacement (AI edits) is `graphy::diff_commands`.
 - `canvas_profile::BlueprintProfile` is the `GraphProfile`/`Presenter`: catalogue and node
   factory, pin styles, type rules, reroute inference, macro navigation, deletion rules,
-  titles (custom events, subgraphs, engine events, foreign `EditorProfile::node_title`).
+  titles (custom events, subgraphs, engine events).
   `ProfileData` carries what it reads from the editor (subgraphs, library, event names,
   running nodes, wire style).
 - Blueprint-only chrome stays in the plugin: context-menu entries (breakpoint, collapse),
   quick palette, comment title editing, breakpoint badges, debug HUD, macro pin editor,
   inspector (over `NodeView`/`CommentView` snapshots of the document).
-- `EditorProfile::{parameter_changed, auto_layout}` return `GraphCommand`s; `render_bps`
-  builds them in `model.rs`.
+
+## Render Graph (Phase 5): the second consumer
+
+`plugins/vendor/render_bps` has its own editor on the canvas and shares no code or
+registry with the Blueprint editor (the `EditorProfile` contract and its global registry
+were deleted; a profile is the `Arc<dyn GpuiProfile>` the editor passes to the canvas).
+
+- **One document.** Each graph of a `.rendergraph` (the main graph and one per section) is a
+  `graphy::GraphDescription` owned by its `GraphCanvas`. There is no second editable copy:
+  `document::decode` builds the graphs from the asset at load, `document::encode` writes the
+  asset from them at save, and validation, Compile and the preview read the same graphs
+  through a borrowed `DocRef`. Helio's `validate` and compiler take a `GraphAsset`, so those
+  paths ask the `DocRef` for a `buildable_asset` (reroutes joined, sections kept): a derived,
+  read-only projection, never edited and never kept.
+- **Nothing is lost at the boundary**: node ids and authoring order, params exactly as loaded
+  (a param equal to its default stays if the file had it; Helio reads `buffer` raw), params of
+  node kinds this build does not know, the wires of such nodes (pins are made from them),
+  reroutes (saved with their `type`), comments, section ports (the pins of the section graph's
+  entry and exit nodes), `format_version`, name and description.
+- `profile::RenderProfile` is the `GraphProfile`/`Presenter`: catalogue and node factory,
+  pin styles (shape by kind, ring when persistent), exact-type-string connection rule, section
+  nodes opening their graph, protected entry/exit nodes, and `pin_commands` (Graphy hook) for
+  dynamic Helio pins: a resource node's pin is named after the resource, so a parameter edit
+  returns the commands that move the wires to the renamed pin.
+- Render-only chrome stays in the plugin: toolbar (Save, Compile, Comment, Auto Layout), graph
+  tabs, node picker, context-menu entries (Collapse to Section, Expand Section), comment title
+  editor, the Sections, Buffers and Properties panels and the pipeline preview.

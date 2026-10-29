@@ -206,6 +206,7 @@ These are the built-in editor plugins, loaded as DLLs at runtime. Each is a
 git submodule compiled as `cdylib`:
 
 - `blueprint_editor` — Blueprint visual scripting editor
+- `render_bps` (in-tree, `plugins/vendor/render_bps`) — Render graph editor (`.rendergraph`); its own editor on the Graphy canvas, no Blueprint code. See `.agents/RENDER_GRAPH.md`
 - `code_editor` — Script/code editor, a host for Mockaco (`WgpuiEditorView`). Mockaco owns the hover/completion/diagnostic UI and emits requests; `text_editor/lsp.rs` answers them through the shared analyzer
 - `shader_editor` — Shader graph editor
 - `table_editor` — Database table editor
