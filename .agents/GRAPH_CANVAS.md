@@ -162,5 +162,5 @@ and its conversions, the clipboard/undo/selection features) was deleted.
 - **Theme**: `graphy_render::Theme::from_colors(&ThemeColors)` derives canvas, card body/header,
   border, grid (minor/major), text tiers and shadows from the host's background/foreground/muted/
   border/accent, pushing text to WCAG 7 / 4.5 / 3 on every surface. `Theme::dark()` (the fallback) has
-  canvas `#0f0f0f` (dark canvases from host themes never go below it). Each editor maps its app theme with a small `theme::graph_theme(cx)` and
+  canvas `#171717` (the Default Dark `secondary.background`; hosts pass the theme's `secondary` as `ThemeColors::canvas`, and node surfaces are mixed from the canvas). Each editor maps its app theme with a small `theme::graph_theme(cx)` and
   keeps the canvas current with `GraphCanvas::set_theme`.
