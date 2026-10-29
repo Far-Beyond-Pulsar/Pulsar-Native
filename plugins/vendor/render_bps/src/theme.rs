@@ -13,7 +13,7 @@ pub fn graph_theme(cx: &App) -> Theme {
     };
     Theme::from_colors(&ThemeColors {
         background: opaque(t.background),
-        canvas: opaque(t.secondary),
+        canvas: opaque(t.background),
         foreground: opaque(t.foreground),
         muted_foreground: opaque(t.muted_foreground),
         border: opaque(t.border),

@@ -162,7 +162,7 @@ and its conversions, the clipboard/undo/selection features) was deleted.
 - **Theme**: `graphy_render::Theme::from_colors(&ThemeColors)` derives canvas, card body/header,
   border, grid (minor/major), text tiers and shadows from the host's background/foreground/muted/
   border/accent, pushing text to WCAG 7 / 4.5 / 3 on every surface. `Theme::dark()` (the fallback) has
-  canvas `#171717` (the Default Dark `secondary.background`; hosts pass the theme's `secondary` as `ThemeColors::canvas`, node bodies take the theme background, headers and borders are mixed from it, pin labels use the theme text colour). Each editor maps its app theme with a small `theme::graph_theme(cx)` and
+  canvas `#0a0a0a` (hosts pass the theme `background` as `ThemeColors::canvas`; node body, header and border are the canvas mixed toward the foreground, pin labels use the theme text colour). Each editor maps its app theme with a small `theme::graph_theme(cx)` and
   keeps the canvas current with `GraphCanvas::set_theme`.
 - **Colour space**: the GPUI surface is shown without sRGB encoding, so `GraphCanvas` draws with
   `GraphRenderer::set_linearize_colors(false)`: theme colours appear as authored. (Linearising made
