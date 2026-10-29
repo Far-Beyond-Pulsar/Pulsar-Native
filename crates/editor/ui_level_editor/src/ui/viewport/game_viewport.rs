@@ -499,7 +499,7 @@ impl GameViewport {
         if self.pie_blit.as_ref().map(|b| b.format) != Some(format) {
             self.pie_blit = Some(PieBlit::new(surface.device(), format));
         }
-        if let (Some(blit), Some(host)) = (self.pie_blit.as_ref(), self.pie_host.as_ref()) {
+        if let (Some(blit), Some(host)) = (self.pie_blit.as_mut(), self.pie_host.as_ref()) {
             if let Some(tex) = unsafe { host.out_texture() } {
                 blit.blit(surface.device(), surface.queue(), tex, view);
             }

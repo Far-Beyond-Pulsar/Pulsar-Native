@@ -26,7 +26,7 @@ release:
 run:
     cargo run -p {{project}}
 
-# Open an example project from assets/examples (voxel_planet, voxel_moon, voxel_desert)
+# Open an example project from assets/examples (voxel_planet, voxel_moon, voxel_desert, voxel_blocks)
 example name="voxel_planet":
     cargo run -p {{project}} --release -- --project-path assets/examples/{{name}}
 

@@ -6,6 +6,9 @@
 //! build high-performance games with ease.
 
 pub mod component_registry;
+/// Persistent GPU objects (bind group cache, readback ring, upload pool).
+#[cfg(any(feature = "render", feature = "pie"))]
+pub mod gpu;
 pub mod scene;
 pub mod services;
 pub mod subsystems;

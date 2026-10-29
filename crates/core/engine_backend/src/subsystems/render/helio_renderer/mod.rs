@@ -12,7 +12,6 @@ pub mod project_settings;
 pub mod renderer;
 pub mod scene_renderer;
 pub mod voxel_backend;
-pub mod voxel_mesh_backend;
 
 pub use core::{
     CameraInput, DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData, RenderMetrics,

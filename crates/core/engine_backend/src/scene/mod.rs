@@ -8,9 +8,10 @@
 
 #[cfg(feature = "render")]
 pub mod voxel_frame;
+// Ready-made voxel worlds (Earth, Moon, Desert, flat) added to a level in
+// one step: the example levels' worlds.
 #[cfg(feature = "render")]
-#[cfg(feature = "render")]
-pub mod voxel_source;
+pub mod voxel_presets;
 
 // Persistent texture/material/sectioned-mesh/object resource components.
 pub mod render_resources;

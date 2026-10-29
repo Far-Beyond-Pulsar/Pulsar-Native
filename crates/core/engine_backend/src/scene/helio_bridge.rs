@@ -71,9 +71,11 @@ pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
 
 /// Per-render-view authored mesh LOD selection. Installed after
 /// [`scene_join`] so its output can be consumed by the same renderer frame.
+/// `uploads`: the staging pool of the renderer's scene derivations.
 pub fn authored_lod_selection(
     device: &wgpu::Device,
     mirror: GpuMirrorHandle,
+    uploads: crate::gpu::Uploads,
 ) -> Box<AuthoredLodSelection> {
     Box::new(AuthoredLodSelection::new(
         device,
@@ -87,6 +89,7 @@ pub fn authored_lod_selection(
             camera: helio_core::CAMERA_BUFFER_KEY,
         },
         Some(mirror),
+        uploads,
     ))
 }
 

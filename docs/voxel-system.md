@@ -21,7 +21,6 @@ chunk trees: residency, drawing, lighting) is documented in Helio's
 8. [Decisions and pitfalls](#decisions-and-pitfalls)
 9. [Diagnostics and tests](#diagnostics-and-tests)
 10. [Extending](#extending)
-11. [Voxel object data](#voxel-object-data)
 
 ## Layers
 
@@ -30,11 +29,11 @@ chunk trees: residency, drawing, lighting) is documented in Helio's
 | Components | Helio `helio-component` (`components/voxel_component.rs`) | `VoxelTerrainComponent` (the world's description, air included), generator settings components, `VoxelEditJournal` field, inspector metadata. |
 | World queries | Helio `helio-component` (`components/voxel_world.rs`) | The CPU world of a terrain instance (cached), recipe/brush mapping, block API, scripting world methods, editor framing. |
 | Canonical world | Helio `helio-pass-voxel-planet` | Grid, terrain generators, edits, `Planet` queries and ray casts, the render pass. |
-| Scene projection | `engine_backend/src/scene/voxel_frame.rs` | Enabled SceneDB rows -> `VoxelSceneEntry` (configuration, and a voxel object's chunk store; no payload copies). `VoxelWorldSync`: journals and skies follow their world. |
+| Scene projection | `engine_backend/src/scene/voxel_frame.rs` | Enabled SceneDB rows -> `VoxelSceneEntry` (configuration; no payload copies). `VoxelWorldSync`: journals and skies follow their world. |
+| Ready-made worlds | `engine_backend/src/scene/voxel_presets.rs`, `assets/examples/voxel_*` | `VoxelWorldPreset` (Earth, Moon, Desert, Blocks): an example level's world added to a level in one step (`add_voxel_world`), taking over its sky, sun, haze, wind, ground cover and look. |
 | Backend registry | `engine_backend/.../helio_renderer/voxel_backend.rs` | `VoxelRenderBackend` trait, `VoxelBackendRegistry`, the built-in `PlanetVoxelBackend` (`helio.voxel-terrain`). |
-| Voxel objects | `engine_backend/.../helio_renderer/voxel_mesh_backend.rs`, Helio `helio-component` (`components/voxel_mesh.rs`) | `MeshVoxelBackend` (`helio.voxel-mesh`): a free-standing `VoxelComponent` greedy-meshed into mesh rows the scene join draws. |
 | Viewport renderer | `engine_backend/.../helio_renderer/renderer.rs` | Camera (planet-aware frame, altitude speed, ground collision), camera-relative frames, publishing views, brush and pick rays. |
-| Editor | `ui_level_editor` (`state/voxel.rs`, `tool_modes/voxel_sculpt/`, `ui/viewport/build_handlers.rs`, panel handlers) | Sculpt tool, strokes and undo, focus, generator picker, settings components. |
+| Editor | `ui_level_editor` (`state/voxel.rs`, `tool_modes/voxel_sculpt/`, `tool_modes/terrain/`, `ui/viewport/build_handlers.rs`, panel handlers) | Create Voxel Terrain (`SceneCommand::AddVoxelWorld`), sculpt tool, strokes and undo, focus, generator picker, settings components. |
 
 ## Data: components and the edit journal
 
@@ -115,7 +114,7 @@ its mask. While the stack is invalid the viewport keeps the last world that
 built (the error says what to fix); it is not rebuilt every frame.
 
 **The examples.** The projects `assets/examples/voxel_planet` (Earth),
-`voxel_moon` and `voxel_desert` (each a `Pulsar.toml` and its
+`voxel_moon`, `voxel_desert` and `voxel_blocks` (each a `Pulsar.toml` and its
 `scene/default.level`; open one with `just example voxel_planet`, or
 `--project-path`) are Helio's voxel_flight setups
 (`examples/voxel_flight/worlds.rs`) with seed 75, generically: layer stack,
@@ -124,8 +123,10 @@ features and their look, air, clouds, haze, and on Earth the engine meadow
 The editor spawns over the north pole under a sun 32 degrees high. An
 unbound `PostProcessVolumeComponent` gives voxel_flight's look: AgX punchy,
 exposure 2 (3.5 on the Moon, sunlit regolith under a black sky), contrast
-1.06. The `voxel_example_levels` test loads each and compares it with
-Helio's values. voxel_flight writes a preset's layers, features and look
+1.06. `voxel_blocks` is Earth's world on flat ground without edges (a
+flat layer stack, `InfinitePlane`). The `voxel_example_levels` test loads
+each and compares it with voxel_flight's. These levels are the editor's
+ready-made worlds (Create Voxel Terrain). voxel_flight writes a preset's layers, features and look
 as a level holds them (`HELIO_VOXEL_FLIGHT_EXPORT=<dir>`).
 
 **Random worlds.** `assets/examples/random_world.blueprint.json` is a
@@ -197,9 +198,7 @@ reaches at most 500 m.
 1. **Projection.** `project_voxel_entries(world)` maps enabled terrain
    instances to `VoxelSceneEntry`: id, visibility, shape and size, voxel size,
    generator config (id, version, seed, settings JSON, features recipe) and
-  the edit journal;
-   a voxel object adds its chunk store (`VoxelObjectChunks`). Nothing large
-   is copied. The renderer reads it once per
+  the edit journal. Nothing large is copied. The renderer reads it once per
    world revision (`VoxelSceneRead`), with the sun and what keeps the scene
    out of camera-relative frames.
 2. **Environment.** The registry reports whether any active backend renders
@@ -223,12 +222,11 @@ reaches at most 500 m.
 
 `VoxelRenderBackend` is the contract a renderer implements. A row is drawn
 by the one backend that `supports` it: a world by the renderer of its
-generator, a voxel object by the mesh renderer. A `VoxelComponent` may name
-its backend by `renderer_id` instead; ambiguity is an error. Methods and why they exist:
+generator; ambiguity is an error. Methods and why they exist:
 
 | Method | Purpose |
 |---|---|
-| `renderer_id`, `supports` | Selection. |
+| `renderer_id`, `supports` | Registration, selection. |
 | `pass_factory`, `publish_frame`, `needs_frame` | Graph pass, per-frame view, streaming keep-alive. |
 | `camera_relative_frames` | The backend wants camera-local GPU coordinates (planetary precision). |
 | `local_up` | The local vertical (the planet's radial): the camera frame's up. |
@@ -240,46 +238,20 @@ its backend by `renderer_id` instead; ambiguity is an error. Methods and why the
 | `temporal_quality` | TSR quality per viewport size. |
 | `diagnostics` | One-line streaming state for logs (`PULSAR_VOXEL_STATS`). |
 
-`pass_factory` returns `None` for a backend that draws without a pass of
-its own. The renderer registers the two built-in backends.
-
-**Voxel objects** (`MeshVoxelBackend`, `helio.voxel-mesh`) draw a
-free-standing `VoxelComponent` (#1056) without a voxel pass: the selection
-takes every object entry without a generator. Each 8³ chunk of the payload
-store is greedy-meshed on the CPU (faces between solid samples and air,
-coplanar faces of one palette slot merged; the six face neighbours decide
-the border). The object's chunk meshes are joined into one mesh in its
-local space (sample `(0,0,0)`'s corner at the owner's origin) with one
-section per palette slot, and uploaded as the instance's mesh rows: the rows
-a `StaticMeshComponent` at that entity would write, from a generated one
-whose geometry interns under its content id (`MeshAssetPath::generated`).
-Helio's scene join draws them like any mesh instance, with the owner's whole
-transform (rotation and non-uniform scale included), into the G-buffer,
-shadows (as a movable object) and picking.
-
-- **Change-driven.** The store's revision says when to look; a chunk is
-  re-meshed only when its payload changed, or a face neighbour's solid
-  border against it did. Up to 64 chunks a frame mesh on the render thread
-  (an edit); more (a newly shown large volume) go to a `voxel-mesher`
-  thread, and a result whose chunk changed again meanwhile is dropped by the
-  chunk's revision. The last complete mesh stays on screen until every
-  chunk is current. `needs_frame` asks for frames while chunks are meshing
-  or a store changed, so edits through `VoxelSourceSession` show without a
-  scene write.
-- **Materials.** The palette names SceneDB material records, which a mesh
-  section cannot resolve (it carries its material inline), so each slot
-  draws with a default surface coloured from its material ID (ID 0 grey,
-  others distinct hues).
-- **Lifetime.** The rows belong to the component: removing it or despawning
-  its entity clears them and releases the geometry (a clear registration on
-  `VoxelComponent`). An object that is hidden, disabled or invalid is
-  cleared by the backend. A store that has never been written draws its
-  initial cube without writing it.
-- Voxel objects are world-space meshes: a scene with one keeps world
-  coordinates (no camera-relative frames).
+The renderer registers the built-in backend.
 
 ## Editor
 
+- **Create.** Tool menu -> **Terrain**, World tab, **Create Voxel Terrain**:
+  an Earth-like planet, the Moon, a desert planet or a flat block world
+  (`voxel_presets`). One click adds a working world, one undo step: the
+  terrain with its layers, features and look, the sky with clouds, the sun,
+  the haze, the meadow and its wind, an unbound post-process look, and the
+  camera over the ground. A level keeps one sky, wind and directional light:
+  the world's replace the level's (its sun and look update the existing
+  light and unbound volume), and its terrain replaces an existing one on
+  that terrain's object. The World tab lists the level's terrains (a click
+  selects one for the inspector) and switches to the sculpt tool.
 - **Sculpt.** Tool menu -> **Voxel Sculpt**. Its dock panel picks dig /
   build / paint / flatten / smooth, sphere or cube, radius, material and
   **One block**; Shift swaps dig and build. A press starts a stroke. While the pointer drags, stamps are
@@ -293,8 +265,6 @@ shadows (as a movable object) and picking.
   and is reported).
 - **Camera.** See below. The viewport's **Speed** setting multiplies the
   altitude speed.
-- **Voxel objects.** The **Terrain** tool sculpts and paints the samples of
-  a voxel object (`VoxelComponent`); its Manage tab lists and creates them.
 
 ## Scripting
 
@@ -404,13 +374,12 @@ and gameplay agree on every block. On generated terrain the older
   generator picker), `--test voxel_component_schema` (inspector properties),
   `cargo test -p engine_backend --lib voxel` (backend: altitude, lift out of
   ground, stroke fill, settings components, unknown generator, paint and
-  single blocks; voxel objects: touched-chunk re-meshing, the worker and
-  stale results, the initial cube) and `--lib camera_frame_tests` (level horizon, round trips,
+  single blocks), `--lib voxel_presets` (a ready-made world in an empty level
+  is its example; a second one takes over the first) and
+  `--lib camera_frame_tests` (level horizon, round trips,
   smooth transport over the planet); `ui_level_editor` sculpt stroke tests
-  (a stroke is one undo step). The greedy mesher's quad counts are
-  `cargo test -p helio_component --lib voxel_mesh`; `render_acceptance`'s
-  `voxel_objects_reach_the_frame_as_meshes` draws a voxel object at its
-  owner, rotated, scaled, edited, casting a shadow and removed.
+  (a stroke is one undo step) and the Create Voxel Terrain command (one undo
+  step).
 - Renderer-side performance and correctness are measured in Helio
   (`voxel_flight`: `HELIO_VOXEL_FLIGHT_HOLD=<view>` holds a view and times
   it, `HELIO_VOXEL_CHUNKS_ENGINE=1` through the chunk pass as the editor
@@ -419,12 +388,15 @@ and gameplay agree on every block. On generated terrain the older
 - The editor's own renderer, driven headless:
   `cargo run --release -p engine_backend --example voxel_editor_harness`
   (views, flights, drag strokes, stress flights with a per-frame CSV,
-  per-pass GPU profiles, project settings with `set:`; its module doc lists
-  the steps). Its `view` prints the eye and sun, and voxel_flight renders
+  per-pass GPU profiles, project settings with `set:`, a ready-made world
+  with `world:<preset>`; its module doc lists the steps). Its `view` prints the eye and sun, and voxel_flight renders
   the same view (`HELIO_VOXEL_FLIGHT_HOLD=eye`, `_EYE`, `_SUN`, `_LAYERS`,
   `_SEED`, `HELIO_VOXEL_CHUNKS_ENGINE=1`) for parity.
 - `cargo test -p engine_backend --test voxel_example_levels`: the example
-  levels against voxel_flight's setups.
+  levels (the ready-made worlds) against voxel_flight's worlds
+  (`examples/voxel_flight/worlds.rs`, compiled into the test): ground,
+  features, air, haze, clouds, meadow, wind, exposure, and a camera over the
+  ground.
 
 ## Extending
 
@@ -433,23 +405,12 @@ and gameplay agree on every block. On generated terrain the older
   `voxel_component_runtime.rs`, and name that component in its info so the
   picker attaches it.
 - **A voxel renderer**: implement `VoxelRenderBackend` and add it to the
-  registry the renderer builds (`VoxelBackendRegistry::register`); a voxel
-  object selects it by `renderer_id`. A renderer that produces geometry can
-  write mesh rows like `helio_component::voxel_mesh::write_voxel_mesh_rows`
-  instead of a pass.
+  registry the renderer builds (`VoxelBackendRegistry::register`); it draws
+  the worlds it `supports`.
+- **A ready-made world**: add an example project under `assets/examples`
+  with the world in its level, a `VoxelWorldPreset` naming it, a check in
+  `voxel_example_levels`, and its button in the Terrain panel.
 - **A tool**: return `ToolPointerResult::VoxelBrush` requests like
   `tool_modes/voxel_sculpt/`; the viewport queues them, commits come back
   from `edit_ray` and are appended to the journal with the scene history, so
   undo works.
-
-## Voxel object data
-
-A voxel object (`VoxelComponent`) keeps live sample data in SceneDB.
-`helio-voxel-data` is the CPU-only contract: signed chunk keys, 8^3
-material samples, revision checks, immutable snapshots and the sample edit
-worker. `VoxelSourceWriter` publishes to the component-owned store;
-`VoxelSourceSession` (`scene/voxel_source.rs`) resolves the object's row and
-owns its edit worker (the Terrain tool's strokes). Component serialization
-contains authored configuration, not live payload bytes. The voxel object
-renderer draws the chunks (see [Backends](#backends)). A voxel world has no
-sample data: it is its recipe plus the edit journal.

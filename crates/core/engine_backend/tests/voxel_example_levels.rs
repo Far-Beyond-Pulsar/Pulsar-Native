@@ -1,41 +1,43 @@
-//! The example voxel levels are Helio's voxel_flight setups
-//! (`examples/voxel_flight/worlds.rs`) as Pulsar levels: Earth, Moon and
-//! Desert. Each is loaded as the editor loads it and its world, air,
-//! haze, clouds, wind and meadow are compared with Helio's own values.
+//! The example voxel levels are Helio's voxel_flight worlds
+//! (`examples/voxel_flight/worlds.rs`, compiled in here) as Pulsar levels:
+//! Earth, Moon and Desert, and Blocks (Earth's world on flat ground). They
+//! are also the editor's ready-made worlds (`scene::voxel_presets`). Each is
+//! loaded as the editor loads it and its ground, features, air, haze,
+//! clouds, wind, meadow, exposure and camera are compared with voxel_flight's.
 
 use std::path::Path;
 
 use engine_backend::scene::voxel_frame::VoxelWorldSync;
+use engine_backend::scene::voxel_presets::VoxelWorldPreset;
+use engine_backend::scene::EditorCamera;
+use glam::DVec3;
 use helio_component::{
     AtmosphereComponent, FoliageComponent, FoliageSourceRow, GlobalFogComponent,
-    VoxelTerrainComponent, WindComponent,
+    PostProcessVolumeComponent, VoxelTerrainComponent, VoxelWorldShape, WindComponent,
 };
 use helio_pass_foliage_place::GpuFoliageType;
-use helio_pass_sky::CloudLayer;
-use helio_pass_voxel_planet::feature_recipe::FeatureRecipe;
-use pulsar_scenedb::World;
+use helio_pass_voxel_planet::layers::TerrainLayers;
+use pulsar_scenedb::{Entity, World};
 
-/// The level of example project `name` in `assets/examples`, loaded and its voxel world's
-/// dependents synced (as the editor's scene step does).
-fn level(name: &str) -> World {
+#[allow(dead_code)]
+#[path = "../../../renderer/helio/crates/helio-default-passes/examples/voxel_flight/worlds.rs"]
+mod flight;
+
+use flight::Preset;
+
+/// The level of example project `name` in `assets/examples`, loaded and its
+/// voxel world's dependents synced (as the editor's scene step does), and
+/// its camera.
+fn level(name: &str) -> (World, EditorCamera) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
         "../../../assets/examples/{name}/scene/default.level"
     ));
     let mut scene = engine_backend::scene::new_scene();
-    engine_backend::scene::RuntimeLevel::load_into(&path, &mut scene.world)
+    let extras = engine_backend::scene::RuntimeLevel::load_into(&path, &mut scene.world)
         .expect("load the level");
     let mut world = scene.world;
     VoxelWorldSync::new(&world).poll(&mut world);
-    world
-}
-
-fn terrain(world: &World) -> VoxelTerrainComponent {
-    let terrains: Vec<_> = world
-        .query::<&VoxelTerrainComponent>()
-        .map(|(_, t)| t.clone())
-        .collect();
-    assert_eq!(terrains.len(), 1);
-    terrains[0].clone()
+    (world, extras.editor_camera.expect("a camera"))
 }
 
 /// The level's only `$class` component, if any.
@@ -47,52 +49,94 @@ macro_rules! one {
     }};
 }
 
-/// voxel_flight's haze (`Preset::haze`) over a planet of `radius` m.
-fn flight_haze(
-    extinction: f32,
-    falloff: f32,
-    anisotropy: f32,
-    albedo: [f32; 3],
-    radius: f64,
-) -> helio_pass_volumetric_fog::GlobalFogComponent {
-    helio_pass_volumetric_fog::GlobalFogComponent {
-        mode: 1,
-        extinction,
-        height_falloff: falloff,
-        anisotropy,
-        albedo,
-        ..Default::default()
-    }
-    .around_planet([0.0; 3], radius)
-}
+/// Example `name` is voxel_flight's `world`, on flat ground when `flat`.
+fn check(name: &str, world: Preset, flat: bool) {
+    let (level, camera) = level(name);
+    let terrains: Vec<(Entity, VoxelTerrainComponent)> = level
+        .query::<&VoxelTerrainComponent>()
+        .map(|(instance, terrain)| (instance, terrain.clone()))
+        .collect();
+    let [(instance, terrain)] = &terrains[..] else {
+        panic!("{name}: one terrain");
+    };
+    let radius = world.radius_m();
 
-#[test]
-fn the_earth_level_is_voxel_flights_earth() {
-    let world = level("voxel_planet");
-    let terrain = terrain(&world);
+    // The ground: form, layer stack and features, editable.
+    if flat {
+        assert_eq!(terrain.shape, VoxelWorldShape::InfinitePlane, "{name}");
+    } else {
+        assert_eq!(
+            (terrain.shape, terrain.planet_radius),
+            (VoxelWorldShape::Sphere, radius),
+            "{name}"
+        );
+    }
+    let settings = helio_component::voxel_world::generator_settings(&level, *instance, terrain);
+    let layers: TerrainLayers = serde_json::from_str(&settings).unwrap();
+    assert_eq!(
+        layers,
+        if flat {
+            TerrainLayers::flat_at(0.0)
+        } else {
+            world.stack()
+        },
+        "{name}"
+    );
     assert_eq!(
         helio_component::feature_recipe(&terrain.features),
-        FeatureRecipe::earth()
+        world.features(),
+        "{name}"
     );
     assert!(
         terrain.appearance_parameters.contains("\"materials\""),
-        "the look of the features' materials"
+        "{name}: the look of the features' materials"
     );
-    // Earth's air with fair-weather cumulus, and its ground haze.
-    let sky = one!(world, AtmosphereComponent).unwrap();
-    assert!(sky.enabled);
-    assert_eq!(sky.to_row().clouds(), Some(CloudLayer::cumulus()));
-    let fog = one!(world, GlobalFogComponent).unwrap();
-    assert!(fog.enabled);
-    assert_eq!(
-        fog.medium.to_medium(),
-        flight_haze(0.0006, 0.004, 0.6, [1.0; 3], 6_371_000.0)
+    assert!(
+        terrain.enabled && terrain.editable,
+        "{name}: sculpted as it is"
     );
-    // The meadow with tall stands, in a fresh breeze.
-    let meadow = helio_pass_voxel_planet::meadow::meadow()
-        .with_tall_stands()
-        .with_wind([1.0, 0.35], 4.5, 0.8);
-    let mut rows: Vec<GpuFoliageType> = world
+
+    // The air: sky and clouds, the ground haze.
+    let sky = one!(level, AtmosphereComponent);
+    match world.sky(radius) {
+        Some(want) => {
+            let sky = sky.expect("a sky");
+            assert!(sky.enabled, "{name}");
+            let got = sky.to_row();
+            let air = |row: &helio_pass_sky::AtmosphereComponent| {
+                (
+                    row.rayleigh_scattering,
+                    row.mie_scattering,
+                    row.mie_absorption,
+                    row.mie_scale_height,
+                    row.ozone_absorption,
+                    row.ground_albedo,
+                )
+            };
+            assert_eq!(air(&got), air(&want), "{name}");
+            assert_eq!(got.clouds(), want.clouds(), "{name}");
+        }
+        None => assert!(sky.is_none_or(|sky| !sky.enabled), "{name}: no air"),
+    }
+    let haze = one!(level, GlobalFogComponent).filter(|fog| fog.enabled);
+    match world.haze(radius) {
+        Some(want) => {
+            // Over flat ground heights are along world Y.
+            let want = if flat {
+                helio_pass_volumetric_fog::GlobalFogComponent {
+                    planet: [0.0; 4],
+                    ..want
+                }
+            } else {
+                want
+            };
+            assert_eq!(haze.expect("a haze").medium.to_medium(), want, "{name}");
+        }
+        None => assert!(haze.is_none(), "{name}: no haze"),
+    }
+
+    // The meadow, in its wind.
+    let mut rows: Vec<GpuFoliageType> = level
         .query::<&FoliageComponent>()
         .map(|(_, foliage)| {
             let row = FoliageSourceRow::of(foliage);
@@ -101,91 +145,82 @@ fn the_earth_level_is_voxel_flights_earth() {
             )
         })
         .collect();
-    assert_eq!(rows.len(), meadow.types.len());
-    for (row, want) in rows.iter().zip(&meadow.types) {
-        let want = GpuFoliageType::from(*want);
-        // The component's rows carry no impostor (the meadow's is unused).
-        let row = GpuFoliageType {
-            mesh_or_impostor_id: want.mesh_or_impostor_id,
-            ..*row
-        };
-        assert_eq!(
-            bytemuck::bytes_of(&row),
-            bytemuck::bytes_of(&want),
-            "{row:?}\n{want:?}"
-        );
+    match world.meadow() {
+        Some(meadow) => {
+            assert_eq!(rows.len(), meadow.types.len(), "{name}");
+            for (row, want) in rows.iter_mut().zip(&meadow.types) {
+                let want = GpuFoliageType::from(*want);
+                // The component's rows carry no impostor (the meadow's is unused).
+                row.mesh_or_impostor_id = want.mesh_or_impostor_id;
+                assert_eq!(
+                    bytemuck::bytes_of(row),
+                    bytemuck::bytes_of(&want),
+                    "{name}: {row:?}\n{want:?}"
+                );
+            }
+            let wind = one!(level, WindComponent).expect("a wind").to_row();
+            for (a, b) in wind
+                .direction_speed
+                .iter()
+                .chain(&wind.gust)
+                .zip(meadow.wind.direction_speed.iter().chain(&meadow.wind.gust))
+            {
+                assert!(
+                    (a - b).abs() < 1e-6,
+                    "{name}: {wind:?} vs {:?}",
+                    meadow.wind
+                );
+            }
+        }
+        None => assert!(rows.is_empty(), "{name}: no plants"),
     }
-    let wind = one!(world, WindComponent).unwrap().to_row();
-    for (a, b) in wind
-        .direction_speed
-        .iter()
-        .chain(&wind.gust)
-        .zip(meadow.wind.direction_speed.iter().chain(&meadow.wind.gust))
-    {
-        assert!((a - b).abs() < 1e-6, "{wind:?} vs {:?}", meadow.wind);
-    }
+
+    // The camera's exposure.
+    let look = one!(level, PostProcessVolumeComponent).expect("a post-process look");
+    assert!(look.unbound && look.overrides.override_tonemap, "{name}");
+    assert_eq!(look.settings.tonemap_exposure, world.exposure(), "{name}");
+
+    // The camera starts over the ground, not under it or in space.
+    let planet = helio_component::voxel_world::terrain_world(&level, *instance).unwrap();
+    let eye = DVec3::from_array(camera.position);
+    let (ground, _) = helio_component::voxel_world::frame_view(&planet, eye, DVec3::X, 0.0);
+    let up = if flat { DVec3::Y } else { ground.normalize() };
+    let height = (eye - ground).dot(up);
+    assert!(
+        (2.0..1_000.0).contains(&height),
+        "{name}: the camera is {height} m over the ground"
+    );
+}
+
+#[test]
+fn the_earth_level_is_voxel_flights_earth() {
+    check("voxel_planet", Preset::Earth, false);
 }
 
 #[test]
 fn the_moon_level_is_voxel_flights_moon() {
-    let world = level("voxel_moon");
-    let terrain = terrain(&world);
-    assert_eq!(terrain.planet_radius, 1_737_400.0);
-    assert_eq!(
-        helio_component::feature_recipe(&terrain.features),
-        FeatureRecipe::moon()
-    );
-    assert!(!one!(world, AtmosphereComponent).unwrap().enabled, "no air");
-    assert!(
-        one!(world, GlobalFogComponent).is_none_or(|fog| !fog.enabled),
-        "no haze"
-    );
-    assert_eq!(world.query::<&FoliageComponent>().count(), 0, "no plants");
+    check("voxel_moon", Preset::Moon, false);
 }
 
 #[test]
 fn the_desert_level_is_voxel_flights_desert() {
-    let world = level("voxel_desert");
-    let terrain = terrain(&world);
+    check("voxel_desert", Preset::Desert, false);
+}
+
+#[test]
+fn the_blocks_level_is_voxel_flights_earth_on_flat_ground() {
+    check("voxel_blocks", Preset::Earth, true);
+}
+
+/// Every ready-made world is one of these examples.
+#[test]
+fn the_presets_are_the_examples() {
+    let examples: Vec<&str> = VoxelWorldPreset::ALL
+        .iter()
+        .map(|preset| preset.example())
+        .collect();
     assert_eq!(
-        helio_component::feature_recipe(&terrain.features),
-        FeatureRecipe::desert()
-    );
-    // Dusty air, a few high clouds, a warm dust haze.
-    let earth = helio_pass_sky::AtmosphereComponent::earth();
-    let flight = helio_pass_sky::AtmosphereComponent {
-        mie_scattering: [9.0e-3, 8.0e-3, 6.5e-3],
-        mie_absorption: [6.0e-3, 7.0e-3, 9.0e-3],
-        mie_scale_height: 1.6,
-        ground_albedo: [0.45, 0.38, 0.28],
-        ..earth
-    }
-    .with_clouds(CloudLayer {
-        bottom_km: 4.5,
-        top_km: 6.0,
-        coverage: 0.2,
-        kind: 0.4,
-        ..CloudLayer::cumulus()
-    });
-    let sky = one!(world, AtmosphereComponent).unwrap().to_row();
-    assert_eq!(
-        (
-            sky.mie_scattering,
-            sky.mie_absorption,
-            sky.mie_scale_height,
-            sky.ground_albedo
-        ),
-        (
-            flight.mie_scattering,
-            flight.mie_absorption,
-            flight.mie_scale_height,
-            flight.ground_albedo
-        )
-    );
-    assert_eq!(sky.clouds(), flight.clouds());
-    let fog = one!(world, GlobalFogComponent).unwrap();
-    assert_eq!(
-        fog.medium.to_medium(),
-        flight_haze(0.0012, 0.003, 0.7, [0.95, 0.84, 0.68], 6_371_000.0)
+        examples,
+        ["voxel_planet", "voxel_moon", "voxel_desert", "voxel_blocks"]
     );
 }
