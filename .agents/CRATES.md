@@ -208,7 +208,7 @@ git submodule compiled as `cdylib`:
 - `blueprint_editor` — Blueprint visual scripting editor
 - `render_bps` (in-tree, `plugins/vendor/render_bps`) — Render graph editor (`.rendergraph`); its own editor on the Graphy canvas, no Blueprint code. See `.agents/RENDER_GRAPH.md`
 - `code_editor` — Script/code editor, a host for Mockaco (`WgpuiEditorView`). Mockaco owns the hover/completion/diagnostic UI and emits requests; `text_editor/lsp.rs` answers them through the shared analyzer
-- `shader_editor` — Shader graph editor
+- `shader_editor` — Shader graph editor (`.material`); edits the Graphy `GraphDescription` on the shared canvas through `ShaderProfile`, with PSGC compilation, WGSL type rules, material preview and texture-preview rows kept in the plugin. See `.agents/GRAPH_CANVAS.md`
 - `table_editor` — Database table editor
 - `matter_editor` — Material editor
 

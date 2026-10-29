@@ -1,10 +1,9 @@
 # Graph canvas (Graphy render + interaction)
 
 The shared node-graph canvas lives in the Graphy submodule
-(`crates/third-party/graphy`). The Blueprint (Phase 4) and Render Graph (Phase 5) editors use it, each below; the
-Shader editor is migrating onto it (Phase 6 of `docs/graphy-workspace-migration-plan.md`),
-and until it moves its own renderer under `plugins/vendor/shader_editor/src/rendering/`
-is still the one in use.
+(`crates/third-party/graphy`). The Blueprint (Phase 4), Render Graph (Phase 5) and Shader
+(Phase 6) editors use it, each below. No editor owns a renderer, layout, hit-testing, spatial
+index or input handling of its own.
 
 ## Crates
 
@@ -105,3 +104,41 @@ were deleted; a profile is the `Arc<dyn GpuiProfile>` the editor passes to the c
 - Render-only chrome stays in the plugin: toolbar (Save, Compile, Comment, Auto Layout), graph
   tabs, node picker, context-menu entries (Collapse to Section, Expand Section), comment title
   editor, the Sections, Buffers and Properties panels and the pipeline preview.
+
+## Shader (Phase 6): the third consumer
+
+`plugins/vendor/shader_editor` (`.material`) edits a Graphy `GraphDescription` on the canvas;
+its former canvas stack (GPU renderer, layout, hit-testing, input, the `BlueprintGraph` model
+and its conversions, the clipboard/undo/selection features) was deleted.
+
+- **One document, no conversion.** The asset's `main_graph` *is* a `graphy::GraphDescription`, so
+  load (`io::save_load::decode`) hands the graph to the `GraphCanvas` as it is and save writes
+  the canvas's graph back (`ShaderEditorPanel::to_shader_asset`). The file's other fields
+  (`editor_state`, `shader_metadata` incl. fields older files carry, unknown top-level fields)
+  are kept in `DocMeta` and written back unchanged; the saved view and shader model are updated.
+  Property values stay `serde_json::Value`s (a vec4 default is a JSON array), not text.
+  Comments keep their id, colour and members.
+- **One legacy codec.** Old blueprint-format bytes are recognised by
+  `graphy_blueprint::legacy::is_legacy_format` (the shader copy was deleted) and open as an
+  empty shader graph, as before.
+- `profile::ShaderProfile` is the `GraphProfile`/`Presenter`/`GpuiProfile`: catalogue and node
+  factory from `definitions` (PSGC metadata), shader reroutes (`input`/`output` pins), pin and
+  node look, and the type rules. WGSL types are their own universe (`types::ShaderTypeResolver`,
+  chained behind Graphy's `StructuralResolver`); the reflection registry is only used by the
+  Details panel to pick a widget for a pin default.
+- **Texture previews are variable-height rows.** With the toolbar's debug toggle on, the presenter
+  returns an `ExtraRow` (56 units, min width 220) `AfterRow(i)` for every previewable (`vec3/vec4<f32>`)
+  output `i`, slot id `i`. Graphy lays the node out around the row and hit-tests it
+  (`Hit::Node { part: NodePart::Custom(slot) }`); `GpuiProfile::render_slot` returns a
+  `previews::PinPreview` entity that owns a small GPU surface, compiles the pin's shader on a
+  worker (debounced on a graph signature) and draws it every frame. Failures are listed in the
+  Compiler panel.
+- **PSGC compilation works on a copy** (`features::compilation::lowering`): text defaults become
+  numbers/booleans, blank input defaults are dropped, and `TextureSrc` asset references become
+  `@group(1)` bindings. The material thumbnail uses the same function.
+- Shader-only chrome stays in the plugin: toolbar (Save, Compile, Comment, debug previews, shader
+  model, preview mesh), the Compiler, Find (graph index), Details and Material Preview panels,
+  the node picker, context menu and comment title editor.
+- Not carried over: the minimap and graph-controls overlays (Graphy has neither yet), the comment
+  colour picker, and the AI session's `title` arguments and viewport/selection fields (nodes no
+  longer store a title; the title comes from the definition).

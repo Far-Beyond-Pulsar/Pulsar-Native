@@ -592,7 +592,7 @@ impl BuiltinEditorProvider for ShaderEditorBuiltinProvider {
         panel.update(cx, |panel, cx| panel.set_undo_service(undo, cx));
 
         // Keep plugin AI tools aligned with the currently opened material's graph state.
-        let graph_snapshot = panel.read(cx).graph.clone();
+        let graph_snapshot = panel.read(cx).graph_snapshot(cx);
         shader_editor_plugin::upsert_ai_session(file_path.clone(), graph_snapshot);
 
         Ok(Arc::new(panel))
