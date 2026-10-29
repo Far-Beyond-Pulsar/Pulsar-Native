@@ -389,6 +389,16 @@ impl TickLoop {
         // between ticks.
         self.events.flush(pulsar_events::FlushPoint::AfterInput);
 
+        // Phase 0: animation. Every live skeletal mesh component advances its
+        // animation instance and publishes its pose and GPU palettes *before* the
+        // schedule, so physics (which runs inside it) reads this frame's pose.
+        // Parameters and Montage commands written by scripts later in the frame
+        // apply at the next frame's animation phase.
+        {
+            let mut store = self.scene_store.write();
+            helio_component::run_animation_phase(&mut store.world, time.delta.as_secs_f32());
+        }
+
         // Phase 1: ECS systems. Short write scope -- the renderer takes this
         // same lock every frame to step the scene and flush its GPU mirror, so
         // nothing here may hold it across phases.
@@ -489,6 +499,17 @@ impl TickLoop {
                 &self.events,
                 &mut self.component_runtime,
             );
+        }
+
+        // Animation notifies the animation phase collected are published now that
+        // scripts have released the world. A notify aimed at a class variable
+        // resolves it from the owner's current script instance.
+        {
+            let mut store = self.scene_store.write();
+            let driver = self.scripts.as_ref().map(|d| d.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
+            helio_component::flush_animation_notifies(&mut store.world, &self.events, |owner, variable| {
+                driver.as_ref().and_then(|d| d.entity_variable(owner, variable))
+            });
         }
 
         // Flush 3 (after scripts): what scripts sent (`event::*`,

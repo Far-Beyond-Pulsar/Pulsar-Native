@@ -575,6 +575,19 @@ impl ScriptDriver {
         &self.runtime
     }
 
+    /// The entity held by exported class variable `name` of the script instance
+    /// running on `owner`: an entity, or the owner of a component reference. `None`
+    /// when the object has no running script, no such variable or it is unset.
+    /// Animation notifies aimed at a class variable resolve through this.
+    pub fn entity_variable(&self, owner: Entity, name: &str) -> Option<Entity> {
+        let instance = self.tracked.get(&owner)?.instance.as_deref()?;
+        match self.runtime.variable(instance, name)? {
+            pulsar_script_vm::Value::Entity(entity) => Some(*entity),
+            pulsar_script_vm::Value::Component(reference) => Some(reference.entity),
+            _ => None,
+        }
+    }
+
     pub fn runtime_mut(&mut self) -> &mut ScriptRuntime {
         &mut self.runtime
     }

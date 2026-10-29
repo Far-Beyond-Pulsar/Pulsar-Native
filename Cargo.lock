@@ -9782,6 +9782,7 @@ dependencies = [
  "pulsar_world_registry",
  "serde",
  "serde_json",
+ "skeletal_assets",
  "tempfile",
  "tracing",
  "uuid",
@@ -11933,6 +11934,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "engine_fs",
+ "glam 0.33.5",
  "graphy-blueprint",
  "pulsar_reflection",
  "serde",
