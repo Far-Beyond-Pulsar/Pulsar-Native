@@ -26,7 +26,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/LOD.md` | Authored mesh LOD as a camera-dependent asset choice, separate from renderer-internal geometric LOD, and its residency boundary |
 | `.agents/RENDER_GRAPH.md` | Render pipelines: `IntoGraph`, built-in pipelines, `.rendergraph` assets, pin shapes, the `render_bps` plugin |
 | `.agents/GRAPH_CANVAS.md` | Shared node-graph canvas in Graphy: `graphy-render` layout/scene/hit-test/draw data, `graphy-render-wgpu` renderer and visual system, `graphy-gpui` interaction engine and profile API |
-| `.agents/ANIMATION.md` | Animation assets (`.animseq` v4, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators |
+| `.agents/ANIMATION.md` | Animation assets (`.animseq` v4, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators, runtime, notify/Montage event delivery, root motion, physics bone ownership, hot reload |
 
 ## Project data (`.pulsar/`)
 

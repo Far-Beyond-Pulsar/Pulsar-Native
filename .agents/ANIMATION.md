@@ -1,8 +1,10 @@
-# Animation assets, references, compatibility and runtime (Phases 1–2)
+# Animation assets, references, compatibility and runtime (Phases 1–3)
 
-How the animation family of assets is stored, linked and checked (Phase 1), and
-how they run (Phase 2): the compiled graph, per-component instance state, state
-machines, Montages, IK, retargeting, Pose Search and the engine integration.
+How the animation family of assets is stored, linked and checked (Phase 1), how
+they run (Phase 2: the compiled graph, per-component instance state, state
+machines, Montages, IK, retargeting, Pose Search and the engine integration) and
+how notifies, events, root motion and physics ownership behave (Phase 3, the last
+section).
 Plan: `docs/animation-system-implementation-plan.md`; audit:
 `docs/animation-phase0-audit.md`.
 
@@ -176,6 +178,8 @@ mutable state.
 | `montage` | `CompiledMontage` and `MontageSet`: play/stop/pause/rate/priority/jump/set-next-section, blend in/out, group interruption policy, deterministic one-shot results |
 | `graph` | `compile` (validate → resolve assets → immutable `Program`s), `instance` (update/evaluate passes, sync groups), `machine` (state machines) |
 | `anim_instance` | `AnimInstance`: parameters, Montages, evaluated and previous pose, fixed/variable stepping, scrubbing, hot-reload adoption |
+| `playback` | `NotifyTracker`: one playback instance per Sequence Player, Blend Space sample, Pose Search cursor, Montage segment and Montage timeline; notifies and notify-state begin/tick/end (Phase 3) |
+| `rootmotion` | `RootMotionMode`, `RootMotionPolicy` and the owner transform math (Phase 3) |
 | `memory` | `MemorySource`: an in-memory `AssetSource` for tests, tools and hosts that already hold their assets |
 
 ### Ownership
@@ -237,9 +241,10 @@ Semantics worth knowing:
 
 - Sequence `looping: inherit` means **loop** (a sequence asset carries no loop
   flag). `once` holds the last frame; the `State Complete` rule needs `once`.
-- Playback rate is non-negative in graph nodes; negative `playback_rate` on the
-  component holds the pose (reverse playback of root motion exists in the clip
-  sampler and Montages with negative rate are refused, `PlayRefused::InvalidRate`).
+- Playback rate may be negative in Sequence Player and Blend Space nodes (reverse
+  playback, see "Reverse playback" below). On the component, `playback_rate` scales
+  time by its size; its sign only picks the direction of the internal single-sequence
+  player.
 - Blend space axis smoothing: `k = 1 - exp(-3·dt/τ)`, so the input reaches ~95%
   of a step in `smoothing_time`. `SyncMode::Phase` shares one phase across all
   contributing samples, the cycle being the weight-averaged (or leader's) length;
@@ -312,9 +317,11 @@ graph's toward zero).
   `ScriptDriver::entity_variable`) → `AfterScripts`/`EndOfFrame` flush. Parameters
   and Montage commands written by scripts or Blueprints (phase 3 of the frame)
   apply in the **next** frame's animation phase.
-- **Authority:** animation drives the skeleton. When the physics rig calls
-  `apply_physics_pose` it owns the pose and the animation clock is held;
-  `clear_physics_pose` returns ownership and republishes the animation's pose.
+- **Authority:** animation drives the skeleton. The physics rig owns the bones its
+  dynamic bodies drive (`apply_physics_bones`; the animation keeps running, see
+  "Physics authority"). Whole-pose ownership via `apply_physics_pose` holds the
+  animation clock; `clear_physics_pose` returns ownership and republishes the
+  animation's pose.
   The component is the only writer of its GPU palettes (current + previous in
   `gpu_bone_palettes`), written under the scene write lock.
 - Time: pause is `playing = false` (or a zero delta); `playback_rate` scales;
@@ -328,9 +335,10 @@ graph's toward zero).
   skeleton) / `play_compiled_montage`, `stop_montage[_group]`, `pause_montage`,
   `set_montage_rate`, `jump_to_montage_section`, `set_montage_next_section`,
   `take_montage_events`, `animation_trace`, `animation_root_motion`.
-- Notifies: every sequence span the instance reports (graph players, blend space
-  samples, Pose Search, Montage segment clips) is turned into crossings through
-  the clip's own notify index and published with the sequence's descriptor.
+- Notifies: every playback the instance reports (graph players, blend space
+  samples, Pose Search, Montage segment clips and Montage timelines) goes through the
+  component's `NotifyTracker`; notifies and notify-state phases are published with
+  the owning asset's canonical descriptor (see Phase 3 below).
   Blueprint discovery (`component_animation_notify_events`) resolves the
   component's graph closure through the asset index — Sequence Players, blend
   space samples, pose database sources, linked graphs and the sequences of
@@ -341,14 +349,6 @@ graph's toward zero).
 - The animation Graphy profile (presenter, catalogue UI, state-machine view) and
   the purpose-built editors: Phase 4. `animation_assets_editor.rs` is a typed
   interim editor (pickers, diagnostics, Used By), not a generic JSON form.
-- Phase 3: Montage-authored notifies and notify **states** (begin/tick/end),
-  component-scoped delivery of Montage lifecycle events as Blueprint events,
-  root-motion application to the owner's transform and its physics/network
-  authority, Blueprint nodes for parameters and Montage commands.
-- Dependency hot reload: editing a *source asset a graph names* (a sequence, blend
-  space, rig, ...) does not recompile running graphs by itself; saving the graph,
-  re-binding the mesh or reloading the scene does. `CompiledGraph::dependencies`
-  lists what to watch.
 - Bone/curve LOD and update-rate controls (Phase 5, with profiling).
 
 ## Tests
@@ -366,4 +366,188 @@ independence), `cargo test -p engine_fs --lib asset_dep`,
 `cargo test -p helio_component --lib components::skeletal` (component links, the
 notify path, D9 migration, graph components, Montages through the component,
 teardown), `cargo test -p pulsar_game --lib animation_phase_order` (the
-animation phase runs before the schedule).
+animation phase runs before the schedule). Phase 3: `cargo test -p skeletal_assets --lib`
+(`runtime::playback` tracker and Montage-driven notifies, reverse graph players and
+Montages, root motion modes), `cargo test -p helio_component --lib components::skeletal`
+(`skeletal_phase3_tests.rs`: Montage events through the component, two components with
+shared assets, teardown, hot reload from disk, Blueprint discovery and nodes, root
+motion across loop seams, bone-level physics ownership), `cargo test -p blueprint_compiler
+--test compile`, the plugin's `animation_event_tests` and `cargo test -p engine_fs --lib
+animation_update`.
+
+## Notify, event, root-motion and physics semantics (Phase 3)
+
+Everything here is headless and deterministic; `skeletal_assets::runtime::playback`
+and `::rootmotion` are pure, `helio_component::SkeletalMeshComponent` wires them to
+the engine.
+
+### Decisions in force (Phase 3)
+
+| # | Decision |
+|---|---|
+| D12 | A **playback instance** is one clock playing one asset timeline: a Sequence Player node, one contributing Blend Space sample, a Pose Search cursor, one segment of one Montage instance, or a Montage instance's own timeline. It is keyed by `(owning graph/Montage instance, position in the graph)`, so two components, two Montage instances or two nodes on one clip never share notify state. |
+| D13 | A playback that is not reported in an update (weight zero, node left the graph, Montage ended/interrupted/stopped) is over; a later return is a **new** playback instance. |
+| D14 | Continuity is judged by the tracker: a span whose `from` is not where the previous one ended is a **jump** (seek, section jump or link, Pose Search switch). Looping spans that only restart their cycle count (Pose Search) are rebased, not jumps. |
+| D15 | Pause, scrub and fixed-step remainders are *no update*: nothing begins, ticks or ends. A preview scrub (`UpdateMode::Scrub`) reports no spans at all, so it cannot raise gameplay events. |
+| D16 | `root_motion_mode` defaults to `IgnoreRootMotion` (extract and discard), which is exactly what scenes saved before root motion was applied did. |
+| D17 | Physics owns **bones**, not the whole skeleton: `apply_physics_bones` replaces configured bones in the drawn palette; the animation clock never stops for them. Whole-pose ownership (`apply_physics_pose`) remains and holds the clock. |
+
+### Playback instances and notify delivery
+
+`NotifyTracker` (per component, never serialized or cloned) turns the spans one
+advance reports (`UpdateReport::spans`, `montage_timelines`, `finished_montages`) into
+`NotifyOccurrence`s:
+
+- **Notify** fires when the playhead passes it (departure excluded, arrival
+  included), forward or reverse, across any number of loops.
+- **Notify state** is entered when the playhead is inside `[start, end)` (reverse:
+  `(start, end]`). Each activation raises `Begin` once, `Tick` per update while inside
+  (or per `tick_interval`, carrying the time played inside as `delta`), and `End` once
+  with a reason. A state whose range lies inside one big step raises
+  Begin, Tick, End in that one update; looping gives one activation per cycle (`cycle`
+  tells which); a `disabled` state is silent.
+- Order inside one span: distance travelled along the playhead path, then
+  Tick < End < Begin < Notify, then loop cycle in playback direction, then the asset's
+  own order. The order across playbacks is the key order (deterministic). Work per span
+  is bounded: more than a million (state x cycle) pairs or notify crossings is an error
+  and nothing from that span is reported.
+
+| situation | `end_reason` of active states |
+|---|---|
+| playhead leaves the range (any direction, wrap, big step) | `completed` |
+| clock jumps (section jump/link, seek without telling the tracker, Pose Search switch) | `jump` |
+| owner seeks / restarts (`seek_animation`, `restart_animation`, `stop_animation`) | `seek` |
+| playback stops contributing, Montage ended/interrupted/stopped | `stopped` |
+| the asset behind the playback was replaced (graph/sequence/Montage hot reload, mesh or skeleton rebind) | `reload` |
+| component disabled or its owner removed (owner still alive) | `teardown` |
+
+A component whose owner has been despawned drops its queue: there is nothing left to
+deliver to.
+
+**Sources of notifies.** Sequences own `notifies` and `notify_states` (as before).
+Montages now own theirs too (`AnimationMontageAsset::notifies/notify_states`, on the
+Montage timeline) and compile them into `CompiledMontage`. A Montage instance reports
+its timeline and one playback per segment clip per loop cycle, so a Montage raises its
+own events plus those of the clips it plays.
+
+**Delivery** goes through the owning component only (no global publication):
+
+- `SkeletalMeshComponent.animation_notify` (`AnimationNotifyEvent`): every notify and
+  every state phase, with `sequence_id` (the owning asset's id whatever its kind),
+  `source_kind` (`animseq`/`montage`), `notify_id`, `notify_name`, `clip_time`,
+  `playback_time`, `cycle`, `generation`, `playback_instance`, `notify_phase`
+  (`notify|begin|tick|end`), `tick_delta`, `end_reason`.
+- Canonical per-asset events on the target entity channel (the owner object, or the
+  class variable the notify names): `animseq::<sequence id>.<notify or state id>` and
+  `montage::<montage id>.<id>`; fields are the common ones above (with `entity` and
+  `source` first: target and owner) followed by the authored typed payload.
+- Montage lifecycle, both as component events `SkeletalMeshComponent.montage_started`,
+  `montage_blended_in`, `montage_section_changed`, `montage_blending_out`,
+  `montage_ended`, `montage_interrupted` (`MontageLifecycleEvent`: `montage_id`,
+  `instance`, `section_from/to`, `result` = completed|interrupted|stopped|cancelled,
+  `interrupted_by`) and as canonical `montage::<montage id>.lifecycle_<kind>` events.
+  `ended` fires exactly once per instance; an interruption also raises `interrupted`.
+  Within one advance: started, blended in, section changed, then notifies, then
+  blending out and ended.
+- A failed publication retries the unaccepted suffix next frame; the animation holds
+  while events wait.
+
+Descriptors are registered when events are first delivered and on every tick for
+playing Montages; Blueprint discovery registers nothing on a bus.
+
+### Blueprint
+
+Discovery (`component_animation_notify_events`) reads the component's closure through
+the asset index on every call (no per-open cache): Sequence notifies **and states** of
+every sequence the graph can play, and for each Montage with a track on one of the
+graph's Slots its own notifies, states and six lifecycle events. The compiler and
+palette treat `animseq::...` and `montage::...` identically: a node is bound to one
+`SkeletalMeshComponent` reference through `component_ref`, filtered to its asset by its
+canonical name, and never a global broadcast. The graph asset itself raises no events of
+its own (state machines are traced, not evented).
+
+Nodes (world methods of the component, so they appear in the palette and TypeScript
+declarations like every other component method; they take the component reference or
+its object): `anim_set_float/bool/int/vector` (graph parameters: unknown name, wrong
+type, non-finite value are errors), `anim_play_montage` (Montage asset id or unique file
+name, rate, section; returns an instance handle; the group policy may refuse),
+`anim_stop_montage`, `anim_stop_montage_group`, `anim_pause_montage`,
+`anim_jump_to_section`, `anim_set_next_section`, `anim_set_montage_rate` (negative =
+reverse), `anim_is_montage_playing`. Commands apply in the next animation phase, in call
+order.
+
+### Reverse playback
+
+- **Sequence Player / Blend Space nodes**: a negative `play_rate` plays backwards. A
+  looping clip wraps below zero; a one-shot holds its first frame. Sync-grouped nodes
+  and phase-synced Blend Space samples need forward time: a negative rate leaves the
+  group and the node runs on its own clock (the phase of a phase-synced space runs
+  backwards). Root motion is the inverse of the forward motion over the same stretch.
+- **Montage**: a negative rate plays the timeline backwards inside the current section;
+  at its start the playhead continues into the section that links *to* it (itself if it
+  loops, else the first such section in asset order) and with none the Montage
+  completes. Notifies and states mirror the forward order.
+- **Component**: `playback_rate` < 0 plays the internal single-sequence player
+  backwards (graph nodes and Montages carry their own rates).
+
+### Root motion
+
+Extraction happens in the instance (see Evaluation); the component applies it:
+
+| `root_motion_mode` | extraction | the owner moves by |
+|---|---|---|
+| `NoRootMotionExtraction` | none, the root bone moves in the pose | nothing |
+| `IgnoreRootMotion` (default) | yes | nothing, delta dropped |
+| `RootMotionFromEverything` | yes | graph players and Montages as blended |
+| `RootMotionFromMontagesOnly` | yes | only Montages in `Montage` root-motion mode (`montage_root_motion`) |
+
+`root_motion_rotation` (`NoRotation`, `YawOnly` default, `FullRotation`) and
+`root_motion_vertical` (default off: height belongs to gravity and ground contact)
+constrain the delta. The delta is composed on the right in the owner's **local** frame,
+translation scaled by the owner's scale, written to the owner's `Transform` once per
+frame in the animation phase (before the ECS schedule, so physics and everything after
+read the moved owner). Moves go through the same `MotionGate`s as script moves: a
+`Static` object is not moved and the delta is dropped. Montage precedence per Montage:
+`montage` replaces the graph's by blend weight, `graph` leaves it, `ignore` blends it
+toward zero. Loop seams compose exactly (the clip's per-cycle motion is added whole), a
+Montage's section links and jumps contribute only the time actually played (the
+playhead is reported in continuous runs), and slicing time differently gives the same
+total travel. A dynamic rigid body owner should use `Ignore`/`NoRootMotionExtraction`
+and let physics move it: the animation phase runs first and physics wins afterwards.
+Multiplayer authority is not modelled: root motion is applied by whoever runs the
+component's animation phase.
+
+### Physics authority
+
+Per frame: animation phase (evaluate; `bone_world_pose` = the animation's own pose,
+what physics reads) then physics step and write-back, then `apply_physics_bones` (the
+drawn palette takes the rig's dynamic bones, their descendants follow them, everything
+else stays animated). The component is the only writer of the palette and of
+`bone_world_pose`; the rig writes through the component in write-back, sequentially,
+so there is no race. `skeletal_rig` reports only dynamic-body bones; kinematic bodies
+keep following the animation. An empty list gives every bone back.
+
+### Hot reload
+
+`AssetUpdated(Custom("animation"))` is published by the file watcher for
+`.skeleton .animseq .blendspace .montage .animgraph .ikrig .ikretarget .animretarget
+.posedb`. `engine_backend::scene::reload_updated_asset` reloads the graph/sequence a
+component holds directly through SceneDB and calls
+`helio_component::reload_animation_dependencies`: every component whose compiled
+graph's `dependencies` (resolved to canonical paths when the graph binds) include the
+file recompiles its graph from disk and swaps it in place (`set_graph` adoption keeps
+clocks, state machine states and parameter values of surviving nodes); active notify
+states end with `reload`. A graph that no longer compiles keeps running as it was and
+reports diagnostics. Montage compiles are cached per component and dropped on any
+animation change; an instance already playing finishes with the version it started
+with.
+
+### Not covered / limits
+
+- Notify state ticks are per update, not per `tick_interval` sub-step inside an
+  update; a big step gives one tick with the whole `delta`.
+- Trimmed *looping* Montage segments restart their clip range every cycle (a
+  discontinuity: states end and begin per cycle; a notify at exactly the cycle start is
+  not re-fired at the restart).
+- Whole-skeleton physics ownership (`apply_physics_pose`) still holds the clock.
+- Server/client authority for root motion.

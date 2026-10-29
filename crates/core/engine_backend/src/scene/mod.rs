@@ -174,6 +174,14 @@ pub fn reload_updated_asset(
     }
 }
 
+/// An animation asset file changed: the graph or sequence a component holds directly
+/// reloads through SceneDB, and every running graph that depends on the file
+/// recompiles in place (see `helio_component::components::reload_animation_dependencies`).
+fn reload_animation_asset(world: &mut pulsar_scenedb::World, path: &std::path::Path) -> usize {
+    let source = helio_component::components::animation_source_for_file(path);
+    world.asset_source_changed(&source) + helio_component::components::reload_animation_dependencies(world, path)
+}
+
 fn reload_materials(world: &mut pulsar_scenedb::World, sources: Vec<String>) -> usize {
     sources
         .iter()

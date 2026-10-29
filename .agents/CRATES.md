@@ -110,7 +110,10 @@ meshes chosen since are kept. A static source is imported exactly as before.
 `.animgraph`, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`) is defined in
 the same `skeletal_assets` crate, with typed `pulsar_reflection::AssetRef`
 markers; `engine_fs::ProjectFileIndex` records their reference edges
-(`asset_deps`) for Used By queries. See `.agents/ANIMATION.md`.
+(`asset_deps`) for Used By queries. The runtime (`skeletal_assets::runtime`: graph, Montages,
+notify playback tracker, root motion) is headless; `helio_component::SkeletalMeshComponent`
+owns the per-entity state, delivers notifies and Montage events, applies root motion and
+recompiles graphs when a dependency file changes. See `.agents/ANIMATION.md`.
 `helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
 of the loaded scene (`ConvertedScene::rig`).
 
