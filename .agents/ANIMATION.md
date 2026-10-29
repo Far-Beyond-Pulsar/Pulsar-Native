@@ -1,4 +1,4 @@
-# Animation assets, references, compatibility and runtime (Phases 1–3)
+# Animation assets, references, compatibility, runtime and editors (Phases 1–4)
 
 How the animation family of assets is stored, linked and checked (Phase 1), how
 they run (Phase 2: the compiled graph, per-component instance state, state
@@ -15,7 +15,7 @@ Plan: `docs/animation-system-implementation-plan.md`; audit:
 | D1 | `.montage` is the only Montage extension. `anim_montage`/`anim_graph` are no longer accepted as extensions (they remain the `KIND` strings recorded in the file index). The mockup's `.animmontage` is to be corrected. |
 | D2 | The **mesh** is the only Skeleton authority. `SkeletalMeshComponent` has no authored `skeleton`; the skeleton is read from the mesh header. An old saved `skeleton` is read once and, if it disagrees with the mesh, reported as a repairable diagnostic; the next save drops it. |
 | D3 | All four new assets (`.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`) are in scope. |
-| D4 | The animation Graphy profile lives in `skm_editor` (not yet written; Phase 4/2). Its data model is `skeletal_assets::anim_graph::catalogue`. |
+| D4 | The animation Graphy profile lives in `skm_editor` (`anim_editors/views/anim_graph_canvas.rs`). Its data model is `skeletal_assets::anim_graph::catalogue`. |
 | D5 | Transitions are nodes (`sm.transition`), not graph-edge properties. |
 | D6 | `ProjectFileIndex` has an `asset_deps` table. Per-kind extractors (`skeletal_assets::dependencies::extract`) feed it; "Used By" is a query over it. |
 | D8 | Notify states are a separate `notify_states` list in `.animseq`. |
@@ -346,9 +346,8 @@ graph's toward zero).
 
 ## Not yet built
 
-- The animation Graphy profile (presenter, catalogue UI, state-machine view) and
-  the purpose-built editors: Phase 4. `animation_assets_editor.rs` is a typed
-  interim editor (pickers, diagnostics, Used By), not a generic JSON form.
+- (Built in Phase 4, see *Production editors*: the animation Graphy profile and the
+  purpose-built editors; the interim form editor is gone.)
 - Bone/curve LOD and update-rate controls (Phase 5, with profiling).
 
 ## Tests
@@ -552,8 +551,129 @@ with.
 - Whole-skeleton physics ownership (`apply_physics_pose`) still holds the clock.
 - Server/client authority for root motion.
 
-## Production editors (Phase 4, in progress)
+## Production editors (Phase 4)
 
-`plugins/vendor/skm_editor/src/anim_editors/`: each editor is a headless **model** (`*_model.rs`: typed document, commands, selection, validation; tested) plus a GPUI **view** (`views/`). Shared: `document.rs` (typed value on the host `plugin_editor_api::undo` history, content-hash conflict check on save, atomic write), `selection.rs`, `refs.rs` (kind+skeleton pickers via `picker::filter`, ref status, dependency tree, Used By), `notify_edit.rs` (notify/state commands, collision-stacking lane layout), `skeleton_proj.rs`, `retarget_preview.rs` and `graph_preview.rs` (previews run the real retarget plan / compiled graph + `AnimInstance`).
-Done: Blend Space, Montage, IK Rig, Retarget Profile, IK Retargeter, Pose Search DB, Animation Graph (Graphy canvas, `AnimProfile`), Skeleton/Mesh Used By + skeleton card; the interim form editor is removed.
-Not done: Sequence notify-state lanes/stacking in the GPU timeline, Blueprint component details (root motion props, typed refs), animated preview for Blend Space/Montage, bone-mask editing in the graph inspector, `.agents/GRAPH_CANVAS.md` section, GUI verification of everything.
+All animation editors live in `plugins/vendor/skm_editor/src/` and are built into the
+editor (`builtin` feature). Each asset editor is a headless **model** plus a GPUI **view**;
+the model is the only place an asset is edited, so everything below is also what the headless
+tests drive. The Sequence editor predates the family and has its own panels; it shares the
+notify model with the Montage editor.
+
+### Layout of the code
+
+| Path | What |
+|---|---|
+| `anim_editors/document.rs` | `AnimDocument<T>`: the typed asset value, undo/redo on the host `plugin_editor_api::undo` history, dirty flag, content-hash conflict check on save (another tab or tool wrote the file), atomic write. Keyed edits (`edit(label, Some(key), ..)`) merge a gesture into one undo step. |
+| `anim_editors/selection.rs` | `AnimSelection`: the typed selection the inspector renders (segment, section, notify, state, sample, graph node, parameter, chain, goal, ...). Never saved. |
+| `anim_editors/refs.rs` | Pickers per kind and skeleton (`skeletal_assets::picker::filter`), `RefStatus`, the dependency tree and Used By, all through the project file index. |
+| `anim_editors/kinds.rs` | The one place an editor for an asset kind is opened, plus the content of a new file per kind. |
+| `anim_editors/*_model.rs` | `blend_space`, `montage`, `anim_graph`, `ik_rig`, `retarget`, `pose_db` models. |
+| `anim_editors/notify_edit.rs` | Notify, notify-state and payload-schema commands (`NotifyView` over the three lists any asset with notifies owns) and the lane layout (`lane_layout`) that stacks markers whose labels would collide. Used by the Sequence and Montage editors. |
+| `anim_editors/bone_mask_edit.rs` | Per-layer bone masks of a Layered Blend per Bone node as pure functions over the `masks` property JSON. |
+| `anim_editors/skin_preview.rs` | Runtime-driven poses for the previews (below) and the offscreen skinned renderer. |
+| `anim_editors/pose_db_build.rs` | The off-thread Pose Database build and its progress/cancel handle. |
+| `anim_editors/graph_preview.rs` | `GraphPreview`: the open graph compiled by the real compiler, run by a transient `AnimInstance`; `ProjectAssets` loads referenced assets from the project. |
+| `anim_editors/retarget_preview.rs`, `skeleton_proj.rs` | The retarget plan on a posed 2D projection of the skeleton. |
+| `anim_editors/views/` | GPUI views: `chrome.rs` (frame: toolbar, left list, centre, inspector, status), one view per editor, `skin_pane.rs` (the skinned preview panel), `skeleton_canvas.rs`, `notify_inspector.rs`. |
+
+### Editors
+
+- **Sequence** (`.animseq`, `editor/panel.rs` and `rendering/timeline`): the dope sheet is one
+  wgpu canvas (`timeline/layout.rs` builds the draw list *and* hit-tests it, so a headless test
+  covers both) with GPUI text on top.
+  - The pinned **Notifies lane** holds instant notifies (diamonds) and ranged **notify states**
+    (bars with resize handles). Markers that would collide at the current zoom stack into up to
+    three rows (`Scene::notify_lane` runs `lane_layout` with the zoom's px/second and each
+    label's length), so they stay readable and individually selectable. Markers needing a row
+    beyond the third share the last one and the lane says `+N stacked, zoom in`. Hover,
+    selected and disabled have their own look (disabled states are muted and struck through).
+  - Click an empty lane spot to add a notify; the `+` buttons add a notify or a 0.25 s state at
+    the playhead. Drag a marker to move it (a state slides, keeping its length), drag a state's
+    ends to resize it, Delete removes the selected one. Times snap to the frame grid and stay
+    inside the clip.
+  - The inspector edits name, time (start/end for a state), target, tick interval and enabled
+    flag of a state, and the payload fields of both. Everything is saved with the sequence
+    (`notifies`, `notify_states`, `notify_schemas`; a sequence with states is a v4 file).
+- **Montage** (`.montage`): multi-track timeline (segments on Slot tracks: drag, trim, split,
+  retarget to another track), sections with next-links, notify and state lanes (same
+  `lane_layout`), blend in/out, group, priority, interrupt policy, root-motion mode, payload
+  schemas. The inspector's top panel is the **skinned preview** (below).
+- **Blend Space** (`.blendspace`): 1D/2D plot with draggable samples, axis settings, edge policy,
+  sync, sample list, a live probe point that shows the normalised sample weights, and the
+  skinned preview with a Play/Pause clock.
+- **Animation Graph** (`.animgraph`): the Graphy canvas with the animation profile
+  (`views/anim_graph_canvas.rs`, see `GRAPH_CANVAS.md`), inspector, parameters, state-machine
+  navigation (a state machine, a state, a transition rule are sub-graphs), live preview on the
+  real runtime with parameter sliders, state trace, curves and root motion.
+  - **Bone masks**: a Layered Blend per Bone node's inspector shows one card per layer: default
+    weight, ordered branches (bone by name or id, depth, weight; later branches win), move/remove,
+    *Everything / Nothing / Invert*, a summary (`n of m bones take layer k`) and the weight each
+    bone ends up with. Every control is one undoable edit of the node's `masks` property,
+    validated against the graph's skeleton (an unknown bone is refused at the edit) and the
+    model validates raw `masks` writes too.
+- **Pose Search Database** (`.posedb`): source table (Sequences and Blend Spaces with mirror,
+  loop, exclusions, cost bias), feature channels, sampling, search settings, the derived-index
+  state (see below), a query debugger (cost breakdown per channel) and the **fallback preview**.
+- **IK Rig**, **Retarget Profile**, **IK Retargeter**: chains, goals, mappings and the retarget
+  plan on a posed skeleton projection; each runs the real retarget plan, not an approximation.
+- **Skeleton / Skeletal Mesh**: Used By and the resolved-skeleton cards.
+- **Component details** (level editor and Blueprint component details; shared, not Blueprint
+  code): `SkeletalMeshComponent` exposes `mesh`, `animation_graph`, `playing`, `playback_rate`,
+  `root_motion_mode`, `root_motion_rotation`, `root_motion_vertical` with `#[property]`.
+  `ui_common::asset_ref_editor` registers the pickers for `Option<AssetRef<SkeletalMesh>>` and
+  `Option<AssetRef<AnimationGraph>>` (searchable, extension-filtered, with Clear); the mesh row
+  also shows the Skeleton resolved from the mesh header, read-only: the mesh is the only
+  authority for it and the component never stores a skeleton ref. The JSON codecs for the
+  optional refs are registered in `pulsar_reflection::asset_refs`.
+
+### Previews run the real runtime
+
+- **Montage / Blend Space skinned preview** (`skin_preview.rs`, `views/skin_pane.rs`): a
+  transient `AnimInstance`. A Montage is compiled (`CompiledMontage::compile`) and played on one
+  Slot node per slot it uses, chained over a Reference Pose; a Blend Space is played by a Blend
+  Space Player fed from two parameters. The *unsaved* document is served to the compiler through
+  `OverlaySource`, so the preview shows what is on screen. Every advance is `UpdateMode::Scrub`:
+  no gameplay event, span or Montage timeline is produced (tested). Moving the playhead back
+  rebuilds the instance on the same compiled graph, so a time always gives the same pose.
+  The pose goes to the viewport's scene builder (`SceneInput::world_override`) and renderer
+  and is drawn offscreen into an image (BGRA for GPUI). The rig is the skeleton's `preview_mesh`
+  or else the first mesh built for the skeleton; with no mesh the bones are drawn. With no GPU
+  adapter the pane says so.
+- **Pose Database fallback preview**: a Pose Search node whose database cannot be used plays its
+  `fallback` input. The preview compiles exactly that graph (first enabled Sequence source into
+  the Fallback pin, database hidden by `WithoutPoseDb`), shows the compiler's
+  `graph.pose_search_fallback` warning and the fallback pose, and the tests check the output is
+  the fallback sequence's pose.
+
+### Pose Database index build
+
+`PoseIndex::build_with(.., progress)` reports `(poses visited, expected)` and stops with
+`posedb.cancelled` as soon as the callback returns `false`. `pose_db_build::BuildJob` owns what a
+build reads (authored asset, skeleton, a `SourceLoader`), so the editor runs it on a background
+executor thread; `BuildHandle` is the editor's side (progress fraction, cancel flag). The view
+shows `Building index... NN%` and a Cancel button, repaints on a timer while it runs, applies the
+result on the UI thread (`PoseDbModel::finish_build`), writes the derived cache under
+`.pulsar/cache/posedb/` and keeps the previous index when a build is cancelled.
+
+### Tests
+
+`cargo test -p skeletal_animation_plugin --lib`: model tests for every editor, the timeline
+layout/hit tests (dense markers stack and stay selectable), `hierarchy_tests` (the Sequence editor
+adds/moves/resizes/deletes notifies and states and saves/reloads them), `skin_preview` (runtime
+poses, scrub reports nothing, fallback; a GPU test renders the skinned frame and skips with no
+adapter), `pose_db_build` (progress, cancel, threading), `bone_mask_edit`.
+`cargo test -p ui_level_editor --test skeletal_component_property_editors`: every authored slot
+of the component has a property editor and the optional refs round-trip through the runtime type
+registry. `cargo test -p graphy --lib authored` (Graphy repo): the shared bridge.
+
+### Limits (Phase 4)
+
+- Nothing here has been driven in the running app; the checks are headless. See
+  `docs/animation-handoff.md` for the list to review by hand.
+- The notify lane holds three stacked rows; further markers share the last row until zoomed in.
+- Named bone masks are not a stored library on the Skeleton asset: masks are authored per layer
+  (the plan's "named Skeleton masks" remain open).
+- The skinned previews render offscreen and are shown as an image; they do not share the
+  Sequence viewport's camera controls.
+- The Blueprint component details need no Blueprint-side code (they use the shared reflected
+  rows), so `blueprint_editor` has no test for them; the shared test above covers the rows.

@@ -78,6 +78,35 @@ renderer, hit-testing, spatial index or input code of its own.
   quick palette, comment title editing, breakpoint badges, debug HUD, macro pin editor,
   inspector (over `NodeView`/`CommentView` snapshots of the document).
 
+
+## Animation Graph (Phase 4): the fourth consumer
+
+`plugins/vendor/skm_editor` edits `.animgraph` on `GraphCanvas`; like Blueprint it has no renderer,
+hit-testing or input code of its own.
+
+- `views/anim_graph_canvas.rs` is the `GraphProfile` + `Presenter` (`AnimProfile`): the catalogue
+  (`skeletal_assets::anim_graph::catalogue`) and node factory (`instantiate_node`), pin looks per
+  animation pin type (pose, additive pose, float, ...), exact-type connection rules, sub-graph
+  navigation (state machine -> state -> transition rule, reusable layers) as `MacroTarget`s, and
+  protected terminal nodes (Output Pose, Layer Output, State Result). Dynamic pins (counts, goal
+  lists, parameter-typed outputs) are refreshed by `refresh_node_pins` when a property changes.
+- **The authored <-> canvas conversion is Graphy's**: `graphy::authored::{from_authored,
+  to_authored, node_from_authored, connection_id}`. The Blueprint and Animation Graph editors had
+  identical private copies; both now call this one (Blueprint keeps only its custom-event
+  `AuthoredSidecar`, the animation editor re-exports the functions). Node ids and keys, pin ids,
+  connection ids, comment ids and zip ties survive; pin back-links (`connected_to`) are derived
+  and rebuilt in connection order, and an edge created in the session gets the deterministic id
+  `source.pin->target.pin`, so saving twice renames nothing (`graphy` tests:
+  `cargo test --lib authored` in the Graphy repo). `graphy` therefore depends on the leaf
+  `graphy-blueprint` schema crate; `graphy-blueprint` still depends on nothing of Graphy's.
+- Edits go through the animation model (`AnimGraphModel`, on the host undo history), which
+  validates every node and property edit against the catalogue; the canvas is refreshed from the
+  model after each edit (`push_to_canvas`), and canvas events (move, connect, delete, navigate)
+  become model commands.
+- Inspector-only chrome (not canvas): properties by kind, parameter list, **bone masks** for
+  Layered Blend per Bone (`views/anim_graph_view/bone_mask_panel.rs`), live preview controls.
+- The profile's `render_slot` must not read the canvas entity (see the note under *Shared picker*).
+
 ## Render Graph (Phase 5): the second consumer
 
 `plugins/vendor/render_bps` has its own editor on the canvas and shares no code or
