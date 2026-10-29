@@ -551,3 +551,9 @@ with.
   not re-fired at the restart).
 - Whole-skeleton physics ownership (`apply_physics_pose`) still holds the clock.
 - Server/client authority for root motion.
+
+## Production editors (Phase 4, in progress)
+
+`plugins/vendor/skm_editor/src/anim_editors/`: each editor is a headless **model** (`*_model.rs`: typed document, commands, selection, validation; tested) plus a GPUI **view** (`views/`). Shared: `document.rs` (typed value on the host `plugin_editor_api::undo` history, content-hash conflict check on save, atomic write), `selection.rs`, `refs.rs` (kind+skeleton pickers via `picker::filter`, ref status, dependency tree, Used By), `notify_edit.rs` (notify/state commands, collision-stacking lane layout), `skeleton_proj.rs`, `retarget_preview.rs` and `graph_preview.rs` (previews run the real retarget plan / compiled graph + `AnimInstance`).
+Done: Blend Space, Montage, IK Rig, Retarget Profile, IK Retargeter, Pose Search DB, Animation Graph (Graphy canvas, `AnimProfile`), Skeleton/Mesh Used By + skeleton card; the interim form editor is removed.
+Not done: Sequence notify-state lanes/stacking in the GPU timeline, Blueprint component details (root motion props, typed refs), animated preview for Blend Space/Montage, bone-mask editing in the graph inspector, `.agents/GRAPH_CANVAS.md` section, GUI verification of everything.
