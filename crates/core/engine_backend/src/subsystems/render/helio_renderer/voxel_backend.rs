@@ -1875,7 +1875,7 @@ mod tests {
         terrain.seed = 99;
         attach(&mut scene, owner, terrain);
         let mut layers = helio_component::VoxelTerrainLayersComponent::default();
-        layers.stack.snowline_m = 1_234.0;
+        layers.stack.climate.snow_c = -7.5;
         layers.stack.layers[2].scale_km = 55.0;
         attach(&mut scene, owner, layers);
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
@@ -1895,7 +1895,7 @@ mod tests {
         assert_eq!(recipe.terrain.seed, 99);
         let settings: helio_pass_voxel_planet::layers::TerrainLayers =
             serde_json::from_str(&recipe.terrain.settings).unwrap();
-        assert_eq!(settings.snowline_m, 1_234.0);
+        assert_eq!(settings.climate.snow_c, -7.5);
         assert_eq!(
             settings.layers[2].kind,
             helio_pass_voxel_planet::layers::LayerKind::Mountains
