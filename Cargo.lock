@@ -10604,11 +10604,12 @@ dependencies = [
 name = "render_bps_plugin"
 version = "0.1.0"
 dependencies = [
- "blueprint_editor_plugin",
  "engine_backend",
+ "engine_fs",
  "gpui-ce",
  "graphy",
- "graphy-blueprint",
+ "graphy-gpui",
+ "graphy-render",
  "helio-default-passes",
  "helio-graph-asset",
  "log",

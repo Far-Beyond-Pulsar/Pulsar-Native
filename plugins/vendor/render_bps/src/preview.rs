@@ -17,7 +17,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use graphy_blueprint::BlueprintAsset;
 use engine_backend::scene::{new_scene, resolve_level_assets, RuntimeLevel};
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use engine_backend::subsystems::render::helio_renderer::pipelines;
@@ -114,12 +113,11 @@ impl PipelinePreview {
         preview
     }
 
-    /// Runs the graph through the preview renderer, if it is sound.
-    pub fn apply_graph(&mut self, document: &BlueprintAsset, cx: &mut Context<Self>) {
-        let asset = model::buildable_asset(document, model::registry());
-        let problems = model::problems(&asset, model::registry());
-        if !problems.is_empty() {
-            self.status = Some((true, problems.join("; ")));
+    /// Runs the graph through the preview renderer, if it is sound. `asset` is the
+    /// buildable projection of the editor's document.
+    pub fn apply_asset(&mut self, asset: helio_graph_asset::GraphAsset, cx: &mut Context<Self>) {
+        if let Some(blocked) = blocked(&asset, model::registry()) {
+            self.status = Some((true, blocked));
             cx.notify();
             return;
         }
@@ -250,6 +248,16 @@ impl PipelinePreview {
     }
 }
 
+/// Why a graph must not reach the preview renderer: a half-wired graph never
+/// gets to the GPU. `None` when it is sound.
+pub(crate) fn blocked(
+    asset: &helio_graph_asset::GraphAsset,
+    registry: &helio_graph_asset::NodeRegistry,
+) -> Option<String> {
+    let problems = model::problems(asset, registry);
+    (!problems.is_empty()).then(|| problems.join("; "))
+}
+
 fn write_test_scene() -> std::io::Result<PathBuf> {
     let path = std::env::temp_dir().join(format!(
         "pulsar_render_preview_{}.level.json",
@@ -361,38 +369,3 @@ impl Render for PipelinePreview {
     }
 }
 
-thread_local! {
-    /// The open previews by the file their editor edits. The editor calls the
-    /// profile on the UI thread, which is where these are used.
-    static PREVIEWS: std::cell::RefCell<Vec<(Option<PathBuf>, WeakEntity<PipelinePreview>)>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
-
-/// Remembers `preview` as the preview of the editor of `file`.
-pub fn register(file: Option<PathBuf>, preview: WeakEntity<PipelinePreview>) {
-    PREVIEWS.with(|previews| previews.borrow_mut().push((file, preview)));
-}
-
-/// The previews of the editor of `file`.
-pub fn previews_for(file: Option<&std::path::Path>) -> Vec<WeakEntity<PipelinePreview>> {
-    PREVIEWS.with(|previews| {
-        let mut previews = previews.borrow_mut();
-        // Closed editors leave dead entries behind.
-        previews.retain(|(_, preview)| preview.upgrade().is_some());
-        let matching: Vec<_> = previews
-            .iter()
-            .filter(|(path, _)| path.as_deref() == file)
-            .map(|(_, preview)| preview.clone())
-            .collect();
-        // The path can be unknown while the workspace is built (a file still
-        // loading); then every open preview is as good as any.
-        if matching.is_empty() {
-            previews
-                .iter()
-                .map(|(_, preview)| preview.clone())
-                .collect()
-        } else {
-            matching
-        }
-    })
-}

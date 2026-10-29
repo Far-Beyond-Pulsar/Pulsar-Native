@@ -1,10 +1,15 @@
 //! # Render Graph Editor
 //!
-//! Builds Helio render pipelines visually. It is the Blueprint graph editor
-//! with the Blueprint-specific parts replaced (see
-//! `blueprint_editor_plugin::profile`): nodes are render stages and resources,
-//! pins are textures, depth, buffers and host inputs, and the document is a
-//! `.rendergraph` asset that `helio_graph_asset` compiles into a `RenderGraph`.
+//! Builds Helio render pipelines visually on the shared Graphy canvas
+//! (`graphy-gpui`): nodes are render stages and resources, pins are textures,
+//! depth, buffers and host inputs, and the document is a `.rendergraph` asset that
+//! `helio_graph_asset` compiles into a `RenderGraph`.
+//!
+//! The Graphy canvas owns the one editable document ([`document`]); this crate is
+//! the render graph domain on top of it: the node catalogue and dynamic Helio
+//! pins ([`model`], [`profile`]), the `.rendergraph` boundary ([`document`]), the
+//! editor chrome ([`editor`], [`view`]), the Sections and Buffers panels and the
+//! pipeline preview.
 //!
 //! A project's `.rendergraph` assets are offered as render pipelines in the
 //! level editor's World Settings, next to Helio's built-in ones.
@@ -13,152 +18,50 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use blueprint_editor_plugin::profile::{install_profile, EditorProfile, ParamField, PinStyle};
-use blueprint_editor_plugin::BlueprintEditorPanel;
 use gpui::*;
 use plugin_editor_api::*;
 use ui::dock::PanelView;
 
 mod buffers_panel;
-mod model;
+mod collapse;
+pub mod document;
+pub mod editor;
+pub mod model;
 mod preview;
+pub mod profile;
 mod sections_panel;
+mod view;
+
+#[cfg(test)]
+mod tests;
 
 /// Extension of a render graph asset.
 const EXTENSION: &str = helio_graph_asset::EXTENSION;
 const FILE_TYPE: &str = "rendergraph";
 const EDITOR: &str = "render-graph-editor";
 
-/// Installs the profile once, before any editor opens a render graph. Safe to
-/// call from every entry point.
-pub(crate) fn ensure_profile(window: Option<&Window>) {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
+/// Starts learning the pins of Helio's nodes from their passes, once, in the
+/// background, on the editor's own device when there is one (so no second device
+/// is made), so they are ready by the time a graph is opened.
+fn start_pin_probe(window: Option<&Window>) {
+    static START: std::sync::Once = std::sync::Once::new();
+    START.call_once(|| {
         use engine_backend::subsystems::render::helio_renderer::pipelines;
-        // Learn the pins of Helio's nodes from their passes in the background, on
-        // the editor's own device when there is one (so no second device is made),
-        // so they are ready by the time a graph is opened.
         if let Some((device, queue)) = window.and_then(Window::gpu_device_and_queue) {
             pipelines::offer_probe_device(device, queue);
         }
         pipelines::start_graph_pin_probe();
-        if let Err(error) = install_profile(Arc::new(RenderProfile)) {
-            log::error!("Render Graph Editor: {error}");
-        }
     });
 }
 
-/// What replaces the Blueprint specifics in the shared graph editor.
-struct RenderProfile;
-
-impl EditorProfile for RenderProfile {
-    fn id(&self) -> &str {
-        "render-graph"
-    }
-
-    fn extensions(&self) -> Vec<String> {
-        vec![EXTENSION.to_string()]
-    }
-
-    fn catalog(&self) -> blueprint_editor_plugin::NodeDefinitions {
-        model::catalog(model::registry())
-    }
-
-    fn decode(&self, text: &str) -> Result<graphy_blueprint::BlueprintAsset, String> {
-        let marker: serde_json::Value =
-            serde_json::from_str(text).map_err(|error| format!("invalid render graph: {error}"))?;
-        let is_empty = marker
-            .get("nodes")
-            .and_then(serde_json::Value::as_array)
-            .map_or(true, |nodes| nodes.is_empty());
-        let asset = if is_empty
-            && marker.get("template").and_then(serde_json::Value::as_str) == Some("deferred")
-        {
-            helio_default_passes::graphs::deferred_graph_asset(model::registry())
-        } else {
-            helio_graph_asset::GraphAsset::from_json(text)?
-        };
-        model::to_blueprint_asset(&asset, model::registry())
-    }
-
-    fn encode(&self, asset: &graphy_blueprint::BlueprintAsset) -> Result<String, String> {
-        Ok(model::from_blueprint_asset(asset, model::registry()).to_json())
-    }
-
-    fn pin_style(&self, type_name: &str) -> PinStyle {
-        model::pin_style(type_name)
-    }
-
-    fn parameters(&self, definition_id: &str) -> Vec<ParamField> {
-        model::parameter_fields(definition_id, model::registry())
-    }
-
-    fn parameter_changed(
-        &self,
-        graph: &graphy::GraphDescription,
-        node_id: &str,
-    ) -> Vec<graphy::GraphCommand> {
-        model::refresh_pins(graph, node_id, model::registry())
-    }
-
-    fn node_title(
-        &self,
-        definition_id: &str,
-        properties: &HashMap<String, String>,
-    ) -> Option<String> {
-        model::buffer_title(definition_id, properties)
-    }
-
-    fn left_panels(
-        &self,
-        editor: WeakEntity<BlueprintEditorPanel>,
-        _file: Option<&std::path::Path>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Vec<Arc<dyn PanelView>> {
-        let sections = cx.new(|cx| sections_panel::SectionsPanel::new(editor.clone(), cx));
-        let buffers = cx.new(|cx| buffers_panel::BuffersPanel::new(editor, window, cx));
-        vec![Arc::new(sections), Arc::new(buffers)]
-    }
-
-    fn auto_layout(&self, graph: &graphy::GraphDescription) -> Vec<graphy::GraphCommand> {
-        model::auto_layout_graph(graph)
-    }
-
-    fn preview_panel(
-        &self,
-        file: Option<&std::path::Path>,
-        _window: &mut Window,
-        cx: &mut App,
-    ) -> Option<Arc<dyn PanelView>> {
-        let preview = cx.new(preview::PipelinePreview::new);
-        preview::register(file.map(std::path::Path::to_path_buf), preview.downgrade());
-        Some(Arc::new(preview))
-    }
-
-    fn graph_applied(
-        &self,
-        file: Option<&std::path::Path>,
-        asset: &graphy_blueprint::BlueprintAsset,
-        cx: &mut App,
-    ) {
-        for preview in preview::previews_for(file) {
-            let _ = preview.update(cx, |preview, cx| preview.apply_graph(asset, cx));
-        }
-    }
-
-    fn validate(&self, document: &graphy_blueprint::BlueprintAsset) -> Vec<String> {
-        let registry = model::registry();
-        let asset = model::buildable_asset(document, registry);
-        let mut problems = model::problems(&asset, registry);
-        // Without the probe the stage nodes have no resource pins; say why.
-        if let Some(reason) =
-            engine_backend::subsystems::render::helio_renderer::pipelines::graph_pin_probe_error()
-        {
-            problems.insert(0, format!("node pins unavailable: {reason}"));
-        }
-        problems
-    }
+/// Opens an editor on the render graph at `file_path`.
+pub(crate) fn open_editor(
+    file_path: PathBuf,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<editor::RenderGraphEditor> {
+    start_pin_probe(Some(&*window));
+    cx.new(|cx| editor::RenderGraphEditor::open(file_path, window, cx))
 }
 
 pub(crate) fn file_type() -> FileTypeDefinition {
@@ -222,7 +125,7 @@ impl EditorPlugin for RenderBpsPlugin {
     }
 
     fn on_load(&mut self) {
-        ensure_profile(None);
+        start_pin_probe(None);
         log::info!("Render Graph Editor plugin loaded");
     }
 }
@@ -234,23 +137,7 @@ impl RenderBpsPlugin {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        ensure_profile(Some(&*window));
-        let panel =
-            cx.new(
-                |cx| match BlueprintEditorPanel::new_with_path(file_path.clone(), window, cx) {
-                    Ok(panel) => panel,
-                    Err(error) => {
-                        tracing::error!("Failed to open render graph {file_path:?}: {error}");
-                        BlueprintEditorPanel::new_with_load_error(
-                            file_path.clone(),
-                            error.to_string(),
-                            window,
-                            cx,
-                        )
-                    }
-                },
-            );
-        let panel: Arc<dyn PanelView> = Arc::new(panel);
+        let panel: Arc<dyn PanelView> = Arc::new(open_editor(file_path, window, cx));
         let id = self
             .next_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
