@@ -161,11 +161,18 @@ pub fn catalog(registry: &NodeRegistry) -> Vec<CatalogEntry> {
     registry
         .list()
         .iter()
-        .map(|descriptor| CatalogEntry {
-            definition: descriptor.kind.clone(),
-            title: descriptor.title.clone(),
-            category: descriptor.category.clone(),
-            keywords: vec![descriptor.kind.clone(), descriptor.description.clone()],
+        .map(|descriptor| {
+            let (color, glyph) = category_look(&descriptor.category);
+            CatalogEntry {
+                definition: descriptor.kind.clone(),
+                title: descriptor.title.clone(),
+                category: descriptor.category.clone(),
+                keywords: vec![descriptor.kind.clone()],
+                description: descriptor.description.clone(),
+                icon: glyph.to_string(),
+                color: Some(color),
+                inputs: None,
+            }
         })
         .collect()
 }

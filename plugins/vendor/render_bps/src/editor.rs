@@ -28,14 +28,10 @@ use crate::collapse::collapse as document_collapse;
 use crate::document::{self, DocRef, GraphRef, RenderDocument};
 use crate::model;
 use crate::preview::PipelinePreview;
-use crate::profile::{RenderProfile, SectionNames};
+use crate::profile::{RenderProfile, SectionNames, MENU_COLLAPSE, MENU_EXPAND};
 
 /// Grid the canvas snaps nodes and comments to.
 pub const GRID: f64 = 10.0;
-
-/// Context menu entries this editor adds to Graphy's.
-const MENU_COLLAPSE: &str = "render.collapse";
-const MENU_EXPAND: &str = "render.expand";
 
 pub(crate) fn snap(v: f64) -> f64 {
     (v / GRID).round() * GRID
@@ -74,25 +70,6 @@ pub struct GraphTab {
     pub history: SharedHistory<Command>,
 }
 
-/// A context menu requested on the canvas.
-#[derive(Clone, Debug)]
-pub struct CanvasMenu {
-    pub at: Point<Pixels>,
-    pub local: Vec2,
-    pub target: MenuTarget,
-    pub items: Vec<MenuItem>,
-}
-
-/// The node picker: opened by a right click on empty canvas, or by dropping a
-/// wire there (then it offers nodes the wire can reach).
-pub struct Palette {
-    pub at: Point<Pixels>,
-    pub graph_pos: Vec2,
-    pub source: Option<graphy::PinRef>,
-    pub entries: Vec<graphy_gpui::CatalogEntry>,
-    pub focus_pending: bool,
-}
-
 pub struct RenderGraphEditor {
     pub(crate) file: PathBuf,
     pub(crate) load_error: Option<String>,
@@ -112,9 +89,6 @@ pub struct RenderGraphEditor {
     pub(crate) preview: Option<Entity<PipelinePreview>>,
     pub(crate) focus_handle: FocusHandle,
 
-    pub(crate) menu: Option<CanvasMenu>,
-    pub(crate) palette: Option<Palette>,
-    pub(crate) palette_input: Entity<InputState>,
     pub(crate) editing_comment: Option<usize>,
     pub(crate) comment_input: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
@@ -155,18 +129,8 @@ impl RenderGraphEditor {
     /// registry waits for the pin probe), so the editor first shows that it is
     /// loading.
     pub fn open(file: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let palette_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search nodes…"));
         let comment_input = cx.new(|cx| InputState::new(window, cx).placeholder("Comment text..."));
         let mut subscriptions = Vec::new();
-        subscriptions.push(cx.subscribe_in(
-            &palette_input,
-            window,
-            |_this, _input, event: &InputEvent, _window, cx| {
-                if matches!(event, InputEvent::Change) {
-                    cx.notify();
-                }
-            },
-        ));
         subscriptions.push(cx.subscribe_in(
             &comment_input,
             window,
@@ -193,9 +157,6 @@ impl RenderGraphEditor {
             workspace: None,
             preview: None,
             focus_handle: cx.focus_handle(),
-            menu: None,
-            palette: None,
-            palette_input,
             editing_comment: None,
             comment_input,
             _subscriptions: subscriptions,
@@ -290,7 +251,7 @@ impl RenderGraphEditor {
             return;
         };
         let canvas = cx.new(|cx| {
-            GraphCanvas::new(graph, profile, system_fonts(), cx)
+            GraphCanvas::new(graph, profile, system_fonts(), crate::theme::graph_theme(cx), cx)
                 .expect("the bundled canvas font parses")
         });
         let tab_id = id.clone();
@@ -407,8 +368,6 @@ impl RenderGraphEditor {
     pub(crate) fn activate(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.tabs.len() {
             self.active = index;
-            self.menu = None;
-            self.palette = None;
             self.editing_comment = None;
             cx.notify();
         }
@@ -475,7 +434,6 @@ impl RenderGraphEditor {
     }
 
     fn after_edit(&mut self, cx: &mut Context<Self>) {
-        self.menu = None;
         cx.notify();
     }
 
@@ -509,31 +467,16 @@ impl RenderGraphEditor {
             CanvasEvent::SelectionChanged => cx.notify(),
             CanvasEvent::ViewChanged => {}
             CanvasEvent::Request(action) => self.on_canvas_request(action.clone(), window, cx),
+            CanvasEvent::NodePicked {
+                definition,
+                graph_pos,
+                source,
+            } => self.place_picked(definition, *graph_pos, source.clone(), cx),
         }
     }
 
     fn on_canvas_request(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(canvas) = self.active_canvas().cloned() else {
-            return;
-        };
         match action {
-            Action::ContextMenu { at, target, items } => {
-                self.palette = None;
-                let screen = canvas.read(cx).local_to_window(at);
-                if let MenuTarget::Canvas { graph_pos } = target {
-                    self.open_palette(screen, graph_pos, None, window, cx);
-                    self.menu = None;
-                } else {
-                    let items = self.with_section_items(items, &target, cx);
-                    self.menu = Some(CanvasMenu {
-                        at: screen,
-                        local: at,
-                        target,
-                        items,
-                    });
-                }
-                cx.notify();
-            }
             Action::OpenGraph(target) => {
                 // The double-click lands while the canvas is updating.
                 let editor = cx.weak_entity();
@@ -547,80 +490,32 @@ impl RenderGraphEditor {
                 });
             }
             Action::CommentActivated(index) => self.start_comment_editing(index, window, cx),
-            Action::ConnectionDropped { from, side, at } => {
-                if side != graphy_render::PinSide::Output {
-                    return;
-                }
-                let screen = canvas.read(cx).local_to_window(at);
-                let graph_pos = canvas.read(cx).window_to_graph(screen);
-                self.menu = None;
-                self.open_palette(screen, graph_pos, Some(from), window, cx);
-                cx.notify();
-            }
+            Action::Custom { id, target } => self.run_menu_command(&id, &target, window, cx),
             Action::ConnectionRefused(why) => tracing::debug!("connection refused: {why}"),
             _ => {}
         }
     }
 
-    /// Runs the entry of the open context menu.
-    pub(crate) fn run_menu_item(
+    /// Runs a render graph entry of a node menu (the profile lists them).
+    fn run_menu_command(
         &mut self,
-        menu: CanvasMenu,
         id: &str,
+        target: &MenuTarget,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.menu = None;
         match id {
-            MENU_COLLAPSE => {
-                self.collapse_selection(&menu.target, window, cx);
-                return;
-            }
+            MENU_COLLAPSE => self.collapse_selection(target, window, cx),
             MENU_EXPAND => {
-                if let MenuTarget::Node(node) = &menu.target {
+                if let MenuTarget::Node(node) = target {
                     self.expand_section_node(node, cx);
                 }
-                return;
             }
             _ => {}
         }
-        if let Some(canvas) = self.active_canvas().cloned() {
-            canvas.update(cx, |canvas, cx| {
-                canvas.run_menu_item(&menu.target, id, menu.local, cx)
-            });
-        }
-        cx.notify();
     }
 
     // ── Sections ───────────────────────────────────────────────────────────
-
-    /// The render graph entries of a node menu: collapse the selection into a
-    /// section, or expand a section node.
-    fn with_section_items(
-        &self,
-        mut items: Vec<MenuItem>,
-        target: &MenuTarget,
-        cx: &App,
-    ) -> Vec<MenuItem> {
-        let section_node = match target {
-            MenuTarget::Node(id) => self
-                .active_canvas()
-                .and_then(|canvas| canvas.read(cx).graph().nodes.get(id))
-                .is_some_and(|node| {
-                    helio_graph_asset::sections::section_id(&node.node_type).is_some()
-                }),
-            _ => false,
-        };
-        let mut extra = Vec::new();
-        if matches!(target, MenuTarget::Node(_) | MenuTarget::Selection) {
-            extra.push(MenuItem::new(MENU_COLLAPSE, "Collapse to Section").separated());
-        }
-        if section_node {
-            extra.push(MenuItem::new(MENU_EXPAND, "Expand Section"));
-        }
-        extra.append(&mut items);
-        extra
-    }
 
     /// Moves the selected nodes into a new section, placed by one node.
     fn collapse_selection(
@@ -713,66 +608,17 @@ impl RenderGraphEditor {
 
     // ── Node picker ────────────────────────────────────────────────────────
 
-    fn open_palette(
+    /// Adds the node picked in the canvas's picker where it was opened, wired to
+    /// the dragged wire's source if there was one.
+    fn place_picked(
         &mut self,
-        at: Point<Pixels>,
+        definition: &str,
         graph_pos: Vec2,
         source: Option<graphy::PinRef>,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let (Some(profile), Some(canvas)) = (self.profile.clone(), self.active_canvas().cloned())
-        else {
-            return;
-        };
-        let mut entries = profile.catalog();
-        if let Some(source) = &source {
-            // Only nodes the dragged wire can reach.
-            let graph = canvas.read(cx).graph();
-            let from_type = graph
-                .nodes
-                .get(&source.node)
-                .and_then(|n| n.outputs.iter().find(|p| p.id == source.pin))
-                .map(|p| p.data_type().clone());
-            if let Some(from_type) = from_type {
-                let resolver = profile.type_resolver();
-                entries.retain(|entry| {
-                    profile
-                        .create_node(&entry.definition, "probe", Position::new(0.0, 0.0))
-                        .is_some_and(|node| {
-                            node.inputs.iter().any(|pin| {
-                                resolver
-                                    .compatibility(&from_type, pin.data_type())
-                                    .is_connectable()
-                            })
-                        })
-                });
-            }
-        }
-        self.palette_input
-            .update(cx, |input, cx| input.set_value("", window, cx));
-        self.palette = Some(Palette {
-            at,
-            graph_pos,
-            source,
-            entries,
-            focus_pending: true,
-        });
-    }
-
-    pub(crate) fn close_palette(&mut self, cx: &mut Context<Self>) {
-        self.palette = None;
-        cx.notify();
-    }
-
-    /// Adds the picked node where the picker was opened, wired to the dragged
-    /// wire's source if there was one.
-    pub(crate) fn place_picked(&mut self, definition: &str, cx: &mut Context<Self>) {
-        let Some(palette) = self.palette.take() else {
-            return;
-        };
-        let at = Position::new(snap(f64::from(palette.graph_pos.x)), snap(f64::from(palette.graph_pos.y)));
-        self.add_node(definition, Vec::new(), at, palette.source, cx);
+        let at = Position::new(snap(f64::from(graph_pos.x)), snap(f64::from(graph_pos.y)));
+        self.add_node(definition, Vec::new(), at, source, cx);
         cx.notify();
     }
 
@@ -801,7 +647,9 @@ impl RenderGraphEditor {
         if let Some(source) = source {
             // The pins may have changed with the properties.
             let node = after.nodes.get(&id).unwrap_or(&node);
-            commands.extend(connect_commands(&profile, graph, &source, node));
+            commands.extend(graphy_gpui::connect_new_node_commands(
+                &*profile, graph, &source, node,
+            ));
         }
         canvas
             .update(cx, |canvas, cx| canvas.apply("Add node", &commands, cx))
@@ -1083,58 +931,4 @@ fn contained_nodes(canvas: &GraphCanvas) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Commands wiring `source` (an output pin) to the first compatible input of the
-/// freshly added `node`.
-fn connect_commands(
-    profile: &RenderProfile,
-    graph: &GraphDescription,
-    source: &graphy::PinRef,
-    node: &NodeInstance,
-) -> Vec<GraphCommand> {
-    let Some(src_pin) = graph
-        .nodes
-        .get(&source.node)
-        .and_then(|n| n.outputs.iter().find(|p| p.id == source.pin))
-    else {
-        return Vec::new();
-    };
-    let resolver = profile.type_resolver();
-    let Some(target) = node.inputs.iter().find(|p| {
-        resolver
-            .compatibility(src_pin.data_type(), p.data_type())
-            .is_connectable()
-    }) else {
-        return Vec::new();
-    };
-    let exec = src_pin.data_type().is_execution();
-    let mut commands = Vec::new();
-    // An execution output (or a reroute's) drives one wire.
-    let single_output = exec
-        || graph
-            .nodes
-            .get(&source.node)
-            .is_some_and(|n| n.is_reroute());
-    if single_output {
-        commands.extend(
-            graph
-                .connections
-                .iter()
-                .filter(|c| c.source_node == source.node && c.source_pin == source.pin)
-                .cloned()
-                .map(GraphCommand::Disconnect),
-        );
-    }
-    commands.push(GraphCommand::Connect(Connection::new(
-        &source.node,
-        &source.pin,
-        &node.id,
-        &target.id,
-        if exec {
-            ConnectionType::Execution
-        } else {
-            ConnectionType::Data
-        },
-    )));
-    commands
-}
 

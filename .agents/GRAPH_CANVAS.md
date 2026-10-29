@@ -142,3 +142,25 @@ and its conversions, the clipboard/undo/selection features) was deleted.
 - Not carried over: the minimap and graph-controls overlays (Graphy has neither yet), the comment
   colour picker, and the AI session's `title` arguments and viewport/selection fields (nodes no
   longer store a title; the title comes from the definition).
+
+## Shared picker, context menu and theme (graphy-fixes)
+
+- **Node picker and context menu live in `graphy-gpui`** (`picker.rs`, `catalog.rs`, drawn by
+  `GraphCanvas`). They use the app's `ui` toolkit (text input, virtual list, theme colours), so
+  they look like the rest of the editor, and no editor has a private copy. A host supplies
+  `GraphProfile::catalog()` (`CatalogEntry`: title, category, description, icon, colour, input
+  types), `menu_items` / `run_menu_item`, and handles `CanvasEvent::NodePicked` (add the node, using
+  `connect_new_node_commands` to wire a dragged wire) and `Action::Custom` (a domain menu item).
+  Filtering by a dragged wire's type is `GraphProfile::drag_match` (type resolver by default).
+- **Positions**: popups are anchored at the pointer. `Action::ContextMenu.at` and
+  `Action::ConnectionDropped.at` are canvas-relative pixels; `ConnectionDropped.graph_at` is the graph
+  position for the new node. (`at` used to be the graph position, which hosts mapped as if it were
+  canvas-local, so wire-drop popups opened in the wrong place under pan/zoom.)
+- **`GpuiProfile::render_slot` receives the document.** It runs while the canvas renders inside its own
+  `update`; reading the `GraphCanvas` entity there panics ("cannot read GraphCanvas while it is
+  already being updated").
+- **Theme**: `graphy_render::Theme::from_colors(&ThemeColors)` derives canvas, card body/header,
+  border, grid (minor/major), text tiers and shadows from the host's background/foreground/muted/
+  border/accent, pushing text to WCAG 7 / 4.5 / 3 on every surface. `Theme::dark()` (the fallback) has
+  canvas `#0a0a0a`. Each editor maps its app theme with a small `theme::graph_theme(cx)` and
+  keeps the canvas current with `GraphCanvas::set_theme`.

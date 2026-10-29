@@ -29,6 +29,7 @@ pub mod editor;
 pub mod model;
 mod preview;
 pub mod profile;
+mod theme;
 mod sections_panel;
 mod view;
 

@@ -10,7 +10,7 @@ use graphy::{
     Compatibility, DataType, GraphCommand, GraphDescription, NodeInstance, PinInstance, Position,
     StructuralResolver, TypeResolver,
 };
-use graphy_gpui::{CatalogEntry, GraphProfile, MacroTarget};
+use graphy_gpui::{Action, CatalogEntry, GraphProfile, MacroTarget, MenuItem, MenuTarget};
 use graphy_render::geom::rgba;
 use graphy_render::presenter::{
     default_pin_style, prettify, CommentPresentation, NodePresentation, PinStyle, Presenter,
@@ -20,6 +20,10 @@ use helio_graph_asset::{sections, NodeRegistry};
 
 use crate::document::{ENTRY_TYPE, EXIT_TYPE};
 use crate::model;
+
+/// Context menu entries this editor adds to Graphy's.
+pub const MENU_COLLAPSE: &str = "render.collapse";
+pub const MENU_EXPAND: &str = "render.expand";
 
 /// Section id -> display name, shared between the editor (which renames and adds
 /// sections) and the presenter (which titles the nodes that place them).
@@ -154,6 +158,38 @@ impl GraphProfile for RenderProfile {
 
     fn pin_commands(&self, graph: &GraphDescription, node: &str) -> Vec<GraphCommand> {
         model::refresh_pins(graph, node, &self.registry)
+    }
+
+    fn menu_items(&self, graph: &GraphDescription, target: &MenuTarget) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+        if matches!(target, MenuTarget::Node(_) | MenuTarget::Selection) {
+            items.push(MenuItem::new(MENU_COLLAPSE, "Collapse to Section").separated());
+        }
+        if let MenuTarget::Node(id) = target {
+            let section = graph
+                .nodes
+                .get(id)
+                .is_some_and(|node| sections::section_id(&node.node_type).is_some());
+            if section {
+                items.push(MenuItem::new(MENU_EXPAND, "Expand Section"));
+            }
+        }
+        items
+    }
+
+    fn run_menu_item(
+        &self,
+        _graph: &GraphDescription,
+        target: &MenuTarget,
+        item: &str,
+    ) -> Vec<Action> {
+        match item {
+            MENU_COLLAPSE | MENU_EXPAND => vec![Action::Custom {
+                id: item.to_string(),
+                target: target.clone(),
+            }],
+            _ => Vec::new(),
+        }
     }
 
     fn is_deletable(&self, node: &NodeInstance) -> bool {
