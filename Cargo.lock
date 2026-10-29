@@ -4537,6 +4537,7 @@ dependencies = [
  "graphy-render-wgpu",
  "serde",
  "serde_json",
+ "ui",
  "wgpu",
 ]
 
