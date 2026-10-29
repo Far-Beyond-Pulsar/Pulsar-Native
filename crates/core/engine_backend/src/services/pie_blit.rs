@@ -12,6 +12,9 @@ pub struct PieBlit {
     pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
+    /// The source's view and bind group, rebuilt only when the game hands
+    /// over another texture (a resize).
+    source: crate::gpu::BindGroupCache<wgpu::Texture, wgpu::TextureView>,
     /// The surface/target format this pipeline was built for; rebuilt if it changes.
     pub format: wgpu::TextureFormat,
 }
@@ -118,6 +121,7 @@ impl PieBlit {
             pipeline,
             sampler,
             bind_group_layout,
+            source: Default::default(),
             format: target_format,
         }
     }
@@ -125,26 +129,30 @@ impl PieBlit {
     /// Sample `source` into `target_view`. Call [`PieBlit::new`] again if the
     /// target format ever changes (compare against [`PieBlit::format`]).
     pub fn blit(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         source: &wgpu::Texture,
         target_view: &wgpu::TextureView,
     ) {
-        let src_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("pie_blit_bg"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&src_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-            ],
+        let (layout, sampler) = (&self.bind_group_layout, &self.sampler);
+        let bind_group = self.source.get_or_build(source.clone(), |source| {
+            let view = source.create_view(&wgpu::TextureViewDescriptor::default());
+            let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("pie_blit_bg"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                ],
+            });
+            (group, view)
         });
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -168,7 +176,7 @@ impl PieBlit {
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_bind_group(0, bind_group, &[]);
             pass.draw(0..3, 0..1);
         }
         queue.submit(std::iter::once(encoder.finish()));

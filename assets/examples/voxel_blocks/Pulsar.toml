@@ -1,0 +1,2 @@
+# Pulsar project: Blocks: flat grassland without edges under an Earth sky, to build on.
+# Open it with: cargo run --release -p pulsar_engine -- --project-path assets/examples/voxel_blocks

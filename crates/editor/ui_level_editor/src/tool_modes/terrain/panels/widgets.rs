@@ -1,7 +1,7 @@
 //! The widget kit shared by Terrain's dock panels, styled after Unreal's
 //! Landscape/Foliage panels: an icon-over-label **tool grid** whose active
 //! tool is highlighted, **collapsible sections** with a chevron, dark inset
-//! **value boxes** (`− 25.0 +`), plain checkbox rows, and a swatch grid.
+//! **value boxes** (`− 25.0 +`) and plain checkbox rows.
 //!
 //! Every helper is a free function returning a GPUI element and holds no
 //! state. Mutations go through a caller-supplied closure over
@@ -152,44 +152,6 @@ pub fn tool_grid(theme: &ui::Theme, state: SharedState, tools: Vec<ToolSpec>) ->
 
 // ── Rows ──────────────────────────────────────────────────────────────────
 
-/// A one-of-many picker rendered as a row of small toggle buttons.
-pub fn segmented_row<V, F>(
-    state: SharedState,
-    cx: &mut Context<V>,
-    control_id: &'static str,
-    options: &[(&'static str, &'static str)],
-    selected: &'static str,
-    apply: F,
-) -> impl IntoElement
-where
-    V: 'static,
-    F: Fn(&mut TerrainDomain, &'static str) + Clone + Send + Sync + 'static,
-{
-    let mut group = h_flex()
-        .w_full()
-        .items_center()
-        .justify_center()
-        .rounded(px(6.0))
-        .bg(cx.theme().muted.opacity(0.1))
-        .p(px(2.0))
-        .gap_1();
-
-    for &(label_key, value) in options {
-        let is_sel = value == selected;
-        let state = state.clone();
-        let apply = apply.clone();
-        let btn = Button::new(format!("{control_id}_{value}"))
-            .label(t!(label_key))
-            .small()
-            .on_click(move |_, _, _| {
-                let mut st = state.write();
-                apply(&mut st.editor.terrain, value);
-            });
-        group = group.child(if is_sel { btn.primary() } else { btn.ghost() });
-    }
-    group
-}
-
 /// Label on the left, an inset `− value +` box on the right (Unreal's
 /// numeric field).
 #[allow(clippy::too_many_arguments)]
@@ -284,30 +246,6 @@ where
         })
 }
 
-/// A muted `label ........ value` read-only row.
-pub fn info_row(theme: &ui::Theme, label: String, value: String) -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .items_center()
-        .justify_between()
-        .gap_2()
-        .child(
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .child(label),
-        )
-        .child(div().text_xs().font_weight(FontWeight::MEDIUM).child(value))
-}
-
-/// A stable, distinct colour per index (golden-ratio hue walk) — used for
-/// material swatches, since the terrain material table has ids but no
-/// authored colours or names.
-pub fn swatch_color(index: u32) -> Hsla {
-    let hue = (index as f32 * 0.618_034).fract();
-    hsla(hue, 0.55, 0.45, 1.0)
-}
-
 /// Display precision follows the step: whole numbers for step ≥ 1, one
 /// decimal for ≥ 0.1, two otherwise.
 fn format_step(value: f32, step: f32) -> String {
@@ -322,18 +260,12 @@ fn format_step(value: f32, step: f32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_step, swatch_color};
+    use super::format_step;
 
     #[test]
     fn precision_follows_the_step() {
         assert_eq!(format_step(12.0, 1.0), "12");
         assert_eq!(format_step(0.55, 0.1), "0.6");
         assert_eq!(format_step(0.555, 0.01), "0.56");
-    }
-
-    #[test]
-    fn swatch_colours_differ_for_neighbouring_ids() {
-        assert_ne!(swatch_color(1), swatch_color(2));
-        assert_eq!(swatch_color(3), swatch_color(3));
     }
 }

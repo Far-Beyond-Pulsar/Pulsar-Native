@@ -10,6 +10,7 @@ fn command_label(cmd: &SceneCommand) -> Option<&'static str> {
         SceneCommand::AddObject { .. }
         | SceneCommand::AddObjectWithComponents { .. }
         | SceneCommand::InstantiateClass { .. } => "LevelEditor.Undo.Add",
+        SceneCommand::AddVoxelWorld { .. } => "LevelEditor.Undo.AddVoxelWorld",
         SceneCommand::RemoveObject { .. } => "LevelEditor.Undo.Delete",
         SceneCommand::DuplicateObject { .. } => "LevelEditor.Undo.Duplicate",
         SceneCommand::ReparentObject { .. } => "LevelEditor.Undo.Reparent",
@@ -25,7 +26,7 @@ fn command_label(cmd: &SceneCommand) -> Option<&'static str> {
     })
 }
 
-fn command_scope(cmd: &SceneCommand) -> Vec<String> {
+fn command_scope(world: &pulsar_scenedb::World, cmd: &SceneCommand) -> Vec<String> {
     match cmd {
         SceneCommand::AddObject { data, .. } => (!data.id.is_empty())
             .then(|| data.id.clone())
@@ -56,6 +57,9 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         SceneCommand::SetMovability { ids, .. } => ids.clone(),
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
+        SceneCommand::AddVoxelWorld { .. } => {
+            engine_backend::scene::voxel_presets::objects_changed_by(world)
+        }
     }
 }
 
@@ -146,7 +150,7 @@ fn revert_if_refused(
 /// this whole function before the checkpoint-commit step below runs.
 pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> CommandResult {
     let is_undoable = !matches!(cmd, SceneCommand::SelectObject { .. });
-    let scope = command_scope(&cmd);
+    let scope = command_scope(&state.scene.world(), &cmd);
     let label = command_label(&cmd);
     let pre_state = is_undoable.then(|| capture_history_subset(&state.scene.world(), &scope));
 
@@ -826,6 +830,38 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     state.scene.bump_revision(true);
                     CommandResult::ok(affected)
                 }
+            }
+
+            SceneCommand::AddVoxelWorld { preset } => {
+                let setup = engine_backend::scene::voxel_presets::add_voxel_world(
+                    &mut state.scene.world_mut(),
+                    preset,
+                );
+                let setup = match setup {
+                    Ok(setup) => setup,
+                    Err(error) => {
+                        tracing::error!("Could not add the voxel world: {error}");
+                        return CommandResult::noop("The voxel world could not be added");
+                    }
+                };
+                state.scene.select_object(Some(setup.terrain.clone()));
+                state.scene.pending_selection_sync = true;
+                state.editor.camera_request =
+                    setup
+                        .camera
+                        .map(|camera| crate::scene_edit::LevelEditorCameraState {
+                            position: camera.position,
+                            yaw: camera.yaw,
+                            pitch: camera.pitch,
+                        });
+                state.scene.bump_revision(true);
+                let mut ids = vec![setup.terrain];
+                for id in setup.added.into_iter().chain(setup.changed) {
+                    if !ids.contains(&id) {
+                        ids.push(id);
+                    }
+                }
+                CommandResult::ok(ids)
             }
         }
     })();

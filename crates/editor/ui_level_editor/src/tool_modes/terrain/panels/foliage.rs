@@ -25,7 +25,6 @@ use crate::state::foliage_sets::{
     FoliageSelection, FoliageSetLibrary, MemberId, MemberPlacement, SetId,
 };
 use crate::state::terrain::{FoliageTool, TerrainDomain};
-use gpui::prelude::FluentBuilder as _;
 use std::sync::Arc;
 
 // Four tiles fit the default 380px terrain dock, including panel/set padding.
@@ -45,8 +44,6 @@ struct FoliageSignature {
     paint_density: f32,
     erase_density: f32,
     tool: FoliageTool,
-    /// Whether the foliage brush (rather than the sculpt brush) is live.
-    active: bool,
 }
 
 impl FoliageSignature {
@@ -59,7 +56,6 @@ impl FoliageSignature {
             paint_density: terrain.foliage_paint_density.0,
             erase_density: terrain.foliage_erase_density.0,
             tool: terrain.foliage_tool,
-            active: terrain.paint_foliage,
         }
     }
 }
@@ -278,7 +274,7 @@ impl Render for FoliageSetsPanel {
                 id,
                 icon,
                 label_key,
-                active: snapshot.active && snapshot.tool == which,
+                active: snapshot.tool == which,
                 apply: Arc::new(move |domain| domain.activate_foliage_tool(which)),
             }
         };

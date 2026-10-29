@@ -61,21 +61,8 @@ impl ToolModeDispatcher {
     }
 
     /// Route a mode's toolbar controls into its persistent authoring
-    /// settings: the terrain mode's brush radius and strength.
-    pub fn dispatch_widget_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) {
-        let terrain = &mut state.editor.terrain;
-        match edit {
-            ToolWidgetEdit::SetSlider {
-                id: "radius",
-                value,
-            } => terrain.set_brush_radius(*value),
-            ToolWidgetEdit::SetSlider {
-                id: "strength",
-                value,
-            } => terrain.set_brush_strength(*value),
-            _ => {}
-        }
-    }
+    /// settings. No mode has toolbar settings today.
+    pub fn dispatch_widget_edit(_state: &mut LevelEditorState, _edit: &ToolWidgetEdit) {}
 
     pub fn select_tool_mode(
         state: &mut LevelEditorState,

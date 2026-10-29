@@ -72,7 +72,7 @@ pub struct EditorDomain {
 
     // ── Tool Modes ────────────────────────────────────────────────────────
     pub tool_mode_registry: crate::tool_modes::ToolModeRegistry,
-    /// Terrain sculpt and material-paint settings persist across mode switches.
+    /// Terrain tool (foliage brush) settings persist across mode switches.
     pub terrain: super::terrain::TerrainDomain,
     /// Spline tool selection, drawing plane and viewport display preferences.
     /// Authored curves live on scene objects and save with the level.
@@ -81,6 +81,9 @@ pub struct EditorDomain {
     pub voxel: super::voxel::VoxelSculptDomain,
     /// The sculpt stroke in progress, recorded as one undo step.
     pub voxel_stroke: Option<super::voxel::VoxelStroke>,
+    /// Where an edit asked the viewport camera to go (a new voxel world's
+    /// view of its ground); the viewport takes it on its next poll.
+    pub camera_request: Option<crate::scene_edit::LevelEditorCameraState>,
 }
 
 impl Default for EditorDomain {
@@ -119,6 +122,7 @@ impl Default for EditorDomain {
             terrain: super::terrain::TerrainDomain::default(),
             voxel: super::voxel::VoxelSculptDomain::default(),
             voxel_stroke: None,
+            camera_request: None,
         }
     }
 }
@@ -148,6 +152,7 @@ impl EditorDomain {
             spline: self.spline.clone(),
             voxel: self.voxel,
             voxel_stroke: None,
+            camera_request: None,
         }
     }
 

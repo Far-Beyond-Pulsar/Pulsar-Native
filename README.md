@@ -99,13 +99,25 @@ cargo build --release
 ### Open an example
 
 The voxel worlds are ready-made projects in `assets/examples`: `voxel_planet`
-(Earth with woods, meadow, clouds and haze), `voxel_moon` and `voxel_desert`.
+(Earth with woods, meadow, clouds and haze), `voxel_moon`, `voxel_desert` and
+`voxel_blocks` (flat grassland to build on).
 
 ```bash
 cargo run --release -p pulsar_engine -- --project-path assets/examples/voxel_planet
 ```
 
 With [just](https://github.com/casey/just): `just example voxel_planet`.
+
+### Start a voxel world in your own project
+
+Open any level, choose **Terrain** in the tool mode menu, and in the
+**World** tab click one of the **Create Voxel Terrain** presets: Earth-like
+planet, Moon, Desert planet or Flat block world. One click adds the same
+world as the matching example: the terrain with its layers and features,
+the sky and clouds, the sun, the haze, the grass and wind, the look, and
+the camera over the ground (Ctrl+Z undoes it). Then fly with the right
+mouse button and WASD, sculpt with **Sculpt with Voxel Sculpt**, and tweak
+the terrain's layers, features and air in the Properties panel.
 
 ## 🛰️ Related Ecosystems
 

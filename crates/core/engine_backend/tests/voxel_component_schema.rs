@@ -1,24 +1,8 @@
-use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelTerrainLayersComponent};
+use helio_component::{VoxelTerrainComponent, VoxelTerrainLayersComponent};
 use pulsar_reflection::EngineClass;
 
 #[test]
-fn voxel_components_default_and_round_trip_as_scene_component_data() {
-    let voxel = VoxelComponent::default();
-    assert_eq!(voxel.dimensions, [16; 3]);
-    let voxel_json = serde_json::to_value(&voxel).expect("serialize voxel component");
-    let voxel_restored: VoxelComponent =
-        serde_json::from_value(voxel_json).expect("restore voxel component");
-    assert_eq!(voxel_restored.material_ids, voxel.material_ids);
-    assert_eq!(voxel_restored.dimensions, voxel.dimensions);
-    assert!(voxel_restored.renderer_id.is_empty());
-    let mut older_voxel_json = serde_json::to_value(&voxel).unwrap();
-    older_voxel_json
-        .as_object_mut()
-        .unwrap()
-        .remove("renderer_id");
-    let older_voxel: VoxelComponent = serde_json::from_value(older_voxel_json).unwrap();
-    assert!(older_voxel.renderer_id.is_empty());
-
+fn voxel_terrain_defaults_and_round_trips_as_scene_component_data() {
     let terrain = VoxelTerrainComponent::default();
     assert!(terrain.appearance_parameters.is_empty());
     assert_eq!(terrain.air, helio_component::VoxelAir::Custom);
@@ -115,62 +99,7 @@ fn the_inspector_shows_the_whole_world_description() {
 }
 
 #[test]
-fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
-    use helio_voxel_data::VoxelStoredPayload;
-
-    // A voxel object's live chunks (a world has a brush journal instead).
-    let object = VoxelComponent::default();
-    let chunks = object.payload_store().read().unwrap().1.len();
-    let properties = object.get_properties();
-    assert!(properties
-        .iter()
-        .all(|property| property.name != "payloads"));
-
-    let mut serialized = serde_json::to_value(&object).expect("serialize authored config");
-    assert!(serialized.get("payloads").is_none());
-    {
-        let store_handle = object.payload_store();
-        let mut store = store_handle.write().unwrap();
-        store.1.insert(
-            [u64::MAX, 0, 7, 2],
-            VoxelStoredPayload::raw_material([1, 2, 3]),
-        );
-        store.0 = 1;
-    }
-
-    // Scripts opt in to exfiltration by retaining the component's runtime
-    // store handle; default component serialization omits live payload bytes.
-    let export = object.payload_store();
-    let snapshot = export.read().unwrap();
-    assert_eq!(snapshot.0, 1);
-    assert_eq!(
-        snapshot.1.get(&[u64::MAX, 0, 7, 2]).unwrap().as_ref(),
-        &[1, 2, 3]
-    );
-    drop(snapshot);
-
-    // SceneDB/value clones retain the canonical payload value while owning
-    // an independent mutable index, so cloning an entry cannot erase data or
-    // make future writes leak between entities.
-    let cloned = object.clone();
-    assert_eq!(
-        cloned.payload_store().read().unwrap().1[&[u64::MAX, 0, 7, 2]].as_ref(),
-        &[1, 2, 3]
-    );
-    cloned
-        .payload_store()
-        .write()
-        .unwrap()
-        .1
-        .remove(&[u64::MAX, 0, 7, 2]);
-    assert_eq!(object.payload_store().read().unwrap().1.len(), chunks + 1);
-
-    serialized = serde_json::to_value(&object).expect("payload remains caller-owned");
-    assert!(serialized.get("payloads").is_none());
-}
-
-#[test]
-fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
+fn voxel_terrain_hydrates_as_a_typed_scenedb_world_row() {
     let mut world = pulsar_scenedb::World::new();
     let entity = world.spawn();
     let mut terrain = VoxelTerrainComponent::default();
@@ -194,17 +123,6 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
         hydrated.appearance_parameters,
         terrain.appearance_parameters
     );
-
-    let voxel = VoxelComponent::default();
-    let voxel_json = serde_json::to_value(&voxel).unwrap();
-    assert!(pulsar_world_registry::hydrate_world_component_for_class(
-        "VoxelComponent",
-        &mut world,
-        entity,
-        &voxel_json,
-    )
-    .unwrap());
-    assert!(world.get::<VoxelComponent>(entity).is_some());
 }
 
 /// The layer stack component serializes to the generator's settings JSON:
