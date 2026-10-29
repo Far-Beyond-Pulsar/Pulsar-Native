@@ -26,12 +26,14 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/LOD.md` | Authored mesh LOD as a camera-dependent asset choice, separate from renderer-internal geometric LOD, and its residency boundary |
 | `.agents/RENDER_GRAPH.md` | Render pipelines: `IntoGraph`, built-in pipelines, `.rendergraph` assets, pin shapes, the `render_bps` plugin |
 | `.agents/GRAPH_CANVAS.md` | Shared node-graph canvas in Graphy: `graphy-render` layout/scene/hit-test/draw data, `graphy-render-wgpu` renderer and visual system, `graphy-gpui` interaction engine and profile API |
+| `.agents/ANIMATION.md` | Animation assets (`.animseq` v4, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators |
 
 ## Project data (`.pulsar/`)
 
 | Path | What |
 |---|---|
 | `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer, and for a rigged model the other files it made (`asset_import`) |
+| `.pulsar/cache/posedb/` | Derived Pose Search indexes, keyed by settings and source-content hash (never written beside the source); gitignored |
 | `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Legacy import options; linked entries migrate into `.pulsar/import_db.json`, while convert-in-place entries remain a fallback |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |

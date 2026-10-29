@@ -105,6 +105,12 @@ for sequences). A reimport reads those back, so each file keeps its id: an outpu
 that was moved or renamed is found again by its id and rewritten where it now is,
 a deleted one is recreated with the same id, and the material slots and preview
 meshes chosen since are kept. A static source is imported exactly as before.
+
+**Animation assets.** The rest of the animation family (`.blendspace`, `.montage`,
+`.animgraph`, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`) is defined in
+the same `skeletal_assets` crate, with typed `pulsar_reflection::AssetRef`
+markers; `engine_fs::ProjectFileIndex` records their reference edges
+(`asset_deps`) for Used By queries. See `.agents/ANIMATION.md`.
 `helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
 of the loaded scene (`ConvertedScene::rig`).
 
