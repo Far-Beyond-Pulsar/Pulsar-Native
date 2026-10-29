@@ -1,19 +1,18 @@
 //! The Sections panel: every collapsed graph (section) of the render graph, to
 //! open without hunting for its node on the canvas.
 
-use blueprint_editor_plugin::BlueprintEditorPanel;
-use blueprint_graph::SubGraphKind;
+use crate::editor::RenderGraphEditor;
 use gpui::*;
 use ui::dock::{Panel, PanelEvent};
 use ui::{ActiveTheme as _, StyledExt as _};
 
 pub struct SectionsPanel {
-    editor: WeakEntity<BlueprintEditorPanel>,
+    editor: WeakEntity<RenderGraphEditor>,
     focus_handle: FocusHandle,
 }
 
 impl SectionsPanel {
-    pub fn new(editor: WeakEntity<BlueprintEditorPanel>, cx: &mut Context<Self>) -> Self {
+    pub fn new(editor: WeakEntity<RenderGraphEditor>, cx: &mut Context<Self>) -> Self {
         // The list follows the editor: sections are added, renamed and removed there.
         if let Some(entity) = editor.upgrade() {
             cx.observe(&entity, |_, _, cx| cx.notify()).detach();
@@ -24,30 +23,11 @@ impl SectionsPanel {
         }
     }
 
-    /// `(id, name, nodes inside)` of each section, in the order the editor holds them.
+    /// `(id, name, nodes inside)` of each section, in document order.
     fn sections(&self, cx: &App) -> Vec<(String, String, usize)> {
         self.editor
             .upgrade()
-            .map(|editor| {
-                editor
-                    .read(cx)
-                    .subgraphs
-                    .iter()
-                    .filter(|subgraph| subgraph.kind == SubGraphKind::Collapsed)
-                    .map(|subgraph| {
-                        // Entry and exit are not passes.
-                        let nodes = subgraph
-                            .graph
-                            .nodes
-                            .values()
-                            .filter(|node| {
-                                !matches!(node.node_type.as_str(), "macro_entry" | "macro_exit")
-                            })
-                            .count();
-                        (subgraph.id.clone(), subgraph.name.clone(), nodes)
-                    })
-                    .collect()
-            })
+            .map(|editor| editor.read(cx).sections(cx))
             .unwrap_or_default()
     }
 }
@@ -103,9 +83,9 @@ impl Render for SectionsPanel {
                         let editor = this.editor.clone();
                         let window_handle = window.window_handle();
                         cx.defer(move |cx| {
-                            let _ = cx.update_window(window_handle, |_, window, cx| {
+                            let _ = cx.update_window(window_handle, |_, _window, cx| {
                                 let _ = editor.update(cx, |editor, cx| {
-                                    editor.open_macro_tab(&id, window, cx)
+                                    editor.open_section(&id, cx)
                                 });
                             });
                         });

@@ -1150,8 +1150,8 @@ dependencies = [
 name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
- "blueprint_graph",
  "graphy",
+ "graphy-blueprint",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_script_vm",
@@ -1165,16 +1165,17 @@ dependencies = [
  "anyhow",
  "arboard",
  "blueprint_compiler",
- "blueprint_graph",
- "bytemuck",
  "chrono",
  "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=3ffbecda91982c3997ebff801c5b872df0a455ef)",
  "engine_backend",
  "engine_fs",
- "fontdue",
  "futures",
  "gpui-ce",
  "graphy",
+ "graphy-blueprint",
+ "graphy-gpui",
+ "graphy-render",
+ "graphy-render-wgpu",
  "log",
  "parking_lot",
  "plugin_editor_api",
@@ -1183,7 +1184,6 @@ dependencies = [
  "pulsar_script_codegen",
  "pulsar_script_vm",
  "pulsar_std",
- "rstar 0.12.2",
  "schemars",
  "serde",
  "serde_json",
@@ -1198,16 +1198,6 @@ dependencies = [
  "uuid",
  "wgpu",
  "windows 0.62.2",
-]
-
-[[package]]
-name = "blueprint_graph"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "uuid",
 ]
 
 [[package]]
@@ -2156,32 +2146,6 @@ dependencies = [
 
 [[package]]
 name = "criterion"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2b12d017a929603d80db1831cd3a24082f8137ce19c69e6447f54f5fc8d692f"
-dependencies = [
- "anes",
- "cast",
- "ciborium",
- "clap",
- "criterion-plot 0.5.0",
- "is-terminal",
- "itertools 0.10.5",
- "num-traits",
- "once_cell",
- "oorandom",
- "plotters",
- "rayon",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "tinytemplate",
- "walkdir",
-]
-
-[[package]]
-name = "criterion"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "950046b2aa2492f9a536f5f4f9a3de7b9e2476e575e05bd6c333371add4d98f3"
@@ -2191,7 +2155,7 @@ dependencies = [
  "cast",
  "ciborium",
  "clap",
- "criterion-plot 0.8.2",
+ "criterion-plot",
  "itertools 0.13.0",
  "num-traits",
  "oorandom",
@@ -2204,16 +2168,6 @@ dependencies = [
  "tinytemplate",
  "tokio",
  "walkdir",
-]
-
-[[package]]
-name = "criterion-plot"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
-dependencies = [
- "cast",
- "itertools 0.10.5",
 ]
 
 [[package]]
@@ -4552,7 +4506,6 @@ dependencies = [
 name = "graphy"
 version = "0.1.0"
 dependencies = [
- "criterion 0.5.1",
  "quote",
  "rayon",
  "rustc-hash 2.1.3",
@@ -4562,7 +4515,48 @@ dependencies = [
  "syn 2.0.119",
  "thiserror 1.0.69",
  "tracing",
- "tracing-subscriber",
+]
+
+[[package]]
+name = "graphy-blueprint"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "graphy-gpui"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "graphy",
+ "graphy-render",
+ "graphy-render-wgpu",
+ "serde",
+ "serde_json",
+ "ui",
+ "wgpu",
+]
+
+[[package]]
+name = "graphy-render"
+version = "0.1.0"
+dependencies = [
+ "graphy",
+ "rstar 0.12.2",
+]
+
+[[package]]
+name = "graphy-render-wgpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "fontdue",
+ "graphy-render",
+ "wgpu",
 ]
 
 [[package]]
@@ -6172,17 +6166,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "is-terminal"
-version = "0.4.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
-dependencies = [
- "hermit-abi",
- "libc",
- "windows-sys 0.52.0",
-]
-
-[[package]]
 name = "is-wsl"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6206,15 +6189,6 @@ checksum = "a396f76fd253fab9945bb4c6080f515d0c4036bc30219462d199b58886fd37b4"
 dependencies = [
  "libc",
  "num_cpus",
-]
-
-[[package]]
-name = "itertools"
-version = "0.10.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -9601,7 +9575,7 @@ dependencies = [
  "clap",
  "colored 3.1.1",
  "config",
- "criterion 0.8.2",
+ "criterion",
  "dashmap",
  "ed25519-dalek 3.0.0",
  "futures-util",
@@ -9777,12 +9751,12 @@ name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
  "blueprint_compiler",
- "blueprint_graph",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
  "engine_state",
  "glam 0.33.5",
+ "graphy-blueprint",
  "helio",
  "helio_component",
  "image",
@@ -10631,10 +10605,12 @@ dependencies = [
 name = "render_bps_plugin"
 version = "0.1.0"
 dependencies = [
- "blueprint_editor_plugin",
- "blueprint_graph",
  "engine_backend",
+ "engine_fs",
  "gpui-ce",
+ "graphy",
+ "graphy-gpui",
+ "graphy-render",
  "helio-default-passes",
  "helio-graph-asset",
  "log",
@@ -11752,16 +11728,16 @@ name = "shader_editor_plugin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arboard",
- "blueprint_graph",
  "bytemuck",
  "chrono",
  "engine_fs",
  "engine_state",
- "fontdue",
  "futures",
  "gpui-ce",
  "graphy",
+ "graphy-blueprint",
+ "graphy-gpui",
+ "graphy-render",
  "image",
  "log",
  "naga",
@@ -11770,7 +11746,6 @@ dependencies = [
  "profiling 0.1.0",
  "psgc",
  "pulsar_reflection",
- "schemars",
  "serde",
  "serde_json",
  "smol",

@@ -2,7 +2,7 @@
 //! buffer is only a name for visual cleanliness; each row adds a Get or Set node
 //! for it, as many as the author wants, so a wire never has to cross the graph.
 
-use blueprint_editor_plugin::BlueprintEditorPanel;
+use crate::editor::RenderGraphEditor;
 use gpui::*;
 use helio_graph_asset::{buffers, core_nodes, PinType};
 use ui::dock::{Panel, PanelEvent};
@@ -12,7 +12,7 @@ use ui::{ActiveTheme as _, StyledExt as _};
 use crate::model;
 
 pub struct BuffersPanel {
-    editor: WeakEntity<BlueprintEditorPanel>,
+    editor: WeakEntity<RenderGraphEditor>,
     search: Entity<InputState>,
     query: String,
     focus_handle: FocusHandle,
@@ -20,7 +20,7 @@ pub struct BuffersPanel {
 
 impl BuffersPanel {
     pub fn new(
-        editor: WeakEntity<BlueprintEditorPanel>,
+        editor: WeakEntity<RenderGraphEditor>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -55,7 +55,7 @@ impl BuffersPanel {
         cx.defer(move |cx| {
             let _ = cx.update_window(window_handle, |_, _, cx| {
                 let _ = editor.update(cx, |editor, cx| {
-                    editor.add_profile_node(definition, vec![("buffer".to_string(), entry)], cx);
+                    editor.add_node_at_center(definition, vec![("buffer".to_string(), entry)], cx);
                 });
             });
         });

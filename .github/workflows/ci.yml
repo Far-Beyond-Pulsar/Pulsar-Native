@@ -231,9 +231,9 @@ jobs:
             } | ForEach-Object { $_["name"] } | Sort-Object
           )
           # These two are explicit root-workspace members: the built-in asset
-          # viewer, and the GPUI-free Blueprint compiler and graph model tested
+          # viewer, and the GPUI-free Blueprint compiler tested
           # against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph", "render_bps_plugin", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin", "input_plugin")
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "render_bps_plugin", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin", "input_plugin")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )
@@ -277,6 +277,25 @@ jobs:
               throw "ui_core depends on $language; scripting languages must stay plugins"
             }
           }
+
+      - name: Graphy stays headless
+        shell: pwsh
+        run: |
+          # Graphy-owned crates never link a UI or GPU stack, and the runtime
+          # crate pulsar_game never links Graphy (it is only a dev-dependency
+          # for the Blueprint example test). blueprint_compiler reaches wgpu
+          # through pulsar_script_vm -> SceneDB, not through Graphy, so only gpui
+          # is forbidden for it.
+          function Assert-NoMatch($package, $pattern, $why) {
+            $tree = cargo tree -p $package -e normal --locked --prefix none | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "cargo tree -p $package failed" }
+            $hits = @($tree -split "`n" | Where-Object { $_ -match $pattern })
+            if ($hits.Count -ne 0) { throw "$package $why`n$($hits -join "`n")" }
+          }
+          Assert-NoMatch "graphy" "^(wgpu|gpui|naga)" "must stay headless"
+          Assert-NoMatch "graphy-blueprint" "^(wgpu|gpui|naga)" "must stay headless"
+          Assert-NoMatch "blueprint_compiler" "^gpui" "must not depend on gpui"
+          Assert-NoMatch "pulsar_game" "^graphy" "must not link Graphy at runtime"
 
       - name: Resolve Pulsar's pinned SceneDB source
         shell: pwsh

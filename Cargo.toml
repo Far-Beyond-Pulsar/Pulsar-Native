@@ -5,8 +5,6 @@ members = [
     # itself is excluded below; its compiler is a member so its tests run
     # against this workspace's script VM.
     "plugins/vendor/blueprint_editor/compiler",
-    # Compatibility schema consumed by Shader Editor's legacy file model.
-    "plugins/vendor/blueprint_editor/graph",
     # Visual editor for Helio render graphs; reuses the Blueprint editor through
     # its profile API. A plugin DLL: never link it into a binary that embeds the
     # Blueprint editor (they would share one profile).
@@ -49,6 +47,9 @@ members = [
 # workspace members and `cargo test --all` races their identically named
 # `standalone` examples into the same output file.
 exclude = [
+    # Graphy is its own Cargo workspace (core + graphy-blueprint, tested there);
+    # this workspace consumes its crates as path dependencies.
+    "crates/third-party/graphy",
     "crates/core/plugin_manager/tests/fixtures/plugin_loader_fixture",
     "crates/core/pulsar_script_vm/tests/fixtures/test_library",
     "crates/core/pulsar_events/tests/fixtures/plugin",
@@ -269,6 +270,7 @@ glam                  = { version = "0.33", features = ["bytemuck"] }
 # ---------- Third-party (vendored) ----------
 pulsar-config         = { path = "crates/third-party/pulsar-config" }
 graphy                = { path = "crates/third-party/graphy" }
+graphy-blueprint      = { path = "crates/third-party/graphy/crates/graphy-blueprint" }
 tool_registry         = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
 tool_registry_macros  = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
 

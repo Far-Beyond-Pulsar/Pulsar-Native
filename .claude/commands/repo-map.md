@@ -74,7 +74,7 @@ plugins/vendor/blueprint_editor/
 │   ├── rendering/                Graph canvas
 │   └── ui_components/
 ├── compiler/                     blueprint_compiler: graph → pulsar_script_vm::Module
-└── graph/                        blueprint_graph: the saved asset and authored graph types
+(the saved asset and authored graph types live in crates/third-party/graphy/crates/graphy-blueprint)
 ```
 
 ## Graphy Layout

@@ -17,7 +17,7 @@ what that pass declares.
 | Legacy builders | `helio-default-passes` (`lib.rs`) | The `add_pass` builders (`build_default_graph_*` and the rest) and `pipelines.rs`. Still the engine default (`helio.deferred`) and the forward/HLFS/simple pipelines; they go away as each is replaced by a graph. |
 | Engine registry | `engine_backend::…::helio_renderer::pipelines` | Process-wide pipeline and node registries; the pin probe; project `.rendergraph` registration; the hidden `preview:N` pipelines. |
 | Selection | level `world_settings.render_pipeline` | Editor: poller pushes it to every viewport mailbox, which rebuilds the renderer at a frame boundary. Game: `load_level` records it, `game_renderer` builds from it. |
-| Editor | `plugins/vendor/render_bps` | The Blueprint graph editor with a profile installed, plus a live preview. |
+| Editor | `plugins/vendor/render_bps` | The render graph editor on the Graphy canvas (`.agents/GRAPH_CANVAS.md`), plus a live preview. |
 | Trait | `engine_fs::builtin_traits` | `types/traits/into_graph.trait.json` is written into every project when the trait index rebuilds. |
 
 ## Pass nodes
@@ -136,13 +136,13 @@ compile: each Get is wired to the latest Set that runs before the node using it
 a host input. The compiled graph is exactly what direct wires would give.
 
 - Node titles read `Get <name>` / `Set <name>` (`buffers::title_of`, and
-  `EditorProfile::node_title` in the editor).
+  `RenderPresenter` titles the node).
 - The editor's left **Buffers** panel (`render_bps/src/buffers_panel.rs`) lists
   every buffer the generated nodes read or write (`buffers::known_buffers`),
   searchable, grouped by kind, each with Get and Set buttons that add a node.
 - Auto layout puts a pass's Gets left and Sets right of it; host inputs that are
   declared but unused form a "Host Inputs" group.
-- Collapsing nodes and lanes is not implemented yet.
+- Nodes and lanes collapse into sections (see Sections below).
 
 ## Sections (collapsed nodes)
 
@@ -157,17 +157,19 @@ in execution order, Output.
 - It is organisation only: `sections::expand` puts the nodes back in place and
   joins the wires across the ports before the buffers are flattened, validated and
   built. A section is placed once (its nodes keep their ids).
-- In the editor a section is a Blueprint *collapsed graph* (`SubGraphKind::Collapsed`):
-  one node that opens onto its own graph tab (double-click, or the left
-  **Sections** tab). `render_bps::model` maps both ways (`to_blueprint_asset` /
-  `from_blueprint_asset`); the editor's own Collapse/Expand commands work too, the
-  crossing wires becoming ports.
+- In the editor a section is a graph of its own (a `GraphCanvas` per section, document
+  node type `section:<id>` as in the asset) placed by one node that opens it (double-click,
+  or the left **Sections** tab). The context menu has **Collapse to Section** (selection to a
+  new section, the crossing wires becoming ports) and **Expand Section** (`render_bps::collapse`,
+  tested to give back the same pipeline as `sections::expand`). An expanded section stays in
+  the list so undo can find it. Section ports are the pins of the section graph's entry and
+  exit nodes; comments inside a section are not part of the format and are not saved.
 - `sections::sectionize` makes the sections from the lane groups of
   `auto_layout`; On Frame Start and Output stay outside. Auto Layout on a graph
   with sections lays out each inside and the main graph as a row.
 - The left panel has two tabs: **Sections** (open any section) and **Buffers**.
-- `EditorProfile::validate` / `graph_applied` receive the whole `BlueprintAsset`
-  (main graph and collapsed graphs), and `left_panels` returns the tabs.
+- Compile and Save check the whole document (main graph and every section) and apply it to
+  the preview.
 
 ## Resource nodes
 
@@ -192,15 +194,18 @@ and publish it by name (`write_texture_binding` / `write_buffer_binding`).
 ## Editor
 
 `render_bps` is a built-in editor, registered at link time like the Blueprint editor
-(`pulsar_engine` feature `render-graph`, on by default, which also needs `blueprint`).
-It reuses the Blueprint graph editor through an `EditorProfile`
-(`blueprint_editor_plugin::profile`): a registry; an editor opened on a file takes the
-profile claiming its extension (`.rendergraph`), every other file stays a Blueprint.
+(`pulsar_engine` feature `render-graph`, on by default; it no longer needs `blueprint`).
+It has its own editor on the shared Graphy canvas (`.agents/GRAPH_CANVAS.md`, "Render Graph
+(Phase 5)") and links nothing of the Blueprint editor.
 
-A profile supplies: id and extensions, node catalogue, `decode`/`encode`, pin styles,
-`validate` (the Compile button), `parameters`/`parameter_changed` (editable
-parameters; resource pins are renamed and their wires moved), a `preview_panel`, and
-`graph_applied`. The Blueprint side panels do not show.
+| File | What |
+|---|---|
+| `model.rs` | Domain rules, pure: registry, pin type strings and styles, catalogue and node factory, params, dynamic-pin commands, auto layout, checks |
+| `document.rs` | `.rendergraph` <-> Graphy graphs (`RenderDocument`, borrowed `DocRef`), the buildable projection |
+| `collapse.rs` | Collapse to / expand a section, as graph commands |
+| `profile.rs` | `RenderProfile`: `GraphProfile` + `Presenter` for the canvas |
+| `editor.rs`, `view.rs` | The editor entity (tabs, undo, save, Compile, picker) and its views |
+| `sections_panel.rs`, `buffers_panel.rs`, `preview.rs` | Sections and Buffers lists, the preview |
 
 The **preview** above Properties is a Helio renderer on the editor's shared device,
 drawing a private test scene through the graph; Compile and Save apply the graph (a

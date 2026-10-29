@@ -2,18 +2,17 @@
 //!
 //! Built into a binary (feature `builtin`) the plugin registers itself at link
 //! time through `plugin_manager::LinkedEditorProvider`, as the Blueprint editor
-//! does. The two share one copy of the graph editor; each document takes the
-//! profile that claims its extension, so they do not interfere.
+//! does. The two share nothing: each opens its own editor over its own documents.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gpui::{App, AppContext, Window};
+use gpui::{App, Window};
 use plugin_editor_api::*;
 use plugin_manager::{BuiltinEditorProvider, EditorContext, LinkedEditorProvider};
 use ui::dock::PanelView;
 
-use crate::{ensure_profile, file_type, EDITOR, FILE_TYPE};
+use crate::{file_type, open_editor, EDITOR, FILE_TYPE};
 
 pub struct RenderBpsBuiltinProvider;
 
@@ -45,34 +44,9 @@ impl BuiltinEditorProvider for RenderBpsBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        ensure_profile(Some(&*window));
-        let panel =
-            cx.new(|cx| {
-                match blueprint_editor_plugin::BlueprintEditorPanel::new_with_path(
-                    file_path.clone(),
-                    window,
-                    cx,
-                ) {
-                    Ok(panel) => panel,
-                    Err(error) => {
-                        tracing::error!("Failed to open render graph {file_path:?}: {error}");
-                        blueprint_editor_plugin::BlueprintEditorPanel::new_with_load_error(
-                            file_path.clone(),
-                            error.to_string(),
-                            window,
-                            cx,
-                        )
-                    }
-                }
-            });
-        if let Some(project_root) = editor_context.project_root.clone() {
-            panel.update(cx, |panel, _cx| {
-                panel.project_root = Some(project_root);
-            });
-        }
+        let panel = open_editor(file_path, window, cx);
         let undo = editor_context.services.undo.clone();
-        panel.update(cx, |panel, cx| panel.set_undo_service(undo, cx));
-
+        panel.update(cx, |panel, _cx| panel.set_undo_service(undo));
         Ok(Arc::new(panel))
     }
 }

@@ -25,6 +25,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/MEMORY.md` | How memory is held and bounded (`Residency`, texture size cap), settings, and the Mission Control Memory Explorer |
 | `.agents/LOD.md` | Authored mesh LOD as a camera-dependent asset choice, separate from renderer-internal geometric LOD, and its residency boundary |
 | `.agents/RENDER_GRAPH.md` | Render pipelines: `IntoGraph`, built-in pipelines, `.rendergraph` assets, pin shapes, the `render_bps` plugin |
+| `.agents/GRAPH_CANVAS.md` | Shared node-graph canvas in Graphy: `graphy-render` layout/scene/hit-test/draw data, `graphy-render-wgpu` renderer and visual system, `graphy-gpui` interaction engine and profile API |
 
 ## Project data (`.pulsar/`)
 

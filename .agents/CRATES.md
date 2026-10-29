@@ -34,12 +34,10 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `plugin_manager` | Plugin host — DLL loading, registries, tool bridge |
 | `profiling` | Performance tracing (Tracy) |
 | `pulsar_auth` | Authentication |
-| `pulsar_bp_executor` | Blueprint graph runtime executor |
 | `pulsar_core` | Core types, math, utilities |
 | `pulsar_docs` | Doc generation from reflected types |
 | `pulsar_events` | Event bus |
 | `pulsar_game` | Game mode abstractions |
-| `pulsar_graph` | Blueprint graph data model |
 | `pulsar_lsp` | LSP client integration. One engine-owned rust-analyzer; editors attach with `ensure_started` (never `start`), share documents by refcount, sync incrementally (`did_change_file_incremental`), and receive per-file `AnalyzerEvent::FileDiagnostics` |
 | `pulsar_macros` | Various derive macros |
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
@@ -197,7 +195,7 @@ pinned here (see "Submodule pins" below). They are not workspace members
 
 | Submodule | Path dep? | Notes |
 |---|---|---|
-| `graphy/` | Yes | Graph data model and compiler types |
+| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); plus `graphy-reflection` (the only crate that knows Pulsar: `TypeResolver` and node metadata over `pulsar_reflection`); all headless, consumed as path deps. Phase 3 adds `graphy-render` (headless canvas model), `graphy-render-wgpu` (shared GPU renderer) and `graphy-gpui` (interaction engine, `GraphProfile`, GPUI canvas behind feature `gpui`; its own workspace) - see `.agents/GRAPH_CANVAS.md` |
 | `pulsar-config/` | Yes | Configuration management |
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
 | `psgc/` | No | Shader Graph Compiler (has its own workspace) |
@@ -208,8 +206,9 @@ These are the built-in editor plugins, loaded as DLLs at runtime. Each is a
 git submodule compiled as `cdylib`:
 
 - `blueprint_editor` — Blueprint visual scripting editor
+- `render_bps` (in-tree, `plugins/vendor/render_bps`) — Render graph editor (`.rendergraph`); its own editor on the Graphy canvas, no Blueprint code. See `.agents/RENDER_GRAPH.md`
 - `code_editor` — Script/code editor, a host for Mockaco (`WgpuiEditorView`). Mockaco owns the hover/completion/diagnostic UI and emits requests; `text_editor/lsp.rs` answers them through the shared analyzer
-- `shader_editor` — Shader graph editor
+- `shader_editor` — Shader graph editor (`.material`); edits the Graphy `GraphDescription` on the shared canvas through `ShaderProfile`, with PSGC compilation, WGSL type rules, material preview and texture-preview rows kept in the plugin. See `.agents/GRAPH_CANVAS.md`
 - `table_editor` — Database table editor
 - `matter_editor` — Material editor
 

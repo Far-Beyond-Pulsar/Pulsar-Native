@@ -73,8 +73,9 @@ dhat = { version = "0.3", optional = true }
 # builds an editor without them (CI keeps that building).
 default = ["blueprint", "render-graph", "typescript"]
 blueprint = ["dep:blueprint_editor_plugin"]
-# The render graph editor (`.rendergraph`), built on the Blueprint editor.
-render-graph = ["dep:render_bps_plugin", "blueprint"]
+# The render graph editor (`.rendergraph`), on the shared Graphy canvas; it does
+# not need the Blueprint editor.
+render-graph = ["dep:render_bps_plugin"]
 # TypeScript scripting (`class.ts`); likewise optional.
 typescript = ["dep:plugin_typescript"]
 dhat-heap = ["dep:dhat"]
