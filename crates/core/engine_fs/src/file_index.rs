@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::events::{FsChangeKind, FsEventSource};
 use crate::providers::ManifestEntry;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 const ASSET_ID_MANIFEST: &str = ".pulsar/asset_ids.json";
 static ASSET_ID_MANIFEST_LOCK: OnceLock<parking_lot::Mutex<()>> = OnceLock::new();
 
@@ -23,6 +23,29 @@ struct DurableAssetIdManifest {
     version: u32,
     /// Project-relative path -> asset kind -> stable ID.
     assets: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+/// One typed reference from an asset to another, as recorded by the owning
+/// format's extractor. Kinds are `AssetKind::KIND` strings; `role` is `hard`
+/// (needed to load/evaluate) or `hint` (editor-only convenience, ignored by
+/// cycle checks); `via` names the authored field; `expect` is the format's
+/// compatibility rule for the edge (opaque to the index).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetDep {
+    pub source_kind: String,
+    pub source_id: String,
+    pub target_kind: String,
+    pub target_id: String,
+    pub role: String,
+    pub via: String,
+    pub expect: String,
+}
+
+/// A recorded edge together with where the referencing asset lives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetDependent {
+    pub path: PathBuf,
+    pub dep: AssetDep,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +200,26 @@ impl ProjectFileIndex {
                  CREATE INDEX asset_ids_id_idx ON asset_ids(asset_id);
                  CREATE INDEX asset_ids_kind_idx ON asset_ids(kind);
                  PRAGMA user_version = 3;
+                 COMMIT;",
+            )?;
+        }
+        if version < 4 {
+            connection.execute_batch(
+                "BEGIN IMMEDIATE;
+                 CREATE TABLE IF NOT EXISTS asset_deps (
+                    source_path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+                    source_kind TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    target_kind TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    via TEXT NOT NULL,
+                    expect TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (source_path, source_kind, source_id, target_kind, target_id, via)
+                 );
+                 CREATE INDEX IF NOT EXISTS asset_deps_target_idx ON asset_deps(target_kind, target_id);
+                 CREATE INDEX IF NOT EXISTS asset_deps_source_idx ON asset_deps(source_kind, source_id);
+                 PRAGMA user_version = 4;
                  COMMIT;",
             )?;
         }
@@ -350,6 +393,30 @@ impl ProjectFileIndex {
             }
         }
 
+        let mut asset_deps = Vec::new();
+        {
+            let mut statement = tx.prepare(
+                "SELECT source_kind, source_id, target_kind, target_id, role, via, expect
+                 FROM asset_deps WHERE source_path = ?1",
+            )?;
+            for entry in &moved {
+                let rows = statement.query_map([&entry.path], |row| {
+                    Ok(AssetDep {
+                        source_kind: row.get(0)?,
+                        source_id: row.get(1)?,
+                        target_kind: row.get(2)?,
+                        target_id: row.get(3)?,
+                        role: row.get(4)?,
+                        via: row.get(5)?,
+                        expect: row.get(6)?,
+                    })
+                })?;
+                for dep in rows {
+                    asset_deps.push((dep?, entry.path.clone()));
+                }
+            }
+        }
+
         // Replacing an indexed destination is consistent with filesystem
         // rename semantics: the old destination and its IDs are discarded.
         tx.execute(
@@ -415,6 +482,28 @@ impl ProjectFileIndex {
             tx.execute(
                 "INSERT OR IGNORE INTO asset_ids(asset_id, kind, path) VALUES (?1, ?2, ?3)",
                 params![id, kind, new_path],
+            )?;
+        }
+        for (dep, old_path) in asset_deps {
+            let suffix = old_path.strip_prefix(&from).unwrap_or_default();
+            let new_path = if suffix.is_empty() {
+                to.clone()
+            } else {
+                format!("{to}{suffix}")
+            };
+            tx.execute(
+                "INSERT OR IGNORE INTO asset_deps(source_path, source_kind, source_id, target_kind, target_id, role, via, expect)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    new_path,
+                    dep.source_kind,
+                    dep.source_id,
+                    dep.target_kind,
+                    dep.target_id,
+                    dep.role,
+                    dep.via,
+                    dep.expect
+                ],
             )?;
         }
         tx.commit()?;
@@ -586,6 +675,128 @@ impl ProjectFileIndex {
         Ok(())
     }
 
+    /// Replace every dependency edge recorded for the asset `source_id` of
+    /// `source_kind` stored at `path`. Extractors (one per asset kind, owned by
+    /// the plugin that owns the format) compute `deps` when the asset is
+    /// saved, imported or refreshed; this table is derived data and is never
+    /// written into an asset. Each dep's `source_*` fields must match the
+    /// arguments.
+    pub fn replace_asset_deps(
+        &self,
+        path: &Path,
+        source_kind: &str,
+        source_id: &str,
+        deps: &[AssetDep],
+    ) -> Result<()> {
+        let Some(relative) = self.relative_path(path) else {
+            anyhow::bail!("asset dependency path is outside the indexed project root");
+        };
+        if let Some(bad) = deps
+            .iter()
+            .find(|d| d.source_kind != source_kind || d.source_id != source_id)
+        {
+            anyhow::bail!(
+                "dependency from {}:{} recorded for {source_kind}:{source_id}",
+                bad.source_kind,
+                bad.source_id
+            );
+        }
+        let mut connection = self.connection.lock().expect("file-index mutex poisoned");
+        let tx = connection.transaction()?;
+        tx.execute(
+            "DELETE FROM asset_deps WHERE source_path = ?1 AND source_kind = ?2",
+            params![relative, source_kind],
+        )?;
+        for dep in deps {
+            tx.execute(
+                "INSERT OR REPLACE INTO asset_deps(source_path, source_kind, source_id, target_kind, target_id, role, via, expect)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    relative,
+                    dep.source_kind,
+                    dep.source_id,
+                    dep.target_kind,
+                    dep.target_id,
+                    dep.role,
+                    dep.via,
+                    dep.expect
+                ],
+            )
+            .context("record asset dependency (is the file indexed?)")?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Forget the dependency edges of the asset at `path`.
+    pub fn clear_asset_deps(&self, path: &Path) -> Result<()> {
+        let Some(relative) = self.relative_path(path) else {
+            return Ok(());
+        };
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        connection.execute("DELETE FROM asset_deps WHERE source_path = ?1", [&relative])?;
+        Ok(())
+    }
+
+    /// What an asset depends on, ordered for stable output.
+    pub fn asset_deps_of(&self, source_kind: &str, source_id: &str) -> Result<Vec<AssetDep>> {
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut statement = connection.prepare(
+            "SELECT source_kind, source_id, target_kind, target_id, role, via, expect
+             FROM asset_deps WHERE source_kind = ?1 AND source_id = ?2
+             ORDER BY target_kind, target_id, via",
+        )?;
+        let rows = statement.query_map(params![source_kind, source_id], |row| {
+            Ok(AssetDep {
+                source_kind: row.get(0)?,
+                source_id: row.get(1)?,
+                target_kind: row.get(2)?,
+                target_id: row.get(3)?,
+                role: row.get(4)?,
+                via: row.get(5)?,
+                expect: row.get(6)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("query asset dependencies")
+    }
+
+    /// The reverse query behind "Used By": every recorded edge that points at
+    /// the asset `target_id` of `target_kind`, with the project path of the
+    /// asset holding the reference. Computed, never stored on the target.
+    pub fn asset_used_by(&self, target_kind: &str, target_id: &str) -> Result<Vec<AssetDependent>> {
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut statement = connection.prepare(
+            "SELECT source_path, source_kind, source_id, target_kind, target_id, role, via, expect
+             FROM asset_deps WHERE target_kind = ?1 AND target_id = ?2
+             ORDER BY source_path, via",
+        )?;
+        let rows = statement.query_map(params![target_kind, target_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                AssetDep {
+                    source_kind: row.get(1)?,
+                    source_id: row.get(2)?,
+                    target_kind: row.get(3)?,
+                    target_id: row.get(4)?,
+                    role: row.get(5)?,
+                    via: row.get(6)?,
+                    expect: row.get(7)?,
+                },
+            ))
+        })?;
+        rows.map(|row| {
+            row.map(|(relative, dep)| AssetDependent {
+                path: self
+                    .project_root
+                    .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR)),
+                dep,
+            })
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .context("query asset dependents")
+    }
+
     /// Singular alias for [`ProjectFileIndex::clear_asset_ids`].
     pub fn clear_asset_id(&self, path: &Path) -> Result<()> {
         self.clear_asset_ids(path)
@@ -642,6 +853,26 @@ impl ProjectFileIndex {
         })
         .collect::<rusqlite::Result<Vec<_>>>()
         .context("query typed asset id paths")
+    }
+
+    /// Every indexed `(asset id, path)` of `kind`: the candidate list an asset
+    /// picker filters. Ambiguous ids appear once per claiming path.
+    pub fn assets_of_kind(&self, kind: &str) -> Result<Vec<(String, PathBuf)>> {
+        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut statement = connection
+            .prepare("SELECT asset_id, path FROM asset_ids WHERE kind = ?1 ORDER BY path, asset_id")?;
+        let rows = statement.query_map([kind], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+        rows.map(|row| {
+            row.map(|(id, relative)| {
+                (
+                    id,
+                    self.project_root
+                        .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR)),
+                )
+            })
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .context("query assets of kind")
     }
 
     /// Return stable asset IDs associated with one indexed project file.
@@ -1376,5 +1607,83 @@ mod tests {
         std::fs::remove_file(&existing).unwrap();
         index.refresh_path(&assets).unwrap();
         assert!(index.paths_for_asset_id("widget-id").unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod asset_dep_tests {
+    use super::*;
+
+    fn entry(path: &str) -> ManifestEntry {
+        ManifestEntry { path: path.to_owned(), is_dir: false, size: 1, modified: Some(1) }
+    }
+
+    fn dep(source: &str, target: &str, via: &str) -> AssetDep {
+        AssetDep {
+            source_kind: "anim_graph".into(),
+            source_id: source.into(),
+            target_kind: "animseq".into(),
+            target_id: target.into(),
+            role: "hard".into(),
+            via: via.into(),
+            expect: "owner".into(),
+        }
+    }
+
+    fn index() -> (tempfile::TempDir, ProjectFileIndex) {
+        let temp = tempfile::tempdir().unwrap();
+        let index = ProjectFileIndex::open(temp.path()).unwrap();
+        index
+            .reconcile(&[entry("a.animgraph"), entry("b.animgraph"), entry("walk.animseq")])
+            .unwrap();
+        (temp, index)
+    }
+
+    #[test]
+    fn used_by_is_derived_from_recorded_edges_and_replaced_wholesale() {
+        let (temp, index) = index();
+        let a = temp.path().join("a.animgraph");
+        let b = temp.path().join("b.animgraph");
+        index.replace_asset_deps(&a, "anim_graph", "A", &[dep("A", "WALK", "n1"), dep("A", "RUN", "n2")]).unwrap();
+        index.replace_asset_deps(&b, "anim_graph", "B", &[dep("B", "WALK", "n1")]).unwrap();
+
+        let users = index.asset_used_by("animseq", "WALK").unwrap();
+        assert_eq!(users.iter().map(|u| u.dep.source_id.as_str()).collect::<Vec<_>>(), ["A", "B"]);
+        assert_eq!(users[0].path, a);
+        assert_eq!(index.asset_deps_of("anim_graph", "A").unwrap().len(), 2);
+
+        // Saving A again with only RUN drops its WALK edge.
+        index.replace_asset_deps(&a, "anim_graph", "A", &[dep("A", "RUN", "n2")]).unwrap();
+        let users = index.asset_used_by("animseq", "WALK").unwrap();
+        assert_eq!(users.iter().map(|u| u.dep.source_id.as_str()).collect::<Vec<_>>(), ["B"]);
+    }
+
+    #[test]
+    fn edges_survive_reopen_follow_moves_and_die_with_the_file() {
+        let (temp, index) = index();
+        let a = temp.path().join("a.animgraph");
+        index.replace_asset_deps(&a, "anim_graph", "A", &[dep("A", "WALK", "n1")]).unwrap();
+        drop(index);
+
+        let index = ProjectFileIndex::open(temp.path()).unwrap();
+        assert_eq!(index.asset_used_by("animseq", "WALK").unwrap().len(), 1);
+
+        index.move_path(&a, &temp.path().join("moved.animgraph")).unwrap();
+        let users = index.asset_used_by("animseq", "WALK").unwrap();
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].path, temp.path().join("moved.animgraph"));
+
+        index.remove_path(&temp.path().join("moved.animgraph")).unwrap();
+        assert!(index.asset_used_by("animseq", "WALK").unwrap().is_empty());
+    }
+
+    #[test]
+    fn mismatched_source_and_unindexed_files_are_rejected() {
+        let (temp, index) = index();
+        let a = temp.path().join("a.animgraph");
+        assert!(index.replace_asset_deps(&a, "anim_graph", "A", &[dep("OTHER", "WALK", "n1")]).is_err());
+        let missing = temp.path().join("never.animgraph");
+        assert!(index.replace_asset_deps(&missing, "anim_graph", "A", &[dep("A", "WALK", "n1")]).is_err());
+        assert!(index.asset_used_by("animseq", "WALK").unwrap().is_empty());
     }
 }
