@@ -15,5 +15,6 @@ pub use types::{
 };
 pub use water::{
     WATER_HITBOX_EDGE_SOFTNESS, WATER_HITBOX_SOURCES_BUFFER, WATER_HITBOX_STRENGTH,
-    WaterHitboxSourceRow,
+    WATER_QUERY_MAX_SAMPLE_AGE_FRAMES, WaterBuoyancyPoint, WaterHitboxSourceRow,
+    WaterQueryMailbox, WaterQueryPoint, WaterSurfaceSample, water_buoyancy_force,
 };

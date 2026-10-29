@@ -5443,11 +5443,20 @@ name = "helio-pass-water-sim"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
+ "helio-mats",
+ "helio-pass-deferred-light",
+ "helio-pass-gbuffer",
  "helio-pass-hiz",
+ "helio-pass-indirect-dispatch",
+ "helio-pass-object-batch",
+ "helio-pass-occlusion-cull",
+ "helio-pass-voxel-planet",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
+ "rayon",
  "wgpu",
 ]
 
@@ -11911,6 +11920,10 @@ dependencies = [
  "bytemuck",
  "engine_fs",
  "gpui-ce",
+ "graphy",
+ "graphy-blueprint",
+ "graphy-gpui",
+ "graphy-render",
  "log",
  "naga",
  "plugin_editor_api",
