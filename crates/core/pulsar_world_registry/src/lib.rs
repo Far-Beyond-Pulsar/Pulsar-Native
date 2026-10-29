@@ -228,6 +228,18 @@ pub struct ComponentContext<'a> {
 
 impl<'a> ComponentContext<'a> {
     #[doc(hidden)]
+    pub fn for_instance(instance: Entity, owner: Entity, hub: &'a pulsar_events::EventHub) -> Self {
+        Self {
+            entity: owner,
+            events: ComponentEventWriter {
+                entity: owner,
+                instance: Some(instance),
+                hub,
+            },
+        }
+    }
+
+    #[doc(hidden)]
     pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
         Self {
             entity,
@@ -238,17 +250,26 @@ impl<'a> ComponentContext<'a> {
 
 pub struct ComponentEventWriter<'a> {
     entity: Entity,
+    instance: Option<Entity>,
     hub: &'a pulsar_events::EventHub,
 }
 
 impl<'a> ComponentEventWriter<'a> {
-    #[doc(hidden)]
-    pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
-        Self { entity, hub }
+    pub fn hub(&self) -> &'a pulsar_events::EventHub {
+        self.hub
     }
 
-    /// Publish an already-registered named event on this component owner's
-    /// entity channel. Gamma queues delivery; handlers do not run inline.
+    #[doc(hidden)]
+    pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
+        Self {
+            entity,
+            instance: None,
+            hub,
+        }
+    }
+
+    /// queue a named event for the owner and, during a live callback, its
+    /// component instance. Gamma never invokes handlers inside this borrow.
     pub fn emit_named(
         &self,
         name: &str,
@@ -258,9 +279,19 @@ impl<'a> ComponentEventWriter<'a> {
             .publish_named(
                 pulsar_events::gamma::Channel::Entity(self.entity.bits()),
                 name,
-                fields,
+                fields.clone(),
             )
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        if let Some(instance) = self.instance.filter(|instance| *instance != self.entity) {
+            self.hub
+                .publish_named(
+                    pulsar_events::gamma::Channel::Entity(instance.bits()),
+                    name,
+                    fields,
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
     }
 
     /// Emit a component event with its original Rust payload type. The VM

@@ -105,6 +105,7 @@ pub struct VoxelGround {
 
 pub struct SceneRenderer {
     pub renderer: Renderer,
+    project_settings: super::project_settings::ProjectGraphSettingsCache,
     scene: SharedScene,
     queue: Arc<wgpu::Queue>,
     voxels: VoxelBackendRegistry,
@@ -230,6 +231,7 @@ impl SceneRenderer {
         );
         Self {
             renderer,
+            project_settings: super::project_settings::ProjectGraphSettingsCache::new(),
             scene: scene.clone(),
             queue,
             voxels,
@@ -335,9 +337,10 @@ impl SceneRenderer {
 
         // The live settings: the TSR preset (the voxel scene's under
         // "Automatic") and the render scale while TSR is off.
-        let settings = super::project_settings::renderer();
+        let project_settings = self.project_settings.load();
+        let settings = &project_settings.renderer;
         let tsr_quality = super::project_settings::tsr_quality(
-            &settings,
+            settings,
             self.voxels.temporal_quality(&read.entries, size),
         );
         self.renderer.set_tsr_quality(tsr_quality);
