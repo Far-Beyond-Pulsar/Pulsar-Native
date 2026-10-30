@@ -64,6 +64,9 @@ pub struct ProvidedParam {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProvidedReturn {
     Unit,
+    /// Not recorded (an event node: the event system has no return value).
+    /// Matches any trait return type.
+    Unknown,
     /// Returns a value; the type is `None` when not recorded.
     Value(Option<String>),
 }
@@ -178,6 +181,54 @@ pub fn provided_methods(blueprint: &Value) -> Vec<ProvidedMethod> {
             params,
             returns,
         });
+    }
+
+    // Placed entry-point nodes for a trait method (`event::on::<Class>.<name>`,
+    // what the Blueprint editor's Add menu creates for a declared trait): the
+    // node is the implementation, in the main graph or a macro.
+    let graphs = std::iter::once(blueprint.get("main_graph")).chain(
+        blueprint
+            .get("subgraphs")
+            .or_else(|| blueprint.get("local_macros"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|graph| graph.get("graph")),
+    );
+    for graph in graphs.flatten() {
+        let nodes = graph.get("nodes").and_then(Value::as_object);
+        for node in nodes.into_iter().flat_map(|nodes| nodes.values()) {
+            let Some(event) = node
+                .get("node_type")
+                .and_then(Value::as_str)
+                .and_then(|node_type| node_type.strip_prefix("event::on::"))
+            else {
+                continue;
+            };
+            let Some((_, method)) = event.rsplit_once('.') else {
+                continue;
+            };
+            // Outputs other than the exec `Body` pin are the parameters.
+            let outputs: Vec<&Value> = match node.get("outputs") {
+                Some(Value::Array(pins)) => pins.iter().collect(),
+                Some(Value::Object(pins)) => pins.values().collect(),
+                _ => Vec::new(),
+            };
+            let params = outputs
+                .into_iter()
+                .filter_map(|pin| pin.get("id").and_then(Value::as_str))
+                .filter(|id| *id != "Body")
+                .map(|id| ProvidedParam {
+                    name: id.to_owned(),
+                    type_name: None,
+                })
+                .collect();
+            push(ProvidedMethod {
+                name: method.to_owned(),
+                params,
+                returns: ProvidedReturn::Unknown,
+            });
+        }
     }
     methods
 }
@@ -316,6 +367,7 @@ fn compare(
     }
     let wants_unit = matches!(type_class(&required.return_type), TypeClass::Unit);
     let mismatch = match (&found.returns, wants_unit) {
+        (ProvidedReturn::Unknown, _) => None,
         (ProvidedReturn::Unit, true) => None,
         (ProvidedReturn::Unit, false) => Some(format!(
             "`{}` returns nothing but the trait declares `-> {}`.",
@@ -609,6 +661,23 @@ mod tests {
         assert!(check_blueprint(&db(), &bp).iter().any(|i| i.method.as_deref() == Some("on_game_start")));
     }
 
+
+    #[test]
+    fn a_placed_trait_event_node_provides_its_method() {
+        let mut bp = blueprint(&["mode"], &[], json!([]), json!([]));
+        bp["main_graph"] = json!({"nodes": {
+            "n1": {"id": "n1", "node_type": "event::on::Player.on_game_start", "outputs": [{"id": "Body"}]},
+            "n2": {"id": "n2", "node_type": "event::on::Player.score", "outputs": [{"id": "Body"}, {"id": "who"}]},
+            "n3": {"id": "n3", "node_type": "event::on::Player.tick", "outputs": {"Body": {"id": "Body"}, "dt": {"id": "dt"}}},
+        }});
+        // The event system has no return value, so `score -> i32` is not
+        // judged on it; parameters still count.
+        assert_eq!(check_blueprint(&db(), &bp), Vec::new());
+
+        bp["main_graph"]["nodes"]["n2"]["outputs"] = json!([{"id": "Body"}]);
+        let issues = check_blueprint(&db(), &bp);
+        assert!(issues.iter().any(|i| i.kind == IssueKind::ParamCount && i.method.as_deref() == Some("score")));
+    }
     #[test]
     fn formats_errors_before_warnings() {
         let issues = vec![

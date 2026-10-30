@@ -43,6 +43,12 @@ impl TickLoop {
 
     /// Replace the roles directly (tests, or a host that resolved them).
     pub fn set_world_roles(&mut self, roles: WorldRoles) {
+        if let Some(driver) = &self.scripts {
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .set_world_roles(roles.clone());
+        }
         self.world_roles = roles;
     }
 
@@ -60,7 +66,7 @@ impl TickLoop {
         for message in roles.diagnostics() {
             tracing::warn!("{message}");
         }
-        self.world_roles = roles;
+        self.set_world_roles(roles);
     }
 }
 

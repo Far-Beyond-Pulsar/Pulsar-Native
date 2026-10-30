@@ -596,6 +596,7 @@ impl TickLoop {
             tracing::info!(project = %project_root.display(), "Script driver enabled");
             let mut driver = crate::scripting::new_driver(project_root);
             driver.attach_events(events);
+            driver.set_world_roles(self.world_roles.clone());
             Arc::new(Mutex::new(driver))
         }))
     }
@@ -624,6 +625,7 @@ impl TickLoop {
         tracing::info!(content = %content.root().display(), "Script driver enabled");
         let mut driver = crate::scripting::new_content_driver(&content);
         driver.attach_events(events);
+        driver.set_world_roles(self.world_roles.clone());
         let driver = Arc::new(Mutex::new(driver));
         self.scripts = Some(Arc::clone(&driver));
         Ok(driver)

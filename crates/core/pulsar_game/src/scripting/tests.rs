@@ -2176,3 +2176,126 @@ fn json_component_references_resolve_by_stable_id() {
         );
     }
 }
+
+// ---- engine roles (traits) ----------------------------------------------------
+
+mod roles {
+    use super::*;
+    use engine_fs::world_roles::{EngineRole, RoleSelection, WorldRoles};
+    use pulsar_script_vm::{EventDecl, EventField, EventRef, Subscription, SubscriptionScope};
+
+    /// A role class: one event `<Class>.<method>` per hook, each handled by a
+    /// function that logs `label`. This is what compiling a Blueprint with
+    /// trait event nodes placed produces.
+    fn role_module(class: &str, hooks: &[(&str, Vec<Type>, &str)]) -> Module {
+        let mut m = Module::new(class);
+        m.imports = vec![import("test::event", vec![Type::Str], Type::Unit)];
+        for (index, (method, params, label)) in hooks.iter().enumerate() {
+            m.constants.push(Constant::Str((*label).into()));
+            let slot = params.len() as u16;
+            let mut f = function(
+                &format!("on_{index}"),
+                params.clone(),
+                vec![Type::Str],
+                vec![
+                    Instr::Const { dst: slot, index: index as u32 },
+                    Instr::CallNative { import: 0, args: vec![slot], dst: None },
+                    Instr::Return { value: None },
+                ],
+            );
+            f.exported = false;
+            m.functions.push(f);
+            m.events.push(EventDecl {
+                name: format!("{class}.{method}"),
+                fields: params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, ty)| EventField::new(format!("arg{i}"), ty.clone()))
+                    .collect(),
+            });
+            m.subscriptions.push(Subscription {
+                event: EventRef::Name(format!("{class}.{method}")),
+                handler: index as u32,
+                scope: SubscriptionScope::Self_,
+            });
+        }
+        m
+    }
+
+    fn selection(pairs: &[(EngineRole, &str)]) -> RoleSelection {
+        let mut selection = RoleSelection::default();
+        for (role, class) in pairs {
+            selection.set(*role, Some(format!("src/classes/{class}/graph_save.json")));
+        }
+        selection
+    }
+
+    fn names(log: &Log) -> Vec<String> {
+        events(log).into_iter().map(|(name, _)| name).collect()
+    }
+
+    #[test]
+    fn selected_role_blueprints_start_in_order_and_their_trait_events_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let int = || vec![Type::Int];
+        for (class, hooks) in [
+            ("Mode", vec![("on_game_start", vec![], "mode:start"), ("on_player_joined", int(), "mode:joined")]),
+            ("State", vec![("on_init", vec![], "state:init"), ("on_player_added", int(), "state:added")]),
+            ("Pad", vec![("on_possess", int(), "pad:possess")]),
+            ("Hero", vec![("on_spawned", vec![], "hero:spawned"), ("on_possessed", int(), "hero:possessed")]),
+        ] {
+            write_class(dir.path(), class, &format!("{class}-guid"), Some(role_module(class, &hooks)), None);
+        }
+        let level = level(dir.path(), &[]);
+        let (mut game, log) = standalone(dir.path(), &level);
+        game.set_world_roles(WorldRoles::resolve(
+            &selection(&[
+                (EngineRole::GameMode, "Mode"),
+                (EngineRole::GameState, "State"),
+                (EngineRole::PlayerController, "Pad"),
+                (EngineRole::PlayerCharacter, "Hero"),
+            ]),
+            None,
+        ));
+        game.tick_once();
+        assert_eq!(
+            names(&log),
+            ["mode:start", "state:init", "mode:joined", "state:added"],
+            "mode, then state, then the local player joins"
+        );
+        game.tick_once();
+        assert_eq!(
+            names(&log)[4..],
+            ["hero:spawned", "pad:possess", "hero:possessed"],
+            "the character runs a frame after the roles; then possession"
+        );
+        // Hooks run once.
+        game.tick_once();
+        assert_eq!(names(&log).len(), 7);
+    }
+
+    #[test]
+    fn unset_roles_do_nothing_and_a_missing_class_is_a_failure_not_a_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        write_class(
+            dir.path(),
+            "Mode",
+            "Mode-guid",
+            Some(role_module("Mode", &[("on_game_start", vec![], "mode:start")])),
+            None,
+        );
+        let level = level(dir.path(), &[]);
+        let (mut game, log) = standalone(dir.path(), &level);
+        game.set_world_roles(WorldRoles::resolve(
+            &selection(&[(EngineRole::GameMode, "Mode"), (EngineRole::GameState, "Ghost")]),
+            None,
+        ));
+        game.tick_once();
+        assert_eq!(names(&log), ["mode:start"]);
+
+        // No roles at all: nothing runs.
+        let (mut empty, log) = standalone(dir.path(), &level);
+        empty.tick_once();
+        assert!(names(&log).is_empty());
+    }
+}

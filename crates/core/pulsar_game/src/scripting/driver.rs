@@ -371,6 +371,14 @@ pub struct ScriptDriver {
     templates: HashMap<ClassId, Arc<pulsar_class::ClassTemplate>>,
     globals: Vec<String>,
     globals_started: bool,
+    /// The Blueprints the level assigned to the engine roles; started with
+    /// the globals (see `start_roles`).
+    world_roles: engine_fs::world_roles::WorldRoles,
+    roles_started: bool,
+    /// Trait hooks of started role instances, run after `begin_play`.
+    role_hooks: Vec<RoleHook>,
+    /// The local player's character, spawned but not yet running.
+    pending_possession: Option<Possession>,
     spawn_serial: u64,
     reloads: ReloadRequests,
     scratch: Vec<ComponentChange>,
@@ -419,6 +427,10 @@ impl ScriptDriver {
             templates: HashMap::new(),
             globals: Vec::new(),
             globals_started: false,
+            world_roles: engine_fs::world_roles::WorldRoles::default(),
+            roles_started: false,
+            role_hooks: Vec::new(),
+            pending_possession: None,
             spawn_serial: 0,
             reloads: Arc::new(Mutex::new(Vec::new())),
             scratch: Vec::new(),
@@ -787,6 +799,7 @@ impl ScriptDriver {
                 );
             }
         }
+        self.run_role_hooks(world, report);
         if let Some(events) = self.events.as_mut() {
             events.announce_level(&self.level);
             for failure in events.reconcile_component_subscriptions(&self.runtime, world) {
@@ -979,6 +992,10 @@ impl ScriptDriver {
         if !self.globals_started {
             self.globals_started = true;
             self.start_globals(world, report);
+        }
+        if !self.roles_started {
+            self.roles_started = true;
+            self.start_roles(world, report);
         }
         let dirty = match (self.cursor.as_mut(), self.owner_cursor.as_mut()) {
             (Some(cursor), Some(owner_cursor)) => {
@@ -1743,4 +1760,252 @@ fn depth(world: &World, entity: Entity) -> usize {
         cursor = world.parent_of(parent);
     }
     depth
+}
+
+// ---- engine roles ---------------------------------------------------------------
+//
+// A level assigns Blueprints to the engine roles (`engine_fs::world_roles`):
+// game mode, game state, player controller, player character. Each role is a
+// trait whose methods are event nodes the Blueprint places (`GameMode`'s
+// `on_game_start`, ...). The first script phase of a session starts them in
+// order and calls those events directly on the instance, through the same
+// instance/handler machinery the event hub uses, after the instance's
+// `begin_play`.
+
+/// A trait method to call on a role instance once it has begun.
+struct RoleHook {
+    instance: String,
+    class: String,
+    method: &'static str,
+    args: Vec<pulsar_script_vm::Value>,
+}
+
+/// The local player's character between being queued for spawn and running.
+struct Possession {
+    player: i64,
+    character: Entity,
+    character_class: String,
+    /// `(instance, class)` of the player's controller, when one started.
+    controller: Option<(String, String)>,
+}
+
+/// The id of the one local player the session starts.
+const LOCAL_PLAYER: i64 = 0;
+
+impl ScriptDriver {
+    /// The Blueprints the level assigned to the engine roles. Takes effect
+    /// when the session's first script phase runs.
+    pub fn set_world_roles(&mut self, roles: engine_fs::world_roles::WorldRoles) {
+        self.world_roles = roles;
+    }
+
+    /// Start the role Blueprints: game mode, game state, then the local
+    /// player's controller and character. An unset role is skipped with a
+    /// log line.
+    fn start_roles(&mut self, world: &mut World, report: &mut DriverReport) {
+        use engine_fs::world_roles::EngineRole;
+        let roles = self.world_roles.clone();
+        if roles.is_empty() {
+            tracing::info!(
+                "No engine roles are set for this level (game mode, game state, player controller, \
+                 player character); nothing was instantiated"
+            );
+            return;
+        }
+        for message in roles.diagnostics() {
+            tracing::warn!("{message}");
+        }
+        let mut start = |this: &mut Self, role: EngineRole, world: &World| match roles.usable(role)
+        {
+            Some(binding) => this.start_role_instance(binding, world, report),
+            None => {
+                if roles.get(role).is_none() {
+                    tracing::info!("{} is not set for this level; skipped", role.spec().label);
+                }
+                None
+            }
+        };
+
+        let mode = start(self, EngineRole::GameMode, world);
+        let state = start(self, EngineRole::GameState, world);
+        let controller = start(self, EngineRole::PlayerController, world);
+        if let Some((instance, class)) = &mode {
+            self.queue_hook(instance, class, "on_game_start", vec![]);
+        }
+        if let Some((instance, class)) = &state {
+            self.queue_hook(instance, class, "on_init", vec![]);
+        }
+        // The local player joins: the game mode hears of them, then the game
+        // state; their controller is already up and their character spawns.
+        let player = pulsar_script_vm::Value::Int(LOCAL_PLAYER);
+        if let Some((instance, class)) = &mode {
+            self.queue_hook(instance, class, "on_player_joined", vec![player.clone()]);
+        }
+        if let Some((instance, class)) = &state {
+            self.queue_hook(instance, class, "on_player_added", vec![player]);
+        }
+        match roles.usable(EngineRole::PlayerCharacter) {
+            Some(binding) => {
+                let Some(class_ref) = binding.class_name().map(str::to_owned) else {
+                    return;
+                };
+                // Spawned through the world-command path scripts use for
+                // `world::spawn`, applied at the end of this frame.
+                let entity = world.spawn();
+                super::commands::queue(WorldCommand::Spawn {
+                    entity,
+                    class: class_ref.clone(),
+                    parent: None,
+                    position: [0.0; 3],
+                });
+                self.pending_possession = Some(Possession {
+                    player: LOCAL_PLAYER,
+                    character: entity,
+                    character_class: class_ref,
+                    controller,
+                });
+            }
+            None if roles.get(EngineRole::PlayerCharacter).is_none() => {
+                tracing::info!(
+                    "Player Character is not set for this level; no character was spawned"
+                );
+            }
+            None => {}
+        }
+    }
+
+    /// Start one role Blueprint as an unbound script instance. Returns
+    /// `(instance id, runtime class name)`.
+    fn start_role_instance(
+        &mut self,
+        binding: &engine_fs::world_roles::RoleBinding,
+        world: &World,
+        report: &mut DriverReport,
+    ) -> Option<(String, String)> {
+        let label = binding.role.spec().label;
+        let Some(class_ref) = binding.class_name() else {
+            tracing::warn!("{label} Blueprint '{}' has no class name", binding.blueprint);
+            return None;
+        };
+        let Some(entry) = self.resolve_class_ref(class_ref) else {
+            let message = format!("{label} class '{class_ref}' is not in this project");
+            tracing::warn!("{message}");
+            report.failures.push(message);
+            return None;
+        };
+        let Some(class) = self.ensure_class_loaded(&entry, report) else {
+            let message = format!("{label} class '{}' has no compiled script", entry.name);
+            tracing::warn!("{message}");
+            report.failures.push(message);
+            return None;
+        };
+        let id = format!("role::{:?}::{}", binding.role, entry.id);
+        if let Err(error) = self.runtime.spawn(id.clone(), &class, None, &[]) {
+            let message = format!("{label} '{}' did not start: {error}", entry.name);
+            tracing::warn!("{message}");
+            report.failures.push(message);
+            return None;
+        }
+        self.globals.push(id.clone());
+        self.subscribe_instance(&id, &class, entry.id.as_str(), None, Some(world), report);
+        report.started.push(id.clone());
+        tracing::info!(class = %entry.name, "{label} started");
+        Some((id, class))
+    }
+
+    fn queue_hook(
+        &mut self,
+        instance: &str,
+        class: &str,
+        method: &'static str,
+        args: Vec<pulsar_script_vm::Value>,
+    ) {
+        self.role_hooks.push(RoleHook {
+            instance: instance.to_owned(),
+            class: class.to_owned(),
+            method,
+            args,
+        });
+    }
+
+    /// Call the event `<class>.<method>` on `instance`. A Blueprint that
+    /// places no node for the method simply does not react.
+    fn call_hook(
+        &mut self,
+        world: &mut World,
+        instance: &str,
+        class: &str,
+        method: &str,
+        args: &[pulsar_script_vm::Value],
+        report: &mut DriverReport,
+    ) {
+        let qualified = format!("{class}.{method}");
+        let handlers: Vec<(pulsar_script_vm::FuncId, usize)> = self
+            .runtime
+            .subscriptions(class)
+            .into_iter()
+            .flatten()
+            .filter(|sub| sub.event_name.as_deref() == Some(qualified.as_str()))
+            .map(|sub| (sub.handler, sub.params))
+            .collect();
+        if handlers.is_empty() {
+            tracing::debug!(%qualified, "role hook has no event node in the Blueprint");
+            return;
+        }
+        for (handler, params) in handlers {
+            let args = &args[..params.min(args.len())];
+            if let Err(error) = self.runtime.call_function(instance, handler, args, world) {
+                tracing::warn!("{error}");
+                report.script_errors.push(error);
+            }
+        }
+    }
+
+    /// Run the hooks of role instances that began this frame, then finish
+    /// the local player's possession once their character is running.
+    fn run_role_hooks(&mut self, world: &mut World, report: &mut DriverReport) {
+        for hook in std::mem::take(&mut self.role_hooks) {
+            self.call_hook(world, &hook.instance, &hook.class, hook.method, &hook.args, report);
+        }
+        self.advance_possession(world, report);
+    }
+
+    /// The character is spawned by a world command at the end of the frame
+    /// the roles started, so it runs one frame later. Then the character
+    /// hears it was spawned, the controller possesses it and the character
+    /// learns of its controller. Possession is only these events: input
+    /// does not route to the character and no camera follows it yet.
+    fn advance_possession(&mut self, world: &mut World, report: &mut DriverReport) {
+        let Some(character) = self.pending_possession.as_ref().map(|p| p.character) else {
+            return;
+        };
+        let running = self
+            .tracked
+            .get(&character)
+            .and_then(|tracked| tracked.instance.clone());
+        let Some(instance) = running else {
+            // The reserved entity is alive until its spawn command ran; if it
+            // is gone the spawn failed (already logged).
+            if !world.is_alive(character) {
+                tracing::warn!("The player character was not spawned; possession skipped");
+                self.pending_possession = None;
+            }
+            return;
+        };
+        let Some(pending) = self.pending_possession.take() else {
+            return;
+        };
+        let class = self
+            .tracked
+            .get(&character)
+            .map(|tracked| tracked.class_name.clone())
+            .unwrap_or(pending.character_class);
+        let player = pulsar_script_vm::Value::Int(pending.player);
+        self.call_hook(world, &instance, &class, "on_spawned", &[], report);
+        if let Some((controller, controller_class)) = &pending.controller {
+            let pawn = pulsar_script_vm::Value::Int(character.bits() as i64);
+            self.call_hook(world, controller, controller_class, "on_possess", &[pawn], report);
+        }
+        self.call_hook(world, &instance, &class, "on_possessed", &[player], report);
+    }
 }

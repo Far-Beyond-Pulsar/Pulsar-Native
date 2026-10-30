@@ -106,7 +106,7 @@ impl Drop for CommandScope {
 
 /// Queue `command` on this thread's driver frame. `false` when no driver
 /// frame is running.
-fn queue(command: WorldCommand) -> bool {
+pub(crate) fn queue(command: WorldCommand) -> bool {
     QUEUE.with(|q| match q.borrow_mut().as_mut() {
         Some(queue) => {
             queue.push(command);
