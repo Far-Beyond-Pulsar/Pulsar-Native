@@ -329,7 +329,9 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
 /// Wraps the skeletal_animation_plugin crate as a built-in editor provider.
 /// Opens `.skeleton`, `.skmesh` and `.animseq` files (and old `.skelanim`
 /// folders, which are converted) in the Skeleton, Skeletal Mesh and Animation
-/// Sequence editors.
+/// Sequence editors, and each higher-level animation asset (`.blendspace`,
+/// `.montage`, `.animgraph`, `.animretarget`, `.ikrig`, `.ikretarget`,
+/// `.posedb`) in its own editor.
 pub struct SkeletalAnimationBuiltinProvider;
 
 impl BuiltinEditorProvider for SkeletalAnimationBuiltinProvider {
@@ -352,11 +354,35 @@ impl BuiltinEditorProvider for SkeletalAnimationBuiltinProvider {
     fn create_editor(
         &self,
         file_path: PathBuf,
-        _editor_context: &EditorContext,
+        editor_context: &EditorContext,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        skeletal_animation_plugin::SkeletalAnimationPlugin::create_editor(file_path, window, cx)
+        let undo = editor_context.services.undo.clone();
+        skeletal_animation_plugin::SkeletalAnimationPlugin::create_editor_with_undo(
+            file_path,
+            Some(&undo),
+            window,
+            cx,
+        )
+    }
+
+    fn create_editor_for(
+        &self,
+        editor_id: &EditorId,
+        file_path: PathBuf,
+        editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let undo = editor_context.services.undo.clone();
+        skeletal_animation_plugin::SkeletalAnimationPlugin::create_editor_for(
+            editor_id.as_str(),
+            file_path,
+            Some(&undo),
+            window,
+            cx,
+        )
     }
 }
 

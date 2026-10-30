@@ -13,6 +13,192 @@
 
 use pulsar_scenedb::gpu::GpuMirrorHandle;
 use pulsar_scenedb_derive::SceneStore;
+use std::collections::HashMap;
+
+/// Maximum age, in rendered frames, for a surface sample to be consumed by
+/// physics. Query results are intentionally asynchronous; callers must reject
+/// results older than this rather than blocking the renderer for a fresh one.
+pub const WATER_QUERY_MAX_SAMPLE_AGE_FRAMES: u64 = 4;
+
+/// A body-local sparse water query point. `body_key` is a stable caller-owned
+/// key (not a SceneDB row, which can be recycled); the renderer returns it
+/// unchanged so lifecycle owners can discard samples for removed bodies.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WaterQueryPoint {
+    pub body_key: u64,
+    pub point_index: u32,
+    pub local_position: [f32; 3],
+}
+
+/// World-space water data sampled by Helio from the same rendered surface.
+/// `height` and `velocity` are in world units, and `normal` is unit length
+/// when valid. `sampled_frame` names the GPU frame that produced the result;
+/// consumers must not treat callback arrival time as sample time.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WaterSurfaceSample {
+    pub body_key: u64,
+    pub point_index: u32,
+    pub world_position: [f32; 3],
+    pub surface_height: f32,
+    pub normal: [f32; 3],
+    pub surface_velocity: [f32; 3],
+    pub sampled_frame: u64,
+    pub valid: bool,
+}
+
+impl WaterSurfaceSample {
+    /// Whether a result remains suitable for an asynchronous physics step.
+    /// A future frame or invalid/NaN sample is rejected as well.
+    pub fn is_fresh_for(self, physics_frame: u64) -> bool {
+        self.valid
+            && self.sampled_frame <= physics_frame
+            && physics_frame - self.sampled_frame <= WATER_QUERY_MAX_SAMPLE_AGE_FRAMES
+            && self.surface_height.is_finite()
+            && self.normal.iter().all(|v| v.is_finite())
+            && self.surface_velocity.iter().all(|v| v.is_finite())
+    }
+}
+
+/// Physics-side mailbox for delayed GPU samples. A renderer publishes whole
+/// frame batches; physics performs non-blocking lookups by stable body and
+/// point key. Old batches cannot overwrite newer data, and body teardown can
+/// remove all retained samples without depending on recycled SceneDB rows.
+#[derive(Default)]
+pub struct WaterQueryMailbox {
+    samples: HashMap<(u64, u32), WaterSurfaceSample>,
+    newest_frame: Option<u64>,
+}
+
+impl WaterQueryMailbox {
+    /// Publish a completed GPU readback. Reject a delayed batch if a newer
+    /// batch already arrived; duplicate keys in one batch use the last row.
+    pub fn publish(
+        &mut self,
+        sampled_frame: u64,
+        samples: impl IntoIterator<Item = WaterSurfaceSample>,
+    ) {
+        if self
+            .newest_frame
+            .is_some_and(|newest| sampled_frame < newest)
+        {
+            return;
+        }
+        // This is a whole-frame batch from Helio's complete request set. Drop
+        // all keys from this frame or any older frame before inserting it, so
+        // a body/point omitted from the new request set cannot linger as an
+        // apparently current sample. Newer asynchronous frames remain intact.
+        self.samples
+            .retain(|_, sample| sample.sampled_frame > sampled_frame);
+        for mut sample in samples {
+            if sample.sampled_frame != sampled_frame {
+                continue;
+            }
+            sample.valid &= sample.surface_height.is_finite()
+                && sample.normal.iter().all(|v| v.is_finite())
+                && sample.surface_velocity.iter().all(|v| v.is_finite())
+                && sample.world_position.iter().all(|v| v.is_finite());
+            self.samples
+                .insert((sample.body_key, sample.point_index), sample);
+        }
+        self.newest_frame = Some(
+            self.newest_frame
+                .map_or(sampled_frame, |f| f.max(sampled_frame)),
+        );
+    }
+
+    /// Fetch the latest sample only when it is valid and within the defined
+    /// staleness window. Missing, stale, future, and malformed samples return
+    /// `None`; callers never wait for readback completion.
+    pub fn get(
+        &self,
+        body_key: u64,
+        point_index: u32,
+        physics_frame: u64,
+    ) -> Option<WaterSurfaceSample> {
+        self.samples
+            .get(&(body_key, point_index))
+            .copied()
+            .filter(|sample| sample.is_fresh_for(physics_frame))
+    }
+
+    /// Remove cached samples when their opted-in body is destroyed or opts
+    /// out. This is independent of SceneDB row clearing used by hitboxes.
+    pub fn remove_body(&mut self, body_key: u64) {
+        self.samples.retain(|(key, _), _| *key != body_key);
+    }
+
+    /// Clear the mailbox when the renderer/device or scene owning readbacks
+    /// is replaced. The monotonically increasing frame fence is reset too.
+    pub fn clear(&mut self) {
+        self.samples.clear();
+        self.newest_frame = None;
+    }
+
+    pub fn newest_frame(&self) -> Option<u64> {
+        self.newest_frame
+    }
+}
+
+/// Opt-in float point parameters and the resulting force at that point.
+/// The force helper below is deliberately backend-neutral: the physics
+/// runtime can feed it samples and apply the resulting force at the authored
+/// world point when its body/force API is available.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WaterBuoyancyPoint {
+    pub displaced_volume_m3: f32,
+    pub water_density_kg_m3: f32,
+    pub linear_drag: f32,
+    pub max_submersion_depth_m: f32,
+}
+
+impl Default for WaterBuoyancyPoint {
+    fn default() -> Self {
+        Self {
+            displaced_volume_m3: 0.01,
+            // Ultra-Water's reference floaters use seawater density.
+            water_density_kg_m3: 1025.0,
+            linear_drag: 1.5,
+            max_submersion_depth_m: 1.0,
+        }
+    }
+}
+
+/// Calculate one floater's buoyancy and water-relative drag. Input point and
+/// velocity are world-space. The returned force is world-space Newtons.
+/// Points above the sampled surface receive no force; below it buoyancy grows
+/// linearly until the configured maximum depth. This helper does not inspect
+/// or infer hitbox overlap.
+pub fn water_buoyancy_force(
+    point: WaterBuoyancyPoint,
+    sample: WaterSurfaceSample,
+    world_point: [f32; 3],
+    point_velocity: [f32; 3],
+    physics_frame: u64,
+) -> Option<[f32; 3]> {
+    if !sample.is_fresh_for(physics_frame)
+        || !world_point.iter().all(|v| v.is_finite())
+        || !point_velocity.iter().all(|v| v.is_finite())
+    {
+        return None;
+    }
+    let volume = point.displaced_volume_m3.max(0.0);
+    let density = point.water_density_kg_m3.max(0.0);
+    let depth_limit = point.max_submersion_depth_m.max(0.0);
+    let depth = (sample.surface_height - world_point[1]).clamp(0.0, depth_limit);
+    if volume == 0.0 || density == 0.0 || depth == 0.0 {
+        return Some([0.0; 3]);
+    }
+
+    const GRAVITY: f32 = 9.80665;
+    let submerged_fraction = (depth / depth_limit.max(f32::MIN_POSITIVE)).clamp(0.0, 1.0);
+    let buoyancy = density * GRAVITY * volume * submerged_fraction;
+    let drag = point.linear_drag.max(0.0);
+    Some([
+        (sample.surface_velocity[0] - point_velocity[0]) * drag,
+        buoyancy + (sample.surface_velocity[1] - point_velocity[1]) * drag,
+        (sample.surface_velocity[2] - point_velocity[2]) * drag,
+    ])
+}
 
 use super::{CollisionChannel, PhysicsComponent};
 

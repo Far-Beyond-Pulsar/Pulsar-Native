@@ -58,7 +58,7 @@ pub use engine_fs::EngineFs;
 #[cfg(feature = "editor")]
 pub use file_index::{
     open_project_file_index, project_file_index_for_path, update_open_project_file_indexes,
-    FileIndexQuery, FileIndexSort, IndexedFile, ProjectFileIndex,
+    AssetDep, AssetDependent, FileIndexQuery, FileIndexSort, IndexedFile, ProjectFileIndex,
 };
 #[cfg(feature = "editor")]
 pub use user_types::{UserTypeInfo, UserTypeRegistry};

@@ -105,6 +105,28 @@ for sequences). A reimport reads those back, so each file keeps its id: an outpu
 that was moved or renamed is found again by its id and rewritten where it now is,
 a deleted one is recreated with the same id, and the material slots and preview
 meshes chosen since are kept. A static source is imported exactly as before.
+
+**Animation assets.** The rest of the animation family (`.blendspace`, `.montage`,
+`.animgraph`, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`) is defined in
+the same `skeletal_assets` crate, with typed `pulsar_reflection::AssetRef`
+markers; `engine_fs::ProjectFileIndex` records their reference edges
+(`asset_deps`) for Used By queries. The runtime (`skeletal_assets::runtime`: graph, Montages,
+notify playback tracker, root motion) is headless; `helio_component::SkeletalMeshComponent`
+owns the per-entity state, delivers notifies and Montage events, applies root motion and
+recompiles graphs when a dependency file changes. See `.agents/ANIMATION.md`.
+
+The animation editors are in `skm_editor` (`src/anim_editors/`: per-asset `*_model.rs` + `views/`,
+`notify_edit`, `bone_mask_edit`, `skeleton_masks` (the skeleton's named mask library), `skin_preview`, `pose_db_build`); the Sequence editor and its GPU
+timeline are `src/editor/` and `src/rendering/timeline/`. Shared pieces elsewhere:
+`ui_common::asset_ref_editor` (typed Skeletal Mesh / Animation Graph pickers, registered through
+the reflected property editor registry), `pulsar_reflection::asset_refs` (JSON codecs for the
+optional refs), `graphy::authored` (the authored <-> canvas conversion used by the Blueprint and
+Animation Graph editors) and `helio_component`'s `SkeletalMeshComponent` properties.
+Named bone masks live on the Skeleton asset (`skeletal_assets::bone_mask::NamedBoneMask`, migration in
+`skeletal_assets::mask_library`); state machine events, whole-skeleton physics blend and root-motion
+authority are `helio_component` / `SkeletalMeshComponent` features (see `.agents/ANIMATION.md`).
+The Helio branch for this work is `animation-phase4-clean` (animation commits plus the user's
+`helio-graph-asset` zip-tie commit on top of Helio `main`; no water changes).
 `helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
 of the loaded scene (`ConvertedScene::rig`).
 
@@ -195,7 +217,7 @@ pinned here (see "Submodule pins" below). They are not workspace members
 
 | Submodule | Path dep? | Notes |
 |---|---|---|
-| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); plus `graphy-reflection` (the only crate that knows Pulsar: `TypeResolver` and node metadata over `pulsar_reflection`); all headless, consumed as path deps. Phase 3 adds `graphy-render` (headless canvas model), `graphy-render-wgpu` (shared GPU renderer) and `graphy-gpui` (interaction engine, `GraphProfile`, GPUI canvas behind feature `gpui`; its own workspace) - see `.agents/GRAPH_CANVAS.md` |
+| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, the `authored` bridge to the `graphy-blueprint` schema, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); plus `graphy-reflection` (the only crate that knows Pulsar: `TypeResolver` and node metadata over `pulsar_reflection`); all headless, consumed as path deps. Phase 3 adds `graphy-render` (headless canvas model), `graphy-render-wgpu` (shared GPU renderer) and `graphy-gpui` (interaction engine, `GraphProfile`, GPUI canvas behind feature `gpui`; its own workspace) - see `.agents/GRAPH_CANVAS.md` |
 | `pulsar-config/` | Yes | Configuration management |
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
 | `psgc/` | No | Shader Graph Compiler (has its own workspace) |

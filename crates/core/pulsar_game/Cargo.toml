@@ -67,6 +67,7 @@ engine_backend  = { path = "../engine_backend", default-features = false, featur
 # script crates attach to make entities visible -- without this direct dep a
 # generated game's script crate could not name them.
 helio_component = { workspace = true }
+skeletal_assets = { workspace = true }
 
 [lints]
 workspace = true

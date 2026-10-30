@@ -159,6 +159,19 @@ fn handle_fs_event(
     }
 }
 
+/// The custom asset kind animation files publish their updates under.
+pub const ANIMATION_ASSET_KIND: &str = "animation";
+
+/// Files of the animation family (skeleton, sequence, blend space, Montage, graph,
+/// IK rig and retarget assets, pose database).
+fn is_animation_extension(extension: &str) -> bool {
+    [
+        "skeleton", "animseq", "blendspace", "montage", "animgraph", "ikrig", "ikretarget", "animretarget", "posedb",
+    ]
+    .iter()
+    .any(|known| extension.eq_ignore_ascii_case(known))
+}
+
 /// An image or material written on disk is an asset update: every world
 /// showing it reloads it (SceneDB#84). A shader graph folder's save is its
 /// material's update. Other kinds publish their own updates when they are
@@ -184,5 +197,20 @@ fn publish_asset_update(path: &std::path::Path) {
         let mut update = plugin_editor_api::AssetUpdated::new(kind);
         update.path = Some(path.to_path_buf());
         plugin_editor_api::publish_asset_updated(update);
+    }
+}
+
+#[cfg(test)]
+mod animation_update_tests {
+    use super::is_animation_extension;
+
+    #[test]
+    fn the_animation_family_is_recognised_by_extension_only() {
+        for extension in ["skeleton", "animseq", "blendspace", "montage", "animgraph", "ikrig", "ikretarget", "animretarget", "posedb", "ANIMSEQ"] {
+            assert!(is_animation_extension(extension), "{extension}");
+        }
+        for extension in ["png", "mat", "json", "animmontage", "anim_graph", ""] {
+            assert!(!is_animation_extension(extension), "{extension}");
+        }
     }
 }

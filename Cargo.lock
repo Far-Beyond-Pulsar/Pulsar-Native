@@ -4506,6 +4506,7 @@ dependencies = [
 name = "graphy"
 version = "0.1.0"
 dependencies = [
+ "graphy-blueprint",
  "quote",
  "rayon",
  "rustc-hash 2.1.3",
@@ -9782,6 +9783,7 @@ dependencies = [
  "pulsar_world_registry",
  "serde",
  "serde_json",
+ "skeletal_assets",
  "tempfile",
  "tracing",
  "uuid",
@@ -11910,6 +11912,11 @@ dependencies = [
  "bytemuck",
  "engine_fs",
  "gpui-ce",
+ "graphy",
+ "graphy-blueprint",
+ "graphy-gpui",
+ "graphy-render",
+ "image",
  "log",
  "naga",
  "plugin_editor_api",
@@ -11918,6 +11925,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skeletal_assets",
+ "smallvec",
  "smol",
  "tempfile",
  "tracing",
@@ -11933,9 +11941,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "engine_fs",
+ "glam 0.33.5",
+ "graphy-blueprint",
  "pulsar_reflection",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "uuid",
 ]
@@ -14196,6 +14207,7 @@ dependencies = [
  "rust-i18n-support",
  "serde",
  "serde_json",
+ "skeletal_assets",
  "smallvec",
  "smol",
  "tracing",
