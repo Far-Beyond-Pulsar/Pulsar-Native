@@ -7,8 +7,3 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
-crates/external/pulsar-reflection cf95c7951 animation Phases 1-4 reflection (local branch animation-phase4, no upstream PR yet); merge first
-crates/third-party/graphy 342121dc4 graphy::authored bridge shared by Blueprint and Animation Graph editors (local branch animation-phase4, based on graphy main 6cfaa16 with the zip-tie commits; no upstream PR yet); merge before skm_editor and blueprint_editor
-plugins/vendor/skm_editor 9997c3ad4 animation Phases 1-5 editors, assets and runtime (local branch animation-phase4, no upstream PR yet); merge after pulsar-reflection and graphy
-plugins/vendor/blueprint_editor 1af36d8da uses graphy::authored (local branch animation-phase4, no upstream PR yet); merge after graphy
-crates/renderer/helio b8ba2a57a animation Phases 1-5 component runtime (local branch animation-phase4 cut from animation-phase3-clean, no upstream PR yet); merge after skm_editor
