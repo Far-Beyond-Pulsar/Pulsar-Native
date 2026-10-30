@@ -37,7 +37,11 @@ pub(super) fn load_input_mappings(project_root: &Path) -> Vec<String> {
     let mut mappings: Vec<String> =
         engine_fs::virtual_fs::find_by_extension(project_root, MAPPING_EXTENSION)
             .into_iter()
-            .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+            .map(|found| {
+                // `find_by_extension` joins its results onto the root.
+                let relative = found.strip_prefix(project_root).unwrap_or(&found);
+                relative.to_string_lossy().replace('\\', "/")
+            })
             .collect();
     mappings.sort();
     mappings
@@ -177,7 +181,8 @@ impl WorldSettingsPanelImpl {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Explicit imports: `super::*` would pull in gpui's own `test` macro.
+    use super::{load_input_mappings, mapping_label, mapping_message, BlueprintCatalogState};
 
     #[test]
     fn only_inputmap_files_are_listed_with_project_relative_paths() {

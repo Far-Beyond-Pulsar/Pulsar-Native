@@ -2755,4 +2755,312 @@ mod roles {
         driver.run_frame(&mut world, 0.0);
         assert_eq!(names(&log), ["pad:possess"]);
     }
+
+    // ---- player input through possession -------------------------------------
+
+    use input_plugin::model::{ActionAsset, ActionRef, Asset, MappingAsset};
+    use input_plugin::PlayerInputComponent;
+    use pulsar_world_registry::pulsar_scene_model::attachments::ComponentOwner;
+
+    /// `input/Jump.inputaction` and `input/Game.inputmap` (Space -> Jump).
+    fn write_input_assets(root: &Path) {
+        std::fs::create_dir_all(root.join("input")).unwrap();
+        let jump = ActionAsset::new();
+        std::fs::write(root.join("input/Jump.inputaction"), jump.to_text()).unwrap();
+        let mut map = MappingAsset::new();
+        let category = map.categories[0].id;
+        map.add_entry(
+            category,
+            "Keyboard.Space",
+            Some(ActionRef::new(jump.id.clone(), "input/Jump.inputaction")),
+        );
+        std::fs::write(root.join("input/Game.inputmap"), map.to_text()).unwrap();
+    }
+
+    /// The Space key as the event hub numbers it.
+    fn space() -> i64 {
+        match input_plugin::keys::catalog().get("Keyboard.Space").unwrap().source {
+            input_plugin::keys::Source::Keyboard(code) => code,
+            other => panic!("not a keyboard key: {other:?}"),
+        }
+    }
+
+    /// Hero with a `Self`-scoped handler for `input::Jump.triggered`, which
+    /// logs `hero:jump`: what a character Blueprint with that event node
+    /// placed compiles to.
+    fn write_hero_that_jumps(root: &Path) {
+        let mut module = role_module("Hero", &hero_hooks());
+        module.constants.push(Constant::Str("hero:jump".into()));
+        let label = module.constants.len() as u32 - 1;
+        let handler = module.functions.len() as u32;
+        let mut jump = function(
+            "on_jump",
+            vec![],
+            vec![Type::Str],
+            vec![
+                Instr::Const { dst: 0, index: label },
+                Instr::CallNative { import: 0, args: vec![0], dst: None },
+                Instr::Return { value: None },
+            ],
+        );
+        jump.exported = false;
+        module.functions.push(jump);
+        module.subscriptions.push(Subscription {
+            event: EventRef::Name("input::Jump.triggered".into()),
+            handler,
+            scope: SubscriptionScope::Self_,
+        });
+        write_class(root, "Hero", "Hero-guid", Some(module), None);
+    }
+
+    fn input_project() -> tempfile::TempDir {
+        let project = role_project();
+        write_input_assets(project.path());
+        write_hero_that_jumps(project.path());
+        project
+    }
+
+    fn roles_with_input(mapping: Option<&str>) -> WorldRoles {
+        let mut selection = selection(&[
+            (EngineRole::GameMode, "Mode"),
+            (EngineRole::GameState, "State"),
+            (EngineRole::PlayerController, "Pad"),
+            (EngineRole::PlayerCharacter, "Hero"),
+        ]);
+        selection.set_input_mapping(mapping.map(str::to_owned));
+        WorldRoles::resolve(&selection, None)
+    }
+
+    /// Every `PlayerInputComponent` as `(owner, mapping)`.
+    fn input_components(game: &TickLoop) -> Vec<(Entity, String)> {
+        game.scene_store
+            .read()
+            .world
+            .query::<(&PlayerInputComponent, &ComponentOwner)>()
+            .map(|(_, (component, owner))| (owner.entity(), component.mapping.clone()))
+            .collect()
+    }
+
+    fn hero(game: &TickLoop) -> Entity {
+        game.scripts
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .role_entity(EngineRole::PlayerCharacter)
+            .expect("the character has an entity")
+    }
+
+    fn possess(project: &Path, mapping: Option<&str>) -> (TickLoop, Log) {
+        let level = level(project, &[]);
+        let (mut game, log) = standalone(project, &level);
+        game.set_world_roles(roles_with_input(mapping));
+        game.tick_once();
+        game.tick_once();
+        (game, log)
+    }
+
+    fn count(log: &Log, name: &str) -> usize {
+        events(log).iter().filter(|(logged, _)| logged == name).count()
+    }
+
+    fn end_possession(game: &TickLoop) -> crate::scripting::DriverReport {
+        let mut report = crate::scripting::DriverReport::default();
+        let mut driver = game.scripts.as_ref().unwrap().lock().unwrap();
+        driver.end_possession(&mut game.scene_store.write().world, &mut report);
+        report
+    }
+
+    #[test]
+    fn possession_attaches_the_controllers_mapping_to_the_pawn_and_its_blueprint_hears_the_player() {
+        let project = input_project();
+        let (mut game, log) = possess(project.path(), Some("input/Game.inputmap"));
+        let pawn = hero(&game);
+
+        // The input runtime is linked into the game and ticks this component.
+        assert!(
+            pulsar_world_registry::component_id_for_class(input_plugin::PLAYER_INPUT_CLASS_NAME)
+                .is_some(),
+            "the input plugin's component is registered in the game runtime"
+        );
+        assert_eq!(
+            input_components(&game),
+            [(pawn, "input/Game.inputmap".to_owned())],
+            "one input component, on the pawn, carrying the mapping"
+        );
+        assert_eq!(
+            game.scripts.as_ref().unwrap().lock().unwrap().possessed_pawn(),
+            Some(pawn)
+        );
+        assert!(game.possession_gate().is_possessed());
+
+        // The mapping goes live on the next frame; then Space reaches the
+        // pawn's `Self`-scoped handler, and nothing else's.
+        game.tick_once();
+        game.publish_input(pulsar_events::builtin::KeyDown { key: space() });
+        game.tick_once();
+        let stable = game.scene_store.read().world.stable_id_of(pawn).unwrap().to_owned();
+        assert_eq!(
+            events(&log)
+                .into_iter()
+                .filter(|(name, _)| name == "hero:jump")
+                .collect::<Vec<_>>(),
+            [ev("hero:jump", &stable)],
+            "the player's key fired the pawn's handler, once"
+        );
+        game.publish_input(pulsar_events::builtin::KeyUp { key: space() });
+        game.tick_once();
+        game.tick_once();
+        assert_eq!(count(&log, "hero:jump"), 1, "released, not pressed again");
+    }
+
+    #[test]
+    fn unpossessing_detaches_the_input_and_tells_both_sides() {
+        let project = input_project();
+        let (mut game, log) = possess(project.path(), Some("input/Game.inputmap"));
+        game.tick_once();
+        let before = names(&log).len();
+
+        let report = end_possession(&game);
+        assert!(report.failures.is_empty() && report.script_errors.is_empty());
+        assert_eq!(
+            names(&log)[before..],
+            ["pad:unpossess", "hero:unpossessed"],
+            "the controller lets go, then the pawn hears it"
+        );
+        assert!(input_components(&game).is_empty(), "the component left the pawn");
+        assert!(!game.possession_gate().is_possessed());
+        assert_eq!(game.scripts.as_ref().unwrap().lock().unwrap().possessed_pawn(), None);
+
+        // Nothing is routed any more, and ending again says nothing twice.
+        game.tick_once();
+        game.publish_input(pulsar_events::builtin::KeyDown { key: space() });
+        game.tick_once();
+        assert_eq!(count(&log, "hero:jump"), 0);
+        end_possession(&game);
+        assert_eq!(count(&log, "pad:unpossess"), 1);
+    }
+
+    #[test]
+    fn the_controller_hears_on_input_each_frame_only_while_possessing() {
+        let project = input_project();
+        let level = level(project.path(), &[]);
+        let (mut game, log) = standalone(project.path(), &level);
+        game.set_world_roles(roles_with_input(Some("input/Game.inputmap")));
+        game.tick_once();
+        assert_eq!(count(&log, "pad:input"), 0, "nothing is possessed yet");
+        game.tick_once();
+        assert_eq!(count(&log, "pad:possess"), 1);
+        assert_eq!(count(&log, "pad:input"), 0, "the frame possession began");
+        for frame in 1..=3 {
+            game.tick_once();
+            assert_eq!(count(&log, "pad:input"), frame);
+        }
+        end_possession(&game);
+        game.tick_once();
+        game.tick_once();
+        assert_eq!(count(&log, "pad:input"), 3, "unpossessed: no more");
+    }
+
+    /// A controller whose module places no `on_input` node is told once, not
+    /// every frame.
+    #[test]
+    fn a_controller_without_an_on_input_handler_does_not_spam() {
+        let project = input_project();
+        write_role_class(
+            project.path(),
+            "Lazy",
+            &[PLAYER_CONTROLLER_TRAIT_ID],
+            &[
+                ("on_possess", int(), "lazy:possess"),
+                ("on_unpossess", vec![], "lazy:unpossess"),
+            ],
+        );
+        let (mut driver, log) = driver_over(project.path());
+        driver.set_world_roles(WorldRoles::resolve(
+            &selection(&[
+                (EngineRole::PlayerController, "Lazy"),
+                (EngineRole::PlayerCharacter, "Hero"),
+            ]),
+            None,
+        ));
+        let mut world = World::new();
+        let mut failures = Vec::new();
+        for _ in 0..8 {
+            failures.extend(driver.run_frame(&mut world, 0.016).failures);
+        }
+        assert!(names(&log).contains(&"lazy:possess".to_owned()));
+        let about_input: Vec<_> = failures.iter().filter(|f| f.contains("on_input")).collect();
+        assert_eq!(about_input.len(), 1, "{failures:?}");
+    }
+
+    #[test]
+    fn a_level_without_a_mapping_possesses_without_input_and_without_failing() {
+        let project = input_project();
+        let (game, log) = possess(project.path(), None);
+        assert!(input_components(&game).is_empty());
+        assert!(game.possession_gate().is_possessed(), "the pawn is still possessed");
+        assert_eq!(count(&log, "hero:possessed"), 1);
+    }
+
+    #[test]
+    fn ending_the_game_ends_the_possession_then_the_game_before_scripts_end() {
+        let project = input_project();
+        let (mut game, log) = possess(project.path(), Some("input/Game.inputmap"));
+        game.tick_once();
+        let before = names(&log).len();
+        game.end_scripts();
+        assert_eq!(
+            names(&log)[before..],
+            ["pad:unpossess", "hero:unpossessed", "mode:end"],
+            "possession ends, then the game; each once"
+        );
+        assert!(input_components(&game).is_empty());
+        assert!(!game.possession_gate().is_possessed());
+        assert!(role_entities(&game).is_empty());
+        game.end_scripts();
+        assert_eq!(names(&log).len(), before + 3, "a second shutdown calls nothing");
+    }
+
+    #[test]
+    fn a_destroyed_pawn_ends_its_possession() {
+        let project = input_project();
+        let (mut game, log) = possess(project.path(), Some("input/Game.inputmap"));
+        game.tick_once();
+        let pawn = hero(&game);
+        game.scene_store.write().world.despawn_tree(pawn);
+        game.tick_once();
+        assert_eq!(count(&log, "pad:unpossess"), 1);
+        assert_eq!(count(&log, "hero:unpossessed"), 0, "the pawn is gone");
+        assert!(!game.possession_gate().is_possessed());
+        game.tick_once();
+        assert_eq!(count(&log, "pad:input"), 1, "only the frame before it was lost");
+    }
+
+    /// A session that never shut down leaves its input component on the pawn
+    /// it re-binds; the next possession replaces it instead of doubling it.
+    #[test]
+    fn a_reload_does_not_leave_two_input_components_on_the_pawn() {
+        let project = input_project();
+        let level = level(project.path(), &[]);
+        let (mut first, _) = pie(project.path(), &level);
+        first.set_world_roles(roles_with_input(Some("input/Game.inputmap")));
+        first.tick_once();
+        first.tick_once();
+        assert_eq!(input_components(&first).len(), 1);
+
+        let mut second = TickLoop::with_scene_store(
+            Arc::clone(&first.scene_store),
+            TickMode::default(),
+            0,
+        );
+        second.begin_script_reload();
+        install_log(&mut second.enable_scripting(project.path()).lock().unwrap());
+        second.set_world_roles(roles_with_input(Some("input/Game.inputmap")));
+        second.tick_once();
+        second.tick_once();
+        assert_eq!(input_components(&second).len(), 1, "replaced, not doubled");
+        second.end_scripts();
+        assert!(input_components(&second).is_empty());
+    }
 }

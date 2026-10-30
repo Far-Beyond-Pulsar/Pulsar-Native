@@ -98,6 +98,13 @@ pub(crate) fn detach(world: &mut World, instance: Entity) -> bool {
     attachments::detach(world, instance)
 }
 
+/// The game over `world` ended: release the input session (its listeners on
+/// the hub and its controller thread), so a stopped session leaves nothing
+/// behind.
+pub(crate) fn end_session(world: &World) {
+    input_plugin::runtime::end_session(world);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
