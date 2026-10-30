@@ -68,7 +68,9 @@ pub use file_index::{
 pub use user_types::{UserTypeInfo, UserTypeRegistry};
 
 // Re-export provider types
-pub use blueprint_trait_index::{BlueprintTraitEntry, BlueprintTraitIndex, TRAIT_ASSET_KIND};
+pub use blueprint_trait_index::{
+    declared_traits, BlueprintTraitEntry, BlueprintTraitIndex, TRAIT_ASSET_KIND,
+};
 #[cfg(feature = "editor")]
 pub use trait_db::scope_key as trait_scope_key;
 pub use trait_db::{Implementation, TraitDb};

@@ -29,6 +29,7 @@ pub mod commands;
 pub mod driver;
 pub mod events;
 pub mod export;
+mod traits;
 #[cfg(test)]
 mod tests;
 
@@ -39,6 +40,7 @@ pub use driver::{
     SCRIPTING_CONFIG_FILE,
 };
 pub use events::{ScriptEventBridge, ScriptEvents};
+pub use traits::TraitCheck;
 
 // Scene-object lookup for scripts. The result is `entity::none()` when no
 // object matches; component references built from it resolve to nothing.

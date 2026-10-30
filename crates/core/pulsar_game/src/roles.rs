@@ -3,36 +3,39 @@
 //!
 //! A level names, in its world settings, the Blueprint that plays each role
 //! (`engine_fs::world_roles`). The loop resolves those names when the level
-//! is loaded and keeps the result for the spawn step. Resolving only reads:
-//! nothing here creates an object.
+//! is loaded and keeps the result for the session start. Resolving only
+//! reads: nothing here creates an object.
 //!
-//! # Where spawning goes
+//! # Role entities
 //!
-//! Read [`TickLoop::world_roles`] from the script phase, before the first
-//! `reconcile` of the session starts the level's scripts:
+//! When the session's first script phase runs, `ScriptDriver::start_roles`
+//! (`scripting/driver.rs`) spawns each usable binding as an **entity of its
+//! class**, through the same world-command path scripts use for
+//! `world::spawn`. A role entity is a session object: it is never part of the
+//! level's data, so the level format and the editor's save path know nothing
+//! of it. The driver tracks the entities it owns explicitly and despawns them
+//! when the session ends (`ScriptDriver::end_play_all`), which matters under
+//! Play-in-Editor, where the session adopts the editor's world.
 //!
-//! - game mode and game state are one-per-level: start them as global
-//!   script instances in `ScriptDriver::start_globals`
-//!   (`scripting/driver.rs`), resolving each binding's
-//!   [`class_name`](engine_fs::world_roles::RoleBinding::class_name) through
-//!   `resolve_class_ref` like a `global_scripts` entry. Call the Blueprint's
-//!   `on_game_start` / `on_init` (the `GameMode` / `GameState` trait
-//!   methods) when it starts;
-//! - player controller and player character are per player: when
-//!   `GameMode.on_player_joined` fires, spawn the character with the same
-//!   command path scripts use for `world::spawn` (`ScriptDriver::apply_commands`),
-//!   start the controller as an instance without an object, then call
-//!   `PlayerController.on_possess` and `PlayerCharacter.on_possessed`.
+//! Each is stamped with [`RoleEntity`] so a session that finds one left in a
+//! world it adopts (a hot reload that did not stop the old session cleanly)
+//! re-binds it rather than spawning a second.
 //!
-//! A binding is spawnable when [`usable`](engine_fs::world_roles::WorldRoles::usable)
-//! returns it; anything else is reported by
-//! [`diagnostics`](engine_fs::world_roles::WorldRoles::diagnostics).
+//! The roles' trait methods are called through the trait
+//! (`pulsar.GameMode`, ...), see `scripting/traits.rs`.
 
 use std::path::Path;
 
-use engine_fs::world_roles::WorldRoles;
+use engine_fs::world_roles::{EngineRole, WorldRoles};
 
 use crate::tick::TickLoop;
+
+/// Marks the entity a session spawned for an engine role. Never saved:
+/// role entities are not level data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RoleEntity {
+    pub role: EngineRole,
+}
 
 impl TickLoop {
     /// The Blueprints the level assigned to the engine roles; empty until

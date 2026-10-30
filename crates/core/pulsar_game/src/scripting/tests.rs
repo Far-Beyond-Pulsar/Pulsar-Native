@@ -2181,13 +2181,23 @@ fn json_component_references_resolve_by_stable_id() {
 
 mod roles {
     use super::*;
+    use crate::roles::RoleEntity;
+    use crate::scripting::traits::HookOutcome;
+    use engine_fs::builtin_traits::{
+        GAME_MODE_TRAIT_ID, GAME_STATE_TRAIT_ID, PLAYER_CHARACTER_TRAIT_ID,
+        PLAYER_CONTROLLER_TRAIT_ID,
+    };
     use engine_fs::world_roles::{EngineRole, RoleSelection, WorldRoles};
+    use pulsar_events::entity_channel;
+    use pulsar_events::gamma::DynValue;
     use pulsar_script_vm::{EventDecl, EventField, EventRef, Subscription, SubscriptionScope};
+
+    type Hook<'a> = (&'a str, Vec<Type>, &'a str);
 
     /// A role class: one event `<Class>.<method>` per hook, each handled by a
     /// function that logs `label`. This is what compiling a Blueprint with
     /// trait event nodes placed produces.
-    fn role_module(class: &str, hooks: &[(&str, Vec<Type>, &str)]) -> Module {
+    fn role_module(class: &str, hooks: &[Hook<'_>]) -> Module {
         let mut m = Module::new(class);
         m.imports = vec![import("test::event", vec![Type::Str], Type::Unit)];
         for (index, (method, params, label)) in hooks.iter().enumerate() {
@@ -2222,6 +2232,81 @@ mod roles {
         m
     }
 
+    /// A role class that declares `traits` (ids), like a saved Blueprint.
+    fn write_role_class(root: &Path, class: &str, traits: &[&str], hooks: &[Hook<'_>]) {
+        write_class(
+            root,
+            class,
+            &format!("{class}-guid"),
+            Some(role_module(class, hooks)),
+            None,
+        );
+        std::fs::write(
+            root.join("src/classes").join(class).join("graph_save.json"),
+            json!({
+                "format_version": 1, "main_graph": {}, "variables": [],
+                "blueprint_metadata": { "implemented_trait_ids": traits },
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    fn int() -> Vec<Type> {
+        vec![Type::Int]
+    }
+
+    /// Mode, State, Pad (controller) and Hero (character), each providing the
+    /// whole of its role trait.
+    fn role_project() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_role_class(
+            root,
+            "Mode",
+            &[GAME_MODE_TRAIT_ID],
+            &[
+                ("on_game_start", vec![], "mode:start"),
+                ("on_player_joined", int(), "mode:joined"),
+                ("on_game_end", vec![], "mode:end"),
+            ],
+        );
+        write_role_class(
+            root,
+            "State",
+            &[GAME_STATE_TRAIT_ID],
+            &[
+                ("on_init", vec![], "state:init"),
+                ("on_player_added", int(), "state:added"),
+                ("on_player_removed", int(), "state:removed"),
+            ],
+        );
+        write_role_class(
+            root,
+            "Pad",
+            &[PLAYER_CONTROLLER_TRAIT_ID],
+            &[
+                ("on_possess", int(), "pad:possess"),
+                ("on_unpossess", vec![], "pad:unpossess"),
+                ("on_input", vec![Type::Float], "pad:input"),
+            ],
+        );
+        write_role_class(root, "Hero", &[PLAYER_CHARACTER_TRAIT_ID], &hero_hooks());
+        // Declares nothing.
+        write_role_class(root, "Plain", &[], &[]);
+        // Has no Blueprint file to read, as in content shipped without one.
+        write_class(root, "Opaque", "Opaque-guid", Some(role_module("Opaque", &[])), None);
+        dir
+    }
+
+    fn hero_hooks() -> Vec<Hook<'static>> {
+        vec![
+            ("on_spawned", vec![], "hero:spawned"),
+            ("on_possessed", int(), "hero:possessed"),
+            ("on_unpossessed", vec![], "hero:unpossessed"),
+        ]
+    }
+
     fn selection(pairs: &[(EngineRole, &str)]) -> RoleSelection {
         let mut selection = RoleSelection::default();
         for (role, class) in pairs {
@@ -2230,25 +2315,8 @@ mod roles {
         selection
     }
 
-    fn names(log: &Log) -> Vec<String> {
-        events(log).into_iter().map(|(name, _)| name).collect()
-    }
-
-    #[test]
-    fn selected_role_blueprints_start_in_order_and_their_trait_events_run() {
-        let dir = tempfile::tempdir().unwrap();
-        let int = || vec![Type::Int];
-        for (class, hooks) in [
-            ("Mode", vec![("on_game_start", vec![], "mode:start"), ("on_player_joined", int(), "mode:joined")]),
-            ("State", vec![("on_init", vec![], "state:init"), ("on_player_added", int(), "state:added")]),
-            ("Pad", vec![("on_possess", int(), "pad:possess")]),
-            ("Hero", vec![("on_spawned", vec![], "hero:spawned"), ("on_possessed", int(), "hero:possessed")]),
-        ] {
-            write_class(dir.path(), class, &format!("{class}-guid"), Some(role_module(class, &hooks)), None);
-        }
-        let level = level(dir.path(), &[]);
-        let (mut game, log) = standalone(dir.path(), &level);
-        game.set_world_roles(WorldRoles::resolve(
+    fn all_roles() -> WorldRoles {
+        WorldRoles::resolve(
             &selection(&[
                 (EngineRole::GameMode, "Mode"),
                 (EngineRole::GameState, "State"),
@@ -2256,7 +2324,27 @@ mod roles {
                 (EngineRole::PlayerCharacter, "Hero"),
             ]),
             None,
-        ));
+        )
+    }
+
+    fn names(log: &Log) -> Vec<String> {
+        events(log).into_iter().map(|(name, _)| name).collect()
+    }
+
+    fn marked(game: &TickLoop) -> usize {
+        game.scene_store.read().world.query::<&RoleEntity>().count()
+    }
+
+    fn role_entities(game: &TickLoop) -> Vec<(EngineRole, Entity)> {
+        game.scripts.as_ref().unwrap().lock().unwrap().role_entities()
+    }
+
+    #[test]
+    fn selected_role_blueprints_start_in_order_and_their_trait_events_run() {
+        let project = role_project();
+        let level = level(project.path(), &[]);
+        let (mut game, log) = standalone(project.path(), &level);
+        game.set_world_roles(all_roles());
         game.tick_once();
         assert_eq!(
             names(&log),
@@ -2272,30 +2360,390 @@ mod roles {
         // Hooks run once.
         game.tick_once();
         assert_eq!(names(&log).len(), 7);
+
+        // Every role is an entity of its class, in spawn order.
+        let spawned = role_entities(&game);
+        assert_eq!(
+            spawned.iter().map(|(role, _)| *role).collect::<Vec<_>>(),
+            [
+                EngineRole::GameMode,
+                EngineRole::GameState,
+                EngineRole::PlayerController,
+                EngineRole::PlayerCharacter
+            ]
+        );
+        let mut driver = game.scripts.as_ref().unwrap().lock().unwrap();
+        let store = game.scene_store.read();
+        for (role, entity) in &spawned {
+            assert!(driver.instance_of(*entity).is_some(), "{role:?} runs a script");
+            assert!(
+                driver.entity_implements(&store.world, *entity, role.spec().trait_id),
+                "{role:?} implements its trait"
+            );
+        }
+        assert!(
+            !driver.entity_implements(&store.world, spawned[0].1, PLAYER_CHARACTER_TRAIT_ID),
+            "the game mode is not a character"
+        );
     }
 
     #[test]
     fn unset_roles_do_nothing_and_a_missing_class_is_a_failure_not_a_panic() {
-        let dir = tempfile::tempdir().unwrap();
-        write_class(
-            dir.path(),
-            "Mode",
-            "Mode-guid",
-            Some(role_module("Mode", &[("on_game_start", vec![], "mode:start")])),
-            None,
-        );
-        let level = level(dir.path(), &[]);
-        let (mut game, log) = standalone(dir.path(), &level);
+        let project = role_project();
+        let level = level(project.path(), &[]);
+        let (mut game, log) = standalone(project.path(), &level);
         game.set_world_roles(WorldRoles::resolve(
             &selection(&[(EngineRole::GameMode, "Mode"), (EngineRole::GameState, "Ghost")]),
             None,
         ));
         game.tick_once();
-        assert_eq!(names(&log), ["mode:start"]);
+        assert_eq!(names(&log), ["mode:start", "mode:joined"]);
+        assert_eq!(
+            role_entities(&game)
+                .iter()
+                .map(|(role, _)| *role)
+                .collect::<Vec<_>>(),
+            [EngineRole::GameMode]
+        );
 
-        // No roles at all: nothing runs.
-        let (mut empty, log) = standalone(dir.path(), &level);
+        // No roles at all: nothing runs and nothing is spawned.
+        let (mut empty, log) = standalone(project.path(), &level);
         empty.tick_once();
         assert!(names(&log).is_empty());
+        assert!(role_entities(&empty).is_empty());
+        assert_eq!(marked(&empty), 0);
+    }
+
+    /// The controller is an entity, so a `Self`-scoped handler hears events
+    /// published on its own channel, which an unbound instance never could.
+    #[test]
+    fn the_controller_has_an_entity_and_its_self_scoped_handler_fires() {
+        let project = role_project();
+        let level = level(project.path(), &[]);
+        let (mut game, log) = standalone(project.path(), &level);
+        game.set_world_roles(all_roles());
+        game.tick_once();
+        game.tick_once();
+        let before = names(&log).len();
+
+        let controller = game
+            .scripts
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .role_entity(EngineRole::PlayerController)
+            .expect("the controller has an entity");
+        let stable = game
+            .scene_store
+            .read()
+            .world
+            .stable_id_of(controller)
+            .unwrap()
+            .to_owned();
+        {
+            let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+            assert_eq!(driver.entity_of_instance(driver.instance_of(controller).unwrap()), Some(controller));
+        }
+
+        // Another entity's channel does not reach it; its own does.
+        let hero = role_entities(&game)[3].1;
+        game.events
+            .publish_named(entity_channel(hero.bits()), "Pad.on_possess", vec![DynValue::I64(7)])
+            .unwrap();
+        game.events
+            .publish_named(
+                entity_channel(controller.bits()),
+                "Pad.on_possess",
+                vec![DynValue::I64(7)],
+            )
+            .unwrap();
+        game.tick_once();
+        game.tick_once();
+        let log = events(&log);
+        assert_eq!(log.len(), before + 1, "exactly the controller's handler ran");
+        assert_eq!(log[before], ev("pad:possess", &stable));
+    }
+
+    /// Play-in-Editor adopts the editor's world: stopping must leave the role
+    /// entities out of it, and playing again starts fresh.
+    #[test]
+    fn stopping_leaves_no_role_entities_in_the_shared_world() {
+        let project = role_project();
+        let level = level(project.path(), &[("a", None, Some((MINION, "Minion")))]);
+        write_class(project.path(), "Minion", MINION, Some(minion_module()), None);
+        let (mut game, _) = pie(project.path(), &level);
+        game.set_world_roles(all_roles());
+        game.tick_once();
+        game.tick_once();
+        let spawned = role_entities(&game);
+        assert_eq!(spawned.len(), 4);
+        assert_eq!(marked(&game), 4, "stamped for a later session to find");
+        let level_objects = game.scene_store.read().world.entity_for("a").unwrap();
+
+        game.end_scripts();
+        {
+            let store = game.scene_store.read();
+            assert_eq!(store.world.query::<&RoleEntity>().count(), 0);
+            for (role, entity) in &spawned {
+                assert!(!store.world.is_alive(*entity), "{role:?} is gone");
+            }
+            assert!(store.world.is_alive(level_objects), "the level is untouched");
+        }
+        assert!(role_entities(&game).is_empty());
+
+        // The next session over the same world spawns its own four.
+        let mut again = TickLoop::with_scene_store(
+            Arc::clone(&game.scene_store),
+            TickMode::default(),
+            0,
+        );
+        let log = install_log(&mut again.enable_scripting(project.path()).lock().unwrap());
+        again.set_world_roles(all_roles());
+        again.tick_once();
+        again.tick_once();
+        assert_eq!(marked(&again), 4);
+        assert_eq!(
+            names(&log).iter().filter(|n| n.contains(':')).count(),
+            7,
+            "hooks ran again"
+        );
+        again.end_scripts();
+        assert_eq!(marked(&again), 0);
+    }
+
+    /// A reload session over a world still holding the previous session's
+    /// role entities (it never stopped) re-binds them: no duplicates.
+    #[test]
+    fn a_reload_rebinds_the_role_entities_instead_of_duplicating_them() {
+        let project = role_project();
+        let level = level(project.path(), &[]);
+        let (mut first, _) = pie(project.path(), &level);
+        first.set_world_roles(all_roles());
+        first.tick_once();
+        first.tick_once();
+        let before = role_entities(&first);
+        assert_eq!(marked(&first), 4);
+
+        let mut second = TickLoop::with_scene_store(
+            Arc::clone(&first.scene_store),
+            TickMode::default(),
+            0,
+        );
+        second.begin_script_reload();
+        let log = install_log(&mut second.enable_scripting(project.path()).lock().unwrap());
+        second.set_world_roles(all_roles());
+        second.tick_once();
+        second.tick_once();
+        assert_eq!(marked(&second), 4, "the same four, not eight");
+        assert_eq!(role_entities(&second), before, "the entities were re-bound");
+        // The fresh session's scripts run on them.
+        assert_eq!(names(&log).len(), 7);
+
+        // A leftover of a role the level no longer assigns is removed.
+        let mut third = TickLoop::with_scene_store(
+            Arc::clone(&first.scene_store),
+            TickMode::default(),
+            0,
+        );
+        third.enable_scripting(project.path());
+        third.set_world_roles(WorldRoles::resolve(
+            &selection(&[(EngineRole::GameMode, "Mode")]),
+            None,
+        ));
+        third.tick_once();
+        assert_eq!(marked(&third), 1);
+    }
+
+    fn custom_trait(root: &Path) {
+        let dir = root.join("types/traits");
+        std::fs::create_dir_all(&dir).unwrap();
+        let method = |name: &str, default: bool| {
+            let mut m = json!({ "name": name, "signature": { "params": [] } });
+            if default {
+                m["defaultBody"] = json!("{}");
+            }
+            m
+        };
+        std::fs::write(
+            dir.join("pawn.trait.json"),
+            json!({
+                "schemaVersion": 1, "typeKind": "trait", "name": "Pawn", "displayName": "Pawn",
+                "id": "test.pawn", "supertraits": [PLAYER_CHARACTER_TRAIT_ID],
+                "methods": [method("on_ping", true), method("on_pong", false)],
+                "meta": {},
+            })
+            .to_string(),
+        )
+        .unwrap();
+        engine_fs::BlueprintTraitIndex::rebuild(root).unwrap();
+    }
+
+    fn driver_over(root: &Path) -> (ScriptDriver, Log) {
+        let mut driver = ScriptDriver::with_parts(
+            crate::scripting::new_runtime(),
+            root,
+            ClassRegistry::scan(root),
+            Default::default(),
+        );
+        let log = install_log(&mut driver);
+        (driver, log)
+    }
+
+    #[test]
+    fn the_trait_query_is_true_for_an_implementing_class_and_false_otherwise() {
+        let project = role_project();
+        let mut hero = hero_hooks();
+        hero.push(("on_pong", vec![], "knight:pong"));
+        write_role_class(project.path(), "Knight", &["test.pawn"], &hero);
+        custom_trait(project.path());
+
+        let (mut driver, _) = driver_over(project.path());
+        // By class: a name or a GUID, a trait by id.
+        assert!(driver.class_implements("Hero", PLAYER_CHARACTER_TRAIT_ID));
+        assert!(driver.class_implements("Hero-guid", PLAYER_CHARACTER_TRAIT_ID));
+        assert!(!driver.class_implements("Hero", GAME_MODE_TRAIT_ID));
+        assert!(!driver.class_implements("Plain", PLAYER_CHARACTER_TRAIT_ID), "declares nothing");
+        assert!(!driver.class_implements("Ghost", PLAYER_CHARACTER_TRAIT_ID), "no such class");
+        assert!(!driver.class_implements("Hero", "no.such.trait"));
+        // Supertraits count: Knight declares only `Pawn`.
+        assert!(driver.class_implements("Knight", "test.pawn"));
+        assert!(driver.class_implements("Knight", PLAYER_CHARACTER_TRAIT_ID));
+        assert!(!driver.class_implements("Knight", GAME_MODE_TRAIT_ID));
+        assert!(!driver.class_implements("Hero", "test.pawn"));
+
+        // By entity: through its ClassInstance.
+        let mut scene = engine_backend::scene::new_scene();
+        let world = &mut scene.world;
+        let def = ClassRegistry::scan(project.path())
+            .by_name("Hero")
+            .unwrap()
+            .load_definition()
+            .unwrap();
+        let hero_entity = pulsar_class::world::instantiate_class(
+            world,
+            &def,
+            ClassInstance::default(),
+            SpawnObject::new("Hero").with_id("hero"),
+        )
+        .unwrap()
+        .root();
+        assert!(driver.entity_implements(world, hero_entity, PLAYER_CHARACTER_TRAIT_ID));
+        assert!(!driver.entity_implements(world, hero_entity, PLAYER_CONTROLLER_TRAIT_ID));
+        let bare = world.spawn();
+        assert!(!driver.entity_implements(world, bare, PLAYER_CHARACTER_TRAIT_ID));
+    }
+
+    /// Hooks resolve through the trait, supertraits included, and tell an
+    /// optional method nobody placed a node for from a broken contract.
+    #[test]
+    fn hooks_dispatch_through_the_trait_and_violations_are_reported() {
+        let project = role_project();
+        // Knight extends PlayerCharacter and provides `on_pong` but not the
+        // optional `on_ping`; Squire forgot the required `on_pong`.
+        let mut knight = hero_hooks();
+        knight.push(("on_pong", vec![], "knight:pong"));
+        write_role_class(project.path(), "Knight", &["test.pawn"], &knight);
+        write_role_class(project.path(), "Squire", &["test.pawn"], &hero_hooks());
+        // Declares the trait but lacks `on_possessed`.
+        let lacking: Vec<Hook<'_>> = hero_hooks()
+            .into_iter()
+            .filter(|(method, ..)| *method != "on_possessed")
+            .collect();
+        write_role_class(project.path(), "Lacking", &[PLAYER_CHARACTER_TRAIT_ID], &lacking);
+        custom_trait(project.path());
+
+        let (mut driver, log) = driver_over(project.path());
+        driver.set_world_roles(WorldRoles::resolve(
+            &selection(&[(EngineRole::PlayerCharacter, "Knight")]),
+            None,
+        ));
+        let mut world = World::new();
+        let mut report = driver.run_frame(&mut world, 0.0);
+        report.failures.extend(driver.run_frame(&mut world, 0.0).failures);
+        // The role method reached the Knight through the supertrait.
+        assert_eq!(names(&log), ["hero:spawned", "hero:possessed"]);
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+
+        let knight = driver.role_entity(EngineRole::PlayerCharacter).unwrap();
+        let mut report = crate::scripting::DriverReport::default();
+        let mut call = |driver: &mut ScriptDriver, method: &str, report: &mut _| {
+            driver.call_trait_hook(&mut world, knight, "test.pawn", method, &[], report)
+        };
+        assert_eq!(call(&mut driver, "on_pong", &mut report), HookOutcome::Called);
+        assert_eq!(
+            call(&mut driver, "on_ping", &mut report),
+            HookOutcome::NotHandled,
+            "optional, no node placed"
+        );
+        assert_eq!(
+            call(&mut driver, "on_nothing", &mut report),
+            HookOutcome::Violation,
+            "not a method of the trait"
+        );
+        assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
+        assert!(report.failures[0].contains("on_nothing"));
+        assert_eq!(names(&log).last().unwrap(), "knight:pong");
+
+        // A class that breaks the contract is reported, once, by name.
+        let (mut driver, log) = driver_over(project.path());
+        driver.set_world_roles(WorldRoles::resolve(
+            &selection(&[(EngineRole::PlayerCharacter, "Lacking")]),
+            None,
+        ));
+        let mut world = World::new();
+        let mut failures = driver.run_frame(&mut world, 0.0).failures;
+        failures.extend(driver.run_frame(&mut world, 0.0).failures);
+        failures.extend(driver.run_frame(&mut world, 0.0).failures);
+        assert_eq!(names(&log), ["hero:spawned"], "the handlers it has still run");
+        assert_eq!(failures.len(), 1, "{failures:?}");
+        assert!(failures[0].contains("Lacking") && failures[0].contains("on_possessed"));
+
+        // Squire declares `Pawn` and lacks the required `on_pong`.
+        let (mut driver, _) = driver_over(project.path());
+        driver.set_world_roles(WorldRoles::resolve(
+            &selection(&[(EngineRole::PlayerCharacter, "Squire")]),
+            None,
+        ));
+        let mut world = World::new();
+        let mut failures = driver.run_frame(&mut world, 0.0).failures;
+        failures.extend(driver.run_frame(&mut world, 0.0).failures);
+        assert_eq!(failures.len(), 1, "{failures:?}");
+        assert!(failures[0].contains("Squire") && failures[0].contains("on_pong"));
+    }
+
+    /// A pawn that does not implement the character trait is not possessed.
+    #[test]
+    fn possession_requires_the_player_character_trait() {
+        let project = role_project();
+        let (mut driver, log) = driver_over(project.path());
+        // Plain is selected as the character but declares no traits.
+        driver.set_world_roles(WorldRoles::resolve(
+            &selection(&[
+                (EngineRole::PlayerController, "Pad"),
+                (EngineRole::PlayerCharacter, "Plain"),
+            ]),
+            None,
+        ));
+        let mut world = World::new();
+        let mut failures = driver.run_frame(&mut world, 0.0).failures;
+        failures.extend(driver.run_frame(&mut world, 0.0).failures);
+        assert!(names(&log).is_empty(), "no possession: {:?}", names(&log));
+        assert!(failures.iter().any(|f| f.contains("possession")), "{failures:?}");
+
+        // A class whose Blueprint cannot be read is not judged: the level's
+        // choice stands, as it does for content shipped without the source.
+        let (mut driver, log) = driver_over(project.path());
+        driver.set_world_roles(WorldRoles::resolve(
+            &selection(&[
+                (EngineRole::PlayerController, "Pad"),
+                (EngineRole::PlayerCharacter, "Opaque"),
+            ]),
+            None,
+        ));
+        let mut world = World::new();
+        driver.run_frame(&mut world, 0.0);
+        driver.run_frame(&mut world, 0.0);
+        assert_eq!(names(&log), ["pad:possess"]);
     }
 }

@@ -122,6 +122,33 @@ impl TraitDb {
         db
     }
 
+    /// A database of the engine's built-in traits alone: what a runtime has
+    /// when its content ships no trait index.
+    pub fn builtin() -> Self {
+        Self::build(
+            crate::builtin_traits::all()
+                .iter()
+                .map(|builtin| builtin.to_record()),
+            Vec::new(),
+        )
+    }
+
+    /// `ids` (those that exist) and every trait they extend: the traits an
+    /// asset declaring `ids` effectively implements.
+    pub fn with_ancestors<'a>(
+        &self,
+        ids: impl IntoIterator<Item = &'a String>,
+    ) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        for id in ids {
+            if self.traits.contains_key(id) {
+                out.insert(id.clone());
+                out.extend(self.ancestors(id));
+            }
+        }
+        out
+    }
+
     fn add_implementation(&mut self, asset: &str, trait_id: &str, via: Option<String>) {
         let slot = self
             .implementers

@@ -718,6 +718,15 @@ pub(crate) fn declared_from_value(value: &Value) -> Option<Declared> {
     })
 }
 
+/// The traits a Blueprint asset's bytes declare, resolved against `db` the
+/// way the index does (ids first, then paths). `None` for a malformed or
+/// unsupported asset. For a runtime that needs one class's declarations
+/// without scanning the project.
+pub fn declared_traits(db: &TraitDb, blueprint: &[u8]) -> Option<BlueprintTraitEntry> {
+    let declared = parse_declared(blueprint)?;
+    Some(entry_for(db, "", &declared))
+}
+
 /// Resolve what a Blueprint declares against the traits that exist.
 pub(crate) fn entry_for(db: &TraitDb, relative: &str, declared: &Declared) -> BlueprintTraitEntry {
     let mut ids = BTreeSet::new();
