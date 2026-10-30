@@ -94,17 +94,18 @@ inherits the default unless it assigns its own material
 this before anything reaches Helio. Helio's passes only ever see the
 effective material, never whether it was a default or an assignment.
 
-**Rigged sources.** A model with a skinned mesh imports as a linked set instead
-of a `.mesh` (`asset_import::rig`): one `.skeleton`, one `.skmesh` skinned to it
-and one `.animseq` per animation, each with a fresh id and referring to the
+**Rigged sources.** A model with skinned mesh nodes imports as one linked asset
+set per skin (`asset_import::rig`): a `.skeleton`, a `.skmesh` skinned to it,
+and one `.animseq` per animation. Each asset has a fresh id and refers to the
 others by id, never path. The formats, ids, math and CPU skinning live in the
 `skeletal_assets` crate (inside the `skm_editor` plugin repo; the plugin edits
-the same files). `ImportRecord::asset` is the `.skmesh`, and the optional
-`outputs` list records every file (path, kind, id, and the source animation name
-for sequences). A reimport reads those back, so each file keeps its id: an output
-that was moved or renamed is found again by its id and rewritten where it now is,
-a deleted one is recreated with the same id, and the material slots and preview
-meshes chosen since are kept. A static source is imported exactly as before.
+the same files). `ImportRecord::asset` is the first `.skmesh`, and the optional
+`outputs` list records every file (path, kind, id, source skin index, and source
+animation name for sequences). A reimport reads those back, so each file keeps
+its id: an output that was moved or renamed is found again by its id and
+rewritten where it now is, a deleted one is recreated with the same id, and the
+material slots and preview meshes chosen since are kept. A static source is
+imported exactly as before.
 
 **Animation assets.** The rest of the animation family (`.blendspace`, `.montage`,
 `.animgraph`, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`) is defined in
@@ -127,8 +128,13 @@ Named bone masks live on the Skeleton asset (`skeletal_assets::bone_mask::NamedB
 authority are `helio_component` / `SkeletalMeshComponent` features (see `.agents/ANIMATION.md`).
 The Helio branch for this work is `animation-phase4-clean` (animation commits plus the user's
 `helio-graph-asset` zip-tie commit on top of Helio `main`; no water changes).
-`helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
-of the loaded scene (`ConvertedScene::rig`).
+`helio_asset_compat::extract_rigs` reads the skeletons, weights and animations out
+of the loaded scene (`ConvertedScene::rigs`). Meshes shared by nodes using the
+same skin reuse geometry; different skins keep separate joint palettes and
+inverse binds. Unskinned node instances still produce static `.mesh` outputs.
+The glTF decoder combines duplicate joints, retains the strongest four
+influences across all `JOINTS_n`/`WEIGHTS_n` pairs, and renormalizes them. A
+warning per source mesh counts vertices that lost positive influences.
 
 ## editor/ — Editor panels
 

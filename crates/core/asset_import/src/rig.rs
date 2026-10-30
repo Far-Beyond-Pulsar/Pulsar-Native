@@ -1,6 +1,6 @@
-//! Import of a rigged model into the skeletal asset set: one `.skeleton`, one
-//! `.skmesh` skinned to it and one `.animseq` per animation, each with a fresh
-//! id and linked to the others by those ids (never by path).
+//! Import of a rigged model into a linked asset set per skin: one `.skeleton`,
+//! one `.skmesh` skinned to it and one `.animseq` per animation. Each asset has
+//! a fresh id and links to the others by those ids (never by path).
 //!
 //! Re-importing the same source keeps every id the earlier import gave, found
 //! through [`Previous`], so assets in the project that refer to the skeleton or
@@ -16,7 +16,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use engine_fs::virtual_fs;
-use helio_asset_compat::{ImportedClip, ImportedKey, ImportedRig};
+use helio_asset_compat::{ConvertedScene, ImportedClip, ImportedKey, ImportedRig};
+use helio_component::mesh_cache;
+use plugin_editor_api::SourceSurface;
 use skeletal_assets::animation::{
     AnimationClip, BoneTrack, KeyInterpolation, Keyframe, KeyframeTangent,
 };
@@ -33,7 +35,7 @@ use skeletal_assets::skmesh::{
 };
 
 use crate::db::{relative_key, ImportOutput};
-use crate::importer::{Imported, Previous};
+use crate::importer::{Imported, ImportedPart, Previous};
 
 /// [`ImportOutput::kind`] of the skeleton.
 pub const KIND_SKELETON: &str = "skeleton";
@@ -58,9 +60,141 @@ struct Placed {
     exists: bool,
 }
 
+/// Write a linked asset set per source skin, plus the unskinned node instances.
+pub fn import_rigs(
+    scene: &ConvertedScene,
+    asset_hint: &Path,
+    previous: &Previous,
+    surfaces: Vec<SourceSurface>,
+) -> Result<Imported, String> {
+    let stem = asset_hint
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("rig");
+    let mut outputs = Vec::new();
+    let mut primary = None;
+    for (index, rig) in scene.rigs.iter().enumerate() {
+        // Old records describe only the first skin used by a mesh node.
+        let scoped: Vec<_> = previous
+            .outputs
+            .iter()
+            .filter(|output| {
+                output.source_skin == Some(rig.source_skin)
+                    || (index == 0
+                        && output.source_skin.is_none()
+                        && matches!(
+                            output.kind.as_str(),
+                            KIND_SKELETON | KIND_SKMESH | KIND_ANIMSEQ
+                        ))
+            })
+            .map(|output| {
+                let mut output = output.clone();
+                output.source_skin = Some(rig.source_skin);
+                output
+            })
+            .collect();
+        let hint = if index == 0 {
+            asset_hint.to_path_buf()
+        } else {
+            asset_hint.with_file_name(format!("{stem}_skin_{}.mesh", rig.source_skin))
+        };
+        let imported = import_rig(
+            rig,
+            &hint,
+            &Previous {
+                project_root: previous.project_root,
+                outputs: &scoped,
+            },
+        )?;
+        primary.get_or_insert(imported.asset);
+        outputs.extend(imported.outputs);
+    }
+    let parts = import_static_parts(scene, asset_hint, previous, &surfaces, &mut outputs)?;
+    // Keep removed skins/animations available, just as single-rig imports keep
+    // removed clips. Match ids too, since an output may have moved since import.
+    let retained: Vec<_> = previous
+        .outputs
+        .iter()
+        .filter(|old| {
+            !outputs.iter().any(|new| {
+                new.path == old.path
+                    || (old.id.is_some() && new.kind == old.kind && new.id == old.id)
+            })
+        })
+        .cloned()
+        .collect();
+    outputs.extend(retained);
+    Ok(Imported {
+        asset: primary.ok_or_else(|| "source has no imported rigs".to_string())?,
+        outputs,
+        surfaces: Vec::new(),
+        parts,
+    })
+}
+
+fn import_static_parts(
+    scene: &ConvertedScene,
+    asset_hint: &Path,
+    previous: &Previous,
+    surfaces: &[SourceSurface],
+    outputs: &mut Vec<ImportOutput>,
+) -> Result<Vec<ImportedPart>, String> {
+    let mut parts = Vec::new();
+    let mut taken = outputs
+        .iter()
+        .map(|output| previous.project_root.join(&output.path))
+        .collect();
+    let stem = asset_hint
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("rig");
+    let dir = asset_hint.parent().unwrap_or_else(|| Path::new("."));
+    let mut source_names = HashSet::new();
+    for part in scene.parts.iter().filter(|part| part.skin.is_none()) {
+        let mut source_name = part.name.clone();
+        let mut suffix = 2;
+        while !source_names.insert(source_name.clone()) {
+            source_name = format!("{} {suffix}", part.name);
+            suffix += 1;
+        }
+        let at = place(
+            previous,
+            "mesh",
+            Some(&source_name),
+            dir,
+            &format!("{stem}_{}", file_name_part(&part.name)),
+            "mesh",
+            &mut taken,
+        );
+        let asset = mesh_cache::write_mesh_part(scene, part, &at.path)?;
+        let part_surfaces = part
+            .sections
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, section)| {
+                let mut surface = surfaces.get(section.material_index?)?.clone();
+                surface.slot = slot as u32;
+                Some(surface)
+            })
+            .collect();
+        outputs.push(ImportOutput {
+            path: relative_key(previous.project_root, &asset),
+            kind: "mesh".into(),
+            id: None,
+            source_name: Some(source_name),
+            source_skin: None,
+        });
+        parts.push(ImportedPart {
+            asset,
+            surfaces: part_surfaces,
+        });
+    }
+    Ok(parts)
+}
+
 /// Write the asset set for `rig` next to `asset_hint` (the `.mesh` path the
 /// static importer would use: its directory and stem name the outputs).
-pub fn import_rig(
+fn import_rig(
     rig: &ImportedRig,
     asset_hint: &Path,
     previous: &Previous,
@@ -170,12 +304,14 @@ pub fn import_rig(
             kind: KIND_SKELETON.into(),
             id: Some(skeleton.id.to_string()),
             source_name: None,
+            source_skin: Some(rig.source_skin),
         },
         ImportOutput {
             path: relative_key(root, &mesh_at.path),
             kind: KIND_SKMESH.into(),
             id: Some(mesh.id.to_string()),
             source_name: None,
+            source_skin: Some(rig.source_skin),
         },
     ];
 
@@ -219,6 +355,7 @@ pub fn import_rig(
             kind: KIND_ANIMSEQ.into(),
             id: Some(sequence.id.to_string()),
             source_name: Some(clip.name.clone()),
+            source_skin: Some(rig.source_skin),
         });
     }
     // Animations the source no longer has stay on disk and in the record, so

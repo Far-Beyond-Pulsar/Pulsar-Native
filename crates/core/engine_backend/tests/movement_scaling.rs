@@ -281,6 +281,7 @@ impl Bench {
                 time_delta: 0.016,
                 world_origin: glam::DVec3::ZERO,
                 owns_device: true,
+                uploads: None,
             },
             &mut batch,
         );
