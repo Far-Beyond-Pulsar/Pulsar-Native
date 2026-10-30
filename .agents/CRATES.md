@@ -114,6 +114,14 @@ markers; `engine_fs::ProjectFileIndex` records their reference edges
 notify playback tracker, root motion) is headless; `helio_component::SkeletalMeshComponent`
 owns the per-entity state, delivers notifies and Montage events, applies root motion and
 recompiles graphs when a dependency file changes. See `.agents/ANIMATION.md`.
+
+The animation editors are in `skm_editor` (`src/anim_editors/`: per-asset `*_model.rs` + `views/`,
+`notify_edit`, `bone_mask_edit`, `skin_preview`, `pose_db_build`); the Sequence editor and its GPU
+timeline are `src/editor/` and `src/rendering/timeline/`. Shared pieces elsewhere:
+`ui_common::asset_ref_editor` (typed Skeletal Mesh / Animation Graph pickers, registered through
+the reflected property editor registry), `pulsar_reflection::asset_refs` (JSON codecs for the
+optional refs), `graphy::authored` (the authored <-> canvas conversion used by the Blueprint and
+Animation Graph editors) and `helio_component`'s `SkeletalMeshComponent` properties.
 `helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
 of the loaded scene (`ConvertedScene::rig`).
 
@@ -204,7 +212,7 @@ pinned here (see "Submodule pins" below). They are not workspace members
 
 | Submodule | Path dep? | Notes |
 |---|---|---|
-| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); plus `graphy-reflection` (the only crate that knows Pulsar: `TypeResolver` and node metadata over `pulsar_reflection`); all headless, consumed as path deps. Phase 3 adds `graphy-render` (headless canvas model), `graphy-render-wgpu` (shared GPU renderer) and `graphy-gpui` (interaction engine, `GraphProfile`, GPUI canvas behind feature `gpui`; its own workspace) - see `.agents/GRAPH_CANVAS.md` |
+| `graphy/` | Yes | Own Cargo workspace (excluded from the root one): `graphy` (graph IR, the `authored` bridge to the `graphy-blueprint` schema, stable ids, invariants, type resolver, edit commands, diagnostics, analysis/codegen) and `graphy-blueprint` (authored Blueprint asset schema, codecs, legacy readers, library/prefab); plus `graphy-reflection` (the only crate that knows Pulsar: `TypeResolver` and node metadata over `pulsar_reflection`); all headless, consumed as path deps. Phase 3 adds `graphy-render` (headless canvas model), `graphy-render-wgpu` (shared GPU renderer) and `graphy-gpui` (interaction engine, `GraphProfile`, GPUI canvas behind feature `gpui`; its own workspace) - see `.agents/GRAPH_CANVAS.md` |
 | `pulsar-config/` | Yes | Configuration management |
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
 | `psgc/` | No | Shader Graph Compiler (has its own workspace) |
