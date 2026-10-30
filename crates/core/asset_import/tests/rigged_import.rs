@@ -437,6 +437,7 @@ fn an_animation_the_source_lost_stays_on_disk_and_in_the_record() {
         kind: "animseq".into(),
         id: None,
         source_name: Some("Gone".into()),
+        source_skin: None,
     });
     let second = project.import(&earlier);
     assert!(gone.exists());

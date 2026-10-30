@@ -227,6 +227,7 @@ pub fn run_companions(
                 kind: output.kind,
                 id: None,
                 source_name: output.source_name,
+                source_skin: None,
             });
         }
     }

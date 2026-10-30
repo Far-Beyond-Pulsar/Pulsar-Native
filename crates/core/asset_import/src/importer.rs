@@ -102,23 +102,23 @@ impl Importer for MeshImporter {
         options: &OptionValues,
         previous: &Previous,
     ) -> Result<Imported, String> {
-        let mut scene = mesh_cache::load_model_scene(source, options)?;
+        let scene = mesh_cache::load_model_scene(source, options)?;
         // A rigged model becomes a linked skeleton, skeletal mesh and
         // animations; anything else is the static mesh it always was.
-        match scene.rig.take() {
-            Some(rig) => crate::rig::import_rig(&rig, asset, previous),
-            None => {
-                let surfaces = surfaces_of(&scene, source);
-                if scene.parts.len() > 1 {
-                    return import_parts(&scene, source, asset, previous, surfaces);
-                }
-                mesh_cache::write_static_mesh(scene, asset).map(|asset| Imported {
-                    asset,
-                    outputs: Vec::new(),
-                    surfaces,
-                    parts: Vec::new(),
-                })
+        if !scene.rigs.is_empty() {
+            let surfaces = surfaces_of(&scene, source);
+            crate::rig::import_rigs(&scene, asset, previous, surfaces)
+        } else {
+            let surfaces = surfaces_of(&scene, source);
+            if scene.parts.len() > 1 {
+                return import_parts(&scene, source, asset, previous, surfaces);
             }
+            mesh_cache::write_static_mesh(scene, asset).map(|asset| Imported {
+                asset,
+                outputs: Vec::new(),
+                surfaces,
+                parts: Vec::new(),
+            })
         }
     }
 }
@@ -164,6 +164,7 @@ fn import_parts(
             kind: "mesh".to_string(),
             id: None,
             source_name: Some(part.name.clone()),
+            source_skin: None,
         })
         .collect();
     Ok(Imported {
