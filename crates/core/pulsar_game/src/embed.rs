@@ -369,7 +369,8 @@ impl EmbeddedGame {
         setup(&mut tick_loop).map_err(|e| format!("Project setup failed: {e}"))?;
         // Resolve which Blueprints the level assigned to the engine roles
         // (game mode, controller, character, game state). Nothing is spawned
-        // here; see `TickLoop::world_roles` for where that goes.
+        // here: the script driver spawns them as session entities at its first
+        // frame and despawns them at shutdown (`roles.rs`).
         if let Some(scene) = &scene_path {
             tick_loop.load_world_roles(scene, &project_root);
         }
@@ -427,6 +428,13 @@ impl EmbeddedGame {
         })
     }
 
+    /// The free camera stands down while a possessed pawn owns the player's
+    /// input (see `player_input::PossessionGate`).
+    fn sync_freecam(&mut self) {
+        let possessed = self.session.tick_loop.possession_gate().is_possessed();
+        self.freecam.set_suspended(possessed);
+    }
+
     /// Advance simulation and render one frame into the offscreen target.
     fn tick(&mut self) {
         // 1. Game logic — one ECS/blueprint tick.
@@ -462,6 +470,7 @@ impl EmbeddedGame {
         //    freecam seeded from the editor view remains the fallback, on
         //    the voxel ground's local vertical.
         // The world's read lock is released before the ground is read.
+        self.sync_freecam();
         let world_camera = select_world_camera(&self.scene_store.read());
         let cam = world_camera.unwrap_or_else(|| {
             let ground = self.renderer.voxel_ground(self.freecam.position());
@@ -514,6 +523,7 @@ impl EmbeddedGame {
                 }
             }
             input_kind::MOUSE_WHEEL => {
+                self.sync_freecam();
                 self.freecam.on_mouse_delta(0.0, ev.delta as f64);
                 self.session
                     .tick_loop

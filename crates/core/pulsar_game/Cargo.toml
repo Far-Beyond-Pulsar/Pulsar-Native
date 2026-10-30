@@ -54,6 +54,11 @@ pulsar_settings = { workspace = true }
 pulsar_content  = { workspace = true }
 engine_fs       = { workspace = true }
 
+# The input runtime (actions and mappings in, `input::<Action>` events out) and
+# its `PlayerInputComponent`, without the editor feature: no GPUI. Possession
+# attaches the component to the pawn by class name (`player_input`).
+input_plugin    = { path = "../../../plugins/vendor/input_plugin", default-features = false, features = ["gamepad"] }
+
 # One-world play-mode scene state (Pulsar-Native#637): RuntimeLevel hydration
 # into SceneDb plus the GPU mirror the renderer reads.
 # Slim feature set on purpose -- a game runtime must not pull editor-ui/gpui,

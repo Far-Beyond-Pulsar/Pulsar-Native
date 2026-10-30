@@ -70,6 +70,10 @@ pub struct TickLoop {
     /// and checked but not spawned. Empty until a level is loaded; see
     /// [`world_roles`](Self::world_roles).
     pub(crate) world_roles: engine_fs::world_roles::WorldRoles,
+    /// Whether a possessed pawn owns the local player's input; set by the
+    /// script driver, read by the hosts' free cameras (see
+    /// [`possession_gate`](Self::possession_gate)).
+    possession: crate::player_input::PossessionGate,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
     pub window_manager: Option<Arc<WindowManager>>,
@@ -215,6 +219,7 @@ impl TickLoop {
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
             world_roles: engine_fs::world_roles::WorldRoles::default(),
+            possession: crate::player_input::PossessionGate::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -263,6 +268,7 @@ impl TickLoop {
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
             world_roles: engine_fs::world_roles::WorldRoles::default(),
+            possession: crate::player_input::PossessionGate::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -374,6 +380,13 @@ impl TickLoop {
     /// The problems collected since the last call.
     pub fn take_script_problems(&mut self) -> Vec<pulsar_events::ScriptProblem> {
         std::mem::take(&mut self.script_problems)
+    }
+
+    /// Whether a possessed pawn owns the local player's input. Clone it
+    /// before the loop moves to its thread: the built-in free camera stands
+    /// down while it is set.
+    pub fn possession_gate(&self) -> crate::player_input::PossessionGate {
+        self.possession.clone()
     }
 
     /// What the script phase did so far (instances started, objects
@@ -597,6 +610,7 @@ impl TickLoop {
             let mut driver = crate::scripting::new_driver(project_root);
             driver.attach_events(events);
             driver.set_world_roles(self.world_roles.clone());
+            driver.set_possession_gate(self.possession.clone());
             Arc::new(Mutex::new(driver))
         }))
     }
@@ -626,6 +640,7 @@ impl TickLoop {
         let mut driver = crate::scripting::new_content_driver(&content);
         driver.attach_events(events);
         driver.set_world_roles(self.world_roles.clone());
+        driver.set_possession_gate(self.possession.clone());
         let driver = Arc::new(Mutex::new(driver));
         self.scripts = Some(Arc::clone(&driver));
         Ok(driver)

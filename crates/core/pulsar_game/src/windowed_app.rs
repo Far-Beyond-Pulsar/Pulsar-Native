@@ -387,6 +387,9 @@ pub struct PulsarApp {
     /// The tick loop's event hub (shared): key and mouse input is published
     /// here and delivered at the next tick's after-input flush.
     events: pulsar_events::EventHub,
+    /// Set while a possessed pawn owns the player's input: every window's
+    /// free camera stands down (see `player_input::PossessionGate`).
+    possession: crate::player_input::PossessionGate,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -415,6 +418,7 @@ impl PulsarApp {
         // `self.tick_loop` -- renderer and gameplay then share one world.
         let scene_store = tick_loop.scene_store.clone();
         let events = tick_loop.events.clone();
+        let possession = tick_loop.possession_gate();
         Self {
             bridge,
             gpu: GpuContext::new(display),
@@ -426,6 +430,7 @@ impl PulsarApp {
             default_scene,
             scene_store,
             events,
+            possession,
             focused_window: None,
             cursor_captured: false,
             last_cursor: None,
@@ -902,7 +907,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         // that are due; sleep until the earliest of the rest instead of
         // spinning.
         let mut wake: Option<Instant> = None;
+        let possessed = self.possession.is_possessed();
         for gw in self.windows.values_mut() {
+            gw.freecam.set_suspended(possessed);
             gw.freecam.update(dt);
             if now >= gw.next_redraw {
                 gw.window.request_redraw();

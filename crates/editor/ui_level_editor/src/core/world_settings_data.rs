@@ -36,6 +36,10 @@ pub struct WorldSettingsData {
     /// Project-relative path to the level's game state Blueprint (implements
     /// the `GameState` trait), when set.
     pub game_state_blueprint: Option<String>,
+    /// Project-relative path of the `.inputmap` the player controller brings
+    /// to its pawn when it possesses it (`engine_fs::world_roles::PLAYER_INPUT_MAPPING_KEY`),
+    /// when set. Absent in levels saved before it existed.
+    pub player_input_mapping: Option<String>,
     /// The render pipeline the level runs: the id of a built-in Helio
     /// pipeline (`helio.fxaa`) or the project-relative path of a render-graph
     /// asset. `None`, or an id no longer registered, runs the engine default.
@@ -54,6 +58,7 @@ impl Default for WorldSettingsData {
             player_controller_blueprint: None,
             player_character_blueprint: None,
             game_state_blueprint: None,
+            player_input_mapping: None,
             render_pipeline: None,
         }
     }
@@ -82,6 +87,12 @@ impl WorldSettingsData {
         };
         *slot = blueprint.filter(|path| !path.is_empty());
     }
+
+    /// Choose the `.inputmap` the player controller possesses its pawn with;
+    /// an empty path clears it.
+    pub fn set_player_input_mapping(&mut self, mapping: Option<String>) {
+        self.player_input_mapping = mapping.filter(|path| !path.trim().is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -99,6 +110,26 @@ mod tests {
         );
         assert_eq!(settings.role_blueprint(EngineRole::PlayerController), None);
         assert_eq!(settings.time_scale, 1.0);
+    }
+
+    #[test]
+    fn the_input_mapping_loads_from_old_levels_and_round_trips_through_the_runtime_key() {
+        // A level from before the setting existed has none.
+        let old: WorldSettingsData = serde_json::from_str(r#"{"time_scale":2.0}"#).unwrap();
+        assert_eq!(old.player_input_mapping, None);
+        assert_eq!(old.time_scale, 2.0);
+
+        let mut settings = WorldSettingsData::default();
+        settings.set_player_input_mapping(Some("input/Game.inputmap".into()));
+        let level = serde_json::json!({ "world_settings": serde_json::to_value(&settings).unwrap() });
+        assert_eq!(
+            RoleSelection::from_level_json(&level.to_string()).input_mapping(),
+            Some("input/Game.inputmap"),
+            "{}",
+            engine_fs::world_roles::PLAYER_INPUT_MAPPING_KEY
+        );
+        settings.set_player_input_mapping(Some("  ".into()));
+        assert_eq!(settings.player_input_mapping, None);
     }
 
     #[test]

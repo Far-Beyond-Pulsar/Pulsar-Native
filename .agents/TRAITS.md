@@ -20,7 +20,7 @@ controller, ...), and the project index answers "who implements this?".
 | Reflection | `pulsar_reflection::trait_registry` (`TRAIT_REGISTRY`) | Published, language-agnostic snapshot per project |
 | Plugin API | `plugin_editor_api::ProjectTraits` | `traits()`, `implementers(trait)`, `traits_of(asset)`, `implements`, `to_json` |
 | Blueprint editor | `plugins/vendor/blueprint_editor/src/features/traits/` | Trait panel, Add-menu trait events, conformance at compile/preflight |
-| Runtime | `pulsar_game` (`roles.rs`, `scripting/driver.rs`) | Starts the selected role classes and calls their trait events |
+| Runtime | `pulsar_game` (`roles.rs`, `scripting/driver.rs`, `scripting/traits.rs`) | Spawns the selected role classes as session entities, answers "does this entity's class implement trait X", calls their trait events through the trait |
 
 ## Identity: ids, not paths
 
@@ -172,30 +172,106 @@ thread. Compile (codegen + `syn`) never runs on a trait change; it runs on Compi
 
 ## What runs when a level plays
 
+### Role entities
+
 `ScriptDriver::start_roles` (`pulsar_game/src/scripting/driver.rs`), in the first
-script phase: Game Mode instance, Game State instance, Player Controller instance
-(unbound script instances, like `global_scripts`); then `GameMode.on_game_start`,
-`GameState.on_init`, `GameMode.on_player_joined(0)`, `GameState.on_player_added(0)`;
-the Player Character is spawned through the `world::spawn` command path (end of that
-frame). The next frame, once it runs: `PlayerCharacter.on_spawned`,
-`PlayerController.on_possess(entity)`, `PlayerCharacter.on_possessed(0)`. Hooks are called
-directly on the instance's handler for event `<Class>.<method>`, after `begin_play`.
-Unset roles log `<Role> is not set for this level; skipped`; no roles logs once;
-unusable ones (`NotInIndex`, `MissingTrait`, no compiled script) log a warning and
-fail soft. Covered by `scripting::tests::roles`.
+script phase, spawns every usable role as an **entity of its class**, through the
+same world-command path scripts use for `world::spawn` (`apply_spawn`). A role
+therefore has what any bound object has: an entity, a `ClassInstance`, and
+`Self`-scoped subscriptions on its own entity channel. Order: Game Mode, Game
+State and Player Controller are spawned and their scripts started within the phase
+(so they `begin_play` in that order, before the level's own objects); the Player
+Character's spawn is queued like a script's and applied at the end of the frame.
+
+Role entities are **session objects, never level data**: no level-format field, no
+editor outliner or save-path filtering. (Under Play-in-Editor they are visible in
+the shared world while the game runs, like any `world::spawn` object.)
+
+- **Ownership is tracked, not inferred.** The driver keeps the list of entities it
+  spawned (`ScriptDriver::role_entities()`, `role_entity(role)`) and
+  `end_play_all` (`TickLoop::end_scripts`, run by `PieSession::shutdown`, the
+  standalone exit and `run_blocking`) despawns exactly those after their scripts
+  ended. `embed.rs` adopts the editor's shared world store, so this is what keeps
+  them from leaking back into the editor.
+- **Hot reload re-binds.** Each role entity is also stamped with
+  `pulsar_game::roles::RoleEntity { role }`. A session that finds stamped
+  entities in the world it adopts (the previous session was dropped without a
+  clean shutdown) re-binds the one whose class still matches the level's
+  assignment and removes the rest, instead of spawning a second set. This happens
+  whenever roles start, not only for `begin_script_reload` sessions: nothing but a
+  previous session can have put a role entity in a world.
+
+### Hooks and the trait query
+
+Hook order (unchanged): `GameMode.on_game_start`, `GameState.on_init`,
+`GameMode.on_player_joined(0)`, `GameState.on_player_added(0)`; the next frame, once
+the character runs: `PlayerCharacter.on_spawned`, `PlayerController.on_possess(pawn)`,
+`PlayerCharacter.on_possessed(controller)`. Unset roles log `<Role> is not set for
+this level; skipped`; no roles logs once; unusable ones (`NotInIndex`,
+`MissingTrait`, no compiled script) warn and fail soft.
+
+Hooks go **through the trait** (`scripting/traits.rs`). `call_trait_hook(entity,
+trait, method, args)`:
+
+1. resolves the trait to its id (`TraitDb::resolve`) and the method in the trait's
+   `required_methods(id)` (supertraits included), so an inherited method or a renamed
+   trait resolves; the handler is the class's event `<Class>.<trait method name>`;
+2. checks the class's **contract** with the existing conformance code
+   (`trait_conformance::check`) over what the compiled module actually handles. A
+   required method (no default body) with no handler is a **violation**: the
+   driver reports it once per session, naming the class, trait and signature, in
+   `DriverReport::failures` and a warning, and the hook returns
+   `HookOutcome::Violation`. A method with a default body and no node placed is
+   `HookOutcome::NotHandled`: no reaction, debug log only. A class that does not
+   implement the trait at all is also a violation. (All built-in role methods are
+   required, so for the role traits an unplaced node is a violation; the editor's
+   compile step normally refuses such a Blueprint, so this means a stale module.)
+
+The **entity-level query** is `ScriptDriver::entity_implements(world, entity, trait)`
+(and `class_implements(class, trait)`; `entity_trait_check` keeps "cannot tell"
+apart). The entity's class is its `ClassInstance` resolved through the class
+registry; the class's declared trait ids come from its Blueprint
+(`<class dir>/graph_save.json`, `engine_fs::declared_traits`), widened by
+`TraitDb::with_ancestors`; the database is the persisted index when the project has
+one, else the engine's built-ins (`TraitDb::builtin`). No file path or name string
+of the caller takes part. A class whose Blueprint cannot be read (content shipped
+without it) is `TraitCheck::Unknown`, which hooks and possession treat as "trust the
+level's role binding" rather than as a failure. Possession validates the pawn with
+this query and skips (reports) when it is a definite no.
+
+Behaviour notes: `on_possessed` now receives the controller's entity bits (the
+trait's `controller_id`; it was the player id before the controller had an entity),
+`on_possess` the pawn's. Covered by `scripting::tests::roles`.
+
+### Seams for what is missing
 
 **Still missing for a playable game:** possession is only the two events (no
 control link between controller and character); no input routing to the controller
-(`on_input` is never called); no camera follows the character; the character spawns at
-the origin (no player start); one local player only; `on_game_end`, `on_unpossess`,
+(`on_input` is never called); no camera follows the character; the character spawns
+at the origin (no player start); one local player only; `on_game_end`, `on_unpossess`,
 `on_unpossessed`, `on_player_removed` are never called (no shutdown/leave path yet);
 actor references are plain integers.
+
+Where each plugs in, all in `advance_possession` / `start_roles`:
+
+- **Input routing**: attach the controller's input component to the pawn at the
+  end of `advance_possession` (both entities exist there), and call
+  `call_trait_hook(controller, PlayerController, "on_input", ...)` from
+  `run_role_hooks` each frame; the controller already has an entity channel.
+- **Camera / view target**: set it from the same place, with `pending.character`.
+- **Player start / movement**: the character's `WorldCommand::Spawn` in
+  `spawn_role` carries `position: [0.0; 3]`; take it from a player start there.
+- **Shutdown events** (`on_game_end`, `on_unpossess`): call them in `end_play_all` before `runtime.end_play_all`, while the
+  scripts live.
 
 ## Known limits
 
 - `ui_types_common::codegen::generate_trait` ignores `supertraits` (resolving them needs names).
 - The Trait Editor edits supertraits as text (one id/path per line), no picker.
 - The conformance check does not see a trait implemented by a plugin-defined asset kind.
+- The runtime trait query reads the persisted index (`.pulsar/blueprint_trait_index.json`) once per
+  driver, so a trait edited while the game runs is seen after the next class reload (which clears
+  the cache) or the next session; without an index only the built-in traits resolve.
 - Stale unresolved references only re-resolve incrementally when a trait changes;
   a full rebuild re-reads the Blueprints' declared references.
 - Submodules changed: `crates/external/pulsar-reflection` (Pulsar-Reflection),

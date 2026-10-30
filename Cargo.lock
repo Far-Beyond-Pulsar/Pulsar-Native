@@ -9771,6 +9771,7 @@ dependencies = [
  "helio",
  "helio_component",
  "image",
+ "input_plugin",
  "inventory",
  "libloading 0.9.0",
  "parking_lot",

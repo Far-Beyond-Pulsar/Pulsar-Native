@@ -1068,4 +1068,17 @@ mod tests {
         let index = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
         assert_eq!(index.blueprints_for_trait(GAME_MODE_TRAIT_ID).len(), 1);
     }
+
+    #[test]
+    fn one_blueprints_declarations_resolve_without_an_index() {
+        let db = TraitDb::builtin();
+        let bytes = blueprint_json(&[GAME_MODE_TRAIT_ID, "missing"], &[]);
+        let entry = declared_traits(&db, bytes.as_bytes()).unwrap();
+        assert_eq!(entry.implemented_trait_ids, [GAME_MODE_TRAIT_ID]);
+        assert_eq!(entry.unresolved, ["missing"]);
+        assert!(declared_traits(&db, b"not json").is_none());
+        let effective = db.with_ancestors(&entry.implemented_trait_ids);
+        assert!(effective.contains(GAME_MODE_TRAIT_ID));
+        assert_eq!(effective.len(), 1, "a built-in extends nothing");
+    }
 }

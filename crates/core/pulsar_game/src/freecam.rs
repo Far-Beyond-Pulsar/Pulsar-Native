@@ -17,6 +17,10 @@
 //! level with the ground below (over a planet its up is the local vertical,
 //! elsewhere +Y), and faster the higher it is above voxel ground.
 //!
+//! While a possessed pawn owns the player's input ([`FreeCam::set_suspended`],
+//! driven by the runtime's [`PossessionGate`](crate::player_input::PossessionGate))
+//! it neither moves nor looks, so it does not fly on the keys the pawn hears.
+//!
 //! This is a *placeholder* — it is automatically superseded per-window as soon
 //! as the game pushes its own camera.
 
@@ -56,6 +60,8 @@ pub struct FreeCam {
     /// The voxel ground under the eye, from the last frame.
     ground: VoxelGround,
     keys: KeyState,
+    /// A possessed pawn owns the input: see [`set_suspended`](Self::set_suspended).
+    suspended: bool,
 }
 
 impl Default for FreeCam {
@@ -73,6 +79,7 @@ impl Default for FreeCam {
             far: 2000.0,
             ground: VoxelGround::default(),
             keys: KeyState::default(),
+            suspended: false,
         }
     }
 }
@@ -93,8 +100,28 @@ impl FreeCam {
 
     // ── Input ─────────────────────────────────────────────────────────────────
 
+    /// Stand down (or take the input back). A suspended camera ignores keys
+    /// and mouse motion and does not move; keys held at the moment it is
+    /// suspended are forgotten. The hosts call it every frame with
+    /// [`PossessionGate::is_possessed`](crate::player_input::PossessionGate::is_possessed):
+    /// the pawn that is possessed hears those keys, so the camera must not
+    /// fly on them too.
+    pub fn set_suspended(&mut self, suspended: bool) {
+        if suspended && !self.suspended {
+            self.keys = KeyState::default();
+        }
+        self.suspended = suspended;
+    }
+
+    pub fn is_suspended(&self) -> bool {
+        self.suspended
+    }
+
     /// Call from `window_event(KeyboardInput { .. })`.
     pub fn on_key(&mut self, key: &PhysicalKey, pressed: bool) {
+        if self.suspended {
+            return;
+        }
         let PhysicalKey::Code(code) = key else { return };
         match code {
             KeyCode::KeyW | KeyCode::ArrowUp => self.keys.forward = pressed,
@@ -112,6 +139,9 @@ impl FreeCam {
     /// `dx` is raw horizontal pixels (right = positive), `dy` is raw vertical
     /// pixels (down = positive in winit).
     pub fn on_mouse_delta(&mut self, dx: f64, dy: f64) {
+        if self.suspended {
+            return;
+        }
         // Match the editor camera: moving the mouse right increases yaw, and
         // moving it down (dy > 0) looks down.
         self.pose.look(
@@ -133,6 +163,9 @@ impl FreeCam {
     /// level within the camera frame (no pitch for movement — FPS style),
     /// up and down along the local vertical.
     pub fn update(&mut self, dt: f32) {
+        if self.suspended {
+            return;
+        }
         let axis = |positive: bool, negative: bool| f32::from(positive) - f32::from(negative);
         let direction = Vec3::new(
             axis(self.keys.right, self.keys.left),
@@ -168,6 +201,33 @@ mod tests {
 
     fn press(camera: &mut FreeCam, code: KeyCode) {
         camera.on_key(&PhysicalKey::Code(code), true);
+    }
+
+    /// While a pawn is possessed the camera neither flies nor looks, and keys
+    /// it was holding when it stood down do not resume by themselves.
+    #[test]
+    fn a_suspended_camera_ignores_the_keys_and_the_mouse_and_resumes_clean() {
+        let start = DVec3::new(0.0, 2.0, 0.0);
+        let mut camera = FreeCam::default().place(start, 0.0, 0.0);
+        press(&mut camera, KeyCode::KeyW);
+        camera.set_suspended(true);
+        assert!(camera.is_suspended());
+        press(&mut camera, KeyCode::Space);
+        camera.on_mouse_delta(500.0, 500.0);
+        camera.update(1.0);
+        assert_eq!(camera.position(), start, "did not move");
+        let forward = camera.to_render_camera().forward;
+        assert!(forward.abs_diff_eq(FreeCam::default().place(start, 0.0, 0.0).to_render_camera().forward, 1e-6), "did not look");
+
+        // Taken back: nothing held over from before, and it flies as ever.
+        camera.set_suspended(false);
+        camera.update(1.0);
+        assert_eq!(camera.position(), start, "W was forgotten while suspended");
+        press(&mut camera, KeyCode::Space);
+        camera.update(1.0);
+        assert!(camera.position().y > start.y);
+        camera.on_mouse_delta(100.0, 0.0);
+        assert!(!camera.to_render_camera().forward.abs_diff_eq(forward, 1e-3));
     }
 
     /// Without voxel ground the camera keeps +Y up and its base speed.

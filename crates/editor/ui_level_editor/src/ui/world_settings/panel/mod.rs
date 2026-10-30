@@ -22,6 +22,7 @@ use crate::state::LevelEditorState;
 use crate::WorldSettingsPanel;
 
 mod environment_section;
+mod input_section;
 mod pipeline_section;
 mod sky_section;
 mod wind_section;
@@ -54,6 +55,9 @@ pub struct WorldSettingsPanelImpl {
     /// The render pipeline picker and the ids it currently lists.
     pipeline_picker: Entity<SearchableList<String>>,
     pipeline_ids: Vec<String>,
+    /// The player input mapping picker and the project's mappings.
+    mapping_picker: Entity<SearchableList<String>>,
+    mapping_catalog: BlueprintCatalogState,
     /// The Sky section's property rows (#1057).
     sky_property_state: ui_common::PropertyStateManager,
     atmosphere_properties: Option<Arc<sky_section::ClassProperties>>,
@@ -127,7 +131,22 @@ impl WorldSettingsPanelImpl {
             .with_max_height(px(320.0))
         });
 
+        let mapping_picker = cx.new(|cx| {
+            SearchableList::<String>::new(window, cx, vec!["None".to_string()], input_section::mapping_label)
+                .with_empty_text("No input mappings found")
+                .with_max_width(px(360.0))
+                .with_max_height(px(320.0))
+        });
+
         let mut subscriptions = Vec::new();
+        subscriptions.push(cx.subscribe(
+            &mapping_picker,
+            |panel, _picker, event: &SearchableListEvent<String>, cx| {
+                if let SearchableListEvent::Select(path) = event {
+                    panel.world_settings.select_input_mapping(path, cx);
+                }
+            },
+        ));
         subscriptions.push(cx.subscribe(
             &pipeline_picker,
             |panel, _picker, event: &SearchableListEvent<String>, cx| {
@@ -196,6 +215,8 @@ impl WorldSettingsPanelImpl {
             role_pickers,
             pipeline_picker,
             pipeline_ids,
+            mapping_picker,
+            mapping_catalog: BlueprintCatalogState::Loading,
             sky_property_state: ui_common::PropertyStateManager::new(),
             atmosphere_properties: None,
             sky_message: None,
@@ -210,6 +231,8 @@ impl WorldSettingsPanelImpl {
             _subscriptions: subscriptions,
         };
         panel.load_blueprint_catalog(cx);
+        panel.load_input_mappings(cx);
+        panel.watch_input_mappings(cx);
         panel.watch_blueprint_index(cx);
         panel.watch_render_graphs(cx);
         panel
@@ -343,6 +366,8 @@ impl WorldSettingsPanelImpl {
         let environment_tools = self.render_environment_tools(cx);
         let state = self.state.read();
         let settings = &state.scene.world_settings;
+        let input_row =
+            self.render_input_mapping_row(settings.player_input_mapping.as_deref(), cx);
         let role_rows: Vec<AnyElement> = self
             .role_pickers
             .iter()
@@ -396,7 +421,12 @@ impl WorldSettingsPanelImpl {
                             cx,
                         ))
                         .child(self.render_section_title("Gameplay Roles"))
-                        .child(v_flex().gap_3().children(role_rows)),
+                        .child(
+                            v_flex()
+                                .gap_3()
+                                .children(role_rows)
+                                .child(input_row),
+                        ),
                 ),
             )
     }

@@ -41,6 +41,10 @@ pub mod tick;
 // The Blueprints a level assigns to the engine roles, resolved for the spawn step.
 pub mod roles;
 
+// Player input through possession: the input component on the pawn, and the
+// gate that keeps the free camera off the pawn's keys.
+pub mod player_input;
+
 // The one pulsar_core::GameTime <-> pulsar_scenedb::GameTime seam (#652)
 pub mod time;
 

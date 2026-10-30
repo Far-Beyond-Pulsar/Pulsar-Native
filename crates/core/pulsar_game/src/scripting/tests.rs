@@ -2357,9 +2357,14 @@ mod roles {
             ["hero:spawned", "pad:possess", "hero:possessed"],
             "the character runs a frame after the roles; then possession"
         );
-        // Hooks run once.
+        // The possession hooks run once; `on_input` every frame after.
         game.tick_once();
-        assert_eq!(names(&log).len(), 7);
+        game.tick_once();
+        assert_eq!(
+            names(&log)[7..],
+            ["pad:input", "pad:input"],
+            "possession hooks ran once, the controller hears on_input per frame"
+        );
 
         // Every role is an entity of its class, in spawn order.
         let spawned = role_entities(&game);
@@ -2424,7 +2429,8 @@ mod roles {
         game.set_world_roles(all_roles());
         game.tick_once();
         game.tick_once();
-        let before = names(&log).len();
+        let input = |log: &Log| events(log).into_iter().filter(|(name, _)| name != "pad:input").count();
+        let before = input(&log);
 
         let controller = game
             .scripts
@@ -2460,9 +2466,10 @@ mod roles {
             .unwrap();
         game.tick_once();
         game.tick_once();
+        assert_eq!(input(&log), before + 1, "exactly the controller's handler ran");
         let log = events(&log);
-        assert_eq!(log.len(), before + 1, "exactly the controller's handler ran");
-        assert_eq!(log[before], ev("pad:possess", &stable));
+        let handled: Vec<_> = log.iter().filter(|(name, _)| name != "pad:input").collect();
+        assert_eq!(*handled[before], ev("pad:possess", &stable));
     }
 
     /// Play-in-Editor adopts the editor's world: stopping must leave the role
@@ -2537,8 +2544,10 @@ mod roles {
         second.tick_once();
         assert_eq!(marked(&second), 4, "the same four, not eight");
         assert_eq!(role_entities(&second), before, "the entities were re-bound");
-        // The fresh session's scripts run on them.
-        assert_eq!(names(&log).len(), 7);
+        // The fresh session's scripts run on them (the character was running
+        // already, so possession finished a frame early and `on_input` began).
+        let hooks: Vec<_> = names(&log).into_iter().filter(|n| n != "pad:input").collect();
+        assert_eq!(hooks.len(), 7, "{hooks:?}");
 
         // A leftover of a role the level no longer assigns is removed.
         let mut third = TickLoop::with_scene_store(

@@ -98,20 +98,39 @@ impl EngineRole {
     }
 }
 
-/// The Blueprint paths a level selected, before any checking.
+/// Key in the level's `world_settings` holding the project-relative path of
+/// the `.inputmap` the local player's controller brings to its pawn.
+pub const PLAYER_INPUT_MAPPING_KEY: &str = "player_input_mapping";
+
+/// The Blueprint paths a level selected, before any checking, and the input
+/// mapping the player controller carries.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RoleSelection(BTreeMap<EngineRole, String>);
+pub struct RoleSelection {
+    blueprints: BTreeMap<EngineRole, String>,
+    input_mapping: Option<String>,
+}
 
 impl RoleSelection {
     pub fn set(&mut self, role: EngineRole, blueprint: Option<String>) {
         match blueprint.filter(|path| !path.is_empty()) {
-            Some(path) => self.0.insert(role, path),
-            None => self.0.remove(&role),
+            Some(path) => self.blueprints.insert(role, path),
+            None => self.blueprints.remove(&role),
         };
     }
 
     pub fn get(&self, role: EngineRole) -> Option<&str> {
-        self.0.get(&role).map(String::as_str)
+        self.blueprints.get(&role).map(String::as_str)
+    }
+
+    /// Choose the `.inputmap` the player controller possesses its pawn with.
+    pub fn set_input_mapping(&mut self, mapping: Option<String>) {
+        self.input_mapping = mapping
+            .map(|path| path.trim().to_owned())
+            .filter(|path| !path.is_empty());
+    }
+
+    pub fn input_mapping(&self) -> Option<&str> {
+        self.input_mapping.as_deref()
     }
 
     /// Read the selections from a level's `world_settings` object. Levels
@@ -123,6 +142,12 @@ impl RoleSelection {
                 selection.set(spec.role, Some(path.to_owned()));
             }
         }
+        selection.set_input_mapping(
+            settings
+                .get(PLAYER_INPUT_MAPPING_KEY)
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        );
         selection
     }
 
@@ -187,6 +212,7 @@ impl RoleBinding {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorldRoles {
     bindings: BTreeMap<EngineRole, RoleBinding>,
+    input_mapping: Option<String>,
 }
 
 impl WorldRoles {
@@ -219,7 +245,12 @@ impl WorldRoles {
                 },
             );
         }
-        Self { bindings }
+        Self {
+            bindings,
+            input_mapping: selection
+                .input_mapping()
+                .map(|path| path.replace('\\', "/")),
+        }
     }
 
     /// Resolve the roles a level file selects against the project at
@@ -248,6 +279,13 @@ impl WorldRoles {
 
     pub fn is_empty(&self) -> bool {
         self.bindings.is_empty()
+    }
+
+    /// Project-relative path of the `.inputmap` the player controller
+    /// possesses its pawn with, when the level names one. Passed on as
+    /// written: the input runtime finds the asset (or reports it missing).
+    pub fn input_mapping(&self) -> Option<&str> {
+        self.input_mapping.as_deref()
     }
 
     /// One message per selection that cannot be used.
@@ -362,6 +400,22 @@ mod tests {
         assert_eq!(selection.get(EngineRole::PlayerController), None);
         assert_eq!(RoleSelection::from_level_json("not json"), RoleSelection::default());
         assert_eq!(RoleSelection::from_level_json(r#"{"world_settings":{"game_mode_blueprint":""}}"#), RoleSelection::default());
+    }
+
+    #[test]
+    fn the_input_mapping_rides_beside_the_roles_and_old_levels_have_none() {
+        let level = r#"{"world_settings":{"player_input_mapping":"input\\Game.inputmap"}}"#;
+        let roles = WorldRoles::for_level(level, tempfile::tempdir().unwrap().path());
+        assert_eq!(roles.input_mapping(), Some("input/Game.inputmap"));
+        assert!(roles.is_empty(), "a mapping alone is no role");
+        for old in [
+            r#"{"world_settings":{"game_mode_blueprint":"a"}}"#,
+            r#"{"world_settings":{"player_input_mapping":"  "}}"#,
+            r#"{"world_settings":{"player_input_mapping":3}}"#,
+            r#"{}"#,
+        ] {
+            assert_eq!(RoleSelection::from_level_json(old).input_mapping(), None, "{old}");
+        }
     }
 
     #[test]

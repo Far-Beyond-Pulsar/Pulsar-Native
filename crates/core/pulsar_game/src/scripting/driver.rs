@@ -384,6 +384,12 @@ pub struct ScriptDriver {
     role_entities: Vec<SessionRole>,
     /// The local player's character, spawned but not yet running.
     pending_possession: Option<Possession>,
+    /// The pawn the local controller possesses, once possession completed.
+    possessed: Option<Possessed>,
+    /// Set while `possessed`; read by the hosts' free cameras.
+    possession_gate: crate::player_input::PossessionGate,
+    /// Seconds the running frame advances by, for `on_input`.
+    frame_delta: f64,
     /// What classes implement; see [`super::traits`].
     traits: RuntimeTraits,
     /// Contract violations already reported, so a hook that runs every frame
@@ -442,6 +448,9 @@ impl ScriptDriver {
             role_hooks: Vec::new(),
             role_entities: Vec::new(),
             pending_possession: None,
+            possessed: None,
+            possession_gate: crate::player_input::PossessionGate::new(),
+            frame_delta: 0.0,
             traits: RuntimeTraits::default(),
             noted: HashSet::new(),
             spawn_serial: 0,
@@ -466,6 +475,9 @@ impl ScriptDriver {
         if let Some(mut old) = self.events.take() {
             old.clear();
         }
+        // Before any class links: a Blueprint can handle `input::Jump.triggered`
+        // whichever loads first (see `player_input`).
+        crate::player_input::declare_events(&hub, &self.project_root);
         let events = ScriptEvents::new(hub);
         for registration in pulsar_world_registry::component_event_registrations() {
             let declaration = (registration.declaration)();
@@ -718,6 +730,7 @@ impl ScriptDriver {
     /// Run one script phase against `world`. See the module doc.
     pub fn run_frame(&mut self, world: &mut World, delta_time: f64) -> DriverReport {
         let mut report = DriverReport::default();
+        self.frame_delta = delta_time;
         let scope = self.frame_start(world, &mut report);
         report
             .script_errors
@@ -746,6 +759,7 @@ impl ScriptDriver {
         use std::time::Instant;
         let mut report = DriverReport::default();
         let mut locks = LockTimes::default();
+        self.frame_delta = delta_time;
 
         let asked = Instant::now();
         let mut store = scene.write();
@@ -979,11 +993,20 @@ impl ScriptDriver {
     /// a stopped session leaves nothing behind on the hub.
     pub fn end_play_all(&mut self, world: &mut World) -> Vec<RuntimeError> {
         let scope = CommandScope::begin();
+        // The game ends while the roles' scripts still live: the player lets
+        // go of their pawn, then the game mode hears the game end.
+        let mut report = DriverReport::default();
+        self.end_possession(world, &mut report);
+        if let Some(mode) = self.role_entity(EngineRole::GameMode) {
+            let mode_trait = EngineRole::GameMode.spec().trait_id;
+            self.call_trait_hook(world, mode, mode_trait, "on_game_end", &[], &mut report);
+        }
         if let Some(events) = self.events.as_mut() {
             // No handler runs after end_play.
             events.clear();
         }
-        let errors = self.runtime.end_play_all(world);
+        let mut errors = std::mem::take(&mut report.script_errors);
+        errors.extend(self.runtime.end_play_all(world));
         discard_commands(world, scope.finish());
         // The roles' objects are the session's, not the level's: they go
         // with it, after their scripts ended.
@@ -1822,6 +1845,21 @@ struct Possession {
     controller: Option<Entity>,
 }
 
+/// The local player's controller in control of a pawn.
+struct Possessed {
+    controller: Option<Entity>,
+    pawn: Entity,
+    /// The `PlayerInputComponent` instance on the pawn, when the level names
+    /// a mapping and it could be attached.
+    input: Option<Entity>,
+}
+
+/// Stamps the input component instance a possession attached to its pawn, so
+/// the next session over the same world can tell it from one the pawn's class
+/// placed itself.
+#[derive(Clone, Copy, Debug)]
+struct RoutedInput;
+
 /// The id of the one local player the session starts.
 const LOCAL_PLAYER: i64 = 0;
 
@@ -1830,6 +1868,19 @@ impl ScriptDriver {
     /// when the session's first script phase runs.
     pub fn set_world_roles(&mut self, roles: engine_fs::world_roles::WorldRoles) {
         self.world_roles = roles;
+    }
+
+    /// Share the flag this driver sets while a pawn is possessed (the tick
+    /// loop hands it out as `TickLoop::possession_gate`).
+    pub fn set_possession_gate(&mut self, gate: crate::player_input::PossessionGate) {
+        gate.set(self.possessed.is_some());
+        self.possession_gate = gate;
+    }
+
+    /// The pawn the local player's controller possesses, once possession
+    /// completed and until it ends.
+    pub fn possessed_pawn(&self) -> Option<Entity> {
+        self.possessed.as_ref().map(|possessed| possessed.pawn)
     }
 
     /// The entities this session spawned for the engine roles.
@@ -2066,6 +2117,8 @@ impl ScriptDriver {
     fn despawn_role_entities(&mut self, world: &mut World) {
         self.role_hooks.clear();
         self.pending_possession = None;
+        self.possessed = None;
+        self.possession_gate.set(false);
         for owned in std::mem::take(&mut self.role_entities) {
             let entity = owned.entity;
             self.holders.retain(|_, object| *object != entity);
@@ -2199,23 +2252,123 @@ impl ScriptDriver {
     }
 
     /// Run the hooks of role entities that began this frame, then finish
-    /// the local player's possession once their character is running.
+    /// the local player's possession once their character is running. While
+    /// a pawn is possessed the controller hears `on_input` every frame (from
+    /// the frame after possession began).
     fn run_role_hooks(&mut self, world: &mut World, report: &mut DriverReport) {
         self.mark_role_entities(world);
         for hook in std::mem::take(&mut self.role_hooks) {
             let trait_id = hook.role.spec().trait_id;
             self.call_trait_hook(world, hook.entity, trait_id, hook.method, &hook.args, report);
         }
+        self.drop_lost_pawn(world, report);
+        self.controller_input(world, report);
         self.advance_possession(world, report);
+    }
+
+    /// `PlayerController.on_input(delta_seconds)`, while a pawn is possessed.
+    fn controller_input(&mut self, world: &mut World, report: &mut DriverReport) {
+        let Some(controller) = self.possessed.as_ref().and_then(|p| p.controller) else {
+            return;
+        };
+        let controller_trait = EngineRole::PlayerController.spec().trait_id;
+        let delta = pulsar_script_vm::Value::Float(self.frame_delta);
+        self.call_trait_hook(world, controller, controller_trait, "on_input", &[delta], report);
+    }
+
+    /// The possessed pawn was destroyed (a script's `world::destroy`, the
+    /// editor deleting it): the possession ends with it.
+    fn drop_lost_pawn(&mut self, world: &mut World, report: &mut DriverReport) {
+        if self
+            .possessed
+            .as_ref()
+            .is_some_and(|possessed| !world.is_alive(possessed.pawn))
+        {
+            self.end_possession(world, report);
+        }
+    }
+
+    /// End the local player's possession: the controller hears
+    /// `on_unpossess`, the pawn (when it still exists) `on_unpossessed`, the
+    /// input component leaves the pawn and the free camera may fly again.
+    /// Nothing is possessed afterwards. The seam for a later "possess another
+    /// pawn".
+    pub(crate) fn end_possession(&mut self, world: &mut World, report: &mut DriverReport) {
+        let Some(possessed) = self.possessed.take() else {
+            return;
+        };
+        let controller_trait = EngineRole::PlayerController.spec().trait_id;
+        let character_trait = EngineRole::PlayerCharacter.spec().trait_id;
+        if let Some(controller) = possessed.controller {
+            self.call_trait_hook(world, controller, controller_trait, "on_unpossess", &[], report);
+        }
+        if world.is_alive(possessed.pawn) {
+            self.call_trait_hook(
+                world,
+                possessed.pawn,
+                character_trait,
+                "on_unpossessed",
+                &[],
+                report,
+            );
+        }
+        if let Some(input) = possessed.input {
+            crate::player_input::detach(world, input);
+        }
+        self.possession_gate.set(false);
+        tracing::info!("The player controller no longer possesses its pawn");
+    }
+
+    /// Put the controller's input mapping to work on `pawn`: attach a
+    /// `PlayerInputComponent` for it (see [`crate::player_input`]). `None`
+    /// when the level names no mapping or the component cannot be attached;
+    /// possession carries on without input, and says why.
+    fn route_input(
+        &mut self,
+        world: &mut World,
+        pawn: Entity,
+        report: &mut DriverReport,
+    ) -> Option<Entity> {
+        // Left by a previous session over this world that never shut down.
+        for stale in attachments::instances(world, pawn) {
+            if world.get::<RoutedInput>(stale).is_some() {
+                crate::player_input::detach(world, stale);
+            }
+        }
+        let Some(mapping) = self.world_roles.input_mapping().map(str::to_owned) else {
+            // Not a failure: a level may possess a pawn nothing steers.
+            let message = "No Player Input Mapping is set for this level: the player character \
+                           receives no input (World Settings, Gameplay Roles)"
+                .to_owned();
+            if self.noted.insert(message.clone()) {
+                tracing::warn!("{message}");
+            }
+            return None;
+        };
+        match crate::player_input::attach(world, pawn, &self.project_root, &mapping) {
+            Ok(instance) => {
+                world.insert(instance, RoutedInput);
+                tracing::info!(%mapping, "Player input routed to the possessed pawn");
+                Some(instance)
+            }
+            Err(error) => {
+                let message = format!(
+                    "Player input mapping '{mapping}' could not be put to work on the pawn: {error}"
+                );
+                self.note_once(report, message);
+                None
+            }
+        }
     }
 
     /// The character is spawned by a world command at the end of the frame
     /// the roles started, so it runs one frame later. Then the pawn is
     /// checked against the `PlayerCharacter` trait, the character hears it
-    /// was spawned, the controller possesses it and the character learns of
-    /// its controller. Possession is only these events: input does not route
-    /// to the character and no camera follows it yet (see
-    /// `.agents/TRAITS.md`, "What runs when a level plays").
+    /// was spawned, the controller possesses it, the character learns of
+    /// its controller and the controller's input mapping is attached to the
+    /// pawn (`route_input`), so the character's Blueprint hears
+    /// `input::<Action>` on its own channel. No camera follows the pawn yet
+    /// (see `.agents/TRAITS.md`, "What runs when a level plays").
     fn advance_possession(&mut self, world: &mut World, report: &mut DriverReport) {
         let Some(character) = self.pending_possession.as_ref().map(|p| p.character) else {
             return;
@@ -2270,5 +2423,12 @@ impl ScriptDriver {
             &[controller_id],
             report,
         );
+        let input = self.route_input(world, character, report);
+        self.possessed = Some(Possessed {
+            controller: pending.controller,
+            pawn: character,
+            input,
+        });
+        self.possession_gate.set(true);
     }
 }
