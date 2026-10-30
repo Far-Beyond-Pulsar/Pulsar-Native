@@ -257,6 +257,24 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
         editor_id.as_str() == "script-editor"
     }
 
+    fn ai_tools(&self) -> Vec<AiToolDefinition> {
+        script_editor_plugin::ScriptEditorPlugin::default().ai_tools()
+    }
+
+    fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
+        script_editor_plugin::ScriptEditorPlugin::default().capabilities_for_file(file_path)
+    }
+
+    fn execute_ai_tool(
+        &self,
+        file_path: &Path,
+        tool_name: &str,
+        tool_args: JsonValue,
+    ) -> Result<JsonValue, PluginError> {
+        script_editor_plugin::ScriptEditorPlugin::default()
+            .execute_ai_tool(file_path, tool_name, tool_args)
+    }
+
     fn create_editor(
         &self,
         file_path: PathBuf,

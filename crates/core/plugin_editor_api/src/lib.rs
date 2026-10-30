@@ -91,6 +91,7 @@ pub mod events;
 pub mod file_types;
 pub mod helpers;
 pub mod identifiers;
+pub mod llm;
 pub mod import_companion;
 pub mod manifest;
 pub mod menus;

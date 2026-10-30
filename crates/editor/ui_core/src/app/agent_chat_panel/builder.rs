@@ -304,6 +304,7 @@ impl AgentChatPanel {
         };
 
         this.bootstrap_chat_storage(cx);
+        this.sync_editor_llm();
         let initial_ix = this.active_provider_ix;
         this.fetch_models_in_background(initial_ix, cx);
         this

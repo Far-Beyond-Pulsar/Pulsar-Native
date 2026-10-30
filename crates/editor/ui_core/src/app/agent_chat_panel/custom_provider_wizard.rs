@@ -180,6 +180,7 @@ impl AgentChatPanel {
         self.provider_states_shared
             .borrow_mut()
             .insert(id.to_string(), state);
+        self.sync_editor_llm();
     }
 
     /// Delete a saved connection (the provider list's Delete action).

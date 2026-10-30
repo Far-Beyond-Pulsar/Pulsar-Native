@@ -501,3 +501,14 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
 pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }
 pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }
+
+# LOCAL DEV ONLY -- inline AI blocks/review live on the Mockaco `ai-inline-integration`
+# branch. Remove this section and re-pin the `rev` in
+# plugins/vendor/code_editor/Cargo.toml once that branch is merged and pushed.
+[patch."https://github.com/Far-Beyond-Pulsar/Mockaco"]
+mockaco-core = { path = "C:/Users/redst/Documents/GitHub/Mockaco/crates/mockaco-core" }
+mockaco-language = { path = "C:/Users/redst/Documents/GitHub/Mockaco/crates/mockaco-language" }
+mockaco-renderer = { path = "C:/Users/redst/Documents/GitHub/Mockaco/crates/mockaco-renderer" }
+mockaco-diff = { path = "C:/Users/redst/Documents/GitHub/Mockaco/crates/mockaco-diff" }
+mockaco-lsp = { path = "C:/Users/redst/Documents/GitHub/Mockaco/crates/mockaco-lsp" }
+mockaco-gpui = { path = "C:/Users/redst/Documents/GitHub/Mockaco/crates/mockaco-gpui" }

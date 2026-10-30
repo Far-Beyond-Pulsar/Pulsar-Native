@@ -83,6 +83,7 @@ impl AgentChatPanel {
                 self.fetch_models_in_background(index, cx);
             }
 
+            self.sync_editor_llm();
             cx.notify();
         }
     }
@@ -102,6 +103,7 @@ impl AgentChatPanel {
         if let Some(provider) = self.active_provider() {
             if index < provider.models.len() {
                 self.active_model_ix = index;
+                self.sync_editor_llm();
                 cx.notify();
             }
         }
@@ -155,6 +157,7 @@ impl AgentChatPanel {
                                 panel
                                     .model_list
                                     .update(cx, |list, cx| list.set_items(defs, cx));
+                                panel.sync_editor_llm();
                                 cx.notify();
                             } else {
                                 tracing::debug!(provider = %provider_id, "fetch_models_in_background: skipping (active_provider_ix mismatch)");

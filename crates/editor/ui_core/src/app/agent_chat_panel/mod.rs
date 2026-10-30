@@ -4,6 +4,7 @@ mod chat_history;
 mod chat_storage;
 mod context;
 mod custom_provider_wizard;
+mod editor_llm;
 mod panel;
 mod prompt_ranking;
 mod provider_catalog;
