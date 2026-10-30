@@ -388,6 +388,8 @@ pub struct ScriptDriver {
     possessed: Option<Possessed>,
     /// Set while `possessed`; read by the hosts' free cameras.
     possession_gate: crate::player_input::PossessionGate,
+    /// The entity each player's view follows; shared with the hosts.
+    view_targets: crate::view_target::ViewTargets,
     /// Seconds the running frame advances by, for `on_input`.
     frame_delta: f64,
     /// What classes implement; see [`super::traits`].
@@ -450,6 +452,7 @@ impl ScriptDriver {
             pending_possession: None,
             possessed: None,
             possession_gate: crate::player_input::PossessionGate::new(),
+            view_targets: crate::view_target::ViewTargets::new(),
             frame_delta: 0.0,
             traits: RuntimeTraits::default(),
             noted: HashSet::new(),
@@ -1651,6 +1654,10 @@ impl ScriptDriver {
                     position,
                 } => self.apply_spawn(world, entity, &class, parent, position, report),
                 WorldCommand::Destroy { entity } => self.apply_destroy(world, entity, report),
+                WorldCommand::SetViewTarget { entity } => {
+                    let target = (entity != Entity::DANGLING).then_some(entity);
+                    self.set_view_target(world, target);
+                }
             }
         }
     }
@@ -1862,7 +1869,7 @@ struct Possessed {
 struct RoutedInput;
 
 /// The id of the one local player the session starts.
-const LOCAL_PLAYER: i64 = 0;
+const LOCAL_PLAYER: i64 = crate::view_target::LOCAL_PLAYER;
 
 impl ScriptDriver {
     /// The Blueprints the level assigned to the engine roles. Takes effect
@@ -1876,6 +1883,38 @@ impl ScriptDriver {
     pub fn set_possession_gate(&mut self, gate: crate::player_input::PossessionGate) {
         gate.set(self.possessed.is_some());
         self.possession_gate = gate;
+    }
+
+    /// Share the view targets this driver writes (the tick loop hands them
+    /// out as `TickLoop::view_targets`). Targets already set move over.
+    pub fn set_view_targets(&mut self, targets: crate::view_target::ViewTargets) {
+        if let Some(target) = self.view_targets.local() {
+            targets.set(LOCAL_PLAYER, target);
+        }
+        self.view_targets = targets;
+    }
+
+    /// Make the local player's view follow `target`: the best enabled
+    /// `CameraComponent` on it, else beneath it, is the frame's camera until
+    /// the target changes. `None` clears it (the world's own camera selection
+    /// shows the game). A target that is not alive is refused. Possession sets
+    /// this to the pawn and clears it when the possession ends; this is the
+    /// seam for gameplay that looks elsewhere in between.
+    pub fn set_view_target(&mut self, world: &World, target: Option<Entity>) -> bool {
+        match target {
+            Some(target) if !world.is_alive(target) => {
+                tracing::warn!("The view target is not a live entity; the view is unchanged");
+                false
+            }
+            Some(target) => {
+                self.view_targets.set(LOCAL_PLAYER, target);
+                true
+            }
+            None => {
+                self.view_targets.clear(LOCAL_PLAYER);
+                true
+            }
+        }
     }
 
     /// The pawn the local player's controller possesses, once possession
@@ -2120,6 +2159,7 @@ impl ScriptDriver {
         self.pending_possession = None;
         self.possessed = None;
         self.possession_gate.set(false);
+        self.view_targets.clear_all();
         for owned in std::mem::take(&mut self.role_entities) {
             let entity = owned.entity;
             self.holders.retain(|_, object| *object != entity);
@@ -2317,6 +2357,7 @@ impl ScriptDriver {
             crate::player_input::detach(world, input);
         }
         self.possession_gate.set(false);
+        self.view_targets.clear(LOCAL_PLAYER);
         tracing::info!("The player controller no longer possesses its pawn");
     }
 
@@ -2368,8 +2409,8 @@ impl ScriptDriver {
     /// was spawned, the controller possesses it, the character learns of
     /// its controller and the controller's input mapping is attached to the
     /// pawn (`route_input`), so the character's Blueprint hears
-    /// `input::<Action>` on its own channel. No camera follows the pawn yet
-    /// (see `.agents/TRAITS.md`, "What runs when a level plays").
+    /// `input::<Action>` on its own channel. Last, the player's view target
+    /// becomes the pawn (`follow_pawn_view`).
     fn advance_possession(&mut self, world: &mut World, report: &mut DriverReport) {
         let Some(character) = self.pending_possession.as_ref().map(|p| p.character) else {
             return;
@@ -2431,5 +2472,25 @@ impl ScriptDriver {
             input,
         });
         self.possession_gate.set(true);
+        self.follow_pawn_view(world, character);
+    }
+
+    /// The local player's view follows the pawn they possess: its camera
+    /// (on the pawn, else beneath it) becomes the frame's camera. A pawn with
+    /// no camera still becomes the target, so a camera attached to it later
+    /// is picked up; until then the level's other cameras or the free camera
+    /// show the game (the free camera only stands down for a pawn camera),
+    /// which is said once.
+    fn follow_pawn_view(&mut self, world: &World, pawn: Entity) {
+        self.view_targets.set(LOCAL_PLAYER, pawn);
+        if helio_component::components::camera_on_object(world, pawn).is_none() {
+            let message = "The possessed pawn has no enabled CameraComponent on it or beneath it: \
+                           the view stays on the level's camera or the free camera (add a \
+                           CameraComponent to the character's Blueprint)"
+                .to_owned();
+            if self.noted.insert(message.clone()) {
+                tracing::warn!("{message}");
+            }
+        }
     }
 }

@@ -74,6 +74,10 @@ pub struct TickLoop {
     /// script driver, read by the hosts' free cameras (see
     /// [`possession_gate`](Self::possession_gate)).
     possession: crate::player_input::PossessionGate,
+    /// The entity each local player's view follows; set by the script driver
+    /// (possession), read by the hosts' camera selection (see
+    /// [`view_targets`](Self::view_targets)).
+    view_targets: crate::view_target::ViewTargets,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
     pub window_manager: Option<Arc<WindowManager>>,
@@ -220,6 +224,7 @@ impl TickLoop {
             static_moves: None,
             world_roles: engine_fs::world_roles::WorldRoles::default(),
             possession: crate::player_input::PossessionGate::new(),
+            view_targets: crate::view_target::ViewTargets::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -269,6 +274,7 @@ impl TickLoop {
             static_moves: None,
             world_roles: engine_fs::world_roles::WorldRoles::default(),
             possession: crate::player_input::PossessionGate::new(),
+            view_targets: crate::view_target::ViewTargets::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -387,6 +393,13 @@ impl TickLoop {
     /// down while it is set.
     pub fn possession_gate(&self) -> crate::player_input::PossessionGate {
         self.possession.clone()
+    }
+
+    /// The entity each local player's view follows (possession sets the
+    /// local player's to the pawn). Clone it before the loop moves to its
+    /// thread: the hosts' camera selection reads it each frame.
+    pub fn view_targets(&self) -> crate::view_target::ViewTargets {
+        self.view_targets.clone()
     }
 
     /// What the script phase did so far (instances started, objects
@@ -611,6 +624,7 @@ impl TickLoop {
             driver.attach_events(events);
             driver.set_world_roles(self.world_roles.clone());
             driver.set_possession_gate(self.possession.clone());
+            driver.set_view_targets(self.view_targets.clone());
             Arc::new(Mutex::new(driver))
         }))
     }
@@ -641,6 +655,7 @@ impl TickLoop {
         driver.attach_events(events);
         driver.set_world_roles(self.world_roles.clone());
         driver.set_possession_gate(self.possession.clone());
+        driver.set_view_targets(self.view_targets.clone());
         let driver = Arc::new(Mutex::new(driver));
         self.scripts = Some(Arc::clone(&driver));
         Ok(driver)

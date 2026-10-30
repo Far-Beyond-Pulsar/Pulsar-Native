@@ -29,7 +29,7 @@ use pulsar_pie_abi::{
     PIE_ABI_VERSION,
 };
 
-use crate::camera_selection::select_world_camera;
+use crate::camera_selection::{select_world_camera, view_target_drives_camera};
 use crate::freecam::FreeCam;
 use crate::tick::TickLoop;
 use pulsar_core::TickMode;
@@ -429,10 +429,13 @@ impl EmbeddedGame {
     }
 
     /// The free camera stands down while a possessed pawn owns the player's
-    /// input (see `player_input::PossessionGate`).
+    /// input and its camera is the view (see `player_input::PossessionGate`);
+    /// a pawn with no camera leaves the view to the free camera.
     fn sync_freecam(&mut self) {
-        let possessed = self.session.tick_loop.possession_gate().is_possessed();
-        self.freecam.set_suspended(possessed);
+        let tick_loop = &self.session.tick_loop;
+        let pawn_view = tick_loop.possession_gate().is_possessed()
+            && view_target_drives_camera(&self.scene_store.read(), tick_loop.view_targets().local());
+        self.freecam.set_suspended(pawn_view);
     }
 
     /// Advance simulation and render one frame into the offscreen target.
@@ -465,13 +468,15 @@ impl EmbeddedGame {
         engine_backend::scene::pump_assets(&self.scene_store);
         self.renderer.step_scene(&mut self.scene_store.write());
 
-        // 3. Camera. A Camera-typed entity in the shared world drives the
-        //    view when present (#637 -- no more unconditional freecam); the
-        //    freecam seeded from the editor view remains the fallback, on
-        //    the voxel ground's local vertical.
+        // 3. Camera. The shared world's camera drives the view when present
+        //    (the view target's, the best CameraComponent, a Camera-typed
+        //    entity -- #637, no more unconditional freecam); the freecam
+        //    seeded from the editor view remains the fallback, on the voxel
+        //    ground's local vertical.
         // The world's read lock is released before the ground is read.
         self.sync_freecam();
-        let world_camera = select_world_camera(&self.scene_store.read());
+        let view_target = self.session.tick_loop.view_targets().local();
+        let world_camera = select_world_camera(&self.scene_store.read(), view_target);
         let cam = world_camera.unwrap_or_else(|| {
             let ground = self.renderer.voxel_ground(self.freecam.position());
             self.freecam.follow_ground(ground);

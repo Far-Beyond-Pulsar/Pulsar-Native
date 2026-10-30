@@ -22,7 +22,7 @@ use engine_backend::scene::RuntimeLevel;
 use engine_backend::subsystems::render::{DeviceOwner, SceneRenderer, SceneRendererOptions};
 use helio::{required_wgpu_features, required_wgpu_limits, usable_adapter_features};
 
-use crate::camera_selection::select_world_camera;
+use crate::camera_selection::{camera_for_frame, view_target_drives_camera};
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
 
@@ -390,6 +390,9 @@ pub struct PulsarApp {
     /// Set while a possessed pawn owns the player's input: every window's
     /// free camera stands down (see `player_input::PossessionGate`).
     possession: crate::player_input::PossessionGate,
+    /// The entity the local player's view follows (possession sets it to the
+    /// pawn); read by the camera selection.
+    view_targets: crate::view_target::ViewTargets,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -419,6 +422,7 @@ impl PulsarApp {
         let scene_store = tick_loop.scene_store.clone();
         let events = tick_loop.events.clone();
         let possession = tick_loop.possession_gate();
+        let view_targets = tick_loop.view_targets();
         Self {
             bridge,
             gpu: GpuContext::new(display),
@@ -431,6 +435,7 @@ impl PulsarApp {
             scene_store,
             events,
             possession,
+            view_targets,
             focused_window: None,
             cursor_captured: false,
             last_cursor: None,
@@ -870,13 +875,15 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 }
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,
-                // then a Camera-typed entity in the SHARED world (#637 --
-                // moving that entity moves the view next frame), then the
-                // freecam.
-                let ecs_camera = match self.bridge.camera(handle) {
-                    Some(cam) => Some(cam),
-                    None => select_world_camera(&self.scene_store.read()),
-                };
+                // then the SHARED world's (the view target's camera, the best
+                // CameraComponent, a Camera-typed entity -- #637; moving the
+                // camera's object moves the view next frame), then the
+                // freecam. See `camera_selection`.
+                let ecs_camera = camera_for_frame(
+                    self.bridge.camera(handle),
+                    &self.scene_store.read(),
+                    self.view_targets.local(),
+                );
                 let background = self.throttle_background;
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(ecs_camera);
@@ -907,9 +914,12 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         // that are due; sleep until the earliest of the rest instead of
         // spinning.
         let mut wake: Option<Instant> = None;
-        let possessed = self.possession.is_possessed();
+        // The free camera stands down only while a possessed pawn's camera is
+        // the view: a pawn with no camera leaves the view to the free camera.
+        let pawn_view = self.possession.is_possessed()
+            && view_target_drives_camera(&self.scene_store.read(), self.view_targets.local());
         for gw in self.windows.values_mut() {
-            gw.freecam.set_suspended(possessed);
+            gw.freecam.set_suspended(pawn_view);
             gw.freecam.update(dt);
             if now >= gw.next_redraw {
                 gw.window.request_redraw();

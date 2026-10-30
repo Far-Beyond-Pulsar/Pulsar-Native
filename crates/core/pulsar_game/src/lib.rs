@@ -45,6 +45,10 @@ pub mod roles;
 // gate that keeps the free camera off the pawn's keys.
 pub mod player_input;
 
+// The entity the local player's view follows (set by possession, read by the
+// hosts' camera selection).
+pub mod view_target;
+
 // The one pulsar_core::GameTime <-> pulsar_scenedb::GameTime seam (#652)
 pub mod time;
 

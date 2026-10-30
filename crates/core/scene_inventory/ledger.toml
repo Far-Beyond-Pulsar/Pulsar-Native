@@ -106,6 +106,17 @@ test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/renderer/he
 status = "verified"
 
 [[class]]
+name = "CameraComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+owner = "helio_component::components::camera_component"
+disposition = "non-render data read by the host per frame: a camera's projection (perspective fov or orthographic size), clip planes, priority and enabled flag; its pose is its owner object's world transform. The game's camera selection (pulsar_game::camera_selection) looks through the view target's camera, else the highest priority one. Nothing on the GPU reads it"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "crates/renderer/helio/crates/helio-component/src/components/camera_component.rs (tests); crates/core/pulsar_game/src/camera_selection.rs (tests); crates/core/pulsar_game/src/scripting/tests.rs (possession_makes_the_pawn_the_view_target_and_its_camera_follows_it)"
+status = "verified"
+
+[[class]]
 name = "ClassInstance"
 category = "Scripting"
 world_registered = true

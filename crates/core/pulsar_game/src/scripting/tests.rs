@@ -3063,4 +3063,191 @@ mod roles {
         second.end_scripts();
         assert!(input_components(&second).is_empty());
     }
+
+    // ---- the view target ------------------------------------------------------
+
+    use crate::camera_selection::{select_world_camera, view_target_drives_camera};
+    use crate::scripting::commands::WorldCommand;
+    use crate::view_target::LOCAL_PLAYER;
+    use engine_backend::scene::Transform;
+    use helio_component::components::{CameraComponent, CAMERA_CLASS_NAME};
+    use pulsar_world_registry::pulsar_scene_model::attachments::{self, NewInstance};
+
+    fn at(position: [f64; 3]) -> Transform {
+        Transform {
+            position,
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+        }
+    }
+
+    fn view_target(game: &TickLoop) -> Option<Entity> {
+        game.view_targets().get(LOCAL_PLAYER)
+    }
+
+    /// An object at `local` under `parent`, carrying a camera.
+    fn camera_under(
+        game: &TickLoop,
+        parent: Entity,
+        local: [f64; 3],
+        camera: CameraComponent,
+    ) -> Entity {
+        let mut store = game.scene_store.write();
+        let world = &mut store.world;
+        let eyes = world.spawn_object(SpawnObject::new("Eyes")).unwrap();
+        world.reparent(eyes, Some(parent)).unwrap();
+        world.insert(eyes, at(local));
+        let instance =
+            attachments::spawn_instance(world, eyes, NewInstance::new(CAMERA_CLASS_NAME)).unwrap();
+        world.insert(instance, camera);
+        eyes
+    }
+
+    fn frame_camera(game: &TickLoop) -> Option<crate::window::RenderCamera> {
+        select_world_camera(&game.scene_store.read(), game.view_targets().local())
+    }
+
+    #[test]
+    fn possession_makes_the_pawn_the_view_target_and_its_camera_follows_it() {
+        let project = input_project();
+        let (game, _) = possess(project.path(), Some("input/Game.inputmap"));
+        let pawn = hero(&game);
+        assert_eq!(view_target(&game), Some(pawn), "set when possession completed");
+
+        // The pawn has no camera yet: the target is set (a camera attached
+        // later is picked up), but it does not drive the view.
+        assert!(!view_target_drives_camera(&game.scene_store.read(), Some(pawn)));
+        assert!(frame_camera(&game).is_none(), "the free camera shows the game");
+
+        // A camera on a descendant, 1.7 m above the pawn.
+        game.scene_store
+            .write()
+            .world
+            .insert(pawn, at([10.0, 0.0, 5.0]));
+        let wide = CameraComponent {
+            fov_y_deg: 90.0,
+            near: 0.2,
+            far: 500.0,
+            ..Default::default()
+        };
+        camera_under(&game, pawn, [0.0, 1.7, 0.0], wide);
+        assert!(view_target_drives_camera(&game.scene_store.read(), Some(pawn)));
+        let seen = frame_camera(&game).expect("the pawn's camera");
+        assert_eq!(seen.position, glam::DVec3::new(10.0, 1.7, 5.0));
+        assert!((seen.fov_y - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
+        assert_eq!((seen.near, seen.far), (0.2, 500.0));
+
+        // The pawn walks: the view goes with it.
+        game.scene_store
+            .write()
+            .world
+            .insert(pawn, at([12.0, 0.0, -3.0]));
+        let moved = frame_camera(&game).unwrap();
+        assert_eq!(moved.position, glam::DVec3::new(12.0, 1.7, -3.0));
+    }
+
+    #[test]
+    fn the_view_target_outranks_every_other_camera_until_possession_ends() {
+        let project = input_project();
+        let (game, _) = possess(project.path(), Some("input/Game.inputmap"));
+        let pawn = hero(&game);
+        game.scene_store.write().world.insert(pawn, at([1.0, 0.0, 0.0]));
+        camera_under(&game, pawn, [0.0, 2.0, 0.0], CameraComponent::default());
+        // A camera elsewhere with a far higher priority.
+        let other = game
+            .scene_store
+            .write()
+            .world
+            .spawn_object(SpawnObject::new("Cutscene"))
+            .unwrap();
+        {
+            let mut store = game.scene_store.write();
+            let world = &mut store.world;
+            world.insert(other, at([50.0, 50.0, 50.0]));
+            let instance =
+                attachments::spawn_instance(world, other, NewInstance::new(CAMERA_CLASS_NAME))
+                    .unwrap();
+            world.insert(
+                instance,
+                CameraComponent {
+                    priority: 100,
+                    ..Default::default()
+                },
+            );
+        }
+        assert_eq!(
+            frame_camera(&game).unwrap().position,
+            glam::DVec3::new(1.0, 2.0, 0.0),
+            "the pawn's camera, not the higher-priority one"
+        );
+
+        end_possession(&game);
+        assert_eq!(view_target(&game), None, "cleared with the possession");
+        assert_eq!(
+            frame_camera(&game).unwrap().position,
+            glam::DVec3::new(50.0, 50.0, 50.0),
+            "then the world's own pick"
+        );
+    }
+
+    #[test]
+    fn ending_the_session_clears_the_view_target() {
+        let project = input_project();
+        let (mut game, _) = possess(project.path(), Some("input/Game.inputmap"));
+        assert!(view_target(&game).is_some());
+        game.end_scripts();
+        assert_eq!(view_target(&game), None);
+    }
+
+    #[test]
+    fn a_pawn_without_a_camera_is_still_possessed_and_leaves_the_view_to_the_free_camera() {
+        let project = input_project();
+        let (game, _) = possess(project.path(), None);
+        let pawn = hero(&game);
+        assert!(game.possession_gate().is_possessed());
+        assert_eq!(view_target(&game), Some(pawn));
+        assert!(!view_target_drives_camera(&game.scene_store.read(), view_target(&game)));
+        assert!(frame_camera(&game).is_none());
+    }
+
+    #[test]
+    fn gameplay_can_retarget_the_view_and_a_dead_target_is_refused() {
+        let project = input_project();
+        let (game, _) = possess(project.path(), Some("input/Game.inputmap"));
+        let pawn = hero(&game);
+        let driver = game.scripts.as_ref().unwrap();
+        let spare = game
+            .scene_store
+            .write()
+            .world
+            .spawn_object(SpawnObject::new("Spare"))
+            .unwrap();
+
+        let mut driver = driver.lock().unwrap();
+        let mut report = crate::scripting::DriverReport::default();
+        let mut store = game.scene_store.write();
+        assert!(driver.set_view_target(&store.world, Some(spare)));
+        assert_eq!(game.view_targets().local(), Some(spare));
+
+        // The script function's queued command does the same, and a dangling
+        // entity clears.
+        driver.apply_commands(
+            &mut store.world,
+            vec![WorldCommand::SetViewTarget { entity: pawn }],
+            &mut report,
+        );
+        assert_eq!(game.view_targets().local(), Some(pawn));
+        driver.apply_commands(
+            &mut store.world,
+            vec![WorldCommand::SetViewTarget {
+                entity: Entity::DANGLING,
+            }],
+            &mut report,
+        );
+        assert_eq!(game.view_targets().local(), None);
+
+        store.world.despawn_tree(spare);
+        assert!(!driver.set_view_target(&store.world, Some(spare)));
+        assert_eq!(game.view_targets().local(), None);
+    }
 }

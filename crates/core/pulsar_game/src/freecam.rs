@@ -190,6 +190,7 @@ impl FreeCam {
             fov_y: self.fov_y,
             near: self.near,
             far: self.far,
+            orthographic_half_height: None,
         }
     }
 }
