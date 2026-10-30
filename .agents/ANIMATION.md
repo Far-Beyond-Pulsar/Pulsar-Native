@@ -319,9 +319,10 @@ graph's toward zero).
   apply in the **next** frame's animation phase.
 - **Authority:** animation drives the skeleton. The physics rig owns the bones its
   dynamic bodies drive (`apply_physics_bones`; the animation keeps running, see
-  "Physics authority"). Whole-pose ownership via `apply_physics_pose` holds the
-  animation clock; `clear_physics_pose` returns ownership and republishes the
-  animation's pose.
+  "Physics authority"). Whole-pose ownership via `apply_physics_pose` never holds the
+  animation clock: the animation keeps advancing and the drawn pose blends toward the physics
+  pose by `set_physics_blend_weight` (default 1; `physics_blend_weight()` reads it).
+  `clear_physics_pose` returns ownership; the animation is already where it should be.
   The component is the only writer of its GPU palettes (current + previous in
   `gpu_bone_palettes`), written under the scene write lock.
 - Time: pause is `playing = false` (or a zero delta); `playback_rate` scales;
@@ -389,7 +390,7 @@ the engine.
 | D14 | Continuity is judged by the tracker: a span whose `from` is not where the previous one ended is a **jump** (seek, section jump or link, Pose Search switch). Looping spans that only restart their cycle count (Pose Search) are rebased, not jumps. |
 | D15 | Pause, scrub and fixed-step remainders are *no update*: nothing begins, ticks or ends. A preview scrub (`UpdateMode::Scrub`) reports no spans at all, so it cannot raise gameplay events. |
 | D16 | `root_motion_mode` defaults to `IgnoreRootMotion` (extract and discard), which is exactly what scenes saved before root motion was applied did. |
-| D17 | Physics owns **bones**, not the whole skeleton: `apply_physics_bones` replaces configured bones in the drawn palette; the animation clock never stops for them. Whole-pose ownership (`apply_physics_pose`) remains and holds the clock. |
+| D17 | Physics owns **bones**, not the whole skeleton: `apply_physics_bones` replaces configured bones in the drawn palette; the animation clock never stops for them. Whole-pose ownership (`apply_physics_pose`) also leaves the clock running and blends by a physics blend weight. |
 
 ### Playback instances and notify delivery
 
@@ -513,8 +514,25 @@ Montage's section links and jumps contribute only the time actually played (the
 playhead is reported in continuous runs), and slicing time differently gives the same
 total travel. A dynamic rigid body owner should use `Ignore`/`NoRootMotionExtraction`
 and let physics move it: the animation phase runs first and physics wins afterwards.
-Multiplayer authority is not modelled: root motion is applied by whoever runs the
-component's animation phase.
+### Networked root motion
+
+`root_motion_authority` (`RootMotionAuthoritySetting`, an inspector property) states who owns
+root motion; the default `Standalone` is the behaviour above. `Authority` (server) and
+`AutonomousProxy` (owning client) apply the move and log each advance as a `RootMotionMove`
+(`sequence`, `delta_seconds`, `delta` after the policy, `montage_delta`, and the playing
+Montage id with its position) for `drain_root_motion_moves()`; the same input gives identical
+logs on both sides, so the server can replay or verify and the client can reconcile by
+sequence. `SimulatedProxy` never moves its owner by animation (the transform comes from
+replication) but the pose still animates. Montage-owned root motion is the same: its part is
+separated and the Montage playback it came from is named so the server can start the same
+Montage at the same position.
+
+**Missing dependency (not implemented):** the engine has no gameplay networking layer. The
+only networking crates are editor-session replication (`pulsar-multiplayer-core`, whose
+`Replicator` carries UI element state) and the multi-user editing path; there are no net
+roles on SceneDB entities, no entity-transform replication or client prediction/correction,
+and no RPC for "play this Montage at that position". Until one exists nothing sends the
+moves between processes; the contract above is the data they will carry.
 
 ### Physics authority
 
@@ -525,6 +543,32 @@ else stays animated). The component is the only writer of the palette and of
 `bone_world_pose`; the rig writes through the component in write-back, sequentially,
 so there is no race. `skeletal_rig` reports only dynamic-body bones; kinematic bodies
 keep following the animation. An empty list gives every bone back.
+
+**Whole-skeleton ownership** (`apply_physics_pose`, Unreal's physics blend weight): the rig
+hands over a mesh-space pose for every bone. The drawn palette is the animated (and bone-owned)
+pose blended toward it per bone (translation and scale lerp, rotation slerp) by the weight;
+weight 1 draws the physics pose exactly, 0 the animation. `bone_world_pose` stays the
+animation's own pose so physics never reads itself. Clock, graph, state machines, notifies,
+Montages and root motion run at every weight, so giving the pose back is a blend, not a
+restart (tested: `whole_skeleton_physics_ownership_blends_the_drawn_pose_and_never_stops_the_animation`).
+
+### State machine events
+
+A state machine records, per update, `Entered` (a state became current: when the machine starts,
+and at the start of the transition into it), `TransitionStarted`, `Exited` (the state stopped
+carrying weight: its transition blend finished) and `TransitionCompleted` (a blend that ran to
+its end; a transition replaced by another one in flight is never completed, the interrupting
+one starts instead). An immediate transition gives all four in one update, in the order
+started, entered, exited, completed. Quiet updates (preview scrub, refresh) raise none and a
+machine first started by one reports its entry at the first real update; hot-reload adoption
+raises no entry. Delivery is component-scoped, like Montage lifecycle events:
+`SkeletalMeshComponent.anim_state_entered`, `anim_state_exited`, `anim_transition_started`,
+`anim_transition_completed` (`AnimStateEvent`: `graph_id`, `machine`, `state`, `from_state`,
+`to_state`, `transition`, `generation`) and canonical `animgraph::<graph id>.state_<entered|exited|
+transition_started|transition_completed>` on the owner's entity channel. Blueprint discovery
+offers the four for every graph the component plays that contains a state machine (palette
+group *Animation Graph*, node title *On Animation State*); a machine in a linked graph reports
+the id of the graph the component plays, and `machine` names it.
 
 ### Hot reload
 
@@ -545,11 +589,12 @@ with.
 
 - Notify state ticks are per update, not per `tick_interval` sub-step inside an
   update; a big step gives one tick with the whole `delta`.
-- Trimmed *looping* Montage segments restart their clip range every cycle (a
-  discontinuity: states end and begin per cycle; a notify at exactly the cycle start is
-  not re-fired at the restart).
-- Whole-skeleton physics ownership (`apply_physics_pose`) still holds the clock.
-- Server/client authority for root motion.
+- Looping Montage segments: a notify state that covers the whole trimmed range keeps running
+  across each loop seam as one activation (ticks continue); states that do not span the seam
+  begin and end per cycle as authored. A segment can opt out (`restart_states_on_loop`, the
+  inspector toggle *Notify states on loop*) to end and begin every state each cycle. An
+  instant notify at exactly the cycle start is still not re-fired at the restart.
+- Root motion between processes: see Networked root motion (no gameplay networking exists).
 
 ## Production editors (Phase 4)
 
@@ -611,6 +656,17 @@ notify model with the Montage editor.
     bone ends up with. Every control is one undoable edit of the node's `masks` property,
     validated against the graph's skeleton (an unknown bone is refused at the edit) and the
     model validates raw `masks` writes too.
+  - **Named Skeleton masks** (`SkeletonAsset::masks`, `bone_mask::NamedBoneMask`, Unreal's mask / blend
+    profiles): a mask stored on the skeleton under a unique name. A Layered Blend layer
+    (`masks[n] = { "profile": "UpperBody" }`) or a Montage slot track (`mask`) names one with
+    `BoneMaskSpec::named`; the runtime resolves it from `RuntimeSkeleton::mask_library` at
+    graph and Montage compile (an unknown name is `graph.mask_profile` / a Montage compile
+    error / `montage.unknown_mask`), so editing the skeleton's mask re-shapes every user. The
+    graph inspector has a *Skeleton Masks* section (new, rename, default weight, branches,
+    presets, delete), a *Mask from* row per layer (pick, *Save as skeleton mask*, *Detach*), and
+    the Montage slot inspector a *Mask* row. `mask_library::promote*` migrate inline masks to
+    library entries (identical rules share one entry; trivial everything/nothing masks stay
+    inline). Old inline masks keep working unchanged.
 - **Pose Search Database** (`.posedb`): source table (Sequences and Blend Spaces with mirror,
   loop, exclusions, cost bias), feature channels, sampling, search settings, the derived-index
   state (see below), a query debugger (cost breakdown per channel) and the **fallback preview**.
@@ -671,8 +727,9 @@ registry. `cargo test -p graphy --lib authored` (Graphy repo): the shared bridge
 - Nothing here has been driven in the running app; the checks are headless. See
   `docs/animation-handoff.md` for the list to review by hand.
 - The notify lane holds three stacked rows; further markers share the last row until zoomed in.
-- Named bone masks are not a stored library on the Skeleton asset: masks are authored per layer
-  (the plan's "named Skeleton masks" remain open).
+- Library edits (Skeleton Masks section) save the skeleton file at once; they are not on the
+  open document's undo stack. Renaming or deleting a mask other assets use makes them report a
+  missing mask (nothing rewrites other files).
 - The skinned previews render offscreen and are shown as an image; they do not share the
   Sequence viewport's camera controls.
 - The Blueprint component details need no Blueprint-side code (they use the shared reflected

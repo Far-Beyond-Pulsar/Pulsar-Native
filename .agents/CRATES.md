@@ -116,12 +116,17 @@ owns the per-entity state, delivers notifies and Montage events, applies root mo
 recompiles graphs when a dependency file changes. See `.agents/ANIMATION.md`.
 
 The animation editors are in `skm_editor` (`src/anim_editors/`: per-asset `*_model.rs` + `views/`,
-`notify_edit`, `bone_mask_edit`, `skin_preview`, `pose_db_build`); the Sequence editor and its GPU
+`notify_edit`, `bone_mask_edit`, `skeleton_masks` (the skeleton's named mask library), `skin_preview`, `pose_db_build`); the Sequence editor and its GPU
 timeline are `src/editor/` and `src/rendering/timeline/`. Shared pieces elsewhere:
 `ui_common::asset_ref_editor` (typed Skeletal Mesh / Animation Graph pickers, registered through
 the reflected property editor registry), `pulsar_reflection::asset_refs` (JSON codecs for the
 optional refs), `graphy::authored` (the authored <-> canvas conversion used by the Blueprint and
 Animation Graph editors) and `helio_component`'s `SkeletalMeshComponent` properties.
+Named bone masks live on the Skeleton asset (`skeletal_assets::bone_mask::NamedBoneMask`, migration in
+`skeletal_assets::mask_library`); state machine events, whole-skeleton physics blend and root-motion
+authority are `helio_component` / `SkeletalMeshComponent` features (see `.agents/ANIMATION.md`).
+The Helio branch for this work is `animation-phase4-clean` (animation commits plus the user's
+`helio-graph-asset` zip-tie commit on top of Helio `main`; no water changes).
 `helio_asset_compat::extract_rig` reads the skeleton, weights and animations out
 of the loaded scene (`ConvertedScene::rig`).
 

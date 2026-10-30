@@ -254,3 +254,30 @@ machine header (CPU, GPU, driver, OS, rustc, profile, features, git SHAs of the 
 Method: release profile, 30 warm-up and 300 samples, fixed seed, pinned thread count, one machine,
 the same commit pair before and after, p50/p95/max, allocation counts from a counting global
 allocator, no line-count claims.
+
+## 10. Finish pass (supersedes sections 3, 6 and 8 where they disagree)
+
+Done after the Phase 5 hand-off, all merged to the upstream default branches:
+
+- **Branches**: Helio carries the animation commits on `main` as `animation-phase4-clean` (the
+  water commit is gone) plus the user's `helio-graph-asset` zip-tie commit that `render_bps` needs.
+  Graphy's zip-tie commits were already on upstream `main`, so its branch is only `graphy::authored`.
+- **Named Skeleton bone masks** (`SkeletonAsset::masks`): Layered Blend layers and Montage slot
+  tracks name them (`BoneMaskSpec::named`); editors: Skeleton Masks section, per-layer *Mask from*
+  row, Montage slot *Mask* row; `mask_library::promote*` migrates inline masks. See `.agents/ANIMATION.md`.
+- **State machine events**: entered / exited / transition started / completed, component-scoped,
+  canonical `animgraph::<graph id>.state_<kind>`, Blueprint entry points.
+- **Whole-skeleton physics ownership** no longer holds the clock; it blends by a physics blend weight.
+- **Root-motion authority** (`root_motion_authority`, move log). Missing: a gameplay networking layer
+  (net roles, entity replication, prediction and correction, a Montage-play RPC). Nothing sends the moves.
+- **Looping Montage segments** keep seam-spanning notify states running unless
+  `restart_states_on_loop` is set.
+- **Unified test**: `the_whole_character_flow_runs_over_one_project_on_disk` (helio_component).
+- Blueprint plugin standalone build: `graphy` is a path dependency like the other `graphy-*` crates;
+  the Pulsar-Native revs were re-pinned with `just bump-plugin-pins`.
+- Adapters: the "per-layer authored masks" row of section 6 is gone: inline masks still load, and
+  promote to named masks on request.
+- Not run in this pass: full `just test` / `just clippy` (the user ran the app and waived them);
+  `pulsar_game random_world_blueprint`, `ui_level_editor sculpt_stamps...` and the `ui_common`
+  `command_palette` doctest still fail; none of the code they exercise is touched by this work
+  (checked by diff against the merge base; not re-run on a clean checkout).
