@@ -277,6 +277,37 @@ pub struct PreparedPlugin {
     library: PermanentLibrary,
 }
 
+/// One dependency of a plugin and whether it is met right now.
+#[derive(Debug, Clone)]
+pub struct DependencyStatus {
+    pub dependency: PluginDependency,
+    pub optional: bool,
+    pub state: DependencyState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DependencyState {
+    Satisfied { version: String },
+    VersionMismatch { found: String },
+    Missing,
+}
+
+/// A plugin as the plugin manager window shows it; see
+/// [`PluginManager::plugin_details`].
+#[derive(Debug, Clone)]
+pub struct PluginDetails {
+    pub metadata: PluginMetadata,
+    pub builtin: bool,
+    pub library_path: Option<PathBuf>,
+    pub dependencies: Vec<DependencyStatus>,
+    /// Loaded plugins that list this one in `requires` or `optional`.
+    pub required_by: Vec<PluginId>,
+    pub file_types: Vec<String>,
+    pub editors: Vec<String>,
+    pub components: Vec<String>,
+    pub statusbar_buttons: usize,
+}
+
 struct LoadedPlugin {
     /// Reference to the plugin instance.
     ///
@@ -952,6 +983,118 @@ impl PluginManager {
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
 
         Ok(plugin_id)
+    }
+
+    /// What the plugin manager window shows for every plugin, DLL and
+    /// built-in: identity, declared dependencies with their current state,
+    /// the plugins that depend on it, and what it contributes.
+    pub fn plugin_details(&self) -> Vec<PluginDetails> {
+        let manifests: Vec<(PluginManifest, &LoadedPlugin)> = self
+            .plugins
+            .values()
+            .map(|loaded| (loaded.plugin.manifest(), loaded))
+            .collect();
+
+        let status = |dependency: &PluginDependency, optional: bool| {
+            let state = match manifests.iter().find(|(m, _)| m.id == dependency.id) {
+                None => DependencyState::Missing,
+                Some((installed, _)) => {
+                    if plugin_editor_api::manifest::satisfies(installed, dependency) {
+                        DependencyState::Satisfied {
+                            version: installed.version.clone(),
+                        }
+                    } else {
+                        DependencyState::VersionMismatch {
+                            found: installed.version.clone(),
+                        }
+                    }
+                }
+            };
+            DependencyStatus {
+                dependency: dependency.clone(),
+                optional,
+                state,
+            }
+        };
+
+        let mut details: Vec<PluginDetails> = manifests
+            .iter()
+            .map(|(manifest, loaded)| {
+                let plugin = loaded.plugin;
+                let mut dependencies: Vec<DependencyStatus> =
+                    manifest.requires.iter().map(|d| status(d, false)).collect();
+                dependencies.extend(manifest.optional.iter().map(|d| status(d, true)));
+                let mut required_by: Vec<PluginId> = manifests
+                    .iter()
+                    .filter(|(other, _)| {
+                        other
+                            .requires
+                            .iter()
+                            .chain(&other.optional)
+                            .any(|d| d.id == manifest.id)
+                    })
+                    .map(|(other, _)| other.id.clone())
+                    .collect();
+                required_by.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+                PluginDetails {
+                    metadata: manifest.metadata(),
+                    builtin: false,
+                    library_path: Some(loaded.library.path().to_path_buf()),
+                    dependencies,
+                    required_by,
+                    file_types: plugin
+                        .file_types()
+                        .into_iter()
+                        .map(|t| format!("{} (.{})", t.display_name, t.extension))
+                        .collect(),
+                    editors: plugin
+                        .editors()
+                        .into_iter()
+                        .map(|e| e.display_name)
+                        .collect(),
+                    components: plugin
+                        .component_definitions()
+                        .into_iter()
+                        .map(|c| c.display_name)
+                        .collect(),
+                    statusbar_buttons: plugin.statusbar_buttons().len(),
+                }
+            })
+            .collect();
+
+        details.extend(self.builtin_registry.providers().iter().map(|provider| {
+            let metadata = self
+                .get_builtin_plugins()
+                .into_iter()
+                .find(|m| m.id.as_str() == provider.provider_id())
+                .unwrap_or_else(|| PluginMetadata {
+                    id: PluginId::new(provider.provider_id()),
+                    name: provider.provider_id().to_string(),
+                    version: String::new(),
+                    author: "Pulsar Team".to_string(),
+                    description: String::new(),
+                });
+            PluginDetails {
+                metadata,
+                builtin: true,
+                library_path: None,
+                dependencies: Vec::new(),
+                required_by: Vec::new(),
+                file_types: provider
+                    .file_types()
+                    .into_iter()
+                    .map(|t| format!("{} (.{})", t.display_name, t.extension))
+                    .collect(),
+                editors: provider
+                    .editors()
+                    .into_iter()
+                    .map(|e| e.display_name)
+                    .collect(),
+                components: Vec::new(),
+                statusbar_buttons: 0,
+            }
+        }));
+        details
     }
 
     /// Fail unless every plugin `manifest` requires is installed in range.

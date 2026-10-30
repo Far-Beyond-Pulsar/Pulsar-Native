@@ -10,3 +10,12 @@ pub fn on_refresh(
 ) {
     this.refresh(cx);
 }
+
+pub fn on_back(
+    this: &mut PluginManagerWindow,
+    _: &ClickEvent,
+    _window: &mut Window,
+    cx: &mut Context<PluginManagerWindow>,
+) {
+    this.select(None, cx);
+}
