@@ -13,10 +13,12 @@
 use std::collections::{HashMap, HashSet};
 
 use graphy::core::GraphComment;
-use graphy::{Connection, ConnectionType, GraphDescription, NodeInstance, PinInstance, PinType, Position};
+use graphy::{
+    Connection, ConnectionType, GraphDescription, NodeInstance, PinInstance, PinType, Position,
+};
 use helio_graph_asset::{
-    sections, GraphAsset, GraphSection, NodeDescriptor, NodeInstance as AssetNode, NodePins,
-    NodeRegistry, Params, PinDesc, PinRef, SectionPort,
+    GraphAsset, GraphSection, NodeDescriptor, NodeInstance as AssetNode, NodePins, NodeRegistry,
+    Params, PinDesc, PinRef, SectionPort, sections,
 };
 use serde_json::Value;
 
@@ -115,6 +117,7 @@ impl RenderDocument {
             &asset.nodes,
             &asset.connections,
             &asset.comments,
+            &asset.zip_ties,
             registry,
             &asset.sections,
             None,
@@ -131,6 +134,7 @@ impl RenderDocument {
                     &section.nodes,
                     &section.connections,
                     &[],
+                    &section.zip_ties,
                     registry,
                     &asset.sections,
                     Some(section),
@@ -159,6 +163,7 @@ impl DocRef<'_> {
             nodes: nodes_of(&self.main, registry),
             connections: connections_of(self.main.graph),
             comments: comments_of(self.main.graph, self.main.contained),
+            zip_ties: zip_ties_out(self.main.graph),
             sections: self
                 .sections
                 .iter()
@@ -169,6 +174,7 @@ impl DocRef<'_> {
                     outputs: ports_of(section.graph, EXIT_ID, false),
                     nodes: nodes_of(section, registry),
                     connections: connections_of(section.graph),
+                    zip_ties: zip_ties_out(section.graph),
                 })
                 .collect(),
         }
@@ -193,6 +199,7 @@ fn build_graph(
     nodes: &[AssetNode],
     connections: &[helio_graph_asset::Connection],
     comments: &[helio_graph_asset::GraphComment],
+    zip_ties: &[helio_graph_asset::GraphZipTie],
     registry: &NodeRegistry,
     sections: &[GraphSection],
     io: Option<&GraphSection>,
@@ -203,8 +210,8 @@ fn build_graph(
     for node in nodes {
         let position = Position::new(f64::from(node.position[0]), f64::from(node.position[1]));
         let mut instance = NodeInstance::new(&node.id, &node.kind, position);
-        if let Some(section) = sections::section_id(&node.kind)
-            .and_then(|id| sections.iter().find(|s| s.id == id))
+        if let Some(section) =
+            sections::section_id(&node.kind).and_then(|id| sections.iter().find(|s| s.id == id))
         {
             let pins = sections::section_pins(section);
             instance.inputs = pin_instances(&pins.inputs, PinType::Input);
@@ -342,7 +349,48 @@ fn build_graph(
             comment
         })
         .collect();
+    graph.zip_ties = zip_ties_in(zip_ties);
     graph
+}
+
+fn zip_ties_in(ties: &[helio_graph_asset::GraphZipTie]) -> Vec<graphy::GraphZipTie> {
+    ties.iter()
+        .map(|tie| graphy::GraphZipTie {
+            position: Position::new(f64::from(tie.position[0]), f64::from(tie.position[1])),
+            straight_length: f64::from(tie.straight_length),
+            wires: tie
+                .wires
+                .iter()
+                .map(|edge| graphy::ZipTieEdge {
+                    source_node: edge.source_node.clone(),
+                    source_pin: edge.source_pin.clone(),
+                    target_node: edge.target_node.clone(),
+                    target_pin: edge.target_pin.clone(),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn zip_ties_out(graph: &GraphDescription) -> Vec<helio_graph_asset::GraphZipTie> {
+    graph
+        .zip_ties
+        .iter()
+        .map(|tie| helio_graph_asset::GraphZipTie {
+            position: [tie.position.x as f32, tie.position.y as f32],
+            straight_length: tie.straight_length as f32,
+            wires: tie
+                .wires
+                .iter()
+                .map(|edge| helio_graph_asset::GraphZipTieEdge {
+                    source_node: edge.source_node.clone(),
+                    source_pin: edge.source_pin.clone(),
+                    target_node: edge.target_node.clone(),
+                    target_pin: edge.target_pin.clone(),
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 // ── Document -> asset ────────────────────────────────────────────────────────
@@ -373,17 +421,20 @@ fn nodes_of(graph: &GraphRef<'_>, registry: &NodeRegistry) -> Vec<AssetNode> {
             if matches!(node.node_type.as_str(), ENTRY_TYPE | EXIT_TYPE) {
                 return None;
             }
-            Some(asset_node(node, registry.get(&node.node_type).map(|d| &**d)))
+            Some(asset_node(
+                node,
+                registry.get(&node.node_type).map(|d| &**d),
+            ))
         })
         .collect()
 }
 
 fn asset_node(node: &NodeInstance, descriptor: Option<&NodeDescriptor>) -> AssetNode {
     let params = if node.node_type == REROUTE {
-        let type_name = node
-            .inputs
-            .first()
-            .map_or_else(|| OPAQUE_PIN.to_string(), |p| model::type_name(p.data_type()));
+        let type_name = node.inputs.first().map_or_else(
+            || OPAQUE_PIN.to_string(),
+            |p| model::type_name(p.data_type()),
+        );
         Params::from_iter([(REROUTE_TYPE.to_string(), Value::from(type_name))])
     } else if sections::section_id(&node.node_type).is_some() {
         Params::new()
@@ -463,7 +514,10 @@ pub fn port_from_type(name: &str, type_name: &str) -> SectionPort {
 }
 
 /// Wires through reroute nodes joined end to end, and the reroutes removed.
-fn bypass_reroutes(nodes: &mut Vec<AssetNode>, connections: &mut Vec<helio_graph_asset::Connection>) {
+fn bypass_reroutes(
+    nodes: &mut Vec<AssetNode>,
+    connections: &mut Vec<helio_graph_asset::Connection>,
+) {
     let reroutes: HashSet<String> = nodes
         .iter()
         .filter(|n| n.kind == REROUTE)
@@ -511,9 +565,7 @@ pub fn layout_asset(graph: &GraphDescription, registry: &NodeRegistry) -> GraphA
     let mut asset = GraphAsset {
         nodes: ids
             .iter()
-            .filter(|id| {
-                !matches!(graph.nodes[**id].node_type.as_str(), ENTRY_TYPE | EXIT_TYPE)
-            })
+            .filter(|id| !matches!(graph.nodes[**id].node_type.as_str(), ENTRY_TYPE | EXIT_TYPE))
             .map(|id| {
                 let node = &graph.nodes[*id];
                 asset_node(node, registry.get(&node.node_type).map(|d| &**d))
@@ -534,6 +586,7 @@ pub fn layout_asset(graph: &GraphDescription, registry: &NodeRegistry) -> GraphA
                 outputs: ports_from_pins(&node.outputs),
                 nodes: Vec::new(),
                 connections: Vec::new(),
+                zip_ties: Vec::new(),
             })
         })
         .collect();
@@ -568,7 +621,6 @@ pub fn section_names(doc: &DocRef<'_>) -> HashMap<String, String> {
         .map(|s| (s.id.to_string(), s.name.to_string()))
         .collect()
 }
-
 
 // ── Text ─────────────────────────────────────────────────────────────────────
 

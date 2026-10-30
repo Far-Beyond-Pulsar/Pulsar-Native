@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 
 use gpui::*;
 use graphy::{Connection, ConnectionType, GraphCommand, GraphDescription, NodeInstance, Position};
-use graphy_gpui::canvas::{system_fonts, CanvasEvent, GraphCanvas};
+use graphy_gpui::canvas::{CanvasEvent, GraphCanvas, system_fonts};
 use graphy_gpui::{Action, GraphProfile as _, MenuItem, MenuTarget};
 use graphy_render::Vec2;
 use plugin_editor_api::{DocumentId, History, SharedHistory, UndoEntry, UndoService};
@@ -28,7 +28,7 @@ use crate::collapse::collapse as document_collapse;
 use crate::document::{self, DocRef, GraphRef, RenderDocument};
 use crate::model;
 use crate::preview::PipelinePreview;
-use crate::profile::{RenderProfile, SectionNames, MENU_COLLAPSE, MENU_EXPAND};
+use crate::profile::{MENU_COLLAPSE, MENU_EXPAND, RenderProfile, SectionNames};
 
 /// Grid the canvas snaps nodes and comments to.
 pub const GRID: f64 = 10.0;
@@ -116,10 +116,10 @@ impl Panel for RenderGraphEditor {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        let title = self
-            .file
-            .file_stem()
-            .map_or_else(|| "Render Graph".to_string(), |s| s.to_string_lossy().into_owned());
+        let title = self.file.file_stem().map_or_else(
+            || "Render Graph".to_string(),
+            |s| s.to_string_lossy().into_owned(),
+        );
         div().text_sm().child(title).into_any_element()
     }
 }
@@ -173,7 +173,12 @@ impl RenderGraphEditor {
     }
 
     /// An editor that shows why the file could not be opened.
-    pub fn with_error(file: PathBuf, error: String, cx: &mut Context<Self>, window: &mut Window) -> Self {
+    pub fn with_error(
+        file: PathBuf,
+        error: String,
+        cx: &mut Context<Self>,
+        window: &mut Window,
+    ) -> Self {
         let mut editor = Self::open(file, window, cx);
         editor.loading = false;
         editor.load_error = Some(error);
@@ -210,7 +215,10 @@ impl RenderGraphEditor {
         self.format_version = format_version;
         self.name = name;
         self.description = description;
-        *self.section_names.write().unwrap_or_else(|e| e.into_inner()) = sections
+        *self
+            .section_names
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = sections
             .iter()
             .map(|s| (s.id.clone(), s.name.clone()))
             .collect();
@@ -251,8 +259,14 @@ impl RenderGraphEditor {
             return;
         };
         let canvas = cx.new(|cx| {
-            GraphCanvas::new(graph, profile, system_fonts(), crate::theme::graph_theme(cx), cx)
-                .expect("the bundled canvas font parses")
+            GraphCanvas::new(
+                graph,
+                profile,
+                system_fonts(),
+                crate::theme::graph_theme(cx),
+                cx,
+            )
+            .expect("the bundled canvas font parses")
         });
         let tab_id = id.clone();
         cx.subscribe_in(
@@ -296,13 +310,17 @@ impl RenderGraphEditor {
             .iter()
             .map(|tab| contained_nodes(tab.canvas.read(cx)))
             .collect();
-        let mut refs = self.tabs.iter().zip(&contained).map(|(tab, contained)| GraphRef {
-            id: &tab.id,
-            name: &tab.name,
-            graph: tab.canvas.read(cx).graph(),
-            order: &tab.order,
-            contained: Some(contained),
-        });
+        let mut refs = self
+            .tabs
+            .iter()
+            .zip(&contained)
+            .map(|(tab, contained)| GraphRef {
+                id: &tab.id,
+                name: &tab.name,
+                graph: tab.canvas.read(cx).graph(),
+                order: &tab.order,
+                contained: Some(contained),
+            });
         let main = refs.next().expect("a document has a main graph");
         let doc = DocRef {
             format_version: self.format_version,
@@ -339,7 +357,12 @@ impl RenderGraphEditor {
                     .graph()
                     .nodes
                     .values()
-                    .filter(|n| !matches!(n.node_type.as_str(), document::ENTRY_TYPE | document::EXIT_TYPE))
+                    .filter(|n| {
+                        !matches!(
+                            n.node_type.as_str(),
+                            document::ENTRY_TYPE | document::EXIT_TYPE
+                        )
+                    })
                     .count();
                 (tab.id.clone(), tab.name.clone(), nodes)
             })
@@ -483,9 +506,8 @@ impl RenderGraphEditor {
                 let window_handle = window.window_handle();
                 cx.defer(move |cx| {
                     let _ = cx.update_window(window_handle, |_, _, cx| {
-                        let _ = editor.update(cx, |editor, cx| {
-                            editor.open_section(&target.graph_id, cx)
-                        });
+                        let _ = editor
+                            .update(cx, |editor, cx| editor.open_section(&target.graph_id, cx));
                     });
                 });
             }
@@ -679,7 +701,13 @@ impl RenderGraphEditor {
 
     /// Sets one parameter of a node from editor text and brings the node's pins in
     /// line with it, as one edit. No-op when the value is unchanged.
-    pub fn set_node_property(&mut self, node_id: &str, key: &str, value: String, cx: &mut Context<Self>) {
+    pub fn set_node_property(
+        &mut self,
+        node_id: &str,
+        key: &str,
+        value: String,
+        cx: &mut Context<Self>,
+    ) {
         let (Some(profile), Some(canvas)) = (self.profile.clone(), self.active_canvas().cloned())
         else {
             return;
@@ -704,7 +732,39 @@ impl RenderGraphEditor {
         if commands[0].apply(&mut after).is_ok() {
             commands.extend(profile.pin_commands(&after, node_id));
         }
-        let _ = canvas.update(cx, |canvas, cx| canvas.apply("Edit property", &commands, cx));
+        let _ = canvas.update(cx, |canvas, cx| {
+            canvas.apply("Edit property", &commands, cx)
+        });
+    }
+
+    pub fn set_zip_tie_straight_length(
+        &mut self,
+        index: usize,
+        value: f64,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(canvas) = self.active_canvas().cloned() else {
+            return;
+        };
+        if canvas
+            .read(cx)
+            .graph()
+            .zip_ties
+            .get(index)
+            .is_some_and(|tie| (tie.straight_length - value).abs() < 1e-6)
+        {
+            return;
+        }
+        let _ = canvas.update(cx, |canvas, cx| {
+            canvas.apply(
+                "Edit zip tie straight section",
+                &[GraphCommand::SetZipTieStraightLength {
+                    index,
+                    length: value,
+                }],
+                cx,
+            )
+        });
     }
 
     /// Arranges the active graph (the toolbar's Auto Layout).
@@ -736,7 +796,13 @@ impl RenderGraphEditor {
         );
         comment.id = Uuid::new_v4().to_string();
         comment.color = [0.2, 0.4, 0.8, 0.35];
-        let selected: Vec<String> = canvas_ref.controller().selection.nodes.iter().cloned().collect();
+        let selected: Vec<String> = canvas_ref
+            .controller()
+            .selection
+            .nodes
+            .iter()
+            .cloned()
+            .collect();
         let rects: Vec<_> = selected
             .iter()
             .filter_map(|id| canvas_ref.scene().node(id))
@@ -746,8 +812,16 @@ impl RenderGraphEditor {
             const PADDING: f32 = 30.0;
             let left = rects.iter().map(|r| r.min.x).fold(f32::INFINITY, f32::min) - PADDING;
             let top = rects.iter().map(|r| r.min.y).fold(f32::INFINITY, f32::min) - PADDING;
-            let right = rects.iter().map(|r| r.max.x).fold(f32::NEG_INFINITY, f32::max) + PADDING;
-            let bottom = rects.iter().map(|r| r.max.y).fold(f32::NEG_INFINITY, f32::max) + PADDING;
+            let right = rects
+                .iter()
+                .map(|r| r.max.x)
+                .fold(f32::NEG_INFINITY, f32::max)
+                + PADDING;
+            let bottom = rects
+                .iter()
+                .map(|r| r.max.y)
+                .fold(f32::NEG_INFINITY, f32::max)
+                + PADDING;
             comment.position = Position::new(snap(f64::from(left)), snap(f64::from(top)));
             comment.size = (
                 snap(f64::from(right - left)).max(100.0),
@@ -757,7 +831,11 @@ impl RenderGraphEditor {
         }
         let index = canvas_ref.graph().comments.len();
         let _ = canvas.update(cx, |canvas, cx| {
-            canvas.apply("Add comment", &[GraphCommand::AddComment { index, comment }], cx)
+            canvas.apply(
+                "Add comment",
+                &[GraphCommand::AddComment { index, comment }],
+                cx,
+            )
         });
     }
 
@@ -765,7 +843,13 @@ impl RenderGraphEditor {
         let Some(canvas) = self.active_canvas().cloned() else {
             return;
         };
-        let Some(text) = canvas.read(cx).graph().comments.get(index).map(|c| c.text.clone()) else {
+        let Some(text) = canvas
+            .read(cx)
+            .graph()
+            .comments
+            .get(index)
+            .map(|c| c.text.clone())
+        else {
             return;
         };
         self.editing_comment = Some(index);
@@ -865,7 +949,12 @@ impl RenderGraphEditor {
             return;
         }
         let registry = model::registry();
-        let (text, asset) = self.with_doc(cx, |doc| (document::encode(doc, registry), doc.buildable_asset(registry)));
+        let (text, asset) = self.with_doc(cx, |doc| {
+            (
+                document::encode(doc, registry),
+                doc.buildable_asset(registry),
+            )
+        });
         let written = (|| {
             if let Some(parent) = self.file.parent() {
                 engine_fs::virtual_fs::create_dir_all(parent)
@@ -930,5 +1019,3 @@ fn contained_nodes(canvas: &GraphCanvas) -> Vec<Vec<String>> {
         })
         .collect()
 }
-
-
