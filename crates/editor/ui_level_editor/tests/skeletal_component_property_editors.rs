@@ -20,11 +20,12 @@ fn skeletal_mesh_component_properties_all_have_editors() {
         "root_motion_mode",
         "root_motion_rotation",
         "root_motion_vertical",
+        "root_motion_authority",
     ] {
         assert!(names.contains(&expected), "{expected} is an inspector property: {names:?}");
     }
     for prop in &props {
-        if matches!(prop.name, "mesh" | "animation_graph" | "root_motion_mode" | "root_motion_rotation" | "root_motion_vertical") {
+        if matches!(prop.name, "mesh" | "animation_graph" | "root_motion_mode" | "root_motion_rotation" | "root_motion_vertical" | "root_motion_authority") {
             assert!(
                 PROPERTY_EDITOR_REGISTRY.has(prop.type_info.type_id),
                 "`{}` ({}) has no property editor",
