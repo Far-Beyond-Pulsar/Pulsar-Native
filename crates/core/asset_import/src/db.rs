@@ -53,6 +53,9 @@ pub struct ImportOutput {
     /// name), to pair it with the same thing on the next import.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_name: Option<String>,
+    /// Skin table index for skeletal outputs. Absent on legacy single-rig records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_skin: Option<usize>,
 }
 
 /// Whether a linked source still matches what was imported.
@@ -254,6 +257,7 @@ mod tests {
             kind: "skeleton".into(),
             id: Some("7d1b1d9e-0000-4000-8000-000000000001".into()),
             source_name: None,
+            source_skin: None,
         }];
         let mut db = ImportDb::default();
         db.upsert(rec.clone());
