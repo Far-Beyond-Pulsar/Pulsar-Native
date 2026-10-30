@@ -38,6 +38,9 @@ pub mod standalone;
 // Legacy tick loop (uses extracted primitives)
 pub mod tick;
 
+// The Blueprints a level assigns to the engine roles, resolved for the spawn step.
+pub mod roles;
+
 // The one pulsar_core::GameTime <-> pulsar_scenedb::GameTime seam (#652)
 pub mod time;
 

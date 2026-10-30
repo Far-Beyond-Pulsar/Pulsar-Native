@@ -27,6 +27,10 @@
 pub mod asset_index;
 pub mod blueprint_trait_index;
 pub mod builtin_traits;
+pub mod trait_conformance;
+mod trait_db;
+mod trait_records;
+pub mod world_roles;
 #[cfg(feature = "editor")]
 mod engine_fs;
 pub mod events;
@@ -64,7 +68,11 @@ pub use file_index::{
 pub use user_types::{UserTypeInfo, UserTypeRegistry};
 
 // Re-export provider types
-pub use blueprint_trait_index::{BlueprintTraitEntry, BlueprintTraitIndex};
+pub use blueprint_trait_index::{BlueprintTraitEntry, BlueprintTraitIndex, TRAIT_ASSET_KIND};
+#[cfg(feature = "editor")]
+pub use trait_db::scope_key as trait_scope_key;
+pub use trait_db::{Implementation, TraitDb};
+pub use trait_records::{TraitMethodRecord, TraitParamRecord, TraitRecord};
 #[cfg(feature = "p2p")]
 pub use providers::P2pFsProvider;
 pub use providers::{FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry};

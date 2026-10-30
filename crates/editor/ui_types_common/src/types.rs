@@ -245,11 +245,20 @@ pub struct TraitAsset {
     pub schema_version: u32,
     #[serde(rename = "typeKind")]
     pub type_kind: TypeKind,
+    /// Stable identity. Blueprints reference a trait by this, so the asset
+    /// can be renamed or moved. `engine_fs` assigns one to an asset that has
+    /// none; editors must preserve it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub name: String,
     #[serde(rename = "displayName")]
     pub display_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Traits this one extends: ids (preferred) or project-relative paths.
+    /// An implementer must provide the methods of every supertrait too.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supertraits: Vec<String>,
     pub methods: Vec<TraitMethod>,
     #[serde(default)]
     pub meta: serde_json::Value,

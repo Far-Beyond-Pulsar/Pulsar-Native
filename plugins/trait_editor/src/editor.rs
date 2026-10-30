@@ -81,6 +81,14 @@ pub struct TraitEditor {
     name: Entity<InputState>,
     display_name: Entity<InputState>,
     description: Entity<InputState>,
+    /// Stable identity (`TraitAsset::id`). Kept across saves so Blueprints
+    /// that reference this trait by id keep working through renames; minted
+    /// on the first save of a trait that has none.
+    id: Option<String>,
+    /// Supertrait references (ids or project paths), one per line.
+    supertraits: Entity<InputState>,
+    /// Everything in `meta` (`builtin`, `contractVersion`, ...) round-trips.
+    meta: serde_json::Value,
     methods: Vec<MethodDraft>,
     dirty: bool,
     load_error: Option<String>,
@@ -114,6 +122,15 @@ impl TraitEditor {
                 asset.description.as_deref().unwrap_or_default(),
                 "Describe the contract this trait provides",
             ),
+            id: asset.id.clone(),
+            supertraits: multiline_input(
+                window,
+                cx,
+                &asset.supertraits.join("
+"),
+                "Supertrait ids or project paths, one per line",
+            ),
+            meta: asset.meta.clone(),
             methods: asset
                 .methods
                 .iter()
@@ -245,14 +262,30 @@ impl TraitEditor {
             });
         }
 
+        let supertraits: Vec<String> = input_value(&self.supertraits, cx)
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect();
         let asset = TraitAsset {
             schema_version: 1,
             type_kind: TypeKind::Trait,
+            id: Some(
+                self.id
+                    .clone()
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            ),
             name,
             display_name,
             description: non_empty(description),
+            supertraits,
             methods,
-            meta: serde_json::Value::Object(Default::default()),
+            meta: if self.meta.is_object() {
+                self.meta.clone()
+            } else {
+                serde_json::Value::Object(Default::default())
+            },
         };
         let index = load_type_index_for_asset(&self.file_path)?;
         ui_types_common::validate_trait(&asset, &index)
@@ -284,6 +317,7 @@ impl TraitEditor {
                     .map_err(|error| format!("Could not save trait: {error}"))
             });
         if result.is_ok() {
+            self.id = asset.id.clone();
             self.dirty = false;
             self.load_error = None;
         }
@@ -394,6 +428,13 @@ impl Render for TraitEditor {
                 "Description",
                 TextInput::new(&self.description).w_full(),
             ))
+            .child(labeled_input(
+                "Supertraits",
+                TextInput::new(&self.supertraits).w_full(),
+            ))
+            .when_some(self.id.clone(), |element, id| {
+                element.child(div().text_xs().text_color(theme.muted_foreground).child(format!("Trait id: {id}")))
+            })
             .child(section("Required method contracts"))
             .child(
                 div()
@@ -557,9 +598,11 @@ fn empty_asset(path: &std::path::Path) -> TraitAsset {
     TraitAsset {
         schema_version: 1,
         type_kind: TypeKind::Trait,
+        id: Some(uuid::Uuid::new_v4().to_string()),
         name: sanitize_type_name(name),
         display_name: name.to_owned(),
         description: None,
+        supertraits: Vec::new(),
         methods: Vec::new(),
         meta: serde_json::Value::Object(Default::default()),
     }

@@ -237,6 +237,32 @@ pub fn validate_trait(asset: &TraitAsset, index: &TypeIndex) -> Result<()> {
     validate_name(&asset.name)?;
     validate_no_collision(index, &asset.name, Some(TypeKind::Trait))?;
 
+    if asset.id.as_deref().is_some_and(|id| id.trim().is_empty()) {
+        return Err(TypeSystemError::Validation(
+            "a trait id must not be blank".to_owned(),
+        ));
+    }
+    let mut supertraits = HashSet::new();
+    for supertrait in &asset.supertraits {
+        let reference = supertrait.trim();
+        if reference.is_empty() {
+            return Err(TypeSystemError::Validation(
+                "a supertrait reference must not be blank".to_owned(),
+            ));
+        }
+        if asset.id.as_deref() == Some(reference) {
+            return Err(TypeSystemError::CircularDependency(format!(
+                "trait {} extends itself",
+                asset.name
+            )));
+        }
+        if !supertraits.insert(reference) {
+            return Err(TypeSystemError::Validation(format!(
+                "supertrait {reference} is listed more than once"
+            )));
+        }
+    }
+
     for method in &asset.methods {
         validate_name(&method.name)?;
 
@@ -258,4 +284,58 @@ pub fn validate_alias(asset: &AliasAsset, index: &TypeIndex) -> Result<()> {
     validate_ast_node(&asset.ast, index)?;
     detect_alias_cycles(asset, index)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod trait_tests {
+    use super::*;
+    use crate::TraitAsset;
+
+    fn asset() -> TraitAsset {
+        TraitAsset {
+            schema_version: 1,
+            type_kind: TypeKind::Trait,
+            id: Some("t-1".into()),
+            name: "Movable".into(),
+            display_name: "Movable".into(),
+            description: None,
+            supertraits: Vec::new(),
+            methods: Vec::new(),
+            meta: serde_json::Value::Null,
+        }
+    }
+
+    #[test]
+    fn id_and_supertraits_round_trip_and_stay_optional() {
+        let mut with = asset();
+        with.supertraits = vec!["pulsar.GameMode".into()];
+        let json = serde_json::to_value(&with).unwrap();
+        assert_eq!(json["id"], "t-1");
+        assert_eq!(serde_json::from_value::<TraitAsset>(json).unwrap(), with);
+
+        let legacy = serde_json::json!({
+            "schemaVersion": 1, "typeKind": "trait", "name": "Old",
+            "displayName": "Old", "methods": [], "meta": {}
+        });
+        let parsed: TraitAsset = serde_json::from_value(legacy).unwrap();
+        assert!(parsed.id.is_none() && parsed.supertraits.is_empty());
+        let out = serde_json::to_value(&parsed).unwrap();
+        assert!(out.get("id").is_none() && out.get("supertraits").is_none());
+    }
+
+    #[test]
+    fn rejects_blank_ids_blank_duplicate_and_self_supertraits() {
+        let index = TypeIndex::default();
+        assert!(validate_trait(&asset(), &index).is_ok());
+
+        let mut blank_id = asset();
+        blank_id.id = Some("  ".into());
+        assert!(validate_trait(&blank_id, &index).is_err());
+
+        for bad in [vec!["".to_string()], vec!["a".into(), "a".into()], vec!["t-1".into()]] {
+            let mut candidate = asset();
+            candidate.supertraits = bad;
+            assert!(validate_trait(&candidate, &index).is_err());
+        }
+    }
 }

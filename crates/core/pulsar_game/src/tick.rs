@@ -65,6 +65,11 @@ pub struct TickLoop {
     /// Warns when a `Static`/`Stationary` object moves during play (#836).
     /// Opened at the first tick, so level setup before it is not reported.
     static_moves: Option<helio_component::StaticMoveWatch>,
+    /// The Blueprints the loaded level assigned to the engine roles (game
+    /// mode, player controller, player character, game state), resolved
+    /// and checked but not spawned. Empty until a level is loaded; see
+    /// [`world_roles`](Self::world_roles).
+    pub(crate) world_roles: engine_fs::world_roles::WorldRoles,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
     pub window_manager: Option<Arc<WindowManager>>,
@@ -209,6 +214,7 @@ impl TickLoop {
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
+            world_roles: engine_fs::world_roles::WorldRoles::default(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -256,6 +262,7 @@ impl TickLoop {
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
+            world_roles: engine_fs::world_roles::WorldRoles::default(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,

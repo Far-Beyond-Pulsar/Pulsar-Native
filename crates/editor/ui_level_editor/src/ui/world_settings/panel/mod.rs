@@ -16,6 +16,8 @@ use ui::{
     v_flex, ActiveTheme, Sizable,
 };
 
+use engine_fs::world_roles::{EngineRole, ROLES};
+
 use crate::state::LevelEditorState;
 use crate::WorldSettingsPanel;
 
@@ -24,14 +26,19 @@ mod pipeline_section;
 mod sky_section;
 mod wind_section;
 
-/// Canonical game-mode trait asset path in project-relative form.
-pub const GAME_MODE_TRAIT_PATH: &str = "types/traits/game_mode.trait.json";
-
 #[derive(Clone, Debug)]
 enum BlueprintCatalogState {
     Loading,
     Ready(Vec<String>),
     Failed(String),
+}
+
+/// One engine role's Blueprint picker: the Blueprints that implement the
+/// role's trait, from the project index.
+struct RolePicker {
+    role: EngineRole,
+    picker: Entity<SearchableList<String>>,
+    catalog: BlueprintCatalogState,
 }
 
 /// Body for the World Settings dock panel.
@@ -42,11 +49,11 @@ pub struct WorldSettingsPanelImpl {
     gravity_z_input: Entity<InputState>,
     time_scale_input: Entity<InputState>,
     fixed_timestep_input: Entity<InputState>,
-    game_mode_picker: Entity<SearchableList<String>>,
+    /// One picker per row of `engine_fs::world_roles::ROLES`.
+    role_pickers: Vec<RolePicker>,
     /// The render pipeline picker and the ids it currently lists.
     pipeline_picker: Entity<SearchableList<String>>,
     pipeline_ids: Vec<String>,
-    catalog_state: BlueprintCatalogState,
     /// The Sky section's property rows (#1057).
     sky_property_state: ui_common::PropertyStateManager,
     atmosphere_properties: Option<Arc<sky_section::ClassProperties>>,
@@ -93,12 +100,19 @@ impl WorldSettingsPanelImpl {
             );
             input
         });
-        let game_mode_picker = cx.new(|cx| {
-            SearchableList::<String>::new(window, cx, Vec::new(), game_mode_blueprint_label)
-                .with_empty_text("No game mode Blueprints found")
-                .with_max_width(px(360.0))
-                .with_max_height(px(320.0))
-        });
+        let role_pickers: Vec<RolePicker> = ROLES
+            .iter()
+            .map(|spec| RolePicker {
+                role: spec.role,
+                picker: cx.new(|cx| {
+                    SearchableList::<String>::new(window, cx, Vec::new(), blueprint_label)
+                        .with_empty_text(format!("No {} Blueprints found", spec.label))
+                        .with_max_width(px(360.0))
+                        .with_max_height(px(320.0))
+                }),
+                catalog: BlueprintCatalogState::Loading,
+            })
+            .collect();
 
         let pipeline_ids = Self::pipeline_ids();
         let pipeline_picker = cx.new(|cx| {
@@ -153,19 +167,24 @@ impl WorldSettingsPanelImpl {
             ));
         }
 
-        let state_for_selection = state.clone();
-        subscriptions.push(cx.subscribe(
-            &game_mode_picker,
-            move |_panel, _picker, event: &SearchableListEvent<String>, cx| {
-                if let SearchableListEvent::Select(path) = event {
-                    let mut state = state_for_selection.write();
-                    state.scene.world_settings.game_mode_blueprint =
-                        (path != "None").then(|| path.clone());
-                    mark_world_settings_dirty(&mut state);
-                    cx.notify();
-                }
-            },
-        ));
+        for role_picker in &role_pickers {
+            let state_for_selection = state.clone();
+            let role = role_picker.role;
+            subscriptions.push(cx.subscribe(
+                &role_picker.picker,
+                move |_panel, _picker, event: &SearchableListEvent<String>, cx| {
+                    if let SearchableListEvent::Select(path) = event {
+                        let mut state = state_for_selection.write();
+                        state
+                            .scene
+                            .world_settings
+                            .set_role_blueprint(role, (path != "None").then(|| path.clone()));
+                        mark_world_settings_dirty(&mut state);
+                        cx.notify();
+                    }
+                },
+            ));
+        }
 
         let mut panel = Self {
             state: state.clone(),
@@ -174,10 +193,9 @@ impl WorldSettingsPanelImpl {
             gravity_z_input,
             time_scale_input,
             fixed_timestep_input,
-            game_mode_picker,
+            role_pickers,
             pipeline_picker,
             pipeline_ids,
-            catalog_state: BlueprintCatalogState::Loading,
             sky_property_state: ui_common::PropertyStateManager::new(),
             atmosphere_properties: None,
             sky_message: None,
@@ -207,29 +225,50 @@ impl WorldSettingsPanelImpl {
         rebuild: bool,
     ) {
         let Some(root) = engine_state::get_project_path().map(PathBuf::from) else {
-            self.catalog_state = BlueprintCatalogState::Failed(
-                "Open a project to browse its game mode Blueprints.".to_string(),
-            );
+            for role_picker in &mut self.role_pickers {
+                role_picker.catalog = BlueprintCatalogState::Failed(format!(
+                    "Open a project to browse its {} Blueprints.",
+                    role_picker.role.spec().label
+                ));
+            }
             return;
         };
-        let picker = self.game_mode_picker.clone();
+        let pickers: Vec<(EngineRole, Entity<SearchableList<String>>)> = self
+            .role_pickers
+            .iter()
+            .map(|role_picker| (role_picker.role, role_picker.picker.clone()))
+            .collect();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { load_game_mode_blueprints(&root, rebuild) })
+                .spawn(async move { load_role_blueprints(&root, rebuild) })
                 .await;
-            let paths = result.as_ref().cloned().unwrap_or_default();
             cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    picker.update(cx, |picker, cx| {
-                        let mut items = vec!["None".to_string()];
-                        items.extend(paths.iter().cloned());
-                        picker.set_items(items, cx);
-                    });
-                    panel.world_settings.catalog_state = match result {
-                        Ok(paths) => BlueprintCatalogState::Ready(paths),
-                        Err(error) => BlueprintCatalogState::Failed(error),
-                    };
+                    for (role, picker) in &pickers {
+                        let paths = result
+                            .as_ref()
+                            .ok()
+                            .and_then(|by_role| by_role.get(role))
+                            .cloned()
+                            .unwrap_or_default();
+                        picker.update(cx, |picker, cx| {
+                            let mut items = vec!["None".to_string()];
+                            items.extend(paths.iter().cloned());
+                            picker.set_items(items, cx);
+                        });
+                        if let Some(role_picker) = panel
+                            .world_settings
+                            .role_pickers
+                            .iter_mut()
+                            .find(|role_picker| role_picker.role == *role)
+                        {
+                            role_picker.catalog = match &result {
+                                Ok(_) => BlueprintCatalogState::Ready(paths),
+                                Err(error) => BlueprintCatalogState::Failed(error.clone()),
+                            };
+                        }
+                    }
                     cx.notify();
                 });
             });
@@ -249,7 +288,9 @@ impl WorldSettingsPanelImpl {
 
             cx.update(|cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    panel.world_settings.catalog_state = BlueprintCatalogState::Loading;
+                    for role_picker in &mut panel.world_settings.role_pickers {
+                        role_picker.catalog = BlueprintCatalogState::Loading;
+                    }
                     panel
                         .world_settings
                         .load_blueprint_catalog_with_rebuild(cx, false);
@@ -302,19 +343,13 @@ impl WorldSettingsPanelImpl {
         let environment_tools = self.render_environment_tools(cx);
         let state = self.state.read();
         let settings = &state.scene.world_settings;
-        let selected = settings
-            .game_mode_blueprint
-            .clone()
-            .unwrap_or_else(|| "None".to_string());
-        let catalog_state = self.catalog_state.clone();
-        let picker = self.game_mode_picker.clone();
-        let picker_for_popover = picker.clone();
-        let display = if selected == "None" {
-            "None".to_string()
-        } else {
-            game_mode_blueprint_label(&selected)
-        };
-
+        let role_rows: Vec<AnyElement> = self
+            .role_pickers
+            .iter()
+            .map(|role_picker| {
+                self.render_role_row(role_picker, settings.role_blueprint(role_picker.role), cx)
+            })
+            .collect();
         v_flex()
             .size_full()
             .min_h_0()
@@ -360,24 +395,8 @@ impl WorldSettingsPanelImpl {
                             ToggleSetting::AutoSimulation,
                             cx,
                         ))
-                        .child(self.render_section_title("Game Mode"))
-                        .child(
-                            v_flex()
-                                .gap_2()
-                                .child(
-                                    Popover::<SearchableList<String>>::new("game-mode-blueprint")
-                                        .anchor(Corner::BottomRight)
-                                        .trigger(
-                                            Button::new("game-mode-blueprint-trigger")
-                                                .label(display)
-                                                .small()
-                                                .ghost()
-                                                .dropdown_caret(true),
-                                        )
-                                        .content(move |_window, _cx| picker_for_popover.clone()),
-                                )
-                                .child(catalog_status(&catalog_state, selected.as_str(), cx)),
-                        ),
+                        .child(self.render_section_title("Gameplay Roles"))
+                        .child(v_flex().gap_3().children(role_rows)),
                 ),
             )
     }
@@ -503,6 +522,57 @@ impl WorldSettingsPanelImpl {
             .child(NumberInput::new(input).xsmall())
     }
 
+    /// One role: its name, the Blueprint chosen for it and, below, whether
+    /// that choice is available in the project.
+    fn render_role_row(
+        &self,
+        role_picker: &RolePicker,
+        selected: Option<&str>,
+        cx: &Context<WorldSettingsPanel>,
+    ) -> AnyElement {
+        let spec = role_picker.role.spec();
+        let selected = selected.map(str::to_owned).unwrap_or_else(|| "None".to_string());
+        let display = blueprint_label(&selected);
+        let picker = role_picker.picker.clone();
+        v_flex()
+            .gap_1()
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(spec.label),
+                    )
+                    .child(
+                        Popover::<SearchableList<String>>::new(format!(
+                            "{}-blueprint",
+                            spec.setting_key
+                        ))
+                        .anchor(Corner::BottomRight)
+                        .trigger(
+                            Button::new(format!("{}-blueprint-trigger", spec.setting_key))
+                                .label(display)
+                                .small()
+                                .ghost()
+                                .dropdown_caret(true),
+                        )
+                        .content(move |_window, _cx| picker.clone()),
+                    ),
+            )
+            .child(catalog_status(
+                spec.label,
+                spec.trait_path,
+                &role_picker.catalog,
+                selected.as_str(),
+                cx,
+            ))
+            .into_any_element()
+    }
+
     fn render_toggle_row(
         &self,
         label: &'static str,
@@ -617,8 +687,12 @@ fn mark_world_settings_dirty(state: &mut LevelEditorState) {
     state.scene.revision = state.scene.revision.wrapping_add(1);
 }
 
-/// Adapter boundary between the panel and the project blueprint index.
-fn load_game_mode_blueprints(project_root: &Path, rebuild: bool) -> Result<Vec<String>, String> {
+/// Adapter boundary between the panel and the project blueprint index: the
+/// Blueprints that can fill each engine role, from one read of the index.
+fn load_role_blueprints(
+    project_root: &Path,
+    rebuild: bool,
+) -> Result<std::collections::BTreeMap<EngineRole, Vec<String>>, String> {
     let index = if rebuild {
         engine_fs::BlueprintTraitIndex::load_or_rebuild(project_root)
     } else {
@@ -626,10 +700,16 @@ fn load_game_mode_blueprints(project_root: &Path, rebuild: bool) -> Result<Vec<S
     };
     index
         .map(|index| {
-            index
-                .blueprints_for_trait(GAME_MODE_TRAIT_PATH)
-                .into_iter()
-                .map(|entry| entry.blueprint_path.clone())
+            ROLES
+                .iter()
+                .map(|spec| {
+                    let blueprints = index
+                        .blueprints_for_trait(spec.trait_id)
+                        .into_iter()
+                        .map(|entry| entry.blueprint_path.clone())
+                        .collect();
+                    (spec.role, blueprints)
+                })
                 .collect()
         })
         .map_err(|error| format!("Could not load the Blueprint trait index: {error:#}"))
@@ -641,7 +721,7 @@ fn is_blueprint_index_path(path: &Path) -> bool {
         .ends_with(engine_fs::BlueprintTraitIndex::RELATIVE_PATH)
 }
 
-fn game_mode_blueprint_label(path: &String) -> String {
+fn blueprint_label(path: &String) -> String {
     if path == "None" {
         return "None".to_string();
     }
@@ -659,27 +739,90 @@ fn game_mode_blueprint_label(path: &String) -> String {
         .to_string()
 }
 
-fn catalog_status(
+fn catalog_message(
+    role_label: &str,
+    trait_path: &str,
     state: &BlueprintCatalogState,
     selected: &str,
-    cx: &Context<WorldSettingsPanel>,
-) -> AnyElement {
-    let message = match state {
-        BlueprintCatalogState::Loading => "Loading game mode Blueprints…".to_string(),
-        BlueprintCatalogState::Ready(paths) if paths.is_empty() => {
-            "No Blueprint implements `types/traits/game_mode.trait.json`. Add that trait to a Blueprint to make it selectable.".to_string()
-        }
+) -> String {
+    match state {
+        BlueprintCatalogState::Loading => format!("Loading {role_label} Blueprints…"),
+        BlueprintCatalogState::Ready(paths) if paths.is_empty() => format!(
+            "No Blueprint implements `{trait_path}`. Add that trait to a Blueprint to make it selectable."
+        ),
         BlueprintCatalogState::Ready(paths)
             if selected != "None" && !paths.iter().any(|path| path == selected) =>
         {
             format!("Selected Blueprint is not in the current index: {selected}")
         }
-        BlueprintCatalogState::Ready(_) => "Select a Blueprint that implements the game mode trait.".to_string(),
+        BlueprintCatalogState::Ready(_) => {
+            format!("Select a Blueprint that implements the {role_label} trait.")
+        }
         BlueprintCatalogState::Failed(error) => error.clone(),
-    };
+    }
+}
+
+fn catalog_status(
+    role_label: &str,
+    trait_path: &str,
+    state: &BlueprintCatalogState,
+    selected: &str,
+    cx: &Context<WorldSettingsPanel>,
+) -> AnyElement {
     div()
         .text_xs()
         .text_color(cx.theme().muted_foreground)
-        .child(message)
+        .child(catalog_message(role_label, trait_path, state, selected))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{blueprint_label, catalog_message, load_role_blueprints, BlueprintCatalogState, EngineRole};
+
+    #[test]
+    fn each_role_lists_only_blueprints_implementing_its_trait() {
+        let dir = tempfile::tempdir().unwrap();
+        for (class, traits) in [
+            ("Mode", vec![engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH]),
+            ("Hero", vec![engine_fs::builtin_traits::PLAYER_CHARACTER_TRAIT_PATH]),
+            ("Both", vec![
+                engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH,
+                engine_fs::builtin_traits::GAME_STATE_TRAIT_PATH,
+            ]),
+        ] {
+            let path = dir.path().join(format!("classes/{class}/graph_save.json"));
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(
+                path,
+                serde_json::json!({
+                    "format_version": 1, "main_graph": {}, "variables": [],
+                    "blueprint_metadata": {"implemented_traits": traits}
+                })
+                .to_string(),
+            )
+            .unwrap();
+        }
+        let roles = load_role_blueprints(dir.path(), true).unwrap();
+        assert_eq!(
+            roles[&EngineRole::GameMode],
+            ["classes/Both/graph_save.json", "classes/Mode/graph_save.json"]
+        );
+        assert_eq!(roles[&EngineRole::PlayerCharacter], ["classes/Hero/graph_save.json"]);
+        assert_eq!(roles[&EngineRole::GameState], ["classes/Both/graph_save.json"]);
+        assert!(roles[&EngineRole::PlayerController].is_empty());
+        // The non-rebuilding path (index file watcher) reads the same.
+        assert_eq!(load_role_blueprints(dir.path(), false).unwrap(), roles);
+    }
+
+    #[test]
+    fn labels_and_status_messages_name_the_role() {
+        assert_eq!(blueprint_label(&"classes/Mode/graph_save.json".to_string()), "Mode");
+        assert_eq!(blueprint_label(&"a/b.blueprint.json".to_string()), "a/b");
+        let empty = BlueprintCatalogState::Ready(Vec::new());
+        let message = catalog_message("Player Controller", "types/traits/player_controller.trait.json", &empty, "None");
+        assert!(message.contains("player_controller.trait.json"));
+        let ready = BlueprintCatalogState::Ready(vec!["a".into()]);
+        assert!(catalog_message("Game State", "t", &ready, "gone").contains("not in the current index"));
+    }
 }

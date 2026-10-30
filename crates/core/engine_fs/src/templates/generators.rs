@@ -73,6 +73,7 @@ impl TemplateGenerator {
 
     fn trait_type(name: &str) -> String {
         json!({
+            "id": uuid::Uuid::new_v4().to_string(),
             "name": name,
             "display_name": name,
             "description": "",

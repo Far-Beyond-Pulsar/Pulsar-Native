@@ -367,6 +367,12 @@ impl EmbeddedGame {
         // register against the host's world. The scene file is NOT loaded:
         // under v2 the shared world already holds the hydrated level.
         setup(&mut tick_loop).map_err(|e| format!("Project setup failed: {e}"))?;
+        // Resolve which Blueprints the level assigned to the engine roles
+        // (game mode, controller, character, game state). Nothing is spawned
+        // here; see `TickLoop::world_roles` for where that goes.
+        if let Some(scene) = &scene_path {
+            tick_loop.load_world_roles(scene, &project_root);
+        }
 
         // ── Offscreen Helio renderer (external device) ───────────────────────
         let (out_texture, out_view) = make_target(&device, color_format, width, height);

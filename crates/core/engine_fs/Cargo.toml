@@ -8,7 +8,6 @@ default = ["editor", "remote", "p2p"]
 editor = [
     "dep:ui_types_common",
     "dep:pulsar_reflection",
-    "dep:uuid",
     "dep:dashmap",
     "dep:plugin_manager",
     "dep:plugin_editor_api",
@@ -27,7 +26,7 @@ p2p = ["dep:futures", "dep:pulsar-multiplayer-core"]
 [dependencies]
 ui_types_common = { workspace = true, optional = true }
 pulsar_reflection = { workspace = true, optional = true }
-uuid = { workspace = true, optional = true }
+uuid = { workspace = true }
 dashmap = { workspace = true, optional = true }
 plugin_manager = { workspace = true, optional = true }
 plugin_editor_api = { workspace = true, optional = true }

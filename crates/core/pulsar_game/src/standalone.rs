@@ -455,6 +455,7 @@ pub fn load_level(
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .set_level_name(name.clone());
     }
+    game.load_world_roles(path, content.root());
     tracing::info!(level = %name, "Level loaded");
     Ok(())
 }

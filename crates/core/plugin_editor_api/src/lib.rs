@@ -42,6 +42,7 @@
 //! | [`asset_events`] | `AssetUpdated`: publish / subscribe to asset changes by kind |
 //! | [`ai`] | `AiToolDefinition`, `FsContext` |
 //! | [`components`] | `ComponentDefinition`, `EditorPluginComponents` |
+//! | [`traits`] | `ProjectTraits`: query the project trait database (roles, implementers) |
 //! | [`subsystems`] | `EditorPluginSubsystems`, `Subsystem` re-exports |
 //! | [`plugin`] | `EditorPlugin` trait, `export_plugin!` macro |
 //! | [`editor_element`] | `EditorHandle`, `EditorElement` — init vs render lifecycle |
@@ -100,6 +101,7 @@ pub mod scripting;
 pub mod statusbar;
 pub mod subsystems;
 pub mod surface_animation;
+pub mod traits;
 pub mod undo;
 pub mod version;
 
@@ -132,6 +134,8 @@ pub use runtime::*;
 pub use scripting::*;
 pub use statusbar::*;
 pub use subsystems::*;
+pub use traits::ProjectTraits;
+pub use traits::{TraitDescriptor, TraitImplementer, TraitMethodDescriptor, TraitParamDescriptor, TraitSnapshot};
 pub use undo::{
     bind_undo_keys, DocumentId, History, HistoryView, Redo, SharedHistory, Undo, UndoEntry,
     UndoService,
