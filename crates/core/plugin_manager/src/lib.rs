@@ -172,6 +172,7 @@ impl PanelView for FileTypeDecoratedPanelView {
     }
 }
 
+pub mod dependencies;
 pub mod builtin;
 mod permanent_library;
 mod registry;
@@ -184,6 +185,7 @@ pub use ::inventory;
 pub use builtin::{
     BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
 };
+pub use dependencies::{plan_load_order, DependencyError, LoadPlan};
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeLookup, FileTypeRegistry};
 pub use restorers::{panel_restorers, PanelRestorers, RestoreOutcome};
@@ -506,29 +508,9 @@ impl PluginManager {
 
         tracing::info!("Loading plugins from: {:?}", dir);
 
-        // Get the appropriate file extension for this platform
-        #[cfg(target_os = "windows")]
-        let extension = "dll";
-        #[cfg(target_os = "linux")]
-        let extension = "so";
-        #[cfg(target_os = "macos")]
-        let extension = "dylib";
-
-        // Scan directory for plugin libraries
-        for entry in walkdir::WalkDir::new(dir)
-            .max_depth(1)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            let path = entry.path();
-
-            // Check if this is a dynamic library
-            if path.extension().and_then(|s| s.to_str()) != Some(extension) {
-                continue;
-            }
-
-            // Attempt to load the plugin
-            match self.load_plugin(path, cx) {
+        // Prepare every library, then install them dependencies first.
+        for (path, prepared) in Self::prepare_plugins_in_dir(dir) {
+            match prepared.and_then(|prepared| self.install_prepared_plugin(prepared, cx)) {
                 Ok(plugin_id) => {
                     tracing::info!("✅ Successfully loaded plugin: {}", plugin_id);
                 }
@@ -575,7 +557,9 @@ impl PluginManager {
     /// Every plugin library in `dir`, prepared in parallel on worker threads.
     /// This is the slow, thread-safe half of loading (OS library load, SHA-256
     /// of the file, integrity manifest); it touches no manager state and needs
-    /// no UI. Finish each with [`PluginManager::install_prepared_plugin`].
+    /// no UI. Finish each with [`PluginManager::install_prepared_plugin`], in
+    /// the order returned: dependencies before the plugins that need them
+    /// (see [`PluginManager::order_prepared_plugins`]).
     pub fn prepare_plugins_in_dir(
         dir: impl AsRef<Path>,
     ) -> Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)> {
@@ -598,7 +582,7 @@ impl PluginManager {
             .map(|e| e.into_path())
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some(extension))
             .collect();
-        std::thread::scope(|scope| {
+        let prepared = std::thread::scope(|scope| {
             let workers: Vec<_> = paths
                 .iter()
                 .map(|path| scope.spawn(move || Self::prepare_plugin(path)))
@@ -615,8 +599,9 @@ impl PluginManager {
                     });
                     (path, result)
                 })
-                .collect()
-        })
+                .collect::<Vec<_>>()
+        });
+        Self::order_prepared_plugins(prepared)
     }
 
     /// Load the library at `path` and verify it against the integrity manifest.
@@ -730,6 +715,13 @@ impl PluginManager {
 
         tracing::debug!("✅ Version check passed for plugin at {:?}", path);
 
+        // Every plugin this one requires must already be installed: that is
+        // what `order_prepared_plugins` arranges, and it also covers a
+        // dependency that was ordered first but failed to install.
+        if let Some(manifest) = read_manifest(&library) {
+            self.check_dependencies(&manifest)?;
+        }
+
         // Attach the plugin's world crates to the editor's world runtimes
         // before it runs any code of its own, so its component classes are
         // World components of the editor (#1083). A library built from other
@@ -807,7 +799,10 @@ impl PluginManager {
             create_fn(theme_ptr)
         };
 
-        let plugin: &'static mut dyn EditorPluginFull = plugin;
+        let plugin: &'static mut dyn EditorPluginFull =
+            plugin.ok_or_else(|| PluginManagerError::PluginCreationFailed {
+                message: format!("{:?} refused or panicked while being created", path),
+            })?;
 
         // Get plugin metadata
         let metadata = plugin.metadata();
@@ -957,6 +952,86 @@ impl PluginManager {
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
 
         Ok(plugin_id)
+    }
+
+    /// Fail unless every plugin `manifest` requires is installed in range.
+    fn check_dependencies(&self, manifest: &PluginManifest) -> Result<(), PluginManagerError> {
+        for dependency in &manifest.requires {
+            let reason = match self.plugins.get(&dependency.id) {
+                None => Some(format!(
+                    "requires plugin {} ({}), which is not loaded",
+                    dependency.id, dependency.requirement
+                )),
+                Some(loaded) => {
+                    let installed = PluginManifest::from_metadata(&loaded.metadata);
+                    (!plugin_editor_api::manifest::satisfies(&installed, dependency)).then(|| {
+                        format!(
+                            "requires plugin {} {}, found version {}",
+                            dependency.id, dependency.requirement, installed.version
+                        )
+                    })
+                }
+            };
+            if let Some(reason) = reason {
+                return Err(PluginManagerError::DependencyUnmet {
+                    plugin: manifest.id.clone(),
+                    reason,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Put prepared plugins in the order they must be installed: plugins
+    /// that export no manifest first (they cannot be depended on), then the
+    /// rest with dependencies before dependents. A plugin whose dependencies
+    /// cannot be met comes back as an error, last, with the reason.
+    ///
+    /// Reads manifests only; no plugin constructor runs.
+    pub fn order_prepared_plugins(
+        prepared: Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)>,
+    ) -> Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)> {
+        let mut unmanifested = Vec::new();
+        let mut manifested = Vec::new();
+        let mut manifests = Vec::new();
+        let mut failed = Vec::new();
+        for (path, result) in prepared {
+            match result {
+                Err(e) => failed.push((path, Err(e))),
+                Ok(plugin) => match read_manifest(&plugin.library) {
+                    Some(manifest) => {
+                        manifests.push(manifest);
+                        manifested.push((path, plugin));
+                    }
+                    None => unmanifested.push((path, Ok(plugin))),
+                },
+            }
+        }
+
+        let plan = dependencies::plan_load_order(&manifests);
+        let mut slots: Vec<Option<(PathBuf, PreparedPlugin)>> =
+            manifested.into_iter().map(Some).collect();
+        let mut ordered = unmanifested;
+        for index in plan.order {
+            if let Some((path, plugin)) = slots[index].take() {
+                ordered.push((path, Ok(plugin)));
+            }
+        }
+        for (index, error) in plan.rejected {
+            if let Some((path, _library_stays_loaded)) = slots[index].take() {
+                let manifest = &manifests[index];
+                tracing::error!("Plugin {} not loaded: it {}", manifest.id, error);
+                failed.push((
+                    path,
+                    Err(PluginManagerError::DependencyUnmet {
+                        plugin: manifest.id.clone(),
+                        reason: error.to_string(),
+                    }),
+                ));
+            }
+        }
+        ordered.extend(failed);
+        ordered
     }
 
     /// Get all loaded plugins.
@@ -1611,6 +1686,10 @@ pub enum PluginManagerError {
     /// Failed to create plugin instance
     PluginCreationFailed { message: String },
 
+    /// The plugin's dependencies are not met: missing, out of range, cyclic,
+    /// or a dependency did not load.
+    DependencyUnmet { plugin: PluginId, reason: String },
+
     /// Plugin not found
     PluginNotFound { plugin_id: PluginId },
 
@@ -1691,6 +1770,9 @@ impl std::fmt::Display for PluginManagerError {
             Self::PluginCreationFailed { message } => {
                 write!(f, "Failed to create plugin: {}", message)
             }
+            Self::DependencyUnmet { plugin, reason } => {
+                write!(f, "Plugin {plugin} not loaded: it {reason}")
+            }
             Self::PluginNotFound { plugin_id } => {
                 write!(f, "Plugin not found: {}", plugin_id)
             }
@@ -1717,6 +1799,17 @@ impl std::fmt::Display for PluginManagerError {
 }
 
 impl std::error::Error for PluginManagerError {}
+
+/// The manifest `library` exports through `_plugin_manifest` (generated by
+/// `export_plugin!`). `None` when it exports none (built before manifests) or
+/// building it panicked.
+pub fn read_manifest(library: &PermanentLibrary) -> Option<PluginManifest> {
+    // SAFETY: the symbol is `plugin_editor_api::PluginManifestFn` in every
+    // library exporting it; the library is never unloaded.
+    let manifest: libloading::Symbol<plugin_editor_api::PluginManifestFn> =
+        unsafe { library.get(b"_plugin_manifest") }.ok()?;
+    manifest()
+}
 
 /// Attach `library`'s world crates to this process's world runtimes through
 /// its [`ATTACH_SYMBOL`](pulsar_world_registry::runtime::ATTACH_SYMBOL) entry

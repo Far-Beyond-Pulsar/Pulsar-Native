@@ -3533,6 +3533,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
+name = "fixture_dep_base"
+version = "0.0.0"
+dependencies = [
+ "plugin_editor_api",
+ "tracing",
+ "ui",
+]
+
+[[package]]
+name = "fixture_dep_orphan"
+version = "0.0.0"
+dependencies = [
+ "plugin_editor_api",
+ "tracing",
+ "ui",
+]
+
+[[package]]
+name = "fixture_dep_top"
+version = "0.0.0"
+dependencies = [
+ "plugin_editor_api",
+ "tracing",
+ "ui",
+]
+
+[[package]]
 name = "flate2"
 version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9035,6 +9062,7 @@ dependencies = [
  "pulsar_script_vm",
  "pulsar_world_registry",
  "schemars",
+ "semver",
  "serde",
  "serde_json",
  "tracing",
@@ -9057,6 +9085,9 @@ dependencies = [
  "arc-swap",
  "engine_subsystems",
  "env_logger",
+ "fixture_dep_base",
+ "fixture_dep_orphan",
+ "fixture_dep_top",
  "gpui-ce",
  "inventory",
  "libloading 0.9.0",
