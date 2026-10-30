@@ -67,6 +67,9 @@ pub fn import_rigs(
     previous: &Previous,
     surfaces: Vec<SourceSurface>,
 ) -> Result<Imported, String> {
+    // Resolve old identities before writing anything: adding/reordering nodes
+    // can change the first-used skin since the single-rig import was made.
+    let legacy_skin = legacy_source_skin(scene, previous)?;
     let stem = asset_hint
         .file_stem()
         .and_then(|name| name.to_str())
@@ -74,13 +77,12 @@ pub fn import_rigs(
     let mut outputs = Vec::new();
     let mut primary = None;
     for (index, rig) in scene.rigs.iter().enumerate() {
-        // Old records describe only the first skin used by a mesh node.
         let scoped: Vec<_> = previous
             .outputs
             .iter()
             .filter(|output| {
                 output.source_skin == Some(rig.source_skin)
-                    || (index == 0
+                    || (legacy_skin == Some(rig.source_skin)
                         && output.source_skin.is_none()
                         && matches!(
                             output.kind.as_str(),
@@ -130,6 +132,60 @@ pub fn import_rigs(
         surfaces: Vec::new(),
         parts,
     })
+}
+
+/// Legacy records lack a source skin. The saved palette identifies the rig
+/// even if traversal changed; a surviving skeleton can identify a deleted mesh.
+/// Never guess when the source or saved outputs no longer give a unique match.
+fn legacy_source_skin(
+    scene: &ConvertedScene,
+    previous: &Previous,
+) -> Result<Option<usize>, String> {
+    let legacy: Vec<_> = previous
+        .outputs
+        .iter()
+        .filter(|output| {
+            output.source_skin.is_none()
+                && matches!(output.kind.as_str(), KIND_SKELETON | KIND_SKMESH)
+        })
+        .collect();
+    // An unscoped retained clip alone does not establish a legacy rig set.
+    // Keep it unclaimed rather than attaching it to a current skin by name.
+    if legacy.is_empty() {
+        return Ok(None);
+    }
+    let mesh = legacy
+        .iter()
+        .find(|output| output.kind == KIND_SKMESH)
+        .and_then(|output| previous_output_path(previous, output, SKMESH_EXTENSION))
+        .and_then(|path| load_skmesh_asset(&path).ok());
+    let skeleton = if mesh.is_none() {
+        legacy
+            .iter()
+            .find(|output| output.kind == KIND_SKELETON)
+            .and_then(|output| previous_output_path(previous, output, SKELETON_EXTENSION))
+            .and_then(|path| load_skeleton_asset(&path).ok())
+    } else {
+        None
+    };
+    let mut matches = scene.rigs.iter().filter(|rig| {
+        let ids = bone_ids(rig);
+        if let Some(mesh) = &mesh {
+            mesh.joints.len() == rig.joints.len()
+                && mesh.joints.iter().zip(&rig.joints).all(|(old, new)| {
+                    old.bone == ids[new.bone] && old.inverse_bind == new.inverse_bind
+                })
+        } else {
+            skeleton
+                .as_ref()
+                .is_some_and(|old| old.bones == skeleton_bones(rig, &ids))
+        }
+    });
+    let matched = matches.next();
+    match (matched, matches.next()) {
+        (Some(rig), None) => Ok(Some(rig.source_skin)),
+        _ => Err("cannot identify the legacy source skin uniquely from the saved skeletal mesh or skeleton; restore the previous source and skeletal outputs, reimport once to record skin identities, then apply the source changes".into()),
+    }
 }
 
 fn import_static_parts(
@@ -230,21 +286,7 @@ fn import_rig(
     // ── The assets, in memory ──────────────────────────────────────────────
     let bone_ids = bone_ids(rig);
     let mut skeleton = SkeletonAsset::new(Skeleton {
-        bones: rig
-            .bones
-            .iter()
-            .zip(&bone_ids)
-            .map(|(bone, id)| Bone {
-                id: id.clone(),
-                name: if bone.name.trim().is_empty() {
-                    id.clone()
-                } else {
-                    bone.name.clone()
-                },
-                parent: bone.parent.map(|p| bone_ids[p].clone()),
-                bind_transform: Transform::from_trs(bone.translation, bone.rotation, bone.scale),
-            })
-            .collect(),
+        bones: skeleton_bones(rig, &bone_ids),
     });
     if let Some(id) = skeleton_at.id.as_deref().and_then(SkeletonId::parse) {
         skeleton.id = id;
@@ -401,6 +443,23 @@ fn bone_ids(rig: &ImportedRig) -> Vec<String> {
                 n += 1;
             }
             id
+        })
+        .collect()
+}
+
+fn skeleton_bones(rig: &ImportedRig, ids: &[String]) -> Vec<Bone> {
+    rig.bones
+        .iter()
+        .zip(ids)
+        .map(|(bone, id)| Bone {
+            id: id.clone(),
+            name: if bone.name.trim().is_empty() {
+                id.clone()
+            } else {
+                bone.name.clone()
+            },
+            parent: bone.parent.map(|parent| ids[parent].clone()),
+            bind_transform: Transform::from_trs(bone.translation, bone.rotation, bone.scale),
         })
         .collect()
 }
@@ -595,16 +654,7 @@ fn place(
     };
 
     let id = earlier.id.clone();
-    let recorded = previous.project_root.join(&earlier.path);
-    let moved_to = match &id {
-        // Where it was, with the id it had?
-        Some(id) if file_id(&recorded, extension).as_deref() != Some(id.as_str()) => {
-            find_by_id(previous.project_root, extension, id)
-        }
-        // Kinds without an id are the file at the recorded path, if any.
-        None if !recorded.is_file() => None,
-        _ => Some(recorded.clone()),
-    };
+    let moved_to = previous_output_path(previous, earlier, extension);
     match moved_to {
         Some(path) if !taken.contains(&path) => {
             taken.insert(path.clone());
@@ -623,6 +673,23 @@ fn place(
                 exists: false,
             }
         }
+    }
+}
+
+fn previous_output_path(
+    previous: &Previous,
+    output: &ImportOutput,
+    extension: &str,
+) -> Option<PathBuf> {
+    let recorded = previous.project_root.join(&output.path);
+    match &output.id {
+        // Where it was, with the id it had?
+        Some(id) if file_id(&recorded, extension).as_deref() != Some(id.as_str()) => {
+            find_by_id(previous.project_root, extension, id)
+        }
+        // Kinds without an id are the file at the recorded path, if any.
+        None if !recorded.is_file() => None,
+        _ => Some(recorded.clone()),
     }
 }
 

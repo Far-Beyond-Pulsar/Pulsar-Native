@@ -9,20 +9,21 @@ use skeletal_assets::skmesh::{load_skmesh_asset, save_skmesh_asset, validate_mes
 const FIXTURE: &str = include_str!("fixtures/multi_skin.gltf");
 
 fn import(root: &Path, document: &str, previous: &[ImportOutput]) -> Imported {
+    try_import(root, document, previous).unwrap()
+}
+
+fn try_import(root: &Path, document: &str, previous: &[ImportOutput]) -> Result<Imported, String> {
     let source = root.join("multi.gltf");
     std::fs::write(&source, document).unwrap();
-    importer_for("gltf")
-        .unwrap()
-        .import(
-            &source,
-            &root.join("multi.mesh"),
-            &OptionValues::new(),
-            &Previous {
-                project_root: root,
-                outputs: previous,
-            },
-        )
-        .unwrap()
+    importer_for("gltf").unwrap().import(
+        &source,
+        &root.join("multi.mesh"),
+        &OptionValues::new(),
+        &Previous {
+            project_root: root,
+            outputs: previous,
+        },
+    )
 }
 
 fn output<'a>(imported: &'a Imported, kind: &str, skin: usize) -> &'a ImportOutput {
@@ -216,6 +217,128 @@ fn changing_node_order_does_not_exchange_skin_identities() {
         for kind in ["skeleton", "skmesh", "animseq"] {
             assert_eq!(output(&first, kind, skin), output(&second, kind, skin));
         }
+    }
+}
+
+#[test]
+fn legacy_skin_one_keeps_its_identity_when_skin_zero_becomes_first_used() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let mut single: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    for node in [0, 20] {
+        single["nodes"][node]
+            .as_object_mut()
+            .unwrap()
+            .remove("skin");
+    }
+    let first = import(root, &single.to_string(), &[]);
+    let mut legacy = first.outputs.clone();
+    for output in &mut legacy {
+        output.source_skin = None;
+    }
+    let multi = import(root, FIXTURE, &legacy);
+    for kind in ["skeleton", "skmesh", "animseq"] {
+        let old = output(&first, kind, 1);
+        let new = output(&multi, kind, 1);
+        assert_eq!(new.id, old.id, "{kind} must stay with skin 1");
+        assert_eq!(new.path, old.path);
+        assert_ne!(output(&multi, kind, 0).id, old.id);
+    }
+}
+
+#[test]
+fn legacy_migration_uses_moved_mesh_or_surviving_skeleton() {
+    for delete_mesh in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut single: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        for node in [0, 20] {
+            single["nodes"][node]
+                .as_object_mut()
+                .unwrap()
+                .remove("skin");
+        }
+        let first = import(root, &single.to_string(), &[]);
+        let mut legacy = first.outputs.clone();
+        for output in &mut legacy {
+            output.source_skin = None;
+        }
+        let mesh = root.join(&output(&first, "skmesh", 1).path);
+        let skeleton = root.join(&output(&first, "skeleton", 1).path);
+        let (survivor, removed, extension) = if delete_mesh {
+            (skeleton, mesh, "skeleton")
+        } else {
+            (mesh, skeleton, "skmesh")
+        };
+        let moved = root.join(format!("moved.{extension}"));
+        std::fs::rename(survivor, &moved).unwrap();
+        std::fs::remove_file(removed).unwrap();
+        let multi = import(root, FIXTURE, &legacy);
+        for kind in ["skeleton", "skmesh", "animseq"] {
+            assert_eq!(output(&multi, kind, 1).id, output(&first, kind, 1).id);
+            assert_ne!(output(&multi, kind, 0).id, output(&first, kind, 1).id);
+        }
+        assert_eq!(root.join(&output(&multi, extension, 1).path), moved);
+    }
+}
+
+#[test]
+fn legacy_migration_rejects_ambiguous_missing_or_changed_evidence_before_writing() {
+    for evidence in ["ambiguous", "missing", "changed"] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut single: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        for node in [0, 20] {
+            single["nodes"][node]
+                .as_object_mut()
+                .unwrap()
+                .remove("skin");
+        }
+        let first = import(root, &single.to_string(), &[]);
+        let mut legacy = first.outputs.clone();
+        for output in &mut legacy {
+            output.source_skin = None;
+        }
+        let mut document: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        match evidence {
+            "ambiguous" => document["skins"][0] = document["skins"][1].clone(),
+            "missing" => {
+                for kind in ["skeleton", "skmesh"] {
+                    std::fs::remove_file(root.join(&output(&first, kind, 1).path)).unwrap();
+                }
+            }
+            "changed" => {
+                // The original skin disappeared; the sole surviving skin must
+                // not claim its ids, even though it is now first (and only).
+                document["nodes"][1].as_object_mut().unwrap().remove("skin");
+            }
+            _ => unreachable!(),
+        }
+        let files = || {
+            let mut files: Vec<_> = std::fs::read_dir(root)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| path.is_file())
+                .filter(|path| path.extension().is_none_or(|ext| ext != "gltf"))
+                .map(|path| {
+                    let bytes = std::fs::read(&path).unwrap();
+                    (path, bytes)
+                })
+                .collect();
+            files.sort();
+            files
+        };
+        let before = files();
+        let error = try_import(root, &document.to_string(), &legacy).unwrap_err();
+        assert!(
+            error.contains("cannot identify the legacy source skin uniquely"),
+            "{error}"
+        );
+        assert_eq!(
+            files(),
+            before,
+            "{evidence} evidence must leave assets intact"
+        );
     }
 }
 
