@@ -883,6 +883,11 @@ impl PlanetVoxelBackend {
                     return Ok(None);
                 };
                 queries.focus(SCULPT_FOCUS, origin, SCULPT_FOCUS_M);
+                // Stamps show to reads a few milliseconds after `stamped`;
+                // a blocking host waits for them, as for the bricks.
+                while self.blocking && queries.editing() > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
                 loop {
                     match queries.raycast(origin, d, reach, Matter::All) {
                         Resident::Ready(hit) => break hit,
