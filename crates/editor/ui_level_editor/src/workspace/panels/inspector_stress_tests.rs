@@ -497,10 +497,10 @@ fn the_layers_stack_offers_headings_and_cards_not_one_giant_row(cx: &mut TestApp
     let (mut vcx, host) = stack_host(cx, stack);
     draw(&mut vcx);
     let items = host.read_with(&vcx, |h, _| h.inspector.item_count());
-    // card header + property row + 5 headings + layer and rule cards + 2 adds
+    // card header + property row + 5 headings + layer and rule cards
     // (+ the validation line when there is one)
-    assert!(items >= 2 + 5 + layers + rules + 2, "{items} items");
-    assert!(items <= 2 + 5 + layers + rules + 2 + 1, "{items} items");
+    assert!(items >= 2 + 5 + layers + rules, "{items} items");
+    assert!(items <= 2 + 5 + layers + rules + 1, "{items} items");
 }
 
 #[gpui::test]
