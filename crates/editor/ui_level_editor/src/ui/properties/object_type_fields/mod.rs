@@ -5,13 +5,14 @@
 //! | Module               | Responsibility                                              |
 //! |----------------------|-------------------------------------------------------------|
 //! | [`icon_picker`]      | Object-level icon-asset picker (stored as a plain prop).   |
-//! | [`property_renderer`]| Per-component property cards from the reflection registry. |
-//! | [`category_section`] | Collapsible category group headers and row layout.         |
+//! | [`property_renderer`]| Per-component property rows from the reflection registry. |
+//!
+//! Search, collapse, virtualization and card/category chrome come from the
+//! shared [`ui_common::Inspector`].
 //!
 //! The legacy "Object Type" card that hard-coded `ObjectType` enum variants
 //! has been removed.  Component behaviour now drives all object logic.
 
-use engine_backend::scene::ComponentInstance;
 use engine_backend::scene::SharedScene;
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyMetadata, REGISTRY};
@@ -20,12 +21,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::dropdown::{SearchableList, SearchableListEvent};
-use ui::{v_flex, ActiveTheme};
+use ui::popover::Popover;
+use ui::{v_flex, ActiveTheme, IconName, Sizable as _};
+use ui_common::inspector::{Inspector, InspectorCarry, InspectorRow};
 use ui_common::{MeshAssetPicker, PropertyStateManager};
 
 use crate::state::LevelEditorState;
 
-mod category_section;
 mod icon_picker;
 mod property_renderer;
 
@@ -38,6 +40,16 @@ pub(super) struct PropertyMetadataCacheEntry {
     /// (which reference data inside this instance) remain valid.
     pub _default_instance: Box<dyn pulsar_reflection::EngineClass>,
 }
+
+/// Which component instance a card of the flat list stands for.
+pub(super) struct CardMeta {
+    pub class_name: String,
+    pub idx: usize,
+}
+
+/// Items before the card items in the virtual list: the object header, the
+/// transform, the icon row, the component tree and the diagnostic banner.
+pub(super) const LEADING_ITEMS: usize = 5;
 
 pub struct ObjectTypeFieldsSection {
     pub(super) object_id: String,
@@ -52,10 +64,21 @@ pub struct ObjectTypeFieldsSection {
     pub(super) property_state: PropertyStateManager,
     /// Asset picker for the object-level icon prop.
     pub(super) icon_asset_picker: Option<Entity<MeshAssetPicker>>,
-    /// Categories the user has explicitly collapsed this session.
-    pub(super) collapsed_property_categories: HashSet<(String, String)>,
-    /// Categories the user has explicitly expanded, overriding the default-collapsed flag.
-    pub(super) expanded_property_categories: HashSet<(String, String)>,
+    // ── Virtualized list ───────────────────────────────────────────────────
+    //
+    // The shared inspector owns search, collapse and the `gpui::list`; this
+    // section tells it which cards exist and builds the rows it asks for.
+    pub(super) inspector: Inspector<Self>,
+    pub(super) card_meta: Vec<CardMeta>,
+    /// The inspector's cards no longer match the component set.
+    pub(super) layout_dirty: bool,
+    /// Whether the class card existed when the layout was last built.
+    pub(super) layout_had_class_view: bool,
+    /// Object header and transform sections, shown as the list's first items.
+    pub(super) header_view: Option<AnyView>,
+    pub(super) transform_view: Option<AnyView>,
+    /// Message of the diagnostic banner, when there is one.
+    pub(super) diag_message: Option<&'static str>,
 
     // ── Performance caches ─────────────────────────────────────────────────
     /// Per-class property metadata cache.  Populated lazily on first encounter
@@ -162,16 +185,37 @@ impl ObjectTypeFieldsSection {
         )
         .detach();
 
+        // Editors that offer rows of their own wake this section when their
+        // row count changes, so its list re-reads them.
+        let mut property_state = PropertyStateManager::new().with_cached_rows();
+        let this = cx.weak_entity();
+        property_state.set_wake(Arc::new(move |cx: &mut App| {
+            let _ = this.update(cx, |_, cx| cx.notify());
+        }));
+        let inspector = Inspector::new(
+            "level-inspector",
+            "Search properties…",
+            LEADING_ITEMS,
+            |this: &mut Self| &mut this.inspector,
+            window,
+            cx,
+        );
+
         Self {
             object_id,
             scene_db,
             selected_component: None,
             component_list,
             state_arc,
-            property_state: PropertyStateManager::new().with_cached_rows(),
+            property_state,
             icon_asset_picker: None,
-            collapsed_property_categories: HashSet::new(),
-            expanded_property_categories: HashSet::new(),
+            inspector,
+            card_meta: Vec::new(),
+            layout_dirty: true,
+            layout_had_class_view: false,
+            header_view: None,
+            transform_view: None,
+            diag_message: None,
             property_metadata_cache: HashMap::new(),
             cached_component_count: 0,
             world_value_cache: HashMap::new(),
@@ -193,6 +237,7 @@ impl ObjectTypeFieldsSection {
     /// everything. For undo/redo's wholesale `World` rebuild and structural
     /// card-set changes.
     fn reset_world_subscription_state(&mut self) {
+        self.layout_dirty = true;
         self.card_entities.clear();
         self.world_value_cache.clear();
         self.dirty_classes.clear();
@@ -259,25 +304,6 @@ impl ObjectTypeFieldsSection {
                 "Could not add {class_name} to '{object_id}': {}",
                 result.no_op_reason
             );
-        }
-    }
-
-    /// Returns a diagnostic banner element when no components are attached or
-    /// none of the attached components can be found in the reflection registry.
-    fn render_diag_card(
-        &self,
-        attached: &[ComponentInstance],
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        if attached.is_empty() {
-            Some(self.diag_card_element("⚠ No components attached", cx))
-        } else if attached
-            .iter()
-            .all(|c| !REGISTRY.has_class(c.class_name.as_str()))
-        {
-            Some(self.diag_card_element("⚠ Components not found in registry", cx))
-        } else {
-            None
         }
     }
 
@@ -392,10 +418,7 @@ impl ObjectTypeFieldsSection {
 }
 
 impl Render for ObjectTypeFieldsSection {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use super::ComponentHierarchyPanel;
-        use ui::popover::Popover;
-        use ui::{IconName, Sizable as _};
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 
         // ── Detect structural changes without full get_components() ────────
         let current_count = {
@@ -422,61 +445,145 @@ impl Render for ObjectTypeFieldsSection {
             self.reset_world_subscription_state();
         }
 
-        // ── Object icon picker row ─────────────────────────────────────────
-        let icon_row = self.render_icon_row(window, cx);
-
-        // ── Component hierarchy panel (tree + add-component button) ────────
-        // The hierarchy panel needs the full ComponentInstance list for its
-        // tree view (class names + enabled status).  This is the one place
-        // where get_components() is still required.
-        let list = self.component_list.clone();
-        let add_popover = Popover::<SearchableList<String>>::new("add-component-picker")
-            .anchor(Corner::TopRight)
-            .trigger(
-                ui::button::Button::new("add-component-btn")
-                    .icon(IconName::Plus)
-                    .xsmall()
-                    .ghost(),
-            )
-            .content(move |_window, _cx| list.clone())
-            .into_any_element();
-
-        // Metadata-only read: class names/order/enabled/parent indices for
-        // the tree and diagnostics. Live values are NOT needed here — the
-        // property cards below batch-read straight from World — so paying
-        // `get_components`' per-component `to_json()` serialization on every
-        // render would only make this panel's complexity set the framerate.
-        let attached = {
-            let world = self.scene_db.read();
-            crate::scene_edit::components::get_components_metadata(&world.world, &self.object_id)
-        };
-
-        let component_hierarchy = ComponentHierarchyPanel::new(self.object_id.clone());
-        let state = self.state_arc.read();
-        let component_panel = component_hierarchy
-            .render(&attached, &state, self.state_arc.clone(), add_popover, cx)
-            .into_any_element();
-        drop(state);
-
-        // ── Diagnostic banner (no components / registry mismatch) ──────────
-        let diag_card = self.render_diag_card(&attached, cx);
-
-        // ── Per-component property cards ───────────────────────────────────
-        //
-        // Cards are kept current by the object's subscription: the panel
-        // forwards each delivered change to `apply_update`, so nothing is
-        // re-read here.
+        // Class variables feed the class card and the slot override markers.
         self.refresh_class_caches();
+        let has_class_view = self.class_view.is_some();
+        if has_class_view != self.layout_had_class_view {
+            self.layout_had_class_view = has_class_view;
+            self.layout_dirty = true;
+        }
 
-        let component_sections = self.render_component_sections(&attached, window, cx);
+        // Metadata only: names/order/enabled/parents. Read when the list shape
+        // must be rebuilt; the component tree item re-reads it for itself.
+        if self.layout_dirty {
+            let attached = {
+                let world = self.scene_db.read();
+                crate::scene_edit::components::get_components_metadata(
+                    &world.world,
+                    &self.object_id,
+                )
+            };
+            self.diag_message = if attached.is_empty() {
+                Some("⚠ No components attached")
+            } else if attached
+                .iter()
+                .all(|c| !REGISTRY.has_class(c.class_name.as_str()))
+            {
+                Some("⚠ Components not found in registry")
+            } else {
+                None
+            };
+            self.rebuild_layout(&attached);
+        }
 
-        v_flex()
-            .w_full()
-            .gap_3()
-            .child(icon_row)
-            .child(component_panel)
-            .children(diag_card)
-            .children(component_sections)
-            .into_any_element()
+        // Editors that offer rows of their own (long arrays) changed their
+        // count when opened or edited: their rows join the list.
+        for (key, prop, count) in self.property_state.virtual_row_counts(cx) {
+            self.inspector.set_extra_rows(&key, &prop, count);
+        }
+
+        self.inspector.render(Self::render_row, cx)
+    }
+}
+
+impl ObjectTypeFieldsSection {
+    /// A row the shared inspector asks this section to build: the leading
+    /// rows (object header ... diagnostics), a property, or the class card.
+    fn render_row(
+        &mut self,
+        row: InspectorRow,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use super::{ComponentHierarchyPanel, PropertiesPanel};
+
+        let wrap = |el: AnyElement| div().w_full().pt_3().child(el).into_any_element();
+        match row {
+            InspectorRow::Leading(0) => match &self.header_view {
+                Some(view) => PropertiesPanel::cached_section_view(view),
+                None => div().into_any_element(),
+            },
+            InspectorRow::Leading(1) => match &self.transform_view {
+                Some(view) => wrap(PropertiesPanel::isolated_section_view(view)),
+                None => div().into_any_element(),
+            },
+            InspectorRow::Leading(2) => wrap(self.render_icon_row(window, cx)),
+            InspectorRow::Leading(3) => {
+                let list = self.component_list.clone();
+                let add_popover = Popover::<SearchableList<String>>::new("add-component-picker")
+                    .anchor(Corner::TopRight)
+                    .trigger(
+                        ui::button::Button::new("add-component-btn")
+                            .icon(IconName::Plus)
+                            .xsmall()
+                            .ghost(),
+                    )
+                    .content(move |_window, _cx| list.clone())
+                    .into_any_element();
+                let attached = {
+                    let world = self.scene_db.read();
+                    crate::scene_edit::components::get_components_metadata(
+                        &world.world,
+                        &self.object_id,
+                    )
+                };
+                let state = self.state_arc.read();
+                let tree = ComponentHierarchyPanel::new(self.object_id.clone())
+                    .render(&attached, &state, self.state_arc.clone(), add_popover, cx)
+                    .into_any_element();
+                drop(state);
+                wrap(tree)
+            }
+            InspectorRow::Leading(4) => match self.diag_message {
+                Some(message) => wrap(self.diag_card_element(message, cx)),
+                None => div().into_any_element(),
+            },
+            InspectorRow::Leading(_) => div().into_any_element(),
+            InspectorRow::Property { card, prop } => {
+                let row = self.render_property_item(card, prop, window, cx);
+                self.inspector.wrap_row(card, prop, row, cx)
+            }
+            InspectorRow::Child { card, prop, ix } => {
+                // A row of a long value (an array) the property's editor offers.
+                let Some((key, name)) = self.inspector.card(card).and_then(|c| {
+                    Some((c.key.clone(), c.props.get(prop)?.name.clone()))
+                }) else {
+                    return div().into_any_element();
+                };
+                let Some(rows) = self.property_state.virtual_rows(&key, &name) else {
+                    return div().into_any_element();
+                };
+                let el = rows.render_row(ix, window, cx);
+                self.inspector.wrap_row(card, prop, el, cx)
+            }
+            InspectorRow::Body { .. } => self
+                .render_class_card(window, cx)
+                .unwrap_or_else(|| div().into_any_element()),
+        }
+    }
+
+    /// Search text and collapse state to carry to the section built for the
+    /// next selection, so they survive clicking around the hierarchy.
+    pub fn carry_over(&self, cx: &App) -> InspectorCarry {
+        self.inspector.carry_over(cx)
+    }
+
+    /// Restore what [`Self::carry_over`] saved.
+    pub fn restore(&mut self, carried: InspectorCarry, window: &mut Window, cx: &mut Context<Self>) {
+        self.inspector.restore(carried, window, cx);
+    }
+
+    /// The sections shown above the component cards, inside the same scroll.
+    pub fn set_leading(&mut self, header: Option<AnyView>, transform: Option<AnyView>) {
+        self.header_view = header;
+        self.transform_view = transform;
+    }
+}
+
+#[cfg(test)]
+impl ObjectTypeFieldsSection {
+    /// Test hook: scroll the virtual list.
+    pub fn scroll_by(&self, distance: Pixels) {
+        self.inspector.scroll_by(distance);
     }
 }

@@ -1140,9 +1140,10 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
                     .map_err(|e| format!("invalid terrain appearance JSON: {e}"))?,
             )
         };
-        let changed = renderer
-            .find_pass_mut::<ChunkPass>()
-            .is_some_and(|pass| pass.set_appearance(appearance));
+        let changed = renderer.find_pass_mut::<ChunkPass>().is_some_and(|pass| {
+            let smoothing = pass.set_smoothing(source.smoothness);
+            pass.set_appearance(appearance) | smoothing
+        });
         if changed {
             // The editor can go idle immediately after this frame. Old colour
             // history must not hide an inspector edit until the camera moves.

@@ -30,10 +30,20 @@ fn voxel_terrain_defaults_and_round_trips_as_scene_component_data() {
         .as_object_mut()
         .unwrap()
         .remove("appearance_parameters");
+    older_json.as_object_mut().unwrap().remove("smoothness");
     let older: VoxelTerrainComponent = serde_json::from_value(older_json).unwrap();
     // Files without a version use the generator's registered version.
     assert_eq!(older.generator.version, 0);
     assert!(older.appearance_parameters.is_empty());
+    // Levels from before smoothing are blocky, as they were drawn.
+    assert_eq!(older.smoothness, 0.0);
+
+    let mut smooth = VoxelTerrainComponent::default();
+    smooth.smoothness = 0.8;
+    let restored: VoxelTerrainComponent =
+        serde_json::from_value(serde_json::to_value(&smooth).unwrap()).unwrap();
+    assert_eq!(restored.smoothness, 0.8);
+    assert_eq!(smooth.clone().smoothness, 0.8);
 }
 
 #[test]
@@ -60,6 +70,7 @@ fn the_inspector_shows_the_whole_world_description() {
             "air_tint",
             "air_haze",
             "appearance_parameters",
+            "smoothness",
             "editable"
         ]
     );

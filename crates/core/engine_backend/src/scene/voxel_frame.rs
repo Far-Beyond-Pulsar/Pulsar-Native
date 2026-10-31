@@ -21,6 +21,8 @@ pub struct VoxelEntryId {
 #[derive(Clone)]
 pub struct VoxelSceneEntry {
     pub appearance_parameters: String,
+    /// Surface smoothing, 0 to 1 (`VoxelTerrainComponent::smoothness`).
+    pub smoothness: f32,
     pub id: VoxelEntryId,
     /// Editor visibility is independent of whether this source owns the
     /// camera environment (for example a planet's atmosphere).
@@ -391,6 +393,7 @@ pub(super) fn terrain_entry(
             plane_size: component.plane_size * scale,
         },
         appearance_parameters: component.appearance_parameters.clone(),
+        smoothness: component.smoothness,
         edits: component.edits.clone(),
     })
     .map(|mut entry| {
