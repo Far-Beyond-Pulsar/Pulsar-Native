@@ -301,7 +301,7 @@ impl NavSidebar {
                     );
                 }
                 if sidebar.previews.contains_key(&key) {
-                    sidebar.preview_hovered = Some(key);
+                    sidebar.preview_hovered = Some(key.clone());
                     cx.notify();
                 }
             });
