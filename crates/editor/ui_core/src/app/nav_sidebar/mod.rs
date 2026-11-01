@@ -146,7 +146,6 @@ pub struct NavSidebar {
     editor_list: std::rc::Rc<render::EditorList>,
     previews: HashMap<TabKey, Arc<gpui::RenderImage>>,
     preview_hover_key: Option<TabKey>,
-    preview_hovered: Option<TabKey>,
     preview_hover_ready: bool,
     preview_hover_task: Option<Task<()>>,
     /// How many times it has rendered, for tests that check it replays.
@@ -207,7 +206,6 @@ impl NavSidebar {
             editor_list: Default::default(),
             previews: HashMap::new(),
             preview_hover_key: None,
-            preview_hovered: None,
             preview_hover_ready: false,
             preview_hover_task: None,
             #[cfg(test)]
@@ -227,9 +225,6 @@ impl NavSidebar {
             }
         }
         self.previews.insert(key.clone(), image);
-        if self.preview_hover_key.as_ref() == Some(&key) {
-            self.preview_hovered = Some(key);
-        }
         cx.notify();
     }
 
@@ -239,7 +234,6 @@ impl NavSidebar {
         }
 
         self.preview_hover_key = None;
-        self.preview_hovered = None;
         self.preview_hover_ready = false;
         self.preview_hover_task = None;
         cx.notify();
@@ -249,7 +243,6 @@ impl NavSidebar {
         if !hovered {
             if self.preview_hover_key.as_ref() == Some(&key) {
                 self.preview_hover_key = None;
-                self.preview_hovered = None;
                 self.preview_hover_task = None;
                 cx.notify();
             }
@@ -260,16 +253,13 @@ impl NavSidebar {
             return;
         }
         self.preview_hover_key = Some(key.clone());
-        self.preview_hovered = None;
         self.preview_hover_task = None;
         if self.preview_hover_ready && self.previews.contains_key(&key) {
-            self.preview_hovered = Some(key);
             cx.notify();
             return;
         }
         let cached = self.previews.contains_key(&key);
         if cached {
-            self.preview_hovered = Some(key.clone());
             cx.notify();
         }
         let wait_for_hover = !self.preview_hover_ready;
@@ -301,7 +291,6 @@ impl NavSidebar {
                     );
                 }
                 if sidebar.previews.contains_key(&key) {
-                    sidebar.preview_hovered = Some(key.clone());
                     cx.notify();
                 }
             });
@@ -320,9 +309,7 @@ impl NavSidebar {
     }
 
     pub(crate) fn preview_for(&self, key: &TabKey) -> Option<Arc<gpui::RenderImage>> {
-        (self.preview_hovered.as_ref() == Some(key))
-            .then(|| self.previews.get(key).cloned())
-            .flatten()
+        self.previews.get(key).cloned()
     }
 
     /// Redraw when the project's folders or files change on disk, so the
