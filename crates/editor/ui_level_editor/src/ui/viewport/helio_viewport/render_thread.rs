@@ -1,5 +1,6 @@
 use super::frame_pacer::FramePacer;
 use super::*;
+use ui_helio_viewport::{wait_for_frame_consumed, FRAME_CONSUMER_WAIT_TIMEOUT};
 
 impl HelioViewport {
     /// Start a dedicated background thread that continuously renders the Helio
@@ -286,7 +287,11 @@ impl HelioViewport {
                                 profiling::profile_scope!(
                                     "Helio: wait for compositor to consume frame"
                                 );
-                                wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT)
+                                wait_for_frame_consumed(
+                                    &surface,
+                                    &stop,
+                                    FRAME_CONSUMER_WAIT_TIMEOUT,
+                                )
                             };
                             if !keep_going {
                                 // Stop requested mid-wait; drop this frame.
@@ -463,42 +468,10 @@ impl HelioViewport {
 /// Long enough that a normal 60 Hz consumer is never rushed, short enough that
 /// the viewport keeps updating if the composited generation stops advancing
 /// (the fast-blit path, a stalled UI thread, a hidden tab).
-const CONSUMER_WAIT_TIMEOUT: Duration = Duration::from_millis(100);
-
 /// Block until the compositor has promoted the last published frame, `stop` is
 /// signalled, or `timeout` elapses.
 ///
 /// Returns `true` if the caller should go on to render this iteration, `false`
-/// if it should re-check the stop flag and start over.
-fn wait_for_frame_consumed(
-    surface: &WgpuSurfaceHandle,
-    stop: &Arc<AtomicBool>,
-    timeout: Duration,
-) -> bool {
-    if !surface.has_unconsumed_frame() {
-        return true;
-    }
-
-    let deadline = Instant::now() + timeout;
-    while surface.has_unconsumed_frame() {
-        if stop.load(Ordering::Acquire) {
-            return false;
-        }
-        if Instant::now() >= deadline {
-            // Consumer isn't advancing. Render anyway rather than freeze the
-            // viewport; the frame may be discarded, but at display rates the
-            // waste is bounded by this timeout.
-            gpui::render_stats::count("helio: consumer wait timed out");
-            return true;
-        }
-        // Park briefly rather than spin: this thread has nothing to do until
-        // the compositor runs, and busy-waiting would burn a core to no end.
-        std::thread::sleep(Duration::from_micros(500));
-    }
-
-    true
-}
-
 /// Published frames between full re-renders of the viewport view.
 ///
 /// Between these the pump uses `Window::refresh_buffers`, which composites the

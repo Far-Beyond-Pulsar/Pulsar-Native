@@ -21,6 +21,7 @@ builtin = ["dep:plugin_manager"]
 plugin_editor_api = { workspace = true }
 plugin_manager = { workspace = true, optional = true }
 engine_backend = { workspace = true }
+ui_helio_viewport = { workspace = true }
 engine_fs = { workspace = true }
 wgpu = { workspace = true }
 parking_lot = { workspace = true }

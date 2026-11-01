@@ -1,5 +1,5 @@
 //! Transform handles with shared solid geometry for drawing and picking.
-use super::gizmo_geometry::{meshes, rotation_grid, Handle};
+use super::gizmo_geometry::{Handle, meshes, rotation_grid};
 use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{DVec3, EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
@@ -187,8 +187,15 @@ impl SceneInteraction {
                 }
                 let transform = world_transform_of(world, entity)?;
                 let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
-                ray_aabb(origin, direction, min, max)
-                    .map(|distance| (distance, Some(entity) != selected, id.0.clone()))
+                let broad_phase = ray_aabb(origin, direction, min, max)?;
+                let (has_geometry, triangle_hit) =
+                    mesh_hit_distance(world, entity, transform, self.view, origin, direction);
+                let distance = if has_geometry {
+                    triangle_hit?
+                } else {
+                    broad_phase
+                };
+                Some((distance, Some(entity) != selected, id.0.clone()))
             })
             .min_by(
                 |(left, left_other, left_id), (right, right_other, right_id)| {
@@ -670,6 +677,60 @@ impl SceneInteraction {
         });
     }
 }
+
+/// Test the ray against the loaded SceneDB mesh payload. The AABB above is a
+/// broad phase only: treating it as the hit made empty space inside concave
+/// meshes selectable. Transform the ray into each mesh's local space so the
+/// triangle test stays well-conditioned under rotation and non-uniform scale.
+fn mesh_hit_distance(
+    world: &World,
+    entity: Entity,
+    transform: Transform,
+    view: View,
+    origin: Vec3,
+    direction: Vec3,
+) -> (bool, Option<f32>) {
+    let meshes = crate::scene::attachments::enabled_components_of::<
+        helio_component::components::StaticMeshComponent,
+    >(world, entity);
+    let has_geometry = meshes.iter().any(|(_, mesh)| {
+        mesh.vertices.len() >= 3 && (mesh.indices.is_empty() || mesh.indices.len() >= 3)
+    });
+    if !has_geometry {
+        return (false, None);
+    }
+    let rotation = rotation_matrix(transform);
+    let scale = Vec3::from_array(transform.scale);
+    if scale.abs().min_element() <= 1e-8 || !scale.is_finite() {
+        return (true, None);
+    }
+    let object_origin = view.relative(transform.position);
+    let inverse = |v: Vec3| (rotation.transpose() * v) / scale;
+    let local_origin = inverse(origin - object_origin);
+    let local_direction = inverse(direction);
+    let hit = meshes
+        .into_iter()
+        .filter_map(|(_, mesh)| {
+            let positions = &mesh.vertices;
+            let indices = &mesh.indices;
+            if positions.len() < 3 {
+                return None;
+            }
+            helio_component::mesh_spatial::raycast_mesh(
+                mesh.geometry_key,
+                positions,
+                indices,
+                local_origin,
+                local_direction,
+            )
+        })
+        .filter(|t| *t >= 0.0 && t.is_finite())
+        // local_direction is the inverse transform of a unit world direction,
+        // so the Möller–Trumbore parameter remains world distance.
+        .min_by(f32::total_cmp);
+    (has_geometry, hit)
+}
+
 fn projected_ring_angle(
     view: View,
     pivot: Vec3,
@@ -892,6 +953,51 @@ mod tests {
     use super::*;
     use crate::scene::{MeshType, SpawnObject};
 
+    #[test]
+    fn scene_pick_does_not_select_empty_aabb_space_inside_mesh_bounds() {
+        let mut world = World::new();
+        spawn_cube(&mut world, "triangle", -3.0);
+        let entity = world.entity_for("triangle").unwrap();
+        {
+            let mut transform = world.get_mut::<Transform>(entity).unwrap();
+            transform.rotation = [0.0, 35.0, 0.0];
+            transform.scale = [-2.0, 0.5, 1.5];
+        }
+        let vertex = |position| {
+            helio::PackedVertex::from_components(
+                position,
+                [0.0, 0.0, 1.0],
+                [0.0; 2],
+                [1.0, 0.0, 0.0],
+                1.0,
+            )
+        };
+        let mesh = helio_component::components::StaticMeshComponent {
+            bounds_local: [0.0, 0.0, 0.0, 2.0],
+            vertices: vec![
+                vertex([-1.0, -1.0, 0.0]),
+                vertex([1.0, -1.0, 0.0]),
+                vertex([-1.0, 1.0, 0.0]),
+            ],
+            indices: vec![0, 1, 2],
+            geometry_key: helio_component::components::MeshGeometryKey(0x705),
+            ..Default::default()
+        };
+        pulsar_world_registry::attach_value(&mut world, entity, mesh).unwrap();
+
+        let interaction = SceneInteraction::default();
+        assert_eq!(
+            interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
+            Some("triangle".into())
+        );
+        // This ray is inside the component's broad-phase box but in the
+        // missing corner of its triangle, so it must not select the mesh.
+        assert_eq!(
+            interaction.pick(&world, DVec3::ZERO, Vec3::new(0.8, 0.8, -3.0)),
+            None
+        );
+    }
+
     fn setup(mode: GizmoType) -> (World, SceneInteraction, Entity) {
         let mut world = World::new();
         spawn_cube(&mut world, "selected", -10.0);
@@ -917,10 +1023,12 @@ mod tests {
         world.insert(entity, planet);
         assert_eq!(world.selected_entity(), Some(entity));
         assert!(interaction.selected(&world).is_some());
-        assert!(interaction
-            .view
-            .length(DVec3::from_array(planet.position).as_vec3())
-            .is_none());
+        assert!(
+            interaction
+                .view
+                .length(DVec3::from_array(planet.position).as_vec3())
+                .is_none()
+        );
     }
 
     #[test]

@@ -86,7 +86,10 @@ pub(super) fn handle_mouse_move(
 
     // Update Helio mouse input
     let bounds_opt = element_bounds_move.borrow();
-    let (norm_x, norm_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
+    let Some(bounds) = bounds_opt.as_ref() else {
+        return;
+    };
+    let (norm_x, norm_y, viewport_width, viewport_height) = {
         let origin_x: f32 = bounds.origin.x.into();
         let origin_y: f32 = bounds.origin.y.into();
         let width: f32 = bounds.size.width.into();
@@ -102,8 +105,6 @@ pub(super) fn handle_mouse_move(
             width,
             height,
         )
-    } else {
-        return;
     };
     drop(bounds_opt);
 
@@ -472,7 +473,10 @@ pub(super) fn handle_left_mouse_down(
     let bounds_opt = element_bounds.borrow();
     // Normalize cursor to [0,1] relative to the viewport element.
     // event.position is window-relative; subtract the viewport origin.
-    let (norm_x, norm_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
+    let Some(ref bounds) = *bounds_opt else {
+        return;
+    };
+    let (norm_x, norm_y, viewport_width, viewport_height) = {
         let origin_x: f32 = bounds.origin.x.into();
         let origin_y: f32 = bounds.origin.y.into();
         let width: f32 = bounds.size.width.into();
@@ -481,25 +485,23 @@ pub(super) fn handle_left_mouse_down(
         let pos_y: f32 = event.position.y.into();
         let local_x = pos_x - origin_x;
         let local_y = pos_y - origin_y;
-        (
-            (local_x / width).clamp(0.0, 1.0),
-            (local_y / height).clamp(0.0, 1.0),
-            width,
-            height,
-        )
-    } else {
-        let window_size = window.viewport_size();
-        let pos_x: f32 = event.position.x.into();
-        let pos_y: f32 = event.position.y.into();
-        let width: f32 = window_size.width.into();
-        let height: f32 = window_size.height.into();
-        (
-            (pos_x / width).clamp(0.0, 1.0),
-            (pos_y / height).clamp(0.0, 1.0),
-            width,
-            height,
-        )
+        if width <= 0.0
+            || height <= 0.0
+            || local_x < 0.0
+            || local_y < 0.0
+            || local_x >= width
+            || local_y >= height
+        {
+            return;
+        }
+        (local_x / width, local_y / height, width, height)
     };
+    drop(bounds_opt);
+
+    if viewport_width <= 0.0 || viewport_height <= 0.0 || !norm_x.is_finite() || !norm_y.is_finite()
+    {
+        return;
+    }
 
     // Tool-mode dispatch: give the active mode first refusal on the
     // click (design doc §4.5). LevelEdit always returns `PassThrough`,

@@ -10797,6 +10797,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
+ "ui_helio_viewport",
  "uuid",
  "wgpu",
 ]
@@ -14647,6 +14648,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_helio_viewport"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "tracing",
+]
+
+[[package]]
 name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
@@ -14702,6 +14711,7 @@ dependencies = [
  "ui",
  "ui_build",
  "ui_common",
+ "ui_helio_viewport",
  "ui_types_common",
  "wayland-backend",
  "wayland-client",

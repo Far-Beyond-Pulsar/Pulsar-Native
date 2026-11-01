@@ -104,6 +104,13 @@ class instantiation, scripts and the editor clone and write typed values.
   planes. The editor's `HelioRenderer` adds only gizmos, picking, brushes,
   billboards and debug views on top.
 
+Static-mesh bounds originate in the native mesh asset: PMSH v5 stores an
+explicit local AABB, while legacy versions derive it during decode. SceneDB
+components carry the conservative sphere derived from that AABB to Helio's
+render rows. Viewport picking queries the live `World`, uses those bounds for
+broad-phase rejection, and tests resident mesh triangles through a bounded,
+content-id keyed BVH cache; no parallel scene snapshot owns pick data.
+
 ## Assets
 
 A mesh asset loads synchronously inside the write that names it (the

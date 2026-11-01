@@ -209,8 +209,11 @@ It has its own editor on the shared Graphy canvas (`.agents/GRAPH_CANVAS.md`, "R
 
 The **preview** above Properties is a Helio renderer on the editor's shared device,
 drawing a private test scene through the graph; Compile and Save apply the graph (a
-graph with errors is reported, not applied). It is a small component, not the level
-editor's `HelioViewport` (issue 1419).
+graph with errors is reported, not applied). It uses the shared frame pacer and
+publish-driven repaint pump from `ui_helio_viewport`; scene setup, camera controls,
+surface lifecycle, and preview status remain local to this panel. The level editor
+keeps its more involved surface lifecycle and frame pump policy local because they
+coordinate level loading, thumbnails, and viewport input (issue 1419).
 
 ## Known gaps
 

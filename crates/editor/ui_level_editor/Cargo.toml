@@ -47,6 +47,7 @@ helio-pass-buffer-view.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
 profiling.workspace = true
+ui_helio_viewport.workspace = true
 
 # Helio renderer and asset loading
 helio-asset-compat = { workspace = true }

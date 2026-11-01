@@ -154,6 +154,7 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_friends` | Friends list |
 | `ui_git_manager` | Git integration |
 | `ui_level_editor` | Level / scene editor |
+| `ui_helio_viewport` | Shared Helio frame pacing and publish-driven repaint pump |
 | `ui_loading_screen` | Splash + loading progress |
 | `ui_log_viewer` | Log output |
 | `ui_multiplayer` | Multiplayer session UI |
@@ -255,3 +256,10 @@ Pinning a dependency's feature branch is fine while a PR is in review, but not
 on main. Pins still waiting on an upstream PR are listed, with that PR, in
 `.github/submodule-pin-exceptions.txt`; the check flags a line as stale once
 its pin lands upstream, and the line should then be deleted.
+
+**Mesh bounds.** Native PMSH v5 stores a validated local-space AABB computed
+from the final converted vertex payload. The geometry content id still hashes
+only vertex/index bytes. v1-v4 remain readable and derive the same AABB during
+decode; the component's GPU culling sphere is derived from the AABB. The level
+editor uses resident CPU geometry and a content-id keyed BVH for triangle-true
+viewport picking, with the bounds serving only as broad phase.

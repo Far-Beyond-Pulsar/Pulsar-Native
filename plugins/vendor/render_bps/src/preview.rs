@@ -8,14 +8,12 @@
 //! when the author presses Compile or saves, not on every edit: a rebuild
 //! compiles shaders, and a half-wired graph never reaches the GPU.
 //!
-//! This is deliberately small. The level editor's `HelioViewport` does more
-//! (input, gizmos, frame pacing) but is tied to the level editor's state; making
-//! it reusable is tracked separately.
+//! The preview owns its test scene, camera controls, and status UI. Surface
+//! drawing utilities are shared with the level editor through `ui_helio_viewport`.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use engine_backend::scene::{new_scene, resolve_level_assets, RuntimeLevel};
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
@@ -24,6 +22,7 @@ use engine_backend::subsystems::render::EditorCameraState;
 use gpui::*;
 use ui::dock::{Panel, PanelEvent};
 use ui::ActiveTheme as _;
+use ui_helio_viewport::{wait_for_frame_consumed, FramePacer, FRAME_CONSUMER_WAIT_TIMEOUT};
 
 use crate::model;
 
@@ -66,8 +65,7 @@ pub struct PipelinePreview {
     surface: Option<WgpuSurfaceHandle>,
     stop: Arc<AtomicBool>,
     frames: Arc<AtomicU64>,
-    last_frame: u64,
-    pump_started: bool,
+    frame_pump: ui_helio_viewport::PublishedFramePump,
     yaw: f32,
     pitch: f32,
     distance: f32,
@@ -99,8 +97,7 @@ impl PipelinePreview {
             surface: None,
             stop: Arc::new(AtomicBool::new(false)),
             frames: Arc::new(AtomicU64::new(0)),
-            last_frame: 0,
-            pump_started: false,
+            frame_pump: ui_helio_viewport::PublishedFramePump::new(),
             yaw: 0.0,
             pitch: -0.25,
             distance: 6.0,
@@ -152,7 +149,7 @@ impl PipelinePreview {
         }
     }
 
-    fn create_surface(&mut self, window: &mut Window) {
+    fn create_surface(&mut self, window: &mut Window, refresh_hz: Option<f64>) {
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         match window.create_wgpu_surface_with_color_conversion(
             640,
@@ -163,14 +160,14 @@ impl PipelinePreview {
             // On a lost device the window rebuilds and renders this view again.
             Some(surface) if surface.is_device_lost() => {}
             Some(surface) => {
-                self.start_render_thread(surface.clone());
+                self.start_render_thread(surface.clone(), refresh_hz);
                 self.surface = Some(surface);
             }
             None => tracing::warn!("Render graph preview: no surface"),
         }
     }
 
-    fn start_render_thread(&self, surface: WgpuSurfaceHandle) {
+    fn start_render_thread(&self, surface: WgpuSurfaceHandle, refresh_hz: Option<f64>) {
         engine_backend::services::device_loss::DeviceLoss::adopt(
             surface.device(),
             surface.device_lost_flag(),
@@ -182,8 +179,9 @@ impl PipelinePreview {
             .name("Render graph preview".into())
             .spawn(move || {
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut pacer = FramePacer::new(refresh_hz);
                     while !stop.load(Ordering::Acquire) {
-                        std::thread::sleep(Duration::from_millis(16));
+                        pacer.wait_for_next_frame();
                         let (device, queue, format) =
                             (surface.device(), surface.queue(), surface.format());
                         let (width, height) = surface.size();
@@ -208,6 +206,13 @@ impl PipelinePreview {
                         drop(view);
                         drop(engine);
                         if let Some(index) = submission {
+                            if !wait_for_frame_consumed(
+                                &surface,
+                                &stop,
+                                FRAME_CONSUMER_WAIT_TIMEOUT,
+                            ) {
+                                continue;
+                            }
                             surface.present_synced_silent(index);
                             frames.fetch_add(1, Ordering::Release);
                             surface.request_frame();
@@ -225,26 +230,7 @@ impl PipelinePreview {
 
     /// Repaints when the render thread publishes a frame.
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.pump_started {
-            return;
-        }
-        self.pump_started = true;
-        cx.spawn_in(window, async move |this, cx| loop {
-            cx.background_executor()
-                .timer(Duration::from_millis(16))
-                .await;
-            let alive = this.update_in(cx, |this, _window, cx| {
-                let published = this.frames.load(Ordering::Acquire);
-                if published != this.last_frame {
-                    this.last_frame = published;
-                    cx.notify();
-                }
-            });
-            if alive.is_err() {
-                break;
-            }
-        })
-        .detach();
+        self.frame_pump.start(self.frames.clone(), window, cx);
     }
 }
 
@@ -294,7 +280,20 @@ impl Panel for PipelinePreview {
 impl Render for PipelinePreview {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.surface.is_none() {
-            self.create_surface(window);
+            let refresh_hz = window
+                .display(cx)
+                .or_else(|| cx.primary_display())
+                .and_then(|display| display.refresh_rate_millihertz())
+                .filter(|millihertz| *millihertz > 0)
+                .or_else(|| {
+                    cx.displays()
+                        .iter()
+                        .filter_map(|display| display.refresh_rate_millihertz())
+                        .max()
+                        .filter(|millihertz| *millihertz > 0)
+                })
+                .map(|millihertz| millihertz as f64 / 1000.0);
+            self.create_surface(window, refresh_hz);
         }
         if self.surface.is_some() {
             self.start_pump(window, cx);
@@ -368,4 +367,3 @@ impl Render for PipelinePreview {
             .children(status)
     }
 }
-
