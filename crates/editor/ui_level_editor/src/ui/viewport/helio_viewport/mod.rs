@@ -86,6 +86,7 @@ pub struct HelioViewport {
     engine_lock_misses_since_report: u32,
     max_frame_ms_since_report: f64,
     placement_preview: Option<(String, crate::scene_edit::SceneHistorySnapshot)>,
+    placement_monitor_running: bool,
 }
 
 mod assets;
@@ -124,6 +125,7 @@ impl HelioViewport {
             engine_lock_misses_since_report: 0,
             max_frame_ms_since_report: 0.0,
             placement_preview: None,
+            placement_monitor_running: false,
         }
     }
 
@@ -342,7 +344,7 @@ impl Render for HelioViewport {
             .size_full()
             .on_drag_move::<AssetPayload>({
                 let viewport = cx.entity().clone();
-                move |event, _window, cx| {
+                move |event, window, cx| {
                     let payload = event.drag(cx).clone();
                     let local_x: f32 = (event.event.position.x - event.bounds.origin.x).into();
                     let local_y: f32 = (event.event.position.y - event.bounds.origin.y).into();
@@ -356,8 +358,8 @@ impl Render for HelioViewport {
                     if !(0.0..=1.0).contains(&norm_x) || !(0.0..=1.0).contains(&norm_y) {
                         return;
                     }
-                    viewport.update(cx, |this, _cx| {
-                        this.update_asset_preview(&payload, norm_x, norm_y)
+                    viewport.update(cx, |this, cx| {
+                        this.update_asset_preview(&payload, norm_x, norm_y, window, cx)
                     });
                 }
             })

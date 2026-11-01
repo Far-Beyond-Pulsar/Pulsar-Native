@@ -6,6 +6,8 @@ impl HelioViewport {
         payload: &AssetPayload,
         norm_x: f32,
         norm_y: f32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) {
         if payload.is_source_model() || !matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene)
         {
@@ -25,6 +27,7 @@ impl HelioViewport {
         }
         let asset_path = path.to_string_lossy().replace('\\', "/");
         let mut state = self.shared_state.write();
+        let mut start_monitor = false;
         let id = if let Some((id, _)) = &self.placement_preview {
             id.clone()
         } else {
@@ -69,6 +72,10 @@ impl HelioViewport {
             }
             drop(world);
             self.placement_preview = Some((id.clone(), before));
+            if !self.placement_monitor_running {
+                self.placement_monitor_running = true;
+                start_monitor = true;
+            }
             id
         };
         crate::scene_edit::objects::set_transform(
@@ -79,12 +86,38 @@ impl HelioViewport {
             None,
         );
         state.scene.bump_revision(false);
+        drop(state);
+        if start_monitor {
+            let viewport = cx.entity().clone();
+            cx.spawn_in(window, async move |this, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(50))
+                        .await;
+                    let active = this
+                        .update_in(cx, |viewport, _window, cx| {
+                            if cx.has_active_drag() {
+                                true
+                            } else {
+                                viewport.cancel_asset_preview();
+                                false
+                            }
+                        })
+                        .unwrap_or(false);
+                    if !active {
+                        break;
+                    }
+                }
+            })
+            .detach();
+        }
     }
 
     pub(super) fn finish_asset_preview(&mut self) -> bool {
         let Some((id, before)) = self.placement_preview.take() else {
             return false;
         };
+        self.placement_monitor_running = false;
         let mut state = self.shared_state.write();
         let after =
             crate::scene_edit::history::capture_history_subset(&state.scene.world(), &[id.clone()]);
@@ -94,6 +127,17 @@ impl HelioViewport {
         state.scene.bump_revision(true);
         let _ = execute_command(&mut state, SceneCommand::SelectObject { id: Some(id) });
         true
+    }
+
+    fn cancel_asset_preview(&mut self) {
+        self.placement_monitor_running = false;
+        let Some((id, _)) = self.placement_preview.take() else {
+            return;
+        };
+        let mut state = self.shared_state.write();
+        if crate::scene_edit::objects::remove_object(&mut state.scene.world_mut(), &id) {
+            state.scene.bump_revision(false);
+        }
     }
 
     /// A source model (FBX, …) was dropped on the viewport: nothing is placed,
