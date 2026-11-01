@@ -19,8 +19,8 @@ pub mod subsystems;
 // not name every `helio_component` type directly. Without an explicit symbol
 // reference the linker can dead-strip the rest of `helio_component`'s
 // `#[used]` inventory statics in an optimized build.
-pub use helio_component::{component_animation_notify_events, project_animation_notify_events};
 use helio_component as _;
+pub use helio_component::{component_animation_notify_events, project_animation_notify_events};
 
 #[cfg(feature = "render")]
 pub use services::GpuRenderer;

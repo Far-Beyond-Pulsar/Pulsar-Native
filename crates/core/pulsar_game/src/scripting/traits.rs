@@ -264,10 +264,8 @@ impl RuntimeTraits {
                     ));
                 }
             }
-            self.contracts.insert(
-                key.clone(),
-                Contract { check, missing },
-            );
+            self.contracts
+                .insert(key.clone(), Contract { check, missing });
         }
         &self.contracts[&key]
     }

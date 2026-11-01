@@ -188,7 +188,11 @@ fn section(
         .child(body)
 }
 
-fn field(label: &'static str, value: String, cx: &mut Context<PluginManagerWindow>) -> impl IntoElement {
+fn field(
+    label: &'static str,
+    value: String,
+    cx: &mut Context<PluginManagerWindow>,
+) -> impl IntoElement {
     h_flex()
         .gap_3()
         .items_start()
@@ -244,7 +248,10 @@ fn dependency_row(
         DependencyState::VersionMismatch { found } => (
             IconName::TriangleAlert,
             cx.theme().danger,
-            format!("version {found} does not satisfy {}", dependency.requirement),
+            format!(
+                "version {found} does not satisfy {}",
+                dependency.requirement
+            ),
         ),
         DependencyState::Missing if status.optional => (
             IconName::Info,

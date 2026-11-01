@@ -68,7 +68,12 @@ fn install_dir() -> (tempfile::TempDir, [PathBuf; 3]) {
     (dir, paths)
 }
 
-fn prepare(path: &Path) -> (PathBuf, Result<plugin_manager::PreparedPlugin, PluginManagerError>) {
+fn prepare(
+    path: &Path,
+) -> (
+    PathBuf,
+    Result<plugin_manager::PreparedPlugin, PluginManagerError>,
+) {
     (path.to_path_buf(), PluginManager::prepare_plugin(path))
 }
 
@@ -106,7 +111,10 @@ fn prepared_plugins_come_back_dependencies_first() {
             .unwrap_or_else(|| panic!("{needle} missing from {names:?}"))
     };
 
-    assert!(names[position("base")].1 && names[position("top")].1, "{names:?}");
+    assert!(
+        names[position("base")].1 && names[position("top")].1,
+        "{names:?}"
+    );
     assert!(position("base") < position("top"), "{names:?}");
 
     let (_, orphan_result) = &ordered[position("orphan")];
@@ -118,7 +126,10 @@ fn prepared_plugins_come_back_dependencies_first() {
         Err(other) => panic!("unexpected error {other}"),
         Ok(_) => panic!("orphan must not load"),
     }
-    assert!(position("orphan") > position("top"), "rejected plugins come last");
+    assert!(
+        position("orphan") > position("top"),
+        "rejected plugins come last"
+    );
 }
 
 #[test]

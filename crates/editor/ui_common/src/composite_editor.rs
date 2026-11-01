@@ -20,8 +20,7 @@ use crate::composite_model::{self, get, get_mut, Path, RowKind, Seg, TreeRow};
 use crate::property_editor_registry::PROPERTY_EDITOR_REGISTRY;
 use gpui::{prelude::*, *};
 use pulsar_reflection::{
-    VirtualRows,
-    BoundPropertyEditor, PropertyEditorArgs, PropertyWriteBack, RuntimeTypeInfo,
+    BoundPropertyEditor, PropertyEditorArgs, PropertyWriteBack, RuntimeTypeInfo, VirtualRows,
     RUNTIME_TYPE_REGISTRY,
 };
 use serde_json::Value;
@@ -173,13 +172,15 @@ impl CompositeEditor {
 
     /// Recompute the visible rows and tell the list which range changed.
     fn relayout(&mut self) {
-        let rows =
-            composite_model::flatten(&self.root, self.ty, &self.expanded, &has_editor);
-        let same = |a: &TreeRow, b: &TreeRow| {
-            a.path == b.path && a.depth == b.depth && a.kind == b.kind
-        };
+        let rows = composite_model::flatten(&self.root, self.ty, &self.expanded, &has_editor);
+        let same =
+            |a: &TreeRow, b: &TreeRow| a.path == b.path && a.depth == b.depth && a.kind == b.kind;
         let old = &self.rows;
-        let prefix = old.iter().zip(&rows).take_while(|(a, b)| same(a, b)).count();
+        let prefix = old
+            .iter()
+            .zip(&rows)
+            .take_while(|(a, b)| same(a, b))
+            .count();
         let suffix = old[prefix..]
             .iter()
             .rev()
@@ -187,10 +188,8 @@ impl CompositeEditor {
             .take_while(|(a, b)| same(a, b))
             .count();
         if prefix != old.len() || prefix != rows.len() {
-            self.list_state.splice(
-                prefix..old.len() - suffix,
-                rows.len() - prefix - suffix,
-            );
+            self.list_state
+                .splice(prefix..old.len() - suffix, rows.len() - prefix - suffix);
         }
         self.rows = rows;
     }
@@ -353,11 +352,9 @@ impl CompositeEditor {
                     div()
                         .flex_1()
                         .min_w_0()
-                        .child(
-                            editor
-                                .view
-                                .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0()),
-                        )
+                        .child(editor.view.cached_auto_height(
+                            StyleRefinement::default().w_full().flex_shrink_0(),
+                        ))
                         .into_any_element()
                 }
                 None => div().into_any_element(),
@@ -483,38 +480,40 @@ impl Render for CompositeEditor {
             )
             .child(div().text_xs().text_color(muted).child(count.to_string()));
 
-        let body = (self.open && !self.rows.is_empty() && self.viewport.is_some()).then(|| match self.viewport {
-            // Only a type that explicitly asked for a sub-scroll area gets one.
-            Some(height) => {
-                let rows = list(
-                    self.list_state.clone(),
-                    cx.processor(|this, ix: usize, window, cx| this.render_row(ix, window, cx)),
-                )
-                .size_full();
-                div()
-                    .id(SharedString::from(format!("{}-viewport", self.id)))
-                    .relative()
-                    .w_full()
-                    .h(px(height))
-                    .mt_1()
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(px(4.))
-                    .child(rows)
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .right_0()
-                            .bottom_0()
-                            .w(px(12.))
-                            .child(Scrollbar::vertical(&self.scroll_state, &self.list_state)),
+        let body = (self.open && !self.rows.is_empty() && self.viewport.is_some()).then(|| {
+            match self.viewport {
+                // Only a type that explicitly asked for a sub-scroll area gets one.
+                Some(height) => {
+                    let rows = list(
+                        self.list_state.clone(),
+                        cx.processor(|this, ix: usize, window, cx| this.render_row(ix, window, cx)),
                     )
-                    .into_any_element()
+                    .size_full();
+                    div()
+                        .id(SharedString::from(format!("{}-viewport", self.id)))
+                        .relative()
+                        .w_full()
+                        .h(px(height))
+                        .mt_1()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded(px(4.))
+                        .child(rows)
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .right_0()
+                                .bottom_0()
+                                .w(px(12.))
+                                .child(Scrollbar::vertical(&self.scroll_state, &self.list_state)),
+                        )
+                        .into_any_element()
+                }
+                // Default: the rows live in the panel's own list ([`VirtualRows`]),
+                // so nothing here but the header.
+                None => div().into_any_element(),
             }
-            // Default: the rows live in the panel's own list ([`VirtualRows`]),
-            // so nothing here but the header.
-            None => div().into_any_element(),
         });
 
         v_flex().w_full().child(header).children(body)

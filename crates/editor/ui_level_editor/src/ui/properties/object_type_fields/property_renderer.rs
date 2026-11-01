@@ -31,9 +31,9 @@ use std::any::Any;
 use std::sync::Arc;
 use ui::{button::ButtonVariants as _, h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
-use ui_common::inspector_model::{CardDesc, PropDesc};
 use super::{CardMeta, ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
 use crate::core::commands::{execute_command, SceneCommand};
+use ui_common::inspector_model::{CardDesc, PropDesc};
 
 /// A card's values for an unresolved instance (data this build could not
 /// turn into a live value), read from the instance's own payload in the
@@ -183,9 +183,8 @@ impl ObjectTypeFieldsSection {
                     })
                     .collect(),
                 custom: false,
-                note: pulsar_world_registry::unfinished_component(class_name).map(|u| {
-                    format!("Unfinished: {}. Tracked in {}.", u.reason, u.issue)
-                }),
+                note: pulsar_world_registry::unfinished_component(class_name)
+                    .map(|u| format!("Unfinished: {}. Tracked in {}.", u.reason, u.issue)),
             });
             self.card_meta.push(CardMeta {
                 class_name: class_name.clone(),
@@ -236,14 +235,7 @@ impl ObjectTypeFieldsSection {
         let values = if live {
             read_card_values_fresh(world, object_id, class_name, idx, properties, default_inst)
         } else {
-            read_unresolved_card_values(
-                world,
-                object_id,
-                class_name,
-                idx,
-                properties,
-                default_inst,
-            )
+            read_unresolved_card_values(world, object_id, class_name, idx, properties, default_inst)
         };
         drop(scene);
         // Array / struct editors skip re-reading unchanged values; this one
@@ -283,7 +275,10 @@ impl ObjectTypeFieldsSection {
         let Some(prop) = properties.get(prop_ix) else {
             return empty();
         };
-        if self.ensure_card_values(&class_name, idx, &properties).is_none() {
+        if self
+            .ensure_card_values(&class_name, idx, &properties)
+            .is_none()
+        {
             return empty();
         }
         let card_key = (class_name.clone(), idx);
@@ -343,8 +338,10 @@ impl ObjectTypeFieldsSection {
             .and_then(|d| d.as_ref())
         {
             Some(default) => {
-                let overridden =
-                    !crate::scene_edit::classes::property_equals_default(value.as_ref(), default.as_ref());
+                let overridden = !crate::scene_edit::classes::property_equals_default(
+                    value.as_ref(),
+                    default.as_ref(),
+                );
                 let revert = {
                     let state_arc = self.state_arc.clone();
                     let oid = object_id.clone();

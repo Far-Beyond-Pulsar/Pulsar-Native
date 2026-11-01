@@ -1,24 +1,24 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
 use glam::{DVec3, Vec3};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
 pub use helio::PortalDebugText;
 
-use super::fly_camera::{FlyCamera, altitude_speed_scale, direction, yaw_pitch};
+use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 #[cfg(test)]
 use super::scene_renderer::ortho_camera;
 use super::scene_renderer::{
-    DeviceOwner, FrameProjection, FrameView, SceneRenderer, SceneRendererOptions, VoxelGround,
-    ortho_depth_range,
+    ortho_depth_range, DeviceOwner, FrameProjection, FrameView, SceneRenderer,
+    SceneRendererOptions, VoxelGround,
 };
 use super::voxel_backend::{
-    UNPICKED_REACH_M, VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint,
+    VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint, UNPICKED_REACH_M,
 };
 type GizmoMode = GizmoType;
 
@@ -158,7 +158,7 @@ impl EditorCameraState {
     }
 }
 
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
 /// How a viewport looks at the scene: the free perspective camera, or an
 /// orthographic one. The axis views are fixed in orientation; the editor
@@ -2641,7 +2641,7 @@ impl HelioRenderer {
 
 #[cfg(test)]
 mod temporal_settling_tests {
-    use super::{TEMPORAL_SETTLING_FRAMES, TemporalSettling};
+    use super::{TemporalSettling, TEMPORAL_SETTLING_FRAMES};
 
     #[test]
     fn stopped_camera_renders_exactly_one_bounded_history_budget() {

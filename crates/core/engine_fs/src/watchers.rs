@@ -166,7 +166,15 @@ pub const ANIMATION_ASSET_KIND: &str = "animation";
 /// IK rig and retarget assets, pose database).
 fn is_animation_extension(extension: &str) -> bool {
     [
-        "skeleton", "animseq", "blendspace", "montage", "animgraph", "ikrig", "ikretarget", "animretarget", "posedb",
+        "skeleton",
+        "animseq",
+        "blendspace",
+        "montage",
+        "animgraph",
+        "ikrig",
+        "ikretarget",
+        "animretarget",
+        "posedb",
     ]
     .iter()
     .any(|known| extension.eq_ignore_ascii_case(known))
@@ -206,7 +214,18 @@ mod animation_update_tests {
 
     #[test]
     fn the_animation_family_is_recognised_by_extension_only() {
-        for extension in ["skeleton", "animseq", "blendspace", "montage", "animgraph", "ikrig", "ikretarget", "animretarget", "posedb", "ANIMSEQ"] {
+        for extension in [
+            "skeleton",
+            "animseq",
+            "blendspace",
+            "montage",
+            "animgraph",
+            "ikrig",
+            "ikretarget",
+            "animretarget",
+            "posedb",
+            "ANIMSEQ",
+        ] {
             assert!(is_animation_extension(extension), "{extension}");
         }
         for extension in ["png", "mat", "json", "animmontage", "anim_graph", ""] {

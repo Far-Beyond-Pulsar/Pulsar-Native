@@ -91,8 +91,8 @@ pub mod events;
 pub mod file_types;
 pub mod helpers;
 pub mod identifiers;
-pub mod llm;
 pub mod import_companion;
+pub mod llm;
 pub mod manifest;
 pub mod menus;
 pub mod metadata;
@@ -140,7 +140,9 @@ pub use scripting::*;
 pub use statusbar::*;
 pub use subsystems::*;
 pub use traits::ProjectTraits;
-pub use traits::{TraitDescriptor, TraitImplementer, TraitMethodDescriptor, TraitParamDescriptor, TraitSnapshot};
+pub use traits::{
+    TraitDescriptor, TraitImplementer, TraitMethodDescriptor, TraitParamDescriptor, TraitSnapshot,
+};
 pub use undo::{
     bind_undo_keys, DocumentId, History, HistoryView, Redo, SharedHistory, Undo, UndoEntry,
     UndoService,

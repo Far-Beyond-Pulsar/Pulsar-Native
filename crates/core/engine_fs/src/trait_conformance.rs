@@ -496,7 +496,10 @@ mod tests {
             name: name.into(),
             params: params
                 .iter()
-                .map(|(n, t)| TraitParamRecord { name: (*n).into(), type_name: (*t).into() })
+                .map(|(n, t)| TraitParamRecord {
+                    name: (*n).into(),
+                    type_name: (*t).into(),
+                })
                 .collect(),
             return_type: ret.into(),
             doc: None,
@@ -504,7 +507,12 @@ mod tests {
         }
     }
 
-    fn trait_record(id: &str, name: &str, supers: &[&str], methods: Vec<TraitMethodRecord>) -> TraitRecord {
+    fn trait_record(
+        id: &str,
+        name: &str,
+        supers: &[&str],
+        methods: Vec<TraitMethodRecord>,
+    ) -> TraitRecord {
         TraitRecord {
             id: id.into(),
             path: format!("types/traits/{name}.trait.json"),
@@ -522,7 +530,12 @@ mod tests {
     fn db() -> TraitDb {
         TraitDb::build(
             vec![
-                trait_record("base", "Base", &[], vec![method("tick", &[("dt", "f32")], "()", false)]),
+                trait_record(
+                    "base",
+                    "Base",
+                    &[],
+                    vec![method("tick", &[("dt", "f32")], "()", false)],
+                ),
                 trait_record(
                     "mode",
                     "Mode",
@@ -587,13 +600,24 @@ mod tests {
 
     #[test]
     fn missing_methods_are_errors_including_inherited_ones_but_not_defaults() {
-        let bp = blueprint(&["mode"], &[], json!([event("on_game_start", &[], "")]), json!([]));
+        let bp = blueprint(
+            &["mode"],
+            &[],
+            json!([event("on_game_start", &[], "")]),
+            json!([]),
+        );
         let issues = check_blueprint(&db(), &bp);
-        let missing: Vec<_> = issues.iter().filter(|i| i.kind == IssueKind::MissingMethod).map(|i| i.method.clone().unwrap()).collect();
+        let missing: Vec<_> = issues
+            .iter()
+            .filter(|i| i.kind == IssueKind::MissingMethod)
+            .map(|i| i.method.clone().unwrap())
+            .collect();
         assert_eq!(missing, ["score", "tick"]);
         assert!(issues.iter().all(|i| i.severity == Severity::Error));
         assert!(issues[0].message.contains("score(who: u32) -> i32"));
-        assert!(issues.iter().any(|i| i.trait_name == "Base (required by Mode)"));
+        assert!(issues
+            .iter()
+            .any(|i| i.trait_name == "Base (required by Mode)"));
     }
 
     #[test]
@@ -608,7 +632,10 @@ mod tests {
             ]),
             json!([]),
         );
-        let kinds: Vec<_> = check_blueprint(&db(), &bp).iter().map(|i| (i.method.clone().unwrap(), i.kind)).collect();
+        let kinds: Vec<_> = check_blueprint(&db(), &bp)
+            .iter()
+            .map(|i| (i.method.clone().unwrap(), i.kind))
+            .collect();
         assert!(kinds.contains(&("on_game_start".into(), IssueKind::ParamCount)));
         assert!(kinds.contains(&("score".into(), IssueKind::ParamType)));
         assert!(kinds.contains(&("score".into(), IssueKind::ReturnType)));
@@ -658,9 +685,10 @@ mod tests {
             json!([]),
             json!([{"id": "c", "kind": "collapsed", "name": "on_game_start", "interface": {"inputs": [], "outputs": []}}]),
         );
-        assert!(check_blueprint(&db(), &bp).iter().any(|i| i.method.as_deref() == Some("on_game_start")));
+        assert!(check_blueprint(&db(), &bp)
+            .iter()
+            .any(|i| i.method.as_deref() == Some("on_game_start")));
     }
-
 
     #[test]
     fn a_placed_trait_event_node_provides_its_method() {
@@ -676,13 +704,27 @@ mod tests {
 
         bp["main_graph"]["nodes"]["n2"]["outputs"] = json!([{"id": "Body"}]);
         let issues = check_blueprint(&db(), &bp);
-        assert!(issues.iter().any(|i| i.kind == IssueKind::ParamCount && i.method.as_deref() == Some("score")));
+        assert!(issues
+            .iter()
+            .any(|i| i.kind == IssueKind::ParamCount && i.method.as_deref() == Some("score")));
     }
     #[test]
     fn formats_errors_before_warnings() {
         let issues = vec![
-            ConformanceIssue { severity: Severity::Warning, kind: IssueKind::MissingMethod, trait_name: "A".into(), method: None, message: "w".into() },
-            ConformanceIssue { severity: Severity::Error, kind: IssueKind::MissingMethod, trait_name: "B".into(), method: None, message: "e".into() },
+            ConformanceIssue {
+                severity: Severity::Warning,
+                kind: IssueKind::MissingMethod,
+                trait_name: "A".into(),
+                method: None,
+                message: "w".into(),
+            },
+            ConformanceIssue {
+                severity: Severity::Error,
+                kind: IssueKind::MissingMethod,
+                trait_name: "B".into(),
+                method: None,
+                message: "e".into(),
+            },
         ];
         assert_eq!(format_issues(&issues), "error: [B] e\nwarning: [A] w");
     }

@@ -11,7 +11,7 @@ use ui::button::{Button, ButtonVariants as _};
 use ui::dock::{DockChannel, DockItem, Panel, PanelEvent, PanelView};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::workspace::Workspace;
-use ui::{ActiveTheme, IconName, Sizable as _, StyledExt as _, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable as _, StyledExt as _};
 
 use crate::buffers_panel::BuffersPanel;
 use crate::editor::{RenderGraphEditor, Status};

@@ -189,11 +189,13 @@ pub fn flatten(cards: &[CardDesc], query: &Query, collapse: &CollapseState) -> V
                 card: card_ix,
                 prop: prop_ix,
             });
-            items.extend((0..card.props[prop_ix].extra_rows).map(|ix| InspectorItem::Child {
-                card: card_ix,
-                prop: prop_ix,
-                ix,
-            }));
+            items.extend(
+                (0..card.props[prop_ix].extra_rows).map(|ix| InspectorItem::Child {
+                    card: card_ix,
+                    prop: prop_ix,
+                    ix,
+                }),
+            );
         };
         let mut categories: Vec<(String, Vec<usize>, bool, usize)> = Vec::new();
         let mut index_of: HashMap<&str, usize> = HashMap::new();
@@ -349,7 +351,11 @@ mod tests {
 
     #[test]
     fn tokens_may_span_card_and_property() {
-        let items = flatten(&cards(), &Query::new("light intens"), &CollapseState::default());
+        let items = flatten(
+            &cards(),
+            &Query::new("light intens"),
+            &CollapseState::default(),
+        );
         assert!(items.contains(&InspectorItem::Property { card: 0, prop: 0 }));
     }
 
@@ -401,9 +407,20 @@ mod extra_rows_tests {
             custom: false,
             note: None,
         };
-        let items = flatten(&[card.clone()], &Query::default(), &CollapseState::default());
+        let items = flatten(
+            &[card.clone()],
+            &Query::default(),
+            &CollapseState::default(),
+        );
         assert_eq!(items.len(), 1 + 1 + 3 + 1);
-        assert_eq!(items[2], InspectorItem::Child { card: 0, prop: 0, ix: 0 });
+        assert_eq!(
+            items[2],
+            InspectorItem::Child {
+                card: 0,
+                prop: 0,
+                ix: 0
+            }
+        );
         assert_eq!(items[5], InspectorItem::Property { card: 0, prop: 1 });
         card.props[0].extra_rows = 100_000;
         let items = flatten(&[card], &Query::default(), &CollapseState::default());

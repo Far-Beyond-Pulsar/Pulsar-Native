@@ -9,7 +9,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, OnceLock};
 
-use graphy::{DataType, GraphCommand, GraphDescription, NodeInstance, Pin, PinInstance, PinType, Position};
+use graphy::{
+    DataType, GraphCommand, GraphDescription, NodeInstance, Pin, PinInstance, PinType, Position,
+};
 use graphy_gpui::CatalogEntry;
 use graphy_render::geom::{rgba, Color};
 use graphy_render::presenter::{PinShape, PinStyle};
@@ -132,7 +134,9 @@ pub fn pin_instance(pin: &PinDesc, direction: PinType) -> PinInstance {
 }
 
 pub fn pin_instances(pins: &[PinDesc], direction: PinType) -> Vec<PinInstance> {
-    pins.iter().map(|pin| pin_instance(pin, direction)).collect()
+    pins.iter()
+        .map(|pin| pin_instance(pin, direction))
+        .collect()
 }
 
 // ── Catalogue ────────────────────────────────────────────────────────────────
@@ -487,7 +491,10 @@ pub fn problems(asset: &GraphAsset, registry: &NodeRegistry) -> Vec<String> {
 pub fn catalog_by_category(registry: &NodeRegistry) -> BTreeMap<String, Vec<CatalogEntry>> {
     let mut by_category: BTreeMap<String, Vec<CatalogEntry>> = BTreeMap::new();
     for entry in catalog(registry) {
-        by_category.entry(entry.category.clone()).or_default().push(entry);
+        by_category
+            .entry(entry.category.clone())
+            .or_default()
+            .push(entry);
     }
     by_category
 }

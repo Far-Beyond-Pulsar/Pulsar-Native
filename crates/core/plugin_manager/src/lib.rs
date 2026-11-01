@@ -172,8 +172,8 @@ impl PanelView for FileTypeDecoratedPanelView {
     }
 }
 
-pub mod dependencies;
 pub mod builtin;
+pub mod dependencies;
 mod permanent_library;
 mod registry;
 mod restorers;

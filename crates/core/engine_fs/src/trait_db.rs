@@ -14,7 +14,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use crate::trait_records::{is_trait_asset, normalize_relative_path, TraitMethodRecord, TraitRecord};
+use crate::trait_records::{
+    is_trait_asset, normalize_relative_path, TraitMethodRecord, TraitRecord,
+};
 
 /// How an asset implements a trait.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,13 +170,25 @@ impl TraitDb {
 
     fn reaches_itself(&self, start: &str) -> bool {
         let mut seen = BTreeSet::new();
-        let mut stack: Vec<&str> = self.supers.get(start).into_iter().flatten().map(String::as_str).collect();
+        let mut stack: Vec<&str> = self
+            .supers
+            .get(start)
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
+            .collect();
         while let Some(next) = stack.pop() {
             if next == start {
                 return true;
             }
             if seen.insert(next) {
-                stack.extend(self.supers.get(next).into_iter().flatten().map(String::as_str));
+                stack.extend(
+                    self.supers
+                        .get(next)
+                        .into_iter()
+                        .flatten()
+                        .map(String::as_str),
+                );
             }
         }
         false
@@ -448,7 +462,10 @@ mod tests {
             ],
             vec![
                 ("bp/one/graph_save.json".into(), vec!["c".into()]),
-                ("bp/two/graph_save.json".into(), vec!["a".into(), "missing".into()]),
+                (
+                    "bp/two/graph_save.json".into(),
+                    vec!["a".into(), "missing".into()],
+                ),
             ],
         )
     }
@@ -468,8 +485,14 @@ mod tests {
         assert_eq!(
             base,
             vec![
-                Implementation { asset: "bp/one/graph_save.json", via: Some("c") },
-                Implementation { asset: "bp/two/graph_save.json", via: None },
+                Implementation {
+                    asset: "bp/one/graph_save.json",
+                    via: Some("c")
+                },
+                Implementation {
+                    asset: "bp/two/graph_save.json",
+                    via: None
+                },
             ]
         );
         assert_eq!(db.implementers("Leaf").len(), 1);
@@ -492,10 +515,7 @@ mod tests {
             .into_iter()
             .map(|(owner, m)| format!("{}.{}", owner.name, m.name))
             .collect();
-        assert_eq!(
-            methods,
-            ["Leaf.leaf", "Mid.shared", "Mid.mid", "Base.tick"]
-        );
+        assert_eq!(methods, ["Leaf.leaf", "Mid.shared", "Mid.mid", "Base.tick"]);
     }
 
     #[test]

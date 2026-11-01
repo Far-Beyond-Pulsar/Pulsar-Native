@@ -434,7 +434,10 @@ impl EmbeddedGame {
     fn sync_freecam(&mut self) {
         let tick_loop = &self.session.tick_loop;
         let pawn_view = tick_loop.possession_gate().is_possessed()
-            && view_target_drives_camera(&self.scene_store.read(), tick_loop.view_targets().local());
+            && view_target_drives_camera(
+                &self.scene_store.read(),
+                tick_loop.view_targets().local(),
+            );
         self.freecam.set_suspended(pawn_view);
     }
 

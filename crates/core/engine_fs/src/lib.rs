@@ -27,10 +27,6 @@
 pub mod asset_index;
 pub mod blueprint_trait_index;
 pub mod builtin_traits;
-pub mod trait_conformance;
-mod trait_db;
-mod trait_records;
-pub mod world_roles;
 #[cfg(feature = "editor")]
 mod engine_fs;
 pub mod events;
@@ -48,11 +44,15 @@ pub mod templates;
 pub mod thumbnails;
 #[cfg(feature = "editor")]
 pub mod tooling;
+pub mod trait_conformance;
+mod trait_db;
+mod trait_records;
 #[cfg(feature = "editor")]
 pub mod user_types;
 pub mod virtual_fs;
 #[cfg(feature = "editor")]
 pub mod watchers;
+pub mod world_roles;
 
 // Re-export main types
 #[cfg(feature = "editor")]
@@ -71,15 +71,15 @@ pub use user_types::{UserTypeInfo, UserTypeRegistry};
 pub use blueprint_trait_index::{
     declared_traits, BlueprintTraitEntry, BlueprintTraitIndex, TRAIT_ASSET_KIND,
 };
-#[cfg(feature = "editor")]
-pub use trait_db::scope_key as trait_scope_key;
-pub use trait_db::{Implementation, TraitDb};
-pub use trait_records::{TraitMethodRecord, TraitParamRecord, TraitRecord};
 #[cfg(feature = "p2p")]
 pub use providers::P2pFsProvider;
 pub use providers::{FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry};
 #[cfg(feature = "remote")]
 pub use providers::{RemoteConfig, RemoteFsProvider};
+#[cfg(feature = "editor")]
+pub use trait_db::scope_key as trait_scope_key;
+pub use trait_db::{Implementation, TraitDb};
+pub use trait_records::{TraitMethodRecord, TraitParamRecord, TraitRecord};
 
 // Re-export operations
 pub use events::{emit, subscribe, FsChangeKind, FsEvent};

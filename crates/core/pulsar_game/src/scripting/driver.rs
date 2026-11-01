@@ -2013,7 +2013,12 @@ impl ScriptDriver {
             );
         }
         if let Some(entity) = state {
-            self.queue_hook(entity, EngineRole::GameState, "on_player_added", vec![player]);
+            self.queue_hook(
+                entity,
+                EngineRole::GameState,
+                "on_player_added",
+                vec![player],
+            );
         }
         // Queued like a script's `world::spawn`, applied at the end of this
         // frame: the character runs next frame and possession follows.
@@ -2048,7 +2053,10 @@ impl ScriptDriver {
             return None;
         };
         let Some(class_ref) = binding.class_name() else {
-            tracing::warn!("{label} Blueprint '{}' has no class name", binding.blueprint);
+            tracing::warn!(
+                "{label} Blueprint '{}' has no class name",
+                binding.blueprint
+            );
             return None;
         };
         let Some(entry) = self.resolve_class_ref(class_ref) else {
@@ -2119,7 +2127,11 @@ impl ScriptDriver {
             .map(|(entity, marker)| (entity, marker.role))
             .collect();
         for (entity, role) in leftovers {
-            if self.role_entities.iter().any(|owned| owned.entity == entity) {
+            if self
+                .role_entities
+                .iter()
+                .any(|owned| owned.entity == entity)
+            {
                 continue;
             }
             let wanted = roles
@@ -2133,7 +2145,10 @@ impl ScriptDriver {
                 tracing::info!(?role, "Re-binding a role entity left by a previous session");
                 self.role_entities.push(SessionRole { role, entity });
             } else {
-                tracing::info!(?role, "Removing a stale role entity left by a previous session");
+                tracing::info!(
+                    ?role,
+                    "Removing a stale role entity left by a previous session"
+                );
                 world.despawn_tree(entity);
             }
         }
@@ -2300,7 +2315,14 @@ impl ScriptDriver {
         self.mark_role_entities(world);
         for hook in std::mem::take(&mut self.role_hooks) {
             let trait_id = hook.role.spec().trait_id;
-            self.call_trait_hook(world, hook.entity, trait_id, hook.method, &hook.args, report);
+            self.call_trait_hook(
+                world,
+                hook.entity,
+                trait_id,
+                hook.method,
+                &hook.args,
+                report,
+            );
         }
         self.drop_lost_pawn(world, report);
         self.controller_input(world, report);
@@ -2314,7 +2336,14 @@ impl ScriptDriver {
         };
         let controller_trait = EngineRole::PlayerController.spec().trait_id;
         let delta = pulsar_script_vm::Value::Float(self.frame_delta);
-        self.call_trait_hook(world, controller, controller_trait, "on_input", &[delta], report);
+        self.call_trait_hook(
+            world,
+            controller,
+            controller_trait,
+            "on_input",
+            &[delta],
+            report,
+        );
     }
 
     /// The possessed pawn was destroyed (a script's `world::destroy`, the
@@ -2341,7 +2370,14 @@ impl ScriptDriver {
         let controller_trait = EngineRole::PlayerController.spec().trait_id;
         let character_trait = EngineRole::PlayerCharacter.spec().trait_id;
         if let Some(controller) = possessed.controller {
-            self.call_trait_hook(world, controller, controller_trait, "on_unpossess", &[], report);
+            self.call_trait_hook(
+                world,
+                controller,
+                controller_trait,
+                "on_unpossess",
+                &[],
+                report,
+            );
         }
         if world.is_alive(possessed.pawn) {
             self.call_trait_hook(

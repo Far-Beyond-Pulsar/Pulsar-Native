@@ -140,7 +140,9 @@ impl WorldSettingsPanelImpl {
         selected: Option<&str>,
         cx: &Context<WorldSettingsPanel>,
     ) -> AnyElement {
-        let selected = selected.map(str::to_owned).unwrap_or_else(|| "None".to_string());
+        let selected = selected
+            .map(str::to_owned)
+            .unwrap_or_else(|| "None".to_string());
         let display = mapping_label(&selected);
         let picker = self.mapping_picker.clone();
         v_flex()
@@ -187,14 +189,27 @@ mod tests {
     #[test]
     fn only_inputmap_files_are_listed_with_project_relative_paths() {
         let dir = tempfile::tempdir().unwrap();
-        for file in ["input/Game.inputmap", "Menu.INPUTMAP", "input/Jump.inputaction", "notes.txt"] {
+        for file in [
+            "input/Game.inputmap",
+            "Menu.INPUTMAP",
+            "input/Jump.inputaction",
+            "notes.txt",
+        ] {
             let path = dir.path().join(file);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, "{}").unwrap();
         }
         let listed = load_input_mappings(dir.path());
-        assert!(listed.contains(&"input/Game.inputmap".to_string()), "{listed:?}");
-        assert!(listed.iter().all(|path| path.to_lowercase().ends_with(".inputmap")), "{listed:?}");
+        assert!(
+            listed.contains(&"input/Game.inputmap".to_string()),
+            "{listed:?}"
+        );
+        assert!(
+            listed
+                .iter()
+                .all(|path| path.to_lowercase().ends_with(".inputmap")),
+            "{listed:?}"
+        );
         assert!(listed.iter().all(|path| !path.contains('\\')));
     }
 

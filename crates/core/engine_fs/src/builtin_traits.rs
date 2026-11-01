@@ -296,7 +296,9 @@ pub enum BuiltinSync {
     Created,
     /// Rewritten; `contract_drift` is set when the methods differed while
     /// the version stamp claimed they were current.
-    Restamped { contract_drift: bool },
+    Restamped {
+        contract_drift: bool,
+    },
 }
 
 /// Bring one built-in's file in `project_root` in step with the engine.
@@ -325,7 +327,12 @@ pub fn sync_one(project_root: &Path, builtin: &BuiltinTrait) -> Result<BuiltinSy
                 .and_then(Value::as_str)
                 .filter(|text| !text.trim().is_empty())
                 .map(str::to_owned);
-            (BuiltinSync::Restamped { contract_drift: drift }, description)
+            (
+                BuiltinSync::Restamped {
+                    contract_drift: drift,
+                },
+                description,
+            )
         }
     };
     if let BuiltinSync::Restamped { contract_drift } = outcome {
@@ -336,7 +343,11 @@ pub fn sync_one(project_root: &Path, builtin: &BuiltinTrait) -> Result<BuiltinSy
                 builtin.name
             );
         } else {
-            tracing::info!(path = builtin.path, "Updated built-in trait '{}'", builtin.name);
+            tracing::info!(
+                path = builtin.path,
+                "Updated built-in trait '{}'",
+                builtin.name
+            );
         }
     }
     if let Some(parent) = path.parent() {
@@ -373,7 +384,11 @@ mod tests {
         let mut paths = std::collections::BTreeSet::new();
         for builtin in all() {
             assert!(ids.insert(builtin.id), "duplicate id {}", builtin.id);
-            assert!(paths.insert(builtin.path), "duplicate path {}", builtin.path);
+            assert!(
+                paths.insert(builtin.path),
+                "duplicate path {}",
+                builtin.path
+            );
             let value = builtin.to_json(None);
             assert_eq!(value["typeKind"], "trait");
             let record = parse_trait_record(&value, builtin.path, builtin.id.into()).unwrap();
@@ -408,11 +423,16 @@ mod tests {
         std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
         assert_eq!(
             sync_one(dir.path(), builtin).unwrap(),
-            BuiltinSync::Restamped { contract_drift: true }
+            BuiltinSync::Restamped {
+                contract_drift: true
+            }
         );
         let healed: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(healed["description"], "Our rules.");
-        assert_eq!(healed["methods"].as_array().unwrap().len(), builtin.methods.len());
+        assert_eq!(
+            healed["methods"].as_array().unwrap().len(),
+            builtin.methods.len()
+        );
     }
 
     #[test]
@@ -428,7 +448,9 @@ mod tests {
         .unwrap();
         assert_eq!(
             sync_one(dir.path(), builtin).unwrap(),
-            BuiltinSync::Restamped { contract_drift: false }
+            BuiltinSync::Restamped {
+                contract_drift: false
+            }
         );
         let adopted: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(adopted["id"], GAME_STATE_TRAIT_ID);

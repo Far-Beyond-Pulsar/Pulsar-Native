@@ -332,7 +332,11 @@ mod trait_tests {
         blank_id.id = Some("  ".into());
         assert!(validate_trait(&blank_id, &index).is_err());
 
-        for bad in [vec!["".to_string()], vec!["a".into(), "a".into()], vec!["t-1".into()]] {
+        for bad in [
+            vec!["".to_string()],
+            vec!["a".into(), "a".into()],
+            vec!["t-1".into()],
+        ] {
             let mut candidate = asset();
             candidate.supertraits = bad;
             assert!(validate_trait(&candidate, &index).is_err());

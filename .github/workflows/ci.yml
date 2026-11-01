@@ -282,8 +282,9 @@ jobs:
         shell: pwsh
         run: |
           # Graphy-owned crates never link a UI or GPU stack, and the runtime
-          # crate pulsar_game never links Graphy (it is only a dev-dependency
-          # for the Blueprint example test). blueprint_compiler reaches wgpu
+          # crate pulsar_game has no direct Graphy dependency. It reaches Graphy
+          # transitively through Helio's shader-material compiler (psgc), which
+          # is required by the runtime renderer. blueprint_compiler reaches wgpu
           # through pulsar_script_vm -> SceneDB, not through Graphy, so only gpui
           # is forbidden for it.
           function Assert-NoMatch($package, $pattern, $why) {
@@ -295,7 +296,10 @@ jobs:
           Assert-NoMatch "graphy" "^(wgpu|gpui|naga)" "must stay headless"
           Assert-NoMatch "graphy-blueprint" "^(wgpu|gpui|naga)" "must stay headless"
           Assert-NoMatch "blueprint_compiler" "^gpui" "must not depend on gpui"
-          Assert-NoMatch "pulsar_game" "^graphy" "must not link Graphy at runtime"
+          $runtimeGraphy = cargo tree -p pulsar_game -e normal --depth 1 --locked --prefix none | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "cargo tree -p pulsar_game failed" }
+          $directGraphy = @($runtimeGraphy -split "`n" | Where-Object { $_ -match "^graphy" })
+          if ($directGraphy.Count -ne 0) { throw "pulsar_game must not depend directly on Graphy`n$($directGraphy -join "`n")" }
 
       - name: Resolve Pulsar's pinned SceneDB source
         shell: pwsh

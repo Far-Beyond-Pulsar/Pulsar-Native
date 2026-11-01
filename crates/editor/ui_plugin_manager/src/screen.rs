@@ -130,11 +130,13 @@ impl Render for PluginManagerWindow {
                     .flex_1()
                     .w_full()
                     .scrollable(ScrollbarAxis::Vertical)
-                    .child(v_flex().w_full().p_4().gap_3().children(
-                        self.plugins.iter().map(|plugin| {
-                            render_plugin_item(plugin, cx)
-                        }),
-                    ))
+                    .child(
+                        v_flex().w_full().p_4().gap_3().children(
+                            self.plugins
+                                .iter()
+                                .map(|plugin| render_plugin_item(plugin, cx)),
+                        ),
+                    )
                     .into_any_element()
             } else {
                 render_empty_state(cx).into_any_element()

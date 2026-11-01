@@ -539,10 +539,19 @@ impl TickLoop {
         // resolves it from the owner's current script instance.
         {
             let mut store = self.scene_store.write();
-            let driver = self.scripts.as_ref().map(|d| d.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
-            helio_component::flush_animation_notifies(&mut store.world, &self.events, |owner, variable| {
-                driver.as_ref().and_then(|d| d.entity_variable(owner, variable))
-            });
+            let driver = self
+                .scripts
+                .as_ref()
+                .map(|d| d.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
+            helio_component::flush_animation_notifies(
+                &mut store.world,
+                &self.events,
+                |owner, variable| {
+                    driver
+                        .as_ref()
+                        .and_then(|d| d.entity_variable(owner, variable))
+                },
+            );
         }
 
         // Flush 3 (after scripts): what scripts sent (`event::*`,

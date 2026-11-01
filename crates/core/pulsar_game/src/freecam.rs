@@ -218,7 +218,16 @@ mod tests {
         camera.update(1.0);
         assert_eq!(camera.position(), start, "did not move");
         let forward = camera.to_render_camera().forward;
-        assert!(forward.abs_diff_eq(FreeCam::default().place(start, 0.0, 0.0).to_render_camera().forward, 1e-6), "did not look");
+        assert!(
+            forward.abs_diff_eq(
+                FreeCam::default()
+                    .place(start, 0.0, 0.0)
+                    .to_render_camera()
+                    .forward,
+                1e-6
+            ),
+            "did not look"
+        );
 
         // Taken back: nothing held over from before, and it flies as ever.
         camera.set_suspended(false);

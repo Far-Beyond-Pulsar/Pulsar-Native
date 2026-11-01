@@ -381,25 +381,33 @@ mod generated_setup_script_section {
 #[cfg(test)]
 mod animation_phase_order {
     use crate::prelude::{TickLoop, TickMode};
-    use pulsar_scenedb::World;
     use helio_component::SkeletalMeshComponent;
+    use pulsar_scenedb::World;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     #[test]
     fn systems_in_the_schedule_read_this_frames_animation_pose() {
-        let sequence: skeletal_assets::assets::AnimSeqAsset = serde_json::from_value(serde_json::json!({
-            "version": 2, "name": "Walk", "duration": 10.0, "fps": 30.0, "tracks": []
-        }))
-        .unwrap();
-        let mut tick_loop = TickLoop::new(TickMode::Fixed { dt: Duration::from_millis(250) }, 0);
+        let sequence: skeletal_assets::assets::AnimSeqAsset =
+            serde_json::from_value(serde_json::json!({
+                "version": 2, "name": "Walk", "duration": 10.0, "fps": 30.0, "tracks": []
+            }))
+            .unwrap();
+        let mut tick_loop = TickLoop::new(
+            TickMode::Fixed {
+                dt: Duration::from_millis(250),
+            },
+            0,
+        );
         let seen = Arc::new(Mutex::new(Vec::<f32>::new()));
         let log = seen.clone();
-        tick_loop.schedule.add_system("probe", move |world: &mut World, _t| {
-            for (_, component) in world.query::<&SkeletalMeshComponent>() {
-                log.lock().unwrap().push(component.elapsed_seconds);
-            }
-        });
+        tick_loop
+            .schedule
+            .add_system("probe", move |world: &mut World, _t| {
+                for (_, component) in world.query::<&SkeletalMeshComponent>() {
+                    log.lock().unwrap().push(component.elapsed_seconds);
+                }
+            });
         {
             let mut store = tick_loop.scene_store.write();
             let owner = store.world.spawn();

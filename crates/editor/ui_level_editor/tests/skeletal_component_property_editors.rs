@@ -22,10 +22,21 @@ fn skeletal_mesh_component_properties_all_have_editors() {
         "root_motion_vertical",
         "root_motion_authority",
     ] {
-        assert!(names.contains(&expected), "{expected} is an inspector property: {names:?}");
+        assert!(
+            names.contains(&expected),
+            "{expected} is an inspector property: {names:?}"
+        );
     }
     for prop in &props {
-        if matches!(prop.name, "mesh" | "animation_graph" | "root_motion_mode" | "root_motion_rotation" | "root_motion_vertical" | "root_motion_authority") {
+        if matches!(
+            prop.name,
+            "mesh"
+                | "animation_graph"
+                | "root_motion_mode"
+                | "root_motion_rotation"
+                | "root_motion_vertical"
+                | "root_motion_authority"
+        ) {
             assert!(
                 PROPERTY_EDITOR_REGISTRY.has(prop.type_info.type_id),
                 "`{}` ({}) has no property editor",
@@ -51,10 +62,18 @@ fn asset_ref_properties_round_trip_through_the_runtime_registry() {
         .downcast_ref::<Option<AssetRef<AnimationGraphAssetKind>>>()
         .expect("the property decodes to Option<AssetRef<AnimationGraphAssetKind>>");
     assert_eq!(decoded.as_ref().map(AssetRef::as_str), Some(id));
-    let json = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(value.as_ref()).unwrap();
+    let json = RUNTIME_TYPE_REGISTRY
+        .serialize_json_for_any(value.as_ref())
+        .unwrap();
     assert_eq!(json, serde_json::json!(id));
     let none = RUNTIME_TYPE_REGISTRY
         .deserialize_json_for_type(prop.type_info, serde_json::Value::Null)
-        .map(|v| v.downcast_ref::<Option<AssetRef<AnimationGraphAssetKind>>>().cloned());
-    assert!(matches!(none, Ok(Some(None))), "null clears the reference: {none:?}");
+        .map(|v| {
+            v.downcast_ref::<Option<AssetRef<AnimationGraphAssetKind>>>()
+                .cloned()
+        });
+    assert!(
+        matches!(none, Ok(Some(None))),
+        "null clears the reference: {none:?}"
+    );
 }

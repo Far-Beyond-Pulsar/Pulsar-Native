@@ -419,7 +419,6 @@ impl ObjectTypeFieldsSection {
 
 impl Render for ObjectTypeFieldsSection {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-
         // ── Detect structural changes without full get_components() ────────
         let current_count = {
             let world = self.scene_db.read();
@@ -545,9 +544,11 @@ impl ObjectTypeFieldsSection {
             }
             InspectorRow::Child { card, prop, ix } => {
                 // A row of a long value (an array) the property's editor offers.
-                let Some((key, name)) = self.inspector.card(card).and_then(|c| {
-                    Some((c.key.clone(), c.props.get(prop)?.name.clone()))
-                }) else {
+                let Some((key, name)) = self
+                    .inspector
+                    .card(card)
+                    .and_then(|c| Some((c.key.clone(), c.props.get(prop)?.name.clone())))
+                else {
                     return div().into_any_element();
                 };
                 let Some(rows) = self.property_state.virtual_rows(&key, &name) else {
@@ -569,7 +570,12 @@ impl ObjectTypeFieldsSection {
     }
 
     /// Restore what [`Self::carry_over`] saved.
-    pub fn restore(&mut self, carried: InspectorCarry, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn restore(
+        &mut self,
+        carried: InspectorCarry,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.inspector.restore(carried, window, cx);
     }
 

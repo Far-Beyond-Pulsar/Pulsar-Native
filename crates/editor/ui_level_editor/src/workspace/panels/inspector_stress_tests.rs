@@ -10,12 +10,12 @@
 //! cargo test -p ui_level_editor --lib inspector_stress -- --ignored --nocapture --test-threads=1
 //! ```
 
+use super::perf_tests::RENDER_LOCK;
 use gpui::{
     div, px, size, AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, Styled as _, TestAppContext, VisualTestContext, Window,
 };
 use std::time::Instant;
-use super::perf_tests::RENDER_LOCK;
 use ui_common::inspector_model::{CardDesc, PropDesc};
 use ui_common::{Inspector, InspectorRow};
 
@@ -30,7 +30,11 @@ impl Host {
             InspectorRow::Property { card, prop } => {
                 self.rows_built += 1;
                 let h = 18.0 + ((prop * 37 + card * 11) % 123) as f32;
-                let el = div().id(("row", card * 100_000 + prop)).w_full().h(px(h)).into_any_element();
+                let el = div()
+                    .id(("row", card * 100_000 + prop))
+                    .w_full()
+                    .h(px(h))
+                    .into_any_element();
                 self.inspector.wrap_row(card, prop, el, _cx)
             }
             _ => div().into_any_element(),
@@ -88,7 +92,10 @@ fn run(cx: &mut TestAppContext, n_cards: usize, n_props: usize) {
         });
         Root { host }
     });
-    let host = window.root(cx).unwrap().read_with(cx, |r, _| r.host.clone());
+    let host = window
+        .root(cx)
+        .unwrap()
+        .read_with(cx, |r, _| r.host.clone());
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
 
     let t = Instant::now();
@@ -171,12 +178,19 @@ struct ArrayHost {
 }
 
 impl ArrayHost {
-    fn row(&mut self, row: InspectorRow, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn row(
+        &mut self,
+        row: InspectorRow,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         match row {
             InspectorRow::Property { card, prop } => {
                 let writes = self.writes.clone();
                 let write_back = Arc::new(
-                    move |_v: Box<dyn std::any::Any + Send>, _w: &mut Window, _c: &mut gpui::App| {
+                    move |_v: Box<dyn std::any::Any + Send>,
+                          _w: &mut Window,
+                          _c: &mut gpui::App| {
                         *writes.lock().unwrap() += 1;
                     },
                 );
@@ -212,7 +226,9 @@ impl Render for ArrayHost {
         for (key, prop, count) in self.state.virtual_row_counts(cx) {
             self.inspector.set_extra_rows(&key, &prop, count);
         }
-        div().size_full().child(self.inspector.render(ArrayHost::row, cx))
+        div()
+            .size_full()
+            .child(self.inspector.render(ArrayHost::row, cx))
     }
 }
 
@@ -230,7 +246,11 @@ fn array_host(
     cx: &mut TestAppContext,
     value: Vec<Vec<i32>>,
 ) -> (VisualTestContext, gpui::Entity<ArrayHost>) {
-    typed_host(cx, <Vec<Vec<i32>> as Reflectable>::type_info(), Box::new(value))
+    typed_host(
+        cx,
+        <Vec<Vec<i32>> as Reflectable>::type_info(),
+        Box::new(value),
+    )
 }
 
 fn typed_host(
@@ -279,7 +299,10 @@ fn typed_host(
         });
         ArrayRoot { host }
     });
-    let host = window.root(cx).unwrap().read_with(cx, |r, _| r.host.clone());
+    let host = window
+        .root(cx)
+        .unwrap()
+        .read_with(cx, |r, _| r.host.clone());
     (VisualTestContext::from_window(window.into(), cx), host)
 }
 
@@ -292,7 +315,10 @@ fn draw(vcx: &mut VisualTestContext) -> f64 {
     ms(t)
 }
 
-fn composite_of(host: &gpui::Entity<ArrayHost>, vcx: &VisualTestContext) -> gpui::Entity<CompositeEditor> {
+fn composite_of(
+    host: &gpui::Entity<ArrayHost>,
+    vcx: &VisualTestContext,
+) -> gpui::Entity<CompositeEditor> {
     host.read_with(vcx, |h, _| h.state.editor_view("Comp#0", "items"))
         .expect("composite editor built")
         .downcast::<CompositeEditor>()
@@ -303,7 +329,9 @@ fn composite_of(host: &gpui::Entity<ArrayHost>, vcx: &VisualTestContext) -> gpui
 #[ignore = "manual measurement; see module docs"]
 fn composite_editor_huge_array(cx: &mut TestAppContext) {
     // 2,000 arrays of 500 ints = 1,000,000 leaves.
-    let value = (0..2_000).map(|i| (0..500).map(|j| i * 500 + j).collect()).collect();
+    let value = (0..2_000)
+        .map(|i| (0..500).map(|j| i * 500 + j).collect())
+        .collect();
     let (mut vcx, host) = array_host(cx, value);
 
     let first = draw(&mut vcx);
@@ -333,7 +361,10 @@ fn composite_editor_huge_array(cx: &mut TestAppContext) {
          | expand all {expand:.1}ms (+relayout, {expand_total:.1}ms; {items} items) | scroll mean {:.2}ms worst {worst:.2}ms",
         total / 200.0
     );
-    assert!(items > 1_000_000, "every leaf must be a row of the panel list");
+    assert!(
+        items > 1_000_000,
+        "every leaf must be a row of the panel list"
+    );
 }
 
 #[gpui::test]
@@ -348,7 +379,13 @@ fn composite_editor_edit_writes_the_rebuilt_value_back(cx: &mut TestAppContext) 
         // An unchanged value writes nothing.
         e.edit_element(&[1, 0], serde_json::json!(40), window, cx);
     });
-    assert_eq!(*host.read_with(&vcx, |h, _| h.writes.clone()).lock().unwrap(), 1);
+    assert_eq!(
+        *host
+            .read_with(&vcx, |h, _| h.writes.clone())
+            .lock()
+            .unwrap(),
+        1
+    );
 }
 
 #[gpui::test]
@@ -375,17 +412,19 @@ fn opening_a_composite_adds_its_rows_to_the_panel_list(cx: &mut TestAppContext) 
 // Registry entry for the test's value type, the way `pulsar_world_registry`
 // shims `Vec<i32>` (wrapper types are not registered by upstream).
 fn ser_nested(value: &dyn std::any::Any) -> pulsar_reflection::ReflectResult<serde_json::Value> {
-    let typed = value.downcast_ref::<Vec<Vec<i32>>>().expect("Vec<Vec<i32>>");
+    let typed = value
+        .downcast_ref::<Vec<Vec<i32>>>()
+        .expect("Vec<Vec<i32>>");
     let mut serializer = pulsar_reflection::JsonSerializer::new();
     typed.serialize(&mut serializer)?;
     Ok(serializer.into_json())
 }
 
-fn de_nested(
-    value: serde_json::Value,
-) -> pulsar_reflection::ReflectResult<Box<dyn std::any::Any>> {
+fn de_nested(value: serde_json::Value) -> pulsar_reflection::ReflectResult<Box<dyn std::any::Any>> {
     let mut deserializer = pulsar_reflection::JsonDeserializer::new(value);
-    Ok(Box::new(<Vec<Vec<i32>> as Reflectable>::deserialize(&mut deserializer)?))
+    Ok(Box::new(<Vec<Vec<i32>> as Reflectable>::deserialize(
+        &mut deserializer,
+    )?))
 }
 
 pulsar_reflection::inventory::submit! {
@@ -424,10 +463,7 @@ fn features_host(
     typed_host(cx, ty, Box::new(value))
 }
 
-fn list_editor_of(
-    host: &gpui::Entity<ArrayHost>,
-    vcx: &VisualTestContext,
-) -> gpui::AnyView {
+fn list_editor_of(host: &gpui::Entity<ArrayHost>, vcx: &VisualTestContext) -> gpui::AnyView {
     host.read_with(vcx, |h, _| h.state.editor_view("Comp#0", "items"))
         .expect("list editor built")
 }
@@ -446,7 +482,10 @@ fn the_features_list_puts_its_cards_into_the_panel_list(cx: &mut TestAppContext)
 #[ignore = "manual measurement; see module docs"]
 fn the_features_list_with_thousands_of_nested_items(cx: &mut TestAppContext) {
     let t = Instant::now();
-    let growths: usize = std::env::var("GROWTHS").ok().and_then(|v| v.parse().ok()).unwrap_or(50);
+    let growths: usize = std::env::var("GROWTHS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50);
     let (mut vcx, host) = features_host(cx, 200, growths);
     let first = draw(&mut vcx);
     let setup = ms(t);
