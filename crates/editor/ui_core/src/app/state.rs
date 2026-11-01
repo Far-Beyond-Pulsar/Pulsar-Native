@@ -42,6 +42,8 @@ pub struct AppState {
 
     // Tab management
     pub next_tab_id: usize,
+    /// Tab panels that already have preview callbacks and event handlers.
+    pub preview_tab_panels: Vec<gpui::EntityId>,
 
     // Note: PluginManager is now globally accessible via plugin_manager::global()
 

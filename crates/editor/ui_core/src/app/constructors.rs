@@ -214,26 +214,6 @@ impl PulsarApp {
                 sidebar
             })
         };
-        let preview_sidebar = nav_sidebar.downgrade();
-        let preview_area_sidebar = nav_sidebar.downgrade();
-        center_tabs.update(cx, |tabs, cx| {
-            tabs.set_tab_preview_callbacks(
-                move |panel, trigger, _window, app| {
-                    super::nav_sidebar::decorate_horizontal_tab_preview(
-                        preview_sidebar.clone(),
-                        panel,
-                        trigger,
-                        app,
-                    )
-                },
-                move |hovered, _window, app| {
-                    let _ = preview_area_sidebar.update(app, |sidebar, cx| {
-                        sidebar.preview_area_hovered(hovered, cx);
-                    });
-                },
-                cx,
-            );
-        });
         let nav_overlay = {
             let sidebar = nav_sidebar.clone();
             cx.new(|_| super::nav_sidebar::NavSidebarOverlay::new(sidebar))
@@ -331,15 +311,6 @@ impl PulsarApp {
         // Subscribe to analyzer events
         cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event)
             .detach();
-
-        // Subscribe to tab panel events
-        tracing::trace!(
-            "[SUBSCRIPTION] Setting up subscription to center_tabs (ID: {:?}) for PanelEvent",
-            center_tabs.entity_id()
-        );
-        cx.subscribe_in(&center_tabs, window, event_handlers::on_tab_panel_event)
-            .detach();
-        tracing::trace!("[SUBSCRIPTION] Subscription to center_tabs set up successfully");
 
         // Initialize palette manager global
         ui_common::command_palette::PaletteManager::init(cx);
@@ -449,6 +420,7 @@ impl PulsarApp {
                 mission_control,
                 task_queue_refresh_task: None,
                 center_tabs,
+                preview_tab_panels: Vec::new(),
                 // script_editor: None, // Migrated to plugins
                 // daw_editors: Vec::new(),
                 // database_editors: Vec::new(),
@@ -831,6 +803,19 @@ impl PulsarApp {
         // own focus chain — which is a sibling of PulsarApp, not a descendant.
         app.state.focus_handle.focus(window, cx);
         app.install_radial_menu(window, cx);
+
+        app.install_tab_preview_handlers(window, cx);
+        let dock_area = app.state.dock_area.clone();
+        cx.subscribe_in(
+            &dock_area,
+            window,
+            |app, _, event: &ui::dock::DockEvent, window, cx| {
+                if matches!(event, ui::dock::DockEvent::LayoutChanged) {
+                    app.install_tab_preview_handlers(window, cx);
+                }
+            },
+        )
+        .detach();
 
         // Populate the open-editor snapshot so the AI can see tabs that were created
         // during construction (e.g. the default level editor) without waiting for a

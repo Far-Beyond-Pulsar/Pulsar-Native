@@ -58,6 +58,47 @@ pub struct PulsarApp {
 }
 
 impl PulsarApp {
+    pub(super) fn install_tab_preview_handlers(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let dock_area = self.state.dock_area.clone();
+        let panels = dock_area.read(cx).tab_panels(cx);
+        let sidebar = self.state.nav_sidebar.downgrade();
+
+        for (_, tabs) in panels {
+            let panel_id = tabs.entity_id();
+            if self.state.preview_tab_panels.contains(&panel_id) {
+                continue;
+            }
+
+            let preview_sidebar = sidebar.clone();
+            let preview_area_sidebar = sidebar.clone();
+            tabs.update(cx, |tabs, cx| {
+                tabs.set_tab_preview_callbacks(
+                    move |panel, trigger, _window, app| {
+                        nav_sidebar::decorate_horizontal_tab_preview(
+                            preview_sidebar.clone(),
+                            panel,
+                            trigger,
+                            app,
+                        )
+                    },
+                    move |hovered, _window, app| {
+                        let _ = preview_area_sidebar.update(app, |sidebar, cx| {
+                            sidebar.preview_area_hovered(hovered, cx);
+                        });
+                    },
+                    cx,
+                );
+            });
+            cx.subscribe_in(&tabs, window, event_handlers::on_tab_panel_event)
+                .detach();
+            self.state.preview_tab_panels.push(panel_id);
+        }
+    }
+
     // Action handlers
     fn on_toggle_file_manager(
         &mut self,
