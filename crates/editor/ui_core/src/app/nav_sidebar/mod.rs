@@ -227,7 +227,7 @@ impl NavSidebar {
             }
         }
         self.previews.insert(key.clone(), image);
-        if self.preview_hover_ready && self.preview_hover_key.as_ref() == Some(&key) {
+        if self.preview_hover_key.as_ref() == Some(&key) {
             self.preview_hovered = Some(key);
         }
         cx.notify();
@@ -268,23 +268,16 @@ impl NavSidebar {
             return;
         }
         let cached = self.previews.contains_key(&key);
+        if cached {
+            self.preview_hovered = Some(key.clone());
+            cx.notify();
+        }
         let wait_for_hover = !self.preview_hover_ready;
         let path = self
             .project_path
             .as_deref()
             .and_then(|project| preview_path(project, &key));
         self.preview_hover_task = Some(cx.spawn(async move |sidebar, cx| {
-            if wait_for_hover {
-                cx.background_executor()
-                    .timer(Duration::from_millis(1200))
-                    .await;
-                let _ = sidebar.update(cx, |sidebar, cx| {
-                    if sidebar.preview_hover_key.as_ref() == Some(&key) {
-                        sidebar.preview_hover_ready = true;
-                        cx.notify();
-                    }
-                });
-            }
             let loaded = if cached {
                 None
             } else if let Some(path) = path {
@@ -312,6 +305,17 @@ impl NavSidebar {
                     cx.notify();
                 }
             });
+            if wait_for_hover {
+                cx.background_executor()
+                    .timer(Duration::from_millis(1200))
+                    .await;
+                let _ = sidebar.update(cx, |sidebar, cx| {
+                    if sidebar.preview_hover_key.as_ref() == Some(&key) {
+                        sidebar.preview_hover_ready = true;
+                        cx.notify();
+                    }
+                });
+            }
         }));
     }
 
