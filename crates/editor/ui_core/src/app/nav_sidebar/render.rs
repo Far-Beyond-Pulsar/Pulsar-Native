@@ -4,8 +4,8 @@
 //! groups and closes. The content tree is drawn by [`super::content`].
 
 use gpui::{
-    div, prelude::*, px, uniform_list, AnyElement, App, Context, ElementId, Hsla, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, SharedString, WeakEntity, Window,
+    div, prelude::*, px, uniform_list, AnyElement, App, Context, ElementId, Entity, Hsla,
+    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Render, SharedString, Window,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,8 +25,29 @@ use super::{pinned_open, NavSidebar};
 /// Width of the collapsed icon rail.
 pub(crate) const RAIL_WIDTH: f32 = 48.;
 
+struct HorizontalTabPreviewTooltip {
+    sidebar: Entity<NavSidebar>,
+    key: super::model::TabKey,
+    title: String,
+}
+
+impl Render for HorizontalTabPreviewTooltip {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let content = v_flex().gap_1().p_2().child(self.title.clone());
+        if let Some(image) = self.sidebar.read(cx).preview_for(&self.key) {
+            content.child(
+                gpui::img(gpui::ImageSource::Render(image))
+                    .w(px(320.))
+                    .h(px(180.)),
+            )
+        } else {
+            content
+        }
+    }
+}
+
 pub(crate) fn decorate_horizontal_tab_preview(
-    sidebar: WeakEntity<NavSidebar>,
+    sidebar: Entity<NavSidebar>,
     panel: Arc<dyn PanelView>,
     trigger: AnyElement,
     cx: &mut App,
@@ -40,7 +61,7 @@ pub(crate) fn decorate_horizontal_tab_preview(
         .or_else(|| panel.tab_name(cx).map(|name| name.to_string()))
         .unwrap_or_else(|| panel.panel_name(cx).to_string());
     let preview_id = panel.panel_id(cx).as_u64();
-    let hover_sidebar = sidebar.clone();
+    let hover_sidebar = sidebar.downgrade();
     let tooltip_sidebar = sidebar.clone();
     let hover_key = key.clone();
     let capture_panel = panel.clone();
@@ -68,24 +89,18 @@ pub(crate) fn decorate_horizontal_tab_preview(
         ),
         trigger,
         move |window, cx| {
+            let sidebar = tooltip_sidebar.clone();
+            let key = key.clone();
             let title = title.clone();
-            let image = tooltip_sidebar
-                .read_with(cx, |sidebar, _| sidebar.preview_for(&key))
-                .ok()
-                .flatten();
-            Tooltip::element(move |_, _| {
-                let content = v_flex().gap_1().p_2().child(title.clone());
-                if let Some(image) = image.clone() {
-                    content.child(
-                        gpui::img(gpui::ImageSource::Render(image))
-                            .w(px(320.))
-                            .h(px(180.)),
-                    )
-                } else {
-                    content
+            let preview = cx.new(|cx| {
+                cx.observe(&sidebar, |_, _, cx| cx.notify()).detach();
+                HorizontalTabPreviewTooltip {
+                    sidebar,
+                    key,
+                    title,
                 }
-            })
-            .build(window, cx)
+            });
+            Tooltip::element(move |_, _| preview.clone()).build(window, cx)
         },
     )
     .with_delay_from({

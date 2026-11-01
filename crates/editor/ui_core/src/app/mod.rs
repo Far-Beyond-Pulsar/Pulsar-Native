@@ -73,13 +73,13 @@ impl PulsarApp {
                 continue;
             }
 
-            let preview_sidebar = sidebar.clone();
+            let preview_decorator_sidebar = self.state.nav_sidebar.clone();
             let preview_area_sidebar = sidebar.clone();
             tabs.update(cx, |tabs, cx| {
                 tabs.set_tab_preview_callbacks(
                     move |panel, trigger, _window, app| {
                         nav_sidebar::decorate_horizontal_tab_preview(
-                            preview_sidebar.clone(),
+                            preview_decorator_sidebar.clone(),
                             panel,
                             trigger,
                             app,
