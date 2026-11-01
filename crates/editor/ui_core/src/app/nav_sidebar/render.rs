@@ -43,10 +43,22 @@ pub(crate) fn decorate_horizontal_tab_preview(
     let hover_sidebar = sidebar.clone();
     let tooltip_sidebar = sidebar.clone();
     let hover_key = key.clone();
-    let trigger = div().child(trigger).on_hover(move |hovered, _, cx| {
+    let capture_panel = panel.clone();
+    let trigger = div().child(trigger).on_hover(move |hovered, window, cx| {
         let _ = hover_sidebar.update(cx, |sidebar, cx| {
             sidebar.hover_preview(hover_key.clone(), *hovered, cx)
         });
+        if *hovered {
+            let app = hover_sidebar
+                .read_with(cx, |sidebar, _| sidebar.app.clone())
+                .ok();
+            if let Some(app) = app {
+                let panel = capture_panel.clone();
+                let _ = app.update(cx, |app, cx| {
+                    app.capture_panel_preview(panel, window, cx);
+                });
+            }
+        }
     });
 
     HoverTooltip::new(
