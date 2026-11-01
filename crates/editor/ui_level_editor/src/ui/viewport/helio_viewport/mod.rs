@@ -5,7 +5,7 @@
 //!   2. Each frame: `back_view_with_size()` → render → `swap_buffers()`.
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,9 +15,9 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
-use ui::{notification::Notification, ActiveTheme as _, ContextModal};
+use ui::{ActiveTheme as _, ContextModal, notification::Notification};
 
-use crate::commands::{execute_command, SceneCommand, TypedComponent};
+use crate::commands::{SceneCommand, TypedComponent, execute_command};
 use crate::scene_edit::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 use helio_component::asset_component::component_for_asset;
@@ -85,6 +85,7 @@ pub struct HelioViewport {
     slow_frames_since_report: u32,
     engine_lock_misses_since_report: u32,
     max_frame_ms_since_report: f64,
+    placement_preview: Option<(String, crate::scene_edit::SceneHistorySnapshot)>,
 }
 
 mod assets;
@@ -122,6 +123,7 @@ impl HelioViewport {
             slow_frames_since_report: 0,
             engine_lock_misses_since_report: 0,
             max_frame_ms_since_report: 0.0,
+            placement_preview: None,
         }
     }
 
@@ -338,6 +340,27 @@ impl Render for HelioViewport {
         div()
             .id("helio-viewport-drop")
             .size_full()
+            .on_drag_move::<AssetPayload>({
+                let viewport = cx.entity().clone();
+                move |event, _window, cx| {
+                    let payload = event.drag(cx).clone();
+                    let local_x: f32 = (event.event.position.x - event.bounds.origin.x).into();
+                    let local_y: f32 = (event.event.position.y - event.bounds.origin.y).into();
+                    let width: f32 = event.bounds.size.width.into();
+                    let height: f32 = event.bounds.size.height.into();
+                    if width <= 0.0 || height <= 0.0 {
+                        return;
+                    }
+                    let norm_x = local_x / width;
+                    let norm_y = local_y / height;
+                    if !(0.0..=1.0).contains(&norm_x) || !(0.0..=1.0).contains(&norm_y) {
+                        return;
+                    }
+                    viewport.update(cx, |this, _cx| {
+                        this.update_asset_preview(&payload, norm_x, norm_y)
+                    });
+                }
+            })
             .drag_over::<AssetPayload>(|style, payload, _window, cx| {
                 // Source models (FBX, …) are imported, not placed.
                 if !payload.is_source_model()

@@ -1,6 +1,101 @@
 use super::*;
 
 impl HelioViewport {
+    pub(super) fn update_asset_preview(
+        &mut self,
+        payload: &AssetPayload,
+        norm_x: f32,
+        norm_y: f32,
+    ) {
+        if payload.is_source_model() || !matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene)
+        {
+            return;
+        }
+        let Some(position) = self
+            .gpu_engine
+            .try_lock()
+            .ok()
+            .and_then(|engine| engine.editor_placement_position(norm_x, norm_y))
+        else {
+            return;
+        };
+        let path = PathBuf::from(&payload.engine_path);
+        if !path.exists() {
+            return;
+        }
+        let asset_path = path.to_string_lossy().replace('\\', "/");
+        let mut state = self.shared_state.write();
+        let id = if let Some((id, _)) = &self.placement_preview {
+            id.clone()
+        } else {
+            let before =
+                crate::scene_edit::history::capture_history_subset(&state.scene.world(), &[]);
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Imported Asset")
+                .to_string();
+            let data = SceneObjectData {
+                id: String::new(),
+                name,
+                object_type: ObjectType::Mesh(MeshType::Custom),
+                transform: Transform {
+                    position,
+                    ..Transform::default()
+                },
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                props: std::collections::HashMap::new(),
+                scene_path: path.display().to_string(),
+                component_instances: None,
+            };
+            let mut world = state.scene.world_mut();
+            let id = crate::scene_edit::objects::add_object(&mut world, data, None);
+            if id.is_empty() {
+                return;
+            }
+            if let Some(registration) = component_for_asset(&payload.kind)
+                .filter(|registration| REGISTRY.has_class(registration.class_name))
+            {
+                crate::scene_edit::components::add_component_value_enabled(
+                    &mut world,
+                    &id,
+                    registration.class_name,
+                    Some((registration.value_for)(&asset_path)),
+                    true,
+                );
+            }
+            drop(world);
+            self.placement_preview = Some((id.clone(), before));
+            id
+        };
+        crate::scene_edit::objects::set_transform(
+            &mut state.scene.world_mut(),
+            &id,
+            Some(position),
+            None,
+            None,
+        );
+        state.scene.bump_revision(false);
+    }
+
+    pub(super) fn finish_asset_preview(&mut self) -> bool {
+        let Some((id, before)) = self.placement_preview.take() else {
+            return false;
+        };
+        let mut state = self.shared_state.write();
+        let after =
+            crate::scene_edit::history::capture_history_subset(&state.scene.world(), &[id.clone()]);
+        state
+            .scene
+            .commit_labeled_checkpoint(before, after, Some("LevelEditor.Undo.Add"));
+        state.scene.bump_revision(true);
+        let _ = execute_command(&mut state, SceneCommand::SelectObject { id: Some(id) });
+        true
+    }
+
     /// A source model (FBX, …) was dropped on the viewport: nothing is placed,
     /// and the user is told why.
     pub(super) fn reject_source_model_drop(
@@ -25,6 +120,14 @@ impl HelioViewport {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.finish_asset_preview() {
+            window.push_notification(
+                Notification::success(t!("Notification.Title.AddedToScene").to_string())
+                    .message(t!("Notification.Message.Placed", name => &payload.name).to_string()),
+                cx,
+            );
+            return;
+        }
         let path = PathBuf::from(&payload.engine_path);
         let name = payload.name.clone();
         let kind = payload.kind.clone();

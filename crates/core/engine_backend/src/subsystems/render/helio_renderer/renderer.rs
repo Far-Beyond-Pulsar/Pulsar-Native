@@ -1,24 +1,24 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
 use glam::{DVec3, Vec3};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
 pub use helio::PortalDebugText;
 
-use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
+use super::fly_camera::{FlyCamera, altitude_speed_scale, direction, yaw_pitch};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 #[cfg(test)]
 use super::scene_renderer::ortho_camera;
 use super::scene_renderer::{
-    ortho_depth_range, DeviceOwner, FrameProjection, FrameView, SceneRenderer,
-    SceneRendererOptions, VoxelGround,
+    DeviceOwner, FrameProjection, FrameView, SceneRenderer, SceneRendererOptions, VoxelGround,
+    ortho_depth_range,
 };
 use super::voxel_backend::{
-    VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint, UNPICKED_REACH_M,
+    UNPICKED_REACH_M, VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint,
 };
 type GizmoMode = GizmoType;
 
@@ -158,7 +158,7 @@ impl EditorCameraState {
     }
 }
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 
 /// How a viewport looks at the scene: the free perspective camera, or an
 /// orthographic one. The axis views are fixed in orientation; the editor
@@ -2462,6 +2462,23 @@ impl HelioRenderer {
         (self.cam.position, direction.normalize_or_zero())
     }
 
+    /// World-space placement target on the editor's ground plane (y = 0).
+    /// Uses the same perspective/orthographic camera ray as object picking so
+    /// drag placement stays aligned with the pixel under the pointer.
+    pub fn editor_placement_position(&self, norm_x: f32, norm_y: f32) -> Option<[f64; 3]> {
+        let (origin, direction) = self.build_pick_ray(norm_x, norm_y);
+        let ground_distance = if direction.y.abs() >= 1.0e-6 {
+            let distance = -origin.y as f32 / direction.y;
+            (distance.is_finite() && distance >= 0.0).then_some(distance as f64)
+        } else {
+            None
+        };
+        // Above the horizon, keep the object under the cursor on a camera
+        // facing plane instead of snapping it back to the scene origin.
+        let distance = ground_distance.unwrap_or(10.0);
+        Some((origin + direction.as_dvec3() * distance).to_array())
+    }
+
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
         self.configure_gizmo_view();
         self.gizmo_dirty = true;
@@ -2609,7 +2626,7 @@ impl HelioRenderer {
 
 #[cfg(test)]
 mod temporal_settling_tests {
-    use super::{TemporalSettling, TEMPORAL_SETTLING_FRAMES};
+    use super::{TEMPORAL_SETTLING_FRAMES, TemporalSettling};
 
     #[test]
     fn stopped_camera_renders_exactly_one_bounded_history_budget() {
