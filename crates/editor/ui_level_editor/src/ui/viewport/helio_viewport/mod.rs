@@ -85,7 +85,7 @@ pub struct HelioViewport {
     slow_frames_since_report: u32,
     engine_lock_misses_since_report: u32,
     max_frame_ms_since_report: f64,
-    placement_preview: Option<(String, crate::scene_edit::SceneHistorySnapshot)>,
+    active_placement: Option<(String, crate::scene_edit::SceneHistorySnapshot, (f32, f32))>,
     placement_monitor_running: bool,
 }
 
@@ -124,7 +124,7 @@ impl HelioViewport {
             slow_frames_since_report: 0,
             engine_lock_misses_since_report: 0,
             max_frame_ms_since_report: 0.0,
-            placement_preview: None,
+            active_placement: None,
             placement_monitor_running: false,
         }
     }
@@ -359,18 +359,13 @@ impl Render for HelioViewport {
                         return;
                     }
                     viewport.update(cx, |this, cx| {
-                        this.update_asset_preview(&payload, norm_x, norm_y, window, cx)
+                        this.update_active_placement(&payload, norm_x, norm_y, window, cx)
                     });
                 }
             })
             .drag_over::<AssetPayload>(|style, payload, _window, cx| {
                 // Source models (FBX, …) are imported, not placed.
-                if !payload.is_source_model()
-                    && matches!(
-                        payload.kind,
-                        AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
-                    )
-                {
+                if HelioViewport::supports_asset_placement(payload) {
                     style
                         .border_2()
                         .border_color(cx.theme().accent)
@@ -385,10 +380,7 @@ impl Render for HelioViewport {
                     viewport.update(cx, |this, cx| {
                         this.reject_source_model_drop(&payload, window, cx);
                     });
-                } else if matches!(
-                    payload.kind,
-                    AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
-                ) {
+                } else if HelioViewport::supports_asset_placement(payload) {
                     let payload = payload.clone();
                     viewport.update(cx, |this, cx| {
                         this.handle_asset_drop(&payload, window, cx);

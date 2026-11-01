@@ -1,7 +1,15 @@
 use super::*;
 
 impl HelioViewport {
-    pub(super) fn update_asset_preview(
+    pub(super) fn supports_asset_placement(payload: &AssetPayload) -> bool {
+        !payload.is_source_model()
+            && (matches!(
+                payload.kind,
+                AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
+            ) || component_for_asset(&payload.kind).is_some())
+    }
+
+    pub(super) fn update_active_placement(
         &mut self,
         payload: &AssetPayload,
         norm_x: f32,
@@ -9,19 +17,15 @@ impl HelioViewport {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if payload.is_source_model()
-            || !matches!(
-                payload.kind,
-                AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
-            )
-        {
+        if !Self::supports_asset_placement(payload) {
             return;
         }
+        let ignore_id = self.active_placement.as_ref().map(|(id, _, _)| id.as_str());
         let Some(position) = self
             .gpu_engine
             .try_lock()
             .ok()
-            .and_then(|engine| engine.editor_placement_position(norm_x, norm_y))
+            .and_then(|engine| engine.editor_placement_position(norm_x, norm_y, ignore_id))
         else {
             return;
         };
@@ -34,7 +38,8 @@ impl HelioViewport {
         let asset_path = path.to_string_lossy().replace('\\', "/");
         let mut state = self.shared_state.write();
         let mut start_monitor = false;
-        let id = if let Some((id, _)) = &self.placement_preview {
+        let id = if let Some((id, _, cursor)) = &mut self.active_placement {
+            *cursor = (norm_x, norm_y);
             id.clone()
         } else {
             let before =
@@ -94,7 +99,7 @@ impl HelioViewport {
                 }
             }
             drop(world);
-            self.placement_preview = Some((id.clone(), before));
+            self.active_placement = Some((id.clone(), before, (norm_x, norm_y)));
             if !self.placement_monitor_running {
                 self.placement_monitor_running = true;
                 start_monitor = true;
@@ -117,17 +122,28 @@ impl HelioViewport {
                         .timer(std::time::Duration::from_millis(50))
                         .await;
                     let active = this
-                        .update_in(cx, |viewport, _window, cx| {
-                            if cx.has_active_drag() {
-                                true
-                            } else {
-                                viewport.cancel_asset_preview();
-                                false
-                            }
-                        })
+                        .update_in(cx, |_viewport, _window, cx| cx.has_active_drag())
                         .unwrap_or(false);
                     if !active {
-                        break;
+                        // GPUI can clear the drag payload just before it
+                        // dispatches the drop callback. Give that callback a
+                        // turn to commit before treating this as a cancel.
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_millis(120))
+                            .await;
+                        let active = this
+                            .update_in(cx, |viewport, _window, cx| {
+                                if cx.has_active_drag() {
+                                    true
+                                } else {
+                                    viewport.cancel_active_placement();
+                                    false
+                                }
+                            })
+                            .unwrap_or(false);
+                        if !active {
+                            break;
+                        }
                     }
                 }
             })
@@ -135,12 +151,27 @@ impl HelioViewport {
         }
     }
 
-    pub(super) fn finish_asset_preview(&mut self) -> bool {
-        let Some((id, before)) = self.placement_preview.take() else {
+    pub(super) fn finish_active_placement(&mut self) -> bool {
+        let Some((id, before, (norm_x, norm_y))) = self.active_placement.take() else {
             return false;
         };
         self.placement_monitor_running = false;
         let mut state = self.shared_state.write();
+        let engine = self
+            .gpu_engine
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let release_position = engine.editor_placement_position(norm_x, norm_y, Some(&id));
+        drop(engine);
+        if let Some(position) = release_position {
+            crate::scene_edit::objects::set_transform(
+                &mut state.scene.world_mut(),
+                &id,
+                Some(position),
+                None,
+                None,
+            );
+        }
         let after =
             crate::scene_edit::history::capture_history_subset(&state.scene.world(), &[id.clone()]);
         state
@@ -151,9 +182,9 @@ impl HelioViewport {
         true
     }
 
-    fn cancel_asset_preview(&mut self) {
+    fn cancel_active_placement(&mut self) {
         self.placement_monitor_running = false;
-        let Some((id, _)) = self.placement_preview.take() else {
+        let Some((id, _, _)) = self.active_placement.take() else {
             return;
         };
         let mut state = self.shared_state.write();
@@ -186,10 +217,18 @@ impl HelioViewport {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.finish_asset_preview() {
+        if self.finish_active_placement() {
             window.push_notification(
                 Notification::success(t!("Notification.Title.AddedToScene").to_string())
                     .message(t!("Notification.Message.Placed", name => &payload.name).to_string()),
+                cx,
+            );
+            return;
+        }
+        if Self::supports_asset_placement(payload) {
+            window.push_notification(
+                Notification::error(t!("Notification.Title.PlacementFailed").to_string())
+                    .message("Move the asset over the viewport before releasing it."),
                 cx,
             );
             return;

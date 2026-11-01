@@ -208,6 +208,63 @@ impl SceneInteraction {
             .map(|(_, _, stable_id)| stable_id)
     }
 
+    /// Surface point beneath a viewport ray, ignoring the object currently
+    /// being placed (and its descendants) so a live placement cannot hit
+    /// itself while following the cursor.
+    pub fn placement_point(
+        &self,
+        world: &World,
+        origin: DVec3,
+        direction: Vec3,
+        ignore_id: Option<&str>,
+    ) -> Option<DVec3> {
+        let direction = direction.normalize_or_zero();
+        if direction == Vec3::ZERO {
+            return None;
+        }
+        let relative_origin = self.view.relative(origin.to_array());
+        let nearest = world
+            .query::<&StableId>()
+            .filter_map(|(entity, id)| {
+                if ignore_id.is_some_and(|ignored| {
+                    let mut current = Some(entity);
+                    while let Some(candidate) = current {
+                        if world.stable_id_of(candidate) == Some(ignored) {
+                            return true;
+                        }
+                        current = world.parent_of(candidate);
+                    }
+                    false
+                }) {
+                    return None;
+                }
+                let visibility = world.get::<Visibility>(entity)?;
+                let object_type = *world.get::<ObjectType>(entity)?;
+                if !visibility.visible || !is_pickable(object_type) {
+                    return None;
+                }
+                let transform = world_transform_of(world, entity)?;
+                let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
+                let broad_phase = ray_aabb(relative_origin, direction, min, max)?;
+                let (has_geometry, triangle_hit) = mesh_hit_distance(
+                    world,
+                    entity,
+                    transform,
+                    self.view,
+                    relative_origin,
+                    direction,
+                );
+                if has_geometry {
+                    triangle_hit
+                } else {
+                    Some(broad_phase)
+                }
+            })
+            .filter(|distance| distance.is_finite() && *distance >= 0.0)
+            .min_by(f32::total_cmp)?;
+        Some(origin + direction.as_dvec3() * nearest as f64)
+    }
+
     fn selected(&self, world: &World) -> Option<(Entity, Transform)> {
         let entity = world.selected_entity()?;
         let v = world.get::<Visibility>(entity)?;

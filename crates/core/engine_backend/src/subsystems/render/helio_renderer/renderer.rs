@@ -2465,8 +2465,23 @@ impl HelioRenderer {
     /// World-space placement target on the editor's ground plane (y = 0).
     /// Uses the same perspective/orthographic camera ray as object picking so
     /// drag placement stays aligned with the pixel under the pointer.
-    pub fn editor_placement_position(&self, norm_x: f32, norm_y: f32) -> Option<[f64; 3]> {
+    pub fn editor_placement_position(
+        &self,
+        norm_x: f32,
+        norm_y: f32,
+        ignore_id: Option<&str>,
+    ) -> Option<[f64; 3]> {
         let (origin, direction) = self.build_pick_ray(norm_x, norm_y);
+        if let Some(inner) = &self.inner {
+            let scene = self.scene_store.read();
+            if let Some(point) =
+                inner
+                    .interaction
+                    .placement_point(&scene.world, origin, direction, ignore_id)
+            {
+                return Some(point.to_array());
+            }
+        }
         let ground_distance = if direction.y.abs() >= 1.0e-6 {
             let distance = -origin.y as f32 / direction.y;
             (distance.is_finite() && distance >= 0.0).then_some(distance as f64)

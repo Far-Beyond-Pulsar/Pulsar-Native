@@ -237,10 +237,15 @@ impl GpuRenderer {
     }
 
     /// Resolve a normalized viewport pixel to the editor ground plane.
-    pub fn editor_placement_position(&self, norm_x: f32, norm_y: f32) -> Option<[f64; 3]> {
+    pub fn editor_placement_position(
+        &self,
+        norm_x: f32,
+        norm_y: f32,
+        ignore_id: Option<&str>,
+    ) -> Option<[f64; 3]> {
         self.helio_renderer
             .as_ref()
-            .and_then(|renderer| renderer.editor_placement_position(norm_x, norm_y))
+            .and_then(|renderer| renderer.editor_placement_position(norm_x, norm_y, ignore_id))
     }
 
     pub fn set_editor_camera_state(&mut self, state: EditorCameraState) {
