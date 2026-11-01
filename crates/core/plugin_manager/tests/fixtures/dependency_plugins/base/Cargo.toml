@@ -1,0 +1,17 @@
+# A plugin library for plugin_manager's dependency tests, built with the real
+# `export_plugin_v2!` macro. See tests/plugin_dependencies.rs.
+[package]
+name = "fixture_dep_base"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+test = false
+doctest = false
+
+[dependencies]
+plugin_editor_api = { workspace = true }
+ui                = { workspace = true }
+tracing           = { workspace = true }

@@ -1,20 +1,28 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use plugin_editor_api::PluginMetadata;
+use plugin_manager::{DependencyState, PluginDetails};
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, StyledExt,
 };
 
 pub fn render_plugin_item(
-    plugin: &PluginMetadata,
-    is_builtin: bool,
+    details: &PluginDetails,
     cx: &mut Context<crate::screen::PluginManagerWindow>,
 ) -> impl IntoElement {
+    let plugin = &details.metadata;
+    let is_builtin = details.builtin;
     let plugin_id = plugin.id.clone();
     let plugin_name = plugin.name.clone();
     let plugin_version = plugin.version.clone();
     let plugin_author = plugin.author.clone();
+    let required = details.dependencies.iter().filter(|d| !d.optional).count();
+    let unmet = details
+        .dependencies
+        .iter()
+        .filter(|d| !d.optional && !matches!(d.state, DependencyState::Satisfied { .. }))
+        .count();
+    let open_id = plugin_id.clone();
 
     let action = if is_builtin {
         h_flex()
@@ -44,6 +52,11 @@ pub fn render_plugin_item(
     };
 
     h_flex()
+        .id(SharedString::from(format!("plugin-{}", plugin_id)))
+        .cursor_pointer()
+        .on_click(cx.listener(move |this, _, _window, cx| {
+            this.select(Some(open_id.clone()), cx);
+        }))
         .items_start()
         .w_full()
         .p_5()
@@ -85,6 +98,22 @@ pub fn render_plugin_item(
                                 .text_color(cx.theme().foreground)
                                 .child(plugin_name),
                         )
+                        .when(required > 0, |this| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(if unmet > 0 {
+                                        cx.theme().danger
+                                    } else {
+                                        cx.theme().muted_foreground
+                                    })
+                                    .child(if unmet > 0 {
+                                        format!("{unmet} of {required} dependencies unmet")
+                                    } else {
+                                        format!("{required} dependencies")
+                                    }),
+                            )
+                        })
                         .when(!is_builtin, |this| {
                             this.child(
                                 div()

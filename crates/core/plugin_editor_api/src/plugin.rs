@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::file_types::FileTypeDefinition;
 use crate::identifiers::{EditorId, FileTypeId};
+use crate::manifest::PluginManifest;
 use crate::metadata::{EditorMetadata, PluginMetadata};
 use crate::version::VersionInfo;
 
@@ -45,6 +46,13 @@ pub trait EditorPlugin: Send + Sync {
 
     /// Get metadata about this plugin.
     fn metadata(&self) -> PluginMetadata;
+
+    /// Identity and the plugins this one depends on. The host reads it
+    /// before it loads the plugin's dependencies, so it must not touch another
+    /// plugin. The default declares no dependencies.
+    fn manifest(&self) -> PluginManifest {
+        PluginManifest::from_metadata(&self.metadata())
+    }
 
     /// Get all file types this plugin supports.
     fn file_types(&self) -> Vec<FileTypeDefinition>;
@@ -101,8 +109,14 @@ pub trait EditorPluginFull:
 ///
 /// The returned reference has `'static` lifetime because the plugin is never unloaded.
 /// This is safe because the plugin code remains valid for the process lifetime.
-pub type PluginCreate =
-    unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> &'static mut dyn EditorPluginFull;
+#[allow(improper_ctypes_definitions)]
+pub type PluginCreate = unsafe extern "C" fn(
+    theme_ptr: *const std::ffi::c_void,
+) -> Option<&'static mut dyn EditorPluginFull>;
+
+/// Type alias for `_plugin_manifest`. `None` if the plugin panicked building it.
+#[allow(improper_ctypes_definitions)]
+pub type PluginManifestFn = extern "C" fn() -> Option<PluginManifest>;
 
 // ============================================================================
 // Plugin Declaration and Export Macro
@@ -162,6 +176,9 @@ macro_rules! export_plugin {
             }
             fn metadata(&self) -> $crate::metadata::PluginMetadata {
                 $crate::plugin::EditorPlugin::metadata(&self.0)
+            }
+            fn manifest(&self) -> $crate::manifest::PluginManifest {
+                $crate::plugin::EditorPlugin::manifest(&self.0)
             }
             fn file_types(&self) -> Vec<$crate::file_types::FileTypeDefinition> {
                 $crate::plugin::EditorPlugin::file_types(&self.0)
@@ -256,30 +273,57 @@ macro_rules! export_plugin {
         ///
         /// The theme_ptr must point to valid Theme data that remains stable for the process
         /// lifetime. This is the caller's (engine's) responsibility.
+        ///
+        /// Returns `None` instead of unwinding across the FFI boundary when
+        /// the theme pointer is bad or the plugin's constructor panics; the
+        /// host reports it as a failed load.
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(
             theme_ptr: *const std::ffi::c_void,
-        ) -> &'static mut dyn $crate::plugin::EditorPluginFull {
-            // Validate theme pointer
-            if theme_ptr.is_null() {
-                panic!("[Plugin] ERROR: Received null theme pointer from host!");
+        ) -> Option<&'static mut dyn $crate::plugin::EditorPluginFull> {
+            let created = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // Validate theme pointer
+                if theme_ptr.is_null() {
+                    tracing::error!("[Plugin] Received null theme pointer from host");
+                    return None;
+                }
+
+                // Store theme pointer (fail if already set)
+                if SYNCED_THEME.set(theme_ptr as usize).is_err() {
+                    tracing::error!("[Plugin] Theme pointer already initialized");
+                    return None;
+                }
+
+                // Register our theme accessor with the ui crate
+                ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
+
+                // Create the plugin instance wrapped for full trait access
+                let plugin = <$plugin_type>::default();
+                let wrapper = __PluginExport(plugin);
+                let boxed: Box<dyn $crate::plugin::EditorPluginFull> = Box::new(wrapper);
+
+                // Leak the box to get a 'static reference
+                Some(Box::leak(boxed))
+            }));
+            match created {
+                Ok(plugin) => plugin,
+                Err(_) => {
+                    tracing::error!("[Plugin] The plugin panicked while it was being created");
+                    None
+                }
             }
+        }
 
-            // Store theme pointer (fail if already set)
-            if SYNCED_THEME.set(theme_ptr as usize).is_err() {
-                panic!("[Plugin] ERROR: Theme pointer already initialized!");
-            }
-
-            // Register our theme accessor with the ui crate
-            ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
-
-            // Create the plugin instance wrapped for full trait access
-            let plugin = <$plugin_type>::default();
-            let wrapper = __PluginExport(plugin);
-            let boxed: Box<dyn $crate::plugin::EditorPluginFull> = Box::new(wrapper);
-
-            // Leak the box to get a 'static reference
-            Box::leak(boxed)
+        /// The plugin's manifest, read by the host before it creates the
+        /// plugin so dependencies can load first. Builds a throwaway
+        /// instance; `None` if that panics.
+        #[no_mangle]
+        pub extern "C" fn _plugin_manifest() -> Option<$crate::manifest::PluginManifest> {
+            std::panic::catch_unwind(|| {
+                let plugin = __PluginExport(<$plugin_type>::default());
+                $crate::plugin::EditorPlugin::manifest(&plugin)
+            })
+            .ok()
         }
 
         /// Internal accessor for plugin theme (called by ui crate).

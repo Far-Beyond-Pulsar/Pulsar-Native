@@ -79,6 +79,12 @@ pub fn hsla_to_rgba(hsla: Hsla) -> [f32; 4] {
 /// is holding.
 pub struct PropertyStateManager {
     editors: HashMap<(String, String), BoundPropertyEditor>,
+    /// Staleness flags of composite (array / struct) editors, which cannot
+    /// afford to re-read their value every frame; see
+    /// [`PropertyStateManager::mark_stale`].
+    stale: HashMap<(String, String), std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// The host's wake-up, given to editors that offer rows.
+    wake: Option<Arc<dyn Fn(&mut App) + Send + Sync>>,
     /// Wrap every row in an auto-height cached view boundary, so a hover,
     /// caret blink or edit inside one row rebuilds that row instead of the
     /// whole panel. See [`PropertyStateManager::with_cached_rows`].
@@ -89,6 +95,8 @@ impl PropertyStateManager {
     pub fn new() -> Self {
         Self {
             editors: HashMap::new(),
+            stale: HashMap::new(),
+            wake: None,
             cached_rows: false,
         }
     }
@@ -116,6 +124,67 @@ impl PropertyStateManager {
     /// state cannot leak across selections.
     pub fn clear(&mut self) {
         self.editors.clear();
+        self.stale.clear();
+    }
+
+    /// Register the host's wake-up for editors that offer rows of their own
+    /// (`pulsar_reflection::VirtualRows`): they call it when their row count
+    /// or content changes, so the host re-reads [`Self::virtual_row_counts`].
+    pub fn set_wake(&mut self, wake: Arc<dyn Fn(&mut App) + Send + Sync>) {
+        for editor in self.editors.values() {
+            if let Some(rows) = &editor.rows {
+                rows.on_change(wake.clone());
+            }
+        }
+        self.wake = Some(wake);
+    }
+
+    /// Rows offered by the property's editor, if it offers any.
+    pub fn virtual_rows(
+        &self,
+        editor_key: &str,
+        prop_name: &str,
+    ) -> Option<Arc<dyn pulsar_reflection::VirtualRows>> {
+        self.editors
+            .get(&(editor_key.to_string(), prop_name.to_string()))
+            .and_then(|e| e.rows.clone())
+    }
+
+    /// `(editor_key, prop_name, rows)` for every built editor that offers rows.
+    pub fn virtual_row_counts(&self, cx: &App) -> Vec<(String, String, usize)> {
+        self.editors
+            .iter()
+            .filter_map(|((key, prop), editor)| {
+                let rows = editor.rows.as_ref()?;
+                Some((key.clone(), prop.clone(), rows.row_count(cx)))
+            })
+            .collect()
+    }
+
+    /// The live editor view for a property, if one has been built.
+    pub fn editor_view(&self, editor_key: &str, prop_name: &str) -> Option<AnyView> {
+        self.editors
+            .get(&(editor_key.to_string(), prop_name.to_string()))
+            .map(|e| e.view.clone())
+    }
+
+    /// Tell composite (array / struct) editors owned by `editor_key` that
+    /// their value changed outside the editor.  Call it when the data source
+    /// refreshes the value; without it such an editor re-reads only when the
+    /// address of the value it is handed changes.
+    pub fn mark_stale(&self, editor_key: &str) {
+        for ((key, _), flag) in &self.stale {
+            if key == editor_key {
+                flag.store(true, std::sync::atomic::Ordering::Release);
+            }
+        }
+        for ((key, _), editor) in &self.editors {
+            if key == editor_key {
+                if let Some(rows) = &editor.rows {
+                    rows.mark_stale();
+                }
+            }
+        }
     }
 }
 
@@ -158,9 +227,11 @@ pub fn render_property_row_runtime<V: 'static>(
 ) -> AnyElement {
     use crate::property_editor_registry::{PropertyEditorArgs, PROPERTY_EDITOR_REGISTRY};
 
-    let Some(factory) = PROPERTY_EDITOR_REGISTRY.get(type_info.type_id) else {
+    let factory = PROPERTY_EDITOR_REGISTRY.get(type_info.type_id);
+    // A container with no editor of its own gets the composite editor.
+    if factory.is_none() && !crate::composite_editor::is_composite(type_info) {
         return div().text_sm().child("(nyi)").into_any_element();
-    };
+    }
 
     let key = (editor_key.to_string(), prop_name.to_string());
     let editor = match state.editors.get(&key) {
@@ -175,7 +246,17 @@ pub fn render_property_row_runtime<V: 'static>(
                 current_value,
                 write_back,
             };
-            let editor = factory(&args, window, cx);
+            let editor = match factory {
+                Some(factory) => factory(&args, window, cx),
+                None => {
+                    let (editor, stale) = crate::composite_editor::build(&args, window, cx);
+                    state.stale.insert(key.clone(), stale);
+                    editor
+                }
+            };
+            if let (Some(rows), Some(wake)) = (&editor.rows, &state.wake) {
+                rows.on_change(wake.clone());
+            }
             state.editors.insert(key, editor.clone());
             editor
         }

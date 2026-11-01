@@ -39,6 +39,10 @@ members = [
     # Pulsar-Reflection, as editor plugins do.
     "crates/core/plugin_manager/tests/fixtures/world_plugins/host",
     "crates/core/plugin_manager/tests/fixtures/world_plugins/static_plugin",
+    # Plugins with dependencies on each other, for plugin_manager's load-order tests.
+    "crates/core/plugin_manager/tests/fixtures/dependency_plugins/base",
+    "crates/core/plugin_manager/tests/fixtures/dependency_plugins/top",
+    "crates/core/plugin_manager/tests/fixtures/dependency_plugins/orphan",
 ]
 
 # External plugin repositories are linked into `ui_core` as libraries, but own

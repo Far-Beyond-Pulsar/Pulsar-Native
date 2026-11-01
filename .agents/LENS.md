@@ -106,6 +106,26 @@ the Rainy lens preset reads. `lens_aperture_shapes` (`APERTURE_SHAPES`) holds
 published before the passes run. A project with its own masks registers them
 under the same keys instead.
 
+## Which view a frame renders as
+
+Every host builds its frame through `SceneRenderer::prepare_frame`, which takes the
+`helio::Camera` default (`view_id` 0) and calls `camera_lens_view_overscan` with
+`camera.view_id`. So the editor viewport, play-in-editor and the standalone game
+window all render as **view 0**; XR eyes are 1 and 2. Consequences for play:
+
+- A `CameraLensComponent` or `CameraPostProcessComponent` with `view_id` 0 applies in
+  the game wherever it is attached. It is not tied to the camera that is the view: a
+  lens on the possessed character's camera object works, and so does one on a
+  level-settings object. The lens is read from the lowest enabled row of the view.
+- Which object's `CameraComponent` is the view does not change the view id, so
+  switching view target keeps the same lens and post-process; per-camera lenses
+  (a different lens per `CameraComponent`) are not supported. The seam would be the
+  host giving the frame's `Camera` a view id taken from the selected camera.
+
+`CameraComponent` (projection, clip planes, priority; `helio-component`) is the
+authored viewpoint of the game's frame, see "Camera and view target" in
+`TRAITS.md`. It carries no GPU row and none of the lens's fields.
+
 ## Overscan
 
 A lens whose ray map looks past the frame (fisheye, barrel distortion) needs the

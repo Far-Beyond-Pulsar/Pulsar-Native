@@ -1,4 +1,4 @@
-//! Per-component property card rendering.
+//! Per-component property rendering for the virtual list.
 //!
 //! For each [`ComponentInstance`] attached to the selected object, this module:
 //!   1. Looks up cached property metadata (populated lazily, reused across frames).
@@ -9,7 +9,9 @@
 //!      structural/epoch invalidation.
 //!   3. Delegates row rendering to [`ui_common::render_property_row_runtime`],
 //!      which picks the editor registered for each property's type.
-//!   4. Groups rows into collapsible category sections via [`category_section`].
+//!   4. Builds the card/category/property items lazily: `rebuild_layout` describes
+//!      the cards (metadata only) and `ui_common::inspector_model::flatten`
+//!      applies search and collapse; `gpui::list` renders only visible items.
 //!
 //! Performance notes:
 //! - The metadata cache eliminates the per-frame `create_instance()` +
@@ -29,8 +31,8 @@ use std::any::Any;
 use std::sync::Arc;
 use ui::{button::ButtonVariants as _, h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
-use super::category_section::group_rows_by_category;
-use super::{ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
+use ui_common::inspector_model::{CardDesc, PropDesc};
+use super::{CardMeta, ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
 use crate::core::commands::{execute_command, SceneCommand};
 
 /// A card's values for an unresolved instance (data this build could not
@@ -131,306 +133,249 @@ impl ObjectTypeFieldsSection {
         Some(())
     }
 
-    /// Builds a property-card element for every attached component that has at
-    /// least one reflected property present in the registry.
+    /// Describe the cards to the shared inspector.
     ///
-    /// Components whose class is not in the registry are silently skipped — the
-    /// diagnostic banner in [`super`] already surfaces that condition.
-    ///
-    /// ## Performance (Pulsar-Native#575: subscribe, don't poll)
-    ///
-    /// Property VALUES come from the per-card snapshot cache (the section's
-    /// `world_value_cache`) and are only re-pulled from `World` when a signal
-    /// actually fired for that specific card -- its own World subscription
-    /// event, a legacy JSON-path write, or a structural/epoch invalidation.
-    /// An unrelated scene change (a gizmo drag anywhere, any other revision
-    /// bump) re-renders this panel from cached values with zero `World`
-    /// traffic. A fresh pull still happens under ONE `store.read()`
-    /// acquisition per card (`with_world_component`).
-    pub(super) fn render_component_sections(
-        &mut self,
-        attached: &[ComponentInstance],
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
-        // Deliberately not logged per render: this runs for every row rebuild
-        // of the panel, and `REGISTRY.get_class_names()` alone allocated a
-        // full registry-size Vec each time.
-        tracing::trace!(
-            "[ObjectTypeFieldsSection] object_id={} attached={}",
-            self.object_id,
-            attached.len(),
-        );
-
-        let class_names: Vec<String> = attached.iter().map(|c| c.class_name.clone()).collect();
-        for name in &class_names {
-            let _ = self.ensure_metadata_cached(name);
-        }
-
-        let scene_db = self.scene_db.clone();
-        let object_id = self.object_id.clone();
-
-        attached
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, _)| {
-                let class_name = &class_names[idx];
-                if class_name == pulsar_class::CLASS_INSTANCE {
-                    return self.render_class_card(window, cx);
-                }
-
-                let properties = {
-                    let cached = self.property_metadata_cache.get(class_name.as_str())?;
-                    Arc::clone(&cached.properties)
-                };
-                if properties.is_empty() {
-                    return None;
-                }
-
-                let default_inst: &dyn pulsar_reflection::EngineClass = &*self
-                    .property_metadata_cache
-                    .get(class_name.as_str())?
-                    ._default_instance;
-
-                // ── Per-instance identity (Pulsar-Native#519) ──────────────
-                //
-                // An object can carry several instances of the SAME class;
-                // `idx` (the component-list index -- the same identity
-                // remove/enable/reorder already use) is what makes each card
-                // its own value store, its own editor state, and its own
-                // subscription, instead of every duplicate collapsing onto
-                // the first.
-                let card_key = (class_name.clone(), idx);
-                let editor_key = format!("{class_name}#{idx}");
-
-                // Every instance holds its own typed value in `World`
-                // (Pulsar-Native#1035); a live card reads it once, then
-                // follows the object's subscription. Only an unresolved
-                // payload (a class this build does not register) reads its
-                // own JSON.
-                let live = {
-                    let world = scene_db.read();
-                    crate::scene_edit::components::is_live_instance(
-                        &world.world,
-                        &object_id,
-                        class_name,
+    /// Runs only when something that shapes the list changed (the component
+    /// set, the search query, a collapse toggle): it builds metadata, never
+    /// elements.  The list is told which range of items changed so the scroll
+    /// position survives a collapse or a keystroke in the search box.
+    pub(super) fn rebuild_layout(&mut self, attached: &[ComponentInstance]) {
+        let mut cards: Vec<CardDesc> = Vec::new();
+        self.card_meta.clear();
+        for (idx, component) in attached.iter().enumerate() {
+            let class_name = &component.class_name;
+            if class_name == pulsar_class::CLASS_INSTANCE {
+                if let Some(view) = &self.class_view {
+                    cards.push(CardDesc {
+                        key: format!("{class_name}#{idx}"),
+                        title: format!("Class: {}", view.class_name),
+                        props: Vec::new(),
+                        custom: true,
+                        note: None,
+                    });
+                    self.card_meta.push(CardMeta {
+                        class_name: class_name.clone(),
                         idx,
-                    )
-                };
-
-                // ── Cache-until-signaled value fetch (Pulsar-Native#575) ──
-                //
-                // Clean card + cached snapshot: lend the cached values to the
-                // row builder below, zero `World` traffic. Dirty or never-
-                // pulled card: bind it to its instance (live cards, once
-                // per mounted card) and pull fresh values from whichever
-                // source backs THIS instance.
-                let card_dirty = self.dirty_classes.remove(&card_key);
-                let mut values = if card_dirty {
-                    None
-                } else {
-                    // Take out of the cache rather than borrow: the row loop
-                    // below needs `&mut self` for widget state, and the vec
-                    // goes straight back in afterwards.
-                    self.world_value_cache.remove(&card_key)
-                };
-                if values.is_none() {
-                    let scene = scene_db.read();
-                    let world = &scene.world;
-                    // Bind the card to its instance entity, so the values
-                    // the object's subscription delivers land on it.
-                    if live
-                        && !self.unsubscribable_classes.contains(class_name.as_str())
-                        && !self.card_entities.values().any(|card| card == &card_key)
-                    {
-                        if pulsar_world_registry::component_id_for_class(class_name).is_none() {
-                            self.unsubscribable_classes.insert(class_name.clone());
-                        } else if let Some(instance) =
-                            crate::scene_edit::components::instance_at(world, &object_id, idx)
-                        {
-                            self.card_entities.insert(instance, card_key.clone());
-                        }
-                    }
-                    values = Some(if live {
-                        read_card_values_fresh(
-                            world,
-                            &object_id,
-                            class_name,
-                            idx,
-                            &properties,
-                            default_inst,
-                        )
-                    } else {
-                        read_unresolved_card_values(
-                            world,
-                            &object_id,
-                            class_name,
-                            idx,
-                            &properties,
-                            default_inst,
-                        )
                     });
                 }
-                let values = values.expect("fresh pull or cache hit fills this");
+                continue;
+            }
+            if self.ensure_metadata_cached(class_name).is_none() {
+                continue;
+            }
+            let Some(entry) = self.property_metadata_cache.get(class_name.as_str()) else {
+                continue;
+            };
+            cards.push(CardDesc {
+                key: format!("{class_name}#{idx}"),
+                title: class_name.clone(),
+                props: entry
+                    .properties
+                    .iter()
+                    .map(|p| PropDesc {
+                        name: p.name.to_string(),
+                        display_name: p.display_name.to_string(),
+                        category: p.category.map(str::to_string),
+                        category_color: p.category_color.map(str::to_string),
+                        category_default_collapsed: p.category_default_collapsed,
+                        category_order: p.category_order,
+                        extra_rows: 0,
+                    })
+                    .collect(),
+                custom: false,
+                note: pulsar_world_registry::unfinished_component(class_name).map(|u| {
+                    format!("Unfinished: {}. Tracked in {}.", u.reason, u.issue)
+                }),
+            });
+            self.card_meta.push(CardMeta {
+                class_name: class_name.clone(),
+                idx,
+            });
+        }
 
-                // Components built from a class slot: each property's class
-                // default, for the override markers and revert (#921).
-                let slot_default_values = self.slot_default_values_for(idx, &properties);
+        self.inspector.set_cards(cards);
+        self.layout_dirty = false;
+    }
 
-                let mut row_data: Vec<(
-                    AnyElement,
-                    Option<String>,
-                    Option<String>,
-                    bool,
-                    Option<usize>,
-                )> = Vec::new();
+    /// Make sure `card_key`'s value snapshot is present and current, binding the
+    /// card to its instance entity the first time it is pulled.
+    fn ensure_card_values(
+        &mut self,
+        class_name: &str,
+        idx: usize,
+        properties: &[PropertyMetadata],
+    ) -> Option<()> {
+        let card_key = (class_name.to_string(), idx);
+        let dirty = self.dirty_classes.remove(&card_key);
+        if !dirty && self.world_value_cache.contains_key(&card_key) {
+            return Some(());
+        }
+        let default_inst: &dyn pulsar_reflection::EngineClass = &*self
+            .property_metadata_cache
+            .get(class_name)?
+            ._default_instance;
+        let scene = self.scene_db.read();
+        let world = &scene.world;
+        let object_id = &self.object_id;
+        let live =
+            crate::scene_edit::components::is_live_instance(world, object_id, class_name, idx);
+        // Bind the card to its instance entity, so the values the object's
+        // subscription delivers land on it.
+        if live
+            && !self.unsubscribable_classes.contains(class_name)
+            && !self.card_entities.values().any(|card| card == &card_key)
+        {
+            if pulsar_world_registry::component_id_for_class(class_name).is_none() {
+                self.unsubscribable_classes.insert(class_name.to_string());
+            } else if let Some(instance) =
+                crate::scene_edit::components::instance_at(world, object_id, idx)
+            {
+                self.card_entities.insert(instance, card_key.clone());
+            }
+        }
+        let values = if live {
+            read_card_values_fresh(world, object_id, class_name, idx, properties, default_inst)
+        } else {
+            read_unresolved_card_values(
+                world,
+                object_id,
+                class_name,
+                idx,
+                properties,
+                default_inst,
+            )
+        };
+        drop(scene);
+        // Array / struct editors skip re-reading unchanged values; this one
+        // was just pulled fresh, so they must look again.
+        self.property_state
+            .mark_stale(&format!("{class_name}#{idx}"));
+        self.world_value_cache.insert(card_key, values);
+        Some(())
+    }
 
-                // One unified row loop: `values` is the card's live snapshot
-                // (fresh pull or cache hit -- indistinguishable from here
-                // on). Borrowed, not consumed; it goes back into the cache
-                // right after this loop.
-                for (prop_index, (prop, value)) in properties.iter().zip(values.iter()).enumerate()
-                {
-                    let write_back = {
-                        let state_arc = self.state_arc.clone();
-                        let oid = object_id.clone();
-                        let cls = class_name.clone();
-                        let ci = idx;
-                        let pn = prop.name.to_string();
-                        Arc::new(
-                            move |new_val: Box<dyn Any + Send>,
-                                  _window: &mut Window,
-                                  _cx: &mut App| {
-                                execute_command(
-                                    &mut state_arc.write(),
-                                    SceneCommand::SetComponentProperty {
-                                        id: oid.clone(),
-                                        class_name: cls.clone(),
-                                        component_index: ci,
-                                        prop_name: pn.clone(),
-                                        value: new_val,
-                                    },
-                                );
-                            },
-                        )
-                    };
+    /// One property row.
+    ///
+    /// Values come from the per-card snapshot cache (Pulsar-Native#575) and are
+    /// re-pulled from `World` only when a signal fired for that card; the
+    /// editor behind the row is cached per `(card, property)`, so scrolling a
+    /// row out and back keeps its focus and caret state.
+    pub(super) fn render_property_item(
+        &mut self,
+        card_ix: usize,
+        prop_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let empty = || div().into_any_element();
+        let Some(meta) = self.card_meta.get(card_ix) else {
+            return empty();
+        };
+        let class_name = meta.class_name.clone();
+        let idx = meta.idx;
+        let Some(properties) = self
+            .property_metadata_cache
+            .get(class_name.as_str())
+            .map(|c| Arc::clone(&c.properties))
+        else {
+            return empty();
+        };
+        let Some(prop) = properties.get(prop_ix) else {
+            return empty();
+        };
+        if self.ensure_card_values(&class_name, idx, &properties).is_none() {
+            return empty();
+        }
+        let card_key = (class_name.clone(), idx);
+        // Components built from a class slot: each property's class default,
+        // for the override markers and revert (#921).
+        let slot_default_values = self.slot_default_values_for(idx, &properties);
+        let object_id = self.object_id.clone();
+        let editor_key = format!("{class_name}#{idx}");
 
-                    let row = ui_common::render_property_row_runtime(
-                        &mut self.property_state,
-                        "level",
-                        // Per-INSTANCE editor identity (Pulsar-Native#519):
-                        // two cards of one class must never share widget
-                        // state, or every keystroke would land in whichever
-                        // card rendered first.
-                        &editor_key,
-                        class_name,
-                        &prop.display_name,
-                        prop.name,
-                        prop.type_info,
-                        value.as_ref(),
-                        write_back,
-                        window,
-                        cx,
+        let write_back = {
+            let state_arc = self.state_arc.clone();
+            let oid = object_id.clone();
+            let cls = class_name.clone();
+            let pn = prop.name.to_string();
+            Arc::new(
+                move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
+                    execute_command(
+                        &mut state_arc.write(),
+                        SceneCommand::SetComponentProperty {
+                            id: oid.clone(),
+                            class_name: cls.clone(),
+                            component_index: idx,
+                            prop_name: pn.clone(),
+                            value: new_val,
+                        },
                     );
+                },
+            )
+        };
 
-                    let row = match slot_default_values
-                        .as_ref()
-                        .and_then(|defaults| defaults.get(prop_index))
-                        .and_then(|d| d.as_ref())
-                    {
-                        Some(default) => {
-                            let overridden = !crate::scene_edit::classes::property_equals_default(
-                                value.as_ref(),
-                                default.as_ref(),
-                            );
-                            let revert = {
-                                let state_arc = self.state_arc.clone();
-                                let oid = object_id.clone();
-                                let cls = class_name.clone();
-                                let pn = prop.name.to_string();
-                                Arc::new(move |_window: &mut Window, _cx: &mut App| {
-                                    execute_command(
-                                        &mut state_arc.write(),
-                                        SceneCommand::RevertComponentProperty {
-                                            id: oid.clone(),
-                                            class_name: cls.clone(),
-                                            component_index: idx,
-                                            prop_name: pn.clone(),
-                                        },
-                                    );
-                                })
-                            };
-                            ui_common::decorate_property_override(
-                                row,
-                                SharedString::from(format!("revert-{editor_key}-{}", prop.name)),
-                                &ui_common::PropertyOverride {
-                                    overridden,
-                                    on_revert: Some(revert),
-                                },
-                                cx,
-                            )
-                        }
-                        None => row,
-                    };
+        let Some(value) = self
+            .world_value_cache
+            .get(&card_key)
+            .and_then(|values| values.get(prop_ix))
+        else {
+            return empty();
+        };
+        let row = ui_common::render_property_row_runtime(
+            &mut self.property_state,
+            "level",
+            // Per-INSTANCE editor identity (Pulsar-Native#519): two cards of
+            // one class must never share widget state.
+            &editor_key,
+            &class_name,
+            &prop.display_name,
+            prop.name,
+            prop.type_info,
+            value.as_ref(),
+            write_back,
+            window,
+            cx,
+        );
 
-                    row_data.push((
-                        row,
-                        prop.category.map(str::to_string),
-                        prop.category_color.map(str::to_string),
-                        prop.category_default_collapsed,
-                        prop.category_order,
-                    ));
-                }
-
-                // Hand the snapshot back -- next render lends it out again
-                // unless a signal marked this card dirty.
-                self.world_value_cache.insert(card_key, values);
-
-                let (mut uncategorized, categorized) = group_rows_by_category(row_data);
-                let category_elements = self.render_categorized_rows(class_name, categorized, cx);
-                uncategorized.extend(category_elements);
-
-                Some(
-                    v_flex()
-                        .w_full()
-                        .gap_2()
-                        .p_3()
-                        .bg(cx.theme().sidebar)
-                        .rounded(px(8.0))
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .child(
-                            h_flex()
-                                .w_full()
-                                .items_center()
-                                .gap_2()
-                                .child(Icon::new(IconName::Component).small())
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(cx.theme().foreground)
-                                        .child(class_name.clone()),
-                                ),
-                        )
-                        // A class the engine keeps but does not consume yet says
-                        // so, with its tracking issue (Pulsar-Native#1035, Phase 4).
-                        .children(pulsar_world_registry::unfinished_component(class_name).map(
-                            |unfinished| {
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().warning)
-                                    .child(format!(
-                                        "Unfinished: {}. Tracked in {}.",
-                                        unfinished.reason, unfinished.issue
-                                    ))
+        let row = match slot_default_values
+            .as_ref()
+            .and_then(|defaults| defaults.get(prop_ix))
+            .and_then(|d| d.as_ref())
+        {
+            Some(default) => {
+                let overridden =
+                    !crate::scene_edit::classes::property_equals_default(value.as_ref(), default.as_ref());
+                let revert = {
+                    let state_arc = self.state_arc.clone();
+                    let oid = object_id.clone();
+                    let cls = class_name.clone();
+                    let pn = prop.name.to_string();
+                    Arc::new(move |_window: &mut Window, _cx: &mut App| {
+                        execute_command(
+                            &mut state_arc.write(),
+                            SceneCommand::RevertComponentProperty {
+                                id: oid.clone(),
+                                class_name: cls.clone(),
+                                component_index: idx,
+                                prop_name: pn.clone(),
                             },
-                        ))
-                        .children(uncategorized)
-                        .into_any_element(),
+                        );
+                    })
+                };
+                ui_common::decorate_property_override(
+                    row,
+                    SharedString::from(format!("revert-{editor_key}-{}", prop.name)),
+                    &ui_common::PropertyOverride {
+                        overridden,
+                        on_revert: Some(revert),
+                    },
+                    cx,
                 )
-            })
-            .collect()
+            }
+            None => row,
+        };
+
+        row
     }
 }
 
@@ -467,7 +412,7 @@ impl ObjectTypeFieldsSection {
     /// reflected property rows as components. Values that differ from the
     /// class default are marked and can be reverted; both edits and reverts
     /// are undoable `SetClassVariable` commands.
-    fn render_class_card(
+    pub(super) fn render_class_card(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,

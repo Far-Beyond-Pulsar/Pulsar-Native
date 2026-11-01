@@ -8,6 +8,7 @@ edition = "2021"
 inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+semver = { version = "1", features = ["serde"] }
 schemars = { workspace = true }
 tracing = { workspace = true }
 gpui-ce.workspace = true

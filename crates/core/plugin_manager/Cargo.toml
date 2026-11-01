@@ -36,6 +36,9 @@ env_logger = "=0.11.11"
 gpui-ce = { workspace = true, features = ["test-support"] }
 pulsar_lsp = { workspace = true }
 plugin_loader_fixture = { path = "tests/fixtures/plugin_loader_fixture" }
+fixture_dep_base = { path = "tests/fixtures/dependency_plugins/base" }
+fixture_dep_top = { path = "tests/fixtures/dependency_plugins/top" }
+fixture_dep_orphan = { path = "tests/fixtures/dependency_plugins/orphan" }
 tempfile = { workspace = true }
 
 [lints]

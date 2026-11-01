@@ -272,6 +272,7 @@ fn properties_panel_layout_report(cx: &mut TestAppContext) {
 /// the panel at all, and a rebuilt panel must stay within a node budget.
 #[gpui::test]
 fn properties_panel_layout_budget(cx: &mut TestAppContext) {
+    let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let class_names: Vec<String> = heaviest_classes(5).into_iter().map(|(n, _)| n).collect();
     assert!(!class_names.is_empty(), "no reflected classes registered");
     let mut f = open_fixture(cx, &class_names);
@@ -646,6 +647,7 @@ fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
 /// on every stamp). A change to a shown property still repaints it.
 #[gpui::test]
 fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) {
+    let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use helio_component::VoxelTerrainComponent;
 
     cx.update(|cx| ui::init(cx));
@@ -737,3 +739,44 @@ fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) 
     assert_eq!(stamps, 0, "sculpt stamps rebuilt the properties section");
     assert!(shown > 0, "a shown property change must repaint its card");
 }
+
+/// Scroll sweep through the heaviest real components: the first pass builds
+/// every row's editor as it scrolls into view, the second reuses them. Prints
+/// the worst and mean draw per scroll step so editor construction cost shows.
+#[gpui::test]
+#[ignore = "manual measurement; run with --nocapture"]
+fn properties_panel_scroll_report(cx: &mut TestAppContext) {
+    let class_names: Vec<String> = heaviest_classes(12).into_iter().map(|(n, _)| n).collect();
+    let mut f = open_fixture(cx, &class_names);
+    for _ in 0..4 {
+        dirty_frame(&mut f);
+        idle_frame(&mut f);
+    }
+    let section = f
+        .panel
+        .read_with(&f.cx, |p, _| p.object_type_fields_section.clone())
+        .expect("section");
+    for pass in 0..3 {
+        let mut worst = 0.0f64;
+        let mut total = 0.0f64;
+        let steps = 400;
+        for _ in 0..steps {
+            section.update(&mut f.cx, |s, cx| {
+                s.scroll_by(px(120.));
+                cx.notify();
+            });
+            let t = idle_frame(&mut f).as_secs_f64() * 1e3;
+            worst = worst.max(t);
+            total += t;
+        }
+        eprintln!(
+            "scroll pass {pass}: mean {:.2} ms/step, worst {worst:.2} ms",
+            total / steps as f64
+        );
+        section.update(&mut f.cx, |s, _| s.scroll_by(px(-1_000_000.)));
+    }
+}
+
+/// `render_stats` is process-global: every test that draws a window in this
+/// crate holds this while it does, so counters of one are not another's.
+pub(super) static RENDER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

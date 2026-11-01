@@ -193,7 +193,13 @@ impl PropertiesPanelWrapper {
                         cx,
                     )
                 }));
-                self.object_type_fields_section = Some(cx.new(|cx| {
+                // Search text and collapse state follow the user from one
+                // selection to the next.
+                let carried = self
+                    .object_type_fields_section
+                    .as_ref()
+                    .map(|section| section.read(cx).carry_over(cx));
+                let section = cx.new(|cx| {
                     ObjectTypeFieldsSection::new(
                         object_id_clone.clone(),
                         scene_db.clone(),
@@ -201,7 +207,16 @@ impl PropertiesPanelWrapper {
                         window,
                         cx,
                     )
-                }));
+                });
+                let header_view = self.object_header_section.clone().map(AnyView::from);
+                let transform_view = self.transform_section.clone().map(AnyView::from);
+                section.update(cx, |section, cx| {
+                    section.set_leading(header_view, transform_view);
+                    if let Some(carried) = carried {
+                        section.restore(carried, window, cx);
+                    }
+                });
+                self.object_type_fields_section = Some(section);
                 self.current_object_id = Some(object_id.clone());
                 self.follow_object(object_id, window, cx);
             } else {
@@ -447,3 +462,7 @@ impl Panel for PropertiesPanelWrapper {
 #[cfg(test)]
 #[path = "properties_perf_tests.rs"]
 mod perf_tests;
+
+#[cfg(test)]
+#[path = "inspector_stress_tests.rs"]
+mod inspector_stress;

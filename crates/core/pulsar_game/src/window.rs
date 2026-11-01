@@ -97,6 +97,9 @@ pub struct RenderCamera {
     pub fov_y: f32,
     pub near: f32,
     pub far: f32,
+    /// Orthographic view: half the visible height in metres. `None` is the
+    /// perspective view `fov_y` describes.
+    pub orthographic_half_height: Option<f32>,
 }
 
 impl RenderCamera {
@@ -112,6 +115,7 @@ impl RenderCamera {
             fov_y: std::f32::consts::FRAC_PI_4,
             near: 0.1,
             far: 1000.0,
+            orthographic_half_height: None,
         }
     }
 
@@ -123,10 +127,13 @@ impl RenderCamera {
             forward: self.forward.normalize_or(glam::Vec3::NEG_Z),
             up: self.up.normalize_or(glam::Vec3::Y),
             aspect,
-            projection: FrameProjection::Perspective {
-                fov_y: self.fov_y,
-                near: self.near,
-                far: self.far,
+            projection: match self.orthographic_half_height {
+                Some(half_height) => FrameProjection::Orthographic { half_height },
+                None => FrameProjection::Perspective {
+                    fov_y: self.fov_y,
+                    near: self.near,
+                    far: self.far,
+                },
             },
         }
     }

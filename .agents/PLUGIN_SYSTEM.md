@@ -284,3 +284,27 @@ providers register at startup in `ui_core`; the shader plugin registers
 `ImportRecord::companions`, so a re-import runs them again. Rules: a companion
 never overwrites a file that exists, and its outputs only fill mesh slots that
 have no default material. Not yet wired for DLL plugins (no FFI entry point).
+
+## Manifests and plugin dependencies
+
+Every `export_plugin!` library also exports `_plugin_manifest` (a
+`PluginManifest`: id, name, version, `requires`, `optional`). The host reads
+it before any plugin constructor runs. `PluginManager::prepare_plugins_in_dir`
+returns plugins in dependency order (`plugin_manager::dependencies::plan_load_order`):
+a plugin loads after everything it requires, a plugin with a missing,
+out-of-range, cyclic or failed dependency comes back as
+`PluginManagerError::DependencyUnmet` with the reason, and plugins with no
+dependencies keep directory order. `install_prepared_plugin` re-checks that
+each required plugin is installed, so a dependency that was ordered first but
+failed to install still blocks its dependents. A library built before
+manifests (no `_plugin_manifest`) installs first and cannot be depended on.
+
+`_plugin_create` returns `Option<&'static mut dyn EditorPluginFull>` and
+`_plugin_manifest` an `Option`: a panic in a plugin constructor is caught
+(`catch_unwind`) and reported as a failed load instead of unwinding across
+`extern "C"`.
+
+A plugin declares dependencies by overriding `EditorPlugin::manifest`, or
+writes against the registrar API (`plugin_editor_api::registrar`: `Plugin`,
+`PluginBuilder`, `export_plugin_v2!`), which presents itself to the host through
+the traits above. Design and roadmap: `PLUGIN_API_V2.md`.

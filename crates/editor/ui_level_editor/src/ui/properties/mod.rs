@@ -17,7 +17,6 @@ use ui::{
     button::Button,
     h_flex,
     input::{InputState, TextInput},
-    scroll::ScrollbarAxis,
     v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
 };
 use ui_common::properties_inspector;
@@ -62,54 +61,38 @@ impl PropertiesPanel {
                 div().flex_1().overflow_hidden().w_full().child(
                     div()
                         .size_full()
-                        .scrollable(ScrollbarAxis::Vertical)
-                        .child(if has_selection {
-                            let mut flex = v_flex().w_full().p_3().gap_4().min_w_full();
-
-                            // Render new ObjectHeaderSection if available (new binding system)
-                            if let Some(ref section) = object_header_section {
-                                flex = flex.child(Self::cached_section(section));
-                            }
-
-                            // Render new TransformSection if available (new binding system)
-                            if let Some(ref section) = transform_section {
-                                flex = flex.child(Self::isolated_section(section));
-                            }
-
-                            // Reflection-backed object type properties — always present.
-                            if let Some(ref section) = object_type_fields_section {
-                                flex = flex.child(Self::cached_section(section));
-                            }
-
-                            flex.into_any_element()
-                        } else {
-                            Self::render_empty_state(cx).into_any_element()
+                        .child(match (has_selection, object_type_fields_section) {
+                            // The section is one virtual list holding the object
+                            // header, the transform and every component, so it
+                            // scrolls itself.
+                            (true, Some(section)) => AnyView::from(section.clone())
+                                .cached(StyleRefinement::default().size_full())
+                                .into_any_element(),
+                            (true, None) => div().into_any_element(),
+                            (false, _) => Self::render_empty_state(cx).into_any_element(),
                         }),
                 ),
             )
     }
 
-    /// A section as its own cached view whose height follows its content.
-    ///
-    /// Sections are the panel's invalidation boundaries: without them a hover,
-    /// a scroll tick or a gizmo-driven value push anywhere in the panel rebuilds
-    /// every section (thousands of elements), because the panel is the nearest
-    /// cached view. With them the panel rebuilds only its own few elements and
-    /// every clean section replays.
-    fn cached_section<V: Render>(section: &Entity<V>) -> AnyView {
-        AnyView::from(section.clone())
+    /// A section view as its own cached view whose height follows its content,
+    /// so a hover or value push elsewhere in the panel replays it instead of
+    /// rebuilding it.
+    pub(super) fn cached_section_view(view: &AnyView) -> AnyElement {
+        view.clone()
             .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
+            .into_any_element()
     }
 
     /// A section that refreshes by itself, like the viewport's overlays: a
     /// transform pushed into it while an object is dragged re-renders just
-    /// this section, in place, and the panel, the dock and the rest of the
-    /// window do not render, lay out or prepaint. Only for a section whose
-    /// size does not follow what changes. The interactive surface (hit areas,
-    /// focus) is the one recorded when the panel last rendered, which stays
-    /// valid because the section's layout is fixed; see `AnyView::isolated`.
-    fn isolated_section<V: Render>(section: &Entity<V>) -> AnyView {
-        Self::cached_section(section).isolated()
+    /// this section, in place. Only for a section whose size does not follow
+    /// what changes; see `AnyView::isolated`.
+    pub(super) fn isolated_section_view(view: &AnyView) -> AnyElement {
+        view.clone()
+            .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
+            .isolated()
+            .into_any_element()
     }
 
     fn render_header(

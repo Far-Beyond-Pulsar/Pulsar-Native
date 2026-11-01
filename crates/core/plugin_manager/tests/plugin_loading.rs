@@ -77,7 +77,7 @@ fn exports_required_symbols() {
     let _: libloading::Symbol<
         unsafe extern "C" fn(
             *const std::ffi::c_void,
-        ) -> &'static mut dyn plugin_editor_api::EditorPluginFull,
+        ) -> Option<&'static mut dyn plugin_editor_api::EditorPluginFull>,
     > = unsafe { lib.get(b"_plugin_create") }.expect("_plugin_create symbol");
 
     // _plugin_init_globals

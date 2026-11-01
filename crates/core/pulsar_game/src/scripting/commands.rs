@@ -16,6 +16,8 @@
 //! - **destroy** runs the `end_play` of every script instance on the object
 //!   and its descendants (while their components still exist), then
 //!   despawns the object tree.
+//! - **set_view_target** points the local player's view at an object
+//!   (`view_target`); it takes effect at the end of the phase too.
 //!
 //! # Naming a class
 //!
@@ -49,6 +51,9 @@ pub enum WorldCommand {
     },
     /// End the scripts on `entity` and its descendants, then despawn them.
     Destroy { entity: Entity },
+    /// The local player's view follows `entity` (`Entity::DANGLING` clears
+    /// it). See `ScriptDriver::set_view_target`.
+    SetViewTarget { entity: Entity },
 }
 
 thread_local! {
@@ -197,6 +202,28 @@ inventory::submit! {
                     }
                     if !queue(WorldCommand::Destroy { entity }) {
                         tracing::warn!("world::destroy called outside a script driver frame; nothing destroyed");
+                    }
+                })
+        },
+    }
+}
+
+inventory::submit! {
+    NativeRegistration {
+        build: || {
+            NativeFn::builder("world::set_view_target")
+                .doc(
+                    "Make the local player's view follow an object: the best enabled \
+                     CameraComponent on it, or beneath it, is the game's camera. A dangling \
+                     entity clears the target. Possession sets it to the possessed character \
+                     and clears it when the possession ends; applied at the end of the script \
+                     phase.",
+                )
+                .attr("category", "World")
+                .params(["entity"])
+                .build(|entity: Entity| {
+                    if !queue(WorldCommand::SetViewTarget { entity }) {
+                        tracing::warn!("world::set_view_target called outside a script driver frame; the view is unchanged");
                     }
                 })
         },
