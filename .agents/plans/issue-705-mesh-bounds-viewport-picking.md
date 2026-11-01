@@ -45,4 +45,4 @@ D. Run focused crate tests/checks and the repository-required architecture check
 - Implemented PMSH v5 local AABBs with v1-v4 transient-bound migration, vgeo/material preservation, and geometry identity unchanged.
 - Implemented bounds-based culling-sphere hydration and exact resident-geometry viewport picking with a bounded, prewarmed BVH cache.
 - Added viewport click-bound validation and regressions for format migration, contradictory bounds flags, exact triangle hits, transformed meshes, and viewport misses.
-- `rustfmt --check` and `git diff --check` pass for the touched files. Focused Cargo tests are currently blocked by an unrelated compile error in the concurrently modified `crates/ui/wgpui-component` submodule (`Node::ListItem` missing from an exhaustive match).
+- `rustfmt --check` and `git diff --check` pass for the touched files. Focused Cargo tests pass: 10 mesh format/cache tests, 3 mesh-spatial picking tests, and the engine-level viewport selection regression.
