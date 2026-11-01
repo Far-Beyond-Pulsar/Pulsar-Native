@@ -13,10 +13,7 @@
 <p align="center">
   <strong>A next‑generation, experimental game engine focused on scalability, modularity, and modern systems design.</strong>
 </p>
-<img width="3840" height="1649" alt="deviceframes" src="https://github.com/user-attachments/assets/c850a05b-c863-4c1f-bd4d-4dd79c6b9fe1" />
-<p align="center">
-  Device Mockup created from <a href="https://deviceframes.com/templates/macbook-pro-m1-14">MacBook Pro mockups</a>
-</p>
+<img width="3384" height="1283" alt="image" src="https://github.com/user-attachments/assets/abf89535-0b8e-42d7-a405-73500797a902" />
 
 ---
 
