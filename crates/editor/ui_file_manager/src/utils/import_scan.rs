@@ -8,6 +8,7 @@
 //! Each is offered once per session ([`asset_import::OfferedOnce`]), however
 //! many drawers scan.
 
+use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -22,6 +23,11 @@ use crate::components::FileManagerDrawer;
 
 /// What this session already offered, shared by every drawer.
 static OFFERED: LazyLock<Mutex<asset_import::OfferedOnce>> = LazyLock::new(Default::default);
+
+/// Cloud projects cannot use the local-path importers yet. Explain that once
+/// per project per session instead of silently skipping every drawer scan.
+static CLOUD_IMPORT_NOTICE: LazyLock<Mutex<HashSet<std::path::PathBuf>>> =
+    LazyLock::new(Default::default);
 
 /// How long the watcher waits for a burst of changes (a copy, a save) to
 /// settle before rescanning.
@@ -40,7 +46,15 @@ impl FileManagerDrawer {
             return;
         };
         if engine_fs::is_cloud_path(&root) {
-            // Imports read and write local files.
+            if CLOUD_IMPORT_NOTICE.lock().insert(root.clone()) {
+                window.push_notification(
+                    Notification::warning(
+                        "Import scanning is unavailable for cloud projects. Download the project to a local folder to import source files.",
+                    )
+                    .autohide(false),
+                    cx,
+                );
+            }
             return;
         }
         cx.spawn_in(window, async move |this, cx| {
