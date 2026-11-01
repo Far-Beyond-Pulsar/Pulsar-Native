@@ -576,12 +576,34 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
 
             set_mesh_movability(&state, &id, ObjectMovability::Movable);
             let frame = harness.frames(&mut renderer, || {});
+            if !nudge {
+                let appearance = frame.difference(&at_origin);
+                assert_eq!(
+                    appearance.depth_texels, 0,
+                    "changing movability changed mesh depth/geometry: {appearance:?}"
+                );
+                assert!(
+                    appearance.color_pixels < (SIZE * SIZE / 100) as usize,
+                    "changing movability changed unshadowed mesh appearance: {appearance:?}"
+                );
+            }
             assert_drawn(
                 &format!("[{mode}]   made Movable"),
                 observe("movable", frame),
             );
             set_mesh_movability(&state, &id, ObjectMovability::Static);
             let frame = harness.frames(&mut renderer, || {});
+            if !nudge {
+                let appearance = frame.difference(&at_origin);
+                assert_eq!(
+                    appearance.depth_texels, 0,
+                    "restoring Static changed mesh depth/geometry: {appearance:?}"
+                );
+                assert!(
+                    appearance.color_pixels < (SIZE * SIZE / 100) as usize,
+                    "restoring Static changed unshadowed mesh appearance: {appearance:?}"
+                );
+            }
             assert_drawn(
                 &format!("[{mode}]   made Static again"),
                 observe("static_again", frame),
