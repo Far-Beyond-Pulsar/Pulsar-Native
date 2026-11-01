@@ -105,9 +105,12 @@ pub(crate) fn decorate_horizontal_tab_preview(
     )
     .with_delay_from({
         let sidebar = sidebar.clone();
-        move |cx| match sidebar.read_with(cx, |sidebar, _| sidebar.preview_hover_ready) {
-            Ok(true) => Duration::ZERO,
-            _ => Duration::from_millis(1200),
+        move |cx| {
+            if sidebar.read_with(cx, |sidebar, _| sidebar.preview_hover_ready) {
+                Duration::ZERO
+            } else {
+                Duration::from_millis(1200)
+            }
         }
     })
     .into_any_element()
