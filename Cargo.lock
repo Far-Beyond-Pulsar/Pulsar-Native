@@ -7132,6 +7132,16 @@ dependencies = [
 [[package]]
 name = "mockaco-core"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
+dependencies = [
+ "regex",
+ "ropey 1.6.1",
+]
+
+[[package]]
+name = "mockaco-core"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70#e3bb37436ed36b0316cda1b059e4238a676afd70"
 dependencies = [
  "regex",
  "ropey 1.6.1",
@@ -7140,27 +7150,62 @@ dependencies = [
 [[package]]
 name = "mockaco-diff"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
- "mockaco-core",
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "similar 3.2.0",
+]
+
+[[package]]
+name = "mockaco-diff"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70#e3bb37436ed36b0316cda1b059e4238a676afd70"
+dependencies = [
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
  "similar 3.2.0",
 ]
 
 [[package]]
 name = "mockaco-gpui"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
  "gpui-ce",
- "mockaco-core",
- "mockaco-diff",
- "mockaco-language",
- "mockaco-renderer",
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "mockaco-diff 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "mockaco-renderer 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+]
+
+[[package]]
+name = "mockaco-gpui"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70#e3bb37436ed36b0316cda1b059e4238a676afd70"
+dependencies = [
+ "gpui-ce",
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
+ "mockaco-diff 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
+ "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
+ "mockaco-renderer 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
 ]
 
 [[package]]
 name = "mockaco-language"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
- "mockaco-core",
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "streaming-iterator",
+ "tree-sitter",
+ "tree-sitter-rust",
+]
+
+[[package]]
+name = "mockaco-language"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70#e3bb37436ed36b0316cda1b059e4238a676afd70"
+dependencies = [
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
  "streaming-iterator",
  "tree-sitter",
  "tree-sitter-rust",
@@ -7169,8 +7214,17 @@ dependencies = [
 [[package]]
 name = "mockaco-renderer"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8#e36ce16e76716b7494a7388e3ba51505111246b8"
 dependencies = [
- "mockaco-core",
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+]
+
+[[package]]
+name = "mockaco-renderer"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70#e3bb37436ed36b0316cda1b059e4238a676afd70"
+dependencies = [
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
 ]
 
 [[package]]
@@ -11508,10 +11562,10 @@ dependencies = [
  "futures",
  "gpui-ce",
  "log",
- "mockaco-core",
- "mockaco-diff",
- "mockaco-gpui",
- "mockaco-language",
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
+ "mockaco-diff 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
+ "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
+ "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
  "parking_lot",
  "plugin_editor_api",
  "rust-i18n",
@@ -14574,9 +14628,9 @@ dependencies = [
  "image",
  "inventory",
  "keyring",
- "mockaco-core",
- "mockaco-gpui",
- "mockaco-language",
+ "mockaco-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
  "parking_lot",
  "reqwest 0.13.4",
  "serde",
@@ -14724,8 +14778,8 @@ dependencies = [
  "engine_state",
  "futures",
  "gpui-ce",
- "mockaco-gpui",
- "mockaco-language",
+ "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
  "serde_json",
  "similar 3.2.0",
  "tokio",
@@ -17050,7 +17104,3 @@ dependencies = [
  "syn 3.0.4",
  "winnow 1.0.4",
 ]
-
-[[patch.unused]]
-name = "mockaco-lsp"
-version = "0.1.0"
