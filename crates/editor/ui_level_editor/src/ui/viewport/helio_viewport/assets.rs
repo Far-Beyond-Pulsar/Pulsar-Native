@@ -20,24 +20,46 @@ impl HelioViewport {
         if !Self::supports_asset_placement(payload) {
             return;
         }
-        let ignore_id = self.active_placement.as_ref().map(|(id, _, _)| id.as_str());
-        let Some(position) = self
-            .gpu_engine
-            .try_lock()
-            .ok()
-            .and_then(|engine| engine.editor_placement_position(norm_x, norm_y, ignore_id))
-        else {
-            return;
-        };
         let path = PathBuf::from(&payload.engine_path);
         if !path.exists()
             || (payload.kind == AssetKind::Blueprint && !path.join("graph_save.json").exists())
         {
             return;
         }
+        // Remember every pointer sample before querying the renderer. The
+        // render thread owns the same mutex and a missed try_lock must never
+        // turn into a stale release position.
+        self.pending_placement = Some((payload.clone(), (norm_x, norm_y)));
+        if let Some((_, _, cursor)) = &mut self.active_placement {
+            *cursor = (norm_x, norm_y);
+        }
+        let start_monitor = !self.placement_monitor_running;
+        self.placement_monitor_running = true;
+        let ignore_id = self.active_placement.as_ref().map(|(id, _, _)| id.as_str());
+        let position = match self.gpu_engine.try_lock() {
+            Ok(engine) => engine.editor_placement_position(norm_x, norm_y, ignore_id),
+            Err(_) if !cx.has_active_drag() => {
+                // Mouse-up is the commit boundary. Wait for the renderer's
+                // short frame critical section so the final release sample
+                // cannot be lost to lock contention.
+                let engine = self
+                    .gpu_engine
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner());
+                engine.editor_placement_position(norm_x, norm_y, ignore_id)
+            }
+            Err(_) => None,
+        };
+        let Some(position) = position else {
+            self.placement_retry_needed = true;
+            if start_monitor {
+                self.start_placement_monitor(window, cx);
+            }
+            return;
+        };
+        self.placement_retry_needed = false;
         let asset_path = path.to_string_lossy().replace('\\', "/");
         let mut state = self.shared_state.write();
-        let mut start_monitor = false;
         let id = if let Some((id, _, cursor)) = &mut self.active_placement {
             *cursor = (norm_x, norm_y);
             id.clone()
@@ -100,10 +122,6 @@ impl HelioViewport {
             }
             drop(world);
             self.active_placement = Some((id.clone(), before, (norm_x, norm_y)));
-            if !self.placement_monitor_running {
-                self.placement_monitor_running = true;
-                start_monitor = true;
-            }
             id
         };
         crate::scene_edit::objects::set_transform(
@@ -116,39 +134,51 @@ impl HelioViewport {
         state.scene.bump_revision(false);
         drop(state);
         if start_monitor {
-            cx.spawn_in(window, async move |this, cx| {
-                loop {
+            self.start_placement_monitor(window, cx);
+        }
+    }
+
+    fn start_placement_monitor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let this = cx.entity().clone();
+        cx.spawn_in(window, async move |_, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(50))
+                    .await;
+                let active = this
+                    .update_in(cx, |viewport, window, cx| {
+                        let active = cx.has_active_drag();
+                        if active && viewport.placement_retry_needed {
+                            if let Some((payload, (x, y))) = viewport.pending_placement.clone() {
+                                viewport.update_active_placement(&payload, x, y, window, cx);
+                            }
+                        }
+                        active
+                    })
+                    .unwrap_or(false);
+                if !active {
+                    // Drop dispatch follows shortly after GPUI clears the
+                    // active drag. Let its callback commit before cancelling.
                     cx.background_executor()
-                        .timer(std::time::Duration::from_millis(50))
+                        .timer(std::time::Duration::from_millis(120))
                         .await;
                     let active = this
-                        .update_in(cx, |_viewport, _window, cx| cx.has_active_drag())
+                        .update_in(cx, |viewport, _window, cx| {
+                            if cx.has_active_drag() {
+                                true
+                            } else {
+                                viewport.cancel_active_placement();
+                                false
+                            }
+                        })
                         .unwrap_or(false);
                     if !active {
-                        // GPUI can clear the drag payload just before it
-                        // dispatches the drop callback. Give that callback a
-                        // turn to commit before treating this as a cancel.
-                        cx.background_executor()
-                            .timer(std::time::Duration::from_millis(120))
-                            .await;
-                        let active = this
-                            .update_in(cx, |viewport, _window, cx| {
-                                if cx.has_active_drag() {
-                                    true
-                                } else {
-                                    viewport.cancel_active_placement();
-                                    false
-                                }
-                            })
-                            .unwrap_or(false);
-                        if !active {
-                            break;
-                        }
+                        break;
                     }
                 }
-            })
-            .detach();
-        }
+            }
+        })
+        .detach();
     }
 
     pub(super) fn finish_active_placement(&mut self) -> bool {
@@ -156,6 +186,8 @@ impl HelioViewport {
             return false;
         };
         self.placement_monitor_running = false;
+        self.pending_placement = None;
+        self.placement_retry_needed = false;
         let mut state = self.shared_state.write();
         let engine = self
             .gpu_engine
@@ -184,6 +216,8 @@ impl HelioViewport {
 
     fn cancel_active_placement(&mut self) {
         self.placement_monitor_running = false;
+        self.pending_placement = None;
+        self.placement_retry_needed = false;
         let Some((id, _, _)) = self.active_placement.take() else {
             return;
         };
@@ -217,6 +251,23 @@ impl HelioViewport {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // MouseUp can be newer than the final MouseMove. The drop callback
+        // still has the precise release position even though GPUI has already
+        // cleared its active drag payload.
+        if Self::supports_asset_placement(payload) {
+            if let Some(bounds) = self.placement_bounds {
+                let mouse = window.mouse_position();
+                let width: f32 = bounds.size.width.into();
+                let height: f32 = bounds.size.height.into();
+                if width > 0.0 && height > 0.0 {
+                    let norm_x = f32::from(mouse.x - bounds.origin.x) / width;
+                    let norm_y = f32::from(mouse.y - bounds.origin.y) / height;
+                    if (0.0..=1.0).contains(&norm_x) && (0.0..=1.0).contains(&norm_y) {
+                        self.update_active_placement(payload, norm_x, norm_y, window, cx);
+                    }
+                }
+            }
+        }
         if self.finish_active_placement() {
             window.push_notification(
                 Notification::success(t!("Notification.Title.AddedToScene").to_string())

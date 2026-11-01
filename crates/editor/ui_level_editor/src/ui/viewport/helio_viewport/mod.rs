@@ -5,7 +5,7 @@
 //!   2. Each frame: `back_view_with_size()` → render → `swap_buffers()`.
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,9 +15,9 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
-use ui::{ActiveTheme as _, ContextModal, notification::Notification};
+use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
-use crate::commands::{SceneCommand, TypedComponent, execute_command};
+use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 use helio_component::asset_component::component_for_asset;
@@ -87,6 +87,9 @@ pub struct HelioViewport {
     max_frame_ms_since_report: f64,
     active_placement: Option<(String, crate::scene_edit::SceneHistorySnapshot, (f32, f32))>,
     placement_monitor_running: bool,
+    placement_bounds: Option<Bounds<Pixels>>,
+    pending_placement: Option<(AssetPayload, (f32, f32))>,
+    placement_retry_needed: bool,
 }
 
 mod assets;
@@ -126,6 +129,9 @@ impl HelioViewport {
             max_frame_ms_since_report: 0.0,
             active_placement: None,
             placement_monitor_running: false,
+            placement_bounds: None,
+            pending_placement: None,
+            placement_retry_needed: false,
         }
     }
 
@@ -359,6 +365,7 @@ impl Render for HelioViewport {
                         return;
                     }
                     viewport.update(cx, |this, cx| {
+                        this.placement_bounds = Some(event.bounds);
                         this.update_active_placement(&payload, norm_x, norm_y, window, cx)
                     });
                 }
