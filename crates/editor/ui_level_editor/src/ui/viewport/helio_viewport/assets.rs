@@ -9,7 +9,11 @@ impl HelioViewport {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if payload.is_source_model() || !matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene)
+        if payload.is_source_model()
+            || !matches!(
+                payload.kind,
+                AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
+            )
         {
             return;
         }
@@ -22,7 +26,9 @@ impl HelioViewport {
             return;
         };
         let path = PathBuf::from(&payload.engine_path);
-        if !path.exists() {
+        if !path.exists()
+            || (payload.kind == AssetKind::Blueprint && !path.join("graph_save.json").exists())
+        {
             return;
         }
         let asset_path = path.to_string_lossy().replace('\\', "/");
@@ -33,42 +39,59 @@ impl HelioViewport {
         } else {
             let before =
                 crate::scene_edit::history::capture_history_subset(&state.scene.world(), &[]);
-            let name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Imported Asset")
-                .to_string();
-            let data = SceneObjectData {
-                id: String::new(),
-                name,
-                object_type: ObjectType::Mesh(MeshType::Custom),
-                transform: Transform {
-                    position,
-                    ..Transform::default()
-                },
-                visible: true,
-                locked: false,
-                parent: None,
-                children: vec![],
-                props: std::collections::HashMap::new(),
-                scene_path: path.display().to_string(),
-                component_instances: None,
-            };
             let mut world = state.scene.world_mut();
-            let id = crate::scene_edit::objects::add_object(&mut world, data, None);
+            let id = if payload.kind == AssetKind::Blueprint {
+                crate::scene_edit::classes::instantiate_class_dir(
+                    &mut world,
+                    &path,
+                    &Transform {
+                        position,
+                        ..Transform::default()
+                    },
+                    None,
+                )
+                .ok()
+                .and_then(|ids| ids.into_iter().next())
+                .unwrap_or_default()
+            } else {
+                let name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Imported Asset")
+                    .to_string();
+                let data = SceneObjectData {
+                    id: String::new(),
+                    name,
+                    object_type: ObjectType::Mesh(MeshType::Custom),
+                    transform: Transform {
+                        position,
+                        ..Transform::default()
+                    },
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    props: std::collections::HashMap::new(),
+                    scene_path: path.display().to_string(),
+                    component_instances: None,
+                };
+                crate::scene_edit::objects::add_object(&mut world, data, None)
+            };
             if id.is_empty() {
                 return;
             }
-            if let Some(registration) = component_for_asset(&payload.kind)
-                .filter(|registration| REGISTRY.has_class(registration.class_name))
-            {
-                crate::scene_edit::components::add_component_value_enabled(
-                    &mut world,
-                    &id,
-                    registration.class_name,
-                    Some((registration.value_for)(&asset_path)),
-                    true,
-                );
+            if payload.kind != AssetKind::Blueprint {
+                if let Some(registration) = component_for_asset(&payload.kind)
+                    .filter(|registration| REGISTRY.has_class(registration.class_name))
+                {
+                    crate::scene_edit::components::add_component_value_enabled(
+                        &mut world,
+                        &id,
+                        registration.class_name,
+                        Some((registration.value_for)(&asset_path)),
+                        true,
+                    );
+                }
             }
             drop(world);
             self.placement_preview = Some((id.clone(), before));
@@ -88,7 +111,6 @@ impl HelioViewport {
         state.scene.bump_revision(false);
         drop(state);
         if start_monitor {
-            let viewport = cx.entity().clone();
             cx.spawn_in(window, async move |this, cx| {
                 loop {
                     cx.background_executor()
