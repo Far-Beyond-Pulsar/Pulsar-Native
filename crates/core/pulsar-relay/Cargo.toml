@@ -50,9 +50,9 @@ bincode = { version = "2.0.1", features = ["serde"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt", "ansi"] }
 colored = "3.0"
-opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+opentelemetry = "0.33"
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic"] }
 
 # Metrics
 prometheus = "0.14"
