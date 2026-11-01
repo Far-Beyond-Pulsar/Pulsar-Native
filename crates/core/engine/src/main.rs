@@ -377,6 +377,8 @@ fn main() {
         backends: renderer_backends,
         power_preference,
         hardware_ray_queries,
+        preferred_backends: wgpu::Backends::empty(),
+        device_factory: None,
     })
     .with_assets(Assets);
 
