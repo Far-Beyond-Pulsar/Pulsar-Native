@@ -354,9 +354,12 @@ impl BlueprintTraitIndex {
             .collect();
         let db = TraitDb::build(
             traits.clone(),
-            blueprints
-                .iter()
-                .map(|entry| (entry.blueprint_path.clone(), entry.implemented_trait_ids.clone())),
+            blueprints.iter().map(|entry| {
+                (
+                    entry.blueprint_path.clone(),
+                    entry.implemented_trait_ids.clone(),
+                )
+            }),
         );
         Self {
             traits,
@@ -384,7 +387,9 @@ impl BlueprintTraitIndex {
     /// The indexed Blueprint at `blueprint_path`.
     pub fn entry(&self, blueprint_path: &str) -> Option<&BlueprintTraitEntry> {
         let path = normalize_relative_path(blueprint_path)?;
-        self.blueprint_pos.get(&path).map(|&at| &self.blueprints[at])
+        self.blueprint_pos
+            .get(&path)
+            .map(|&at| &self.blueprints[at])
     }
 
     /// Return all indexed Blueprint entries that implement the trait
@@ -482,7 +487,8 @@ impl BlueprintTraitIndex {
         for blueprint in blueprints {
             let normalized = normalize_relative_path(&blueprint.blueprint_path)
                 .context("Blueprint trait index contains an unsafe Blueprint path")?;
-            if normalized != blueprint.blueprint_path || !is_blueprint_asset(&blueprint.blueprint_path)
+            if normalized != blueprint.blueprint_path
+                || !is_blueprint_asset(&blueprint.blueprint_path)
             {
                 anyhow::bail!("Blueprint trait index contains a non-canonical Blueprint path");
             }
@@ -672,9 +678,7 @@ fn relative_to(project_root: &Path, path: &Path) -> Option<String> {
     let root = root.trim_end_matches('/');
     let stripped = if path.is_absolute() {
         let lowered = text.to_ascii_lowercase();
-        if lowered.starts_with(&root.to_ascii_lowercase())
-            && text[root.len()..].starts_with('/')
-        {
+        if lowered.starts_with(&root.to_ascii_lowercase()) && text[root.len()..].starts_with('/') {
             text[root.len() + 1..].to_owned()
         } else {
             return None;
@@ -731,11 +735,19 @@ pub fn declared_traits(db: &TraitDb, blueprint: &[u8]) -> Option<BlueprintTraitE
 pub(crate) fn entry_for(db: &TraitDb, relative: &str, declared: &Declared) -> BlueprintTraitEntry {
     let mut ids = BTreeSet::new();
     let mut unresolved = BTreeSet::new();
-    for id in declared.ids.iter().map(|id| id.trim()).filter(|id| !id.is_empty()) {
+    for id in declared
+        .ids
+        .iter()
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+    {
         if db.get(id).is_some() {
             ids.insert(id.to_owned());
         } else {
-            tracing::warn!(blueprint = relative, "Ignoring reference to missing trait id '{id}'");
+            tracing::warn!(
+                blueprint = relative,
+                "Ignoring reference to missing trait id '{id}'"
+            );
             unresolved.insert(id.to_owned());
         }
     }
@@ -744,7 +756,10 @@ pub(crate) fn entry_for(db: &TraitDb, relative: &str, declared: &Declared) -> Bl
     let ids_cover_paths = !declared.ids.is_empty() && unresolved.is_empty();
     for raw in &declared.paths {
         let Some(path) = normalize_relative_path(raw).filter(|p| is_trait_asset(p)) else {
-            tracing::warn!(blueprint = relative, "Ignoring invalid Blueprint trait reference");
+            tracing::warn!(
+                blueprint = relative,
+                "Ignoring invalid Blueprint trait reference"
+            );
             continue;
         };
         match db.id_for_path(&path) {
@@ -854,7 +869,11 @@ mod tests {
     #[test]
     fn legacy_path_references_resolve_and_traits_get_ids() {
         let dir = tempfile::tempdir().unwrap();
-        put(dir.path(), "types/traits/movable.trait.json", &trait_json("Movable", None));
+        put(
+            dir.path(),
+            "types/traits/movable.trait.json",
+            &trait_json("Movable", None),
+        );
         put(
             dir.path(),
             "classes/Player/graph_save.json",
@@ -865,11 +884,19 @@ mod tests {
         let id = id_in_file(dir.path(), "types/traits/movable.trait.json");
         let entry = index.entry("classes/Player/graph_save.json").unwrap();
         assert_eq!(entry.implemented_trait_ids, [id.as_str()]);
-        assert_eq!(entry.implemented_traits, ["types/traits/movable.trait.json"]);
-        assert!(entry.path_only, "path-only references are flagged for migration");
+        assert_eq!(
+            entry.implemented_traits,
+            ["types/traits/movable.trait.json"]
+        );
+        assert!(
+            entry.path_only,
+            "path-only references are flagged for migration"
+        );
         assert!(entry.unresolved.is_empty());
         assert_eq!(
-            index.blueprints_for_trait("types/traits/movable.trait.json").len(),
+            index
+                .blueprints_for_trait("types/traits/movable.trait.json")
+                .len(),
             1
         );
         assert_eq!(index.blueprints_for_trait(&id).len(), 1);
@@ -878,14 +905,23 @@ mod tests {
     #[test]
     fn a_renamed_trait_keeps_its_implementers_and_a_second_rebuild_is_stable() {
         let dir = tempfile::tempdir().unwrap();
-        put(dir.path(), "types/traits/movable.trait.json", &trait_json("Movable", Some("T-1")));
+        put(
+            dir.path(),
+            "types/traits/movable.trait.json",
+            &trait_json("Movable", Some("T-1")),
+        );
         put(
             dir.path(),
             "classes/Player/graph_save.json",
             &blueprint_json(&["T-1"], &["types/traits/movable.trait.json"]),
         );
         let first = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
-        assert!(!first.entry("classes/Player/graph_save.json").unwrap().path_only);
+        assert!(
+            !first
+                .entry("classes/Player/graph_save.json")
+                .unwrap()
+                .path_only
+        );
 
         std::fs::create_dir_all(dir.path().join("gameplay")).unwrap();
         std::fs::rename(
@@ -897,7 +933,10 @@ mod tests {
         let entry = second.entry("classes/Player/graph_save.json").unwrap();
         assert_eq!(entry.implemented_trait_ids, ["T-1"]);
         assert_eq!(entry.implemented_traits, ["gameplay/mobile.trait.json"]);
-        assert!(entry.unresolved.is_empty(), "the stale path hint is not a missing trait");
+        assert!(
+            entry.unresolved.is_empty(),
+            "the stale path hint is not a missing trait"
+        );
         assert_eq!(second.blueprints_for_trait("T-1").len(), 1);
 
         let third = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
@@ -914,8 +953,16 @@ mod tests {
         put(dir.path(), "a.trait.json", &trait_json("Same", Some("dup")));
         put(dir.path(), "b.trait.json", &trait_json("Same", Some("dup")));
         let index = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
-        let a = index.traits().iter().find(|t| t.path == "a.trait.json").unwrap();
-        let b = index.traits().iter().find(|t| t.path == "b.trait.json").unwrap();
+        let a = index
+            .traits()
+            .iter()
+            .find(|t| t.path == "a.trait.json")
+            .unwrap();
+        let b = index
+            .traits()
+            .iter()
+            .find(|t| t.path == "b.trait.json")
+            .unwrap();
         assert_eq!(a.id, "dup");
         assert_ne!(b.id, "dup");
         assert_eq!(id_in_file(dir.path(), "b.trait.json"), b.id);
@@ -927,12 +974,18 @@ mod tests {
         put(
             dir.path(),
             "classes/A/graph_save.json",
-            &blueprint_json(&["gone-id"], &["types/traits/gone.trait.json", "../escape.trait.json"]),
+            &blueprint_json(
+                &["gone-id"],
+                &["types/traits/gone.trait.json", "../escape.trait.json"],
+            ),
         );
         let index = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
         let entry = index.entry("classes/A/graph_save.json").unwrap();
         assert!(entry.implemented_trait_ids.is_empty());
-        assert_eq!(entry.unresolved, ["gone-id", "types/traits/gone.trait.json"]);
+        assert_eq!(
+            entry.unresolved,
+            ["gone-id", "types/traits/gone.trait.json"]
+        );
     }
 
     #[test]
@@ -944,10 +997,16 @@ mod tests {
             &blueprint_json(&[], &[GAME_MODE_TRAIT_PATH]),
         );
         let index = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
-        assert_eq!(index.resolve_trait("GameMode").unwrap().id, GAME_MODE_TRAIT_ID);
+        assert_eq!(
+            index.resolve_trait("GameMode").unwrap().id,
+            GAME_MODE_TRAIT_ID
+        );
         assert_eq!(index.blueprints_for_trait(GAME_MODE_TRAIT_PATH).len(), 1);
         assert_eq!(index.blueprints_for_trait(GAME_MODE_TRAIT_ID).len(), 1);
-        assert_eq!(index.db().traits().filter(|t| t.builtin).count(), crate::builtin_traits::all().len());
+        assert_eq!(
+            index.db().traits().filter(|t| t.builtin).count(),
+            crate::builtin_traits::all().len()
+        );
     }
 
     #[test]
@@ -955,13 +1014,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut sub: Value = serde_json::from_str(&trait_json("MyMode", Some("sub"))).unwrap();
         sub["supertraits"] = json!([GAME_MODE_TRAIT_ID]);
-        put(dir.path(), "types/traits/my_mode.trait.json", &sub.to_string());
-        put(dir.path(), "classes/M/graph_save.json", &blueprint_json(&["sub"], &[]));
+        put(
+            dir.path(),
+            "types/traits/my_mode.trait.json",
+            &sub.to_string(),
+        );
+        put(
+            dir.path(),
+            "classes/M/graph_save.json",
+            &blueprint_json(&["sub"], &[]),
+        );
         let index = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
         let modes = index.blueprints_for_trait(GAME_MODE_TRAIT_ID);
         assert_eq!(modes.len(), 1);
         assert_eq!(modes[0].blueprint_path, "classes/M/graph_save.json");
-        assert!(index.db().implements("classes/M/graph_save.json", "GameMode"));
+        assert!(index
+            .db()
+            .implements("classes/M/graph_save.json", "GameMode"));
         // The Blueprint declared only the sub-trait.
         assert_eq!(modes[0].implemented_trait_ids, ["sub"]);
     }
@@ -969,40 +1038,85 @@ mod tests {
     #[test]
     fn update_path_matches_a_full_rebuild() {
         let dir = tempfile::tempdir().unwrap();
-        put(dir.path(), "types/traits/a.trait.json", &trait_json("A", Some("ta")));
-        put(dir.path(), "classes/One/graph_save.json", &blueprint_json(&["ta"], &[]));
+        put(
+            dir.path(),
+            "types/traits/a.trait.json",
+            &trait_json("A", Some("ta")),
+        );
+        put(
+            dir.path(),
+            "classes/One/graph_save.json",
+            &blueprint_json(&["ta"], &[]),
+        );
         BlueprintTraitIndex::rebuild(dir.path()).unwrap();
 
         // A new Blueprint, a changed Blueprint, a new trait it can now resolve.
-        put(dir.path(), "classes/Two/graph_save.json", &blueprint_json(&["tb"], &[]));
-        let updated =
-            BlueprintTraitIndex::update_path(dir.path(), &dir.path().join("classes/Two/graph_save.json"))
-                .unwrap();
-        assert_eq!(updated.entry("classes/Two/graph_save.json").unwrap().unresolved, ["tb"]);
+        put(
+            dir.path(),
+            "classes/Two/graph_save.json",
+            &blueprint_json(&["tb"], &[]),
+        );
+        let updated = BlueprintTraitIndex::update_path(
+            dir.path(),
+            &dir.path().join("classes/Two/graph_save.json"),
+        )
+        .unwrap();
+        assert_eq!(
+            updated
+                .entry("classes/Two/graph_save.json")
+                .unwrap()
+                .unresolved,
+            ["tb"]
+        );
 
-        put(dir.path(), "types/traits/b.trait.json", &trait_json("B", Some("tb")));
+        put(
+            dir.path(),
+            "types/traits/b.trait.json",
+            &trait_json("B", Some("tb")),
+        );
         let updated =
-            BlueprintTraitIndex::update_path(dir.path(), Path::new("types/traits/b.trait.json")).unwrap();
-        assert!(updated.entry("classes/Two/graph_save.json").unwrap().unresolved.is_empty());
+            BlueprintTraitIndex::update_path(dir.path(), Path::new("types/traits/b.trait.json"))
+                .unwrap();
+        assert!(updated
+            .entry("classes/Two/graph_save.json")
+            .unwrap()
+            .unresolved
+            .is_empty());
         assert_eq!(updated, BlueprintTraitIndex::rebuild(dir.path()).unwrap());
 
         // Delete a Blueprint, then a trait.
         std::fs::remove_file(dir.path().join("classes/One/graph_save.json")).unwrap();
         let updated =
-            BlueprintTraitIndex::update_path(dir.path(), Path::new("classes/One/graph_save.json")).unwrap();
+            BlueprintTraitIndex::update_path(dir.path(), Path::new("classes/One/graph_save.json"))
+                .unwrap();
         assert!(updated.entry("classes/One/graph_save.json").is_none());
         std::fs::remove_file(dir.path().join("types/traits/b.trait.json")).unwrap();
         let updated =
-            BlueprintTraitIndex::update_path(dir.path(), Path::new("types/traits/b.trait.json")).unwrap();
-        assert_eq!(updated.entry("classes/Two/graph_save.json").unwrap().unresolved, ["tb"]);
+            BlueprintTraitIndex::update_path(dir.path(), Path::new("types/traits/b.trait.json"))
+                .unwrap();
+        assert_eq!(
+            updated
+                .entry("classes/Two/graph_save.json")
+                .unwrap()
+                .unresolved,
+            ["tb"]
+        );
         assert_eq!(updated, BlueprintTraitIndex::rebuild(dir.path()).unwrap());
     }
 
     #[test]
     fn update_path_follows_a_moved_trait_without_losing_identity() {
         let dir = tempfile::tempdir().unwrap();
-        put(dir.path(), "types/traits/a.trait.json", &trait_json("A", Some("ta")));
-        put(dir.path(), "classes/One/graph_save.json", &blueprint_json(&["ta"], &[]));
+        put(
+            dir.path(),
+            "types/traits/a.trait.json",
+            &trait_json("A", Some("ta")),
+        );
+        put(
+            dir.path(),
+            "classes/One/graph_save.json",
+            &blueprint_json(&["ta"], &[]),
+        );
         BlueprintTraitIndex::rebuild(dir.path()).unwrap();
 
         std::fs::create_dir_all(dir.path().join("moved")).unwrap();
@@ -1013,9 +1127,15 @@ mod tests {
         .unwrap();
         let updated =
             BlueprintTraitIndex::update_path(dir.path(), Path::new("moved/a.trait.json")).unwrap();
-        assert_eq!(updated.resolve_trait("ta").unwrap().path, "moved/a.trait.json");
         assert_eq!(
-            updated.entry("classes/One/graph_save.json").unwrap().implemented_traits,
+            updated.resolve_trait("ta").unwrap().path,
+            "moved/a.trait.json"
+        );
+        assert_eq!(
+            updated
+                .entry("classes/One/graph_save.json")
+                .unwrap()
+                .implemented_traits,
             ["moved/a.trait.json"]
         );
         assert_eq!(updated, BlueprintTraitIndex::rebuild(dir.path()).unwrap());
@@ -1024,10 +1144,18 @@ mod tests {
     #[test]
     fn lookups_accept_either_slash_style_and_reject_unsafe_paths() {
         let dir = tempfile::tempdir().unwrap();
-        put(dir.path(), "classes/One/graph_save.json", &blueprint_json(&[], &[]));
+        put(
+            dir.path(),
+            "classes/One/graph_save.json",
+            &blueprint_json(&[], &[]),
+        );
         let index = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
-        assert!(index.traits_for_blueprint(Path::new("classes\\One\\graph_save.json")).is_some());
-        assert!(index.traits_for_blueprint(Path::new("../classes/One/graph_save.json")).is_none());
+        assert!(index
+            .traits_for_blueprint(Path::new("classes\\One\\graph_save.json"))
+            .is_some());
+        assert!(index
+            .traits_for_blueprint(Path::new("../classes/One/graph_save.json"))
+            .is_none());
         assert!(index.blueprints_for_trait("../x.trait.json").is_empty());
     }
 
@@ -1045,21 +1173,29 @@ mod tests {
     #[test]
     fn the_type_index_is_cross_referenced() {
         let dir = tempfile::tempdir().unwrap();
-        put(dir.path(), "types/traits/a.trait.json", &trait_json("Named", Some("ta")));
+        put(
+            dir.path(),
+            "types/traits/a.trait.json",
+            &trait_json("Named", Some("ta")),
+        );
         put(
             dir.path(),
             "type-index/index.json",
             r#"{"types":{"traits":{"Named":{}}}}"#,
         );
         let index = BlueprintTraitIndex::rebuild(dir.path()).unwrap();
-        assert_eq!(index.resolve_trait("ta").unwrap().type_index_id.as_deref(), Some("trait:Named"));
+        assert_eq!(
+            index.resolve_trait("ta").unwrap().type_index_id.as_deref(),
+            Some("trait:Named")
+        );
     }
 
     #[test]
     fn blueprints_as_the_editor_saves_them_are_indexed() {
         // Format 2, preceded by the editor's `//` header comments.
         let dir = tempfile::tempdir().unwrap();
-        let body = blueprint_json(&[], &[GAME_MODE_TRAIT_PATH]).replace("\"format_version\":1", "\"format_version\":2");
+        let body = blueprint_json(&[], &[GAME_MODE_TRAIT_PATH])
+            .replace("\"format_version\":1", "\"format_version\":2");
         put(
             dir.path(),
             "classes/Saved/graph_save.json",

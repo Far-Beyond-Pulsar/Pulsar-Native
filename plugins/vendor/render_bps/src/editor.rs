@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 
 use gpui::*;
 use graphy::{Connection, ConnectionType, GraphCommand, GraphDescription, NodeInstance, Position};
-use graphy_gpui::canvas::{CanvasEvent, GraphCanvas, system_fonts};
+use graphy_gpui::canvas::{system_fonts, CanvasEvent, GraphCanvas};
 use graphy_gpui::{Action, GraphProfile as _, MenuItem, MenuTarget};
 use graphy_render::Vec2;
 use plugin_editor_api::{DocumentId, History, SharedHistory, UndoEntry, UndoService};
@@ -28,7 +28,7 @@ use crate::collapse::collapse as document_collapse;
 use crate::document::{self, DocRef, GraphRef, RenderDocument};
 use crate::model;
 use crate::preview::PipelinePreview;
-use crate::profile::{MENU_COLLAPSE, MENU_EXPAND, RenderProfile, SectionNames};
+use crate::profile::{RenderProfile, SectionNames, MENU_COLLAPSE, MENU_EXPAND};
 
 /// Grid the canvas snaps nodes and comments to.
 pub const GRID: f64 = 10.0;

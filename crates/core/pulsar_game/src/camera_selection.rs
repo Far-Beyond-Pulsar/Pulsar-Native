@@ -38,7 +38,11 @@ use pulsar_scenedb::{Entity, World};
 /// object is (`Transform.rotation` = Euler degrees YXZ, `[pitch, yaw,
 /// roll]`), so a camera placed on a planet's side stands on it. The eye is
 /// the f64 world position.
-fn render_camera(world: &World, owner: Entity, lens: Option<ResolvedProjection>) -> Option<RenderCamera> {
+fn render_camera(
+    world: &World,
+    owner: Entity,
+    lens: Option<ResolvedProjection>,
+) -> Option<RenderCamera> {
     let matrix = world_matrix_of(world, owner)?;
     let (_, rotation, position) = matrix.to_scale_rotation_translation();
     let rotation = rotation.as_quat();
@@ -58,7 +62,11 @@ fn render_camera(world: &World, owner: Entity, lens: Option<ResolvedProjection>)
             camera.near = near;
             camera.far = far;
         }
-        Some(ResolvedProjection::Orthographic { half_height, near, far }) => {
+        Some(ResolvedProjection::Orthographic {
+            half_height,
+            near,
+            far,
+        }) => {
             camera.near = near;
             camera.far = far;
             camera.orthographic_half_height = Some(half_height);
@@ -235,9 +243,12 @@ mod tests {
     }
 
     fn give_camera(store: &mut pulsar_scenedb::SceneDb, owner: Entity, camera: CameraComponent) {
-        let instance =
-            attachments::spawn_instance(&mut store.world, owner, NewInstance::new(CAMERA_CLASS_NAME))
-                .unwrap();
+        let instance = attachments::spawn_instance(
+            &mut store.world,
+            owner,
+            NewInstance::new(CAMERA_CLASS_NAME),
+        )
+        .unwrap();
         store.world.insert(instance, camera);
     }
 
@@ -253,7 +264,10 @@ mod tests {
     #[test]
     fn precedence_runs_pushed_then_view_target_then_priority_then_legacy_then_free() {
         let mut store = engine_backend::scene::new_scene();
-        assert!(camera_for_frame(None, &store, None).is_none(), "free camera");
+        assert!(
+            camera_for_frame(None, &store, None).is_none(),
+            "free camera"
+        );
 
         let legacy = placed(&mut store, "Legacy", [1.0, 0.0, 0.0]);
         store.world.insert(legacy, ObjectType::Camera);
@@ -272,14 +286,20 @@ mod tests {
             "the highest priority component outranks the legacy camera"
         );
         assert_eq!(
-            camera_for_frame(None, &store, Some(target)).unwrap().position.x,
+            camera_for_frame(None, &store, Some(target))
+                .unwrap()
+                .position
+                .x,
             4.0,
             "the view target outranks any priority"
         );
 
-        let pushed = RenderCamera::look_at(glam::DVec3::splat(9.0), glam::DVec3::ZERO, glam::Vec3::Y);
+        let pushed =
+            RenderCamera::look_at(glam::DVec3::splat(9.0), glam::DVec3::ZERO, glam::Vec3::Y);
         assert_eq!(
-            camera_for_frame(Some(pushed), &store, Some(target)).unwrap().position,
+            camera_for_frame(Some(pushed), &store, Some(target))
+                .unwrap()
+                .position,
             glam::DVec3::splat(9.0),
             "a camera gameplay pushed outranks everything"
         );
@@ -292,12 +312,18 @@ mod tests {
         let legacy = placed(&mut store, "Legacy", [7.0, 0.0, 0.0]);
         store.world.insert(legacy, ObjectType::Camera);
         assert!(!view_target_drives_camera(&store, Some(bare)));
-        assert_eq!(select_world_camera(&store, Some(bare)).unwrap().position.x, 7.0);
+        assert_eq!(
+            select_world_camera(&store, Some(bare)).unwrap().position.x,
+            7.0
+        );
         // A dead target is no target.
         let gone = placed(&mut store, "Gone", [0.0; 3]);
         store.world.despawn_tree(gone);
         assert!(!view_target_drives_camera(&store, Some(gone)));
-        assert_eq!(select_world_camera(&store, Some(gone)).unwrap().position.x, 7.0);
+        assert_eq!(
+            select_world_camera(&store, Some(gone)).unwrap().position.x,
+            7.0
+        );
     }
 
     #[test]
@@ -344,7 +370,10 @@ mod tests {
         legacy_store.world.insert(legacy, ObjectType::Camera);
         let lens = FreeCam::default();
         let seen = select_world_camera(&legacy_store, None).unwrap();
-        assert_eq!((seen.fov_y, seen.near, seen.far), (lens.fov_y, lens.near, lens.far));
+        assert_eq!(
+            (seen.fov_y, seen.near, seen.far),
+            (lens.fov_y, lens.near, lens.far)
+        );
     }
 
     /// A camera under a moving, turning object follows it through the
@@ -372,7 +401,11 @@ mod tests {
         );
         let eye = select_world_camera(&store, Some(pawn)).unwrap();
         assert_eq!(eye.position, glam::DVec3::new(0.0, 1.7, 20.0));
-        assert!(eye.forward.abs_diff_eq(glam::Vec3::NEG_X, 1e-5), "{:?}", eye.forward);
+        assert!(
+            eye.forward.abs_diff_eq(glam::Vec3::NEG_X, 1e-5),
+            "{:?}",
+            eye.forward
+        );
     }
 
     /// A hidden camera still drives the view (visibility culls its *body*

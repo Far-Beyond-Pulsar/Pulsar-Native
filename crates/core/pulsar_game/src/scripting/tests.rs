@@ -2208,8 +2208,15 @@ mod roles {
                 params.clone(),
                 vec![Type::Str],
                 vec![
-                    Instr::Const { dst: slot, index: index as u32 },
-                    Instr::CallNative { import: 0, args: vec![slot], dst: None },
+                    Instr::Const {
+                        dst: slot,
+                        index: index as u32,
+                    },
+                    Instr::CallNative {
+                        import: 0,
+                        args: vec![slot],
+                        dst: None,
+                    },
                     Instr::Return { value: None },
                 ],
             );
@@ -2295,7 +2302,13 @@ mod roles {
         // Declares nothing.
         write_role_class(root, "Plain", &[], &[]);
         // Has no Blueprint file to read, as in content shipped without one.
-        write_class(root, "Opaque", "Opaque-guid", Some(role_module("Opaque", &[])), None);
+        write_class(
+            root,
+            "Opaque",
+            "Opaque-guid",
+            Some(role_module("Opaque", &[])),
+            None,
+        );
         dir
     }
 
@@ -2336,7 +2349,12 @@ mod roles {
     }
 
     fn role_entities(game: &TickLoop) -> Vec<(EngineRole, Entity)> {
-        game.scripts.as_ref().unwrap().lock().unwrap().role_entities()
+        game.scripts
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .role_entities()
     }
 
     #[test]
@@ -2380,7 +2398,10 @@ mod roles {
         let mut driver = game.scripts.as_ref().unwrap().lock().unwrap();
         let store = game.scene_store.read();
         for (role, entity) in &spawned {
-            assert!(driver.instance_of(*entity).is_some(), "{role:?} runs a script");
+            assert!(
+                driver.instance_of(*entity).is_some(),
+                "{role:?} runs a script"
+            );
             assert!(
                 driver.entity_implements(&store.world, *entity, role.spec().trait_id),
                 "{role:?} implements its trait"
@@ -2398,7 +2419,10 @@ mod roles {
         let level = level(project.path(), &[]);
         let (mut game, log) = standalone(project.path(), &level);
         game.set_world_roles(WorldRoles::resolve(
-            &selection(&[(EngineRole::GameMode, "Mode"), (EngineRole::GameState, "Ghost")]),
+            &selection(&[
+                (EngineRole::GameMode, "Mode"),
+                (EngineRole::GameState, "Ghost"),
+            ]),
             None,
         ));
         game.tick_once();
@@ -2429,7 +2453,12 @@ mod roles {
         game.set_world_roles(all_roles());
         game.tick_once();
         game.tick_once();
-        let input = |log: &Log| events(log).into_iter().filter(|(name, _)| name != "pad:input").count();
+        let input = |log: &Log| {
+            events(log)
+                .into_iter()
+                .filter(|(name, _)| name != "pad:input")
+                .count()
+        };
         let before = input(&log);
 
         let controller = game
@@ -2449,13 +2478,20 @@ mod roles {
             .to_owned();
         {
             let driver = game.scripts.as_ref().unwrap().lock().unwrap();
-            assert_eq!(driver.entity_of_instance(driver.instance_of(controller).unwrap()), Some(controller));
+            assert_eq!(
+                driver.entity_of_instance(driver.instance_of(controller).unwrap()),
+                Some(controller)
+            );
         }
 
         // Another entity's channel does not reach it; its own does.
         let hero = role_entities(&game)[3].1;
         game.events
-            .publish_named(entity_channel(hero.bits()), "Pad.on_possess", vec![DynValue::I64(7)])
+            .publish_named(
+                entity_channel(hero.bits()),
+                "Pad.on_possess",
+                vec![DynValue::I64(7)],
+            )
             .unwrap();
         game.events
             .publish_named(
@@ -2466,7 +2502,11 @@ mod roles {
             .unwrap();
         game.tick_once();
         game.tick_once();
-        assert_eq!(input(&log), before + 1, "exactly the controller's handler ran");
+        assert_eq!(
+            input(&log),
+            before + 1,
+            "exactly the controller's handler ran"
+        );
         let log = events(&log);
         let handled: Vec<_> = log.iter().filter(|(name, _)| name != "pad:input").collect();
         assert_eq!(*handled[before], ev("pad:possess", &stable));
@@ -2478,7 +2518,13 @@ mod roles {
     fn stopping_leaves_no_role_entities_in_the_shared_world() {
         let project = role_project();
         let level = level(project.path(), &[("a", None, Some((MINION, "Minion")))]);
-        write_class(project.path(), "Minion", MINION, Some(minion_module()), None);
+        write_class(
+            project.path(),
+            "Minion",
+            MINION,
+            Some(minion_module()),
+            None,
+        );
         let (mut game, _) = pie(project.path(), &level);
         game.set_world_roles(all_roles());
         game.tick_once();
@@ -2495,16 +2541,16 @@ mod roles {
             for (role, entity) in &spawned {
                 assert!(!store.world.is_alive(*entity), "{role:?} is gone");
             }
-            assert!(store.world.is_alive(level_objects), "the level is untouched");
+            assert!(
+                store.world.is_alive(level_objects),
+                "the level is untouched"
+            );
         }
         assert!(role_entities(&game).is_empty());
 
         // The next session over the same world spawns its own four.
-        let mut again = TickLoop::with_scene_store(
-            Arc::clone(&game.scene_store),
-            TickMode::default(),
-            0,
-        );
+        let mut again =
+            TickLoop::with_scene_store(Arc::clone(&game.scene_store), TickMode::default(), 0);
         let log = install_log(&mut again.enable_scripting(project.path()).lock().unwrap());
         again.set_world_roles(all_roles());
         again.tick_once();
@@ -2532,11 +2578,8 @@ mod roles {
         let before = role_entities(&first);
         assert_eq!(marked(&first), 4);
 
-        let mut second = TickLoop::with_scene_store(
-            Arc::clone(&first.scene_store),
-            TickMode::default(),
-            0,
-        );
+        let mut second =
+            TickLoop::with_scene_store(Arc::clone(&first.scene_store), TickMode::default(), 0);
         second.begin_script_reload();
         let log = install_log(&mut second.enable_scripting(project.path()).lock().unwrap());
         second.set_world_roles(all_roles());
@@ -2546,15 +2589,15 @@ mod roles {
         assert_eq!(role_entities(&second), before, "the entities were re-bound");
         // The fresh session's scripts run on them (the character was running
         // already, so possession finished a frame early and `on_input` began).
-        let hooks: Vec<_> = names(&log).into_iter().filter(|n| n != "pad:input").collect();
+        let hooks: Vec<_> = names(&log)
+            .into_iter()
+            .filter(|n| n != "pad:input")
+            .collect();
         assert_eq!(hooks.len(), 7, "{hooks:?}");
 
         // A leftover of a role the level no longer assigns is removed.
-        let mut third = TickLoop::with_scene_store(
-            Arc::clone(&first.scene_store),
-            TickMode::default(),
-            0,
-        );
+        let mut third =
+            TickLoop::with_scene_store(Arc::clone(&first.scene_store), TickMode::default(), 0);
         third.enable_scripting(project.path());
         third.set_world_roles(WorldRoles::resolve(
             &selection(&[(EngineRole::GameMode, "Mode")]),
@@ -2612,8 +2655,14 @@ mod roles {
         assert!(driver.class_implements("Hero", PLAYER_CHARACTER_TRAIT_ID));
         assert!(driver.class_implements("Hero-guid", PLAYER_CHARACTER_TRAIT_ID));
         assert!(!driver.class_implements("Hero", GAME_MODE_TRAIT_ID));
-        assert!(!driver.class_implements("Plain", PLAYER_CHARACTER_TRAIT_ID), "declares nothing");
-        assert!(!driver.class_implements("Ghost", PLAYER_CHARACTER_TRAIT_ID), "no such class");
+        assert!(
+            !driver.class_implements("Plain", PLAYER_CHARACTER_TRAIT_ID),
+            "declares nothing"
+        );
+        assert!(
+            !driver.class_implements("Ghost", PLAYER_CHARACTER_TRAIT_ID),
+            "no such class"
+        );
         assert!(!driver.class_implements("Hero", "no.such.trait"));
         // Supertraits count: Knight declares only `Pawn`.
         assert!(driver.class_implements("Knight", "test.pawn"));
@@ -2659,7 +2708,12 @@ mod roles {
             .into_iter()
             .filter(|(method, ..)| *method != "on_possessed")
             .collect();
-        write_role_class(project.path(), "Lacking", &[PLAYER_CHARACTER_TRAIT_ID], &lacking);
+        write_role_class(
+            project.path(),
+            "Lacking",
+            &[PLAYER_CHARACTER_TRAIT_ID],
+            &lacking,
+        );
         custom_trait(project.path());
 
         let (mut driver, log) = driver_over(project.path());
@@ -2669,7 +2723,9 @@ mod roles {
         ));
         let mut world = World::new();
         let mut report = driver.run_frame(&mut world, 0.0);
-        report.failures.extend(driver.run_frame(&mut world, 0.0).failures);
+        report
+            .failures
+            .extend(driver.run_frame(&mut world, 0.0).failures);
         // The role method reached the Knight through the supertrait.
         assert_eq!(names(&log), ["hero:spawned", "hero:possessed"]);
         assert!(report.failures.is_empty(), "{:?}", report.failures);
@@ -2679,7 +2735,10 @@ mod roles {
         let mut call = |driver: &mut ScriptDriver, method: &str, report: &mut _| {
             driver.call_trait_hook(&mut world, knight, "test.pawn", method, &[], report)
         };
-        assert_eq!(call(&mut driver, "on_pong", &mut report), HookOutcome::Called);
+        assert_eq!(
+            call(&mut driver, "on_pong", &mut report),
+            HookOutcome::Called
+        );
         assert_eq!(
             call(&mut driver, "on_ping", &mut report),
             HookOutcome::NotHandled,
@@ -2704,7 +2763,11 @@ mod roles {
         let mut failures = driver.run_frame(&mut world, 0.0).failures;
         failures.extend(driver.run_frame(&mut world, 0.0).failures);
         failures.extend(driver.run_frame(&mut world, 0.0).failures);
-        assert_eq!(names(&log), ["hero:spawned"], "the handlers it has still run");
+        assert_eq!(
+            names(&log),
+            ["hero:spawned"],
+            "the handlers it has still run"
+        );
         assert_eq!(failures.len(), 1, "{failures:?}");
         assert!(failures[0].contains("Lacking") && failures[0].contains("on_possessed"));
 
@@ -2738,7 +2801,10 @@ mod roles {
         let mut failures = driver.run_frame(&mut world, 0.0).failures;
         failures.extend(driver.run_frame(&mut world, 0.0).failures);
         assert!(names(&log).is_empty(), "no possession: {:?}", names(&log));
-        assert!(failures.iter().any(|f| f.contains("possession")), "{failures:?}");
+        assert!(
+            failures.iter().any(|f| f.contains("possession")),
+            "{failures:?}"
+        );
 
         // A class whose Blueprint cannot be read is not judged: the level's
         // choice stands, as it does for content shipped without the source.
@@ -2779,7 +2845,11 @@ mod roles {
 
     /// The Space key as the event hub numbers it.
     fn space() -> i64 {
-        match input_plugin::keys::catalog().get("Keyboard.Space").unwrap().source {
+        match input_plugin::keys::catalog()
+            .get("Keyboard.Space")
+            .unwrap()
+            .source
+        {
             input_plugin::keys::Source::Keyboard(code) => code,
             other => panic!("not a keyboard key: {other:?}"),
         }
@@ -2798,8 +2868,15 @@ mod roles {
             vec![],
             vec![Type::Str],
             vec![
-                Instr::Const { dst: 0, index: label },
-                Instr::CallNative { import: 0, args: vec![0], dst: None },
+                Instr::Const {
+                    dst: 0,
+                    index: label,
+                },
+                Instr::CallNative {
+                    import: 0,
+                    args: vec![0],
+                    dst: None,
+                },
                 Instr::Return { value: None },
             ],
         );
@@ -2861,7 +2938,10 @@ mod roles {
     }
 
     fn count(log: &Log, name: &str) -> usize {
-        events(log).iter().filter(|(logged, _)| logged == name).count()
+        events(log)
+            .iter()
+            .filter(|(logged, _)| logged == name)
+            .count()
     }
 
     fn end_possession(game: &TickLoop) -> crate::scripting::DriverReport {
@@ -2872,7 +2952,8 @@ mod roles {
     }
 
     #[test]
-    fn possession_attaches_the_controllers_mapping_to_the_pawn_and_its_blueprint_hears_the_player() {
+    fn possession_attaches_the_controllers_mapping_to_the_pawn_and_its_blueprint_hears_the_player()
+    {
         let project = input_project();
         let (mut game, log) = possess(project.path(), Some("input/Game.inputmap"));
         let pawn = hero(&game);
@@ -2889,7 +2970,12 @@ mod roles {
             "one input component, on the pawn, carrying the mapping"
         );
         assert_eq!(
-            game.scripts.as_ref().unwrap().lock().unwrap().possessed_pawn(),
+            game.scripts
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .possessed_pawn(),
             Some(pawn)
         );
         assert!(game.possession_gate().is_possessed());
@@ -2899,7 +2985,13 @@ mod roles {
         game.tick_once();
         game.publish_input(pulsar_events::builtin::KeyDown { key: space() });
         game.tick_once();
-        let stable = game.scene_store.read().world.stable_id_of(pawn).unwrap().to_owned();
+        let stable = game
+            .scene_store
+            .read()
+            .world
+            .stable_id_of(pawn)
+            .unwrap()
+            .to_owned();
         assert_eq!(
             events(&log)
                 .into_iter()
@@ -2928,9 +3020,20 @@ mod roles {
             ["pad:unpossess", "hero:unpossessed"],
             "the controller lets go, then the pawn hears it"
         );
-        assert!(input_components(&game).is_empty(), "the component left the pawn");
+        assert!(
+            input_components(&game).is_empty(),
+            "the component left the pawn"
+        );
         assert!(!game.possession_gate().is_possessed());
-        assert_eq!(game.scripts.as_ref().unwrap().lock().unwrap().possessed_pawn(), None);
+        assert_eq!(
+            game.scripts
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .possessed_pawn(),
+            None
+        );
 
         // Nothing is routed any more, and ending again says nothing twice.
         game.tick_once();
@@ -2999,7 +3102,10 @@ mod roles {
         let project = input_project();
         let (game, log) = possess(project.path(), None);
         assert!(input_components(&game).is_empty());
-        assert!(game.possession_gate().is_possessed(), "the pawn is still possessed");
+        assert!(
+            game.possession_gate().is_possessed(),
+            "the pawn is still possessed"
+        );
         assert_eq!(count(&log, "hero:possessed"), 1);
     }
 
@@ -3019,7 +3125,11 @@ mod roles {
         assert!(!game.possession_gate().is_possessed());
         assert!(role_entities(&game).is_empty());
         game.end_scripts();
-        assert_eq!(names(&log).len(), before + 3, "a second shutdown calls nothing");
+        assert_eq!(
+            names(&log).len(),
+            before + 3,
+            "a second shutdown calls nothing"
+        );
     }
 
     #[test]
@@ -3034,7 +3144,11 @@ mod roles {
         assert_eq!(count(&log, "hero:unpossessed"), 0, "the pawn is gone");
         assert!(!game.possession_gate().is_possessed());
         game.tick_once();
-        assert_eq!(count(&log, "pad:input"), 1, "only the frame before it was lost");
+        assert_eq!(
+            count(&log, "pad:input"),
+            1,
+            "only the frame before it was lost"
+        );
     }
 
     /// A session that never shut down leaves its input component on the pawn
@@ -3049,11 +3163,8 @@ mod roles {
         first.tick_once();
         assert_eq!(input_components(&first).len(), 1);
 
-        let mut second = TickLoop::with_scene_store(
-            Arc::clone(&first.scene_store),
-            TickMode::default(),
-            0,
-        );
+        let mut second =
+            TickLoop::with_scene_store(Arc::clone(&first.scene_store), TickMode::default(), 0);
         second.begin_script_reload();
         install_log(&mut second.enable_scripting(project.path()).lock().unwrap());
         second.set_world_roles(roles_with_input(Some("input/Game.inputmap")));
@@ -3112,12 +3223,22 @@ mod roles {
         let project = input_project();
         let (game, _) = possess(project.path(), Some("input/Game.inputmap"));
         let pawn = hero(&game);
-        assert_eq!(view_target(&game), Some(pawn), "set when possession completed");
+        assert_eq!(
+            view_target(&game),
+            Some(pawn),
+            "set when possession completed"
+        );
 
         // The pawn has no camera yet: the target is set (a camera attached
         // later is picked up), but it does not drive the view.
-        assert!(!view_target_drives_camera(&game.scene_store.read(), Some(pawn)));
-        assert!(frame_camera(&game).is_none(), "the free camera shows the game");
+        assert!(!view_target_drives_camera(
+            &game.scene_store.read(),
+            Some(pawn)
+        ));
+        assert!(
+            frame_camera(&game).is_none(),
+            "the free camera shows the game"
+        );
 
         // A camera on a descendant, 1.7 m above the pawn.
         game.scene_store
@@ -3131,7 +3252,10 @@ mod roles {
             ..Default::default()
         };
         camera_under(&game, pawn, [0.0, 1.7, 0.0], wide);
-        assert!(view_target_drives_camera(&game.scene_store.read(), Some(pawn)));
+        assert!(view_target_drives_camera(
+            &game.scene_store.read(),
+            Some(pawn)
+        ));
         let seen = frame_camera(&game).expect("the pawn's camera");
         assert_eq!(seen.position, glam::DVec3::new(10.0, 1.7, 5.0));
         assert!((seen.fov_y - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
@@ -3151,7 +3275,10 @@ mod roles {
         let project = input_project();
         let (game, _) = possess(project.path(), Some("input/Game.inputmap"));
         let pawn = hero(&game);
-        game.scene_store.write().world.insert(pawn, at([1.0, 0.0, 0.0]));
+        game.scene_store
+            .write()
+            .world
+            .insert(pawn, at([1.0, 0.0, 0.0]));
         camera_under(&game, pawn, [0.0, 2.0, 0.0], CameraComponent::default());
         // A camera elsewhere with a far higher priority.
         let other = game
@@ -3206,7 +3333,10 @@ mod roles {
         let pawn = hero(&game);
         assert!(game.possession_gate().is_possessed());
         assert_eq!(view_target(&game), Some(pawn));
-        assert!(!view_target_drives_camera(&game.scene_store.read(), view_target(&game)));
+        assert!(!view_target_drives_camera(
+            &game.scene_store.read(),
+            view_target(&game)
+        ));
         assert!(frame_camera(&game).is_none());
     }
 

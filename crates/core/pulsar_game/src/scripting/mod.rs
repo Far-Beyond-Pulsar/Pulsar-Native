@@ -29,9 +29,9 @@ pub mod commands;
 pub mod driver;
 pub mod events;
 pub mod export;
-mod traits;
 #[cfg(test)]
 mod tests;
+mod traits;
 
 pub use commands::WorldCommand;
 pub use driver::{

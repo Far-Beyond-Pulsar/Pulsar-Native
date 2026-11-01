@@ -48,7 +48,10 @@ pub fn resolve(
             return (ty, Shape::Leaf);
         }
         match &ty.structure {
-            TypeStructure::Wrapper { wrapper_kind, inner } => match wrapper_kind {
+            TypeStructure::Wrapper {
+                wrapper_kind,
+                inner,
+            } => match wrapper_kind {
                 WrapperType::Array | WrapperType::Vec | WrapperType::HashSet => {
                     return (ty, Shape::Seq(inner));
                 }
@@ -136,7 +139,15 @@ pub fn flatten(
 ) -> Vec<TreeRow> {
     let mut rows = Vec::new();
     let (_, shape) = resolve(root_ty, has_editor);
-    push_children(root, shape, &Path::new(), 0, expanded, has_editor, &mut rows);
+    push_children(
+        root,
+        shape,
+        &Path::new(),
+        0,
+        expanded,
+        has_editor,
+        &mut rows,
+    );
     rows
 }
 
@@ -234,7 +245,13 @@ mod tests {
         let value = json!([[1, 2], [3], []]);
         let collapsed = flatten(&value, ty, &HashSet::new(), &editable);
         assert_eq!(collapsed.len(), 3);
-        assert_eq!(collapsed[0].kind, RowKind::Branch { len: 2, expanded: false });
+        assert_eq!(
+            collapsed[0].kind,
+            RowKind::Branch {
+                len: 2,
+                expanded: false
+            }
+        );
 
         let mut open = HashSet::new();
         open.insert(Path::from_vec(vec![Seg::Index(0)]));
@@ -266,7 +283,11 @@ mod tests {
     #[test]
     fn huge_collapsed_tree_costs_only_its_top_level() {
         let ty = <Vec<Vec<i32>> as Reflectable>::type_info();
-        let value = Value::Array((0..1000).map(|_| Value::Array(vec![json!(1); 1000])).collect());
+        let value = Value::Array(
+            (0..1000)
+                .map(|_| Value::Array(vec![json!(1); 1000]))
+                .collect(),
+        );
         let rows = flatten(&value, ty, &HashSet::new(), &editable);
         assert_eq!(rows.len(), 1000);
     }

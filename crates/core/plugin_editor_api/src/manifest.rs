@@ -32,10 +32,7 @@ impl PluginDependency {
             .unwrap_or_else(|e| panic!("invalid plugin version requirement {requirement:?}: {e}"))
     }
 
-    pub fn parse(
-        id: impl Into<String>,
-        requirement: &str,
-    ) -> Result<Self, semver::Error> {
+    pub fn parse(id: impl Into<String>, requirement: &str) -> Result<Self, semver::Error> {
         Ok(Self {
             id: PluginId::new(id),
             requirement: VersionReq::parse(requirement)?,

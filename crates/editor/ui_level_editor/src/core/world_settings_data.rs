@@ -102,7 +102,8 @@ mod tests {
 
     #[test]
     fn levels_saved_before_the_new_roles_still_load() {
-        let old = r#"{"gravity":[0.0,-9.81,0.0],"game_mode_blueprint":"classes/Mode/graph_save.json"}"#;
+        let old =
+            r#"{"gravity":[0.0,-9.81,0.0],"game_mode_blueprint":"classes/Mode/graph_save.json"}"#;
         let settings: WorldSettingsData = serde_json::from_str(old).unwrap();
         assert_eq!(
             settings.role_blueprint(EngineRole::GameMode),
@@ -121,7 +122,8 @@ mod tests {
 
         let mut settings = WorldSettingsData::default();
         settings.set_player_input_mapping(Some("input/Game.inputmap".into()));
-        let level = serde_json::json!({ "world_settings": serde_json::to_value(&settings).unwrap() });
+        let level =
+            serde_json::json!({ "world_settings": serde_json::to_value(&settings).unwrap() });
         assert_eq!(
             RoleSelection::from_level_json(&level.to_string()).input_mapping(),
             Some("input/Game.inputmap"),
@@ -138,7 +140,8 @@ mod tests {
         for (i, role) in EngineRole::ALL.into_iter().enumerate() {
             settings.set_role_blueprint(role, Some(format!("classes/R{i}/graph_save.json")));
         }
-        let level = serde_json::json!({ "world_settings": serde_json::to_value(&settings).unwrap() });
+        let level =
+            serde_json::json!({ "world_settings": serde_json::to_value(&settings).unwrap() });
         let selection = RoleSelection::from_level_json(&level.to_string());
         for (i, spec) in ROLES.iter().enumerate() {
             assert_eq!(

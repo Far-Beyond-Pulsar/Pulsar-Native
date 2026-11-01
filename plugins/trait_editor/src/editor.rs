@@ -126,8 +126,10 @@ impl TraitEditor {
             supertraits: multiline_input(
                 window,
                 cx,
-                &asset.supertraits.join("
-"),
+                &asset.supertraits.join(
+                    "
+",
+                ),
                 "Supertrait ids or project paths, one per line",
             ),
             meta: asset.meta.clone(),

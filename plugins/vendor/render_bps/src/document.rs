@@ -17,8 +17,8 @@ use graphy::{
     Connection, ConnectionType, GraphDescription, NodeInstance, PinInstance, PinType, Position,
 };
 use helio_graph_asset::{
-    GraphAsset, GraphSection, NodeDescriptor, NodeInstance as AssetNode, NodePins, NodeRegistry,
-    Params, PinDesc, PinRef, SectionPort, sections,
+    sections, GraphAsset, GraphSection, NodeDescriptor, NodeInstance as AssetNode, NodePins,
+    NodeRegistry, Params, PinDesc, PinRef, SectionPort,
 };
 use serde_json::Value;
 

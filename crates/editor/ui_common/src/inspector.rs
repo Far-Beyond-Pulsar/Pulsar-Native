@@ -278,12 +278,11 @@ impl<V: Render + 'static> Inspector<V> {
                                     .child(card.props.len().to_string()),
                             ),
                     )
-                    .children(card.note.clone().map(|note| {
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().warning)
-                            .child(note)
-                    })),
+                    .children(
+                        card.note
+                            .clone()
+                            .map(|note| div().text_xs().text_color(cx.theme().warning).child(note)),
+                    ),
             )
             .into_any_element()
     }
@@ -425,7 +424,9 @@ impl<V: Render + 'static> Inspector<V> {
                             })
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 let inspector = accessor(this);
-                                inspector.collapse.set_all_cards(keys.clone(), !all_collapsed);
+                                inspector
+                                    .collapse
+                                    .set_all_cards(keys.clone(), !all_collapsed);
                                 inspector.relayout();
                                 cx.notify();
                             })),

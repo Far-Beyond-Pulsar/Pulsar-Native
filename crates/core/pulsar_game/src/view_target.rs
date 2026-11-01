@@ -35,7 +35,9 @@ impl ViewTargets {
     }
 
     fn map(&self) -> std::sync::MutexGuard<'_, BTreeMap<PlayerId, Entity>> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// The entity `player` looks through, if one is set.

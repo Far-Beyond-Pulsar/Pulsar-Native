@@ -79,8 +79,7 @@ impl<K: AssetKind> AssetRefEditor<K> {
                 }
                 let Some(reference) = picker.read(cx).selected_or_create_asset_ref::<K>() else {
                     // a file of another kind, or one the project index cannot id
-                    picker
-                        .update(cx, |picker, _| picker.set_selected_path(this.path.clone()));
+                    picker.update(cx, |picker, _| picker.set_selected_path(this.path.clone()));
                     return;
                 };
                 this.path = selected;
@@ -180,11 +179,7 @@ impl<K: AssetKind> Render for AssetRefEditor<K> {
                                                 this.path.clear();
                                                 cx.notify();
                                             });
-                                            write_back(
-                                                Box::new(None::<AssetRef<K>>),
-                                                window,
-                                                cx,
-                                            );
+                                            write_back(Box::new(None::<AssetRef<K>>), window, cx);
                                         }),
                                 )
                             }),

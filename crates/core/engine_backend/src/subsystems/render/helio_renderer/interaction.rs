@@ -1,5 +1,5 @@
 //! Transform handles with shared solid geometry for drawing and picking.
-use super::gizmo_geometry::{Handle, meshes, rotation_grid};
+use super::gizmo_geometry::{meshes, rotation_grid, Handle};
 use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{DVec3, EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
@@ -1080,12 +1080,10 @@ mod tests {
         world.insert(entity, planet);
         assert_eq!(world.selected_entity(), Some(entity));
         assert!(interaction.selected(&world).is_some());
-        assert!(
-            interaction
-                .view
-                .length(DVec3::from_array(planet.position).as_vec3())
-                .is_none()
-        );
+        assert!(interaction
+            .view
+            .length(DVec3::from_array(planet.position).as_vec3())
+            .is_none());
     }
 
     #[test]

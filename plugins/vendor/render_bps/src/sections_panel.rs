@@ -84,9 +84,8 @@ impl Render for SectionsPanel {
                         let window_handle = window.window_handle();
                         cx.defer(move |cx| {
                             let _ = cx.update_window(window_handle, |_, _window, cx| {
-                                let _ = editor.update(cx, |editor, cx| {
-                                    editor.open_section(&id, cx)
-                                });
+                                let _ =
+                                    editor.update(cx, |editor, cx| editor.open_section(&id, cx));
                             });
                         });
                     }))

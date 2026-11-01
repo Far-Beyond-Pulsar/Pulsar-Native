@@ -159,9 +159,15 @@ pub fn collapse(
         order.push((*node_id).to_string());
     }
     let left = positions.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
-    let right = positions.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
+    let right = positions
+        .iter()
+        .map(|p| p.0)
+        .fold(f64::NEG_INFINITY, f64::max);
     let top = positions.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
-    let bottom = positions.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
+    let bottom = positions
+        .iter()
+        .map(|p| p.1)
+        .fold(f64::NEG_INFINITY, f64::max);
     let mut entry = NodeInstance::new(ENTRY_ID, ENTRY_TYPE, Position::new(left - 360.0, top));
     entry.outputs = in_ports
         .values()
@@ -234,7 +240,9 @@ pub fn collapse(
 
     let mut commands: Vec<GraphCommand> = inside
         .iter()
-        .map(|id| GraphCommand::RemoveNode { id: (*id).to_string() })
+        .map(|id| GraphCommand::RemoveNode {
+            id: (*id).to_string(),
+        })
         .collect();
     commands.push(GraphCommand::AddNode(node.clone()));
     let mut seen_in = HashSet::new();
@@ -307,7 +315,10 @@ pub fn expand(
         nodes
     };
     if let Some(clash) = inner.iter().find(|n| graph.nodes.contains_key(&n.id)) {
-        return Err(format!("Node `{}` of the section is already in this graph", clash.id));
+        return Err(format!(
+            "Node `{}` of the section is already in this graph",
+            clash.id
+        ));
     }
 
     let incoming: Vec<&Connection> = graph

@@ -96,11 +96,17 @@ fn a_section_node_shows_the_ports_of_its_graph() {
         let ids = |pins: &[PinInstance]| pins.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
         assert_eq!(
             ids(&placed.inputs),
-            pins.inputs.iter().map(|p| p.name.clone()).collect::<Vec<_>>()
+            pins.inputs
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
         );
         assert_eq!(
             ids(&placed.outputs),
-            pins.outputs.iter().map(|p| p.name.clone()).collect::<Vec<_>>()
+            pins.outputs
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
         );
         // The entry and exit nodes are the section's ports, not passes.
         assert!(section.graph.nodes.contains_key(ENTRY_ID));
@@ -163,10 +169,17 @@ fn a_reroute_keeps_its_pins_and_wires_and_is_bypassed_for_building() {
         reroute,
         node("out", core_nodes::OUTPUT),
     ];
-    asset.connections = vec![wire("early", "out", "r", "in"), wire("r", "out", "out", "in")];
+    asset.connections = vec![
+        wire("early", "out", "r", "in"),
+        wire("r", "out", "out", "in"),
+    ];
 
     let doc = RenderDocument::from_asset(&asset, &registry);
-    assert_eq!(doc.main.connections.len(), 2, "wires through the reroute load");
+    assert_eq!(
+        doc.main.connections.len(),
+        2,
+        "wires through the reroute load"
+    );
     assert_eq!(doc.as_ref().to_asset(&registry), asset);
 
     let built = doc.as_ref().buildable_asset(&registry);
@@ -379,7 +392,10 @@ fn the_catalogue_lists_every_node_and_the_factory_builds_its_pins() {
     )
     .expect("persistent buffer node");
     assert_eq!(buffer.outputs.len(), 1);
-    assert_eq!(model::type_name(buffer.outputs[0].data_type()), "pbuf:my_buffer");
+    assert_eq!(
+        model::type_name(buffer.outputs[0].data_type()),
+        "pbuf:my_buffer"
+    );
     assert!(model::create_node(&registry, "nope", "n", Position::new(0.0, 0.0)).is_none());
 }
 
@@ -401,7 +417,6 @@ fn only_equal_pin_types_connect() {
     ));
 }
 
-
 #[test]
 fn only_a_sound_graph_reaches_the_preview() {
     let registry = base_registry();
@@ -419,7 +434,14 @@ fn sorted_wires(asset: &GraphAsset) -> Vec<(String, String, String, String)> {
     let mut wires: Vec<_> = asset
         .connections
         .iter()
-        .map(|c| (c.from.node.clone(), c.from.pin.clone(), c.to.node.clone(), c.to.pin.clone()))
+        .map(|c| {
+            (
+                c.from.node.clone(),
+                c.from.pin.clone(),
+                c.to.node.clone(),
+                c.to.pin.clone(),
+            )
+        })
         .collect();
     wires.sort();
     wires
@@ -466,8 +488,14 @@ fn collapsing_and_expanding_keep_the_pipeline_the_nodes_make() {
     apply_transaction(&mut doc.main, &collapsed.commands).unwrap();
     assert!(!doc.main.nodes.contains_key("b") && !doc.main.nodes.contains_key("c"));
     let placed = collapsed.node.id.clone();
-    assert_eq!(doc.main.nodes[&placed].node_type, sections::section_kind(&collapsed.id));
-    assert!(doc.main.nodes[&placed].inputs.len() >= 2, "flow and texture come in");
+    assert_eq!(
+        doc.main.nodes[&placed].node_type,
+        sections::section_kind(&collapsed.id)
+    );
+    assert!(
+        doc.main.nodes[&placed].inputs.len() >= 2,
+        "flow and texture come in"
+    );
     let (section_id, section_name) = (collapsed.id.clone(), collapsed.name.clone());
     doc.sections.push(crate::document::SectionDoc {
         id: collapsed.id,
@@ -482,7 +510,10 @@ fn collapsing_and_expanding_keep_the_pipeline_the_nodes_make() {
     assert_eq!(saved.sections[0].id, section_id);
     assert_eq!(saved.sections[0].name, section_name);
     let unboxed = sections::expand(&saved);
-    assert!(unboxed.diagnostics.iter().all(|d| d.severity != Severity::Error));
+    assert!(unboxed
+        .diagnostics
+        .iter()
+        .all(|d| d.severity != Severity::Error));
     let mut ids: Vec<_> = unboxed.asset.nodes.iter().map(|n| n.id.clone()).collect();
     ids.sort();
     assert_eq!(ids, ["a", "b", "c", "out", "start"]);
@@ -493,7 +524,12 @@ fn collapsing_and_expanding_keep_the_pipeline_the_nodes_make() {
     let commands = collapse::expand(&doc.main, &placed, &section_graph).expect("expands");
     apply_transaction(&mut doc.main, &commands).unwrap();
     assert!(!doc.main.nodes.contains_key(&placed));
-    let back = RenderDocument { sections: Vec::new(), ..doc }.as_ref().to_asset(&registry);
+    let back = RenderDocument {
+        sections: Vec::new(),
+        ..doc
+    }
+    .as_ref()
+    .to_asset(&registry);
     assert_eq!(sorted_wires(&back), sorted_wires(&asset));
 }
 

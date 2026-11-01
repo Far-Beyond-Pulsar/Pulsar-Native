@@ -128,9 +128,15 @@ mod tests {
 
         assert_eq!(traits.traits().len(), 1);
         assert_eq!(traits.implementers("GameMode"), vec![implementer]);
-        assert_eq!(traits.traits_of("classes/Mode/graph_save.json")[0].name, "GameMode");
+        assert_eq!(
+            traits.traits_of("classes/Mode/graph_save.json")[0].name,
+            "GameMode"
+        );
         assert!(traits.implements("classes\\Mode\\graph_save.json", "pulsar.GameMode"));
-        assert_eq!(traits.to_json()["traits"]["pulsar.GameMode"]["name"], "GameMode");
+        assert_eq!(
+            traits.to_json()["traits"]["pulsar.GameMode"]["name"],
+            "GameMode"
+        );
 
         pulsar_reflection::TRAIT_REGISTRY.remove(&pulsar_reflection::trait_scope_key(root));
     }

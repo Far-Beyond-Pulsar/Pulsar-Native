@@ -270,7 +270,9 @@ impl WorldRoles {
 
     /// The binding for `role` if it can be instantiated.
     pub fn usable(&self, role: EngineRole) -> Option<&RoleBinding> {
-        self.bindings.get(&role).filter(|binding| binding.is_usable())
+        self.bindings
+            .get(&role)
+            .filter(|binding| binding.is_usable())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &RoleBinding> {
@@ -371,10 +373,22 @@ mod tests {
             ]),
             Some(&index),
         );
-        assert_eq!(roles.get(EngineRole::GameMode).unwrap().status, BindingStatus::Valid);
-        assert_eq!(roles.get(EngineRole::GameMode).unwrap().class_name(), Some("Mode"));
-        assert_eq!(roles.get(EngineRole::PlayerCharacter).unwrap().status, BindingStatus::MissingTrait);
-        assert_eq!(roles.get(EngineRole::PlayerController).unwrap().status, BindingStatus::NotInIndex);
+        assert_eq!(
+            roles.get(EngineRole::GameMode).unwrap().status,
+            BindingStatus::Valid
+        );
+        assert_eq!(
+            roles.get(EngineRole::GameMode).unwrap().class_name(),
+            Some("Mode")
+        );
+        assert_eq!(
+            roles.get(EngineRole::PlayerCharacter).unwrap().status,
+            BindingStatus::MissingTrait
+        );
+        assert_eq!(
+            roles.get(EngineRole::PlayerController).unwrap().status,
+            BindingStatus::NotInIndex
+        );
         assert!(roles.get(EngineRole::GameState).is_none());
         assert!(roles.usable(EngineRole::GameMode).is_some());
         assert!(roles.usable(EngineRole::PlayerCharacter).is_none());
@@ -396,10 +410,19 @@ mod tests {
     fn levels_from_before_a_role_existed_select_nothing_for_it() {
         let level = r#"{"world_settings":{"game_mode_blueprint":"classes/Mode/graph_save.json"}}"#;
         let selection = RoleSelection::from_level_json(level);
-        assert_eq!(selection.get(EngineRole::GameMode), Some("classes/Mode/graph_save.json"));
+        assert_eq!(
+            selection.get(EngineRole::GameMode),
+            Some("classes/Mode/graph_save.json")
+        );
         assert_eq!(selection.get(EngineRole::PlayerController), None);
-        assert_eq!(RoleSelection::from_level_json("not json"), RoleSelection::default());
-        assert_eq!(RoleSelection::from_level_json(r#"{"world_settings":{"game_mode_blueprint":""}}"#), RoleSelection::default());
+        assert_eq!(
+            RoleSelection::from_level_json("not json"),
+            RoleSelection::default()
+        );
+        assert_eq!(
+            RoleSelection::from_level_json(r#"{"world_settings":{"game_mode_blueprint":""}}"#),
+            RoleSelection::default()
+        );
     }
 
     #[test]
@@ -414,18 +437,29 @@ mod tests {
             r#"{"world_settings":{"player_input_mapping":3}}"#,
             r#"{}"#,
         ] {
-            assert_eq!(RoleSelection::from_level_json(old).input_mapping(), None, "{old}");
+            assert_eq!(
+                RoleSelection::from_level_json(old).input_mapping(),
+                None,
+                "{old}"
+            );
         }
     }
 
     #[test]
     fn for_level_reads_the_persisted_index() {
         let (dir, _index) = project();
-        let level = r#"{"world_settings":{"player_character_blueprint":"classes/Hero/graph_save.json"}}"#;
+        let level =
+            r#"{"world_settings":{"player_character_blueprint":"classes/Hero/graph_save.json"}}"#;
         let roles = WorldRoles::for_level(level, dir.path());
-        assert_eq!(roles.get(EngineRole::PlayerCharacter).unwrap().status, BindingStatus::Valid);
+        assert_eq!(
+            roles.get(EngineRole::PlayerCharacter).unwrap().status,
+            BindingStatus::Valid
+        );
         let empty = tempfile::tempdir().unwrap();
         let roles = WorldRoles::for_level(level, empty.path());
-        assert_eq!(roles.get(EngineRole::PlayerCharacter).unwrap().status, BindingStatus::Unchecked);
+        assert_eq!(
+            roles.get(EngineRole::PlayerCharacter).unwrap().status,
+            BindingStatus::Unchecked
+        );
     }
 }

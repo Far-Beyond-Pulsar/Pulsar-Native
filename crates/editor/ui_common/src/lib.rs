@@ -27,9 +27,9 @@ pub mod asset_picker;
 pub mod asset_ref_editor;
 pub mod asset_thumbnails;
 pub mod close_hooks;
+pub mod command_palette;
 pub mod composite_editor;
 pub mod composite_model;
-pub mod command_palette;
 pub mod file_utils;
 pub mod generic_window;
 pub mod inspector;
@@ -50,8 +50,8 @@ mod texture_asset_editor;
 pub mod theme_dropdown;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
-pub use open_window::PulsarWindowExt;
 pub use inspector::{Inspector, InspectorCarry, InspectorRow};
+pub use open_window::PulsarWindowExt;
 pub use property_editor_registry::{
     BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory, PROPERTY_EDITOR_REGISTRY,
 };

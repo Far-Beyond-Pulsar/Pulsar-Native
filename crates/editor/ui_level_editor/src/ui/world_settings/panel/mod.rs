@@ -132,10 +132,15 @@ impl WorldSettingsPanelImpl {
         });
 
         let mapping_picker = cx.new(|cx| {
-            SearchableList::<String>::new(window, cx, vec!["None".to_string()], input_section::mapping_label)
-                .with_empty_text("No input mappings found")
-                .with_max_width(px(360.0))
-                .with_max_height(px(320.0))
+            SearchableList::<String>::new(
+                window,
+                cx,
+                vec!["None".to_string()],
+                input_section::mapping_label,
+            )
+            .with_empty_text("No input mappings found")
+            .with_max_width(px(360.0))
+            .with_max_height(px(320.0))
         });
 
         let mut subscriptions = Vec::new();
@@ -366,8 +371,7 @@ impl WorldSettingsPanelImpl {
         let environment_tools = self.render_environment_tools(cx);
         let state = self.state.read();
         let settings = &state.scene.world_settings;
-        let input_row =
-            self.render_input_mapping_row(settings.player_input_mapping.as_deref(), cx);
+        let input_row = self.render_input_mapping_row(settings.player_input_mapping.as_deref(), cx);
         let role_rows: Vec<AnyElement> = self
             .role_pickers
             .iter()
@@ -421,12 +425,7 @@ impl WorldSettingsPanelImpl {
                             cx,
                         ))
                         .child(self.render_section_title("Gameplay Roles"))
-                        .child(
-                            v_flex()
-                                .gap_3()
-                                .children(role_rows)
-                                .child(input_row),
-                        ),
+                        .child(v_flex().gap_3().children(role_rows).child(input_row)),
                 ),
             )
     }
@@ -561,7 +560,9 @@ impl WorldSettingsPanelImpl {
         cx: &Context<WorldSettingsPanel>,
     ) -> AnyElement {
         let spec = role_picker.role.spec();
-        let selected = selected.map(str::to_owned).unwrap_or_else(|| "None".to_string());
+        let selected = selected
+            .map(str::to_owned)
+            .unwrap_or_else(|| "None".to_string());
         let display = blueprint_label(&selected);
         let picker = role_picker.picker.clone();
         v_flex()
@@ -808,18 +809,29 @@ fn catalog_status(
 
 #[cfg(test)]
 mod tests {
-    use super::{blueprint_label, catalog_message, load_role_blueprints, BlueprintCatalogState, EngineRole};
+    use super::{
+        blueprint_label, catalog_message, load_role_blueprints, BlueprintCatalogState, EngineRole,
+    };
 
     #[test]
     fn each_role_lists_only_blueprints_implementing_its_trait() {
         let dir = tempfile::tempdir().unwrap();
         for (class, traits) in [
-            ("Mode", vec![engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH]),
-            ("Hero", vec![engine_fs::builtin_traits::PLAYER_CHARACTER_TRAIT_PATH]),
-            ("Both", vec![
-                engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH,
-                engine_fs::builtin_traits::GAME_STATE_TRAIT_PATH,
-            ]),
+            (
+                "Mode",
+                vec![engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH],
+            ),
+            (
+                "Hero",
+                vec![engine_fs::builtin_traits::PLAYER_CHARACTER_TRAIT_PATH],
+            ),
+            (
+                "Both",
+                vec![
+                    engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH,
+                    engine_fs::builtin_traits::GAME_STATE_TRAIT_PATH,
+                ],
+            ),
         ] {
             let path = dir.path().join(format!("classes/{class}/graph_save.json"));
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -836,10 +848,19 @@ mod tests {
         let roles = load_role_blueprints(dir.path(), true).unwrap();
         assert_eq!(
             roles[&EngineRole::GameMode],
-            ["classes/Both/graph_save.json", "classes/Mode/graph_save.json"]
+            [
+                "classes/Both/graph_save.json",
+                "classes/Mode/graph_save.json"
+            ]
         );
-        assert_eq!(roles[&EngineRole::PlayerCharacter], ["classes/Hero/graph_save.json"]);
-        assert_eq!(roles[&EngineRole::GameState], ["classes/Both/graph_save.json"]);
+        assert_eq!(
+            roles[&EngineRole::PlayerCharacter],
+            ["classes/Hero/graph_save.json"]
+        );
+        assert_eq!(
+            roles[&EngineRole::GameState],
+            ["classes/Both/graph_save.json"]
+        );
         assert!(roles[&EngineRole::PlayerController].is_empty());
         // The non-rebuilding path (index file watcher) reads the same.
         assert_eq!(load_role_blueprints(dir.path(), false).unwrap(), roles);
@@ -847,12 +868,22 @@ mod tests {
 
     #[test]
     fn labels_and_status_messages_name_the_role() {
-        assert_eq!(blueprint_label(&"classes/Mode/graph_save.json".to_string()), "Mode");
+        assert_eq!(
+            blueprint_label(&"classes/Mode/graph_save.json".to_string()),
+            "Mode"
+        );
         assert_eq!(blueprint_label(&"a/b.blueprint.json".to_string()), "a/b");
         let empty = BlueprintCatalogState::Ready(Vec::new());
-        let message = catalog_message("Player Controller", "types/traits/player_controller.trait.json", &empty, "None");
+        let message = catalog_message(
+            "Player Controller",
+            "types/traits/player_controller.trait.json",
+            &empty,
+            "None",
+        );
         assert!(message.contains("player_controller.trait.json"));
         let ready = BlueprintCatalogState::Ready(vec!["a".into()]);
-        assert!(catalog_message("Game State", "t", &ready, "gone").contains("not in the current index"));
+        assert!(
+            catalog_message("Game State", "t", &ready, "gone").contains("not in the current index")
+        );
     }
 }
