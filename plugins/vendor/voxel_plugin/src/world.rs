@@ -36,7 +36,7 @@ use pulsar_scenedb::{Entity, World};
 
 use helio_pass_voxel_planet::feature_recipe::FeatureRecipe;
 
-use super::{
+use crate::{
     VoxelAir, VoxelLayerKind, VoxelTerrainComponent, VoxelTerrainLayer,
     VoxelTerrainLayersComponent, VoxelTerrainStack, VoxelWorldShape, feature_recipe,
 };
@@ -263,7 +263,7 @@ pub fn entity_grid(
 
 /// The world of a terrain instance entity: its generated terrain with its
 /// journal's edits, as its runtime last built it
-/// ([`super::voxel_runtime`]). Worlds build off the game thread, so a
+/// ([`crate::runtime`]). Worlds build off the game thread, so a
 /// terrain just added (or whose recipe changed) answers from the world it
 /// had, or not at all until its first world is built.
 pub fn terrain_world(world: &World, entity: Entity) -> Result<Arc<Planet>, String> {
@@ -279,7 +279,7 @@ pub fn terrain_world(world: &World, entity: Entity) -> Result<Arc<Planet>, Strin
             component.generator.id, component.generator.version
         ));
     }
-    let runtime = super::voxel_runtime::VoxelTerrainRuntime::of(world, entity)
+    let runtime = crate::runtime::VoxelTerrainRuntime::of(world, entity)
         .ok_or("the voxel world is not built yet")?;
     runtime.world().ok_or_else(|| {
         runtime
@@ -366,7 +366,7 @@ pub fn journals_to_compact(world: &World) -> Vec<(Entity, PlanetRecipe, VoxelEdi
 /// Append edits to a terrain's journal after checking that each applies
 /// to its grid: how scripts, gameplay and the editor's sculpt tool edit a
 /// terrain. The terrain's runtime applies them to its world off the game
-/// thread ([`super::voxel_runtime`]); when that world lands, the blocks each
+/// thread ([`crate::runtime`]); when that world lands, the blocks each
 /// edit broke, placed and recoloured become the terrain's block events,
 /// counted from what it baked (`Planet::edit_yield`): cell by cell for a
 /// small edit, by region past `edit_yield::EXACT_CELLS` cells, so a
@@ -403,9 +403,9 @@ pub fn append_edits(
     }
     // Brick walks (sculpt samples near the last stamp) see the edits at
     // once, before the world built with them lands.
-    if let Some(queries) = super::voxel_runtime::VoxelTerrainRuntime::of(world, entity)
+    if let Some(queries) = crate::runtime::VoxelTerrainRuntime::of(world, entity)
         .as_deref()
-        .and_then(super::voxel_runtime::TerrainWorld::queries)
+        .and_then(crate::runtime::TerrainWorld::queries)
     {
         queries.edit(&edits.iter().map(planet_brush).collect::<Vec<_>>());
     }
@@ -823,7 +823,7 @@ impl VoxelTerrainComponent {
                 FeatureRecipe::PRESETS.join(", ")
             )
         })?;
-        terrain_mut(world, entity)?.features = super::feature_spawns(&preset);
+        terrain_mut(world, entity)?.features = crate::feature_spawns(&preset);
         Ok(())
     }
 

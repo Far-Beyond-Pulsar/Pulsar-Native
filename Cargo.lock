@@ -3088,6 +3088,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-core",
+ "helio-feature-api",
  "helio-graph-asset",
  "helio-mats",
  "helio-pass-billboard",
@@ -3102,13 +3103,11 @@ dependencies = [
  "helio-pass-sky",
  "helio-pass-tsr",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "helio-presets",
  "helio-scene-derivations",
  "helio-vg-format",
  "helio-vg-stream",
- "helio-voxel-data",
  "helio_component",
  "image",
  "inventory",
@@ -5575,7 +5574,6 @@ dependencies = [
  "helio-pass-tsr",
  "helio-pass-vg",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "helio-spine",
  "helio-vg-format",
@@ -5754,14 +5752,13 @@ dependencies = [
  "helio-pass-sky",
  "helio-pass-sprite-batch",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "helio-vg-build",
  "helio-vg-format",
  "helio-vg-stream",
- "helio-voxel-data",
  "image",
  "intel_tex_2",
+ "inventory",
  "naga",
  "plugin_editor_api",
  "pollster 0.4.0",
@@ -10107,6 +10104,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "uuid",
+ "voxel_plugin",
  "wgpu",
  "winit",
 ]
@@ -10396,6 +10394,7 @@ name = "pulsar_settings"
 version = "0.1.0"
 dependencies = [
  "helio-settings",
+ "inventory",
  "pulsar-config",
 ]
 
@@ -11622,6 +11621,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 1.1.4+spec-1.1.0",
+ "voxel_plugin",
 ]
 
 [[package]]
@@ -14622,6 +14622,7 @@ dependencies = [
  "ui_settings",
  "ui_type_debugger",
  "ui_types_common",
+ "voxel_plugin",
  "window_manager",
 ]
 
@@ -14820,7 +14821,6 @@ dependencies = [
  "helio-core",
  "helio-pass-buffer-view",
  "helio-presets",
- "helio-voxel-data",
  "helio_component",
  "image",
  "objc2 0.6.4",
@@ -14859,6 +14859,7 @@ dependencies = [
  "ui_common",
  "ui_helio_viewport",
  "ui_types_common",
+ "voxel_plugin",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -15323,6 +15324,45 @@ name = "virtue"
 version = "0.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
+
+[[package]]
+name = "voxel_plugin"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "engine_state",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-feature-api",
+ "helio-pass-foliage-place",
+ "helio-pass-sky",
+ "helio-pass-volumetric-fog",
+ "helio-pass-voxel-planet",
+ "helio-settings",
+ "helio-voxel-data",
+ "helio_component",
+ "image",
+ "inventory",
+ "parking_lot",
+ "plugin_editor_api",
+ "pollster 0.4.0",
+ "pulsar_class",
+ "pulsar_events",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_settings",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "ui",
+ "wgpu",
+]
 
 [[package]]
 name = "wait-timeout"

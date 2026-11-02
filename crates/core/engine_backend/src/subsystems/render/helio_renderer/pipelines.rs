@@ -6,7 +6,8 @@
 //! [`register_project_pipeline`]. The level editor lists them in World
 //! Settings and stores the chosen id in the level; the viewport renderer and
 //! the game both resolve that id here, so a pipeline authored once runs in
-//! both.
+//! both. Every one builds over Helio's default features and the ones plugins
+//! add ([`super::render_features`]).
 
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -19,7 +20,10 @@ fn registry() -> &'static RwLock<RenderPipelineRegistry> {
     static REGISTRY: OnceLock<RwLock<RenderPipelineRegistry>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let mut registry = RenderPipelineRegistry::new();
-        helio_presets::pipelines::register_builtin_pipelines(&mut registry);
+        helio_presets::pipelines::register_builtin_pipelines(
+            &mut registry,
+            &super::render_features::plugin_features(),
+        );
         RwLock::new(registry)
     })
 }
@@ -116,7 +120,11 @@ pub fn register_project_pipeline(
 
 fn node_registry_cell() -> &'static RwLock<helio_graph_asset::NodeRegistry> {
     static NODES: OnceLock<RwLock<helio_graph_asset::NodeRegistry>> = OnceLock::new();
-    NODES.get_or_init(|| RwLock::new(helio_presets::graphs::base_registry()))
+    NODES.get_or_init(|| {
+        RwLock::new(helio_presets::graphs::registry_with(
+            &super::render_features::plugin_features(),
+        ))
+    })
 }
 
 /// Builds the default graph once on a headless device and returns the pins its

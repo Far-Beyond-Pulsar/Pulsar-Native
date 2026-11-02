@@ -5,7 +5,7 @@
 //! renderer-independent data API. No persistence behavior is implied by the
 //! runtime data fields.
 
-use super::VoxelFeatureSpawn;
+use crate::VoxelFeatureSpawn;
 use engine_class_derive::{component_events, engine_class};
 use helio_pass_voxel_planet::layers::TerrainLayers;
 use helio_pass_voxel_planet::volumes;
@@ -1641,17 +1641,17 @@ fn edit_terrain_samples(
     }
     // Sample (x, y, z) is the block at ((x, y, z) + 0.5) voxels from the
     // origin, and the slot is a terrain material id: an edit in the journal.
-    let grid = super::voxel_world::entity_grid(world, entity, component)?;
+    let grid = crate::world::entity_grid(world, entity, component)?;
     let voxel = grid.voxel_size();
     let edits = samples
         .iter()
         .map(|s| {
             let p =
                 glam::DVec3::new(s[0] as f64 + 0.5, s[1] as f64 + 0.5, s[2] as f64 + 0.5) * voxel;
-            super::voxel_world::block_edit(&grid, p, u32::from(material_slot))
+            crate::world::block_edit(&grid, p, u32::from(material_slot))
         })
         .collect();
-    super::voxel_world::append_edits(world, entity, edits)
+    crate::world::append_edits(world, entity, edits)
 }
 
 fn validate_paint_slot(material_slot: u8) -> Result<(), String> {

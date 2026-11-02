@@ -6,7 +6,6 @@ use super::{
 };
 use crate::state::voxel::{VoxelSculptDomain, VoxelSculptMode as Mode, MAX_RADIUS_M, MIN_RADIUS_M};
 use gpui::*;
-use helio_voxel_data::VoxelBrushShape;
 use rust_i18n::t;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -15,6 +14,7 @@ use ui::{
     input::TextInput,
     v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable,
 };
+use voxel_plugin::data::VoxelBrushShape;
 
 impl VoxelSculptPanel {
     pub(super) fn render_brush(

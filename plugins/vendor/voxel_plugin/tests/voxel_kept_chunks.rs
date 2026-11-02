@@ -9,11 +9,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
-use helio_component::{voxel_world, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 use helio_voxel_data::{
     VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal, VoxelKeptChunks,
 };
 use pulsar_scenedb::Entity;
+use voxel_plugin::{VoxelTerrainComponent, VoxelTerrainLayersComponent, world as voxel_world};
 
 const SIZE: [u32; 2] = [320, 180];
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -160,7 +160,7 @@ fn a_saved_journal_keeps_the_edited_chunks_and_a_new_renderer_restores_them() {
     // A save asks off the render thread; the idle viewport renders again
     // until it has answered.
     let runtime =
-        helio_component::voxel_runtime::VoxelTerrainRuntime::of(&scene.read().world, terrain)
+        voxel_plugin::runtime::VoxelTerrainRuntime::of(&scene.read().world, terrain)
             .expect("the terrain's runtime");
     let save = std::thread::spawn(move || runtime.kept_chunks(Duration::from_secs(120)));
     let mut frames = 0;

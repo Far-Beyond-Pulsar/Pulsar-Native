@@ -1,25 +1,26 @@
 //! The example voxel levels are Helio's voxel_flight worlds
 //! (`examples/voxel_flight/worlds.rs`, compiled in here) as Pulsar levels:
 //! Earth, Moon and Desert, and Blocks (Earth's world on flat ground). They
-//! are also the editor's ready-made worlds (`scene::voxel_presets`). Each is
+//! are also the editor's ready-made worlds (`voxel_plugin::presets`). Each is
 //! loaded as the editor loads it and its ground, features, air, haze,
 //! clouds, wind, meadow, exposure and camera are compared with voxel_flight's.
 
 use std::path::Path;
 
-use engine_backend::scene::voxel_presets::VoxelWorldPreset;
 use engine_backend::scene::EditorCamera;
 use glam::DVec3;
 use helio_component::{
     AtmosphereComponent, FoliageComponent, FoliageSourceRow, GlobalFogComponent,
-    PostProcessVolumeComponent, VoxelTerrainComponent, VoxelWorldShape, WindComponent,
+    PostProcessVolumeComponent, WindComponent,
 };
 use helio_pass_foliage_place::GpuFoliageType;
 use helio_pass_voxel_planet::layers::TerrainLayers;
 use pulsar_scenedb::{Entity, World};
+use voxel_plugin::presets::VoxelWorldPreset;
+use voxel_plugin::{VoxelTerrainComponent, VoxelWorldShape};
 
 #[allow(dead_code)]
-#[path = "../../../renderer/helio/crates/examples/voxel_flight/worlds.rs"]
+#[path = "../../../../crates/renderer/helio/voxel/examples/voxel_flight/worlds.rs"]
 mod flight;
 
 use flight::Preset;
@@ -35,7 +36,7 @@ fn level(name: &str) -> (World, EditorCamera) {
     let extras = engine_backend::scene::RuntimeLevel::load_into(&path, &mut scene.world)
         .expect("load the level");
     let mut world = scene.world;
-    assert!(helio_component::voxel_runtime::wait_for_voxel_worlds(
+    assert!(voxel_plugin::runtime::wait_for_voxel_worlds(
         &mut world,
         std::time::Duration::from_secs(300)
     ));
@@ -73,7 +74,7 @@ fn check(name: &str, world: Preset, flat: bool) {
             "{name}"
         );
     }
-    let settings = helio_component::voxel_world::generator_settings(&level, *instance, terrain);
+    let settings = voxel_plugin::world::generator_settings(&level, *instance, terrain);
     let layers: TerrainLayers = serde_json::from_str(&settings).unwrap();
     assert_eq!(
         layers,
@@ -85,7 +86,7 @@ fn check(name: &str, world: Preset, flat: bool) {
         "{name}"
     );
     assert_eq!(
-        helio_component::feature_recipe(&terrain.features),
+        voxel_plugin::feature_recipe(&terrain.features),
         world.features(),
         "{name}"
     );
@@ -183,9 +184,9 @@ fn check(name: &str, world: Preset, flat: bool) {
     assert_eq!(look.settings.tonemap_exposure, world.exposure(), "{name}");
 
     // The camera starts over the ground, not under it or in space.
-    let planet = helio_component::voxel_world::terrain_world(&level, *instance).unwrap();
+    let planet = voxel_plugin::world::terrain_world(&level, *instance).unwrap();
     let eye = DVec3::from_array(camera.position);
-    let (ground, _) = helio_component::voxel_world::frame_view(&planet, eye, DVec3::X, 0.0);
+    let (ground, _) = voxel_plugin::world::frame_view(&planet, eye, DVec3::X, 0.0);
     let up = if flat { DVec3::Y } else { ground.normalize() };
     let height = (eye - ground).dot(up);
     assert!(

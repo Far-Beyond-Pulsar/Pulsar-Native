@@ -216,7 +216,7 @@ fn save_blocking(
 /// The bases are built off the scene lock; a journal that changed meanwhile
 /// still takes its base when it starts with it.
 fn compact_voxel_journals(scene: &engine_backend::scene::SharedScene) {
-    use helio_component::voxel_world;
+    use voxel_plugin::world as voxel_world;
     profiling::profile_scope!("level_editor::save::compact_voxel_edits");
     let pending = voxel_world::journals_to_compact(&scene.read().world);
     for (entity, recipe, edits) in pending {
@@ -225,7 +225,7 @@ fn compact_voxel_journals(scene: &engine_backend::scene::SharedScene) {
                 let mut scene = scene.write();
                 let terrain = scene
                     .world
-                    .get_mut::<helio_component::VoxelTerrainComponent>(entity);
+                    .get_mut::<voxel_plugin::VoxelTerrainComponent>(entity);
                 if let Some(mut terrain) = terrain {
                     terrain.edits.compact(base);
                 }
@@ -248,8 +248,8 @@ const VOXEL_CHUNKS_WAIT: std::time::Duration = std::time::Duration::from_secs(5)
 /// journal is the one they were made for. Waited for and deflated here, off
 /// the render thread and the scene lock.
 fn keep_voxel_chunks(scene: &engine_backend::scene::SharedScene) {
-    use helio_component::voxel_runtime::VoxelTerrainRuntime;
-    use helio_component::VoxelTerrainComponent;
+    use voxel_plugin::runtime::VoxelTerrainRuntime;
+    use voxel_plugin::VoxelTerrainComponent;
     profiling::profile_scope!("level_editor::save::keep_voxel_chunks");
     let wanted: Vec<_> = {
         let scene = scene.read();
@@ -269,7 +269,7 @@ fn keep_voxel_chunks(scene: &engine_backend::scene::SharedScene) {
         if chunks.is_empty() {
             continue;
         }
-        let kept = helio_voxel_data::VoxelKeptChunks::of(&edits, chunks.to_bytes().into());
+        let kept = voxel_plugin::data::VoxelKeptChunks::of(&edits, chunks.to_bytes().into());
         let mut scene = scene.write();
         let unchanged = scene
             .world
@@ -429,8 +429,10 @@ mod tests {
         use crate::scene_edit::{components, objects, ObjectType, SceneObjectData, Transform};
         use engine_backend::scene::SceneWorldExt as _;
         use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
-        use helio_component::{voxel_world, VoxelTerrainComponent, VoxelTerrainLayersComponent};
-        use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
+        use voxel_plugin::data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
+        use voxel_plugin::{
+            world as voxel_world, VoxelTerrainComponent, VoxelTerrainLayersComponent,
+        };
         const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
         let instance =

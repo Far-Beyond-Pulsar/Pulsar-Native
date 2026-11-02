@@ -35,15 +35,15 @@ pub(crate) fn editor_factory(type_id: std::any::TypeId) -> Option<PropertyEditor
 /// lens element...), each writing the whole value back through `put`.
 /// Properties without a registered editor (lists, nested structs) and those
 /// `shows` hides are skipped.
-pub(crate) struct FieldRows {
-    pub(crate) editors: Vec<(usize, BoundPropertyEditor)>,
+pub struct FieldRows {
+    pub editors: Vec<(usize, BoundPropertyEditor)>,
     /// Pushes the current value into every editor.
     refresh: Arc<dyn Fn(&[(usize, BoundPropertyEditor)], &mut Window, &mut App) + Send + Sync>,
 }
 
 impl FieldRows {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new<T: EngineClass + Clone>(
+    pub fn new<T: EngineClass + Clone>(
         value: &T,
         id: &str,
         class_name: &str,
@@ -99,11 +99,11 @@ impl FieldRows {
         Self { editors, refresh }
     }
 
-    pub(crate) fn refresh(&self, window: &mut Window, cx: &mut App) {
+    pub fn refresh(&self, window: &mut Window, cx: &mut App) {
         (self.refresh)(&self.editors, window, cx);
     }
 
-    pub(crate) fn views(&self) -> impl Iterator<Item = AnyElement> + '_ {
+    pub fn views(&self) -> impl Iterator<Item = AnyElement> + '_ {
         self.editors
             .iter()
             .map(|(_, editor)| editor.view.clone().into_any_element())
@@ -252,7 +252,7 @@ fn fingerprint<T: serde::Serialize>(value: &[T]) -> u64 {
 ///
 /// `edit` applies a button's [`ListEdit`] to the owning view; `toggle` flips
 /// the item's expansion.
-pub(crate) fn collapsible_item_card<V: 'static>(
+pub fn collapsible_item_card<V: 'static>(
     id: &str,
     index: usize,
     title: String,
@@ -376,7 +376,7 @@ pub struct ReflectedListEditor<T: ReflectedListItem> {
 
 /// Where the panel's wake-up callback is kept, shared by the editor and its
 /// [`VirtualRows`] handle.
-pub(crate) type ListWake = Arc<Mutex<Option<Arc<dyn Fn(&mut App) + Send + Sync>>>>;
+pub type ListWake = Arc<Mutex<Option<Arc<dyn Fn(&mut App) + Send + Sync>>>>;
 
 impl<T: ReflectedListItem> ReflectedListEditor<T> {
     pub fn new(
@@ -691,7 +691,7 @@ impl<T: ReflectedListItem> ReflectedListEditor<T> {
 }
 
 /// Where the open cards sit after `edit` of a list that held `len` items.
-pub(crate) fn remap_expanded(
+pub fn remap_expanded(
     expanded: &std::collections::HashSet<usize>,
     edit: ListEdit,
     len: usize,

@@ -4,13 +4,13 @@
 use std::any::Any;
 
 use glam::DVec3;
-use helio_component::voxel_generator_editor::generator_items;
-use helio_component::voxel_world::terrain_world;
-use helio_component::{VoxelGeneratorRef, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 use helio_pass_voxel_planet::terrain::{generators, material, GeneratorInfo};
 use pulsar_scene_model::attachments;
 use pulsar_scene_model::components::Transform;
 use pulsar_scenedb::{component_id, Entity, World};
+use voxel_plugin::generator_editor::generator_items;
+use voxel_plugin::world::terrain_world;
+use voxel_plugin::{VoxelGeneratorRef, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 
 /// An object with a flat terrain and its settings component attached;
 /// returns the terrain instance.
@@ -37,7 +37,7 @@ fn settings_of(world: &World, terrain: Entity) -> Entity {
 /// Step the scene until its terrains' worlds are built (they build off the
 /// thread that asked, as the scene's steps do).
 fn settle(world: &mut World) {
-    assert!(helio_component::voxel_runtime::wait_for_voxel_worlds(
+    assert!(voxel_plugin::runtime::wait_for_voxel_worlds(
         world,
         std::time::Duration::from_secs(120)
     ));
@@ -285,7 +285,7 @@ fn choice(id: &str, version: u32, name: &str) -> GeneratorInfo {
 #[test]
 fn the_generator_picker_lists_registered_generators_and_searches_them() {
     use ui::dropdown::DropdownItem;
-    let titles = |items: &[helio_component::voxel_generator_editor::GeneratorItem]| {
+    let titles = |items: &[voxel_plugin::generator_editor::GeneratorItem]| {
         items
             .iter()
             .map(|i| i.title().to_string())
@@ -415,7 +415,7 @@ fn scripts_shape_the_layer_stack() {
 /// builds random worlds with them.
 #[test]
 fn scripts_read_and_set_every_world_setting() {
-    use helio_component::{VoxelAir, VoxelWorldShape};
+    use voxel_plugin::{VoxelAir, VoxelWorldShape};
     let (mut world, entity) = flat_world();
     let text = |world: &mut World, name: &str| {
         *call(world, entity, name, vec![])

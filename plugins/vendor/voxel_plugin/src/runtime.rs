@@ -13,10 +13,10 @@
 //!
 //! [`VoxelWorlds`] is the scene subsystem that drives them: it keeps
 //! journals on their ground and skies on their terrain
-//! ([`super::voxel_sync`]), asks each terrain's runtime for the world the
+//! ([`crate::sync`]), asks each terrain's runtime for the world the
 //! terrain describes, turns the edits a build applied into the terrain's
 //! block events, and stamps sculpt samples whose picks were answered
-//! ([`super::voxel_sculpt`]).
+//! ([`crate::sculpt`]).
 //!
 //! What the renderer draws is what the runtimes publish: every frame the
 //! scene's voxel worlds go to the voxel pass as a payload
@@ -41,9 +41,9 @@ use helio_pass_voxel_planet::{Planet, VolumeTransform, VoxelVolume};
 use helio_voxel_data::VoxelEditJournal;
 use pulsar_scenedb::{Entity, World};
 
-use super::voxel_sync::VoxelWorldSync;
-use super::voxel_world::{WorldSource, entity_source, is_generated, journal_planet, planet_brush};
-use super::{BlockData, BlockMaterialChange, VoxelTerrainComponent};
+use crate::sync::VoxelWorldSync;
+use crate::world::{WorldSource, entity_source, is_generated, journal_planet, planet_brush};
+use crate::{BlockData, BlockMaterialChange, VoxelTerrainComponent};
 
 /// Worker threads answering a world's brick queries.
 const QUERY_THREADS: usize = 2;
@@ -114,7 +114,7 @@ pub struct TerrainWorld {
     /// What the drawn world is asked, and its inbox.
     asked: Mutex<Asked>,
     answers: Arc<VolumeAnswers>,
-    strokes: Mutex<super::voxel_sculpt::Strokes>,
+    strokes: Mutex<crate::sculpt::Strokes>,
     /// Brick walks wait for their bricks instead of answering later (tests).
     wait_for_bricks: std::sync::atomic::AtomicBool,
 }
@@ -158,7 +158,7 @@ impl TerrainWorld {
     }
 
     /// The terrain's sculpt strokes.
-    pub(crate) fn strokes(&self) -> MutexGuard<'_, super::voxel_sculpt::Strokes> {
+    pub(crate) fn strokes(&self) -> MutexGuard<'_, crate::sculpt::Strokes> {
         lock(&self.strokes)
     }
 
@@ -573,7 +573,7 @@ impl VoxelWorlds {
         // Sculpt samples whose picks came back stamp, in order.
         for (entity, runtime) in &runtimes {
             if runtime.strokes().waiting() {
-                super::voxel_sculpt::resolve_strokes(world, *entity, runtime);
+                crate::sculpt::resolve_strokes(world, *entity, runtime);
             }
         }
         world
@@ -682,7 +682,7 @@ fn publish_frame(world: &World, problems: &mut Vec<String>) -> Option<Arc<Planet
                 .ok(),
         };
         volumes.push(VolumeFrame {
-            // Centred on the origin (`voxel_world::entity_source`), by the
+            // Centred on the origin (`crate::world::entity_source`), by the
             // terrain's entity.
             volume: VoxelVolume::new(
                 entity.bits(),
@@ -711,11 +711,11 @@ fn publish_frame(world: &World, problems: &mut Vec<String>) -> Option<Arc<Planet
 pub fn scene_sun(world: &World) -> Option<Vec3> {
     use pulsar_scene_model::attachments::ComponentOwner;
     let (_, (_, owner)) = world
-        .query::<(&super::LightComponent, &ComponentOwner)>()
+        .query::<(&helio_component::LightComponent, &ComponentOwner)>()
         .find(|(_, (light, owner))| {
             owner.is_enabled()
                 && light.general.enabled
-                && light.general.light_type == super::LightType::Directional
+                && light.general.light_type == helio_component::LightType::Directional
                 && world
                     .get::<pulsar_scene_model::Visibility>(owner.entity())
                     .is_none_or(|visibility| visibility.visible)
@@ -834,13 +834,13 @@ mod tests {
     #[test]
     fn edits_extend_the_terrains_one_world_off_thread() {
         let (mut world, entity) = scene_with(planet_terrain());
-        assert!(super::super::voxel_world::terrain_world(&world, entity).is_err());
+        assert!(crate::world::terrain_world(&world, entity).is_err());
         settle(&mut world);
         let first = shown(&world, entity);
         let eye = first.surface_point(DVec3::new(0.2, 1.0, 0.3), 3.0);
         let target = first.raycast(eye, -eye.normalize(), 100.0).unwrap().cell;
         let at = first.grid().cell_center(target);
-        super::super::voxel_world::append_edits(&mut world, entity, vec![dig(at, 0.5)]).unwrap();
+        crate::world::append_edits(&mut world, entity, vec![dig(at, 0.5)]).unwrap();
         assert!(Arc::ptr_eq(&first, &shown(&world, entity)), "not built yet");
         settle(&mut world);
         let dug = shown(&world, entity);
@@ -953,8 +953,7 @@ mod tests {
             ground(&mut world, entity, "ground_lift", surface + DVec3::Y * 2.0),
             Some(0.0)
         );
-        super::super::voxel_world::append_edits(&mut world, entity, vec![dig(buried, 1.5)])
-            .unwrap();
+        crate::world::append_edits(&mut world, entity, vec![dig(buried, 1.5)]).unwrap();
         settle(&mut world);
         assert_eq!(ground(&mut world, entity, "ground_lift", buried), Some(0.0));
     }
@@ -964,7 +963,7 @@ mod tests {
     /// on the exact terrain; the stamps go through the journal.
     #[test]
     fn sculpt_samples_stamp_where_the_ray_hits() {
-        use super::super::voxel_sculpt::{VoxelBrushRequest, VoxelBrushTool, sculpt};
+        use crate::sculpt::{VoxelBrushRequest, VoxelBrushTool, sculpt};
         let (mut world, entity) = scene_with(planet_terrain());
         settle(&mut world);
         let runtime = VoxelTerrainRuntime::of(&world, entity).unwrap();

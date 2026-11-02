@@ -9,13 +9,13 @@ use std::sync::Arc;
 
 use blueprint_compiler::{authored::expand_graph, compile, ClassSource, VariableSource};
 use graphy_blueprint::codec::deserialize_blueprint;
-use helio_component::voxel_world::terrain_world;
-use helio_component::{
+use pulsar_scenedb::World;
+use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Value, Vm};
+use voxel_plugin::world::terrain_world;
+use voxel_plugin::{
     VoxelAir, VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent,
     VoxelTerrainLayersComponent, VoxelTerrainStack,
 };
-use pulsar_scenedb::World;
-use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Value, Vm};
 
 const EXAMPLE: &str = include_str!("../../../../assets/examples/random_world.blueprint.json");
 
@@ -88,7 +88,7 @@ fn build(program: &Program, seed: i64) -> (VoxelTerrainStack, VoxelAir) {
         .unwrap_or_else(|e| panic!("seed {seed}: begin_play failed: {e}"));
     // The generator accepts it: the planet builds (off the thread, as the
     // scene's steps build it).
-    assert!(helio_component::voxel_runtime::wait_for_voxel_worlds(
+    assert!(voxel_plugin::runtime::wait_for_voxel_worlds(
         &mut world,
         std::time::Duration::from_secs(300)
     ));

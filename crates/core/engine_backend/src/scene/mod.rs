@@ -6,12 +6,6 @@
 //! components on demand. The editor, the renderer and the play-mode runtime
 //! all share one [`SharedScene`].
 
-#[cfg(feature = "render")]
-// Ready-made voxel worlds (Earth, Moon, Desert, flat) added to a level in
-// one step: the example levels' worlds.
-#[cfg(feature = "render")]
-pub mod voxel_presets;
-
 // Persistent texture/material/sectioned-mesh/object resource components.
 pub mod render_resources;
 

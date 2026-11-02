@@ -1,0 +1,61 @@
+[package]
+name = "voxel_plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Voxel worlds (pulsar.voxel): the voxel terrain components and their runtime, the voxel file formats, ready-made worlds, and the Helio feature they render with"
+
+[lib]
+name = "voxel_plugin"
+
+[features]
+# Statically linked hosts (the editor, the game) use the Rust API; the
+# components, scene subsystems, payload publishers, render features and
+# settings register through `inventory` once the crate is linked.
+builtin = []
+
+[dependencies]
+engine_class_derive = { workspace = true }
+# Enum properties get a dropdown editor, which needs the GPUI-typed prims (as helio-component).
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+pulsar_scenedb = { workspace = true }
+pulsar_scene_model = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_events = { workspace = true }
+pulsar_class = { workspace = true }
+pulsar_settings = { workspace = true }
+helio_component = { workspace = true }
+# Ready-made worlds are levels (`presets`); the renderer takes the plugin's
+# feature through its registrations. The game's slim feature set (as
+# pulsar_game): linking the plugin must not pull the editor's features into a
+# game build. A path dependency because the workspace table cannot opt out of
+# default features.
+engine_backend = { path = "../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+plugin_editor_api = { workspace = true }
+gpui-ce = { workspace = true }
+ui = { workspace = true }
+inventory = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+glam = { workspace = true }
+tracing = { workspace = true }
+# The voxel world, data and feature: Helio-Voxel.
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-settings = { workspace = true }
+helio-voxel-data = { workspace = true }
+helio-pass-voxel-planet = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true }
+helio-pass-sky = { workspace = true }
+
+[dev-dependencies]
+helio-pass-foliage-place = { workspace = true }
+bytemuck = { workspace = true }
+wgpu = { workspace = true }
+pollster = "=0.4.0"
+parking_lot = { workspace = true }
+engine_state = { workspace = true }
+image = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[lints]
+workspace = true

@@ -32,6 +32,8 @@ pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 pulsar_scenedb = { workspace = true }
 pulsar_scenedb_derive = { workspace = true }
 pulsar_world_registry = { workspace = true }
+# Ground-material names registered by the plugins whose ground has them.
+inventory = { workspace = true }
 pulsar_events = { workspace = true }
 pulsar_scene_model = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -52,7 +54,6 @@ image.workspace = true
 # BC7 encoder (Intel ISPC Texture Compressor, prebuilt kernels) for cooked
 # textures; see src/cooked_texture.rs.
 intel_tex_2 = "0.5"
-helio-voxel-data.workspace = true
 helio-asset-compat = { workspace = true }
 skeletal_assets.workspace = true
 helio-pass-corona = { workspace = true }
@@ -63,9 +64,6 @@ helio-pass-sky = { workspace = true }
 helio-pass-sprite-batch = { workspace = true }
 helio-pass-volumetric-fog = { workspace = true }
 helio-pass-water-sim = { workspace = true }
-# CPU voxel worlds (generators, exact cells, ray casts) for the terrain
-# component's scripting methods and generator picker.
-helio-pass-voxel-planet = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
 thiserror.workspace = true
 wgpu.workspace = true

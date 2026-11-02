@@ -228,7 +228,7 @@ fn editor() -> HelioRenderer {
 fn level_sun() -> Option<Vec3> {
     let mut scene = engine_backend::scene::new_scene();
     RuntimeLevel::load_into(&level_path(), &mut scene.world).expect("the example planet loads");
-    helio_component::voxel_runtime::scene_sun(&scene.world)
+    voxel_plugin::runtime::scene_sun(&scene.world)
 }
 
 /// The level's saved camera.

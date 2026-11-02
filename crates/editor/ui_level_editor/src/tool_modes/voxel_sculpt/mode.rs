@@ -98,12 +98,12 @@ impl ToolMode for VoxelSculptMode {
 /// A stroke sample of `request` along the pointer ray, on every enabled,
 /// editable voxel terrain: through `VoxelTerrainComponent`'s `sculpt`.
 fn sculpt_ray(
-    request: helio_component::voxel_sculpt::VoxelBrushRequest,
+    request: voxel_plugin::sculpt::VoxelBrushRequest,
 ) -> engine_backend::subsystems::render::ToolRay {
     engine_backend::subsystems::render::ToolRay(std::sync::Arc::new(
         move |world, origin, direction, start| {
             let terrains: Vec<_> = world
-                .query::<&helio_component::VoxelTerrainComponent>()
+                .query::<&voxel_plugin::VoxelTerrainComponent>()
                 .filter(|(entity, terrain)| {
                     terrain.enabled
                         && terrain.editable
@@ -112,9 +112,9 @@ fn sculpt_ray(
                 .map(|(entity, _)| entity)
                 .collect();
             for terrain in terrains {
-                if let Err(error) = helio_component::voxel_sculpt::sculpt(
-                    world, terrain, origin, direction, request, start,
-                ) {
+                if let Err(error) =
+                    voxel_plugin::sculpt::sculpt(world, terrain, origin, direction, request, start)
+                {
                     tracing::warn!("Voxel sculpt: {error}");
                 }
             }

@@ -10,6 +10,7 @@ mod interaction;
 pub mod material_sampler;
 pub mod pipelines;
 pub mod project_settings;
+pub mod render_features;
 pub mod renderer;
 pub mod scene_renderer;
 
@@ -19,6 +20,7 @@ pub use core::{
     RenderSpikeLogConfig,
 };
 pub use fly_camera::FlyCamera;
+pub use render_features::RenderFeatureRegistration;
 pub use renderer::{
     CameraSync, CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer,
     PendingPointerEvent, PortalDebugText, RendererCommand, StaticDragWarning, ToolRay, ViewKind,

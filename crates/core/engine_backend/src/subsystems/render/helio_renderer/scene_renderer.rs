@@ -149,12 +149,9 @@ impl SceneRenderer {
         if let Some(quality) = super::project_settings::tsr_quality(&settings, scene_quality) {
             config = config.with_tsr_quality(quality);
         }
-        // The voxel terrain joins whichever pipeline the level runs.
-        let config = config.with_feature(helio_pass_voxel_planet::VoxelSettings {
-            residency: helio_pass_voxel_planet::chunks::ResidencyConfig::from_settings(
-                &super::project_settings::voxels(),
-            ),
-        });
+        // The plugins' features' settings: their features join whichever
+        // pipeline the level runs.
+        let config = super::render_features::configure(config);
 
         let scene_db =
             crate::scene::ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
@@ -202,9 +199,12 @@ impl SceneRenderer {
             .as_deref()
             .and_then(|id| super::pipelines::create_pipeline(Some(id)));
         let pipeline = custom.is_some().then_some(pipeline).flatten();
-        let builder = builder.with_boxed_graph(
-            custom.unwrap_or_else(|| Box::new(helio_presets::Preset::Deferred)),
-        );
+        let builder = builder.with_boxed_graph(custom.unwrap_or_else(|| {
+            Box::new(
+                helio_presets::Preset::Deferred
+                    .with_features(&super::render_features::plugin_features()),
+            )
+        }));
         let mut renderer = builder.build(device, queue.clone(), width, height, format);
         // Scene materials read through trilinear, anisotropic, repeating
         // filtering (project `streaming.texture_*` settings), not wgpu's

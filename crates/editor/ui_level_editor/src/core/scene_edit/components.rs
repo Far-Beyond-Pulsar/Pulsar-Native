@@ -149,11 +149,11 @@ pub fn after_property_edit(
         return;
     }
     let Some(terrain) = instance_at(world, object_id, index)
-        .and_then(|instance| world.get::<helio_component::VoxelTerrainComponent>(instance))
+        .and_then(|instance| world.get::<voxel_plugin::VoxelTerrainComponent>(instance))
     else {
         return;
     };
-    let Some(class) = helio_component::voxel_world::generator_settings_component(
+    let Some(class) = voxel_plugin::world::generator_settings_component(
         &terrain.generator.id,
         terrain.generator.version,
     ) else {

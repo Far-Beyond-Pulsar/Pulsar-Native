@@ -167,7 +167,9 @@ impl Default for AtmosphereComponent {
 }
 
 impl AtmosphereComponent {
-    fn from_row(row: &AtmosphereRow) -> Self {
+    /// The component whose row is `row` (its authored values; placed on
+    /// flat ground).
+    pub fn from_row(row: &AtmosphereRow) -> Self {
         Self {
             enabled: true,
             placement: AtmospherePlacement::GroundAtOrigin,
@@ -289,93 +291,6 @@ impl AtmosphereComponent {
     }
 }
 
-impl AtmosphereComponent {
-    /// The air a voxel world's `air` settings describe, on this sky's
-    /// planet (placement, radius, ground and sun kept): `None` for `Custom` (the
-    /// authored sky stays); `VoxelAir::None` is a disabled sky. `density`
-    /// scales every coefficient, `tint` the molecular scattering per
-    /// channel (the sky's colour), `haze` the aerosols.
-    pub fn for_air(
-        &self,
-        air: crate::VoxelAir,
-        density: f32,
-        tint: [f32; 3],
-        haze: f32,
-    ) -> Option<Self> {
-        use crate::VoxelAir;
-        let preset = match air {
-            VoxelAir::Custom => return None,
-            VoxelAir::None => {
-                return Some(Self {
-                    enabled: false,
-                    ..self.clone()
-                });
-            }
-            VoxelAir::Earthlike => Self::from_row(&AtmosphereRow::earth()),
-            VoxelAir::Thin => Self::from_row(&AtmosphereRow::mars()),
-            VoxelAir::Dense => {
-                // A deep haze over a tall atmosphere (Titan-like).
-                let earth = Self::from_row(&AtmosphereRow::earth());
-                Self {
-                    thickness_km: 200.0,
-                    rayleigh_scattering: earth.rayleigh_scattering.map(|v| v * 1.5),
-                    rayleigh_scale_height_km: 20.0,
-                    mie_scattering: earth.mie_scattering.map(|v| v * 12.0),
-                    mie_absorption: [0.012, 0.018, 0.035],
-                    mie_scale_height_km: 6.0,
-                    mie_anisotropy: 0.6,
-                    ozone_absorption: [0.0; 3],
-                    ..earth
-                }
-            }
-        };
-        let density = density.max(0.0);
-        let haze = haze.max(0.0);
-        let times = |v: [f32; 3], k: [f32; 3]| [v[0] * k[0], v[1] * k[1], v[2] * k[2]];
-        Some(Self {
-            enabled: density > 0.0,
-            placement: self.placement,
-            planet_radius_km: self.planet_radius_km,
-            sun_angular_radius_deg: self.sun_angular_radius_deg,
-            ground_albedo: self.ground_albedo,
-            rayleigh_scattering: times(
-                preset.rayleigh_scattering,
-                tint.map(|t| t.max(0.0) * density),
-            ),
-            mie_scattering: preset.mie_scattering.map(|v| v * density * haze),
-            mie_absorption: preset.mie_absorption.map(|v| v * density * haze),
-            ozone_absorption: preset.ozone_absorption.map(|v| v * density),
-            // The clouds stay as authored.
-            clouds_enabled: self.clouds_enabled,
-            cloud_bottom_km: self.cloud_bottom_km,
-            cloud_top_km: self.cloud_top_km,
-            cloud_coverage: self.cloud_coverage,
-            cloud_type: self.cloud_type,
-            cloud_extinction_per_km: self.cloud_extinction_per_km,
-            cloud_weather_km: self.cloud_weather_km,
-            cloud_shape_km: self.cloud_shape_km,
-            cloud_detail_km: self.cloud_detail_km,
-            cloud_erosion: self.cloud_erosion,
-            cloud_wind: self.cloud_wind,
-            cloud_albedo: self.cloud_albedo,
-            cloud_voxels: self.cloud_voxels,
-            cloud_voxel_m: self.cloud_voxel_m,
-            cloud_voxel_fill: self.cloud_voxel_fill,
-            cloud_pole: self.cloud_pole,
-            cloud_circulation: self.cloud_circulation,
-            cloud_circulation_cells: self.cloud_circulation_cells,
-            cloud_synoptic_km: self.cloud_synoptic_km,
-            cloud_storminess: self.cloud_storminess,
-            cloud_mesoscale_km: self.cloud_mesoscale_km,
-            cloud_cirrus: self.cloud_cirrus,
-            cloud_cirrus_km: self.cloud_cirrus_km,
-            cloud_evolution: self.cloud_evolution,
-            cloud_seed: self.cloud_seed,
-            ..preset
-        })
-    }
-}
-
 #[register_world_component]
 impl AtmosphereComponent {}
 
@@ -394,53 +309,6 @@ mod tests {
         assert!((row.sun_angular_radius - earth.sun_angular_radius).abs() < 1e-6);
         assert_eq!(row.rayleigh_scattering, earth.rayleigh_scattering);
         assert_eq!(row.enabled, 1);
-    }
-
-    #[test]
-    fn a_worlds_air_derives_its_sky() {
-        use crate::VoxelAir;
-        let sky = AtmosphereComponent {
-            placement: AtmospherePlacement::PlanetAtOwner,
-            planet_radius_km: 1737.0,
-            ..Default::default()
-        };
-        assert!(
-            sky.for_air(VoxelAir::Custom, 1.0, [1.0; 3], 1.0).is_none(),
-            "custom keeps the authored sky"
-        );
-        assert!(
-            !sky.for_air(VoxelAir::None, 1.0, [1.0; 3], 1.0)
-                .unwrap()
-                .enabled,
-            "an airless world has no sky"
-        );
-        let earth = sky
-            .for_air(VoxelAir::Earthlike, 1.0, [1.0; 3], 1.0)
-            .unwrap();
-        assert!(earth.enabled);
-        assert_eq!(
-            (earth.placement, earth.planet_radius_km),
-            (AtmospherePlacement::PlanetAtOwner, 1737.0),
-            "the planet stays"
-        );
-        assert_eq!(
-            earth.rayleigh_scattering,
-            AtmosphereRow::earth().rayleigh_scattering
-        );
-        let thin = sky
-            .for_air(VoxelAir::Earthlike, 0.5, [1.0, 0.5, 1.0], 2.0)
-            .unwrap();
-        assert!((thin.rayleigh_scattering[1] - earth.rayleigh_scattering[1] * 0.25).abs() < 1e-9);
-        assert!(
-            (thin.mie_scattering[0] - earth.mie_scattering[0]).abs() < 1e-9,
-            "half the air, twice the haze"
-        );
-        assert!(
-            !sky.for_air(VoxelAir::Earthlike, 0.0, [1.0; 3], 1.0)
-                .unwrap()
-                .enabled,
-            "no air at all"
-        );
     }
 
     #[test]
@@ -488,13 +356,6 @@ mod tests {
             AtmosphereComponent::from_row(&row).to_row().clouds(),
             row.clouds(),
             "the clouds round-trip"
-        );
-        let air = clouds
-            .for_air(crate::VoxelAir::Thin, 1.0, [1.0; 3], 1.0)
-            .unwrap();
-        assert!(
-            air.clouds_enabled && air.cloud_coverage == 0.7,
-            "a world's air keeps its clouds"
         );
     }
 }

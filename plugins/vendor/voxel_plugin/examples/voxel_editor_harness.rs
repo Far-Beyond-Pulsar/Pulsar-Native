@@ -9,7 +9,7 @@
 //! have settled and the editor would hold that frame on screen.
 //!
 //! ```text
-//! cargo run --release -p engine_backend --example voxel_editor_harness -- \
+//! cargo run --release -p voxel_plugin --example voxel_editor_harness -- \
 //!     <level> <out dir> [width height] [steps...]
 //! ```
 //!
@@ -26,10 +26,11 @@
 //!   and capture; logs per-frame times and the edits the journal gained.
 //! - `world:<earth|moon|desert|blocks>`: a ready-made voxel world added to
 //!   the level as the editor's Create Voxel Terrain does
-//!   (`scene::voxel_presets`), its camera the level's; applied before the
+//!   (`voxel_plugin::presets`), its camera the level's; applied before the
 //!   first frame wherever the step stands.
 //! - `set:<group>.<key>=<value>`: a project setting (`rendering.features.edit::<helio_pass_foliage_place::FoliageSettings>().range =200`;
-//!   the groups are Helio's, `helio_settings::GROUPS`), applied before the
+//!   the groups are `pulsar_settings::project::rendering::groups`: Helio's
+//!   and the plugins'), applied before the
 //!   first frame wherever the step stands.
 //! - `debug:<mode>`: later views render the renderer's debug view `mode`
 //!   (the toolbar's view mode: 0 lit, 26 the voxel sun's visibility).
@@ -57,10 +58,10 @@
 use engine_backend::subsystems::render::{
     EditorCameraState, HelioRenderer, PendingPointerEvent, ToolRay,
 };
-use helio_component::voxel_sculpt::{VoxelBrushRequest, VoxelBrushTool};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use voxel_plugin::sculpt::{VoxelBrushRequest, VoxelBrushTool};
 
 /// Live heap bytes, for each step's memory line: the allocator counts what
 /// the process holds on the Rust heap (driver memory is not in it).
@@ -243,7 +244,7 @@ impl Harness {
         let camera = self.camera();
         let forward = self.renderer.camera_forward();
         let [x, y, z] = camera.position;
-        let sun = helio_component::voxel_runtime::scene_sun(&self.scene.read().world)
+        let sun = voxel_plugin::runtime::scene_sun(&self.scene.read().world)
             .map_or_else(|| "none".to_owned(), |s| format!("{},{},{}", s.x, s.y, s.z));
         println!(
             "HARNESS view {name}: eye {x},{y},{z},{},{},{} sun {sun}",
@@ -421,7 +422,7 @@ impl Harness {
         let scene = self.scene.read();
         scene
             .world
-            .query::<&helio_component::VoxelTerrainComponent>()
+            .query::<&voxel_plugin::VoxelTerrainComponent>()
             .map(|(_, terrain)| terrain.edits.len())
             .sum()
     }
@@ -514,7 +515,7 @@ fn main() {
         if foliage > 0 {
             println!("HARNESS scene foliage: {foliage} types");
         }
-        for (_, c) in world.query::<&helio_component::components::VoxelTerrainComponent>() {
+        for (_, c) in world.query::<&voxel_plugin::VoxelTerrainComponent>() {
             println!(
                 "HARNESS scene terrain: seed {} voxel {} air {:?} haze {} features {}",
                 c.seed,
@@ -548,7 +549,7 @@ fn main() {
     // `world:` steps: ready-made worlds, as the editor adds them.
     let mut camera = extras.editor_camera;
     for step in steps.iter().filter_map(|s| s.strip_prefix("world:")) {
-        use engine_backend::scene::voxel_presets::{add_voxel_world, VoxelWorldPreset};
+        use voxel_plugin::presets::{add_voxel_world, VoxelWorldPreset};
         let preset = VoxelWorldPreset::ALL
             .into_iter()
             .find(|preset| format!("{preset:?}").eq_ignore_ascii_case(step))
@@ -688,11 +689,11 @@ fn main() {
                 let sculpt = ToolRay(std::sync::Arc::new(
                     move |world, origin, direction, start| {
                         let terrains: Vec<_> = world
-                            .query::<&helio_component::VoxelTerrainComponent>()
+                            .query::<&voxel_plugin::VoxelTerrainComponent>()
                             .map(|(entity, _)| entity)
                             .collect();
                         for terrain in terrains {
-                            if let Err(error) = helio_component::voxel_sculpt::sculpt(
+                            if let Err(error) = voxel_plugin::sculpt::sculpt(
                                 world, terrain, origin, direction, request, start,
                             ) {
                                 println!("HARNESS sculpt: {error}");

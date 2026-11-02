@@ -1,7 +1,8 @@
 //! The project's renderer settings, read through Helio's description of
-//! them (`helio_settings`; `pulsar_settings::project::rendering` registers
-//! the same description). The editor viewport and the game build their
-//! renderers from these.
+//! them (`helio_settings`, and the groups plugins register for their
+//! features; `pulsar_settings::project::rendering` registers the same
+//! descriptions). The editor viewport and the game build their renderers
+//! from these.
 
 use helio::helio_settings::{self, Group, Resolved};
 
@@ -26,11 +27,6 @@ fn resolved_from(
 /// The renderer's settings.
 pub fn renderer() -> Resolved {
     resolved(&helio_settings::RENDERER)
-}
-
-/// Voxel worlds' residency settings.
-pub fn voxels() -> Resolved {
-    resolved(&helio_settings::VOXEL_RESIDENCY)
 }
 
 /// A renderer config with the project's settings: the renderer's own and
@@ -67,7 +63,16 @@ use std::sync::{
 #[derive(Clone)]
 pub(super) struct ProjectGraphSettings {
     pub renderer: helio::helio_settings::Resolved,
-    pub voxels: helio::helio_settings::Resolved,
+    /// Every other group's (Helio's and the plugins' features'), in
+    /// `pulsar_settings::project::rendering::groups` order.
+    pub features: Vec<helio::helio_settings::Resolved>,
+}
+
+/// The settings groups other than the renderer's own.
+fn feature_groups() -> impl Iterator<Item = &'static Group> {
+    pulsar_settings::project::rendering::groups()
+        .into_iter()
+        .filter(|group| !std::ptr::eq(*group, &helio_settings::RENDERER))
 }
 
 /// Resolve settings only when a relevant project value changes. Subscribe
@@ -88,11 +93,14 @@ impl ProjectGraphSettingsCache {
     fn with_config(config: engine_state::settings::ConfigManager) -> Self {
         let dirty = Arc::new(AtomicBool::new(true));
         let changed = Arc::clone(&dirty);
+        let keys: Vec<&'static str> = pulsar_settings::project::rendering::groups()
+            .into_iter()
+            .map(|group| group.key)
+            .collect();
         let listener = config.on_any_change(move |event| {
             if event.namespace == engine_state::settings::NS_PROJECT
                 && event.owner.len() == 1
-                && (event.owner[0] == helio::helio_settings::RENDERER.key
-                    || event.owner[0] == helio::helio_settings::VOXEL_RESIDENCY.key)
+                && keys.contains(&event.owner[0].as_str())
             {
                 changed.store(true, Ordering::Release);
             }
@@ -110,7 +118,9 @@ impl ProjectGraphSettingsCache {
             self.dirty.store(false, Ordering::Release);
             self.current = Some(Arc::new(ProjectGraphSettings {
                 renderer: resolved_from(&self.config, &helio_settings::RENDERER),
-                voxels: resolved_from(&self.config, &helio_settings::VOXEL_RESIDENCY),
+                features: feature_groups()
+                    .map(|group| resolved_from(&self.config, group))
+                    .collect(),
             }));
         }
         Arc::clone(self.current.as_ref().expect("settings loaded"))
@@ -119,7 +129,13 @@ impl ProjectGraphSettingsCache {
 
 impl ProjectGraphSettings {
     pub fn same_graph(&self, other: &Self) -> bool {
-        self.renderer.same_graph(&other.renderer) && self.voxels.same_graph(&other.voxels)
+        self.renderer.same_graph(&other.renderer)
+            && self.features.len() == other.features.len()
+            && self
+                .features
+                .iter()
+                .zip(&other.features)
+                .all(|(a, b)| a.same_graph(b))
     }
 }
 

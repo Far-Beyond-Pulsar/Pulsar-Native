@@ -11,12 +11,9 @@
 //! reads.
 
 use engine_class_derive::engine_class;
-use gpui::{Entity, Subscription, Window, prelude::*, px};
+use helio_component::GroundMaterialList;
 use helio_pass_voxel_planet::feature_recipe::FeatureRecipe;
 use helio_pass_voxel_planet::terrain::material;
-use pulsar_reflection::{BoundPropertyEditor, PropertyEditorArgs, PropertyWriteBack};
-use ui::Sizable as _;
-use ui::input::{Input, InputEvent, InputState};
 
 /// What a growth grows (`feature_recipe::Form`).
 #[derive(
@@ -69,65 +66,6 @@ pub enum VoxelTreeSpecies {
     Pine,
     Jungle,
 }
-
-/// Terrain material ids (`material::GRASS`, ...), edited as a line of names
-/// or ids ("Grass, Dirt, 22"). Serialized as the ids.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-pub struct VoxelMaterialList(pub Vec<u32>);
-
-impl VoxelMaterialList {
-    /// The list as the editor shows it: built-in materials by name, others
-    /// by id.
-    pub fn text(&self) -> String {
-        self.0
-            .iter()
-            .map(
-                |&id| match material::NAMES.get((id as usize).wrapping_sub(1)) {
-                    Some(name) if id > 0 => (*name).to_string(),
-                    _ => id.to_string(),
-                },
-            )
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-
-    /// A line of names and ids, or the first word that is neither.
-    pub fn parse(text: &str) -> Result<Self, String> {
-        text.split([',', ' ', ';'])
-            .filter(|word| !word.is_empty())
-            .map(|word| {
-                word.parse::<u32>()
-                    .ok()
-                    .or_else(|| material::from_name(word))
-                    .ok_or_else(|| format!("unknown material {word:?}"))
-            })
-            .collect::<Result<_, _>>()
-            .map(Self)
-    }
-}
-
-fn serialize_material_list_json(
-    value: &VoxelMaterialList,
-) -> pulsar_reflection::ReflectResult<serde_json::Value> {
-    serde_json::to_value(value)
-        .map_err(|e| pulsar_reflection::ReflectError::SerializationFailed(e.to_string()))
-}
-
-fn deserialize_material_list_json(
-    value: serde_json::Value,
-) -> pulsar_reflection::ReflectResult<VoxelMaterialList> {
-    serde_json::from_value(value)
-        .map_err(|e| pulsar_reflection::ReflectError::DeserializationFailed(e.to_string()))
-}
-
-#[pulsar_reflection::pulsar_type(
-    serialize_json_with = serialize_material_list_json,
-    deserialize_json_with = deserialize_material_list_json,
-    editor = material_list_editor
-)]
-#[allow(dead_code)]
-type RegisteredVoxelMaterialList = VoxelMaterialList;
 
 /// One growth of a spawn: `variants` stamps of a flora generator
 /// (`feature_recipe::Growth`).
@@ -197,7 +135,7 @@ impl VoxelFeatureGrowth {
     }
 }
 
-impl super::reflected_list::ReflectedListItem for VoxelFeatureGrowth {
+impl helio_component::components::reflected_list::ReflectedListItem for VoxelFeatureGrowth {
     const CLASS_NAME: &'static str = "VoxelFeatureGrowth";
     const NOUN: &'static str = "growth";
 
@@ -214,7 +152,7 @@ impl super::reflected_list::ReflectedListItem for VoxelFeatureGrowth {
     }
 }
 
-crate::register_reflected_list_editor!(VoxelFeatureGrowth);
+helio_component::register_reflected_list_editor!(VoxelFeatureGrowth);
 
 fn serialize_growth_json(
     value: &VoxelFeatureGrowth,
@@ -261,7 +199,7 @@ pub struct VoxelFeatureSpawn {
     pub field_threshold: f32,
     /// Ground surface materials it grows on (empty: any).
     #[property]
-    pub surfaces: VoxelMaterialList,
+    pub surfaces: GroundMaterialList,
     /// Ground heights over the datum it grows between.
     #[property(min = -1.0e9, max = 1.0e9, step = 10.0, label = "Min height (m)")]
     pub min_height_m: f64,
@@ -308,7 +246,7 @@ impl Default for VoxelFeatureSpawn {
             density: 0.5,
             field_scale_m: 0.0,
             field_threshold: -1.0,
-            surfaces: VoxelMaterialList::default(),
+            surfaces: GroundMaterialList::default(),
             min_height_m: -1e9,
             max_height_m: 1e9,
             height_wander_m: 0.0,
@@ -331,7 +269,7 @@ impl PartialEq for VoxelFeatureSpawn {
     }
 }
 
-impl super::reflected_list::ReflectedListItem for VoxelFeatureSpawn {
+impl helio_component::components::reflected_list::ReflectedListItem for VoxelFeatureSpawn {
     const CLASS_NAME: &'static str = "VoxelFeatureSpawn";
     const NOUN: &'static str = "spawn";
     const MAX_ITEMS: usize = helio_pass_voxel_planet::features::MAX_SPAWNS;
@@ -346,7 +284,7 @@ impl super::reflected_list::ReflectedListItem for VoxelFeatureSpawn {
     }
 }
 
-crate::register_reflected_list_editor!(VoxelFeatureSpawn);
+helio_component::register_reflected_list_editor!(VoxelFeatureSpawn);
 
 fn serialize_spawn_json(
     value: &VoxelFeatureSpawn,
@@ -381,101 +319,6 @@ pub fn feature_spawns(recipe: &FeatureRecipe) -> Vec<VoxelFeatureSpawn> {
     serde_json::to_value(recipe)
         .and_then(serde_json::from_value)
         .expect("a feature recipe is feature spawns")
-}
-
-/// Property editor for [`VoxelMaterialList`]: a line of material names and
-/// ids. A line naming an unknown material is kept unapplied until it
-/// parses.
-pub struct VoxelMaterialListEditor {
-    label: String,
-    value: VoxelMaterialList,
-    input: Entity<InputState>,
-    write_back: PropertyWriteBack,
-    _subs: Vec<Subscription>,
-}
-
-impl VoxelMaterialListEditor {
-    fn new(
-        args: &PropertyEditorArgs<'_>,
-        window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) -> Self {
-        let value = args
-            .current_value
-            .downcast_ref::<VoxelMaterialList>()
-            .cloned()
-            .unwrap_or_default();
-        let input = cx.new(|cx| InputState::new(window, cx));
-        input.update(cx, |state, cx| state.set_value(value.text(), window, cx));
-        let subs = vec![cx.subscribe_in(
-            &input,
-            window,
-            |this: &mut Self, input, event: &InputEvent, window, cx| {
-                if !matches!(event, InputEvent::Change | InputEvent::Blur) {
-                    return;
-                }
-                let Ok(parsed) = VoxelMaterialList::parse(&input.read(cx).text().to_string())
-                else {
-                    return;
-                };
-                if parsed == this.value {
-                    return;
-                }
-                this.value = parsed.clone();
-                (this.write_back)(Box::new(parsed), window, cx);
-            },
-        )];
-        Self {
-            label: args.display_name.to_string(),
-            value,
-            input,
-            write_back: args.write_back.clone(),
-            _subs: subs,
-        }
-    }
-
-    /// Accept a value that changed elsewhere (undo, a preset).
-    fn set_value(
-        &mut self,
-        value: &VoxelMaterialList,
-        window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) {
-        if self.value == *value {
-            return;
-        }
-        self.value = value.clone();
-        self.input
-            .update(cx, |state, cx| state.set_value(value.text(), window, cx));
-    }
-}
-
-impl gpui::Render for VoxelMaterialListEditor {
-    fn render(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) -> impl gpui::IntoElement {
-        pulsar_reflection::prims::editor_row(
-            &self.label,
-            Input::new(&self.input).xsmall().w(px(180.0)),
-            cx,
-        )
-    }
-}
-
-fn material_list_editor(
-    args: &PropertyEditorArgs<'_>,
-    window: &mut Window,
-    cx: &mut gpui::App,
-) -> BoundPropertyEditor {
-    let entity = cx.new(|cx| VoxelMaterialListEditor::new(args, window, cx));
-    BoundPropertyEditor::new(
-        entity,
-        |editor: &mut VoxelMaterialListEditor, value: &VoxelMaterialList, window, cx| {
-            editor.set_value(value, window, cx)
-        },
-    )
 }
 
 #[cfg(test)]
@@ -513,14 +356,16 @@ mod tests {
         );
     }
 
+    /// The plugin names the terrain's materials for every ground-material
+    /// list (a spawn's surfaces, foliage's ground).
     #[test]
     fn material_lists_read_names_and_ids() {
-        let list = VoxelMaterialList::parse("Grass, dark_stone 22").unwrap();
+        let list = GroundMaterialList::parse("Grass, dark_stone 22").unwrap();
         assert_eq!(list.0, [material::GRASS, material::DARK_STONE, 22]);
         assert_eq!(list.text(), "Grass, DarkStone, 22");
-        assert_eq!(VoxelMaterialList::parse(&list.text()).unwrap(), list);
-        assert!(VoxelMaterialList::parse("Grass, Lava").is_err());
-        assert_eq!(VoxelMaterialList::parse(" ").unwrap().0, Vec::<u32>::new());
+        assert_eq!(GroundMaterialList::parse(&list.text()).unwrap(), list);
+        assert!(GroundMaterialList::parse("Grass, Lava").is_err());
+        assert_eq!(GroundMaterialList::parse(" ").unwrap().0, Vec::<u32>::new());
     }
 
     #[test]

@@ -1,8 +1,9 @@
 //! The renderer's settings, from Helio's own description of them
-//! (`helio_settings::GROUPS`): every setting Helio exposes appears here with
-//! its label, page, range and default, under the group's owner (`rendering`,
-//! `voxels`). The engine reads them back through the same description
-//! (`engine_backend`'s `project_settings`).
+//! (`helio_settings::GROUPS`) and the groups plugins register for the
+//! features they add ([`SettingsGroupRegistration`]): every setting appears
+//! here with its label, page, range and default, under the group's owner
+//! (`rendering`, a plugin's key). The engine reads them back through the
+//! same description (`engine_backend`'s `project_settings`).
 
 use helio_settings::{Kind, Setting, Value};
 use pulsar_config::{
@@ -11,6 +12,28 @@ use pulsar_config::{
 };
 
 pub const NS: &str = "project";
+
+/// A settings group a plugin adds to the project's rendering settings (the
+/// settings of a feature it adds to the renderer), described as Helio
+/// describes its own.
+pub struct SettingsGroupRegistration {
+    pub group: &'static helio_settings::Group,
+}
+
+inventory::collect!(SettingsGroupRegistration);
+
+/// Every rendering settings group: Helio's, then the plugins'.
+pub fn groups() -> Vec<&'static helio_settings::Group> {
+    helio_settings::GROUPS
+        .iter()
+        .copied()
+        .chain(
+            inventory::iter::<SettingsGroupRegistration>
+                .into_iter()
+                .map(|registration| registration.group),
+        )
+        .collect()
+}
 /// The renderer's owner (`helio_settings::RENDERER`).
 pub const OWNER: &str = "rendering";
 
@@ -91,7 +114,7 @@ fn entry(group: &helio_settings::Group, setting: &Setting) -> SchemaEntry {
 }
 
 pub fn register(cfg: &'static ConfigManager) {
-    for group in helio_settings::GROUPS {
+    for group in groups() {
         let schema = group.settings.iter().fold(
             NamespaceSchema::new(group.title, group.description),
             |schema, setting| schema.setting(setting.key, entry(group, setting)),
@@ -106,7 +129,7 @@ mod tests {
 
     #[test]
     fn every_default_round_trips_through_the_config() {
-        for group in helio_settings::GROUPS {
+        for group in groups() {
             for setting in group.settings {
                 let back =
                     helio_value(config_value(&setting.default)).and_then(|v| setting.accept(v));

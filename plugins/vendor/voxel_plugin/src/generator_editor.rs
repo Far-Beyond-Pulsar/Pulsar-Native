@@ -8,7 +8,7 @@
 use gpui::{Entity, SharedString, Subscription, Window, prelude::*, px};
 use helio_pass_voxel_planet::terrain::{GeneratorInfo, generators};
 
-use super::VoxelGeneratorRef;
+use crate::VoxelGeneratorRef;
 use pulsar_reflection::{BoundPropertyEditor, PropertyEditorArgs, PropertyWriteBack};
 use ui::dropdown::{Dropdown, DropdownEvent, DropdownItem, DropdownState, SearchableVec};
 use ui::{IndexPath, Sizable};

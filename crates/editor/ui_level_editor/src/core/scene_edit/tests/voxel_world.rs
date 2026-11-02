@@ -1,9 +1,9 @@
 //! Create Voxel Terrain: a ready-made world in one undoable step.
 
 use engine_backend::scene::level_rules;
-use engine_backend::scene::voxel_presets::VoxelWorldPreset;
 use engine_backend::scene::SceneWorldExt;
-use helio_component::VoxelTerrainComponent;
+use voxel_plugin::presets::VoxelWorldPreset;
+use voxel_plugin::VoxelTerrainComponent;
 
 use crate::commands::{execute_command, SceneCommand};
 use crate::scene_edit::sky;

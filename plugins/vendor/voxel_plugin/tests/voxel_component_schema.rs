@@ -1,11 +1,11 @@
-use helio_component::{VoxelTerrainComponent, VoxelTerrainLayersComponent};
 use pulsar_reflection::EngineClass;
+use voxel_plugin::{VoxelTerrainComponent, VoxelTerrainLayersComponent};
 
 #[test]
 fn voxel_terrain_defaults_and_round_trips_as_scene_component_data() {
     let terrain = VoxelTerrainComponent::default();
     assert!(terrain.appearance_parameters.is_empty());
-    assert_eq!(terrain.air, helio_component::VoxelAir::Custom);
+    assert_eq!(terrain.air, voxel_plugin::VoxelAir::Custom);
     // New terrain rows start as a 4 km plane of Helio's terrain generator.
     assert_eq!(
         terrain.generator.id,
@@ -96,9 +96,9 @@ fn the_inspector_shows_the_whole_world_description() {
     );
     // The features list and its nested lists have the inspector's editors.
     for type_id in [
-        std::any::TypeId::of::<Vec<helio_component::VoxelFeatureSpawn>>(),
-        std::any::TypeId::of::<Vec<helio_component::VoxelFeatureGrowth>>(),
-        std::any::TypeId::of::<helio_component::VoxelMaterialList>(),
+        std::any::TypeId::of::<Vec<voxel_plugin::VoxelFeatureSpawn>>(),
+        std::any::TypeId::of::<Vec<voxel_plugin::VoxelFeatureGrowth>>(),
+        std::any::TypeId::of::<helio_component::GroundMaterialList>(),
     ] {
         assert!(
             pulsar_reflection::inventory::iter::<pulsar_reflection::UiPropertyEditorHint>
@@ -178,9 +178,9 @@ fn terrain_layers_component_is_the_generator_settings() {
 /// that kind's defaults (the generator's table), keeping its toggle and mask.
 #[test]
 fn layers_take_their_kinds_defaults() {
-    use helio_component::components::voxel_stack_editor::set_layer;
-    use helio_component::{VoxelLayerKind, VoxelLayerMask, VoxelTerrainLayer};
     use helio_pass_voxel_planet::layers::{Layer, LayerKind};
+    use voxel_plugin::stack_editor::set_layer;
+    use voxel_plugin::{VoxelLayerKind, VoxelLayerMask, VoxelTerrainLayer};
     for kind in [
         "Hills",
         "Warp",

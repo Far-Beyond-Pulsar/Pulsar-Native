@@ -5,7 +5,7 @@
 
 use engine_class_derive::{register_component_runtime, register_world_component};
 
-use super::{TerrainEventsEventWriterExt as _, VoxelTerrainComponent, VoxelTerrainLayersComponent};
+use crate::{TerrainEventsEventWriterExt as _, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 
 // Component callbacks borrow the authoritative terrain row from SceneDB.
 // The pending event list is transient transport state populated only after a
@@ -20,7 +20,7 @@ impl VoxelTerrainComponent {
     fn on_block_broken(
         &mut self,
         _context: &mut pulsar_world_registry::ComponentContext<'_>,
-        _block: super::BlockData,
+        _block: crate::BlockData,
     ) {
         // Terrain-specific Rust systems can add per-instance reactions here.
     }
@@ -29,7 +29,7 @@ impl VoxelTerrainComponent {
     fn on_block_placed(
         &mut self,
         _context: &mut pulsar_world_registry::ComponentContext<'_>,
-        _block: super::BlockData,
+        _block: crate::BlockData,
     ) {
         // Terrain-specific Rust systems can add per-instance reactions here.
     }
@@ -38,7 +38,7 @@ impl VoxelTerrainComponent {
     fn on_block_material_changed(
         &mut self,
         _context: &mut pulsar_world_registry::ComponentContext<'_>,
-        _change: super::BlockMaterialChange,
+        _change: crate::BlockMaterialChange,
     ) {
         // Terrain-specific Rust systems can add per-instance reactions here.
     }

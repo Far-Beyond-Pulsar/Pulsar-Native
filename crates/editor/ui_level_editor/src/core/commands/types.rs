@@ -225,10 +225,10 @@ pub enum SceneCommand {
     },
     /// Add a ready-made voxel world to the level: its terrain, sky, sun,
     /// haze, ground cover, wind and look, taking over the level's own
-    /// (`engine_backend::scene::voxel_presets`). One undo step; selects the
+    /// (`voxel_plugin::presets`). One undo step; selects the
     /// terrain and moves the camera over its ground.
     AddVoxelWorld {
-        preset: engine_backend::scene::voxel_presets::VoxelWorldPreset,
+        preset: voxel_plugin::presets::VoxelWorldPreset,
     },
 }
 

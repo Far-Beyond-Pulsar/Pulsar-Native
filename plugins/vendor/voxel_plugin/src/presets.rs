@@ -9,23 +9,23 @@
 //! and wind, the post-process look, and the camera over the ground.
 //!
 //! A level holds one sky, one wind and one directional light
-//! ([`level_rules`](super::level_rules)). The world's sky, haze, wind and
+//! ([`level_rules`](engine_backend::scene::level_rules)). The world's sky, haze, wind and
 //! ground cover replace the level's; its sun and post-process look update the
 //! level's directional light and unbound post-process volume in place; its
 //! terrain replaces a voxel terrain of the level on that terrain's own
 //! object. Objects left with nothing on them are removed.
 
+use engine_backend::scene::{
+    EditorCamera, Name, ObjectType, RuntimeLevel, SceneWorldExt, SpawnObject, Transform,
+    Visibility, level_rules,
+};
 use helio_component::{
     FoliageComponent, FoliageForm, GlobalFogComponent, LightComponent, PostProcessVolumeComponent,
-    VoxelTerrainComponent, VoxelTerrainLayersComponent,
 };
-use pulsar_scene_model::{attachments, NewInstance};
+use pulsar_scene_model::{NewInstance, attachments};
 use pulsar_scenedb::{Entity, World};
 
-use super::{
-    level_rules, EditorCamera, Name, ObjectType, RuntimeLevel, SceneWorldExt, SpawnObject,
-    Transform, Visibility,
-};
+use crate::{VoxelTerrainComponent, VoxelTerrainLayersComponent};
 
 /// A ready-made voxel world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -57,16 +57,16 @@ impl VoxelWorldPreset {
     fn level(self) -> &'static str {
         match self {
             Self::Earth => {
-                include_str!("../../../../../assets/examples/voxel_planet/scene/default.level")
+                include_str!("../../../../assets/examples/voxel_planet/scene/default.level")
             }
             Self::Moon => {
-                include_str!("../../../../../assets/examples/voxel_moon/scene/default.level")
+                include_str!("../../../../assets/examples/voxel_moon/scene/default.level")
             }
             Self::Desert => {
-                include_str!("../../../../../assets/examples/voxel_desert/scene/default.level")
+                include_str!("../../../../assets/examples/voxel_desert/scene/default.level")
             }
             Self::Blocks => {
-                include_str!("../../../../../assets/examples/voxel_blocks/scene/default.level")
+                include_str!("../../../../assets/examples/voxel_blocks/scene/default.level")
             }
         }
     }

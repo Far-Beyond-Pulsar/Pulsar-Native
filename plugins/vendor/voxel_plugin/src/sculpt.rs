@@ -10,7 +10,7 @@
 //! answer in time walks the exact terrain within a bounded reach. Stamps of
 //! one stroke fill the gaps between samples, so a fast drag carves a
 //! continuous trench. Every stamp is an edit through
-//! [`append_edits`](super::voxel_world::append_edits).
+//! [`append_edits`](crate::world::append_edits).
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -23,9 +23,9 @@ use helio_pass_voxel_planet::{Matter, Planet, RayHit};
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
 use pulsar_scenedb::{Entity, World};
 
-use super::VoxelTerrainComponent;
-use super::voxel_runtime::{TerrainWorld, VoxelTerrainRuntime};
-use super::voxel_world::{append_edits, planet_brush};
+use crate::VoxelTerrainComponent;
+use crate::runtime::{TerrainWorld, VoxelTerrainRuntime};
+use crate::world::{append_edits, planet_brush};
 
 /// One sculpt stroke sample's brush.
 #[derive(Clone, Copy, Debug, PartialEq)]

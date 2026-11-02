@@ -327,7 +327,7 @@ fn has_terrain(state: &SharedState) -> bool {
         .read()
         .scene
         .world()
-        .query::<&helio_component::VoxelTerrainComponent>()
+        .query::<&voxel_plugin::VoxelTerrainComponent>()
         .next()
         .is_some()
 }

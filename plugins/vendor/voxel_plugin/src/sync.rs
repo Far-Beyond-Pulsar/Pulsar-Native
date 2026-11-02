@@ -1,16 +1,14 @@
 //! A voxel terrain's dependents follow it: edits belong to the ground they
 //! were made on, and a world's sky and haze are its air. [`VoxelWorldSync`]
 //! keeps both in step from the scene's change journals; the terrains'
-//! scene subsystem ([`super::voxel_runtime::VoxelWorlds`]) polls it.
+//! scene subsystem ([`crate::runtime::VoxelWorlds`]) polls it.
 
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
 
-use super::voxel_world::{WorldSource, entity_source};
-use super::{
-    AtmosphereComponent, AtmospherePlacement, GlobalFogComponent, VoxelTerrainComponent,
-    VoxelTerrainLayersComponent, VoxelWorldShape,
-};
+use crate::world::{WorldSource, entity_source};
+use crate::{VoxelAir, VoxelTerrainComponent, VoxelTerrainLayersComponent, VoxelWorldShape};
+use helio_component::{AtmosphereComponent, AtmospherePlacement, GlobalFogComponent};
 use helio_pass_voxel_planet::grid::Shape;
 
 /// Edits belong to the terrain they were made on: a terrain whose form,
@@ -63,7 +61,7 @@ fn form(source: &WorldSource) -> (VoxelWorldShape, f64, f64) {
 /// (its curvature is the author's). A sphere's fog measures heights over
 /// it, a plane's along world Y. A world whose `air` is a preset (not
 /// `Custom`) derives the rest of both from it too
-/// ([`AtmosphereComponent::for_air`], [`GlobalFogComponent::for_air`]):
+/// ([`sky_for_air`], [`haze_for_air`]):
 /// an airless moon has neither; the sky's clouds stay as authored. Returns
 /// how many atmospheres and fogs changed.
 pub fn sync_air_to_terrains(world: &mut World) -> usize {
@@ -109,14 +107,14 @@ fn sync_skies(world: &mut World) -> usize {
                         planet_radius_km: radius_km,
                         ..atmosphere.clone()
                     };
-                    let wanted = placed
-                        .for_air(
-                            terrain.air,
-                            terrain.air_density,
-                            terrain.air_tint,
-                            terrain.air_haze,
-                        )
-                        .unwrap_or(placed);
+                    let wanted = sky_for_air(
+                        &placed,
+                        terrain.air,
+                        terrain.air_density,
+                        terrain.air_tint,
+                        terrain.air_haze,
+                    )
+                    .unwrap_or(placed);
                     (!same_sky(atmosphere, &wanted)).then_some((sky, wanted))
                 })
         })
@@ -143,9 +141,9 @@ fn sync_hazes(world: &mut World) -> usize {
                         VoxelWorldShape::Sphere => planet_radius as f32,
                         _ => 0.0,
                     };
-                    let wanted = placed
-                        .for_air(terrain.air, terrain.air_density, terrain.air_haze)
-                        .unwrap_or(placed);
+                    let wanted =
+                        haze_for_air(&placed, terrain.air, terrain.air_density, terrain.air_haze)
+                            .unwrap_or(placed);
                     let same = medium.enabled == wanted.enabled
                         && medium.medium.to_medium() == wanted.medium.to_medium();
                     (!same).then_some((fog, wanted))
@@ -163,6 +161,137 @@ fn sync_hazes(world: &mut World) -> usize {
 /// Whether two skies are the same air (every property).
 fn same_sky(a: &AtmosphereComponent, b: &AtmosphereComponent) -> bool {
     a.enabled == b.enabled && a.placement == b.placement && a.to_row() == b.to_row()
+}
+
+/// The sky a voxel world's `air` settings describe, on `sky`'s planet
+/// (placement, radius, ground and sun kept): `None` for `Custom` (the
+/// authored sky stays); `VoxelAir::None` is a disabled sky. `density`
+/// scales every coefficient, `tint` the molecular scattering per channel
+/// (the sky's colour), `haze` the aerosols. The clouds stay as authored.
+pub fn sky_for_air(
+    sky: &AtmosphereComponent,
+    air: VoxelAir,
+    density: f32,
+    tint: [f32; 3],
+    haze: f32,
+) -> Option<AtmosphereComponent> {
+    use helio_pass_sky::AtmosphereRow;
+    let preset = match air {
+        VoxelAir::Custom => return None,
+        VoxelAir::None => {
+            return Some(AtmosphereComponent {
+                enabled: false,
+                ..sky.clone()
+            });
+        }
+        VoxelAir::Earthlike => AtmosphereComponent::from_row(&AtmosphereRow::earth()),
+        VoxelAir::Thin => AtmosphereComponent::from_row(&AtmosphereRow::mars()),
+        VoxelAir::Dense => {
+            // A deep haze over a tall atmosphere (Titan-like).
+            let earth = AtmosphereComponent::from_row(&AtmosphereRow::earth());
+            AtmosphereComponent {
+                thickness_km: 200.0,
+                rayleigh_scattering: earth.rayleigh_scattering.map(|v| v * 1.5),
+                rayleigh_scale_height_km: 20.0,
+                mie_scattering: earth.mie_scattering.map(|v| v * 12.0),
+                mie_absorption: [0.012, 0.018, 0.035],
+                mie_scale_height_km: 6.0,
+                mie_anisotropy: 0.6,
+                ozone_absorption: [0.0; 3],
+                ..earth
+            }
+        }
+    };
+    let density = density.max(0.0);
+    let haze = haze.max(0.0);
+    let times = |v: [f32; 3], k: [f32; 3]| [v[0] * k[0], v[1] * k[1], v[2] * k[2]];
+    Some(AtmosphereComponent {
+        enabled: density > 0.0,
+        placement: sky.placement,
+        planet_radius_km: sky.planet_radius_km,
+        sun_angular_radius_deg: sky.sun_angular_radius_deg,
+        ground_albedo: sky.ground_albedo,
+        rayleigh_scattering: times(
+            preset.rayleigh_scattering,
+            tint.map(|t| t.max(0.0) * density),
+        ),
+        mie_scattering: preset.mie_scattering.map(|v| v * density * haze),
+        mie_absorption: preset.mie_absorption.map(|v| v * density * haze),
+        ozone_absorption: preset.ozone_absorption.map(|v| v * density),
+        // The clouds stay as authored.
+        clouds_enabled: sky.clouds_enabled,
+        cloud_bottom_km: sky.cloud_bottom_km,
+        cloud_top_km: sky.cloud_top_km,
+        cloud_coverage: sky.cloud_coverage,
+        cloud_type: sky.cloud_type,
+        cloud_extinction_per_km: sky.cloud_extinction_per_km,
+        cloud_weather_km: sky.cloud_weather_km,
+        cloud_shape_km: sky.cloud_shape_km,
+        cloud_detail_km: sky.cloud_detail_km,
+        cloud_erosion: sky.cloud_erosion,
+        cloud_wind: sky.cloud_wind,
+        cloud_albedo: sky.cloud_albedo,
+        cloud_voxels: sky.cloud_voxels,
+        cloud_voxel_m: sky.cloud_voxel_m,
+        cloud_voxel_fill: sky.cloud_voxel_fill,
+        cloud_pole: sky.cloud_pole,
+        cloud_circulation: sky.cloud_circulation,
+        cloud_circulation_cells: sky.cloud_circulation_cells,
+        cloud_synoptic_km: sky.cloud_synoptic_km,
+        cloud_storminess: sky.cloud_storminess,
+        cloud_mesoscale_km: sky.cloud_mesoscale_km,
+        cloud_cirrus: sky.cloud_cirrus,
+        cloud_cirrus_km: sky.cloud_cirrus_km,
+        cloud_evolution: sky.cloud_evolution,
+        cloud_seed: sky.cloud_seed,
+        ..preset
+    })
+}
+
+/// The ground haze a voxel world's `air` settings describe, over `fog`'s
+/// planet (`planet_center` and `planet_radius` kept): `None` for `Custom`
+/// (the authored medium stays); `VoxelAir::None` is no haze. A preset's
+/// haze thins with altitude over the ground, scattering forward, of the
+/// air's aerosols' colour; `density` and `haze` scale its extinction as
+/// they scale the sky's aerosols ([`sky_for_air`]).
+pub fn haze_for_air(
+    fog: &GlobalFogComponent,
+    air: VoxelAir,
+    density: f32,
+    haze: f32,
+) -> Option<GlobalFogComponent> {
+    // Extinction (1/m), its falloff with altitude (1/m), anisotropy and
+    // the share it scatters, per channel.
+    let (extinction, falloff, anisotropy, albedo) = match air {
+        VoxelAir::Custom => return None,
+        VoxelAir::None => {
+            return Some(GlobalFogComponent {
+                enabled: false,
+                ..fog.clone()
+            });
+        }
+        // A clear day's boundary layer: kilometres of visibility,
+        // thinning over a few hundred metres.
+        VoxelAir::Earthlike => (6.0e-4, 4.0e-3, 0.6, [1.0; 3]),
+        // Fine butterscotch dust lofted high in thin air.
+        VoxelAir::Thin => (4.0e-4, 1.2e-3, 0.65, [0.95, 0.78, 0.6]),
+        // A deep orange smog hugging the ground.
+        VoxelAir::Dense => (4.0e-3, 8.0e-4, 0.5, [0.9, 0.65, 0.35]),
+    };
+    let extinction = extinction * density.max(0.0) * haze.max(0.0);
+    Some(GlobalFogComponent {
+        enabled: extinction > 0.0,
+        medium: helio_component::MediumProps {
+            mode: helio_component::FogMode::HeightBased,
+            extinction,
+            albedo,
+            emission: [0.0; 3],
+            anisotropy,
+            height_falloff: falloff,
+            height: 0.0,
+            ..fog.medium.clone()
+        },
+    })
 }
 
 /// Keeps voxel worlds' dependents in step with them when a terrain, its
@@ -265,7 +394,7 @@ mod tests {
         };
         let projected = |world: &World| {
             let c = world.get::<VoxelTerrainComponent>(entity).unwrap();
-            super::super::voxel_runtime::entity_target(world, entity, c)
+            crate::runtime::entity_target(world, entity, c)
                 .unwrap()
                 .edits
                 .len()
@@ -311,7 +440,7 @@ mod tests {
 
     #[test]
     fn a_terrains_sky_follows_its_size_and_shape() {
-        use crate::{AtmosphereComponent, AtmospherePlacement};
+        use helio_component::{AtmosphereComponent, AtmospherePlacement};
         let mut world = World::new();
         let object = world.spawn();
         let terrain = pulsar_world_registry::attach_value(
@@ -361,7 +490,8 @@ mod tests {
 
     #[test]
     fn a_worlds_air_preset_makes_its_sky() {
-        use crate::{AtmosphereComponent, VoxelAir};
+        use crate::VoxelAir;
+        use helio_component::AtmosphereComponent;
         let mut world = World::new();
         let object = world.spawn();
         let terrain = pulsar_world_registry::attach_value(
@@ -414,7 +544,8 @@ mod tests {
 
     #[test]
     fn a_worlds_air_preset_makes_its_haze() {
-        use crate::{GlobalFogComponent, VoxelAir};
+        use crate::VoxelAir;
+        use helio_component::GlobalFogComponent;
         let mut world = World::new();
         let object = world.spawn();
         let mut planet = VoxelTerrainComponent::planet(6_371_000.0);
@@ -573,5 +704,105 @@ mod tests {
             .edits
             .push(edit);
         assert_eq!(sync.poll(&mut world), 0, "edits on the current ground stay");
+    }
+
+    /// A world's air derives its sky on the sky's planet; the clouds stay
+    /// as authored.
+    #[test]
+    fn a_worlds_air_derives_its_sky() {
+        use helio_component::{AtmosphereComponent, AtmospherePlacement};
+        use helio_pass_sky::AtmosphereRow;
+        let sky = AtmosphereComponent {
+            placement: AtmospherePlacement::PlanetAtOwner,
+            planet_radius_km: 1737.0,
+            clouds_enabled: true,
+            cloud_coverage: 0.7,
+            ..Default::default()
+        };
+        assert!(
+            sky_for_air(&sky, VoxelAir::Custom, 1.0, [1.0; 3], 1.0).is_none(),
+            "custom keeps the authored sky"
+        );
+        assert!(
+            !sky_for_air(&sky, VoxelAir::None, 1.0, [1.0; 3], 1.0)
+                .unwrap()
+                .enabled,
+            "an airless world has no sky"
+        );
+        let earth = sky_for_air(&sky, VoxelAir::Earthlike, 1.0, [1.0; 3], 1.0).unwrap();
+        assert!(earth.enabled);
+        assert_eq!(
+            (earth.placement, earth.planet_radius_km),
+            (AtmospherePlacement::PlanetAtOwner, 1737.0),
+            "the planet stays"
+        );
+        assert_eq!(
+            earth.rayleigh_scattering,
+            AtmosphereRow::earth().rayleigh_scattering
+        );
+        let thin = sky_for_air(&sky, VoxelAir::Earthlike, 0.5, [1.0, 0.5, 1.0], 2.0).unwrap();
+        assert!((thin.rayleigh_scattering[1] - earth.rayleigh_scattering[1] * 0.25).abs() < 1e-9);
+        assert!(
+            (thin.mie_scattering[0] - earth.mie_scattering[0]).abs() < 1e-9,
+            "half the air, twice the haze"
+        );
+        assert!(
+            !sky_for_air(&sky, VoxelAir::Earthlike, 0.0, [1.0; 3], 1.0)
+                .unwrap()
+                .enabled,
+            "no air at all"
+        );
+        let air = sky_for_air(&sky, VoxelAir::Thin, 1.0, [1.0; 3], 1.0).unwrap();
+        assert!(
+            air.clouds_enabled && air.cloud_coverage == 0.7,
+            "a world's air keeps its clouds"
+        );
+    }
+
+    /// Earth's air makes the haze Helio's voxel worlds fly through, over
+    /// the planet the fog was placed on; the air's amounts scale it.
+    #[test]
+    fn a_worlds_air_derives_its_ground_haze() {
+        use helio_component::{GlobalFogComponent, MediumProps};
+        use helio_pass_volumetric_fog::GlobalFogRow as GlobalMedium;
+        let placed = GlobalFogComponent {
+            medium: MediumProps {
+                planet_radius: 6_371_000.0,
+                ..MediumProps::default()
+            },
+            ..GlobalFogComponent::default()
+        };
+        assert!(
+            haze_for_air(&placed, VoxelAir::Custom, 1.0, 1.0).is_none(),
+            "custom keeps the authored medium"
+        );
+        assert!(
+            !haze_for_air(&placed, VoxelAir::None, 1.0, 1.0)
+                .unwrap()
+                .enabled,
+            "no air, no haze"
+        );
+        let earth = haze_for_air(&placed, VoxelAir::Earthlike, 1.0, 1.0).unwrap();
+        let flight = GlobalMedium {
+            mode: 1,
+            extinction: 0.0006,
+            height_falloff: 0.004,
+            anisotropy: 0.6,
+            ..GlobalMedium::default()
+        }
+        .around_planet([0.0; 3], 6_371_000.0);
+        assert!(earth.enabled);
+        assert_eq!(earth.medium.to_medium(), flight);
+        let hazy = haze_for_air(&placed, VoxelAir::Earthlike, 0.5, 4.0).unwrap();
+        assert!(
+            (hazy.medium.extinction - 0.0012).abs() < 1e-9,
+            "half the air, four times the haze"
+        );
+        assert!(
+            !haze_for_air(&placed, VoxelAir::Earthlike, 1.0, 0.0)
+                .unwrap()
+                .enabled,
+            "no haze at all"
+        );
     }
 }
