@@ -5160,6 +5160,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
+ "helio-feature-api",
  "helio-gi-api",
  "helio-mats",
  "helio-pass-shadow-matrix",
@@ -5363,6 +5364,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-feature-api",
  "helio-sky-api",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -5525,6 +5527,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
+ "helio-feature-api",
  "helio-foliage-api",
  "helio-gi-api",
  "helio-mats",
