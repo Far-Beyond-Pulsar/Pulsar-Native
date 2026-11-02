@@ -6,12 +6,11 @@ use std::sync::{Arc, Mutex};
 
 use glam::{DVec3, Vec3};
 use helio_component::{voxel_world::planet_brush, VoxelWorldShape};
-use helio_default_passes::VoxelPassFactory;
 use helio_pass_voxel_planet::{
     chunks::{pass::ChunkPass, KeptChunks},
     engine::{PlanetFrame, SharedKeptExport, SharedPlanetFrame, VolumeFrame},
     queries::{Resident, WorldQueries},
-    terrain, Matter, Planet, PlanetRecipe, TerrainSource,
+    terrain, ChunkPassMaker, Matter, Planet, PlanetRecipe, TerrainSource, VoxelTerrain,
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
 
@@ -234,8 +233,8 @@ pub trait VoxelRenderBackend: Send {
     fn supports(&self, _source: &VoxelSceneEntry) -> bool {
         false
     }
-    /// The backend's GBuffer pass, if it draws with one.
-    fn pass_factory(&self) -> Option<VoxelPassFactory>;
+    /// What makes the backend's chunk pass, if it draws with one.
+    fn chunk_pass(&self) -> Option<ChunkPassMaker>;
     fn publish_frame(
         &mut self,
         sources: &[&VoxelSceneEntry],
@@ -279,11 +278,16 @@ impl VoxelBackendRegistry {
         Ok(())
     }
 
-    pub fn pass_factories(&self) -> Vec<VoxelPassFactory> {
-        self.backends
-            .iter()
-            .filter_map(|backend| backend.pass_factory())
-            .collect()
+    /// The voxel terrain the renderer's graph draws: every backend's chunk
+    /// pass.
+    pub fn terrain(&self) -> VoxelTerrain {
+        VoxelTerrain {
+            passes: self
+                .backends
+                .iter()
+                .filter_map(|backend| backend.chunk_pass())
+                .collect(),
+        }
     }
 
     pub fn configure_appearance(
@@ -1261,15 +1265,15 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             .is_some_and(|generator| terrain::find(&generator.id, generator.version).is_some())
     }
 
-    fn pass_factory(&self) -> Option<VoxelPassFactory> {
+    fn chunk_pass(&self) -> Option<ChunkPassMaker> {
         let frame = Arc::clone(&self.frame);
-        Some(Arc::new(move |_, _, _, _| {
+        Some(Arc::new(move || {
             // The project's residency settings; changing them rebuilds the
             // graph, and with it this pass.
             let config = helio_pass_voxel_planet::chunks::ResidencyConfig::from_settings(
                 &super::project_settings::voxels(),
             );
-            Box::new(ChunkPass::with_config(Arc::clone(&frame), config))
+            ChunkPass::with_config(Arc::clone(&frame), config)
         }))
     }
 

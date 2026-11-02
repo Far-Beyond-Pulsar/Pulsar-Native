@@ -58,7 +58,7 @@ pub fn register_preview_pipeline(
         Box::new(helio_graph_asset::GraphAssetPipeline::new(
             Arc::clone(&asset),
             Arc::clone(&nodes),
-            helio_default_passes::build_default_graph_external_with_context,
+            helio_default_passes::presets::deferred,
         )) as Box<dyn IntoGraph>
     });
     if let Ok(mut registry) = registry().write() {
@@ -338,7 +338,7 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
                 Box::new(helio_graph_asset::GraphAssetPipeline::new(
                     Arc::clone(&asset),
                     Arc::clone(&nodes),
-                    helio_default_passes::build_default_graph_external_with_context,
+                    helio_default_passes::presets::deferred,
                 )) as Box<dyn IntoGraph>
             }),
         );

@@ -164,6 +164,8 @@ impl SceneRenderer {
         if let Some(quality) = super::project_settings::tsr_quality(&settings, voxel_quality) {
             config = config.with_tsr_quality(quality);
         }
+        // The voxel backends' terrain joins whichever pipeline the level runs.
+        let config = helio_default_passes::with_voxel_terrain(config, voxels.terrain());
 
         let scene_db =
             crate::scene::ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
@@ -204,26 +206,16 @@ impl SceneRenderer {
         if options.device == DeviceOwner::Host {
             builder = builder.with_external_device();
         }
-        // The engine's default keeps its voxel passes; any other registered
-        // pipeline is built through `IntoGraph`.
+        // The level's registered pipeline, or the default deferred preset.
         let pipeline = super::pipelines::resolve_pipeline(options.pipeline.as_deref())
             .filter(|id| *id != helio_default_passes::pipelines::DEFAULT);
         let custom = pipeline
             .as_deref()
             .and_then(|id| super::pipelines::create_pipeline(Some(id)));
         let pipeline = custom.is_some().then_some(pipeline).flatten();
-        let builder = match custom {
-            Some(graph) => builder.with_boxed_graph(graph),
-            None => {
-                let voxel_passes = voxels.pass_factories();
-                builder.with_pass_build_context(Box::new(move |ctx| {
-                    helio_default_passes::build_default_graph_external_with_voxel_passes(
-                        ctx,
-                        voxel_passes,
-                    )
-                }))
-            }
-        };
+        let builder = builder.with_boxed_graph(
+            custom.unwrap_or_else(|| Box::new(helio_default_passes::presets::Preset::Deferred)),
+        );
         let mut renderer = builder.build(device, queue.clone(), width, height, format);
         // Scene materials read through trilinear, anisotropic, repeating
         // filtering (project `streaming.texture_*` settings), not wgpu's
