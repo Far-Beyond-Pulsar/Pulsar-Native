@@ -165,7 +165,7 @@ mod tests {
     use crate::mesh_cache::{
         ImportedSurfaceMaterial, MeshAssetUpload, MeshMaterialSlot, MeshSection, encode_asset,
     };
-    use helio::{MeshUpload, PackedVertex};
+    use helio_mesh_api::{MeshUpload, PackedVertex};
 
     #[test]
     fn a_mesh_thumbnail_shows_the_section_colour() {

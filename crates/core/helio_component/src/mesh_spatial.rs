@@ -6,7 +6,7 @@
 
 use crate::components::MeshGeometryKey;
 use glam::Vec3;
-use helio::PackedVertex;
+use helio_mesh_api::PackedVertex;
 use std::{
     collections::{HashMap, VecDeque, hash_map::DefaultHasher},
     hash::Hasher,

@@ -26,9 +26,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
 
-use helio_core::{
-    BufferKey, PackedVertex, SceneDerivation, SceneDerivationContext, SceneDerivationOutput,
-};
+use helio_core::{BufferKey, SceneDerivation, SceneDerivationContext, SceneDerivationOutput};
+use helio_mesh_api::{PackedVertex};
 use helio_vg_format::{FORMAT_VERSION, VgAssetReadyRow};
 use helio_vg_stream::{VgRuntime, VgRuntimeSettings, VgeoBytes, VgeoSource, content_words};
 use pulsar_scenedb::gpu::GpuMirrorHandle;

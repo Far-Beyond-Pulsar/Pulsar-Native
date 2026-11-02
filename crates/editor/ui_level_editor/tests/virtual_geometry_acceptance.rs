@@ -72,7 +72,7 @@ fn dense_sphere(
     rings: u32,
     segments: u32,
     radius: f32,
-) -> (Vec<helio_core::PackedVertex>, Vec<u32>) {
+) -> (Vec<helio_mesh_api::PackedVertex>, Vec<u32>) {
     let mut vertices = Vec::new();
     for ring in 0..=rings {
         let theta = std::f32::consts::PI * ring as f32 / rings as f32;
@@ -84,7 +84,7 @@ fn dense_sphere(
                 theta.sin() * phi.sin(),
             );
             let tangent = glam::Vec3::new(-phi.sin(), 0.0, phi.cos());
-            vertices.push(helio_core::PackedVertex::from_components(
+            vertices.push(helio_mesh_api::PackedVertex::from_components(
                 (normal * radius).into(),
                 normal.into(),
                 [segment as f32 / segments as f32, ring as f32 / rings as f32],

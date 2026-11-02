@@ -14,7 +14,7 @@
 
 #![cfg(feature = "gpu")]
 
-use helio::PackedVertex;
+use helio_mesh_api::PackedVertex;
 use helio_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
 use pulsar_scenedb::gpu::{
     EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
@@ -80,7 +80,7 @@ fn project_root() -> std::path::PathBuf {
 /// shape `mesh_asset` fields actually store.
 fn write_mesh_asset(name: &str, vert_count: usize) -> String {
     let root = project_root();
-    let mesh = helio::MeshUpload {
+    let mesh = helio_mesh_api::MeshUpload {
         vertices: (0..vert_count)
             .map(|i| PackedVertex {
                 position: [i as f32, 0.0, 0.0],
@@ -229,7 +229,7 @@ fn removing_the_component_without_despawning_frees_correctly() {
 fn file_mutation_between_hydrates_mints_a_new_id_and_the_old_refcount_falls() {
     let root = project_root();
     let rel = "mutating_asset.mesh".to_string();
-    let mesh_v1 = helio::MeshUpload {
+    let mesh_v1 = helio_mesh_api::MeshUpload {
         vertices: vec![
             PackedVertex {
                 position: [1.0, 0.0, 0.0],
@@ -255,7 +255,7 @@ fn file_mutation_between_hydrates_mints_a_new_id_and_the_old_refcount_falls() {
     // Mutate the file: different geometry, re-encoded fresh (a real content
     // id, not a stale/backfilled one) — must be a DIFFERENT id.
     std::thread::sleep(std::time::Duration::from_millis(10)); // ensure mtime actually advances on coarse filesystems
-    let mesh_v2 = helio::MeshUpload {
+    let mesh_v2 = helio_mesh_api::MeshUpload {
         vertices: vec![
             PackedVertex {
                 position: [9.0, 0.0, 0.0],

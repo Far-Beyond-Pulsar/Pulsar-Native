@@ -18,8 +18,8 @@
 //! |---|---|---|
 //! | [`GlobalFogSourceRow`] | 20: the medium | `helio_pass_volumetric_fog::GlobalFogRow` (20) |
 //! | [`LocalFogSourceRow`] | 4 size + 24: medium, edge fade | `helio_pass_volumetric_fog::LocalFogVolumeRow` (8 bounds + 24) |
-//! | [`PostProcessVolumeSourceRow`] | 4 size + 140: the row after its bounds | `helio_pass_postprocess::PostProcessVolumeRow` (8 bounds + 140) |
-//! | [`CameraPostProcessSourceRow`] | 136: the row | `helio_pass_postprocess::CameraPostProcessRow` (136) |
+//! | [`PostProcessVolumeSourceRow`] | 4 size + 140: the row after its bounds | `helio_pass_post_volumes::PostProcessVolumeRow` (8 bounds + 140) |
+//! | [`CameraPostProcessSourceRow`] | 136: the row | `helio_pass_post_volumes::CameraPostProcessRow` (136) |
 //! | [`WaterVolumeSourceRow`] | 4 size + 56: the row after its bounds | `helio_pass_water_sim::WaterVolumeRow` (8 bounds + 56), packed into its leading rows |
 //! | [`FoliageSourceRow`] | 32 type + 4 layer + 12 wind | `helio_pass_foliage_place`'s `FoliageTypeRow` (32), `FoliageLayerRow` (8) and `FoliageWindRow` (12), each packed |
 //! | [`AtmosphereSourceRow`] | 4 centre + 16 media + 4 ground + 4 shell + 16 clouds + 16 weather: the row, its centre in the owner's space | `helio_pass_sky::AtmosphereRow` (60) |
@@ -396,7 +396,7 @@ impl PostProcessVolumeSourceRow {
         let size = [volume.size[0], volume.size[1], volume.size[2], 0.0];
         let mut row: Self = bytemuck::Zeroable::zeroed();
         if volume.enabled {
-            let pass = helio_pass_postprocess::PostProcessVolumeRow::from(
+            let pass = helio_pass_post_volumes::PostProcessVolumeRow::from(
                 volume.local_descriptor().to_gpu(),
             );
             // The pass row after its two bound vec4s.
@@ -410,7 +410,7 @@ impl PostProcessVolumeSourceRow {
 
 impl CameraPostProcessSourceRow {
     pub fn of(camera: &CameraPostProcessComponent) -> Self {
-        let mut row = helio_pass_postprocess::CameraPostProcessRow::new(
+        let mut row = helio_pass_post_volumes::CameraPostProcessRow::new(
             camera.view_id,
             &camera.settings.to_settings(),
         );
@@ -632,11 +632,11 @@ mod tests {
             32 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_postprocess::PostProcessVolumeRow>(),
+            std::mem::size_of::<helio_pass_post_volumes::PostProcessVolumeRow>(),
             148 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_postprocess::CameraPostProcessRow>(),
+            std::mem::size_of::<helio_pass_post_volumes::CameraPostProcessRow>(),
             136 * 4
         );
     }
@@ -750,7 +750,7 @@ mod tests {
         let volume = PostProcessVolumeComponent::default();
         let row = PostProcessVolumeSourceRow::of(&volume);
         let pass =
-            helio_pass_postprocess::PostProcessVolumeRow::from(volume.local_descriptor().to_gpu());
+            helio_pass_post_volumes::PostProcessVolumeRow::from(volume.local_descriptor().to_gpu());
         assert_eq!(
             &bytemuck::bytes_of(&row)[16..],
             &bytemuck::bytes_of(&pass)[32..]

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use helio::MeshUpload;
+use helio_mesh_api::MeshUpload;
 
 /// The engine's built-in assets — resolved at compile time so embedded
 /// primitives (SM_Cube, SM_Sphere, etc.) are always available.

@@ -54,7 +54,7 @@ impl Rng {
 /// A UV sphere whose vertices are pushed radially by white noise (25 % of the
 /// radius): the simplifier cannot remove detail whose deviation exceeds the
 /// error threshold, so far-away instances keep thousands of tiny triangles.
-fn noisy_sphere(rings: u32, segments: u32) -> (Vec<helio_core::PackedVertex>, Vec<u32>) {
+fn noisy_sphere(rings: u32, segments: u32) -> (Vec<helio_mesh_api::PackedVertex>, Vec<u32>) {
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let mut vertices = Vec::new();
     for ring in 0..=rings {
@@ -83,7 +83,7 @@ fn noisy_sphere(rings: u32, segments: u32) -> (Vec<helio_core::PackedVertex>, Ve
             } else {
                 RADIUS * (1.0 + jitter)
             };
-            vertices.push(helio_core::PackedVertex::from_components(
+            vertices.push(helio_mesh_api::PackedVertex::from_components(
                 (normal * r).into(),
                 normal.into(),
                 [segment as f32 / segments as f32, ring as f32 / rings as f32],

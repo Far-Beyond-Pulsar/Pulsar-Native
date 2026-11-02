@@ -1021,7 +1021,7 @@ mod tests {
             transform.scale = [-2.0, 0.5, 1.5];
         }
         let vertex = |position| {
-            helio::PackedVertex::from_components(
+            helio_mesh_api::PackedVertex::from_components(
                 position,
                 [0.0, 0.0, 1.0],
                 [0.0; 2],

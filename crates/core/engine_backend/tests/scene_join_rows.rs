@@ -11,7 +11,7 @@ use engine_backend::scene::{attachments, SceneWorldExt, SpawnObject, Transform, 
 use helio_component::components::{
     LightComponent, MeshAssetPath, ObjectMovability, StaticMeshComponent,
 };
-use helio_scene_derivations::scene_join::{
+use helio_pass_object_batch::scene_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
     ENTITY_GENERATIONS_KEY,
 };
@@ -30,7 +30,7 @@ fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
 
 /// A two-triangle mesh in two material sections.
 fn mesh(movability: ObjectMovability) -> StaticMeshComponent {
-    let vertex = |x: f32, y: f32| helio::PackedVertex {
+    let vertex = |x: f32, y: f32| helio_mesh_api::PackedVertex {
         position: [x, y, 0.0],
         ..Default::default()
     };
@@ -751,7 +751,7 @@ fn hierarchical_scenes_follow_only_what_moved() {
     assert_eq!(position_of(&join, &out, inner), [1.0, 0.0, 0.0]);
 
     let moved_generation = |out: &SceneBufferProjection| {
-        out.get(helio_scene_derivations::scene_join::OBJECTS_MOVED_KEY)
+        out.get(helio_pass_object_batch::scene_join::OBJECTS_MOVED_KEY)
             .map_or(0, |h| h.content_generation)
     };
     let mut last_moved_generation = 0;

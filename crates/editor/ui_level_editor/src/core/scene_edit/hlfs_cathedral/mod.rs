@@ -19,7 +19,7 @@ use super::{
     components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
     SceneObjectData, Transform,
 };
-use helio::{MeshUpload, PackedVertex};
+use helio_mesh_api::{MeshUpload, PackedVertex};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;

@@ -11,10 +11,10 @@ use helio_component::components::{
     camera_lens_view_overscan, CameraLensComponent, LensElementKind, LensElementProps, LensPreset,
     LensProjectionModel, LensRegionShape, LENS_ELEMENT_SLOTS,
 };
-use helio_scene_derivations::environment_join::{
+use helio_scene_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };
-use helio_scene_derivations::scene_join::ENTITY_GENERATIONS_KEY;
+use helio_pass_object_batch::scene_join::ENTITY_GENERATIONS_KEY;
 use helio_pass_lens::{element_kind, LensElementRow, LensRow};
 use pulsar_scenedb::{Entity, SceneDb};
 

@@ -19,6 +19,8 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+helio-mesh-api = { workspace = true }
+helio-pass-post-volumes = { workspace = true }
 engine_class_derive = { workspace = true }
 # M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here — this
 # crate defines its own GPUI property editors (`render_mesh_asset_editor` in

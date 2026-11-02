@@ -259,6 +259,11 @@ helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
 helio-pass-lens = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-lens" }
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
+helio-mesh-api = { path = "crates/renderer/helio/crates/api/helio-mesh-api" }
+helio-scene-join = { path = "crates/renderer/helio/crates/helio-scene-join" }
+helio-pass-light-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-light-cull" }
+helio-frame-api = { path = "crates/renderer/helio/crates/helio-frame-api" }
+helio-pass-post-volumes = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-post-volumes" }
 helio-vg-format = { path = "crates/renderer/helio/crates/helio-vg-format" }
 helio-vg-stream = { path = "crates/renderer/helio/crates/helio-vg-stream" }
 helio-vg-build = { path = "crates/renderer/helio/crates/helio-vg-build" }

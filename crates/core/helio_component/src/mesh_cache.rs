@@ -42,7 +42,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use bytemuck::Zeroable;
-use helio::{MeshUpload, PackedVertex};
+use helio_mesh_api::{MeshUpload, PackedVertex};
 use pulsar_reflection::{RUNTIME_TYPE_REGISTRY, RuntimeTypeInfo, TypeStructure};
 
 const MAGIC: &[u8; 4] = b"PMSH";

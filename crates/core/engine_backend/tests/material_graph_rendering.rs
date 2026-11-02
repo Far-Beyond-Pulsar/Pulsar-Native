@@ -643,7 +643,7 @@ fn gpu_mesh_upload_preserves_uv0_uv1_normals_and_stride() {
     ));
     let vertices: Vec<_> = (0..3)
         .map(|i| {
-            let mut v = helio::PackedVertex::from_components(
+            let mut v = helio_mesh_api::PackedVertex::from_components(
                 [i as f32, 0.0, 0.0],
                 [0.0, 1.0, 0.0],
                 [i as f32 * 0.25, 0.75],
@@ -665,14 +665,14 @@ fn gpu_mesh_upload_preserves_uv0_uv1_normals_and_stride() {
     );
     world.flush_gpu_mirror(context.queue()).unwrap();
     let pool = store
-        .interned_var_len_pool::<helio::PackedVertex>(BufferKey::of("builtin_mesh_vertex"))
+        .interned_var_len_pool::<helio_mesh_api::PackedVertex>(BufferKey::of("builtin_mesh_vertex"))
         .unwrap()
         .underlying()
         .clone();
-    assert_eq!(std::mem::size_of::<helio::PackedVertex>(), 40);
-    assert_eq!(std::mem::offset_of!(helio::PackedVertex, tex_coords0), 16);
-    assert_eq!(std::mem::offset_of!(helio::PackedVertex, tex_coords1), 24);
-    assert_eq!(std::mem::offset_of!(helio::PackedVertex, normal), 32);
+    assert_eq!(std::mem::size_of::<helio_mesh_api::PackedVertex>(), 40);
+    assert_eq!(std::mem::offset_of!(helio_mesh_api::PackedVertex, tex_coords0), 16);
+    assert_eq!(std::mem::offset_of!(helio_mesh_api::PackedVertex, tex_coords1), 24);
+    assert_eq!(std::mem::offset_of!(helio_mesh_api::PackedVertex, normal), 32);
     let staging = context.device().create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: 120,

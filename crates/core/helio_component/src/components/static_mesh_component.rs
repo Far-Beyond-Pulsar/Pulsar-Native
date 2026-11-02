@@ -1,7 +1,7 @@
 //! Static mesh component for mesh asset assignment.
 
 use engine_class_derive::{engine_class, register_scene_props_applier, register_world_component};
-use helio::PackedVertex;
+use helio_mesh_api::PackedVertex;
 use pulsar_reflection::{ReflectError, ScenePropsProjector};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

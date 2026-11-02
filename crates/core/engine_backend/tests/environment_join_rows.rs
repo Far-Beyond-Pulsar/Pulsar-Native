@@ -12,10 +12,10 @@ use helio_component::components::{
     CameraPostProcessComponent, FoliageComponent, GlobalFogComponent, LocalFogVolumeComponent,
     PostProcessVolumeComponent, WaterVolumeComponent,
 };
-use helio_scene_derivations::environment_join::{
+use helio_scene_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };
-use helio_scene_derivations::scene_join::ENTITY_GENERATIONS_KEY;
+use helio_pass_object_batch::scene_join::ENTITY_GENERATIONS_KEY;
 use pulsar_scenedb::{Entity, SceneDb};
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
@@ -144,8 +144,8 @@ fn at(position: [f64; 3]) -> Transform {
 
 type GlobalRow = helio_pass_volumetric_fog::GlobalFogRow;
 type LocalRow = helio_pass_volumetric_fog::LocalFogVolumeRow;
-type VolumeRow = helio_pass_postprocess::PostProcessVolumeRow;
-type CameraRow = helio_pass_postprocess::CameraPostProcessRow;
+type VolumeRow = helio_pass_post_volumes::PostProcessVolumeRow;
+type CameraRow = helio_pass_post_volumes::CameraPostProcessRow;
 type WaterRow = helio_pass_water_sim::GpuWaterVolume;
 
 fn close(a: [f32; 4], b: [f32; 3]) -> bool {
@@ -328,7 +328,7 @@ fn water_volumes_are_packed_into_the_leading_rows() {
     );
     let pond_instance =
         pulsar_world_registry::attach_value(&mut scene.world, pond, water(0.5)).unwrap();
-    assert!(lake.index() >= helio_scene_derivations::environment_join::MAX_WATER_VOLUMES);
+    assert!(lake.index() >= helio_pass_water_sim::scene_rows::MAX_WATER_VOLUMES);
 
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = Join {
@@ -341,7 +341,7 @@ fn water_volumes_are_packed_into_the_leading_rows() {
     let rows: Vec<WaterRow> = join.read(&out, "water_volumes");
     assert_eq!(
         rows.len(),
-        helio_scene_derivations::environment_join::MAX_WATER_VOLUMES as usize
+        helio_pass_water_sim::scene_rows::MAX_WATER_VOLUMES as usize
     );
     let close3 = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-3);
     assert!(
@@ -449,7 +449,7 @@ fn foliage_types_layers_and_wind_are_packed() {
     let types: Vec<TypeRow> = join.read(&out, "foliage_types");
     assert_eq!(
         types.len(),
-        helio_scene_derivations::environment_join::MAX_FOLIAGE_TYPES as usize
+        helio_pass_foliage_place::scene_rows::MAX_FOLIAGE_TYPES as usize
     );
     assert_eq!(
         (types[0].density, types[1].density, types[2].density),
@@ -678,8 +678,9 @@ fn decals_are_placed_in_their_owners_box() {
 #[test]
 fn particle_emitters_take_disjoint_ranges_of_the_particle_pool() {
     use helio_component::components::{CoronaEmitterSourceRow, ParticleEmitterComponent};
-    use helio_scene_derivations::environment_join::{
-        CORONA_POOL_PARTICLES, CORONA_RANGE_ALIGNMENT, MAX_CORONA_EMITTERS,
+    use helio_pass_corona::{
+        CORONA_MAX_EMITTERS as MAX_CORONA_EMITTERS, CORONA_MAX_PARTICLES as CORONA_POOL_PARTICLES,
+        CORONA_RANGE_ALIGNMENT,
     };
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
@@ -982,7 +983,7 @@ fn water_takes_the_scenes_sun_and_the_global_wind() {
     };
     let wind = pulsar_world_registry::attach_value(&mut scene.world, breeze, wind).unwrap();
     let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
-    let strength = 6.0 * helio_scene_derivations::environment_join::WATER_WIND_STRENGTH_PER_SPEED;
+    let strength = 6.0 * helio_pass_water_sim::scene_rows::WATER_WIND_STRENGTH_PER_SPEED;
     assert_eq!(
         rows[0].wind_params,
         [1.0, 0.0, strength, 0.0],
@@ -1078,7 +1079,7 @@ fn bodies_on_the_water_sim_channel_become_water_hitboxes() {
     let rows: Vec<HitboxRow> = join.read(&out, "water_hitboxes");
     assert_eq!(
         rows.len(),
-        helio_scene_derivations::environment_join::MAX_WATER_HITBOXES as usize
+        helio_pass_water_sim::MAX_WATER_HITBOXES as usize
     );
     // The mesh's sphere (centre 1 above the owner after scaling, radius 2).
     assert!(

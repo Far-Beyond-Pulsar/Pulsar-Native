@@ -2,15 +2,18 @@
 //!
 //! SceneDB owns all world and asset state; component values mirror their own
 //! GPU rows on every write. Helio receives the cloneable GPU mirror during
-//! renderer construction, and its scene join ([`scene_join`]) turns the
-//! authored rows (mesh and light instances, their owner links, the owner
-//! objects' transforms and visibility) into the object, material and light
-//! rows its passes draw, on the GPU, whenever they change. This module keeps
-//! no frame projection, render-row subscription, material table or
-//! per-frame input assembly (Pulsar-Native#1035, Phase 2). Its environment
-//! join ([`environment_join`]) does the same for fog volumes, post-process
-//! volumes, camera post-process settings, water volumes, foliage,
-//! atmospheres, decals and particle emitters (Phase 4).
+//! renderer construction, and the meshes' and lights' scene joins
+//! ([`scene_join`]) turn the authored rows (mesh and light instances, their
+//! owner links, the owner objects' transforms and visibility) into the
+//! object, material and light rows its passes draw, on the GPU, whenever
+//! they change. This module keeps no frame projection, render-row
+//! subscription, material table or per-frame input assembly
+//! (Pulsar-Native#1035, Phase 2). Every other kind's row join
+//! ([`environment_join`]: fog volumes, post-process volumes, camera
+//! post-process settings, the lens, water, foliage, atmospheres, decals,
+//! particle emitters, sprites) does the same for its rows (Phase 4); each
+//! kind's join is its Helio crate's (`scene_rows`), grouped here until each
+//! kind's plugin installs its own.
 use std::sync::Arc;
 
 use helio_component::components::{
@@ -25,9 +28,10 @@ use helio_component::components::{
     SKELETAL_SKIN_HANDLES_BUFFER, SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER,
     WIND_SOURCES_BUFFER,
 };
-use helio_scene_derivations::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
+use helio_pass_light_cull::scene_rows::{LightJoin, LightJoinKeys};
+use helio_pass_object_batch::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
 use helio_scene_derivations::hierarchy_resolve::{HierarchyResolve, HierarchyResolveKeys};
-use helio_scene_derivations::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
+use helio_scene_join::{DerivationGroup, RowJoinKeys, SceneDerivation};
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
@@ -58,15 +62,32 @@ pub fn scene_join_keys() -> SceneJoinKeys {
         skin_handles: BufferKey::of(SKELETAL_SKIN_HANDLES_BUFFER),
         palette_handles: BufferKey::of(SKELETAL_PALETTE_HANDLES_BUFFER),
         mesh_sections: BufferKey::of(MESH_SECTIONS_BUFFER),
+    }
+}
+
+/// Where this engine's light rows live, for the lights' join.
+pub fn light_join_keys() -> LightJoinKeys {
+    let scene = scene_join_keys();
+    LightJoinKeys {
+        owners: scene.owners,
+        generations: scene.generations,
+        hidden: scene.hidden,
+        transforms: scene.transforms,
         light_sources: BufferKey::of(LIGHT_SOURCES_BUFFER),
     }
 }
 
-/// Helio's scene join over this engine's rows, for
+/// The meshes' and lights' scene joins over this engine's rows, for
 /// `RendererBuilder::with_scene_derivation`. `editor` adds the light icon
 /// billboards.
-pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
-    Box::new(SceneJoin::new(device, scene_join_keys(), editor))
+pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<DerivationGroup> {
+    Box::new(DerivationGroup::new(
+        "SceneJoins",
+        vec![
+            Box::new(SceneJoin::new(device, scene_join_keys())),
+            Box::new(LightJoin::new(device, light_join_keys(), editor)),
+        ],
+    ))
 }
 
 /// Per-render-view authored mesh LOD selection. Installed after
@@ -111,41 +132,92 @@ pub fn hierarchy_resolve(device: &wgpu::Device) -> Box<HierarchyResolve> {
     Box::new(HierarchyResolve::new(device, hierarchy_resolve_keys()))
 }
 
-/// Where this engine's environment rows live, for Helio's environment join:
-/// the same owner, visibility, transform and mesh bounds rows as the scene
-/// join, and the rows fog volumes, post-process volumes, camera
-/// post-process, water, foliage, global wind, atmosphere, decal and particle
-/// emitter components derive (Pulsar-Native#1035, Phase 4), the water
-/// interaction rows physics bodies on the `WaterSim` channel derive (#1080)
-/// and the 2D sprite rows (#1060).
-pub fn environment_join_keys() -> EnvironmentJoinKeys {
+/// The rows every kind's row join reads: the same owner, visibility,
+/// transform and mesh bounds rows as the scene join, and the light list.
+pub fn row_join_keys() -> RowJoinKeys {
     let scene = scene_join_keys();
-    EnvironmentJoinKeys {
+    RowJoinKeys {
         owners: scene.owners,
         generations: scene.generations,
         hidden: scene.hidden,
         transforms: scene.transforms,
-        global_fog: BufferKey::of(GLOBAL_FOG_SOURCES_BUFFER),
-        local_fog: BufferKey::of(LOCAL_FOG_SOURCES_BUFFER),
-        post_process_volumes: BufferKey::of(POST_PROCESS_VOLUME_SOURCES_BUFFER),
-        camera_post_process: BufferKey::of(CAMERA_POST_PROCESS_SOURCES_BUFFER),
-        camera_lens: BufferKey::of(helio_component::components::CAMERA_LENS_SOURCES_BUFFER),
-        water_volumes: BufferKey::of(WATER_VOLUME_SOURCES_BUFFER),
-        foliage: BufferKey::of(FOLIAGE_SOURCES_BUFFER),
-        atmospheres: BufferKey::of(ATMOSPHERE_SOURCES_BUFFER),
-        decals: BufferKey::of(DECAL_SOURCES_BUFFER),
-        corona_emitters: BufferKey::of(CORONA_EMITTER_SOURCES_BUFFER),
-        wind: BufferKey::of(WIND_SOURCES_BUFFER),
-        water_hitboxes: BufferKey::of(pulsar_physics::WATER_HITBOX_SOURCES_BUFFER),
         mesh_bounds: scene.mesh_bounds,
-        sprites: BufferKey::of(SPRITE_SOURCES_BUFFER),
+        lights: helio_pass_light_cull::scene_rows::LIGHTS_KEY,
     }
 }
 
-/// Helio's environment join over this engine's rows, for
-/// `RendererBuilder::with_scene_derivation`.
-pub fn environment_join(device: &wgpu::Device) -> Box<EnvironmentJoin> {
-    Box::new(EnvironmentJoin::new(device, environment_join_keys()))
+/// Every other kind's row join over this engine's rows (each kind's Helio
+/// crate's `scene_rows`), for `RendererBuilder::with_scene_derivation`,
+/// after [`scene_join`] (water takes the sun from the light list): fog
+/// volumes, post-process volumes and camera baselines, camera lenses, water
+/// volumes (and the interaction rows physics bodies on the `WaterSim`
+/// channel derive, #1080), foliage and the level's wind, atmospheres,
+/// decals, particle emitters and 2D sprites (#1060).
+pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
+    let keys = row_join_keys();
+    let key = BufferKey::of;
+    let wind = key(WIND_SOURCES_BUFFER);
+    let joins: Vec<Box<dyn SceneDerivation>> = vec![
+        Box::new(helio_pass_volumetric_fog::scene_rows::scene_rows(
+            device,
+            keys,
+            helio_pass_volumetric_fog::FogRowSources {
+                global_fog: key(GLOBAL_FOG_SOURCES_BUFFER),
+                local_fog: key(LOCAL_FOG_SOURCES_BUFFER),
+            },
+        )),
+        Box::new(helio_pass_post_volumes::scene_rows::scene_rows(
+            device,
+            keys,
+            helio_pass_post_volumes::PostRowSources {
+                post_process_volumes: key(POST_PROCESS_VOLUME_SOURCES_BUFFER),
+                camera_post_process: key(CAMERA_POST_PROCESS_SOURCES_BUFFER),
+            },
+        )),
+        Box::new(helio_pass_lens::scene_rows::scene_rows(
+            device,
+            keys,
+            key(helio_component::components::CAMERA_LENS_SOURCES_BUFFER),
+        )),
+        Box::new(helio_pass_water_sim::scene_rows::scene_rows(
+            device,
+            keys,
+            helio_pass_water_sim::WaterRowSources {
+                water_volumes: key(WATER_VOLUME_SOURCES_BUFFER),
+                wind,
+                water_hitboxes: key(pulsar_physics::WATER_HITBOX_SOURCES_BUFFER),
+            },
+        )),
+        Box::new(helio_pass_foliage_place::scene_rows::scene_rows(
+            device,
+            keys,
+            helio_pass_foliage_place::FoliageRowSources {
+                foliage: key(FOLIAGE_SOURCES_BUFFER),
+                wind,
+            },
+        )),
+        Box::new(helio_pass_sky::scene_rows::scene_rows(
+            device,
+            keys,
+            key(ATMOSPHERE_SOURCES_BUFFER),
+        )),
+        Box::new(helio_pass_decal::scene_rows::scene_rows(
+            device,
+            keys,
+            key(DECAL_SOURCES_BUFFER),
+        )),
+        Box::new(helio_pass_corona::scene_rows::scene_rows(
+            device,
+            keys,
+            key(CORONA_EMITTER_SOURCES_BUFFER),
+        )),
+        Box::new(helio_pass_sprite_batch::scene_rows::scene_rows(
+            device,
+            keys,
+            key(SPRITE_SOURCES_BUFFER),
+        )),
+    ];
+    Box::new(DerivationGroup::new("EnvironmentJoins", joins))
 }
 
 /// Ensure that the authoritative SceneDB world has one GPU mirror for Helio's
@@ -212,7 +284,7 @@ pub fn ensure_gpu_mirror(
     // Which objects are rigid frames, and their slot in the coordinate-space table.
     ObjectFrame::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     TransformRow::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    // The environment join's inputs (see `environment_join_keys`); the fog
+    // The kinds' row joins' inputs (see `environment_join`); the fog
     // media, post-process volume, camera, water volume, foliage, atmosphere,
     // decal, Corona emitter and water hitbox rows the passes read are its
     // outputs.
@@ -353,7 +425,7 @@ fn install_derived_cache() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helio_scene_derivations::scene_join as join;
+    use helio_pass_object_batch::scene_join as join;
 
     #[test]
     fn a_new_scene_does_not_have_a_gpu_mirror() {
@@ -379,7 +451,7 @@ mod tests {
         );
         assert_eq!(
             size_of::<LightSourceRow>() as u64,
-            join::LIGHT_SOURCE_ROW_BYTES
+            helio_pass_light_cull::scene_rows::LIGHT_SOURCE_ROW_BYTES
         );
         assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
         assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);
@@ -387,47 +459,46 @@ mod tests {
 
     #[test]
     fn the_rows_the_environment_join_reads_have_its_layouts() {
-        use helio_scene_derivations::environment_join as env;
         use std::mem::size_of;
         assert_eq!(
             size_of::<GlobalFogSourceRow>() as u64,
-            env::GLOBAL_FOG_SOURCE_ROW_BYTES
+            helio_pass_volumetric_fog::scene_rows::GLOBAL_FOG_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<LocalFogSourceRow>() as u64,
-            env::LOCAL_FOG_SOURCE_ROW_BYTES
+            helio_pass_volumetric_fog::scene_rows::LOCAL_FOG_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<PostProcessVolumeSourceRow>() as u64,
-            env::POST_PROCESS_VOLUME_SOURCE_ROW_BYTES
+            helio_pass_post_volumes::scene_rows::POST_PROCESS_VOLUME_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<CameraPostProcessSourceRow>() as u64,
-            env::CAMERA_POST_PROCESS_SOURCE_ROW_BYTES
+            helio_pass_post_volumes::scene_rows::CAMERA_POST_PROCESS_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<helio_component::components::CameraLensSourceRow>() as u64,
-            env::CAMERA_LENS_SOURCE_ROW_BYTES
+            helio_pass_lens::scene_rows::CAMERA_LENS_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<WaterVolumeSourceRow>() as u64,
-            env::WATER_VOLUME_SOURCE_ROW_BYTES
+            helio_pass_water_sim::scene_rows::WATER_VOLUME_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<FoliageSourceRow>() as u64,
-            env::FOLIAGE_SOURCE_ROW_BYTES
+            helio_pass_foliage_place::scene_rows::FOLIAGE_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<AtmosphereSourceRow>() as u64,
-            env::ATMOSPHERE_SOURCE_ROW_BYTES
+            helio_pass_sky::scene_rows::ATMOSPHERE_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<pulsar_physics::WaterHitboxSourceRow>() as u64,
-            env::WATER_HITBOX_SOURCE_ROW_BYTES
+            helio_pass_water_sim::scene_rows::WATER_HITBOX_SOURCE_ROW_BYTES
         );
         assert_eq!(
             size_of::<SpriteSourceRow>() as u64,
-            env::SPRITE_SOURCE_ROW_BYTES
+            helio_pass_sprite_batch::scene_rows::SPRITE_SOURCE_ROW_BYTES
         );
     }
 }

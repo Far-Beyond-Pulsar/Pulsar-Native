@@ -29,7 +29,7 @@ use engine_class_derive::{
     engine_class, register_component_runtime, register_scene_props_applier,
     register_world_component,
 };
-use helio::PackedVertex;
+use helio_mesh_api::PackedVertex;
 use pulsar_reflection::{
     AnimationGraphAssetKind, AnimationMontageAssetKind, AnimationSequenceAssetKind, AssetKind,
     AssetRef, Reflectable, ScenePropsProjector, SkeletalMeshAssetKind, SkeletonAssetKind,

@@ -1283,20 +1283,6 @@ impl HelioRenderer {
             .lock()
             .ok()
             .and_then(|mut pending| pending.take());
-        let measured_deferred_light_ms = self
-            .inner
-            .as_ref()
-            .and_then(|inner| {
-                inner
-                    .scene
-                    .renderer
-                    .timing_snapshot()
-                    .passes
-                    .iter()
-                    .find(|pass| pass.name == "DeferredLight")
-                    .and_then(|pass| pass.gpu_ms)
-            })
-            .unwrap_or(0.0);
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -1316,10 +1302,9 @@ impl HelioRenderer {
                 )
             })
             .unwrap_or(false);
-        let measured_deferred_light_changed = inner
-            .scene
-            .renderer
-            .set_deferred_light_timing_ms(measured_deferred_light_ms);
+        // Passes whose output shows their own cost (the lighting's cost view)
+        // get their measured GPU time.
+        let measured_deferred_light_changed = inner.scene.renderer.feed_measured_gpu_times();
 
         // ── Idle detection ───────────────────────────────────────────────────────
         // If the camera is fully stopped, no scene changes are pending, and no
@@ -2041,7 +2026,7 @@ impl HelioRenderer {
         let Some(resolver) = inner
             .scene
             .renderer
-            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
+            .find_pass_mut::<helio_pass_post_volumes::PostProcessVolumeBlendPass>()
         else {
             return false;
         };
@@ -2062,7 +2047,7 @@ impl HelioRenderer {
         inner
             .scene
             .renderer
-            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
+            .find_pass_mut::<helio_pass_post_volumes::PostProcessVolumeBlendPass>()
             .map(|resolver| resolver.defaults().clone())
     }
 

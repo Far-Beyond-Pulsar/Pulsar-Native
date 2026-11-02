@@ -16,7 +16,7 @@
 
 #![cfg(feature = "gpu")]
 
-use helio::PackedVertex;
+use helio_mesh_api::PackedVertex;
 use helio_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
@@ -59,7 +59,7 @@ fn project_root() -> std::path::PathBuf {
 #[test]
 fn bm3_bulk_hydrate_10k_entities_one_shared_asset() {
     let root = project_root();
-    let mesh = helio::MeshUpload {
+    let mesh = helio_mesh_api::MeshUpload {
         vertices: vec![
             PackedVertex {
                 position: [1.0, 2.0, 3.0],
@@ -144,7 +144,7 @@ fn bm3_bulk_hydrate_10k_entities_one_shared_asset() {
 #[test]
 fn bm4_memoized_content_id_lookup_vs_cold_hash() {
     let root = project_root();
-    let mesh = helio::MeshUpload {
+    let mesh = helio_mesh_api::MeshUpload {
         vertices: vec![PackedVertex::default(); 500], // bigger payload to make the hash cost visible
         indices: (0..500u32).collect(),
     };

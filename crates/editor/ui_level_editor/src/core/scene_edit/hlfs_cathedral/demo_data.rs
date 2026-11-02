@@ -1,7 +1,7 @@
 //! Constants and `box_mesh`, copied verbatim from the Helio HLFS cathedral demo
 //! (`indoor_cathedral_hlfs.rs` and `v3_demo_common.rs`).
 use glam::Vec3;
-use helio::{MeshUpload, PackedVertex};
+use helio_mesh_api::{MeshUpload, PackedVertex};
 
 pub const COLUMN_Z: &[f32] = &[-22.0, -14.0, -6.0, 2.0, 10.0, 18.0];
 

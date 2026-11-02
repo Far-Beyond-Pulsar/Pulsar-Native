@@ -202,7 +202,10 @@ impl SceneRenderer {
                 spaces.portal_input(),
             ))
             // No default ambient: all illumination comes from the scene.
-            .with_ambient([0.0, 0.0, 0.0], 0.0);
+            .with_feature(helio::AmbientLight {
+                color: [0.0; 3],
+                intensity: 0.0,
+            });
         if options.device == DeviceOwner::Host {
             builder = builder.with_external_device();
         }
@@ -220,9 +223,9 @@ impl SceneRenderer {
         // Scene materials read through trilinear, anisotropic, repeating
         // filtering (project `streaming.texture_*` settings), not wgpu's
         // nearest/clamp default.
-        renderer.set_material_sampler(
-            &super::material_sampler::SamplerSettings::from_project().descriptor(),
-        );
+        renderer.set_feature_live(helio_mats::MaterialSampler(
+            super::material_sampler::SamplerSettings::from_project().descriptor(),
+        ));
         Self {
             renderer,
             project_settings: super::project_settings::ProjectGraphSettingsCache::new(),

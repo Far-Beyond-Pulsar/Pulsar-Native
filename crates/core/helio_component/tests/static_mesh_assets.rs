@@ -50,7 +50,7 @@ fn set_mesh_asset(world: &mut World, entity: pulsar_scenedb::Entity, path: &str)
     .unwrap_or_else(|_| panic!("mesh_asset write to {path} refused"));
 }
 
-fn bytes(vertices: &[helio::PackedVertex]) -> &[u8] {
+fn bytes(vertices: &[helio_mesh_api::PackedVertex]) -> &[u8] {
     bytemuck::cast_slice(vertices)
 }
 
