@@ -102,7 +102,7 @@ own_gpu_columns = true
 owner = "helio_component::components::camera_lens_component"
 disposition = "render. The camera's lens as authored (optics, focus, focal surface, element stack, presets). Its derived rows are written on every insert, write, removal and replay: the LensComponent row at the instance row of camera_lenses, and its LensElementComponent rows in a compact per-lens block of lens_elements; removal zeroes both"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/renderer/helio/crates/helio-component/src/components/camera_lens_component.rs (tests)"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/core/helio_component/src/components/camera_lens_component.rs (tests)"
 status = "verified"
 
 [[class]]
@@ -113,7 +113,7 @@ own_gpu_columns = false
 owner = "helio_component::components::camera_component"
 disposition = "non-render data read by the host per frame: a camera's projection (perspective fov or orthographic size), clip planes, priority and enabled flag; its pose is its owner object's world transform. The game's camera selection (pulsar_game::camera_selection) looks through the view target's camera, else the highest priority one. Nothing on the GPU reads it"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "crates/renderer/helio/crates/helio-component/src/components/camera_component.rs (tests); crates/core/pulsar_game/src/camera_selection.rs (tests); crates/core/pulsar_game/src/scripting/tests.rs (possession_makes_the_pawn_the_view_target_and_its_camera_follows_it)"
+test = "crates/core/helio_component/src/components/camera_component.rs (tests); crates/core/pulsar_game/src/camera_selection.rs (tests); crates/core/pulsar_game/src/scripting/tests.rs (possession_makes_the_pawn_the_view_target_and_its_camera_follows_it)"
 status = "verified"
 
 [[class]]
@@ -168,7 +168,7 @@ own_gpu_columns = true
 owner = "helio_component::components::virtual_geometry_component"
 disposition = "render, virtual geometry (.agents/plans/virtual-geometry.md): optional per-instance overrides (enabled, tier lock, lod error scale, force root only, shadow caster) for a static mesh's virtual-geometry rendering; a mesh without it uses the global defaults. Its derived VgOverrideGpu row is written on every insert, write, removal and replay; the VirtualGeometryInstances derivation joins it on the GPU to the owner's mesh instances. A VG-active instance's authored LODComponent is inert (plan item 7). The default deferred graph draws it (helio-default-passes virtual_geometry): VirtualGeometryHost builds and streams the mesh's .vgeo, and the cluster passes shade into the G-buffer. Not declared unfinished (no tracking issue)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/renderer/helio/crates/helio-component/src/components/virtual_geometry_component.rs (tests); crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
+test = "crates/core/helio_component/src/components/virtual_geometry_component.rs (tests); crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
 status = "verified"
 
 [[class]]
@@ -225,7 +225,7 @@ own_gpu_columns = false
 owner = "helio_component::components::portal_component"
 disposition = "unfinished, Phase 4 (tracked in #1055): Helio draws linked portal pairs from projection rows at dense reserved entity slots; this component authors no peer and the editor world cannot provide those slots. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1055"
+test = "crates/core/helio_component/tests/unfinished_components.rs; tracked in #1055"
 status = "unfinished"
 
 [[class]]
@@ -247,7 +247,7 @@ own_gpu_columns = false
 owner = "helio_component::components::reflection_capture_component"
 disposition = "unfinished, Phase 4 (tracked in #1054): a capture contributes only through a baked cubemap layer and the engine runs no probe baker. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1054"
+test = "crates/core/helio_component/tests/unfinished_components.rs; tracked in #1054"
 status = "unfinished"
 
 [[class]]
@@ -335,7 +335,7 @@ own_gpu_columns = false
 owner = "helio_component::components::spline_component"
 disposition = "editor visualization, Phase 4: SplineLines reads SceneDB's change journal and rebuilds the debug lines only when a spline, or its owner's transform, visibility, selection or enabled state, changes; nothing scans the World on a sync without such a change"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
+test = "crates/core/helio_component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
 status = "verified"
 
 [[class]]
@@ -676,7 +676,7 @@ writer = "its own SceneDB var-len dispatch: one VgOverrideGpu row (authored flag
 owner = "helio_component::components::virtual_geometry_component"
 disposition = "keep: the per-instance virtual-geometry overrides; the VirtualGeometryInstances derivation reads them (vg_instance_overrides, vg_instance_overrides::handles)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[schema]]
@@ -970,7 +970,7 @@ writer = "none: the authored component has no column of its own; on every insert
 owner = "helio_component::components::camera_lens_component"
 disposition = "keep: the camera's lens as authored; its GPU rows are the derived ones above"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/renderer/helio/crates/helio-component/src/components/camera_lens_component.rs (tests)"
+test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/core/helio_component/src/components/camera_lens_component.rs (tests)"
 status = "verified"
 
 [[schema]]
@@ -1533,12 +1533,12 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "crates/renderer/helio/crates/helio-component/src/static_move_watch.rs"
+file = "crates/core/helio_component/src/static_move_watch.rs"
 count = 2
-owner = "helio::helio-component::static_move_watch"
+owner = "helio_component::static_move_watch"
 disposition = "keep: independent Transform cursor for the play-mode static-move warning (diagnostic observer)"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "crates/renderer/helio/crates/helio-component/src/static_move_watch.rs (an_overflow_skips_the_evicted_moves_and_carries_on, a_replaced_world_is_followed_from_the_next_poll)"
+test = "crates/core/helio_component/src/static_move_watch.rs (an_overflow_skips_the_evicted_moves_and_carries_on, a_replaced_world_is_followed_from_the_next_poll)"
 status = "verified"
 
 [[site]]
@@ -1553,12 +1553,12 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs"
+file = "crates/core/helio_component/src/components/spline_component.rs"
 count = 6
-owner = "helio::helio-component::components::spline_component"
+owner = "helio_component::components::spline_component"
 disposition = "keep: SplineLines' own cursors (spline values, attachment state, owner transform, visibility, selection) make the editor's spline lines change-driven (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
+test = "crates/core/helio_component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
 status = "verified"
 
 [[site]]
@@ -1682,7 +1682,7 @@ writer = "the authored value's own SceneDB write path derives LightSourceRow (li
 owner = "helio_component::components::light_component::component"
 disposition = "lighting input: LightSourceRow joined with the owner transform into scene_lights"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/renderer/helio/crates/helio-component/src/components/light_component/mapping.rs (tests)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/core/helio_component/src/components/light_component/mapping.rs (tests)"
 status = "verified"
 
 [[schema]]
@@ -1848,7 +1848,7 @@ consumers = ["helio_component"]
 owner = "helio_component::components::virtual_geometry_component (VgOverrideGpu pool)"
 disposition = "keep: a VirtualGeometryComponent's one override row; the VirtualGeometryInstances derivation scatters it to its owner object"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
@@ -1858,7 +1858,7 @@ consumers = ["helio_component"]
 owner = "helio_component::components::virtual_geometry_component (handle table, keyed by component entity)"
 disposition = "keep: the range of a VirtualGeometryComponent's override row; a zero count means no component"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
@@ -1868,7 +1868,7 @@ consumers = ["helio_component"]
 owner = "helio_component::virtual_geometry_instances (VirtualGeometryInstances scene derivation output)"
 disposition = "keep: execution data. One GpuVgInstance row per VG-active static-mesh instance (asset slot, flags incl. INST_LOD_SUPPRESS and INST_CONE_CULL, error scale, first-section row in static_objects), compacted in instance order and rebuilt on the GPU only when an input changed; the virtual-geometry passes read it by key. Valid rows: vg_instance_count"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
@@ -1878,7 +1878,7 @@ consumers = ["helio_component"]
 owner = "helio_component::virtual_geometry_instances (VirtualGeometryInstances scene derivation output)"
 disposition = "keep: execution data. Word 0 is the number of valid rows in vg_instances"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs"
+test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
@@ -1888,7 +1888,7 @@ consumers = ["engine_backend", "helio_component"]
 owner = "helio_component::virtual_geometry_instances (output); engine_backend::scene::authored_lod (reader)"
 disposition = "keep: a generic per-object-entity flag buffer; non-zero makes the authored-LOD selection skip the object because another system (virtual geometry) draws its detail (plan item 7). Neither side knows the other's types"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs; crates/core/engine_backend/src/scene/authored_lod.rs (gpu_selection_changes_with_the_current_view_camera)"
+test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs; crates/core/engine_backend/src/scene/authored_lod.rs (gpu_selection_changes_with_the_current_view_camera)"
 status = "unverified"
 
 [[buffer]]
@@ -1908,7 +1908,7 @@ consumers = ["helio_component"]
 owner = "helio_component::virtual_geometry_host (VgAssetReadyPublisher scene derivation output, rows from helio_vg_stream::VgRuntime); helio_component::virtual_geometry_instances (reader)"
 disposition = "keep: per-asset readiness rows (VgAssetReadyRow: interned vertex offset, asset slot, ready flag) sorted by vertex offset; an instance is VG-active only once its asset's root pages are resident"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/virtual_geometry_instances_gpu.rs (test-built rows); crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (published from the runtime)"
+test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs (test-built rows); crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (published from the runtime)"
 status = "verified"
 
 [[buffer]]
@@ -2014,7 +2014,7 @@ status = "verified"
 [[buffer]]
 key = "skeletal_bone_palette"
 producers = ["SkeletalMeshComponent"]
-consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent"]
+consumers = ["helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent"]
 owner = "helio_component (SkeletalMeshComponent)"
 disposition = "keep: each instance's current and previous joint matrices, in the mesh's own space; passes skin the vertex before the instance's model matrix, so a moved camera origin needs nothing here"
 target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
@@ -2024,7 +2024,7 @@ status = "unverified"
 [[buffer]]
 key = "skeletal_skin_vertices"
 producers = ["SkeletalMeshComponent"]
-consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent"]
+consumers = ["helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent"]
 owner = "helio_component (SkeletalMeshComponent)"
 disposition = "keep: four joint indices and weights per vertex, parallel to builtin_mesh_vertex so static geometry keeps its vertex layout"
 target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
@@ -2034,21 +2034,21 @@ status = "unverified"
 [[buffer]]
 key = "builtin_mesh_index"
 producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
-consumers = ["engine_backend", "helio-default-passes", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
+consumers = ["engine_backend", "helio-default-passes", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: same as builtin_mesh_vertex"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+test = "crates/core/helio_component/tests/static_mesh_component_gpu_mirror.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
 status = "verified"
 
 [[buffer]]
 key = "builtin_mesh_vertex"
 producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
-consumers = ["engine_backend", "helio-default-passes", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
+consumers = ["engine_backend", "helio-default-passes", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: authored StaticMeshComponent pools are the canonical geometry; retire or merge the second, pass-owned producer"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+test = "crates/core/helio_component/tests/static_mesh_component_gpu_mirror.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
 status = "verified"
 
 [[buffer]]
@@ -2536,16 +2536,6 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitt
 status = "verified"
 
 [[pass]]
-crate = "helio-pass-debug"
-in_default_graph = false
-reads = []
-owner = "helio-default-passes"
-disposition = "not composed by helio-default-passes; out of scope until a graph adopts it"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
-
-[[pass]]
 crate = "helio-pass-debug-overlay"
 in_default_graph = true
 reads = []
@@ -2574,16 +2564,6 @@ disposition = "keep: reads scene_lights (joined from LightSourceRow) and water_v
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
-
-[[pass]]
-crate = "helio-pass-depth-prepass"
-in_default_graph = false
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "skeletal_bone_palette", "skeletal_skin_vertices"]
-owner = "helio-default-passes"
-disposition = "not composed by helio-default-passes; out of scope until a graph adopts it (reads builtin_mesh_index, builtin_mesh_vertex, skeletal_bone_palette, skeletal_skin_vertices)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-buffer-view"
@@ -2857,26 +2837,6 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (the_sky_is_the
 status = "verified"
 
 [[pass]]
-crate = "helio-pass-smaa"
-in_default_graph = false
-reads = []
-owner = "helio-default-passes"
-disposition = "not composed by helio-default-passes; out of scope until a graph adopts it"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
-
-[[pass]]
-crate = "helio-pass-ssao"
-in_default_graph = false
-reads = []
-owner = "helio-default-passes"
-disposition = "not composed by helio-default-passes; out of scope until a graph adopts it"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
-
-[[pass]]
 crate = "helio-pass-ssr"
 in_default_graph = true
 reads = []
@@ -2904,16 +2864,6 @@ owner = "helio-pass-tsr"
 disposition = "not in the engine's graph: replaces FXAA only when tsr_quality is set; the editor graph uses FXAA; no scene input"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
-status = "out-of-scope"
-
-[[pass]]
-crate = "helio-pass-underwater"
-in_default_graph = false
-reads = []
-owner = "helio-default-passes"
-disposition = "not composed by helio-default-passes; out of scope until a graph adopts it"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
 status = "out-of-scope"
 
 [[pass]]
@@ -2987,16 +2937,6 @@ test = "none: not in a production graph"
 status = "out-of-scope"
 
 [[pass]]
-crate = "helio-pass-water-caustics"
-in_default_graph = false
-reads = []
-owner = "helio-default-passes"
-disposition = "not composed by helio-default-passes; out of scope until a graph adopts it"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
-
-[[pass]]
 crate = "helio-pass-water-sim"
 in_default_graph = true
 reads = ["water_hitboxes", "water_volumes"]
@@ -3005,16 +2945,6 @@ disposition = "keep: reads water_volumes (joined from WaterVolumeComponent, Phas
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
-
-[[pass]]
-crate = "helio-pass-water-surface"
-in_default_graph = false
-reads = []
-owner = "helio-default-passes"
-disposition = "not composed by helio-default-passes; out of scope until a graph adopts it"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
 
 [[site]]
 pattern = "change-cursor"
@@ -3035,7 +2965,7 @@ status = "verified"
 
 [[site]]
 pattern = "asset-kind"
-file = "crates/renderer/helio/crates/helio-component/src/components/skeletal_mesh_component.rs"
+file = "crates/core/helio_component/src/components/skeletal_mesh_component.rs"
 count = 3
 owner = "helio_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
 disposition = "keep: the skeletal mesh, skeleton and animation sequence kinds. Their loaders decode the asset files on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh or pose"
@@ -3045,7 +2975,7 @@ status = "unverified"
 
 [[site]]
 pattern = "asset-binding"
-file = "crates/renderer/helio/crates/helio-component/src/components/skeletal_mesh_component.rs"
+file = "crates/core/helio_component/src/components/skeletal_mesh_component.rs"
 count = 3
 owner = "helio_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
 disposition = "keep: binds a loaded skeletal mesh, skeleton or animation into SkeletalMeshComponent and refreshes its pose; the world calls them for every component naming the asset, on load and on reload"
@@ -3055,62 +2985,62 @@ status = "unverified"
 
 [[site]]
 pattern = "asset-kind"
-file = "crates/renderer/helio/crates/helio-component/src/components/static_mesh_component.rs"
+file = "crates/core/helio_component/src/components/static_mesh_component.rs"
 count = 1
 owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
 disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
-test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
+test = "crates/core/helio_component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
 status = "verified"
 
 [[site]]
 pattern = "asset-binding"
-file = "crates/renderer/helio/crates/helio-component/src/components/static_mesh_component.rs"
+file = "crates/core/helio_component/src/components/static_mesh_component.rs"
 count = 1
 owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
 disposition = "keep: binds a loaded mesh into StaticMeshComponent (vertices, indices, interned geometry); a failed load binds the empty mesh. The world calls it for every component naming the asset, on load and on reload"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
-test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
+test = "crates/core/helio_component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
 status = "verified"
 
 [[site]]
 pattern = "asset-kind"
-file = "crates/renderer/helio/crates/helio-component/src/texture_assets.rs"
+file = "crates/core/helio_component/src/texture_assets.rs"
 count = 1
 owner = "helio_component::texture_assets (register_texture_assets)"
 disposition = "keep: the texture kind (sprite texture, decal albedo). Its loader reads and decodes the image on a SceneDB worker; a missing or corrupt file fails the asset and its components show the tint alone. A component's handle-ledger collector derives the AssetId from its path, so a typed insert, a decoded level, a reflected write and a script all reference it the same way; the GPU dispatch uploads the bound image and never reads the file"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
-test = "crates/renderer/helio/crates/helio-component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input), crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene)"
+test = "crates/core/helio_component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input), crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene)"
 status = "verified"
 
 [[site]]
 pattern = "asset-binding"
-file = "crates/renderer/helio/crates/helio-component/src/components/mod.rs"
+file = "crates/core/helio_component/src/components/mod.rs"
 count = 2
 owner = "helio_component::components (register_texture_bindings)"
 disposition = "keep: binds a loaded image into SpriteComponent.image and DecalComponent.albedo_image, tagged with its asset and content version so the GPU copy is replaced on reload; a failed load binds nothing"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
-test = "crates/renderer/helio/crates/helio-component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input)"
+test = "crates/core/helio_component/tests/texture_assets.rs (texture_assets_load_rebind_reload_and_survive_bad_input)"
 status = "verified"
 
 [[site]]
 pattern = "asset-kind"
-file = "crates/renderer/helio/crates/helio-component/src/material_assets.rs"
+file = "crates/core/helio_component/src/material_assets.rs"
 count = 1
 owner = "helio_component::material_assets (register_material_assets)"
 disposition = "keep: the material kind (a mesh slot's surface document or shader-graph folder). Its loader resolves the authored path against the project, the working directory and the engine assets, reads and parses the document, or the graph and every texture it samples (decoded on the worker, and validated by a compile against placeholder slots); a missing or corrupt material fails the asset and its slots draw the imported surface. StaticMeshComponent's #[scene_store(collect_handles)] reports one id per slot material, so the count follows the slots"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
-test = "crates/renderer/helio/crates/helio-component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
+test = "crates/core/helio_component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
 status = "verified"
 
 [[site]]
 pattern = "asset-binding"
-file = "crates/renderer/helio/crates/helio-component/src/material_assets.rs"
+file = "crates/core/helio_component/src/material_assets.rs"
 count = 1
 owner = "helio_component::material_assets (register_material_assets)"
 disposition = "keep: binds a loaded material into StaticMeshComponent.materials (with its content version) and drops the materials no slot names any more; a failed load binds nothing and the slot draws the imported surface. The derived draw compiles a bound graph against its textures' slots in that scene's store, once per content version"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
-test = "crates/renderer/helio/crates/helio-component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
+test = "crates/core/helio_component/tests/material_assets.rs (materials_load_rebind_reload_and_survive_bad_input)"
 status = "verified"
 
 [[site]]

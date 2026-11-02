@@ -27,13 +27,6 @@ members = [
     # Input actions (.inputaction), input mappings (.inputmap), and the input
     # runtime that publishes them on the event bus; built-in plugin of the editor.
     "plugins/vendor/input_plugin",
-    # Helio's component crate names this workspace as its own
-    # (`package.workspace`) so its inventory registrations share the editor's
-    # SceneDB/reflection copies. Listing it here overrides the
-    # `crates/renderer/helio` exclusion below; as a non-member, Cargo refused
-    # `cargo test -p helio_component` because it could not build its
-    # dev-dependencies.
-    "crates/renderer/helio/crates/helio-component",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -209,7 +202,7 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
-helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
+helio_component       = { path = "crates/core/helio_component" }
 helio-mats            = { path = "crates/renderer/helio/crates/helio-mats" }
 psgc                  = { path = "crates/third-party/psgc/crates/psgc" }
 
@@ -264,6 +257,11 @@ helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
 helio-pass-lens = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-lens" }
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
+helio-vg-format = { path = "crates/renderer/helio/crates/helio-vg-format" }
+helio-vg-stream = { path = "crates/renderer/helio/crates/helio-vg-stream" }
+helio-vg-build = { path = "crates/renderer/helio/crates/helio-vg-build" }
+scenedb-inspector-agent = { path = "crates/renderer/helio/crates/scenedb-inspector-agent" }
+helio_snapshot = { package = "helio-snapshot", path = "crates/renderer/helio/crates_other/helio-snapshot" }
 helio-settings = { path = "crates/renderer/helio/crates/helio-settings" }
 helio-pass-object-batch = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-object-batch" }
 helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-volumetric-fog" }

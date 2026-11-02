@@ -94,6 +94,7 @@ pub const RECORD_BOUNDARY_FILES: &[(&str, &str)] = &[
 pub const RENDERER_ROOTS: &[&str] = &[
     "crates/core/engine_backend/src/subsystems/render/",
     "crates/renderer/helio/crates/",
+    "crates/core/helio_component/",
 ];
 
 /// The renderer's `World::query` call sites, with why each is not a
@@ -121,7 +122,7 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "bake_scene_from_world: an explicit one-shot bake input, not the frame path",
     ),
     (
-        "crates/renderer/helio/crates/helio-component/src/components/voxel_world.rs",
+        "crates/core/helio_component/src/components/voxel_world.rs",
         1,
         "journals_to_compact: the editor's level save folds long voxel edit journals, once per save, not the frame path",
     ),

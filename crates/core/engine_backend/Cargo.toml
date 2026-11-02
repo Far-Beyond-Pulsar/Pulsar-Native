@@ -71,8 +71,8 @@ pulsar_script_object_model.workspace = true
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true
 helio_component.workspace = true
-helio-vg-stream = { path = "../../renderer/helio/crates/helio-vg-stream" }
-helio-vg-format = { path = "../../renderer/helio/crates/helio-vg-format" }
+helio-vg-stream.workspace = true
+helio-vg-format.workspace = true
 helio-mats = { workspace = true, optional = true }
 psgc = { path = "../../third-party/psgc/crates/psgc", optional = true }
 image = { workspace = true, optional = true }
@@ -107,7 +107,7 @@ helio-pass-sky = { workspace = true, optional = true }
 helio-pass-tsr = { workspace = true, optional = true }
 helio-pass-volumetric-fog = { workspace = true, optional = true }
 # Opt-in live SceneDB inspector bridge; inert unless launched by scenedb_inspector.
-scenedb-inspector-agent = { path = "../../renderer/helio/crates/scenedb-inspector-agent", optional = true }
+scenedb-inspector-agent = { workspace = true, optional = true }
 glam.workspace = true
 bytemuck = { version = "1.14", optional = true }
 
