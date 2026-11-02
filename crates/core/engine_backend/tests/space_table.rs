@@ -6,7 +6,7 @@ use engine_backend::scene::frames::{frame_table, make_frame, SpaceSlot};
 use engine_backend::scene::{SceneWorldExt, SpaceTable, SpawnObject, Transform};
 use glam::{Mat4, Vec3};
 use helio_pass_portal_cull::{
-    components::PortalComponent, PortalProjectionBridge, SubLevelContents, SubLevelResolver,
+    components::PortalRow, PortalProjectionBridge, SubLevelContents, SubLevelResolver,
 };
 use pulsar_scenedb::World;
 
@@ -42,7 +42,7 @@ fn frames_and_a_portal_projection_share_one_table_without_overlap() {
             [
                 (
                     a,
-                    PortalComponent::new(
+                    PortalRow::new(
                         Some(b),
                         Mat4::from_translation(Vec3::new(2.0, 0.0, 0.0)),
                         [1.0, 1.0],
@@ -50,7 +50,7 @@ fn frames_and_a_portal_projection_share_one_table_without_overlap() {
                 ),
                 (
                     b,
-                    PortalComponent::new(
+                    PortalRow::new(
                         Some(a),
                         Mat4::from_translation(Vec3::new(-2.0, 0.0, 0.0)),
                         [1.0, 1.0],

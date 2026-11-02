@@ -21,7 +21,7 @@
 //!
 //! SceneDB derives a `SpriteSourceRow` (`environment_rows`) from the
 //! authored value; the environment join places it as the sprite passes'
-//! `helio_pass_sprite_batch::SpriteComponent` row in `"sprite_instances"`.
+//! `helio_pass_sprite_batch::SpriteRow` row in `"sprite_instances"`.
 
 use engine_class_derive::{engine_class, register_world_component};
 use serde::{Deserialize, Serialize};
@@ -88,7 +88,7 @@ impl SpriteComponent {
     /// sort depth, the frame's UV rectangle and the tint. The environment
     /// join writes the position and adds the owner's roll and scale. Zero
     /// while disabled.
-    pub fn to_row(&self, texture_slot: u32) -> helio_pass_sprite_batch::SpriteComponent {
+    pub fn to_row(&self, texture_slot: u32) -> helio_pass_sprite_batch::SpriteRow {
         if !self.enabled {
             return bytemuck::Zeroable::zeroed();
         }
@@ -97,7 +97,7 @@ impl SpriteComponent {
         let frame = self.atlas_frame.clamp(0, columns * rows - 1);
         let (column, row) = (frame % columns, frame / columns);
         let (du, dv) = (1.0 / columns as f32, 1.0 / rows as f32);
-        helio_pass_sprite_batch::SpriteComponent::from(
+        helio_pass_sprite_batch::SpriteRow::from(
             helio_pass_sprite_batch::SpriteInstance::new(
                 [0.0, 0.0],
                 [self.width.max(0.0), self.height.max(0.0)],

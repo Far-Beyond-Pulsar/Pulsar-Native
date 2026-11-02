@@ -7,7 +7,7 @@ use super::FoliageComponent;
 
 pub(crate) fn gpu_type(
     component: &FoliageComponent,
-) -> helio_pass_foliage_place::components::FoliageTypeComponent {
+) -> helio_pass_foliage_place::components::FoliageTypeRow {
     use helio_pass_foliage_place::{FoliageKind, pack_kind_and_flags};
 
     let flags = u32::from(component.rendering.two_sided)

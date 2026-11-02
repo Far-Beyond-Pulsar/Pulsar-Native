@@ -4834,6 +4834,42 @@ name = "helio-bake-types"
 version = "0.1.0"
 
 [[package]]
+name = "helio-components"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio",
+ "helio-asset-compat",
+ "helio-core",
+ "helio-default-passes",
+ "helio-mats",
+ "helio-pass-billboard",
+ "helio-pass-corona",
+ "helio-pass-decal",
+ "helio-pass-deferred-light",
+ "helio-pass-foliage-place",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-lens",
+ "helio-pass-object-batch",
+ "helio-pass-portal-cull",
+ "helio-pass-postprocess",
+ "helio-pass-sky",
+ "helio-pass-sprite-batch",
+ "helio-pass-volumetric-fog",
+ "helio-pass-water-sim",
+ "helio-vg-stream",
+ "log",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
+ "twox-hash",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-core"
 version = "0.1.0"
 dependencies = [
@@ -4952,7 +4988,6 @@ dependencies = [
  "helio-core",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4974,7 +5009,6 @@ dependencies = [
  "helio-pass-gbuffer",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4997,7 +5031,6 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5013,7 +5046,6 @@ dependencies = [
  "helio-pass-sky",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5050,7 +5082,6 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -5067,7 +5098,6 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -5094,7 +5124,6 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -5154,7 +5183,6 @@ dependencies = [
  "helio-lens-optics",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5222,7 +5250,6 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5248,7 +5275,6 @@ dependencies = [
  "helio-core",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5313,7 +5339,6 @@ dependencies = [
  "helio-core",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -5329,7 +5354,6 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -5464,7 +5488,6 @@ dependencies = [
  "helio-pass-sky",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5507,7 +5530,6 @@ dependencies = [
  "helio-pass-voxel-planet",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "rayon",
  "wgpu",
 ]
@@ -5525,6 +5547,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-asset-compat",
+ "helio-components",
  "helio-default-passes",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",

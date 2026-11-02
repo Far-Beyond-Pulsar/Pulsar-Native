@@ -152,8 +152,8 @@ impl Join {
         &self,
         out: &SceneBufferProjection,
         instance: Entity,
-    ) -> Vec<helio_pass_gbuffer::StaticObjectComponent> {
-        self.read::<helio_pass_gbuffer::StaticObjectComponent>(out, "static_objects")
+    ) -> Vec<helio_pass_gbuffer::StaticObjectRow> {
+        self.read::<helio_pass_gbuffer::StaticObjectRow>(out, "static_objects")
             .into_iter()
             .filter(|row| row.mesh_generation != 0 && row.mesh_slot == instance.index())
             .collect()

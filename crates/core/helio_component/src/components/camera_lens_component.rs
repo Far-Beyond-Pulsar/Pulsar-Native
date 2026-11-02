@@ -12,11 +12,11 @@
 //! by `view_id` (the editor viewport is view 0):
 //!
 //! - [`CameraLensSourceRow`] (`camera_lens_sources`), at the instance
-//!   entity's row: the pass's [`LensComponent`] row, bit for bit. The
+//!   entity's row: the pass's [`LensRow`] row, bit for bit. The
 //!   environment join gates it (attached, instance enabled, owner current)
 //!   and publishes it as `camera_lenses`, which the lens pass reads. The
 //!   instance's enabled switch in the inspector therefore turns the lens off.
-//! - `lens_elements`: a block of [`LENS_ELEMENT_SLOTS`] [`LensElementComponent`]
+//! - `lens_elements`: a block of [`LENS_ELEMENT_SLOTS`] [`LensElementRow`]
 //!   rows per lens, from a compact allocator, because the pass addresses a
 //!   lens's elements as one contiguous range (`element_first .. +
 //!   element_count`) and the entity index of a component instance is sparse.
@@ -30,14 +30,14 @@
 //! needs the camera to render a wider view. [`camera_lens_view_overscan`] gives
 //! the host that factor for its frame camera (`helio::Camera::with_overscan`)
 //! and writes the same factor into the lens's `camera_lens_sources` row
-//! (`LensComponent::overscan`), so the pass crops the wider image back. The
+//! (`LensRow::overscan`), so the pass crops the wider image back. The
 //! factor depends on the image aspect, which the host supplies per frame.
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 use engine_class_derive::{engine_class, register_world_component};
 use helio_pass_lens::{
-    BundledLens, FOCUS_AUTO_POINT, FOCUS_MANUAL, LensComponent, LensElementComponent, LensRegion,
+    BundledLens, FOCUS_AUTO_POINT, FOCUS_MANUAL, LensElementRow, LensRegion, LensRow,
     MAX_LENS_ELEMENTS, ProjectionModel, bundled_rays, element_kind, ray_map::applied_overscan,
     user,
 };
@@ -65,11 +65,7 @@ pub const LENS_ELEMENTS_BUFFER: &str = "lens_elements";
 /// without this.
 pub fn register_lens_gpu_columns(store: &mut SceneGpuStore, device: &std::sync::Arc<wgpu::Device>) {
     CameraLensSourceRow::register_gpu_columns_growable(store, 4, device);
-    LensElementComponent::register_gpu_columns_growable(
-        store,
-        4 * LENS_ELEMENT_SLOTS as u32,
-        device,
-    );
+    LensElementGpuRow::register_gpu_columns_growable(store, 4 * LENS_ELEMENT_SLOTS as u32, device);
 }
 
 /// The packed GPU component a lens buffer holds, for a host that checks its
@@ -77,8 +73,60 @@ pub fn register_lens_gpu_columns(store: &mut SceneGpuStore, device: &std::sync::
 pub fn lens_buffer_component_id(key: &str) -> Option<pulsar_scenedb::component::ComponentId> {
     match key {
         CAMERA_LENS_SOURCES_BUFFER => Some(CameraLensSourceRow::packed_gpu_component_id()),
-        LENS_ELEMENTS_BUFFER => Some(LensElementComponent::packed_gpu_component_id()),
+        LENS_ELEMENTS_BUFFER => Some(LensElementGpuRow::packed_gpu_component_id()),
         _ => None,
+    }
+}
+
+/// The lens pass's element row ([`LensElementRow`], the
+/// [`helio_pass_lens::LENS_ELEMENTS`] contract) as the SceneDB record this
+/// component's dispatch writes into `lens_elements`. Helio defines rows, not
+/// components; this is Pulsar's producer for that contract, field for field.
+#[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[gpu(layout = packed, buffer = "lens_elements")]
+pub struct LensElementGpuRow {
+    #[gpu]
+    pub kind: u32,
+    #[gpu]
+    pub region_kind: u32,
+    #[gpu]
+    pub region_count: u32,
+    #[gpu]
+    pub flags: u32,
+    #[gpu]
+    pub feather: f32,
+    #[gpu]
+    pub _pad0: f32,
+    #[gpu]
+    pub _pad1: f32,
+    #[gpu]
+    pub _pad2: f32,
+    #[gpu]
+    pub params: [f32; 16],
+    #[gpu]
+    pub region: [f32; 16],
+}
+
+const _: () = {
+    use std::mem::{align_of, offset_of, size_of};
+    assert!(size_of::<LensElementGpuRow>() == size_of::<LensElementRow>());
+    assert!(align_of::<LensElementGpuRow>() == align_of::<LensElementRow>());
+    assert!(offset_of!(LensElementGpuRow, kind) == offset_of!(LensElementRow, kind));
+    assert!(offset_of!(LensElementGpuRow, region_kind) == offset_of!(LensElementRow, region_kind));
+    assert!(
+        offset_of!(LensElementGpuRow, region_count) == offset_of!(LensElementRow, region_count)
+    );
+    assert!(offset_of!(LensElementGpuRow, flags) == offset_of!(LensElementRow, flags));
+    assert!(offset_of!(LensElementGpuRow, feather) == offset_of!(LensElementRow, feather));
+    assert!(offset_of!(LensElementGpuRow, params) == offset_of!(LensElementRow, params));
+    assert!(offset_of!(LensElementGpuRow, region) == offset_of!(LensElementRow, region));
+    helio_pass_lens::LENS_ELEMENTS.assert_producer::<LensElementGpuRow>(LENS_ELEMENTS_BUFFER);
+};
+
+impl From<LensElementRow> for LensElementGpuRow {
+    fn from(row: LensElementRow) -> Self {
+        bytemuck::cast(row)
     }
 }
 
@@ -119,7 +167,7 @@ macro_rules! lens_enum {
     };
 }
 
-/// A camera lens's source row: the pass's [`LensComponent`] row, bit for
+/// A camera lens's source row: the pass's [`LensRow`] row, bit for
 /// bit (`enabled` 0 when the authored component is disabled). The
 /// environment join places it into `camera_lenses`.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
@@ -141,11 +189,10 @@ pub struct CameraLensSourceRow {
     #[gpu]
     pub words5: [u32; 4],
 }
-const _: () =
-    assert!(std::mem::size_of::<CameraLensSourceRow>() == std::mem::size_of::<LensComponent>());
+const _: () = assert!(std::mem::size_of::<CameraLensSourceRow>() == std::mem::size_of::<LensRow>());
 
 impl CameraLensSourceRow {
-    pub fn of(lens: &LensComponent) -> Self {
+    pub fn of(lens: &LensRow) -> Self {
         bytemuck::pod_read_unaligned(bytemuck::bytes_of(lens))
     }
 }
@@ -1223,7 +1270,7 @@ impl LensElementProps {
     }
 
     /// The pass row of this element. A disabled element is an inert row.
-    pub fn to_row(&self) -> LensElementComponent {
+    pub fn to_row(&self) -> LensElementRow {
         if !self.enabled {
             return bytemuck::Zeroable::zeroed();
         }
@@ -1253,18 +1300,16 @@ impl LensElementProps {
         };
         let mut row = match self.kind {
             LensElementKind::Diopter => {
-                let mut row = LensElementComponent::diopter(self.focus_m, region)
+                let mut row = LensElementRow::diopter(self.focus_m, region)
                     .with_seam_darkening(self.seam_darkening);
                 if self.mount_distance_m > 0.0 {
                     row = row.with_mount_distance(self.mount_distance_m);
                 }
                 row
             }
-            LensElementKind::SweetSpot => {
-                LensElementComponent::sweet_spot(self.extra_blur_px, region)
-            }
+            LensElementKind::SweetSpot => LensElementRow::sweet_spot(self.extra_blur_px, region),
             LensElementKind::Pupil => {
-                let mut row = LensElementComponent::pupil(region);
+                let mut row = LensElementRow::pupil(region);
                 row = row.with_aperture_texture(
                     self.aperture_texture_layer,
                     self.aperture_texture_amount,
@@ -1285,15 +1330,14 @@ impl LensElementProps {
                     .with_apodization(self.apodization)
                     .with_central_obstruction(self.obstruction)
             }
-            LensElementKind::LongitudinalCa => LensElementComponent::longitudinal_ca(
+            LensElementKind::LongitudinalCa => LensElementRow::longitudinal_ca(
                 self.red_shift_dpt,
                 self.green_shift_dpt,
                 self.blue_shift_dpt,
                 region,
             ),
             LensElementKind::Projection => {
-                let mut row =
-                    LensElementComponent::projection(self.projection_model.to_pass(), region);
+                let mut row = LensElementRow::projection(self.projection_model.to_pass(), region);
                 match self.projection_model {
                     LensProjectionModel::KannalaBrandt => {
                         row = row
@@ -1306,7 +1350,7 @@ impl LensElementProps {
                 }
                 row
             }
-            LensElementKind::BrownConrady => LensElementComponent::brown_conrady(
+            LensElementKind::BrownConrady => LensElementRow::brown_conrady(
                 [
                     self.bc_k1, self.bc_k2, self.bc_k3, self.bc_k4, self.bc_k5, self.bc_k6,
                 ],
@@ -1314,30 +1358,28 @@ impl LensElementProps {
                 region,
             ),
             LensElementKind::Division => {
-                LensElementComponent::division(self.division_l1, self.division_l2, region)
+                LensElementRow::division(self.division_l1, self.division_l2, region)
             }
-            LensElementKind::AnamorphicDistortion => LensElementComponent::anamorphic_distortion(
+            LensElementKind::AnamorphicDistortion => LensElementRow::anamorphic_distortion(
                 [self.mumps_kx1, self.mumps_kx2],
                 [self.mumps_ky1, self.mumps_ky2],
                 region,
             ),
             LensElementKind::AnamorphicSqueeze => {
-                LensElementComponent::anamorphic_squeeze(self.squeeze.max(0.1), region)
+                LensElementRow::anamorphic_squeeze(self.squeeze.max(0.1), region)
             }
-            LensElementKind::Shift => {
-                LensElementComponent::shift(self.shift_x, self.shift_y, region)
-            }
+            LensElementKind::Shift => LensElementRow::shift(self.shift_x, self.shift_y, region),
             LensElementKind::Keystone => {
-                LensElementComponent::keystone(self.keystone_x, self.keystone_y, region)
+                LensElementRow::keystone(self.keystone_x, self.keystone_y, region)
             }
             LensElementKind::FocusBreathing => {
-                let mut row = LensElementComponent::focus_breathing(self.breathing_per_dpt, region);
+                let mut row = LensElementRow::focus_breathing(self.breathing_per_dpt, region);
                 row.params[helio_pass_lens::breathing::REFERENCE_DIOPTRES] =
                     self.breathing_reference_dpt;
                 row
             }
             LensElementKind::Prism => {
-                let mut row = LensElementComponent::prism(
+                let mut row = LensElementRow::prism(
                     self.prism_count.clamp(2, 8),
                     self.prism_offset,
                     self.prism_angle_deg.to_radians(),
@@ -1351,27 +1393,24 @@ impl LensElementProps {
                 row
             }
             LensElementKind::LateralCa => {
-                LensElementComponent::lateral_ca(self.lateral_ca_d1, self.lateral_ca_d2, region)
+                LensElementRow::lateral_ca(self.lateral_ca_d1, self.lateral_ca_d2, region)
             }
             LensElementKind::FlatPort => {
-                LensElementComponent::flat_port(self.port_index, self.port_dispersion, region)
+                LensElementRow::flat_port(self.port_index, self.port_dispersion, region)
             }
             LensElementKind::DomePort => {
                 use helio_pass_lens::dome_port;
-                let mut row = LensElementComponent::dome_port(
-                    self.dome_radius_m,
-                    self.dome_pupil_offset_m,
-                    region,
-                );
+                let mut row =
+                    LensElementRow::dome_port(self.dome_radius_m, self.dome_pupil_offset_m, region);
                 row.params[dome_port::INDEX] = self.port_index;
                 row.params[dome_port::DISPERSION] = self.port_dispersion;
                 row.params[dome_port::CURVATURE] = self.dome_curvature;
                 row
             }
             LensElementKind::NaturalVignette => {
-                LensElementComponent::natural_vignette(self.natural_vignette_amount, region)
+                LensElementRow::natural_vignette(self.natural_vignette_amount, region)
             }
-            LensElementKind::OpticalVignette => LensElementComponent::optical_vignette(
+            LensElementKind::OpticalVignette => LensElementRow::optical_vignette(
                 self.cats_eye,
                 self.barrel_radius,
                 self.vignette_reference_f_number,
@@ -1379,18 +1418,18 @@ impl LensElementProps {
             ),
             LensElementKind::MechanicalVignette => {
                 if self.hood_rectangular {
-                    LensElementComponent::matte_box(
+                    LensElementRow::matte_box(
                         [self.hood_size_x, self.hood_size_y],
                         self.hood_rotation_deg.to_radians(),
                         self.hood_feather,
                         region,
                     )
                 } else {
-                    LensElementComponent::circular_hood(self.hood_size_x, self.hood_feather, region)
+                    LensElementRow::circular_hood(self.hood_size_x, self.hood_feather, region)
                 }
             }
-            LensElementKind::NdFilter => LensElementComponent::nd_filter(self.nd_stops, region),
-            LensElementKind::GraduatedNd => LensElementComponent::graduated_nd(
+            LensElementKind::NdFilter => LensElementRow::nd_filter(self.nd_stops, region),
+            LensElementKind::GraduatedNd => LensElementRow::graduated_nd(
                 self.grad_nd_stops,
                 self.grad_nd_angle_deg.to_radians(),
                 self.grad_nd_offset,
@@ -1398,17 +1437,17 @@ impl LensElementProps {
                 [self.tint_r, self.tint_g, self.tint_b],
                 region,
             ),
-            LensElementKind::ColorFilter => LensElementComponent::color_filter(
+            LensElementKind::ColorFilter => LensElementRow::color_filter(
                 [self.tint_r, self.tint_g, self.tint_b],
                 self.color_filter_amount,
                 region,
             ),
             LensElementKind::TStopLoss => {
-                LensElementComponent::t_stop_loss(self.t_stop_loss_amount, region)
+                LensElementRow::t_stop_loss(self.t_stop_loss_amount, region)
             }
             LensElementKind::SphericalGlow => {
                 use helio_pass_lens::glow;
-                let mut row = LensElementComponent::spherical_glow(
+                let mut row = LensElementRow::spherical_glow(
                     self.glow_amount,
                     self.glow_reference_f_number,
                     self.glow_exponent,
@@ -1420,15 +1459,14 @@ impl LensElementProps {
             }
             LensElementKind::Coma => {
                 use helio_pass_lens::coma;
-                let mut row =
-                    LensElementComponent::coma(self.coma_amount, self.coma_length, region);
+                let mut row = LensElementRow::coma(self.coma_amount, self.coma_length, region);
                 row.params[coma::EXPONENT] = self.coma_exponent;
                 row.params[coma::SHAPE] = self.coma_shape;
                 row
             }
             LensElementKind::Astigmatism => {
                 use helio_pass_lens::astigmatism;
-                let mut row = LensElementComponent::astigmatism(
+                let mut row = LensElementRow::astigmatism(
                     self.astigmatism_amount,
                     self.astigmatism_minor_ratio,
                     region,
@@ -1438,7 +1476,7 @@ impl LensElementProps {
             }
             LensElementKind::CornerSoftness => {
                 use helio_pass_lens::corner_softness;
-                let mut row = LensElementComponent::corner_softness(
+                let mut row = LensElementRow::corner_softness(
                     self.corner_softness_sigma,
                     self.corner_softness_start,
                     region,
@@ -1453,15 +1491,13 @@ impl LensElementProps {
             | LensElementKind::Fog => {
                 let (strength, radius) = (self.diffusion_strength, self.diffusion_radius);
                 let mut row = match self.kind {
-                    LensElementKind::ProMist => LensElementComponent::pro_mist(strength, region),
+                    LensElementKind::ProMist => LensElementRow::pro_mist(strength, region),
                     LensElementKind::BlackProMist => {
-                        LensElementComponent::black_pro_mist(strength, region)
+                        LensElementRow::black_pro_mist(strength, region)
                     }
-                    LensElementKind::Glimmerglass => {
-                        LensElementComponent::glimmerglass(strength, region)
-                    }
-                    LensElementKind::Fog => LensElementComponent::fog(strength, region),
-                    _ => LensElementComponent::diffusion(strength, radius, region),
+                    LensElementKind::Glimmerglass => LensElementRow::glimmerglass(strength, region),
+                    LensElementKind::Fog => LensElementRow::fog(strength, region),
+                    _ => LensElementRow::diffusion(strength, radius, region),
                 };
                 row.params[helio_pass_lens::diffusion::RADIUS] = radius;
                 row = row.with_diffusion_tail(self.diffusion_tail);
@@ -1471,7 +1507,7 @@ impl LensElementProps {
                 row
             }
             LensElementKind::StarFilter => {
-                let mut row = LensElementComponent::star_filter(
+                let mut row = LensElementRow::star_filter(
                     self.star_points,
                     self.star_rotation_deg.to_radians(),
                     self.star_length,
@@ -1483,26 +1519,23 @@ impl LensElementProps {
             }
             LensElementKind::Halation => {
                 use helio_pass_lens::halation;
-                let mut row = LensElementComponent::halation(
-                    self.halation_strength,
-                    self.halation_radius,
-                    region,
-                )
-                .with_halation_tint([
-                    self.halation_tint_r,
-                    self.halation_tint_g,
-                    self.halation_tint_b,
-                ]);
+                let mut row =
+                    LensElementRow::halation(self.halation_strength, self.halation_radius, region)
+                        .with_halation_tint([
+                            self.halation_tint_r,
+                            self.halation_tint_g,
+                            self.halation_tint_b,
+                        ]);
                 row.params[halation::TAIL] = self.halation_tail;
                 row
             }
-            LensElementKind::WaterDrops => LensElementComponent::water_drops(
+            LensElementKind::WaterDrops => LensElementRow::water_drops(
                 self.drops_refraction,
                 self.drops_normal_layer,
                 self.drops_defocus,
                 region,
             ),
-            LensElementKind::Smear => LensElementComponent::smear(
+            LensElementKind::Smear => LensElementRow::smear(
                 self.smear_strength,
                 self.smear_length,
                 self.smear_angle_deg.to_radians(),
@@ -1510,7 +1543,7 @@ impl LensElementProps {
             ),
             LensElementKind::Dirt => {
                 use helio_pass_lens::dirt;
-                let mut row = LensElementComponent::dirt(
+                let mut row = LensElementRow::dirt(
                     self.dirt_strength,
                     self.dirt_radius,
                     self.dirt_loss,
@@ -1520,7 +1553,7 @@ impl LensElementProps {
                 row
             }
             LensElementKind::Prescription => {
-                LensElementComponent::prescription(self.prescription_lens.layer(), region)
+                LensElementRow::prescription(self.prescription_lens.layer(), region)
                     .with_psf_amount(self.psf_amount)
             }
             LensElementKind::User => {
@@ -1533,7 +1566,7 @@ impl LensElementProps {
                 .into_iter()
                 .filter(|(on, _)| *on)
                 .fold(0, |hooks, (_, bit)| hooks | bit);
-                LensElementComponent::user(hooks, self.user_params(), region)
+                LensElementRow::user(hooks, self.user_params(), region)
             }
         };
         if self.shape == LensRegionShape::Mask {
@@ -2379,13 +2412,10 @@ impl CameraLensComponent {
 
     /// The pass rows: the lens, and its element rows from `element_first`
     /// (inert past the stack; at most [`LENS_ELEMENT_SLOTS`] elements).
-    pub fn to_rows(
-        &self,
-        element_first: u32,
-    ) -> (LensComponent, [LensElementComponent; LENS_ELEMENT_SLOTS]) {
+    pub fn to_rows(&self, element_first: u32) -> (LensRow, [LensElementRow; LENS_ELEMENT_SLOTS]) {
         let lens = self.resolved();
         let mut elements = [bytemuck::Zeroable::zeroed(); LENS_ELEMENT_SLOTS];
-        let mut row = LensComponent::new(lens.view_id);
+        let mut row = LensRow::new(lens.view_id);
         row.enabled = u32::from(lens.enabled);
         if !lens.enabled {
             return (row, elements);
@@ -2549,7 +2579,12 @@ fn camera_lens_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_
         is_new_insert,
     );
     for (slot, element) in elements.iter().enumerate() {
-        pulsar_scenedb::gpu::write_derived_row(mirror, first + slot as u32, element, is_new_insert);
+        pulsar_scenedb::gpu::write_derived_row(
+            mirror,
+            first + slot as u32,
+            &LensElementGpuRow::from(*element),
+            is_new_insert,
+        );
     }
 }
 
@@ -2562,7 +2597,7 @@ const DEFAULT_ASPECT: f32 = 16.0 / 9.0;
 /// are traced on first use (a lens with a `Prescription` element waits for
 /// that once, in the background of the first frames if the renderer started
 /// them, else here).
-fn overscan_of(row: &LensComponent, elements: &[LensElementComponent], aspect: f32) -> f32 {
+fn overscan_of(row: &LensRow, elements: &[LensElementRow], aspect: f32) -> f32 {
     let count = (row.element_count as usize).min(elements.len());
     let elements = &elements[..count];
     let rays = if elements
@@ -2659,7 +2694,7 @@ fn camera_lens_clear(mirror: &GpuMirrorHandle, row: u32) {
     if let Some(block) = block {
         let first = block * LENS_ELEMENT_SLOTS as u32;
         for slot in 0..LENS_ELEMENT_SLOTS as u32 {
-            pulsar_scenedb::gpu::clear_derived_row::<LensElementComponent>(mirror, first + slot);
+            pulsar_scenedb::gpu::clear_derived_row::<LensElementGpuRow>(mirror, first + slot);
         }
     }
 }
@@ -2687,7 +2722,7 @@ mod tests {
     #[test]
     fn the_default_lens_is_the_passes_neutral_lens() {
         let (row, elements) = CameraLensComponent::default().to_rows(0);
-        let mut expected = LensComponent::new(0);
+        let mut expected = LensRow::new(0);
         expected.t_stop = expected.f_number;
         assert_eq!(row, expected);
         assert!(elements.iter().all(|e| e.kind == element_kind::NONE));
@@ -3014,10 +3049,7 @@ mod tests {
 
     /// The row of one element of `kind` with its fields set by `set`, over
     /// the whole frame.
-    fn row_of(
-        kind: LensElementKind,
-        set: impl FnOnce(&mut LensElementProps),
-    ) -> LensElementComponent {
+    fn row_of(kind: LensElementKind, set: impl FnOnce(&mut LensElementProps)) -> LensElementRow {
         let mut props = LensElementProps {
             kind,
             shape: LensRegionShape::FullFrame,

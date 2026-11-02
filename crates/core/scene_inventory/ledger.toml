@@ -1543,10 +1543,10 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "crates/renderer/helio/crates/helio-default-passes/src/ray_tracing.rs"
+file = "crates/renderer/helio/crates/helio-components/src/ray_tracing.rs"
 count = 8
-owner = "helio::helio-default-passes::ray_tracing"
-disposition = "out of the engine (Phase 4 audit): HlfsPass reads its TLAS from the renderer's RenderEnvironment, not the World. SceneDbRayTracing is a host-side helper that only Helio's examples call (the engine never builds the HLFS graph); a TLAS needs CPU instance inputs, so a host adapter is the right shape. #1066 moved it out of the pass crate into helio-default-passes, which already owns the SceneDB-to-pass adapters; the pass crate no longer depends on SceneDB"
+owner = "helio_components::ray_tracing"
+disposition = "out of the engine (Phase 4 audit): HlfsPass reads its TLAS from the renderer's RenderEnvironment, not the World. SceneDbRayTracing is a host-side helper that only Helio's examples call (the engine never builds the HLFS graph); a TLAS needs CPU instance inputs, so a host adapter is the right shape. #1066 moved it out of the pass crate; the layered rewrite (phase 1) moved it on into helio-components, the host layer that owns Helio's own SceneDB components, since it reads them"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/renderer/helio/crates/passes/3d/helio-pass-hlfs/tests/gpu_hlfs_rt.rs (scenedb_projection, non_deforming; #[ignore], need a ray-query adapter)"
 status = "verified"
@@ -2034,7 +2034,7 @@ status = "unverified"
 [[buffer]]
 key = "builtin_mesh_index"
 producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
-consumers = ["engine_backend", "helio-default-passes", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
+consumers = ["engine_backend", "helio-components", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: same as builtin_mesh_vertex"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2044,7 +2044,7 @@ status = "verified"
 [[buffer]]
 key = "builtin_mesh_vertex"
 producers = ["MeshComponent", "SkeletalMeshComponent", "StaticMeshComponent"]
-consumers = ["engine_backend", "helio-default-passes", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
+consumers = ["engine_backend", "helio-components", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio_component"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: authored StaticMeshComponent pools are the canonical geometry; retire or merge the second, pass-owned producer"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2073,7 +2073,7 @@ status = "verified"
 
 [[buffer]]
 key = "lens_elements"
-producers = ["LensElementComponent"]
+producers = ["LensElementComponent", "LensElementGpuRow"]
 consumers = ["helio-pass-lens"]
 owner = "helio-pass-lens (the packed LensElementComponent column)"
 disposition = "keep: the optical elements a lens stacks, addressed by the lens's element_first and element_count; rows of kind NONE are inert"
@@ -2120,16 +2120,6 @@ disposition = "keep: the join places each enabled DecalComponent of a visible ow
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
-
-[[buffer]]
-key = "fog_components"
-producers = ["FogComponent"]
-consumers = ["helio-pass-volumetric-fog"]
-owner = "PendingWorldWrites (fog behaviors)"
-disposition = "outside the engine (Phase 4): legacy fog rows with no authored source; fog uses global_fog_media/local_fog_media (Phase 4)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: fog component changes volumetric fog"
-status = "out-of-scope"
 
 [[buffer]]
 key = "foliage_interactors"
@@ -2272,16 +2262,6 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "verified"
 
 [[buffer]]
-key = "sectioned_objects"
-producers = ["SectionedObjectComponent"]
-consumers = []
-owner = "helio_pass_gbuffer (Helio type; not registered by Pulsar)"
-disposition = "out of the engine (Phase 6): no Pulsar writer or pass reader; the column is no longer registered"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/scene_inventory/tests/ledger.rs"
-status = "out-of-scope"
-
-[[buffer]]
 key = "sprite_instances"
 producers = ["SpriteComponent"]
 consumers = ["helio-default-passes", "helio-pass-sprite-batch", "helio-pass-sprite-cull"]
@@ -2310,16 +2290,6 @@ disposition = "keep: draw rows are joined on the GPU from authored mesh instance
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/scene_join_rows.rs"
 status = "verified"
-
-[[buffer]]
-key = "sublevel_actors"
-producers = ["SubLevelActorComponent"]
-consumers = []
-owner = "gbuffer pass type; writer not identified"
-disposition = "portal resolver input; no authored producer while portals are unfinished"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1055"
-status = "unfinished"
 
 [[buffer]]
 key = "volumetric_fog_settings"
@@ -2919,7 +2889,7 @@ status = "verified"
 [[pass]]
 crate = "helio-pass-volumetric-fog"
 in_default_graph = true
-reads = ["fog_components", "post_process_volumes", "scene_lights"]
+reads = ["post_process_volumes", "scene_lights"]
 owner = "helio-default-passes (mapping); helio-pass-volumetric-fog (algorithm)"
 disposition = "keep: reads the environment join's fog / post-process outputs, derived from authored components (Phase 4)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"

@@ -5,9 +5,9 @@
 //!
 //! SceneDB derives an `AtmosphereSourceRow` (`environment_rows`) from the
 //! authored value; the environment join places it as the sky pass's
-//! `helio_pass_sky::AtmosphereComponent` row in `"atmospheres"`.
+//! `helio_pass_sky::AtmosphereRow` row in `"atmospheres"`.
 use engine_class_derive::{engine_class, register_world_component};
-use helio_pass_sky::AtmosphereComponent as AtmosphereRow;
+use helio_pass_sky::AtmosphereRow;
 use helio_pass_sky::atmosphere::placement;
 use helio_pass_sky::{CloudLayer, CloudRepresentation, PlanetWeather};
 use pulsar_reflection::Reflectable;

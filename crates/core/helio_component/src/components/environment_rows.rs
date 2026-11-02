@@ -16,17 +16,17 @@
 //!
 //! | Row | Words | Pass row it becomes |
 //! |---|---|---|
-//! | [`GlobalFogSourceRow`] | 20: the medium | `helio_pass_volumetric_fog::GlobalFogComponent` (20) |
-//! | [`LocalFogSourceRow`] | 4 size + 24: medium, edge fade | `LocalFogVolumeComponent` (8 bounds + 24) |
-//! | [`PostProcessVolumeSourceRow`] | 4 size + 140: the row after its bounds | `helio_pass_postprocess::PostProcessVolumeComponent` (8 bounds + 140) |
-//! | [`CameraPostProcessSourceRow`] | 136: the row | `helio_pass_postprocess::CameraPostProcessComponent` (136) |
-//! | [`WaterVolumeSourceRow`] | 4 size + 56: the row after its bounds | `helio_pass_water_sim::WaterVolumeComponent` (8 bounds + 56), packed into its leading rows |
-//! | [`FoliageSourceRow`] | 32 type + 4 layer + 12 wind | `helio_pass_foliage_place`'s `FoliageTypeComponent` (32), `FoliageLayerComponent` (8) and `FoliageWindComponent` (12), each packed |
-//! | [`AtmosphereSourceRow`] | 4 centre + 16 media + 4 ground + 4 shell + 16 clouds + 16 weather: the row, its centre in the owner's space | `helio_pass_sky::AtmosphereComponent` (60) |
-//! | [`DecalSourceRow`] | 4 size + 32: the row, its transform left to the join | `helio_pass_decal::DecalComponent` (32), packed into its leading rows |
-//! | [`GlobalWindSourceRow`] | 12: the wind row, marked global | `helio_pass_foliage_place`'s `FoliageWindComponent` (12), over the foliage components' own wind |
-//! | [`CoronaEmitterSourceRow`] | 60: the row, its transform and pool range left to the join (word 46: the requested range) | `helio_pass_corona::CoronaEmitterComponent` (60), packed into its leading rows |
-//! | [`SpriteSourceRow`] | 20: the row, its 2D position left to the join | `helio_pass_sprite_batch::SpriteComponent` (20) |
+//! | [`GlobalFogSourceRow`] | 20: the medium | `helio_pass_volumetric_fog::GlobalFogRow` (20) |
+//! | [`LocalFogSourceRow`] | 4 size + 24: medium, edge fade | `helio_pass_volumetric_fog::LocalFogVolumeRow` (8 bounds + 24) |
+//! | [`PostProcessVolumeSourceRow`] | 4 size + 140: the row after its bounds | `helio_pass_postprocess::PostProcessVolumeRow` (8 bounds + 140) |
+//! | [`CameraPostProcessSourceRow`] | 136: the row | `helio_pass_postprocess::CameraPostProcessRow` (136) |
+//! | [`WaterVolumeSourceRow`] | 4 size + 56: the row after its bounds | `helio_pass_water_sim::WaterVolumeRow` (8 bounds + 56), packed into its leading rows |
+//! | [`FoliageSourceRow`] | 32 type + 4 layer + 12 wind | `helio_pass_foliage_place`'s `FoliageTypeRow` (32), `FoliageLayerRow` (8) and `FoliageWindRow` (12), each packed |
+//! | [`AtmosphereSourceRow`] | 4 centre + 16 media + 4 ground + 4 shell + 16 clouds + 16 weather: the row, its centre in the owner's space | `helio_pass_sky::AtmosphereRow` (60) |
+//! | [`DecalSourceRow`] | 4 size + 32: the row, its transform left to the join | `helio_pass_decal::DecalRow` (32), packed into its leading rows |
+//! | [`GlobalWindSourceRow`] | 12: the wind row, marked global | `helio_pass_foliage_place`'s `FoliageWindRow` (12), over the foliage components' own wind |
+//! | [`CoronaEmitterSourceRow`] | 60: the row, its transform and pool range left to the join (word 46: the requested range) | `helio_pass_corona::CoronaEmitterRow` (60), packed into its leading rows |
+//! | [`SpriteSourceRow`] | 20: the row, its 2D position left to the join | `helio_pass_sprite_batch::SpriteRow` (20) |
 
 use pulsar_scenedb::gpu::GpuMirrorHandle;
 use pulsar_scenedb_derive::SceneStore;
@@ -50,7 +50,7 @@ pub const WIND_SOURCES_BUFFER: &str = "wind_sources";
 pub const SPRITE_SOURCES_BUFFER: &str = "sprite_sources";
 
 /// A 2D sprite: the sprite passes' row
-/// (`helio_pass_sprite_batch::SpriteComponent`, bit for bit) at the 2D
+/// (`helio_pass_sprite_batch::SpriteRow`, bit for bit) at the 2D
 /// origin, which the join moves to its owner's X and Y, turns by the
 /// owner's roll and scales by its X and Y scale. Its image is registered in
 /// the scene's texture store as the row is derived (its slot in
@@ -162,7 +162,7 @@ impl DecalSourceRow {
     }
 }
 
-/// An atmosphere (`helio_pass_sky::AtmosphereComponent` pass row, bit for
+/// An atmosphere (`helio_pass_sky::AtmosphereRow` pass row, bit for
 /// bit): its centre and placement (`center`; the centre in the owner's
 /// space, zero: the join adds the owner's position to a planet placed at its
 /// owner), Rayleigh and Mie scattering, Mie and ozone absorption (`media`),
@@ -396,7 +396,7 @@ impl PostProcessVolumeSourceRow {
         let size = [volume.size[0], volume.size[1], volume.size[2], 0.0];
         let mut row: Self = bytemuck::Zeroable::zeroed();
         if volume.enabled {
-            let pass = helio_pass_postprocess::PostProcessVolumeComponent::from(
+            let pass = helio_pass_postprocess::PostProcessVolumeRow::from(
                 volume.local_descriptor().to_gpu(),
             );
             // The pass row after its two bound vec4s.
@@ -410,7 +410,7 @@ impl PostProcessVolumeSourceRow {
 
 impl CameraPostProcessSourceRow {
     pub fn of(camera: &CameraPostProcessComponent) -> Self {
-        let mut row = helio_pass_postprocess::CameraPostProcessComponent::new(
+        let mut row = helio_pass_postprocess::CameraPostProcessRow::new(
             camera.view_id,
             &camera.settings.to_settings(),
         );
@@ -602,47 +602,41 @@ mod tests {
         assert_eq!(std::mem::size_of::<GlobalWindSourceRow>(), 12 * 4);
         assert_eq!(std::mem::size_of::<SpriteSourceRow>(), 20 * 4);
         assert_eq!(
-            std::mem::size_of::<helio_pass_sprite_batch::SpriteComponent>(),
+            std::mem::size_of::<helio_pass_sprite_batch::SpriteRow>(),
             20 * 4
         );
         assert_eq!(
             std::mem::size_of::<helio_pass_corona::GpuCoronaEmitter>(),
             60 * 4
         );
+        assert_eq!(std::mem::size_of::<helio_pass_decal::DecalRow>(), 32 * 4);
+        assert_eq!(std::mem::size_of::<helio_pass_sky::AtmosphereRow>(), 60 * 4);
         assert_eq!(
-            std::mem::size_of::<helio_pass_decal::DecalComponent>(),
+            std::mem::size_of::<helio_pass_foliage_place::components::FoliageTypeRow>(),
             32 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_sky::AtmosphereComponent>(),
-            60 * 4
-        );
-        assert_eq!(
-            std::mem::size_of::<helio_pass_foliage_place::components::FoliageTypeComponent>(),
-            32 * 4
-        );
-        assert_eq!(
-            std::mem::size_of::<helio_pass_foliage_place::components::FoliageWindComponent>(),
+            std::mem::size_of::<helio_pass_foliage_place::components::FoliageWindRow>(),
             12 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_water_sim::WaterVolumeComponent>(),
+            std::mem::size_of::<helio_pass_water_sim::WaterVolumeRow>(),
             64 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_volumetric_fog::GlobalFogComponent>(),
+            std::mem::size_of::<helio_pass_volumetric_fog::GlobalFogRow>(),
             20 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_volumetric_fog::LocalFogVolumeComponent>(),
+            std::mem::size_of::<helio_pass_volumetric_fog::LocalFogVolumeRow>(),
             32 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_postprocess::PostProcessVolumeComponent>(),
+            std::mem::size_of::<helio_pass_postprocess::PostProcessVolumeRow>(),
             148 * 4
         );
         assert_eq!(
-            std::mem::size_of::<helio_pass_postprocess::CameraPostProcessComponent>(),
+            std::mem::size_of::<helio_pass_postprocess::CameraPostProcessRow>(),
             136 * 4
         );
     }
@@ -755,9 +749,8 @@ mod tests {
     fn a_post_process_volume_row_is_the_pass_row_after_its_bounds() {
         let volume = PostProcessVolumeComponent::default();
         let row = PostProcessVolumeSourceRow::of(&volume);
-        let pass = helio_pass_postprocess::PostProcessVolumeComponent::from(
-            volume.local_descriptor().to_gpu(),
-        );
+        let pass =
+            helio_pass_postprocess::PostProcessVolumeRow::from(volume.local_descriptor().to_gpu());
         assert_eq!(
             &bytemuck::bytes_of(&row)[16..],
             &bytemuck::bytes_of(&pass)[32..]

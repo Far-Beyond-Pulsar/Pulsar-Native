@@ -3,7 +3,7 @@
 //! graph's environment join; nothing here writes pass rows.
 use super::FogMode;
 use engine_class_derive::{engine_class, register_world_component};
-use helio_pass_volumetric_fog::GlobalFogComponent as GlobalMedium;
+use helio_pass_volumetric_fog::GlobalFogRow as GlobalMedium;
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Medium", category_color = "#D18F6F")]

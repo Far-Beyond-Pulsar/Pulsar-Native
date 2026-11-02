@@ -103,7 +103,7 @@ fn check(name: &str, world: Preset, flat: bool) {
             let sky = sky.expect("a sky");
             assert!(sky.enabled, "{name}");
             let got = sky.to_row();
-            let air = |row: &helio_pass_sky::AtmosphereComponent| {
+            let air = |row: &helio_pass_sky::AtmosphereRow| {
                 (
                     row.rayleigh_scattering,
                     row.mie_scattering,
@@ -123,7 +123,7 @@ fn check(name: &str, world: Preset, flat: bool) {
         Some(want) => {
             // Over flat ground heights are along world Y.
             let want = if flat {
-                helio_pass_volumetric_fog::GlobalFogComponent {
+                helio_pass_volumetric_fog::GlobalFogRow {
                     planet: [0.0; 4],
                     ..want
                 }

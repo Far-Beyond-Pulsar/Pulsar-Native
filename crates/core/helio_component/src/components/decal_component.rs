@@ -14,7 +14,7 @@
 //!
 //! SceneDB derives a `DecalSourceRow` (`environment_rows`) from the authored
 //! value; the environment join places it as the decal pass's
-//! `helio_pass_decal::DecalComponent` row in `"decals"`, its world-to-decal
+//! `helio_pass_decal::DecalRow` row in `"decals"`, its world-to-decal
 //! transform built from the owner's transform on the GPU.
 
 use engine_class_derive::{engine_class, register_world_component};
@@ -108,13 +108,13 @@ impl DecalComponent {
     /// `albedo_slot` (`u32::MAX`: none): every field but the transform,
     /// which the environment join builds from the owner. Permanent: its fade
     /// time is zero. Opacity is the colour's alpha, zero while disabled.
-    pub fn to_row(&self, albedo_slot: u32) -> helio_pass_decal::DecalComponent {
+    pub fn to_row(&self, albedo_slot: u32) -> helio_pass_decal::DecalRow {
         let opacity = if self.enabled {
             self.opacity.clamp(0.0, 1.0)
         } else {
             0.0
         };
-        helio_pass_decal::DecalComponent {
+        helio_pass_decal::DecalRow {
             transform: [0.0; 16],
             color: [self.color[0], self.color[1], self.color[2], opacity],
             albedo_texture_index: albedo_slot,

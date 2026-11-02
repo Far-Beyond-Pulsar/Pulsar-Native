@@ -678,7 +678,7 @@ mod tests {
         let mut sync = VoxelWorldSync::new(&world);
         let haze = |world: &World| world.get::<GlobalFogComponent>(fog).unwrap().clone();
         sync.poll(&mut world);
-        let earth = helio_pass_volumetric_fog::GlobalFogComponent {
+        let earth = helio_pass_volumetric_fog::GlobalFogRow {
             mode: 1,
             extinction: 0.0006,
             height_falloff: 0.004,

@@ -15,7 +15,7 @@ use helio_default_passes::environment_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };
 use helio_default_passes::scene_join::ENTITY_GENERATIONS_KEY;
-use helio_pass_lens::{element_kind, LensComponent, LensElementComponent};
+use helio_pass_lens::{element_kind, LensElementRow, LensRow};
 use pulsar_scenedb::{Entity, SceneDb};
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
@@ -96,14 +96,14 @@ impl Gpu {
         out
     }
 
-    fn lens(&mut self, scene: &mut SceneDb, instance: Entity) -> LensComponent {
+    fn lens(&mut self, scene: &mut SceneDb, instance: Entity) -> LensRow {
         let out = self.run(scene);
-        self.read::<LensComponent>(&out, "camera_lenses")[instance.index() as usize]
+        self.read::<LensRow>(&out, "camera_lenses")[instance.index() as usize]
     }
 
-    fn elements(&mut self, scene: &mut SceneDb, first: u32) -> Vec<LensElementComponent> {
+    fn elements(&mut self, scene: &mut SceneDb, first: u32) -> Vec<LensElementRow> {
         let out = self.run(scene);
-        self.read::<LensElementComponent>(&out, "lens_elements")
+        self.read::<LensElementRow>(&out, "lens_elements")
             [first as usize..first as usize + LENS_ELEMENT_SLOTS]
             .to_vec()
     }

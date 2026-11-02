@@ -117,7 +117,7 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "voxel path: VoxelSceneRead runs when the world revision changes (enabled meshes; lights, for the sun and the camera-relative gate)",
     ),
     (
-        "crates/renderer/helio/crates/helio/src/lib.rs",
+        "crates/renderer/helio/crates/helio-components/src/lib.rs",
         3,
         "bake_scene_from_world: an explicit one-shot bake input, not the frame path",
     ),
@@ -127,7 +127,7 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "journals_to_compact: the editor's level save folds long voxel edit journals, once per save, not the frame path",
     ),
     (
-        "crates/renderer/helio/crates/helio-default-passes/src/ray_tracing.rs",
+        "crates/renderer/helio/crates/helio-components/src/ray_tracing.rs",
         3,
         "HLFS acceleration structure: one full build, then change cursors",
     ),

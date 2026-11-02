@@ -142,10 +142,10 @@ fn at(position: [f64; 3]) -> Transform {
     }
 }
 
-type GlobalRow = helio_pass_volumetric_fog::GlobalFogComponent;
-type LocalRow = helio_pass_volumetric_fog::LocalFogVolumeComponent;
-type VolumeRow = helio_pass_postprocess::PostProcessVolumeComponent;
-type CameraRow = helio_pass_postprocess::CameraPostProcessComponent;
+type GlobalRow = helio_pass_volumetric_fog::GlobalFogRow;
+type LocalRow = helio_pass_volumetric_fog::LocalFogVolumeRow;
+type VolumeRow = helio_pass_postprocess::PostProcessVolumeRow;
+type CameraRow = helio_pass_postprocess::CameraPostProcessRow;
 type WaterRow = helio_pass_water_sim::GpuWaterVolume;
 
 fn close(a: [f32; 4], b: [f32; 3]) -> bool {
@@ -404,9 +404,9 @@ fn foliage_types_layers_and_wind_are_packed() {
         eprintln!("skipping: no GPU adapter available");
         return;
     };
-    type TypeRow = helio_pass_foliage_place::components::FoliageTypeComponent;
-    type LayerRow = helio_pass_foliage_place::components::FoliageLayerComponent;
-    type WindRow = helio_pass_foliage_place::components::FoliageWindComponent;
+    type TypeRow = helio_pass_foliage_place::components::FoliageTypeRow;
+    type LayerRow = helio_pass_foliage_place::components::FoliageLayerRow;
+    type WindRow = helio_pass_foliage_place::components::FoliageWindRow;
 
     let mut scene = SceneDb::new();
     let bystander = place(&mut scene, "bystander", at([0.0; 3]));
@@ -508,7 +508,7 @@ fn foliage_types_layers_and_wind_are_packed() {
     let _ = lawn;
 }
 
-type AtmosphereRow = helio_pass_sky::AtmosphereComponent;
+type AtmosphereRow = helio_pass_sky::AtmosphereRow;
 
 #[test]
 fn atmospheres_follow_their_owner_and_their_enabled_state() {
@@ -604,7 +604,7 @@ fn atmospheres_follow_their_owner_and_their_enabled_state() {
 #[test]
 fn decals_are_placed_in_their_owners_box() {
     use helio_component::components::DecalComponent;
-    type DecalRow = helio_pass_decal::DecalComponent;
+    type DecalRow = helio_pass_decal::DecalRow;
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return;
@@ -803,7 +803,7 @@ fn particle_emitters_take_disjoint_ranges_of_the_particle_pool() {
 #[test]
 fn foliage_sways_in_the_global_wind_unless_it_opts_out() {
     use helio_component::components::WindComponent;
-    type WindRow = helio_pass_foliage_place::components::FoliageWindComponent;
+    type WindRow = helio_pass_foliage_place::components::FoliageWindRow;
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return;
@@ -1164,7 +1164,7 @@ fn sprites_are_placed_in_2d_by_their_owner() {
         device,
         queue,
     };
-    // `helio_pass_sprite_batch::SpriteComponent`: position, size, rotation,
+    // `helio_pass_sprite_batch::SpriteRow`: position, size, rotation,
     // depth, padding, UV rectangle, tint, then the texture slot.
     let row = |join: &Join, out: &SceneBufferProjection| -> [f32; 20] {
         join.row::<[f32; 20]>(out, "sprite_instances", instance)
