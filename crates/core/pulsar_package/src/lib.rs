@@ -32,12 +32,12 @@ pub mod cook;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use pulsar_class::{ClassIndex, ClassRegistry};
 use pulsar_content::{
-    AssetRegistry, BuildProfile, PakWriter, ProjectSettings, ASSET_REGISTRY_FILE, CONTENT_DIR_NAME,
-    PAK_FILE_NAME, PROJECT_SETTINGS_FILE,
+    ASSET_REGISTRY_FILE, AssetRegistry, BuildProfile, CONTENT_DIR_NAME, PAK_FILE_NAME,
+    PROJECT_SETTINGS_FILE, PakWriter, ProjectSettings,
 };
 use serde::Serialize;
 
@@ -491,13 +491,32 @@ fn build_game(project: &Path, out: &Path, target: Option<&str>) -> Result<PathBu
     if let Some(target) = target {
         command.arg("--target").arg(target);
     }
+    // GUI launches on macOS may have no valid stdin/stdout/stderr file
+    // descriptors. Do not let Cargo inherit those descriptors: posix_spawn
+    // can fail with EBADF before Cargo starts. Capture output so the CLI and
+    // editor can still report Cargo's diagnostics through the package result.
+    command.stdin(Stdio::null());
     tracing::info!(bin = %bin, "Building the game binary (cargo build --release)");
-    let status = command
-        .status()
+    let output = command
+        .output()
         .map_err(|e| PackageError::Build(format!("cannot run cargo: {e}")))?;
-    if !status.success() {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.trim().is_empty() {
+        tracing::info!(cargo_stdout = %stdout, "cargo build output");
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.trim().is_empty() {
+        tracing::warn!(cargo_stderr = %stderr, "cargo build diagnostics");
+    }
+    if !output.status.success() {
         return Err(PackageError::Build(format!(
-            "cargo build exited with {status}"
+            "cargo build exited with {}{}",
+            output.status,
+            if stderr.trim().is_empty() {
+                String::new()
+            } else {
+                format!(":\n{stderr}")
+            }
         )));
     }
 

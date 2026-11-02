@@ -610,7 +610,11 @@ impl Render for AppTitleBar {
             }
         }
 
+        // The editor shell already gives the app menu its own left column.
+        // Keep the normal content inset here instead of reserving the old
+        // macOS traffic-light space a second time.
         TitleBar::new()
+            .pl(px(12.))
             .on_close_window(|_, window, cx| crate::close_hooks::close_window(window, cx))
             .unified_background(cx.theme().background)
             .child(
