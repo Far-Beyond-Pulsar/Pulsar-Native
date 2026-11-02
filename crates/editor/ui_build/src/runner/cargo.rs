@@ -87,6 +87,20 @@ fn command(invocation: &Invocation, project_root: &Path) -> Command {
         // GUI launches on macOS can have no valid stdin descriptor. Leaving
         // stdin inherited makes posix_spawn fail with EBADF before Cargo runs.
         .stdin(Stdio::null());
+
+    // The explicit stdio setup above does not eliminate EBADF on some macOS
+    // GUI launches. Rust's macOS fast path uses posix_spawn file actions for
+    // stdio and the working directory; force its fork/exec fallback for this
+    // one command. The hook is intentionally empty so the post-fork child does
+    // not touch locks or allocate before exec.
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::process::CommandExt as _;
+        // SAFETY: the pre-exec callback is a no-op and performs no operations
+        // that could be unsafe in the post-fork child of a multithreaded app.
+        unsafe { cmd.pre_exec(|| Ok(())) };
+    }
+
     cmd
 }
 
