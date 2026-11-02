@@ -1699,7 +1699,7 @@ mod tests {
             )
             .is_err());
 
-        assert!(super::super::renderer::apply_voxel_brush_commit(
+        assert!(super::super::renderer::record_brush_commit(
             &mut scene, commit
         ));
         let terrain = scene.get::<VoxelTerrainComponent>(entity).unwrap();
@@ -2041,7 +2041,7 @@ mod tests {
                 )
                 .unwrap()
                 .unwrap();
-            assert!(super::super::renderer::apply_voxel_brush_commit(
+            assert!(super::super::renderer::record_brush_commit(
                 &mut scene, commit
             ));
             let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);

@@ -432,6 +432,31 @@ pub fn append_edits(
     Ok(())
 }
 
+impl VoxelTerrainComponent {
+    /// Records an editor stroke's `edits` in the terrain's journal and
+    /// advances its revision: the edit API the editor's sculpt tool uses.
+    /// Unlike [`append_edits`] (gameplay edits) it neither waits for the
+    /// terrain's world nor queues block events: a stroke stamps every frame
+    /// of a drag, and whoever reads the world next extends it with the
+    /// journal ([`terrain_world`], the renderer's world). Returns whether the
+    /// terrain took them (it exists and is editable).
+    pub fn record_strokes(
+        world: &mut World,
+        entity: Entity,
+        edits: impl IntoIterator<Item = VoxelBrushEdit>,
+    ) -> bool {
+        let Some(mut terrain) = world.get_mut::<VoxelTerrainComponent>(entity) else {
+            return false;
+        };
+        if !terrain.editable {
+            return false;
+        }
+        terrain.edits.extend(edits);
+        terrain.source_revision = terrain.source_revision.wrapping_add(1);
+        true
+    }
+}
+
 /// Apply `edits` to the cached world of the terrain (in sync with its
 /// journal: `terrain_world` just made it so), recording them as applied;
 /// each one's yield.

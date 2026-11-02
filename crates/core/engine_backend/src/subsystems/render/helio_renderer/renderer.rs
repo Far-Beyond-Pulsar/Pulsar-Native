@@ -62,23 +62,17 @@ impl TemporalSettling {
     }
 }
 
-/// Append a backend's brush edit to the terrain's journal and advance the
-/// source revision. SceneDB persists the journal with the level.
-pub(super) fn apply_voxel_brush_commit(
+/// Records a backend's brush commit as a stroke of its terrain, through the
+/// terrain component (SceneDB persists the journal with the level).
+pub(super) fn record_brush_commit(
     world: &mut pulsar_scenedb::World,
     commit: VoxelBrushCommit,
 ) -> bool {
-    let entity = pulsar_scenedb::Entity::from_bits(commit.id.entity_bits);
-    let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else {
-        return false;
-    };
-    if !terrain.editable {
-        return false;
-    }
-    terrain.edits.push(commit.edit);
-    terrain.edits.extend(commit.then);
-    terrain.source_revision = terrain.source_revision.wrapping_add(1);
-    true
+    helio_component::VoxelTerrainComponent::record_strokes(
+        world,
+        pulsar_scenedb::Entity::from_bits(commit.id.entity_bits),
+        std::iter::once(commit.edit).chain(commit.then),
+    )
 }
 
 /// A brush sample: the pointer ray when it was taken, and the pick that
@@ -2320,7 +2314,7 @@ impl HelioRenderer {
                     .collect();
                 stamps.push(commit.clone());
                 let mut scene = self.scene_store.write();
-                stamps.retain(|stamp| apply_voxel_brush_commit(&mut scene.world, stamp.clone()));
+                stamps.retain(|stamp| record_brush_commit(&mut scene.world, stamp.clone()));
                 self.gizmo_dirty |= !stamps.is_empty();
                 drop(scene);
                 let journaled = started.elapsed();
