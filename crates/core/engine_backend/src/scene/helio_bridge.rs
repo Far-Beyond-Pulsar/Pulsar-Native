@@ -25,9 +25,9 @@ use helio_component::components::{
     SKELETAL_SKIN_HANDLES_BUFFER, SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER,
     WIND_SOURCES_BUFFER,
 };
-use helio_default_passes::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
-use helio_default_passes::hierarchy_resolve::{HierarchyResolve, HierarchyResolveKeys};
-use helio_default_passes::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
+use helio_scene_derivations::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
+use helio_scene_derivations::hierarchy_resolve::{HierarchyResolve, HierarchyResolveKeys};
+use helio_scene_derivations::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
@@ -353,7 +353,7 @@ fn install_derived_cache() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helio_default_passes::scene_join as join;
+    use helio_scene_derivations::scene_join as join;
 
     #[test]
     fn a_new_scene_does_not_have_a_gpu_mirror() {
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn the_rows_the_environment_join_reads_have_its_layouts() {
-        use helio_default_passes::environment_join as env;
+        use helio_scene_derivations::environment_join as env;
         use std::mem::size_of;
         assert_eq!(
             size_of::<GlobalFogSourceRow>() as u64,
@@ -504,7 +504,7 @@ impl SpaceSync {
 
     /// The rows Helio's portal derivation uploads (`portal_projection` takes a
     /// clone). Authored portals are paired and projected in [`Self::sync_with`].
-    pub fn portal_input(&self) -> helio_default_passes::portal_projection::PortalProjectionInput {
+    pub fn portal_input(&self) -> helio_scene_derivations::portal_projection::PortalProjectionInput {
         self.portals.input()
     }
 
@@ -594,15 +594,15 @@ pub fn first_fixed_in_group(
 /// `input` is [`SpaceSync::portal_input`]: the rows the host builds each frame.
 pub fn portal_projection(
     device: &wgpu::Device,
-    input: helio_default_passes::portal_projection::PortalProjectionInput,
-) -> Box<helio_default_passes::portal_projection::PortalProjection> {
-    Box::new(helio_default_passes::portal_projection::PortalProjection::new(device, input))
+    input: helio_scene_derivations::portal_projection::PortalProjectionInput,
+) -> Box<helio_scene_derivations::portal_projection::PortalProjection> {
+    Box::new(helio_scene_derivations::portal_projection::PortalProjection::new(device, input))
 }
 
 // ── Virtual geometry ────────────────────────────────────────────────────────
 //
 // Plan: `.agents/plans/virtual-geometry.md`. A host owns one
-// [`VirtualGeometryHost`]; it hands its runtime to `helio_default_passes::with_virtual_geometry`
+// [`VirtualGeometryHost`]; it hands its runtime to `helio_presets::with_virtual_geometry`
 // (the graph passes), installs the two derivations below between the scene
 // join and the authored-LOD selection, and calls [`sync_virtual_geometry`]
 // every frame.

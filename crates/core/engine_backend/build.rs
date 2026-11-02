@@ -1,6 +1,11 @@
 use std::{env, fs, path::Path, path::PathBuf};
 
-const HELIO_DEPENDENCIES: [&str; 3] = ["helio", "helio-asset-compat", "helio-default-passes"];
+const HELIO_DEPENDENCIES: [&str; 4] = [
+    "helio",
+    "helio-asset-compat",
+    "helio-presets",
+    "helio-scene-derivations",
+];
 
 /// Dependencies a generated game project needs, resolved from *this* engine
 /// build's `[workspace.dependencies]` so the game compiles against the exact

@@ -11,7 +11,7 @@
 //! scene derivations   VgAssetReadyPublisher  -> `vg_asset_ready` (rows from the runtime)
 //!                     VirtualGeometryInstances -> `vg_instances`, `lod_suppressed`,
 //!                                                 `classic_suppressed`
-//! graph passes        stream pages, cull, raster, shade (helio-default-passes)
+//! graph passes        stream pages, cull, raster, shade (helio-presets)
 //! ```
 //!
 //! Until an asset's root pages are resident its instances are not VG-active:
@@ -75,7 +75,7 @@ impl VirtualGeometryHost {
         }
     }
 
-    /// The streaming runtime, for `helio_default_passes::with_virtual_geometry`.
+    /// The streaming runtime, for `helio_presets::with_virtual_geometry`.
     pub fn runtime(&self) -> &VgRuntime {
         &self.runtime
     }

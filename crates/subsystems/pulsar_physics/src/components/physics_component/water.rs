@@ -6,7 +6,7 @@
 //! through. SceneDB derives a [`WaterHitboxSourceRow`] from the component
 //! on every insert, write, removal and replay, keyed by the component
 //! instance; the renderer's environment join (Helio's
-//! `helio-default-passes::environment_join`) bounds the body by its owner's
+//! `helio-scene-derivations::environment_join`) bounds the body by its owner's
 //! meshes at the owner's transform, on the GPU, into the water
 //! simulation's hitbox rows, and the simulation keeps each body's previous
 //! bounds itself, so a body displaces water only as it moves.

@@ -6,7 +6,7 @@
 //! derives the row from the authored value on every insert, guarded write,
 //! removal, despawn and mirror replay, keyed by the component instance
 //! entity. A row is the pass's own row in the component's local space: the
-//! graph-owned join (`helio-default-passes::environment_join`) gates it on
+//! graph-owned join (`helio-scene-derivations::environment_join`) gates it on
 //! the instance's enabled state, its owner's generation and (for volumes)
 //! visibility, and places volumes with the owner's transform, on the GPU.
 //! A disabled component derives an inert row (its pass skips it).

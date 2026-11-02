@@ -42,7 +42,7 @@ pub fn renderer_config(
     format: wgpu::TextureFormat,
     settings: &Resolved,
 ) -> helio::RendererConfig {
-    helio_default_passes::config_with_host_settings(
+    helio_presets::config_with_host_settings(
         helio::RendererConfig::new(width, height, format),
         settings,
     )

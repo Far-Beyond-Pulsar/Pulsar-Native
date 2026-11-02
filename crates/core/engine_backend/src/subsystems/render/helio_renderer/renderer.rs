@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
-pub use helio_default_passes::portals::PortalDebugText;
+pub use helio_scene_derivations::portals::PortalDebugText;
 
 use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
 use super::gpu_trace::emit_helio_gpu_passes;
@@ -412,7 +412,7 @@ pub struct HelioEditorMailbox {
     camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     pending_portal_debug_texts:
-        Arc<Mutex<Option<Vec<helio_default_passes::portals::PortalDebugText>>>>,
+        Arc<Mutex<Option<Vec<helio_scene_derivations::portals::PortalDebugText>>>>,
     pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
@@ -533,7 +533,7 @@ impl HelioEditorMailbox {
     /// Update world-anchored portal labels rendered by Helio's overlay pass.
     pub fn set_portal_debug_texts(
         &self,
-        texts: Vec<helio_default_passes::portals::PortalDebugText>,
+        texts: Vec<helio_scene_derivations::portals::PortalDebugText>,
     ) {
         if let Ok(mut pending) = self.pending_portal_debug_texts.lock() {
             *pending = Some(texts);
@@ -652,7 +652,7 @@ pub struct HelioRenderer {
     /// Debug views advertised by the active render graph, exposed to editor UI.
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     pending_portal_debug_texts:
-        Arc<Mutex<Option<Vec<helio_default_passes::portals::PortalDebugText>>>>,
+        Arc<Mutex<Option<Vec<helio_scene_derivations::portals::PortalDebugText>>>>,
     pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
@@ -1311,12 +1311,12 @@ impl HelioRenderer {
 
         let portal_debug_texts_changed = portal_debug_texts
             .map(|texts| {
-                helio_default_passes::portals::set_debug_texts(&mut inner.scene.renderer, texts)
+                helio_scene_derivations::portals::set_debug_texts(&mut inner.scene.renderer, texts)
             })
             .unwrap_or(false);
         let portal_debug_geometry_changed = portal_debug_geometry
             .map(|vertices| {
-                helio_default_passes::portals::set_debug_geometry(
+                helio_scene_derivations::portals::set_debug_geometry(
                     &mut inner.scene.renderer,
                     vertices,
                 )

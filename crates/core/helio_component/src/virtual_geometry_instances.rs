@@ -7,7 +7,7 @@
 //! without touching `helio-core` or the scene join. This one has to know the
 //! row layout of [`VirtualGeometryComponent`](crate::components::VirtualGeometryComponent)
 //! (`vg_instance_overrides`) and the scene join's `static_objects` rows;
-//! `helio-default-passes` does not depend on this crate, and the passes
+//! `helio-presets` does not depend on this crate, and the passes
 //! (`helio-pass-vg-*`) must never depend on it. Keeping the derivation next to
 //! its component means the component's GPU ABI has exactly one reader. The
 //! passes see only the output buffers below, by [`BufferKey`].

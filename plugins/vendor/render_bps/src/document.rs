@@ -635,7 +635,7 @@ pub fn decode(text: &str, registry: &NodeRegistry) -> Result<RenderDocument, Str
         .and_then(Value::as_array)
         .map_or(true, |nodes| nodes.is_empty());
     let asset = if is_empty && marker.get("template").and_then(Value::as_str) == Some("deferred") {
-        helio_default_passes::graphs::deferred_graph_asset(registry)
+        helio_presets::graphs::deferred_graph_asset(registry)
     } else {
         GraphAsset::from_json(text)?
     };

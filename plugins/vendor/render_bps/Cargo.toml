@@ -36,7 +36,7 @@ graphy-gpui = { path = "../../../crates/third-party/graphy/crates/graphy-gpui", 
 
 # The render graph asset model, its node registry and compiler.
 helio-graph-asset = { workspace = true }
-helio-default-passes = { workspace = true }
+helio-presets = { workspace = true }
 
 serde_json = { workspace = true }
 log = { workspace = true }
