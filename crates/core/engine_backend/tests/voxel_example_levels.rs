@@ -20,7 +20,7 @@ use helio_pass_voxel_planet::layers::TerrainLayers;
 use pulsar_scenedb::{Entity, World};
 
 #[allow(dead_code)]
-#[path = "../../../renderer/helio/crates/helio-default-passes/examples/voxel_flight/worlds.rs"]
+#[path = "../../../renderer/helio/crates/examples/voxel_flight/worlds.rs"]
 mod flight;
 
 use flight::Preset;
