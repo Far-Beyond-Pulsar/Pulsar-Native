@@ -83,7 +83,10 @@ fn command(invocation: &Invocation, project_root: &Path) -> Command {
     cmd.arg(invocation.subcommand)
         .args(&invocation.args)
         .envs(invocation.envs.iter().map(|(k, v)| (k, v)))
-        .current_dir(project_root);
+        .current_dir(project_root)
+        // GUI launches on macOS can have no valid stdin descriptor. Leaving
+        // stdin inherited makes posix_spawn fail with EBADF before Cargo runs.
+        .stdin(Stdio::null());
     cmd
 }
 
