@@ -5496,8 +5496,10 @@ dependencies = [
  "helio-gi-api",
  "helio-mats",
  "helio-pass-shadow-matrix",
+ "helio-pass-tsr",
  "helio-settings",
  "helio-voxel-world",
+ "helio-water-api",
  "image",
  "miniz_oxide",
  "rayon",
@@ -5523,6 +5525,7 @@ dependencies = [
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-sky-api",
+ "helio-water-api",
  "pulsar_reflection",
  "pulsar_scenedb",
  "rayon",
@@ -5709,6 +5712,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "helio-water-api"
+version = "0.1.0"
 
 [[package]]
 name = "helio-xr"

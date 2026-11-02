@@ -165,7 +165,7 @@ impl SceneRenderer {
             config = config.with_tsr_quality(quality);
         }
         // The voxel backends' terrain joins whichever pipeline the level runs.
-        let config = helio_presets::with_voxel_terrain(config, voxels.terrain());
+        let config = config.with_feature(voxels.terrain());
 
         let scene_db =
             crate::scene::ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
