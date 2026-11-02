@@ -19,14 +19,14 @@
 //! `remove_layer`, `layer_count` and the per-layer setters; the world
 //! rebuilds from the changed settings.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use glam::DVec3;
 /// Terrain material ids (`material::GRASS`, ...) and their names.
 pub use helio_pass_voxel_planet::terrain::material;
 use helio_pass_voxel_planet::{
-    Brush, BrushOp, BrushShape, Planet, PlanetRecipe, TerrainSource, grid::Shape, terrain,
+    Brush, BrushOp, BrushShape, Grid, Matter, Planet, PlanetRecipe, TerrainSource, grid::Shape,
+    terrain,
 };
 use helio_voxel_data::{
     VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditBase, VoxelEditJournal,
@@ -37,9 +37,8 @@ use pulsar_scenedb::{Entity, World};
 use helio_pass_voxel_planet::feature_recipe::FeatureRecipe;
 
 use super::{
-    BlockData, BlockMaterialChange, VoxelAir, VoxelLayerKind, VoxelTerrainComponent,
-    VoxelTerrainLayer, VoxelTerrainLayersComponent, VoxelTerrainStack, VoxelWorldShape,
-    feature_recipe,
+    VoxelAir, VoxelLayerKind, VoxelTerrainComponent, VoxelTerrainLayer,
+    VoxelTerrainLayersComponent, VoxelTerrainStack, VoxelWorldShape, feature_recipe,
 };
 
 /// Base colour (linear 0..1 sRGB-encoded components, as authored) of material
@@ -80,17 +79,10 @@ pub fn ground_fingerprint(
     source: TerrainSource,
     features: &FeatureRecipe,
 ) -> u64 {
-    let ground = ground_recipe(shape, planet_radius, plane_size, voxel_size, source).fingerprint();
-    if features.is_empty() {
-        return ground;
-    }
-    let recipe = serde_json::to_string(features).expect("a feature recipe serializes");
-    recipe
-        .bytes()
-        .fold(ground, |h, byte| {
-            (h ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3)
-        })
-        .max(1)
+    features_fingerprint(
+        ground_recipe(shape, planet_radius, plane_size, voxel_size, source).fingerprint(),
+        features,
+    )
 }
 
 /// The world without its features.
@@ -165,13 +157,51 @@ pub fn is_generated(component: &VoxelTerrainComponent) -> bool {
     terrain::find(&component.generator.id, component.generator.version).is_some()
 }
 
-/// The recipe of a terrain instance, with its owner's uniform scale, without
-/// its features, and the features' recipe (grown when a world is built).
-fn entity_recipe(
-    world: &World,
-    entity: Entity,
-    component: &VoxelTerrainComponent,
-) -> Result<(PlanetRecipe, FeatureRecipe), String> {
+/// What a terrain's world is made from: its ground (the recipe without
+/// features) and the features grown on it when a world is built.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorldSource {
+    pub recipe: PlanetRecipe,
+    pub features: FeatureRecipe,
+}
+
+impl WorldSource {
+    /// The recipe with its features grown with its seed in cells of its
+    /// voxel size.
+    pub fn grown(&self) -> PlanetRecipe {
+        PlanetRecipe {
+            features: self
+                .features
+                .grow(self.recipe.voxel_size_m, self.recipe.terrain.seed),
+            ..self.recipe.clone()
+        }
+    }
+
+    /// Fingerprint of the ground: edits belong to it
+    /// (`VoxelEditJournal::made_on`, [`ground_fingerprint`]).
+    pub fn fingerprint(&self) -> u64 {
+        features_fingerprint(self.recipe.fingerprint(), &self.features)
+    }
+}
+
+/// `ground` with the features' recipe mixed in (a world without features
+/// keeps its recipe's own fingerprint).
+fn features_fingerprint(ground: u64, features: &FeatureRecipe) -> u64 {
+    if features.is_empty() {
+        return ground;
+    }
+    let recipe = serde_json::to_string(features).expect("a feature recipe serializes");
+    recipe
+        .bytes()
+        .fold(ground, |h, byte| {
+            (h ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3)
+        })
+        .max(1)
+}
+
+/// The uniform scale of a terrain instance's owner. A voxel world sits on
+/// the origin, unrotated.
+fn owner_scale(world: &World, entity: Entity) -> Result<f64, String> {
     let transform = pulsar_scene_model::attachments::owner_component::<Transform>(world, entity)
         .copied()
         .unwrap_or_default();
@@ -184,46 +214,58 @@ fn entity_recipe(
     if !sx.is_finite() || sx <= 0.0 || (sx - sy).abs() > 1.0e-5 || (sx - sz).abs() > 1.0e-5 {
         return Err("voxel worlds require a positive uniform scale".into());
     }
+    Ok(sx)
+}
+
+/// What the world of a terrain instance is made from, with its owner's
+/// uniform scale.
+pub fn entity_source(
+    world: &World,
+    entity: Entity,
+    component: &VoxelTerrainComponent,
+) -> Result<WorldSource, String> {
+    let scale = owner_scale(world, entity)?;
     let source = TerrainSource {
         generator: component.generator.id.clone(),
         version: component.generator.version,
         seed: component.seed,
         settings: generator_settings(world, entity, component),
     };
-    Ok((
-        ground_recipe(
+    Ok(WorldSource {
+        recipe: ground_recipe(
             component.shape,
-            component.planet_radius * sx,
-            component.plane_size * sx,
-            component.voxel_size * sx,
+            component.planet_radius * scale,
+            component.plane_size * scale,
+            component.voxel_size * scale,
             source,
         ),
-        feature_recipe(&component.features),
-    ))
+        features: feature_recipe(&component.features),
+    })
 }
 
-/// `recipe` with `features` grown with its seed in cells of its voxel size.
-fn grown(recipe: PlanetRecipe, features: &FeatureRecipe) -> PlanetRecipe {
-    PlanetRecipe {
-        features: features.grow(recipe.voxel_size_m, recipe.terrain.seed),
-        ..recipe
-    }
+/// The grid of a terrain instance's world, from its form alone (no
+/// generator settings, no world): what edits resolve against.
+pub fn entity_grid(
+    world: &World,
+    entity: Entity,
+    component: &VoxelTerrainComponent,
+) -> Result<Grid, String> {
+    let scale = owner_scale(world, entity)?;
+    ground_recipe(
+        component.shape,
+        component.planet_radius * scale,
+        component.plane_size * scale,
+        component.voxel_size * scale,
+        TerrainSource::default(),
+    )
+    .grid()
 }
 
-struct CachedWorld {
-    recipe: PlanetRecipe,
-    features: FeatureRecipe,
-    edits: VoxelEditJournal,
-    planet: Arc<Planet>,
-}
-
-/// Worlds by scene and terrain entity (scenes live side by side: the
-/// editor's and a play session's, or tests'). A newer journal that only
-/// appends edits extends the cached world.
-static WORLDS: Mutex<Option<HashMap<(usize, u64), CachedWorld>>> = Mutex::new(None);
-
-/// The CPU world of a terrain instance entity: its generated terrain with
-/// every journal edit applied.
+/// The world of a terrain instance entity: its generated terrain with its
+/// journal's edits, as its runtime last built it
+/// ([`super::voxel_runtime`]). Worlds build off the game thread, so a
+/// terrain just added (or whose recipe changed) answers from the world it
+/// had, or not at all until its first world is built.
 pub fn terrain_world(world: &World, entity: Entity) -> Result<Arc<Planet>, String> {
     let component = world
         .get::<VoxelTerrainComponent>(entity)
@@ -237,48 +279,13 @@ pub fn terrain_world(world: &World, entity: Entity) -> Result<Arc<Planet>, Strin
             component.generator.id, component.generator.version
         ));
     }
-    let (recipe, features) = entity_recipe(world, entity, component)?;
-    let mut worlds = WORLDS.lock().unwrap_or_else(|e| e.into_inner());
-    let worlds = worlds.get_or_insert_with(HashMap::new);
-    // A scene's address names it while it lives; a later scene at the same
-    // address only finds a world whose recipe and edits match its own.
-    let key = (world as *const World as usize, entity.bits());
-    if let Some(cached) = worlds.get_mut(&key) {
-        if cached.recipe == recipe
-            && cached.features == features
-            && component.edits.starts_with(&cached.edits)
-        {
-            let start = cached.edits.len();
-            if component.edits.len() > start {
-                // A journal extended elsewhere (an editor's strokes): the
-                // world extended in place, or a copy of it (a copy shares
-                // its caches and most of its edits: microseconds).
-                let planet = Arc::make_mut(&mut cached.planet);
-                for edit in component.edits.iter_from(start) {
-                    planet.apply(planet_brush(edit))?;
-                }
-                cached.edits = component.edits.clone();
-            }
-            return Ok(Arc::clone(&cached.planet));
-        }
-    }
-    let planet = Arc::new(journal_planet(
-        grown(recipe.clone(), &features),
-        &component.edits,
-    )?);
-    if worlds.len() >= 16 && !worlds.contains_key(&key) {
-        worlds.clear();
-    }
-    worlds.insert(
-        key,
-        CachedWorld {
-            recipe,
-            features,
-            edits: component.edits.clone(),
-            planet: Arc::clone(&planet),
-        },
-    );
-    Ok(planet)
+    let runtime = super::voxel_runtime::VoxelTerrainRuntime::of(world, entity)
+        .ok_or("the voxel world is not built yet")?;
+    runtime.world().ok_or_else(|| {
+        runtime
+            .error()
+            .unwrap_or_else(|| "the voxel world is not built yet".into())
+    })
 }
 
 /// Edits a level keeps listed (undoable) when it folds older ones into its
@@ -350,33 +357,35 @@ pub fn journals_to_compact(world: &World) -> Vec<(Entity, PlanetRecipe, VoxelEdi
         .into_iter()
         .filter(|(_, c)| c.edits.len() - c.edits.base_len() > LISTED_EDITS && is_generated(c))
         .filter_map(|(entity, c)| {
-            let (recipe, features) = entity_recipe(world, entity, c).ok()?;
-            Some((entity, grown(recipe, &features), c.edits.clone()))
+            let source = entity_source(world, entity, c).ok()?;
+            Some((entity, source.grown(), c.edits.clone()))
         })
         .collect()
 }
 
-/// Append edits to a terrain's journal after checking that each applies.
-/// They are applied once, to the terrain's world (`terrain_world` then
-/// finds them there), and the blocks each broke, placed and recoloured are
-/// queued as events, counted from what it baked (`Planet::edit_yield`):
-/// cell by cell for a small edit, by region past
-/// `edit_yield::EXACT_CELLS` cells, so a planet-scale blast costs what a
-/// small one does.
+/// Append edits to a terrain's journal after checking that each applies
+/// to its grid: how scripts, gameplay and the editor's sculpt tool edit a
+/// terrain. The terrain's runtime applies them to its world off the game
+/// thread ([`super::voxel_runtime`]); when that world lands, the blocks each
+/// edit broke, placed and recoloured become the terrain's block events,
+/// counted from what it baked (`Planet::edit_yield`): cell by cell for a
+/// small edit, by region past `edit_yield::EXACT_CELLS` cells, so a
+/// planet-scale blast costs what a small one does.
 pub fn append_edits(
     world: &mut World,
     entity: Entity,
     edits: Vec<VoxelBrushEdit>,
 ) -> Result<(), String> {
-    let planet = terrain_world(world, entity)?;
-    let grid = *planet.grid();
-    drop(planet);
     let component = world
         .get::<VoxelTerrainComponent>(entity)
         .ok_or("the entity has no voxel terrain")?;
+    if !component.enabled {
+        return Err("the voxel terrain is disabled".into());
+    }
     if !component.editable {
         return Err("the voxel terrain is not editable".into());
     }
+    let grid = entity_grid(world, entity, component)?;
     for edit in &edits {
         if edit.op != VoxelBrushOp::Remove
             && (edit.material == material::AIR || edit.material >= material::COUNT)
@@ -389,101 +398,27 @@ pub fn append_edits(
         }
         planet_brush(edit).resolve(&grid)?;
     }
-    // In order, each brush's yield taken from the world as the brushes
-    // before it left it.
-    let mut broken = Vec::new();
-    let mut placed = Vec::new();
-    let mut changed = Vec::new();
-    for counted in extend_world(world, entity, &edits)? {
-        for c in counted.changes {
-            let block = |material: u32| BlockData {
-                x: c.centre.x,
-                y: c.centre.y,
-                z: c.centre.z,
-                material,
-                count: c.count,
-            };
-            if c.before != material::AIR {
-                broken.push(block(c.before));
-            }
-            if c.after != material::AIR {
-                placed.push(block(c.after));
-            }
-            if c.before != material::AIR && c.after != material::AIR {
-                changed.push(BlockMaterialChange {
-                    x: c.centre.x,
-                    y: c.centre.y,
-                    z: c.centre.z,
-                    previous_material: c.before,
-                    material: c.after,
-                    count: c.count,
-                });
-            }
-        }
+    if edits.is_empty() {
+        return Ok(());
+    }
+    // Brick walks (sculpt samples near the last stamp) see the edits at
+    // once, before the world built with them lands.
+    if let Some(queries) = super::voxel_runtime::VoxelTerrainRuntime::of(world, entity)
+        .as_deref()
+        .and_then(super::voxel_runtime::TerrainWorld::queries)
+    {
+        queries.edit(&edits.iter().map(planet_brush).collect::<Vec<_>>());
     }
     let mut component = world
         .get_mut::<VoxelTerrainComponent>(entity)
         .ok_or("the entity has no voxel terrain")?;
     component.edits.extend(edits);
-    component.pending_block_broken.extend(broken);
-    component.pending_block_placed.extend(placed);
-    component.pending_block_material_changed.extend(changed);
     component.source_revision = component.source_revision.wrapping_add(1);
     Ok(())
 }
 
-impl VoxelTerrainComponent {
-    /// Records an editor stroke's `edits` in the terrain's journal and
-    /// advances its revision: the edit API the editor's sculpt tool uses.
-    /// Unlike [`append_edits`] (gameplay edits) it neither waits for the
-    /// terrain's world nor queues block events: a stroke stamps every frame
-    /// of a drag, and whoever reads the world next extends it with the
-    /// journal ([`terrain_world`], the renderer's world). Returns whether the
-    /// terrain took them (it exists and is editable).
-    pub fn record_strokes(
-        world: &mut World,
-        entity: Entity,
-        edits: impl IntoIterator<Item = VoxelBrushEdit>,
-    ) -> bool {
-        let Some(mut terrain) = world.get_mut::<VoxelTerrainComponent>(entity) else {
-            return false;
-        };
-        if !terrain.editable {
-            return false;
-        }
-        terrain.edits.extend(edits);
-        terrain.source_revision = terrain.source_revision.wrapping_add(1);
-        true
-    }
-}
-
-/// Apply `edits` to the cached world of the terrain (in sync with its
-/// journal: `terrain_world` just made it so), recording them as applied;
-/// each one's yield.
-fn extend_world(
-    world: &World,
-    entity: Entity,
-    edits: &[VoxelBrushEdit],
-) -> Result<Vec<helio_pass_voxel_planet::edit_yield::EditYield>, String> {
-    let mut worlds = WORLDS.lock().unwrap_or_else(|e| e.into_inner());
-    let key = (world as *const World as usize, entity.bits());
-    let cached = worlds
-        .get_or_insert_with(HashMap::new)
-        .get_mut(&key)
-        .ok_or("the terrain's world is not built")?;
-    let planet = Arc::make_mut(&mut cached.planet);
-    let mut yields = Vec::with_capacity(edits.len());
-    for edit in edits {
-        let (_, counted) = planet.apply_counted(planet_brush(edit))?;
-        yields.push(counted);
-    }
-    cached.edits.extend(edits.iter().cloned());
-    Ok(yields)
-}
-
 /// The edit that makes the cell containing `p` exactly `material` (0 air).
-pub fn block_edit(planet: &Planet, p: DVec3, material: u32) -> VoxelBrushEdit {
-    let grid = planet.grid();
+pub fn block_edit(grid: &Grid, p: DVec3, material: u32) -> VoxelBrushEdit {
     let (cell, _) = grid.locate(p);
     VoxelBrushEdit {
         center: grid.cell_center(cell).to_array(),
@@ -579,9 +514,8 @@ impl VoxelTerrainComponent {
         z: f64,
         material: u32,
     ) -> Result<(), String> {
-        let planet = terrain_world(world, entity)?;
-        let point = position(x, y, z)?;
-        let edit = block_edit(&planet, point, material);
+        let grid = terrain_grid(world, entity)?;
+        let edit = block_edit(&grid, position(x, y, z)?, material);
         append_edits(world, entity, vec![edit])
     }
 
@@ -655,8 +589,109 @@ impl VoxelTerrainComponent {
     /// Edge length of one block in metres.
     #[world_method(pure, category = "Voxel")]
     fn voxel_size(world: &World, entity: Entity) -> Result<f64, String> {
-        Ok(terrain_world(world, entity)?.grid().voxel_size())
+        Ok(terrain_grid(world, entity)?.voxel_size())
     }
+
+    /// Whether the world is built and answers block queries (a terrain just
+    /// added, or whose settings changed, builds off the game thread).
+    #[world_method(pure, category = "Voxel")]
+    fn is_world_ready(world: &World, entity: Entity) -> Result<bool, String> {
+        Ok(terrain_world(world, entity).is_ok())
+    }
+}
+
+// The ground under a point, for cameras, characters and scripts: every
+// method answers from the terrain's world as last built (`terrain_world`).
+// Hosts' cameras find these by name on any component that has them, the
+// way scripts call them.
+#[pulsar_scenedb::component_methods]
+impl VoxelTerrainComponent {
+    /// Height of the point above the ground directly below it, in metres
+    /// (negative inside it). The ground is the terrain and its edits;
+    /// features such as trees stand on it.
+    #[world_method(pure, category = "Voxel|Ground")]
+    fn ground_altitude(
+        world: &World,
+        entity: Entity,
+        x: f64,
+        y: f64,
+        z: f64,
+    ) -> Result<f64, String> {
+        let planet = terrain_world(world, entity)?;
+        Ok(planet.ground_height_of(position(x, y, z)?, Matter::Ground))
+    }
+
+    /// The local vertical at the point (a planet's radial, a plane's +Y):
+    /// its x component.
+    #[world_method(pure, category = "Voxel|Ground")]
+    fn ground_up_x(world: &World, entity: Entity, x: f64, y: f64, z: f64) -> Result<f64, String> {
+        Ok(local_up(world, entity, x, y, z)?.x)
+    }
+
+    /// The local vertical's y component ([`Self::ground_up_x`]).
+    #[world_method(pure, category = "Voxel|Ground")]
+    fn ground_up_y(world: &World, entity: Entity, x: f64, y: f64, z: f64) -> Result<f64, String> {
+        Ok(local_up(world, entity, x, y, z)?.y)
+    }
+
+    /// The local vertical's z component ([`Self::ground_up_x`]).
+    #[world_method(pure, category = "Voxel|Ground")]
+    fn ground_up_z(world: &World, entity: Entity, x: f64, y: f64, z: f64) -> Result<f64, String> {
+        Ok(local_up(world, entity, x, y, z)?.z)
+    }
+
+    /// How far the point must rise along the local vertical to stand just
+    /// above the ground when it is inside it (0 in air: tunnels and caves
+    /// dug into it are air).
+    #[world_method(pure, category = "Voxel|Ground")]
+    fn ground_lift(world: &World, entity: Entity, x: f64, y: f64, z: f64) -> Result<f64, String> {
+        let planet = terrain_world(world, entity)?;
+        let p = position(x, y, z)?;
+        let grid = planet.grid();
+        if grid.radial(p) > planet.outer_radius() {
+            return Ok(0.0);
+        }
+        let (cell, _) = grid.locate(p);
+        if !planet.solid_of(cell, Matter::Ground) {
+            return Ok(0.0);
+        }
+        let lifted = planet.surface_point_of(p, 0.5, Matter::Ground);
+        Ok((lifted - p).dot(grid.up(p)).max(0.0))
+    }
+
+    /// The nearest a camera at the point may clip, in metres: a quarter of
+    /// the clear air around it (5 cm to 50 km), so depth precision follows
+    /// the camera from the ground to orbit without clipping the terrain.
+    #[world_method(pure, category = "Voxel|Ground")]
+    fn clip_near(world: &World, entity: Entity, x: f64, y: f64, z: f64) -> Result<f64, String> {
+        let planet = terrain_world(world, entity)?;
+        Ok((planet.air_clearance(position(x, y, z)?) * 0.25).clamp(0.05, 50_000.0))
+    }
+
+    /// The farthest a camera at the point may need to see, in metres: the
+    /// whole world and 40,000 km past it.
+    #[world_method(pure, category = "Voxel|Ground")]
+    fn clip_far(world: &World, entity: Entity, x: f64, y: f64, z: f64) -> Result<f64, String> {
+        terrain_world(world, entity)?;
+        Ok(position(x, y, z)?.length() + 40_000_000.0)
+    }
+}
+
+/// The local vertical of the terrain `entity` at a point.
+fn local_up(world: &World, entity: Entity, x: f64, y: f64, z: f64) -> Result<DVec3, String> {
+    let p = position(x, y, z)?;
+    Ok(match terrain(world, entity)?.shape {
+        VoxelWorldShape::Sphere => p.try_normalize().unwrap_or(DVec3::Y),
+        VoxelWorldShape::Plane | VoxelWorldShape::InfinitePlane => DVec3::Y,
+    })
+}
+
+/// The grid of the terrain `entity` (no world needed).
+fn terrain_grid(world: &World, entity: Entity) -> Result<Grid, String> {
+    let component = world
+        .get::<VoxelTerrainComponent>(entity)
+        .ok_or("the entity has no voxel terrain")?;
+    entity_grid(world, entity, component)
 }
 
 /// The terrain instance `entity` names: the instance itself, or the first

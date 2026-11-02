@@ -55,8 +55,9 @@
 //! written to `frames.csv`, and a summary per step to stdout.
 
 use engine_backend::subsystems::render::{
-    EditorCameraState, HelioRenderer, PendingPointerEvent, VoxelBrushRequest, VoxelBrushTool,
+    EditorCameraState, HelioRenderer, PendingPointerEvent, ToolRay,
 };
+use helio_component::voxel_sculpt::{VoxelBrushRequest, VoxelBrushTool};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -242,10 +243,8 @@ impl Harness {
         let camera = self.camera();
         let forward = self.renderer.camera_forward();
         let [x, y, z] = camera.position;
-        let sun = self
-            .renderer
-            .sun_direction()
-            .map_or_else(|| "none".to_owned(), |[a, b, c]| format!("{a},{b},{c}"));
+        let sun = helio_component::voxel_runtime::scene_sun(&self.scene.read().world)
+            .map_or_else(|| "none".to_owned(), |s| format!("{},{},{}", s.x, s.y, s.z));
         println!(
             "HARNESS view {name}: eye {x},{y},{z},{},{},{} sun {sun}",
             forward.x, forward.y, forward.z
@@ -288,7 +287,12 @@ impl Harness {
             });
             self.frame();
             self.frame();
-            let Some(altitude) = self.renderer.voxel_altitude().filter(|a| a.is_finite()) else {
+            let Some(altitude) = self
+                .renderer
+                .camera_ground()
+                .altitude
+                .filter(|a| a.is_finite())
+            else {
                 continue;
             };
             radius += height - altitude;
@@ -379,7 +383,7 @@ impl Harness {
     fn voxel_word(&self, name: &str) -> String {
         let key = format!(" {name}=");
         self.renderer
-            .voxel_diagnostics()
+            .diagnostics()
             .iter()
             .find_map(|line| {
                 let at = line.find(&key)? + key.len();
@@ -391,7 +395,7 @@ impl Harness {
     fn voxel_stat(&self, name: &str) -> f64 {
         let key = format!(" {name}=");
         self.renderer
-            .voxel_diagnostics()
+            .diagnostics()
             .iter()
             .find_map(|line| {
                 let at = line.find(&key)? + key.len();
@@ -677,9 +681,25 @@ fn main() {
                     radius,
                     material,
                     single_block: false,
-                    level: Default::default(),
                     tool,
                 };
+                // The editor's sculpt tool: the terrain component's `sculpt`
+                // along the frame camera's pointer ray.
+                let sculpt = ToolRay(std::sync::Arc::new(
+                    move |world, origin, direction, start| {
+                        let terrains: Vec<_> = world
+                            .query::<&helio_component::VoxelTerrainComponent>()
+                            .map(|(entity, _)| entity)
+                            .collect();
+                        for terrain in terrains {
+                            if let Err(error) = helio_component::voxel_sculpt::sculpt(
+                                world, terrain, origin, direction, request, start,
+                            ) {
+                                println!("HARNESS sculpt: {error}");
+                            }
+                        }
+                    },
+                ));
                 let before = h.edits();
                 let queue = h.renderer.pending_pointer_events.clone();
                 let mut times = Vec::new();
@@ -690,11 +710,11 @@ fn main() {
                     queue
                         .lock()
                         .expect("pointer queue")
-                        .push(PendingPointerEvent::VoxelBrush {
+                        .push(PendingPointerEvent::ToolRay {
                             norm_x: x,
                             norm_y: y,
-                            request,
                             start: f == 0,
+                            tool: sculpt.clone(),
                         });
                     if let Some(ms) = h.frame() {
                         times.push(ms);
@@ -795,7 +815,7 @@ fn main() {
                 let up = start.normalize();
                 let forward = h.renderer.camera_forward().as_dvec3();
                 let ahead = (forward - up * forward.dot(up)).normalize();
-                let ground = start.length() - h.renderer.voxel_altitude().unwrap_or(2.0);
+                let ground = start.length() - h.renderer.camera_ground().altitude.unwrap_or(2.0);
                 // `cruise` and `orbit`: speed (m/s) and altitude (m) after the
                 // sample; `dive`: from altitude (15 000 km) to 20 km in half a
                 // second, a second in, then hovering looking down.
@@ -966,7 +986,7 @@ fn main() {
                     &format!(
                         "down {} m, altitude {:?}",
                         number(1, 5.0),
-                        h.renderer.voxel_altitude()
+                        h.renderer.camera_ground().altitude
                     ),
                     &times,
                 );

@@ -34,12 +34,23 @@ fn settings_of(world: &World, terrain: Entity) -> Entity {
     attachments::enabled_components_of::<VoxelTerrainLayersComponent>(world, object)[0].0
 }
 
+/// Step the scene until its terrains' worlds are built (they build off the
+/// thread that asked, as the scene's steps do).
+fn settle(world: &mut World) {
+    assert!(helio_component::voxel_runtime::wait_for_voxel_worlds(
+        world,
+        std::time::Duration::from_secs(120)
+    ));
+}
+
+/// Call method `name` as a script does, on the world as its edits left it.
 fn call(
     world: &mut World,
     entity: Entity,
     name: &str,
     args: Vec<Box<dyn Any>>,
 ) -> Result<Option<Box<dyn Any>>, String> {
+    settle(world);
     let mut args = args;
     world
         .call_component_method(
@@ -219,12 +230,14 @@ fn legacy_sample_edits_on_generated_terrain_become_journaled_blocks() {
 #[test]
 fn the_cached_world_follows_the_journal_and_the_settings() {
     let (mut world, entity) = flat_world();
+    settle(&mut world);
     let first = terrain_world(&world, entity).unwrap();
     assert!(std::sync::Arc::ptr_eq(
         &first,
         &terrain_world(&world, entity).unwrap()
     ));
     set(&mut world, entity, [1.0, 2.05, 1.0], material::SAND).unwrap();
+    settle(&mut world);
     let edited = terrain_world(&world, entity).unwrap();
     assert!(!std::sync::Arc::ptr_eq(&first, &edited));
     let settings = settings_of(&world, entity);
@@ -234,6 +247,7 @@ fn the_cached_world_follows_the_journal_and_the_settings() {
         .stack
         .layers[0]
         .height_m = 5.0;
+    settle(&mut world);
     let raised = terrain_world(&world, entity).unwrap();
     let (cell, _) = raised.grid().locate(DVec3::new(9.0, 4.95, 9.0));
     assert_eq!(raised.material(cell), material::GRASS);

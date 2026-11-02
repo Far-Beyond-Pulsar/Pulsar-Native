@@ -169,9 +169,9 @@ impl GameWindow {
     /// `WindowManager::set_camera`.  If `None`, the built-in freecam is used.
     fn render(&mut self, ecs_camera: Option<RenderCamera>) {
         let cam = ecs_camera.unwrap_or_else(|| {
-            // The freecam stands on the voxel ground's local vertical and
+            // The freecam stands on the ground's local vertical and
             // flies faster the higher it is, as the editor camera does.
-            let ground = self.renderer.voxel_ground(self.freecam.position());
+            let ground = self.renderer.camera_ground(self.freecam.position());
             self.freecam.follow_ground(ground);
             self.freecam.to_render_camera()
         });

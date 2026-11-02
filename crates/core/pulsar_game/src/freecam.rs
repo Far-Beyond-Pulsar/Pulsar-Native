@@ -15,7 +15,7 @@
 //!
 //! It flies as the editor viewport's camera does ([`FlyCamera`]): an f64 eye,
 //! level with the ground below (over a planet its up is the local vertical,
-//! elsewhere +Y), and faster the higher it is above voxel ground.
+//! elsewhere +Y), and faster the higher it is above the ground.
 //!
 //! While a possessed pawn owns the player's input ([`FreeCam::set_suspended`],
 //! driven by the runtime's [`PossessionGate`](crate::player_input::PossessionGate))
@@ -24,7 +24,7 @@
 //! This is a *placeholder* — it is automatically superseded per-window as soon
 //! as the game pushes its own camera.
 
-use engine_backend::subsystems::render::{altitude_speed_scale, FlyCamera, VoxelGround};
+use engine_backend::subsystems::render::{altitude_speed_scale, CameraGround, FlyCamera};
 use glam::{DVec3, Vec3};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
@@ -47,7 +47,7 @@ pub struct FreeCam {
     pub pose: FlyCamera,
 
     /// Movement speed in units per second near the ground; it grows with the
-    /// height above voxel ground.
+    /// height above the ground.
     pub move_speed: f32,
     /// Mouse sensitivity — pixels-to-radians scale.
     pub mouse_sensitivity: f32,
@@ -57,8 +57,8 @@ pub struct FreeCam {
     pub near: f32,
     pub far: f32,
 
-    /// The voxel ground under the eye, from the last frame.
-    ground: VoxelGround,
+    /// The ground under the eye, from the last frame.
+    ground: CameraGround,
     keys: KeyState,
     /// A possessed pawn owns the input: see [`set_suspended`](Self::set_suspended).
     suspended: bool,
@@ -77,7 +77,7 @@ impl Default for FreeCam {
             fov_y: std::f32::consts::FRAC_PI_4,
             near: 0.05,
             far: 2000.0,
-            ground: VoxelGround::default(),
+            ground: CameraGround::default(),
             keys: KeyState::default(),
             suspended: false,
         }
@@ -152,9 +152,10 @@ impl FreeCam {
 
     // ── Update ────────────────────────────────────────────────────────────────
 
-    /// Follow the voxel ground under the eye (`SceneRenderer::voxel_ground`):
-    /// its local vertical becomes the camera's up, its height the speed.
-    pub fn follow_ground(&mut self, ground: VoxelGround) {
+    /// Follow the ground under the eye (`SceneRenderer::camera_ground`, what
+    /// the scene's content reports through its ground methods): its local
+    /// vertical becomes the camera's up, its height the speed.
+    pub fn follow_ground(&mut self, ground: CameraGround) {
         self.pose.follow_ground(ground.up);
         self.ground = ground;
     }
@@ -240,11 +241,11 @@ mod tests {
         assert!(!camera.to_render_camera().forward.abs_diff_eq(forward, 1e-3));
     }
 
-    /// Without voxel ground the camera keeps +Y up and its base speed.
+    /// Without ground the camera keeps +Y up and its base speed.
     #[test]
     fn a_flat_world_flies_with_y_up() {
         let mut camera = FreeCam::default().place(DVec3::new(0.0, 2.0, 0.0), 0.0, 0.0);
-        camera.follow_ground(VoxelGround::default());
+        camera.follow_ground(CameraGround::default());
         press(&mut camera, KeyCode::Space);
         camera.update(1.0);
         assert!(camera.to_render_camera().up.abs_diff_eq(Vec3::Y, 1e-6));
@@ -261,7 +262,7 @@ mod tests {
         let forward = Vec3::new(-0.3, 0.2, 0.9).normalize();
         let (yaw, pitch) = yaw_pitch(forward);
         let mut camera = FreeCam::default().place(eye, yaw, pitch);
-        camera.follow_ground(VoxelGround {
+        camera.follow_ground(CameraGround {
             up: Some(up),
             altitude: Some(2.0),
         });
@@ -279,7 +280,7 @@ mod tests {
         assert!(moved.dot(up).abs() < 1e-6, "level with the ground");
 
         // 1 km up: fifty times faster.
-        camera.follow_ground(VoxelGround {
+        camera.follow_ground(CameraGround {
             up: Some(up),
             altitude: Some(1_000.0),
         });

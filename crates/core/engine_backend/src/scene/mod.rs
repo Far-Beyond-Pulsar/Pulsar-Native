@@ -7,7 +7,6 @@
 //! all share one [`SharedScene`].
 
 #[cfg(feature = "render")]
-pub mod voxel_frame;
 // Ready-made voxel worlds (Earth, Moon, Desert, flat) added to a level in
 // one step: the example levels' worlds.
 #[cfg(feature = "render")]

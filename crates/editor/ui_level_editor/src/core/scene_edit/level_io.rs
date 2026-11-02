@@ -661,10 +661,14 @@ mod voxel_example_tests {
         // Over the foothills at the north pole, facing a range.
         assert_eq!(camera.position, [0.0, 6_371_631.0, 0.0]);
 
-        let (entries, errors) = engine_backend::scene::voxel_frame::project_voxel_entries(&world);
-        assert!(errors.is_empty(), "{errors:?}");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].generator.as_ref().unwrap().version, 1);
+        let terrains: Vec<_> = world
+            .query::<&helio_component::VoxelTerrainComponent>()
+            .map(|(entity, terrain)| (entity, terrain.clone()))
+            .collect();
+        assert_eq!(terrains.len(), 1);
+        let (entity, terrain) = &terrains[0];
+        let source = helio_component::voxel_world::entity_source(&world, *entity, terrain).unwrap();
+        assert_eq!(source.recipe.terrain.version, 1);
         // The Earth preset (seed 75: foothills at the pole, a range 23 km away).
         let stacks: Vec<_> = engine_backend::scene::attachments::enabled_components::<
             helio_component::VoxelTerrainLayersComponent,

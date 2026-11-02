@@ -86,7 +86,12 @@ fn build(program: &Program, seed: i64) -> (VoxelTerrainStack, VoxelAir) {
             &mut Budget::new(100_000),
         )
         .unwrap_or_else(|e| panic!("seed {seed}: begin_play failed: {e}"));
-    // The generator accepts it: the planet builds.
+    // The generator accepts it: the planet builds (off the thread, as the
+    // scene's steps build it).
+    assert!(helio_component::voxel_runtime::wait_for_voxel_worlds(
+        &mut world,
+        std::time::Duration::from_secs(300)
+    ));
     terrain_world(&world, terrain).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
     let air = world.get::<VoxelTerrainComponent>(terrain).unwrap().air;
     (

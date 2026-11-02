@@ -5,12 +5,12 @@ pub mod helio_renderer;
 
 pub use handle_utils::{handle_to_usize, usize_to_handle};
 pub use helio_renderer::{
-    altitude_speed_scale, CameraInput, CameraSync, DeviceOwner, EditorCameraState, FlyCamera,
-    FrameProjection, FrameView, GpuProfilerAvailability, GpuProfilerData, HelioEditorMailbox,
-    HelioRenderer, PendingPointerEvent, PreparedFrame, RenderMetrics, RenderSpikeLogConfig,
-    SceneRenderer, SceneRendererOptions, StaticDragWarning, ViewKind, ViewportDebugLegend,
-    ViewportDebugView, VoxelBrushRequest, VoxelBrushTool, VoxelChunkSaves, VoxelGround,
-    VoxelSavedChunks, CAMERA_PIVOT_DISTANCE, PORTAL_DEBUG_VIEW_MODE,
+    altitude_speed_scale, CameraGround, CameraInput, CameraSync, DeviceOwner, EditorCameraState,
+    FlyCamera, FrameProjection, FrameView, GpuProfilerAvailability, GpuProfilerData,
+    HelioEditorMailbox, HelioRenderer, PendingPointerEvent, PreparedFrame, RenderMetrics,
+    RenderSpikeLogConfig, SceneRenderer, SceneRendererOptions, StaticDragWarning, ToolRay,
+    ViewKind, ViewportDebugLegend, ViewportDebugView, CAMERA_PIVOT_DISTANCE,
+    PORTAL_DEBUG_VIEW_MODE,
 };
 // pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 

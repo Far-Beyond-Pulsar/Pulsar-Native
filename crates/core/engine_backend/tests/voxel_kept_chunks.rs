@@ -1,6 +1,7 @@
-//! A level save keeps the voxel renderer's chunks of the terrain's edits
-//! with its journal (`VoxelChunkSaves`, `VoxelEditJournal::keep_chunks`):
-//! the renderer packs its edited chunks and answers the waiting save; a
+//! A level save keeps the drawn chunks of the terrain's edits with its
+//! journal (`TerrainWorld::kept_chunks`, `VoxelEditJournal::keep_chunks`):
+//! the terrain's runtime asks the drawn world, the renderer packs its edited
+//! chunks into the runtime's inbox and the waiting save takes them; a
 //! renderer given the saved journal restores them by copy instead of
 //! generating them from the terrain and every edit.
 
@@ -117,7 +118,7 @@ impl Viewport {
         }
         panic!(
             "the viewport never went idle: {:?}",
-            self.renderer.voxel_diagnostics()
+            self.renderer.diagnostics()
         );
     }
 
@@ -125,7 +126,7 @@ impl Viewport {
     fn word(&self, name: &str) -> String {
         let key = format!(" {name}=");
         self.renderer
-            .voxel_diagnostics()
+            .diagnostics()
             .iter()
             .find_map(|line| {
                 let at = line.find(&key)? + key.len();
@@ -158,31 +159,32 @@ fn a_saved_journal_keeps_the_edited_chunks_and_a_new_renderer_restores_them() {
 
     // A save asks off the render thread; the idle viewport renders again
     // until it has answered.
-    let saves = viewport.renderer.editor_mailbox().voxel_chunk_saves();
-    let save = std::thread::spawn(move || saves.kept_chunks(Duration::from_secs(120)));
+    let runtime =
+        helio_component::voxel_runtime::VoxelTerrainRuntime::of(&scene.read().world, terrain)
+            .expect("the terrain's runtime");
+    let save = std::thread::spawn(move || runtime.kept_chunks(Duration::from_secs(120)));
     let mut frames = 0;
     while !save.is_finished() {
         frames += usize::from(viewport.frame(&device, &queue));
     }
-    let saved = save.join().unwrap().expect("the renderer answers a save");
+    let (saved_edits, saved_chunks) = save.join().unwrap().expect("the renderer answers a save");
     let edits = journal(&scene, terrain);
-    assert_eq!(saved.id.entity_bits, terrain.bits());
-    assert_eq!(saved.edits, edits, "the chunks of the shown journal");
+    assert_eq!(saved_edits, edits, "the chunks of the shown journal");
     assert!(
-        saved.chunks.len() > 10,
+        saved_chunks.len() > 10,
         "{} chunks kept",
-        saved.chunks.len()
+        saved_chunks.len()
     );
-    let bytes = saved.chunks.to_bytes();
+    let bytes = saved_chunks.to_bytes();
     eprintln!(
         "VOXEL_KEPT_SAVED {} chunks, {} KiB, after {frames} frames",
-        saved.chunks.len(),
+        saved_chunks.len(),
         bytes.len() / 1024
     );
 
     // Kept with the journal and saved with it; any edit drops them.
     let mut kept = edits.clone();
-    assert!(kept.keep_chunks(VoxelKeptChunks::of(&saved.edits, bytes.into())));
+    assert!(kept.keep_chunks(VoxelKeptChunks::of(&saved_edits, bytes.into())));
     let mut grown = kept.clone();
     grown.push(*edits.get(edits.len() - 1).unwrap());
     assert!(grown.kept_chunks().is_none());
@@ -202,6 +204,6 @@ fn a_saved_journal_keeps_the_edited_chunks_and_a_new_renderer_restores_them() {
     viewport.settle(&device, &queue);
     assert_eq!(
         viewport.word("kept_loaded"),
-        format!("Some(Ok({}))", saved.chunks.len())
+        format!("Some(Ok({}))", saved_chunks.len())
     );
 }

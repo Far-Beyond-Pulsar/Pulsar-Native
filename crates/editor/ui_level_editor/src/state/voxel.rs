@@ -1,7 +1,7 @@
 //! Voxel sculpt tool settings. They persist across tool switches.
 
 use engine_backend::scene::SceneWorldExt;
-use engine_backend::subsystems::render::{VoxelBrushRequest, VoxelBrushTool};
+use helio_component::voxel_sculpt::{VoxelBrushRequest, VoxelBrushTool};
 use helio_voxel_data::{VoxelBrushOp, VoxelBrushShape};
 
 /// What a click does.
@@ -89,7 +89,6 @@ impl VoxelSculptDomain {
                 VoxelSculptMode::Smooth => VoxelBrushTool::Smooth,
                 _ => VoxelBrushTool::Stamp,
             },
-            level: None,
         }
     }
 

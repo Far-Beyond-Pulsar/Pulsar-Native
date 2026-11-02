@@ -7,7 +7,6 @@
 
 use std::path::Path;
 
-use engine_backend::scene::voxel_frame::VoxelWorldSync;
 use engine_backend::scene::voxel_presets::VoxelWorldPreset;
 use engine_backend::scene::EditorCamera;
 use glam::DVec3;
@@ -25,9 +24,9 @@ mod flight;
 
 use flight::Preset;
 
-/// The level of example project `name` in `assets/examples`, loaded and its
-/// voxel world's dependents synced (as the editor's scene step does), and
-/// its camera.
+/// The level of example project `name` in `assets/examples`, loaded, its
+/// voxel world's dependents synced and its world built (as the editor's
+/// scene steps do), and its camera.
 fn level(name: &str) -> (World, EditorCamera) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
         "../../../assets/examples/{name}/scene/default.level"
@@ -36,7 +35,10 @@ fn level(name: &str) -> (World, EditorCamera) {
     let extras = engine_backend::scene::RuntimeLevel::load_into(&path, &mut scene.world)
         .expect("load the level");
     let mut world = scene.world;
-    VoxelWorldSync::new(&world).poll(&mut world);
+    assert!(helio_component::voxel_runtime::wait_for_voxel_worlds(
+        &mut world,
+        std::time::Duration::from_secs(300)
+    ));
     (world, extras.editor_camera.expect("a camera"))
 }
 

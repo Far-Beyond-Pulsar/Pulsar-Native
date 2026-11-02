@@ -85,15 +85,26 @@ pub struct ToolPointerEvent {
 }
 
 /// Result returned from [`ToolMode::on_pointer`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum ToolPointerResult {
     /// Mode consumed the event; default editor interaction will not run.
     Consumed,
     /// Mode passed the event through; editor will perform default object pick/transform gizmo.
     PassThrough,
-    /// Commit an exact raycast edit in the render thread, where the camera
-    /// retains its double-precision planetary position.
-    VoxelBrush(engine_backend::subsystems::render::VoxelBrushRequest),
+    /// Act along the ray under the pointer on the render thread, where the
+    /// camera keeps its double-precision planetary position (the sculpt
+    /// tool's strokes, through the terrain component's methods).
+    Ray(engine_backend::subsystems::render::ToolRay),
+}
+
+impl PartialEq for ToolPointerResult {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Consumed, Self::Consumed) | (Self::PassThrough, Self::PassThrough) => true,
+            (Self::Ray(a), Self::Ray(b)) => std::sync::Arc::ptr_eq(&a.0, &b.0),
+            _ => false,
+        }
+    }
 }
 
 // ── Declarative Toolbar Widgets ────────────────────────────────────────────
