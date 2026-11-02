@@ -50,7 +50,11 @@ pub fn bias_for_budget(native_bytes: u64, budget_bytes: u64) -> u32 {
 /// Project setting `streaming.texture_vram_budget_mb` in bytes; 0 is no limit.
 pub fn vram_budget_bytes() -> u64 {
     let configured = engine_state::settings::global_config()
-        .get(engine_state::settings::NS_PROJECT, "streaming", "texture_vram_budget_mb")
+        .get(
+            engine_state::settings::NS_PROJECT,
+            "streaming",
+            "texture_vram_budget_mb",
+        )
         .ok();
     let megabytes = match configured {
         Some(engine_state::settings::ConfigValue::Int(value)) => value,

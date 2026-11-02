@@ -340,9 +340,7 @@ fn remember_texture_users(material_source: &str, texture_sources: &[String]) {
             !materials.is_empty()
         });
         for texture_source in texture_sources {
-            let materials = users
-                .entry(texture_source.clone())
-                .or_default();
+            let materials = users.entry(texture_source.clone()).or_default();
             materials.insert(material_source.to_string());
             while materials.len() > MAX_MATERIALS_PER_TEXTURE_SOURCE {
                 if let Some(victim) = materials.iter().next().cloned() {
@@ -514,9 +512,8 @@ fn compiled_graph(
     let mut compiled = compiled_graphs()
         .lock()
         .map_err(|_| "compiled graph cache poisoned".to_string())?;
-    compiled.retain(|(cached_id, cached_version), _| {
-        *cached_id != id || *cached_version == version
-    });
+    compiled
+        .retain(|(cached_id, cached_version), _| *cached_id != id || *cached_version == version);
     if compiled.len() >= MAX_COMPILED_GRAPHS && !compiled.contains_key(&(id, version)) {
         if let Some(victim) = compiled.keys().next().copied() {
             compiled.remove(&victim);

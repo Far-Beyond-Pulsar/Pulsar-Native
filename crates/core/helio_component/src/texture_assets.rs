@@ -17,7 +17,7 @@
 use pulsar_scenedb::{AssetId, AssetPayload, AssetView};
 use std::sync::Arc;
 
-use crate::cooked_texture::{cook_as, CookFormat, CookedTexture, TextureUse, COOK_VERSION};
+use crate::cooked_texture::{COOK_VERSION, CookFormat, CookedTexture, TextureUse, cook_as};
 
 /// The SceneDB asset kind of image files. A texture asset's source is the
 /// file's absolute path, normalized lexically ([`texture_source`]).
@@ -187,7 +187,11 @@ pub const DEFAULT_MAX_TEXTURE_SIZE: u32 = 2048;
 
 pub fn max_texture_size() -> u32 {
     let configured = engine_state::settings::global_config()
-        .get(engine_state::settings::NS_PROJECT, "streaming", "max_texture_size")
+        .get(
+            engine_state::settings::NS_PROJECT,
+            "streaming",
+            "max_texture_size",
+        )
         .ok();
     match configured {
         Some(engine_state::settings::ConfigValue::Int(0)) => 0,
@@ -378,15 +382,21 @@ fn cook_from_source(
         let (width, height, rgba) = decode_rgba(path, cap)?;
         cook_as(&rgba, width, height, format, usage)
     };
-    let bytes = pulsar_scenedb::derive_cached(&request, || cook_now().map(|cooked| cooked.to_bytes()))?;
+    let bytes =
+        pulsar_scenedb::derive_cached(&request, || cook_now().map(|cooked| cooked.to_bytes()))?;
     match CookedTexture::from_bytes(&bytes) {
         Ok(cooked) => Ok(cooked),
         Err(error) => {
-            tracing::warn!("derived texture for '{}' is unusable ({error}); cooking it again", path.display());
+            tracing::warn!(
+                "derived texture for '{}' is unusable ({error}); cooking it again",
+                path.display()
+            );
             // Replace the entry through the cache, so the repair is stored and
             // the next load is a read.
             pulsar_scenedb::forget_derived(&request);
-            let bytes = pulsar_scenedb::derive_cached(&request, || cook_now().map(|cooked| cooked.to_bytes()))?;
+            let bytes = pulsar_scenedb::derive_cached(&request, || {
+                cook_now().map(|cooked| cooked.to_bytes())
+            })?;
             CookedTexture::from_bytes(&bytes)
         }
     }
@@ -463,7 +473,13 @@ pub(crate) fn texture_slot(
         return u32::MAX;
     };
     let current = bound.0.as_ref().expect("image_for found it");
-    match resident_slot(current.id, current.version, image, TextureUse::Color, mirror) {
+    match resident_slot(
+        current.id,
+        current.version,
+        image,
+        TextureUse::Color,
+        mirror,
+    ) {
         Ok(slot) => slot,
         Err(error) => {
             tracing::warn!("{what} texture '{path}': {error}");
@@ -613,7 +629,13 @@ pub(crate) fn resident_slot(
                     &cooked.without_top_mips(bias),
                 )?
             };
-            (slot, store.texture(slot).cloned().map(|texture| (texture, native_bytes)))
+            (
+                slot,
+                store
+                    .texture(slot)
+                    .cloned()
+                    .map(|texture| (texture, native_bytes)),
+            )
         }
         (None, None) => unreachable!("the cooked texture is fetched whenever nothing is shared"),
     };
@@ -647,7 +669,6 @@ pub(crate) fn resident_slot(
     Ok(slot)
 }
 
-
 /// Start cooking, on the asset loader threads, every texture in `images` that
 /// `mirror`'s store would have to upload at `version`, so the cooks run in
 /// parallel instead of one after another on the thread that is about to need
@@ -669,7 +690,11 @@ pub(crate) fn prefetch_missing<'a>(
         let held = resident()
             .lock()
             .ok()
-            .and_then(|resident| resident.get(&key).map(|entry| entry.version == version && entry.bias == crate::texture_detail::detail_bias()))
+            .and_then(|resident| {
+                resident.get(&key).map(|entry| {
+                    entry.version == version && entry.bias == crate::texture_detail::detail_bias()
+                })
+            })
             .unwrap_or(false);
         let shared = shared_textures()
             .lock()
@@ -677,7 +702,10 @@ pub(crate) fn prefetch_missing<'a>(
             .and_then(|shared| {
                 shared
                     .get(&(Arc::as_ptr(&device) as usize, id, usage))
-                    .map(|entry| entry.version == version && entry.bias == crate::texture_detail::detail_bias())
+                    .map(|entry| {
+                        entry.version == version
+                            && entry.bias == crate::texture_detail::detail_bias()
+                    })
             })
             .unwrap_or(false);
         if !held && !shared {
@@ -706,9 +734,21 @@ mod residency_tests {
     fn dimensions_fit_the_cap_and_keep_their_aspect() {
         assert_eq!(capped_dimensions(4096, 4096, 2048), (2048, 2048));
         assert_eq!(capped_dimensions(8192, 4096, 2048), (2048, 1024));
-        assert_eq!(capped_dimensions(1000, 500, 2048), (1000, 500), "small images are untouched");
-        assert_eq!(capped_dimensions(4096, 4096, 0), (4096, 4096), "0 disables the cap");
-        assert_eq!(capped_dimensions(4096, 1, 64), (64, 1), "never collapses to zero");
+        assert_eq!(
+            capped_dimensions(1000, 500, 2048),
+            (1000, 500),
+            "small images are untouched"
+        );
+        assert_eq!(
+            capped_dimensions(4096, 4096, 0),
+            (4096, 4096),
+            "0 disables the cap"
+        );
+        assert_eq!(
+            capped_dimensions(4096, 1, 64),
+            (64, 1),
+            "never collapses to zero"
+        );
     }
 
     #[test]
@@ -755,8 +795,7 @@ mod shared_upload_tests {
         // Creating devices from many tests at once stalls some drivers; take turns.
         static DEVICE_CREATION: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _device_creation = DEVICE_CREATION.lock().unwrap_or_else(|p| p.into_inner());
-        let instance =
-            wgpu::Instance::new(helio_core::wgpu_instance_descriptor());
+        let instance = wgpu::Instance::new(helio_core::wgpu_instance_descriptor());
         let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
         // Ask for block compression where the adapter has it, as the editor does.
         let required_features = adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC;
@@ -810,16 +849,29 @@ mod shared_upload_tests {
         assert_ne!(as_colour, as_data, "two uses, two slots");
 
         let store = textures.read().unwrap();
-        let (colour, data) = (store.texture(as_colour).unwrap(), store.texture(as_data).unwrap());
+        let (colour, data) = (
+            store.texture(as_colour).unwrap(),
+            store.texture(as_data).unwrap(),
+        );
         assert_ne!(colour, data, "two uses, two GPU textures");
-        assert!(colour.format().is_srgb(), "colour is decoded as sRGB: {:?}", colour.format());
+        assert!(
+            colour.format().is_srgb(),
+            "colour is decoded as sRGB: {:?}",
+            colour.format()
+        );
         assert!(!data.format().is_srgb(), "data is not: {:?}", data.format());
         assert_eq!(store.upload_count(), 2);
         drop(store);
 
         // Each use is found again, not uploaded again.
-        assert_eq!(resident_slot(id, 1, &image, TextureUse::Color, &scene).unwrap(), as_colour);
-        assert_eq!(resident_slot(id, 1, &image, TextureUse::Data, &scene).unwrap(), as_data);
+        assert_eq!(
+            resident_slot(id, 1, &image, TextureUse::Color, &scene).unwrap(),
+            as_colour
+        );
+        assert_eq!(
+            resident_slot(id, 1, &image, TextureUse::Data, &scene).unwrap(),
+            as_data
+        );
         assert_eq!(textures.read().unwrap().upload_count(), 2);
     }
 
@@ -858,14 +910,22 @@ mod shared_upload_tests {
         assert_eq!(a.texture(slot_a), b.texture(slot_b), "one GPU texture");
         // What reached the GPU is the cooked form: BC7 where the device can
         // sample it, uncompressed otherwise, and either way the full chain.
-        let expected = if ctx.device().features().contains(wgpu::Features::TEXTURE_COMPRESSION_BC) {
+        let expected = if ctx
+            .device()
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+        {
             wgpu::TextureFormat::Bc7RgbaUnormSrgb
         } else {
             wgpu::TextureFormat::Rgba8UnormSrgb
         };
         let uploaded = a.texture(slot_a).unwrap();
         assert_eq!(uploaded.format(), expected);
-        assert_eq!(uploaded.mip_level_count(), 4, "an 8x8 image has four levels");
+        assert_eq!(
+            uploaded.mip_level_count(),
+            4,
+            "an 8x8 image has four levels"
+        );
         assert_eq!(a.upload_count(), 1);
         assert_eq!(b.upload_count(), 0, "the second store uploaded nothing");
         drop((a, b));
@@ -908,7 +968,10 @@ mod shared_upload_tests {
         assert_eq!((width, levels), (16, 5));
 
         // The same bias finds the texture where it is.
-        assert_eq!(resident_slot(id, 1, &image, TextureUse::Color, &scene).unwrap(), full);
+        assert_eq!(
+            resident_slot(id, 1, &image, TextureUse::Color, &scene).unwrap(),
+            full
+        );
         assert_eq!(textures.read().unwrap().upload_count(), 1);
 
         // Over budget: the next bind uploads it again with the top level off.

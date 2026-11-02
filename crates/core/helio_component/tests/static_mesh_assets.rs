@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use helio_component::components::{
-    mesh_asset_residency, mesh_source_for_file, prefetch_mesh_asset, ObjectMovability,
-    StaticMeshComponent, MESH_ASSET_KIND,
+    MESH_ASSET_KIND, ObjectMovability, StaticMeshComponent, mesh_asset_residency,
+    mesh_source_for_file, prefetch_mesh_asset,
 };
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{AssetState, World};

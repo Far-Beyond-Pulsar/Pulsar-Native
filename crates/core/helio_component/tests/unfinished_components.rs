@@ -7,9 +7,7 @@ use helio_component::components::ReflectionCaptureComponent as _;
 
 #[test]
 fn unfinished_components_declare_why_and_their_issue() {
-    for (class, issue) in [
-        ("ReflectionCaptureComponent", 1054),
-    ] {
+    for (class, issue) in [("ReflectionCaptureComponent", 1054)] {
         let unfinished = pulsar_world_registry::unfinished_component(class)
             .unwrap_or_else(|| panic!("{class} is not declared unfinished"));
         assert!(!unfinished.reason.is_empty(), "{class} declares no reason");

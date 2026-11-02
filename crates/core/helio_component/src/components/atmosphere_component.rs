@@ -197,7 +197,11 @@ impl AtmosphereComponent {
             cloud_wind: row.cloud_wind,
             cloud_albedo: row.cloud_albedo,
             cloud_voxels: row.cloud_voxel_size > 0.0,
-            cloud_voxel_m: if row.cloud_voxel_size > 0.0 { row.cloud_voxel_size * 1000.0 } else { 32.0 },
+            cloud_voxel_m: if row.cloud_voxel_size > 0.0 {
+                row.cloud_voxel_size * 1000.0
+            } else {
+                32.0
+            },
             cloud_voxel_fill: row.cloud_voxel_fill,
             cloud_pole: row.cloud_pole,
             cloud_circulation: row.cloud_circulation,
@@ -227,7 +231,10 @@ impl AtmosphereComponent {
             albedo: self.cloud_albedo,
             erosion: self.cloud_erosion,
             representation: if self.cloud_voxels {
-                CloudRepresentation::Voxels { cell_m: self.cloud_voxel_m, fill: self.cloud_voxel_fill }
+                CloudRepresentation::Voxels {
+                    cell_m: self.cloud_voxel_m,
+                    fill: self.cloud_voxel_fill,
+                }
             } else {
                 CloudRepresentation::Volumetric
             },
@@ -275,7 +282,10 @@ impl AtmosphereComponent {
             ..AtmosphereRow::earth()
         }
         .with_clouds(self.cloud_layer());
-        AtmosphereRow { clouds_enabled: u32::from(self.clouds_enabled), ..row }
+        AtmosphereRow {
+            clouds_enabled: u32::from(self.clouds_enabled),
+            ..row
+        }
     }
 }
 
@@ -469,10 +479,22 @@ mod tests {
         };
         let row = clouds.to_row();
         assert_eq!(row.clouds_enabled, 1);
-        assert_eq!((row.cloud_bottom, row.cloud_top, row.cloud_coverage), (1.0, 3.0, 0.7));
+        assert_eq!(
+            (row.cloud_bottom, row.cloud_top, row.cloud_coverage),
+            (1.0, 3.0, 0.7)
+        );
         assert_eq!(row.cloud_wind, [5.0, 0.0, -2.0]);
-        assert_eq!(AtmosphereComponent::from_row(&row).to_row().clouds(), row.clouds(), "the clouds round-trip");
-        let air = clouds.for_air(crate::VoxelAir::Thin, 1.0, [1.0; 3], 1.0).unwrap();
-        assert!(air.clouds_enabled && air.cloud_coverage == 0.7, "a world's air keeps its clouds");
+        assert_eq!(
+            AtmosphereComponent::from_row(&row).to_row().clouds(),
+            row.clouds(),
+            "the clouds round-trip"
+        );
+        let air = clouds
+            .for_air(crate::VoxelAir::Thin, 1.0, [1.0; 3], 1.0)
+            .unwrap();
+        assert!(
+            air.clouds_enabled && air.cloud_coverage == 0.7,
+            "a world's air keeps its clouds"
+        );
     }
 }

@@ -54,7 +54,12 @@ pub fn register_loaded_animation_notifies(world: &mut World, hub: &EventHub) {
 /// Fields every notify/state/Montage-notify event carries before its authored
 /// payload. `sequence_id` names the source asset whatever its kind (kept under
 /// that name for compatibility); `source_kind` says which kind it is.
-fn item_descriptor(namespace: &str, source_id: &str, item_id: &str, payload: &[NotifyField]) -> EventDescriptor {
+fn item_descriptor(
+    namespace: &str,
+    source_id: &str,
+    item_id: &str,
+    payload: &[NotifyField],
+) -> EventDescriptor {
     let mut fields = vec![
         ("entity".to_owned(), FieldType::U64),
         ("source".into(), FieldType::U64),
@@ -91,7 +96,12 @@ pub fn animation_notify_descriptor(
     sequence: &AnimSeqAsset,
     notify: &AnimationNotify,
 ) -> EventDescriptor {
-    item_descriptor("animseq", &sequence.id.to_string(), &notify.id, &notify.fields)
+    item_descriptor(
+        "animseq",
+        &sequence.id.to_string(),
+        &notify.id,
+        &notify.fields,
+    )
 }
 
 /// A Sequence-owned notify state raises Begin, Tick and End under one canonical
@@ -100,7 +110,12 @@ pub fn animation_notify_state_descriptor(
     sequence: &AnimSeqAsset,
     state: &AnimationNotifyState,
 ) -> EventDescriptor {
-    item_descriptor("animseq", &sequence.id.to_string(), &state.id, &state.fields)
+    item_descriptor(
+        "animseq",
+        &sequence.id.to_string(),
+        &state.id,
+        &state.fields,
+    )
 }
 
 /// Notifies a Montage itself owns live in the `montage` namespace.
@@ -108,13 +123,22 @@ pub fn montage_notify_descriptor(montage_id: &str, notify: &AnimationNotify) -> 
     item_descriptor("montage", montage_id, &notify.id, &notify.fields)
 }
 
-pub fn montage_notify_state_descriptor(montage_id: &str, state: &AnimationNotifyState) -> EventDescriptor {
+pub fn montage_notify_state_descriptor(
+    montage_id: &str,
+    state: &AnimationNotifyState,
+) -> EventDescriptor {
     item_descriptor("montage", montage_id, &state.id, &state.fields)
 }
 
 /// The Montage lifecycle kinds, in the order they can happen to one instance.
-pub const MONTAGE_LIFECYCLE_KINDS: [&str; 6] =
-    ["started", "blended_in", "section_changed", "blending_out", "ended", "interrupted"];
+pub const MONTAGE_LIFECYCLE_KINDS: [&str; 6] = [
+    "started",
+    "blended_in",
+    "section_changed",
+    "blending_out",
+    "ended",
+    "interrupted",
+];
 
 /// Canonical descriptor of one lifecycle event of one Montage asset
 /// (`montage::<montage id>.lifecycle_<kind>`). Blueprint nodes filter by the
@@ -152,7 +176,12 @@ pub fn anim_state_descriptor(graph_id: &str, kind: StateEventKind) -> EventDescr
         ("transition".into(), FieldType::Str),
         ("generation".into(), FieldType::I64),
     ];
-    EventDescriptor::dynamic_in("animgraph", format!("{graph_id}.state_{}", kind.name()), fields).expect("animgraph is a valid namespace")
+    EventDescriptor::dynamic_in(
+        "animgraph",
+        format!("{graph_id}.state_{}", kind.name()),
+        fields,
+    )
+    .expect("animgraph is a valid namespace")
 }
 
 pub fn register_animation_notifies(sequence: &AnimSeqAsset, hub: &EventHub) -> Result<(), String> {
@@ -163,8 +192,11 @@ pub fn register_animation_notifies(sequence: &AnimSeqAsset, hub: &EventHub) -> R
             .map_err(|e| e.to_string())?;
     }
     for state in &sequence.features.notify_states {
-        hub.register(animation_notify_state_descriptor(sequence, state), category())
-            .map_err(|e| e.to_string())?;
+        hub.register(
+            animation_notify_state_descriptor(sequence, state),
+            category(),
+        )
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -178,8 +210,11 @@ pub fn register_montage_events(montage: &CompiledMontage, hub: &EventHub) -> Res
             .map_err(|e| e.to_string())?;
     }
     for state in &montage.notify_states {
-        hub.register(montage_notify_state_descriptor(&montage.id, state), category())
-            .map_err(|e| e.to_string())?;
+        hub.register(
+            montage_notify_state_descriptor(&montage.id, state),
+            category(),
+        )
+        .map_err(|e| e.to_string())?;
     }
     for kind in MONTAGE_LIFECYCLE_KINDS {
         hub.register(montage_lifecycle_descriptor(&montage.id, kind), category())
@@ -187,7 +222,6 @@ pub fn register_montage_events(montage: &CompiledMontage, hub: &EventHub) -> Res
     }
     Ok(())
 }
-
 
 /// Saved events that can be offered independently of broken project assets.
 #[derive(Debug, Default)]
@@ -278,8 +312,20 @@ fn catalog_from(
             .features
             .notifies
             .iter()
-            .map(|n| (n.name.as_str(), n.id.as_str(), animation_notify_descriptor(&sequence, n)))
-            .chain(sequence.features.notify_states.iter().map(|s| (s.name.as_str(), s.id.as_str(), animation_notify_state_descriptor(&sequence, s))));
+            .map(|n| {
+                (
+                    n.name.as_str(),
+                    n.id.as_str(),
+                    animation_notify_descriptor(&sequence, n),
+                )
+            })
+            .chain(sequence.features.notify_states.iter().map(|s| {
+                (
+                    s.name.as_str(),
+                    s.id.as_str(),
+                    animation_notify_state_descriptor(&sequence, s),
+                )
+            }));
         for (item_name, item_id, descriptor) in items {
             let identity = key(&descriptor);
             origins
@@ -344,7 +390,6 @@ fn catalog_from(
     catalog
 }
 
-
 /// Notify descriptors for the animation assets a skeletal mesh component names,
 /// found through the project's asset index and the assets' own references: no
 /// directory walk and nothing published on a bus. `assets` holds the ids of the
@@ -372,9 +417,18 @@ pub fn component_animation_notify_events(
     let index = engine_fs::open_project_file_index(root).ok().flatten();
     let kind_of = |id: &str| -> Option<&'static str> {
         let index = index.as_ref()?;
-        [AnimationGraphAssetKind::KIND, pulsar_reflection::AnimationSequenceAssetKind::KIND]
-            .into_iter()
-            .find(|kind| index.path_for_asset_id_kind(kind, id).ok().flatten().is_some())
+        [
+            AnimationGraphAssetKind::KIND,
+            pulsar_reflection::AnimationSequenceAssetKind::KIND,
+        ]
+        .into_iter()
+        .find(|kind| {
+            index
+                .path_for_asset_id_kind(kind, id)
+                .ok()
+                .flatten()
+                .is_some()
+        })
     };
     for id in assets {
         match kind_of(id) {
@@ -382,7 +436,10 @@ pub fn component_animation_notify_events(
             Some(_) => {
                 sequences.insert(id.clone());
             }
-            None => catalog.diagnostics.push(AnimationNotifyDiagnostic { path: std::path::PathBuf::from(id), error: "the animation asset is not in this project's asset index".into() }),
+            None => catalog.diagnostics.push(AnimationNotifyDiagnostic {
+                path: std::path::PathBuf::from(id),
+                error: "the animation asset is not in this project's asset index".into(),
+            }),
         }
     }
     while let Some(id) = graph_stack.pop() {
@@ -390,12 +447,20 @@ pub fn component_animation_notify_events(
             continue;
         }
         let Some(graph) = source.graph(&id) else {
-            catalog.diagnostics.push(AnimationNotifyDiagnostic { path: std::path::PathBuf::from(&id), error: "the animation graph could not be loaded".into() });
+            catalog.diagnostics.push(AnimationNotifyDiagnostic {
+                path: std::path::PathBuf::from(&id),
+                error: "the animation graph could not be loaded".into(),
+            });
             continue;
         };
         for (_, _, g) in graph.graphs() {
             for node in g.nodes.values().filter(|n| n.node_type == "anim.slot") {
-                let text = |k: &str| node.properties.get(k).and_then(|v| v.as_str()).map(str::to_string);
+                let text = |k: &str| {
+                    node.properties
+                        .get(k)
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                };
                 if let Some(slot) = text("slot") {
                     slots.insert((slot, text("group").unwrap_or_else(|| "DefaultGroup".into())));
                 }
@@ -408,7 +473,11 @@ pub fn component_animation_notify_events(
                 }
                 k if k == pulsar_reflection::BlendSpaceAssetKind::KIND => {
                     if let Some(space) = source.blend_space(&r.id) {
-                        sequences.extend(space.samples.iter().filter_map(|s| s.sequence.as_ref().map(|s| s.as_str().to_string())));
+                        sequences.extend(
+                            space.samples.iter().filter_map(|s| {
+                                s.sequence.as_ref().map(|s| s.as_str().to_string())
+                            }),
+                        );
                     }
                 }
                 k if k == pulsar_reflection::PoseDatabaseAssetKind::KIND => {
@@ -418,9 +487,13 @@ pub fn component_animation_notify_events(
                                 skeletal_assets::pose_db::PoseSource::Sequence { sequence } => {
                                     sequences.insert(sequence.as_str().to_string());
                                 }
-                                skeletal_assets::pose_db::PoseSource::BlendSpace { blend_space } => {
+                                skeletal_assets::pose_db::PoseSource::BlendSpace {
+                                    blend_space,
+                                } => {
                                     if let Some(space) = source.blend_space(blend_space.as_str()) {
-                                        sequences.extend(space.samples.iter().filter_map(|s| s.sequence.as_ref().map(|s| s.as_str().to_string())));
+                                        sequences.extend(space.samples.iter().filter_map(|s| {
+                                            s.sequence.as_ref().map(|s| s.as_str().to_string())
+                                        }));
                                     }
                                 }
                             }
@@ -434,10 +507,23 @@ pub fn component_animation_notify_events(
     }
     if !slots.is_empty() {
         if let Some(index) = &index {
-            for (id, _) in index.assets_of_kind(AnimationMontageAssetKind::KIND).unwrap_or_default() {
-                let Some(montage) = source.montage(&id) else { continue };
-                if montage.tracks.iter().any(|t| slots.contains(&(t.slot.clone(), t.group.clone()))) {
-                    sequences.extend(montage.segments().filter_map(|s| s.sequence.as_ref().map(|s| s.as_str().to_string())));
+            for (id, _) in index
+                .assets_of_kind(AnimationMontageAssetKind::KIND)
+                .unwrap_or_default()
+            {
+                let Some(montage) = source.montage(&id) else {
+                    continue;
+                };
+                if montage
+                    .tracks
+                    .iter()
+                    .any(|t| slots.contains(&(t.slot.clone(), t.group.clone())))
+                {
+                    sequences.extend(
+                        montage
+                            .segments()
+                            .filter_map(|s| s.sequence.as_ref().map(|s| s.as_str().to_string())),
+                    );
                     montages.push(montage);
                 }
             }
@@ -448,7 +534,14 @@ pub fn component_animation_notify_events(
         .map(|id| {
             let origin = index
                 .as_ref()
-                .and_then(|i| i.path_for_asset_id_kind(pulsar_reflection::AnimationSequenceAssetKind::KIND, &id).ok().flatten())
+                .and_then(|i| {
+                    i.path_for_asset_id_kind(
+                        pulsar_reflection::AnimationSequenceAssetKind::KIND,
+                        &id,
+                    )
+                    .ok()
+                    .flatten()
+                })
                 .map(|p| root.join(p))
                 .unwrap_or_else(|| std::path::PathBuf::from(&id));
             let loaded = match source.sequence(&id) {
@@ -462,16 +555,29 @@ pub fn component_animation_notify_events(
     // what the Montages own: their notifies and states, and their lifecycle events
     for montage in &montages {
         let id = montage.id.as_str();
-        let name = if montage.name.is_empty() { id.chars().take(8).collect::<String>() } else { montage.name.clone() };
+        let name = if montage.name.is_empty() {
+            id.chars().take(8).collect::<String>()
+        } else {
+            montage.name.clone()
+        };
         let short = |item: &str| item.chars().take(8).collect::<String>();
         for notify in &montage.notifies {
-            catalog.events.push((format!("{name}.{} [{}]", notify.name, short(&notify.id)), montage_notify_descriptor(id, notify)));
+            catalog.events.push((
+                format!("{name}.{} [{}]", notify.name, short(&notify.id)),
+                montage_notify_descriptor(id, notify),
+            ));
         }
         for state in &montage.notify_states {
-            catalog.events.push((format!("{name}.{} [{}]", state.name, short(&state.id)), montage_notify_state_descriptor(id, state)));
+            catalog.events.push((
+                format!("{name}.{} [{}]", state.name, short(&state.id)),
+                montage_notify_state_descriptor(id, state),
+            ));
         }
         for kind in MONTAGE_LIFECYCLE_KINDS {
-            catalog.events.push((format!("{name} {}", kind.replace('_', " ")), montage_lifecycle_descriptor(id, kind)));
+            catalog.events.push((
+                format!("{name} {}", kind.replace('_', " ")),
+                montage_lifecycle_descriptor(id, kind),
+            ));
         }
     }
     // the state machine events of every graph the component plays
@@ -479,13 +585,24 @@ pub fn component_animation_notify_events(
         if !assets.contains(id) {
             continue;
         }
-        let Some(graph) = source.graph(id) else { continue };
-        if !graph.graphs().any(|(_, kind, _)| kind == skeletal_assets::anim_graph::catalogue::GraphKind::StateMachine) {
+        let Some(graph) = source.graph(id) else {
+            continue;
+        };
+        if !graph.graphs().any(|(_, kind, _)| {
+            kind == skeletal_assets::anim_graph::catalogue::GraphKind::StateMachine
+        }) {
             continue;
         }
-        let name = if graph.name.is_empty() { id.chars().take(8).collect::<String>() } else { graph.name.clone() };
+        let name = if graph.name.is_empty() {
+            id.chars().take(8).collect::<String>()
+        } else {
+            graph.name.clone()
+        };
         for kind in StateEventKind::ALL {
-            catalog.events.push((format!("{name} state {}", kind.name().replace('_', " ")), anim_state_descriptor(id, kind)));
+            catalog.events.push((
+                format!("{name} state {}", kind.name().replace('_', " ")),
+                anim_state_descriptor(id, kind),
+            ));
         }
     }
     catalog.events.sort_by_key(|(_, descriptor)| descriptor.id);
@@ -498,9 +615,15 @@ enum Bridge {
     /// `SkeletalMeshComponent.animation_notify`: notifies and notify-state phases.
     Notify,
     /// `SkeletalMeshComponent.montage_<kind>`.
-    Montage { kind: &'static str, event: MontageLifecycleEvent },
+    Montage {
+        kind: &'static str,
+        event: MontageLifecycleEvent,
+    },
     /// `SkeletalMeshComponent.anim_state_entered` and the other three state machine events.
-    State { kind: StateEventKind, event: AnimStateEvent },
+    State {
+        kind: StateEventKind,
+        event: AnimStateEvent,
+    },
 }
 
 /// One occurrence waiting for delivery through the component's event channel.
@@ -529,10 +652,18 @@ impl PendingNotify {
     /// A notify, or a phase of a notify state, from a playback instance.
     fn from_occurrence(occurrence: &NotifyOccurrence, generation: i64) -> Self {
         let descriptor = match (&occurrence.owner, occurrence.item) {
-            (NotifyOwner::Sequence(s), NotifyItem::Notify(i)) => animation_notify_descriptor(s, &s.features.notifies[i]),
-            (NotifyOwner::Sequence(s), NotifyItem::State(i)) => animation_notify_state_descriptor(s, &s.features.notify_states[i]),
-            (NotifyOwner::Montage(m), NotifyItem::Notify(i)) => montage_notify_descriptor(&m.id, &m.notifies[i]),
-            (NotifyOwner::Montage(m), NotifyItem::State(i)) => montage_notify_state_descriptor(&m.id, &m.notify_states[i]),
+            (NotifyOwner::Sequence(s), NotifyItem::Notify(i)) => {
+                animation_notify_descriptor(s, &s.features.notifies[i])
+            }
+            (NotifyOwner::Sequence(s), NotifyItem::State(i)) => {
+                animation_notify_state_descriptor(s, &s.features.notify_states[i])
+            }
+            (NotifyOwner::Montage(m), NotifyItem::Notify(i)) => {
+                montage_notify_descriptor(&m.id, &m.notifies[i])
+            }
+            (NotifyOwner::Montage(m), NotifyItem::State(i)) => {
+                montage_notify_state_descriptor(&m.id, &m.notify_states[i])
+            }
         };
         let event = AnimationNotifyEvent {
             sequence_id: occurrence.owner.id(),
@@ -653,7 +784,17 @@ impl PendingNotify {
                 DynValue::I64(generation),
             ],
         );
-        Self { event: AnimationNotifyEvent::default(), bridge: Bridge::State { kind: event.kind, event: data }, authored, descriptor, target: NotifyTarget::Self_, generic_accepted: false }
+        Self {
+            event: AnimationNotifyEvent::default(),
+            bridge: Bridge::State {
+                kind: event.kind,
+                event: data,
+            },
+            authored,
+            descriptor,
+            target: NotifyTarget::Self_,
+            generic_accepted: false,
+        }
     }
 }
 
@@ -673,13 +814,18 @@ fn montage_result_name(result: MontageResult) -> &'static str {
 /// gameplay and script writes to graph parameters made later in the frame apply
 /// next frame.
 pub fn run_animation_phase(world: &mut World, delta_seconds: f32) {
-    let players: Vec<Entity> = world.query::<&SkeletalMeshComponent>().map(|(entity, _)| entity).collect();
+    let players: Vec<Entity> = world
+        .query::<&SkeletalMeshComponent>()
+        .map(|(entity, _)| entity)
+        .collect();
     for instance in players {
         let link = world
             .get::<pulsar_world_registry::pulsar_scene_model::ComponentOwner>(instance)
             .map(|link| (link.is_enabled(), link.entity()));
         let live = link.is_some_and(|(enabled, owner)| enabled && world.is_alive(owner));
-        let Some(mut player) = world.get_mut::<SkeletalMeshComponent>(instance) else { continue };
+        let Some(mut player) = world.get_mut::<SkeletalMeshComponent>(instance) else {
+            continue;
+        };
         let mut moved = None;
         if live {
             // a failed suffix is retried in the next AfterScripts publication phase.
@@ -698,14 +844,27 @@ pub fn run_animation_phase(world: &mut World, delta_seconds: f32) {
 /// Move `owner` by a root-motion delta in its own local frame. Moving is
 /// subject to the same gates as script moves (`Static` objects stay put); a
 /// refused move drops the delta.
-fn apply_root_motion(world: &mut World, owner: Entity, delta: &skeletal_assets::runtime::pose::RootMotion) {
+fn apply_root_motion(
+    world: &mut World,
+    owner: Entity,
+    delta: &skeletal_assets::runtime::pose::RootMotion,
+) {
     use pulsar_world_registry::pulsar_scene_model::components::Transform;
-    if let Err(reason) = pulsar_world_registry::pulsar_scene_model::motion::ensure_can_move(world, owner) {
+    if let Err(reason) =
+        pulsar_world_registry::pulsar_scene_model::motion::ensure_can_move(world, owner)
+    {
         tracing::debug!(%reason, "root motion not applied");
         return;
     }
-    let Some(mut transform) = world.get_mut::<Transform>(owner) else { return };
-    let (position, rotation) = skeletal_assets::runtime::rootmotion::advance_transform(transform.position, transform.rotation, transform.scale, delta);
+    let Some(mut transform) = world.get_mut::<Transform>(owner) else {
+        return;
+    };
+    let (position, rotation) = skeletal_assets::runtime::rootmotion::advance_transform(
+        transform.position,
+        transform.rotation,
+        transform.scale,
+        delta,
+    );
     if position != transform.position || rotation != transform.rotation {
         transform.position = position;
         transform.rotation = rotation;
@@ -917,14 +1076,34 @@ impl NotifyPlayback {
     /// that precede the playback (started, blended in, section changed), the
     /// notifies and notify-state phases in playback order per playback, then the
     /// ones that follow it (blending out, ended).
-    fn collect_report(&mut self, report: &skeletal_assets::runtime::anim_instance::UpdateReport, montage_events: &[MontageEvent], graph_id: &str) -> Result<(), String> {
+    fn collect_report(
+        &mut self,
+        report: &skeletal_assets::runtime::anim_instance::UpdateReport,
+        montage_events: &[MontageEvent],
+        graph_id: &str,
+    ) -> Result<(), String> {
         let generation = self.generation;
-        self.pending.extend(report.state_events.iter().map(|e| PendingNotify::state(e, graph_id, generation)));
+        self.pending.extend(
+            report
+                .state_events
+                .iter()
+                .map(|e| PendingNotify::state(e, graph_id, generation)),
+        );
         let mut occurrences = Vec::new();
         let result = self.tracker.observe_report(report, &mut occurrences);
-        self.push_lifecycle(montage_events.iter().filter(|e| is_early(&e.kind)), generation);
-        self.pending.extend(occurrences.iter().map(|o| PendingNotify::from_occurrence(o, generation)));
-        self.push_lifecycle(montage_events.iter().filter(|e| !is_early(&e.kind)), generation);
+        self.push_lifecycle(
+            montage_events.iter().filter(|e| is_early(&e.kind)),
+            generation,
+        );
+        self.pending.extend(
+            occurrences
+                .iter()
+                .map(|o| PendingNotify::from_occurrence(o, generation)),
+        );
+        self.push_lifecycle(
+            montage_events.iter().filter(|e| !is_early(&e.kind)),
+            generation,
+        );
         result
     }
 
@@ -933,7 +1112,11 @@ impl NotifyPlayback {
         self.push_lifecycle(events.iter(), generation);
     }
 
-    fn push_lifecycle<'a>(&mut self, events: impl Iterator<Item = &'a MontageEvent>, generation: i64) {
+    fn push_lifecycle<'a>(
+        &mut self,
+        events: impl Iterator<Item = &'a MontageEvent>,
+        generation: i64,
+    ) {
         for event in events {
             let kind = match &event.kind {
                 MontageEventKind::Started => "started",
@@ -942,9 +1125,14 @@ impl NotifyPlayback {
                 MontageEventKind::BlendingOut => "blending_out",
                 MontageEventKind::Ended(_) => "ended",
             };
-            self.pending.push_back(PendingNotify::lifecycle(event, kind, generation));
-            if matches!(event.kind, MontageEventKind::Ended(MontageResult::Interrupted { .. })) {
-                self.pending.push_back(PendingNotify::lifecycle(event, "interrupted", generation));
+            self.pending
+                .push_back(PendingNotify::lifecycle(event, kind, generation));
+            if matches!(
+                event.kind,
+                MontageEventKind::Ended(MontageResult::Interrupted { .. })
+            ) {
+                self.pending
+                    .push_back(PendingNotify::lifecycle(event, "interrupted", generation));
             }
         }
     }
@@ -955,7 +1143,11 @@ impl NotifyPlayback {
         let mut occurrences = Vec::new();
         self.tracker.end_all(reason, &mut occurrences);
         let generation = self.generation;
-        self.pending.extend(occurrences.iter().map(|o| PendingNotify::from_occurrence(o, generation)));
+        self.pending.extend(
+            occurrences
+                .iter()
+                .map(|o| PendingNotify::from_occurrence(o, generation)),
+        );
     }
 
     /// Notify states currently active across all playbacks.
@@ -966,7 +1158,12 @@ impl NotifyPlayback {
 }
 
 fn is_early(kind: &MontageEventKind) -> bool {
-    matches!(kind, MontageEventKind::Started | MontageEventKind::BlendedIn | MontageEventKind::SectionChanged { .. })
+    matches!(
+        kind,
+        MontageEventKind::Started
+            | MontageEventKind::BlendedIn
+            | MontageEventKind::SectionChanged { .. }
+    )
 }
 
 impl Clone for NotifyPlayback {
@@ -1003,7 +1200,10 @@ impl SkeletalMeshComponent {
         }
         self.reconcile_notify_playback();
         let looping = self.internal_looping();
-        let duration = self.loaded_animation.as_ref().map(|a| a.clip.duration as f64);
+        let duration = self
+            .loaded_animation
+            .as_ref()
+            .map(|a| a.clip.duration as f64);
         let phase = match duration {
             Some(duration) if !duration.is_finite() || duration < 0.0 => {
                 return Err("Clip duration must be finite and nonnegative".into());
@@ -1017,7 +1217,10 @@ impl SkeletalMeshComponent {
         }
         let clock = if looping { seconds } else { phase as f64 };
         if let Some(instance) = self.anim.instance.as_mut() {
-            if !instance.seek_single_sequence(clock) && self.loaded_graph.is_none() && self.loaded_animation.is_some() {
+            if !instance.seek_single_sequence(clock)
+                && self.loaded_graph.is_none()
+                && self.loaded_animation.is_some()
+            {
                 return Err("The animation runtime has no sequence player to seek".into());
             }
         }
@@ -1061,7 +1264,9 @@ impl SkeletalMeshComponent {
         let looping = self.internal_looping();
         let reverse = self.playback_rate < 0.0;
         let policy = self.root_motion_policy();
-        let Some(instance) = self.anim.instance.as_mut() else { return Ok(()) };
+        let Some(instance) = self.anim.instance.as_mut() else {
+            return Ok(());
+        };
         instance.set_root_motion_extraction(policy.mode.extracts());
         instance.advance(scaled, TimeStep::Variable, UpdateMode::Play);
         let position = instance.single_sequence_position();
@@ -1070,26 +1275,55 @@ impl SkeletalMeshComponent {
         }
         let events = std::mem::take(&mut instance.report.montage_events);
         self.anim.montage_events.extend(events.iter().cloned());
-        let collected = self.notify_playback.collect_report(&instance.report, &events, self.loaded_graph.as_ref().map_or("", |g| g.id.as_str()));
-        let delta = policy.delta(&instance.report.root_motion, &instance.report.montage_root_motion);
+        let collected = self.notify_playback.collect_report(
+            &instance.report,
+            &events,
+            self.loaded_graph.as_ref().map_or("", |g| g.id.as_str()),
+        );
+        let delta = policy.delta(
+            &instance.report.root_motion,
+            &instance.report.montage_root_motion,
+        );
         if self.root_motion_authority.logs_moves() {
-            let montage_delta = policy.delta(&instance.report.montage_root_motion, &instance.report.montage_root_motion);
+            let montage_delta = policy.delta(
+                &instance.report.montage_root_motion,
+                &instance.report.montage_root_motion,
+            );
             let montage = instance
                 .montages
                 .instances()
                 .iter()
-                .find(|m| !matches!(m.montage.root_motion, skeletal_assets::montage::MontageRootMotion::Ignore))
+                .find(|m| {
+                    !matches!(
+                        m.montage.root_motion,
+                        skeletal_assets::montage::MontageRootMotion::Ignore
+                    )
+                })
                 .map(|m| (m.montage.id.clone(), m.position as f32));
             self.root_motion_sequence += 1;
-            self.root_motion_moves.push(RootMotionMove { sequence: self.root_motion_sequence, delta_seconds: instance.report.advanced, delta: delta.clone(), montage_delta, montage });
+            self.root_motion_moves.push(RootMotionMove {
+                sequence: self.root_motion_sequence,
+                delta_seconds: instance.report.advanced,
+                delta: delta.clone(),
+                montage_delta,
+                montage,
+            });
         }
         // a simulated proxy's owner is moved by replication, never by its animation
         self.pending_root_motion = self.root_motion_authority.moves_owner().then_some(delta);
         if let (Some(position), Some(sequence)) = (position, self.loaded_animation.as_ref()) {
             let duration = sequence.clip.duration as f64;
-            self.elapsed_seconds = if looping && duration > 0.0 { position.rem_euclid(duration) as f32 } else { position.clamp(0.0, duration) as f32 };
+            self.elapsed_seconds = if looping && duration > 0.0 {
+                position.rem_euclid(duration) as f32
+            } else {
+                position.clamp(0.0, duration) as f32
+            };
             // a one-shot (or zero-length) sequence stops at its end (its start, reversed)
-            let finished = if reverse { position <= 0.0 } else { position >= duration };
+            let finished = if reverse {
+                position <= 0.0
+            } else {
+                position >= duration
+            };
             if (!looping || duration == 0.0) && finished {
                 self.playing = false;
             }
@@ -1104,7 +1338,13 @@ impl SkeletalMeshComponent {
             .anim
             .instance
             .as_ref()
-            .map(|i| i.montages.instances().iter().map(|m| m.montage.clone()).collect())
+            .map(|i| {
+                i.montages
+                    .instances()
+                    .iter()
+                    .map(|m| m.montage.clone())
+                    .collect()
+            })
             .unwrap_or_default();
         for montage in montages {
             register_montage_events(&montage, hub)?;
@@ -1135,7 +1375,13 @@ impl SkeletalMeshComponent {
             .notifies
             .first()
             .map(animation_notify_descriptor_id(sequence))
-            .or_else(|| sequence.features.notify_states.first().map(|s| animation_notify_state_descriptor(sequence, s).id))
+            .or_else(|| {
+                sequence
+                    .features
+                    .notify_states
+                    .first()
+                    .map(|s| animation_notify_state_descriptor(sequence, s).id)
+            })
             .and_then(|id| hub.descriptor(id));
         self.notify_playback.registered_sequence = Some(sequence.clone());
         Ok(())
@@ -1150,8 +1396,11 @@ impl SkeletalMeshComponent {
                 continue;
             }
             seen.push(pending.descriptor.id);
-            hub.register(pending.descriptor.clone(), EventCategory::Custom("Animation".into()))
-                .map_err(|e| e.to_string())?;
+            hub.register(
+                pending.descriptor.clone(),
+                EventCategory::Custom("Animation".into()),
+            )
+            .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -1176,8 +1425,12 @@ impl SkeletalMeshComponent {
                         match kind {
                             StateEventKind::Entered => events.anim_state_entered(event)?,
                             StateEventKind::Exited => events.anim_state_exited(event)?,
-                            StateEventKind::TransitionStarted => events.anim_transition_started(event)?,
-                            StateEventKind::TransitionCompleted => events.anim_transition_completed(event)?,
+                            StateEventKind::TransitionStarted => {
+                                events.anim_transition_started(event)?
+                            }
+                            StateEventKind::TransitionCompleted => {
+                                events.anim_transition_completed(event)?
+                            }
                         }
                     }
                     Bridge::Montage { kind, event } => {
@@ -1206,7 +1459,9 @@ impl SkeletalMeshComponent {
     }
 }
 
-fn animation_notify_descriptor_id(sequence: &AnimSeqAsset) -> impl Fn(&AnimationNotify) -> u64 + '_ {
+fn animation_notify_descriptor_id(
+    sequence: &AnimSeqAsset,
+) -> impl Fn(&AnimationNotify) -> u64 + '_ {
     move |notify| animation_notify_descriptor(sequence, notify).id
 }
 
@@ -1604,8 +1859,15 @@ mod tests {
         p.seek_animation(0.25).unwrap();
         assert_eq!(p.elapsed_seconds, 0.25);
         p.advance(0.5);
-        assert!(p.elapsed_seconds > 0.25, "the clock moved: {}", p.elapsed_seconds);
-        assert!(p.physics_pose.is_some(), "ownership is the rig's to give back");
+        assert!(
+            p.elapsed_seconds > 0.25,
+            "the clock moved: {}",
+            p.elapsed_seconds
+        );
+        assert!(
+            p.physics_pose.is_some(),
+            "ownership is the rig's to give back"
+        );
     }
     #[test]
     fn descriptors_keep_identity_across_labels_and_refuse_live_schema_conflicts() {

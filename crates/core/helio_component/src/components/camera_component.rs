@@ -123,9 +123,17 @@ impl CameraComponent {
 
     /// The clip planes: near positive, far beyond it.
     pub fn clip_planes(&self) -> (f32, f32) {
-        let near = if self.near.is_finite() { self.near } else { 0.05 };
+        let near = if self.near.is_finite() {
+            self.near
+        } else {
+            0.05
+        };
         let near = near.max(1.0e-3);
-        let far = if self.far.is_finite() { self.far } else { 2000.0 };
+        let far = if self.far.is_finite() {
+            self.far
+        } else {
+            2000.0
+        };
         (near, far.max(near + 1.0e-3))
     }
 
@@ -167,7 +175,11 @@ pub enum ResolvedProjection {
     /// `half_height` metres up and down from the eye. The renderer sets the
     /// depth range of an orthographic view itself, so `near` and `far` are
     /// carried for a host that wants them.
-    Orthographic { half_height: f32, near: f32, far: f32 },
+    Orthographic {
+        half_height: f32,
+        near: f32,
+        far: f32,
+    },
 }
 
 #[register_world_component]
@@ -210,7 +222,10 @@ pub fn camera_on_object(world: &World, root: Entity) -> Option<SelectedCamera> {
         return None;
     }
     let own = attachments::enabled_components_of::<CameraComponent>(world, root);
-    if let Some(found) = best(own.into_iter().map(|(instance, camera)| (instance, root, camera))) {
+    if let Some(found) = best(
+        own.into_iter()
+            .map(|(instance, camera)| (instance, root, camera)),
+    ) {
         return Some(found);
     }
     let below = descendants_of(world, root).into_iter().flat_map(|owner| {

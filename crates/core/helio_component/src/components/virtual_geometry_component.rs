@@ -21,7 +21,7 @@
 
 use engine_class_derive::{engine_class, register_world_component};
 use helio_vg_format::{
-    TierLock, INST_ENABLED, INST_FORCE_ROOT_ONLY, INST_SHADOW_CASTER, INST_TIER_SHIFT,
+    INST_ENABLED, INST_FORCE_ROOT_ONLY, INST_SHADOW_CASTER, INST_TIER_SHIFT, TierLock,
 };
 use pulsar_reflection::Reflectable;
 use serde::{Deserialize, Serialize};
@@ -204,7 +204,9 @@ fn virtual_geometry_property_written(
 ) {
     if matches!(
         property,
-        None | Some("enabled" | "tier_lock" | "lod_error_scale" | "force_root_only" | "shadow_caster")
+        None | Some(
+            "enabled" | "tier_lock" | "lod_error_scale" | "force_root_only" | "shadow_caster"
+        )
     ) {
         refresh_gpu_override(component);
     }
@@ -247,9 +249,17 @@ mod tests {
         );
         assert_eq!(flags & (INST_LOD_SUPPRESS | INST_CONE_CULL), 0);
         assert_eq!(vg_override_flags(false, VgTierLock::Auto, false, false), 0);
-        for tier in [VgTierLock::Auto, VgTierLock::HwRaster, VgTierLock::SwRaster, VgTierLock::Dense] {
+        for tier in [
+            VgTierLock::Auto,
+            VgTierLock::HwRaster,
+            VgTierLock::SwRaster,
+            VgTierLock::Dense,
+        ] {
             let row = vg_override_flags(true, tier, false, true);
-            assert_eq!(TierLock::from_bits(row >> INST_TIER_SHIFT), TierLock::from(tier));
+            assert_eq!(
+                TierLock::from_bits(row >> INST_TIER_SHIFT),
+                TierLock::from(tier)
+            );
         }
     }
 

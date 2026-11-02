@@ -37,8 +37,9 @@ use pulsar_scenedb::{Entity, World};
 use helio_pass_voxel_planet::feature_recipe::FeatureRecipe;
 
 use super::{
-    BlockData, BlockMaterialChange, VoxelAir, feature_recipe, VoxelLayerKind, VoxelTerrainComponent,
+    BlockData, BlockMaterialChange, VoxelAir, VoxelLayerKind, VoxelTerrainComponent,
     VoxelTerrainLayer, VoxelTerrainLayersComponent, VoxelTerrainStack, VoxelWorldShape,
+    feature_recipe,
 };
 
 /// Base colour (linear 0..1 sRGB-encoded components, as authored) of material
@@ -86,7 +87,9 @@ pub fn ground_fingerprint(
     let recipe = serde_json::to_string(features).expect("a feature recipe serializes");
     recipe
         .bytes()
-        .fold(ground, |h, byte| (h ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3))
+        .fold(ground, |h, byte| {
+            (h ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3)
+        })
         .max(1)
 }
 
@@ -259,7 +262,10 @@ pub fn terrain_world(world: &World, entity: Entity) -> Result<Arc<Planet>, Strin
             return Ok(Arc::clone(&cached.planet));
         }
     }
-    let planet = Arc::new(journal_planet(grown(recipe.clone(), &features), &component.edits)?);
+    let planet = Arc::new(journal_planet(
+        grown(recipe.clone(), &features),
+        &component.edits,
+    )?);
     if worlds.len() >= 16 && !worlds.contains_key(&key) {
         worlds.clear();
     }
@@ -449,7 +455,6 @@ fn extend_world(
     cached.edits.extend(edits.iter().cloned());
     Ok(yields)
 }
-
 
 /// The edit that makes the cell containing `p` exactly `material` (0 air).
 pub fn block_edit(planet: &Planet, p: DVec3, material: u32) -> VoxelBrushEdit {

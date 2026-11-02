@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use helio_component::cooked_texture::CookFormat;
-use helio_component::texture_assets::{set_preferred_cook_format, LoadedTexture};
+use helio_component::texture_assets::{LoadedTexture, set_preferred_cook_format};
 use pulsar_scenedb::{
     derived_stats, residency_budget, set_derived_cache_dir, set_residency_budget,
 };
@@ -31,7 +31,11 @@ fn cook_real_textures_and_report_what_it_costs() {
         eprintln!("set PULSAR_TEST_TEXTURES to a ';'-separated list of image files");
         return;
     };
-    let paths: Vec<PathBuf> = list.split(';').filter(|p| !p.is_empty()).map(PathBuf::from).collect();
+    let paths: Vec<PathBuf> = list
+        .split(';')
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .collect();
     let scratch = tempfile::tempdir().unwrap();
     set_derived_cache_dir(Some(scratch.path().join("derived")));
     set_preferred_cook_format(CookFormat::Bc7);
@@ -40,9 +44,12 @@ fn cook_real_textures_and_report_what_it_costs() {
         "\n{:<34} {:>11} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9}",
         "image", "source", "first(ms)", "again(ms)", "evict(ms)", "bc7 MiB", "rgba8 MiB", "rgba8x1"
     );
-    let (mut total_source, mut total_bc7, mut total_rgba, mut total_flat) = (0usize, 0usize, 0usize, 0usize);
+    let (mut total_source, mut total_bc7, mut total_rgba, mut total_flat) =
+        (0usize, 0usize, 0usize, 0usize);
     for path in &paths {
-        let source_bytes = std::fs::metadata(path).map(|m| m.len() as usize).unwrap_or(0);
+        let source_bytes = std::fs::metadata(path)
+            .map(|m| m.len() as usize)
+            .unwrap_or(0);
 
         let started = Instant::now();
         let first = LoadedTexture::load(path).expect("first load");
@@ -86,11 +93,17 @@ fn cook_real_textures_and_report_what_it_costs() {
     let stats = derived_stats();
     println!(
         "\nTOTAL source {:.1} MiB | bc7+mips {:.1} MiB | rgba8+mips {:.1} MiB | rgba8 one level {:.1} MiB",
-        mib(total_source), mib(total_bc7), mib(total_rgba), mib(total_flat)
+        mib(total_source),
+        mib(total_bc7),
+        mib(total_rgba),
+        mib(total_flat)
     );
     println!(
         "derived cache: {} hits, {} cooked, {:.1} MiB written, {:.1} MiB read",
-        stats.hits, stats.misses, mib(stats.bytes_written as usize), mib(stats.bytes_read as usize)
+        stats.hits,
+        stats.misses,
+        mib(stats.bytes_written as usize),
+        mib(stats.bytes_read as usize)
     );
     set_derived_cache_dir(None);
 }

@@ -576,7 +576,8 @@ impl Default for PostProcessSettingsProps {
             tonemap_operator: TonemapOperator::AgxPunchy,
             tonemap_exposure: 1.0,
             tonemap_white_point: 1.0,
-            local_exposure_highlight_contrast: helio_pass_postprocess::LOCAL_EXPOSURE_HIGHLIGHT_CONTRAST,
+            local_exposure_highlight_contrast:
+                helio_pass_postprocess::LOCAL_EXPOSURE_HIGHLIGHT_CONTRAST,
             local_exposure_shadow_contrast: helio_pass_postprocess::LOCAL_EXPOSURE_SHADOW_CONTRAST,
             local_exposure_detail_strength: helio_pass_postprocess::LOCAL_EXPOSURE_DETAIL_STRENGTH,
             vignette_enabled: false,

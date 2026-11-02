@@ -5,9 +5,8 @@
 use super::phase3_tests::*;
 use super::*;
 use pulsar_events::{
-    entity_channel,
+    EventCategory, EventHub, entity_channel,
     gamma::{Channel, DynValue, SubscribeOptions},
-    EventCategory, EventHub,
 };
 use pulsar_scenedb::World;
 use pulsar_world_registry::ComponentRuntimeState;
@@ -15,8 +14,8 @@ use serde_json::json;
 use skeletal_assets::anim_graph::builder::GraphBuilder;
 use skeletal_assets::anim_graph::catalogue::{GraphKind, ParamType};
 use skeletal_assets::anim_graph::{AnimSubGraph, AnimationGraphAsset, GraphParameter};
-use skeletal_assets::runtime::graph::compile::compile_graph;
 use skeletal_assets::runtime::graph::StateEventKind;
+use skeletal_assets::runtime::graph::compile::compile_graph;
 use std::sync::Mutex;
 
 fn sub(id: &str, kind: GraphKind, graph: GraphBuilder) -> AnimSubGraph {
@@ -246,9 +245,11 @@ fn state_machine_events_reach_their_own_component_in_order_and_no_other() {
         seen_a.len(),
         "one canonical occurrence per generic event"
     );
-    assert!(canonical
-        .iter()
-        .all(|name| name.starts_with(&format!("{}.state_", graph.id))));
+    assert!(
+        canonical
+            .iter()
+            .all(|name| name.starts_with(&format!("{}.state_", graph.id)))
+    );
     assert_eq!(
         seen_b.lock().unwrap().clone(),
         vec![row("entered", "Idle", "Idle", "Idle", "")],

@@ -5,11 +5,13 @@
 //! renderer-independent data API. No persistence behavior is implied by the
 //! runtime data fields.
 
-use engine_class_derive::{component_events, engine_class};
 use super::VoxelFeatureSpawn;
+use engine_class_derive::{component_events, engine_class};
 use helio_pass_voxel_planet::layers::TerrainLayers;
 use helio_pass_voxel_planet::volumes;
-use helio_voxel_data::{VOXEL_TERRAIN_GENERATOR, VOXEL_TERRAIN_GENERATOR_VERSION, VoxelEditJournal};
+use helio_voxel_data::{
+    VOXEL_TERRAIN_GENERATOR, VOXEL_TERRAIN_GENERATOR_VERSION, VoxelEditJournal,
+};
 
 /// Typed payload for block lifecycle events. Coordinates are the exact
 /// world-space centre of the base cell; `material` is the material present
@@ -832,54 +834,186 @@ pub struct VoxelCaves {
     #[property(category = "Caves")]
     pub enabled: bool,
     /// Region size: one network a region at most.
-    #[property(min = 50.0, max = 5000.0, step = 10.0, category = "Caves", label = "Spacing (m)")]
+    #[property(
+        min = 50.0,
+        max = 5000.0,
+        step = 10.0,
+        category = "Caves",
+        label = "Spacing (m)"
+    )]
     pub spacing_m: f64,
     /// Share of regions with a network.
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Caves", label = "Networks (share)")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Networks (share)"
+    )]
     pub share: f64,
     /// Depth of hubs and chambers under the ground.
-    #[property(min = 0.0, max = 1000.0, step = 1.0, category = "Caves", label = "Shallowest (m)")]
+    #[property(
+        min = 0.0,
+        max = 1000.0,
+        step = 1.0,
+        category = "Caves",
+        label = "Shallowest (m)"
+    )]
     pub depth_min_m: f64,
-    #[property(min = 0.0, max = 1000.0, step = 1.0, category = "Caves", label = "Deepest (m)")]
+    #[property(
+        min = 0.0,
+        max = 1000.0,
+        step = 1.0,
+        category = "Caves",
+        label = "Deepest (m)"
+    )]
     pub depth_max_m: f64,
     /// Cells deeper than this under the surface are never carved.
-    #[property(min = 1.0, max = 4000.0, step = 1.0, category = "Caves", label = "Depth limit (m)")]
+    #[property(
+        min = 1.0,
+        max = 4000.0,
+        step = 1.0,
+        category = "Caves",
+        label = "Depth limit (m)"
+    )]
     pub max_depth_m: f64,
     /// Rock kept over caves, except along entrances.
-    #[property(min = 0.0, max = 100.0, step = 0.5, category = "Caves", label = "Cover (m)")]
+    #[property(
+        min = 0.0,
+        max = 100.0,
+        step = 0.5,
+        category = "Caves",
+        label = "Cover (m)"
+    )]
     pub cover_m: f64,
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Caves", label = "Hub chambers (share)")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Hub chambers (share)"
+    )]
     pub hub_chambers: f64,
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Caves", label = "Chambers (share)")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Chambers (share)"
+    )]
     pub chambers: f64,
-    #[property(min = 0.5, max = 200.0, step = 0.5, category = "Caves", label = "Chamber radius min (m)")]
+    #[property(
+        min = 0.5,
+        max = 200.0,
+        step = 0.5,
+        category = "Caves",
+        label = "Chamber radius min (m)"
+    )]
     pub chamber_min_m: f64,
-    #[property(min = 0.5, max = 200.0, step = 0.5, category = "Caves", label = "Chamber radius max (m)")]
+    #[property(
+        min = 0.5,
+        max = 200.0,
+        step = 0.5,
+        category = "Caves",
+        label = "Chamber radius max (m)"
+    )]
     pub chamber_max_m: f64,
-    #[property(min = 0.1, max = 1.0, step = 0.01, category = "Caves", label = "Chamber height (share)")]
+    #[property(
+        min = 0.1,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Chamber height (share)"
+    )]
     pub chamber_height: f64,
-    #[property(min = 0.2, max = 50.0, step = 0.1, category = "Caves", label = "Tunnel radius min (m)")]
+    #[property(
+        min = 0.2,
+        max = 50.0,
+        step = 0.1,
+        category = "Caves",
+        label = "Tunnel radius min (m)"
+    )]
     pub tunnel_min_m: f64,
-    #[property(min = 0.2, max = 50.0, step = 0.1, category = "Caves", label = "Tunnel radius max (m)")]
+    #[property(
+        min = 0.2,
+        max = 50.0,
+        step = 0.1,
+        category = "Caves",
+        label = "Tunnel radius max (m)"
+    )]
     pub tunnel_max_m: f64,
-    #[property(min = 0.1, max = 1.0, step = 0.01, category = "Caves", label = "Tunnel height (share)")]
+    #[property(
+        min = 0.1,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Tunnel height (share)"
+    )]
     pub tunnel_height: f64,
     /// Share of a vertical radius under the axis kept as floor (1: none).
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Caves", label = "Chamber floor")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Chamber floor"
+    )]
     pub chamber_floor: f64,
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Caves", label = "Tunnel floor")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Tunnel floor"
+    )]
     pub tunnel_floor: f64,
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Caves", label = "Links (share)")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Links (share)"
+    )]
     pub links: f64,
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Caves", label = "Entrances (share)")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Caves",
+        label = "Entrances (share)"
+    )]
     pub entrances: f64,
-    #[property(min = 0.0, max = 200.0, step = 1.0, category = "Caves", label = "Entrance lift (m)")]
+    #[property(
+        min = 0.0,
+        max = 200.0,
+        step = 1.0,
+        category = "Caves",
+        label = "Entrance lift (m)"
+    )]
     pub entrance_lift_m: f64,
-    #[property(min = 0.0, max = 100.0, step = 0.5, category = "Caves", label = "Bend (m)")]
+    #[property(
+        min = 0.0,
+        max = 100.0,
+        step = 0.5,
+        category = "Caves",
+        label = "Bend (m)"
+    )]
     pub bend_m: f64,
-    #[property(min = 0.0, max = 0.5, step = 0.01, category = "Caves", label = "Roughness")]
+    #[property(
+        min = 0.0,
+        max = 0.5,
+        step = 0.01,
+        category = "Caves",
+        label = "Roughness"
+    )]
     pub roughness: f64,
-    #[property(min = 0.2, max = 100.0, step = 0.1, category = "Caves", label = "Roughness size (m)")]
+    #[property(
+        min = 0.2,
+        max = 100.0,
+        step = 0.1,
+        category = "Caves",
+        label = "Roughness size (m)"
+    )]
     pub roughness_m: f64,
 }
 
@@ -945,7 +1079,13 @@ pub struct VoxelClimate {
     #[property(min = -100.0, max = 100.0, step = 0.5, category = "Climate", label = "Poles (C)")]
     pub pole_c: f64,
     /// Cooling with height.
-    #[property(min = 0.0, max = 20.0, step = 0.1, category = "Climate", label = "Lapse rate (C/km)")]
+    #[property(
+        min = 0.0,
+        max = 20.0,
+        step = 0.1,
+        category = "Climate",
+        label = "Lapse rate (C/km)"
+    )]
     pub lapse_c_per_km: f64,
     /// Ground colder than this keeps its snow.
     #[property(min = -50.0, max = 50.0, step = 0.5, category = "Climate", label = "Snow (C)")]
@@ -955,16 +1095,34 @@ pub struct VoxelClimate {
     #[property(min = 0.0, max = 4.0, step = 0.05, category = "Climate")]
     pub wetness: f64,
     /// How far inland, upwind, the rain halves.
-    #[property(min = 1.0, max = 20000.0, step = 10.0, category = "Climate", label = "Continentality (km)")]
+    #[property(
+        min = 1.0,
+        max = 20000.0,
+        step = 10.0,
+        category = "Climate",
+        label = "Continentality (km)"
+    )]
     pub continentality_km: f64,
     /// Height of ground upwind that halves the rain behind it.
-    #[property(min = 1.0, max = 20000.0, step = 10.0, category = "Climate", label = "Rain shadow (m)")]
+    #[property(
+        min = 1.0,
+        max = 20000.0,
+        step = 10.0,
+        category = "Climate",
+        label = "Rain shadow (m)"
+    )]
     pub rain_shadow_m: f64,
     /// Ground under the datum is sea.
     #[property(category = "Climate")]
     pub ocean: bool,
     /// Size of the maps' texels at face centres.
-    #[property(min = 0.1, max = 1000.0, step = 1.0, category = "Climate", label = "Map texel (km)")]
+    #[property(
+        min = 0.1,
+        max = 1000.0,
+        step = 1.0,
+        category = "Climate",
+        label = "Map texel (km)"
+    )]
     pub texel_km: f64,
 }
 
@@ -1017,22 +1175,64 @@ pub struct VoxelCliffs {
     #[property(category = "Cliffs")]
     pub enabled: bool,
     /// Largest displacement along the surface's normal.
-    #[property(min = 0.0, max = 40.0, step = 0.5, category = "Cliffs", label = "Depth (m)")]
+    #[property(
+        min = 0.0,
+        max = 40.0,
+        step = 0.5,
+        category = "Cliffs",
+        label = "Depth (m)"
+    )]
     pub depth_m: f64,
     /// Ledge spacing.
-    #[property(min = 0.2, max = 100.0, step = 0.1, category = "Cliffs", label = "Strata (m)")]
+    #[property(
+        min = 0.2,
+        max = 100.0,
+        step = 0.1,
+        category = "Cliffs",
+        label = "Strata (m)"
+    )]
     pub strata_m: f64,
     /// Slope (rise over run) over which shapes fade in.
-    #[property(min = 0.0, max = 10.0, step = 0.05, category = "Cliffs", label = "Slope from")]
+    #[property(
+        min = 0.0,
+        max = 10.0,
+        step = 0.05,
+        category = "Cliffs",
+        label = "Slope from"
+    )]
     pub slope_min: f64,
-    #[property(min = 0.0, max = 10.0, step = 0.05, category = "Cliffs", label = "Slope to")]
+    #[property(
+        min = 0.0,
+        max = 10.0,
+        step = 0.05,
+        category = "Cliffs",
+        label = "Slope to"
+    )]
     pub slope_max: f64,
     /// Share of the displacement from 3D noise (the rest from strata).
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Cliffs", label = "Noise (share)")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Cliffs",
+        label = "Noise (share)"
+    )]
     pub noise: f64,
-    #[property(min = 0.1, max = 500.0, step = 0.1, category = "Cliffs", label = "Region size (km)")]
+    #[property(
+        min = 0.1,
+        max = 500.0,
+        step = 0.1,
+        category = "Cliffs",
+        label = "Region size (km)"
+    )]
     pub region_km: f64,
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Cliffs", label = "Regions (share)")]
+    #[property(
+        min = 0.0,
+        max = 1.0,
+        step = 0.01,
+        category = "Cliffs",
+        label = "Regions (share)"
+    )]
     pub share: f64,
 }
 
@@ -1262,9 +1462,9 @@ impl VoxelTerrainStack {
     pub fn desert() -> Self {
         use VoxelTerrainMaterial as M;
         let mut earth = Self::earth();
-        earth.layers.retain(|l| {
-            l.kind != VoxelLayerKind::Continents && l.kind != VoxelLayerKind::Rivers
-        });
+        earth
+            .layers
+            .retain(|l| l.kind != VoxelLayerKind::Continents && l.kind != VoxelLayerKind::Rivers);
         // The desert's hills stay gentle under its dunes.
         for l in earth
             .layers

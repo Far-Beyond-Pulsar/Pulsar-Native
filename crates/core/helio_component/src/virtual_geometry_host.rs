@@ -23,22 +23,22 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 
 use helio_core::{
     BufferKey, PackedVertex, SceneDerivation, SceneDerivationContext, SceneDerivationOutput,
 };
-use helio_vg_format::{VgAssetReadyRow, FORMAT_VERSION};
-use helio_vg_stream::{content_words, VgRuntime, VgRuntimeSettings, VgeoBytes, VgeoSource};
+use helio_vg_format::{FORMAT_VERSION, VgAssetReadyRow};
+use helio_vg_stream::{VgRuntime, VgRuntimeSettings, VgeoBytes, VgeoSource, content_words};
 use pulsar_scenedb::gpu::GpuMirrorHandle;
 use pulsar_scenedb::handle_ledger::HandleId;
 use pulsar_scenedb::{Entity, World};
 
 use crate::components::{MeshAssetPath, StaticMeshComponent, VirtualGeometryComponent};
 use crate::virtual_geometry_instances::{
-    Output, VgInstanceControl, VgInstanceKeys, VirtualGeometryInstances, VG_ASSET_READY_KEY,
-    VG_ASSET_READY_ROW_BYTES,
+    Output, VG_ASSET_READY_KEY, VG_ASSET_READY_ROW_BYTES, VgInstanceControl, VgInstanceKeys,
+    VirtualGeometryInstances,
 };
 
 /// How often (in `sync` calls) the world is rescanned when no build is in
@@ -89,7 +89,10 @@ impl VirtualGeometryHost {
     /// The instance derivation. Install it after [`Self::asset_ready_derivation`]
     /// and before the authored-LOD selection.
     pub fn instances_derivation(&mut self, device: &wgpu::Device) -> Box<VirtualGeometryInstances> {
-        let derivation = Box::new(VirtualGeometryInstances::new(device, VgInstanceKeys::standard()));
+        let derivation = Box::new(VirtualGeometryInstances::new(
+            device,
+            VgInstanceKeys::standard(),
+        ));
         let control = derivation.control();
         control.set_enabled(self.runtime.settings().mode != helio_vg_format::VgMode::Off);
         self.control = Some(control);
@@ -105,7 +108,10 @@ impl VirtualGeometryHost {
             control.set_enabled(on);
         }
         self.calls += 1;
-        let building = self.assets.values().any(|a| matches!(a, HostAsset::Building(_)));
+        let building = self
+            .assets
+            .values()
+            .any(|a| matches!(a, HostAsset::Building(_)));
         if !building && self.calls % SCAN_INTERVAL != 1 {
             return;
         }
@@ -156,7 +162,8 @@ impl VirtualGeometryHost {
             }
             // Ready assets are (re)offered every scan: the interned vertex
             // range is what identifies the mesh on the GPU and can move.
-            if let (Some(HostAsset::Ready(bytes)), Some(pool)) = (self.assets.get(&content), &pool) {
+            if let (Some(HostAsset::Ready(bytes)), Some(pool)) = (self.assets.get(&content), &pool)
+            {
                 if let Some((offset, count)) = pool.resolve(HandleId(content)) {
                     let source: Arc<dyn VgeoSource> = bytes.clone();
                     self.runtime.request_asset(content, offset, count, source);
@@ -174,7 +181,10 @@ impl VirtualGeometryHost {
 /// material row, not in the surface, so nothing here needs to know about it.
 fn is_vg_eligible(mesh: &StaticMeshComponent) -> bool {
     mesh.material_slots.slots.iter().all(|slot| {
-        let surface = slot.surface_override.as_ref().unwrap_or(&slot.imported_surface);
+        let surface = slot
+            .surface_override
+            .as_ref()
+            .unwrap_or(&slot.imported_surface);
         surface.alpha >= 0.999
     })
 }
@@ -231,7 +241,12 @@ fn f32_to_f16_bits(value: f32) -> u16 {
 fn attribute_bytes(vertices: &[PackedVertex]) -> Vec<u8> {
     let mut out = Vec::with_capacity(vertices.len() * 16);
     for v in vertices {
-        let tangent = (v.tangent & 0x00ff_ffff) | (if v.bitangent_sign < 0.0 { 0x81u32 } else { 0x7fu32 } << 24);
+        let tangent = (v.tangent & 0x00ff_ffff)
+            | (if v.bitangent_sign < 0.0 {
+                0x81u32
+            } else {
+                0x7fu32
+            } << 24);
         out.extend_from_slice(&v.normal.to_le_bytes());
         out.extend_from_slice(&tangent.to_le_bytes());
         for uv in [v.tex_coords0, v.tex_coords1] {
@@ -292,7 +307,8 @@ fn build_or_load(
             if let Some(embedded) = crate::mesh_cache::embedded_vgeo(&bytes) {
                 if let Ok(loaded) = VgeoBytes::new(embedded.to_vec()) {
                     if loaded.header().content_id == content_words(content)
-                        && helio_vg_build::is_current_cook(&loaded.header()) {
+                        && helio_vg_build::is_current_cook(&loaded.header())
+                    {
                         return Ok(Arc::new(loaded));
                     }
                 }
@@ -301,7 +317,8 @@ fn build_or_load(
     } else if let Ok(bytes) = std::fs::read(fallback) {
         if let Ok(loaded) = VgeoBytes::new(bytes) {
             if loaded.header().content_id == content_words(content)
-                && helio_vg_build::is_current_cook(&loaded.header()) {
+                && helio_vg_build::is_current_cook(&loaded.header())
+            {
                 return Ok(Arc::new(loaded));
             }
         }
@@ -389,7 +406,8 @@ impl SceneDerivation for VgAssetReadyPublisher {
             self.last_version = Some(version);
             let mut padded: Vec<VgAssetReadyRow> = rows;
             padded.resize(self.output.rows as usize, VgAssetReadyRow::PADDING);
-            ctx.queue.write_buffer(&self.output.buffer, 0, bytemuck::cast_slice(&padded));
+            ctx.queue
+                .write_buffer(&self.output.buffer, 0, bytemuck::cast_slice(&padded));
             self.output.content_generation += 1;
         }
         SceneDerivationOutput {

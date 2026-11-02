@@ -121,8 +121,8 @@ impl FoliageComponent {
     /// component's default colour.
     pub fn from_type(row: &helio_pass_foliage_place::GpuFoliageType) -> Self {
         use helio_pass_foliage_place::{
-            FOLIAGE_FLAG_CASTS_SHADOW, FOLIAGE_FLAG_GROUND_COLOUR, FOLIAGE_FLAG_RECEIVES_INTERACTION,
-            FOLIAGE_FLAG_TWO_SIDED, FoliageKind, unpack_unorm8,
+            FOLIAGE_FLAG_CASTS_SHADOW, FOLIAGE_FLAG_GROUND_COLOUR,
+            FOLIAGE_FLAG_RECEIVES_INTERACTION, FOLIAGE_FLAG_TWO_SIDED, FoliageKind, unpack_unorm8,
         };
         let mut component = Self::default();
         let flags = row.flags();
@@ -139,7 +139,11 @@ impl FoliageComponent {
         placement.slope_min_degrees = row.slope_range[1].clamp(-1.0, 1.0).acos().to_degrees();
         [placement.altitude_min, placement.altitude_max] = row.altitude_range;
         placement.has_infinite_extent = true;
-        placement.grows_on = crate::VoxelMaterialList((0..32).filter(|id| row.ground_mask >> id & 1 != 0).collect());
+        placement.grows_on = crate::VoxelMaterialList(
+            (0..32)
+                .filter(|id| row.ground_mask >> id & 1 != 0)
+                .collect(),
+        );
         let [blades_min, blades_max] = row.blades_per_tuft();
         component.tufts = super::sub_props::TuftFoliageProps {
             blades_min,
@@ -202,7 +206,11 @@ mod tests {
                 mesh_or_impostor_id: row.mesh_or_impostor_id,
                 ..derived
             };
-            assert_eq!(bytemuck::bytes_of(&derived), bytemuck::bytes_of(&row), "{row:?}");
+            assert_eq!(
+                bytemuck::bytes_of(&derived),
+                bytemuck::bytes_of(&row),
+                "{row:?}"
+            );
         }
     }
     #[test]

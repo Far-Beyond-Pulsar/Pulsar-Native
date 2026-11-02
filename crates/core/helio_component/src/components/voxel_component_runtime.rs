@@ -5,10 +5,7 @@
 
 use engine_class_derive::{register_component_runtime, register_world_component};
 
-use super::{
-    TerrainEventsEventWriterExt as _, VoxelTerrainComponent,
-    VoxelTerrainLayersComponent,
-};
+use super::{TerrainEventsEventWriterExt as _, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 
 // Component callbacks borrow the authoritative terrain row from SceneDB.
 // The pending event list is transient transport state populated only after a

@@ -74,8 +74,16 @@ pub fn texture_uses(
     }
 
     let mut uses: std::collections::HashMap<String, TextureUse> = Default::default();
-    for output in graph.nodes.values().filter(|n| n.node_type == "fragment_output") {
-        for feed in graph.connections.iter().filter(|c| c.target_node == output.id) {
+    for output in graph
+        .nodes
+        .values()
+        .filter(|n| n.node_type == "fragment_output")
+    {
+        for feed in graph
+            .connections
+            .iter()
+            .filter(|c| c.target_node == output.id)
+        {
             let usage = pin_use(&feed.target_pin);
             let mut seen = std::collections::HashSet::new();
             let mut pending = vec![feed.source_node.clone()];
@@ -267,13 +275,20 @@ mod usage_tests {
     fn node(graph: &mut GraphDescription, id: &str, kind: &str, texture: Option<&str>) {
         let mut node = NodeInstance::new(id, kind, Position { x: 0.0, y: 0.0 });
         if let Some(texture) = texture {
-            node.properties.insert("texture".into(), serde_json::json!(texture));
+            node.properties
+                .insert("texture".into(), serde_json::json!(texture));
         }
         graph.add_node(node);
     }
 
     fn connect(graph: &mut GraphDescription, from: &str, to: &str, pin: &str) {
-        graph.add_connection(Connection::new(from, "result", to, pin, ConnectionType::Data));
+        graph.add_connection(Connection::new(
+            from,
+            "result",
+            to,
+            pin,
+            ConnectionType::Data,
+        ));
     }
 
     #[test]

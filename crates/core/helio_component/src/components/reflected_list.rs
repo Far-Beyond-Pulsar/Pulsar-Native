@@ -14,9 +14,8 @@ use std::sync::{Arc, Mutex};
 
 use gpui::{AnyElement, App, SharedString, WeakEntity, Window, prelude::*};
 use pulsar_reflection::{
-    VirtualRows,
     BoundPropertyEditor, EngineClass, PropertyEditorArgs, PropertyEditorFactory, PropertyMetadata,
-    PropertyWriteBack,
+    PropertyWriteBack, VirtualRows,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
@@ -248,7 +247,6 @@ fn fingerprint<T: serde::Serialize>(value: &[T]) -> u64 {
     writer.0.finish()
 }
 
-
 /// A collapsible list item: a header (chevron, title, move and remove
 /// buttons) and, when `expanded`, its rows.
 ///
@@ -278,7 +276,12 @@ pub(crate) fn collapsible_item_card<V: 'static>(
     };
     let buttons = h_flex()
         .gap_1()
-        .child(button("up", IconName::ArrowUp, "Move up", ListEdit::Up(index)))
+        .child(button(
+            "up",
+            IconName::ArrowUp,
+            "Move up",
+            ListEdit::Up(index),
+        ))
         .child(button(
             "down",
             IconName::ArrowDown,
@@ -439,10 +442,7 @@ impl<T: ReflectedListItem> ReflectedListEditor<T> {
                     let reshaped = refreshed || shown(item) != before;
                     (items.clone(), reshaped)
                 };
-                fingerprint_slot.store(
-                    fingerprint(&items),
-                    std::sync::atomic::Ordering::Release,
-                );
+                fingerprint_slot.store(fingerprint(&items), std::sync::atomic::Ordering::Release);
                 write_back(Box::new(items), window, cx);
                 if reshaped {
                     // After the editor that wrote returns: it is mid-event,
@@ -519,9 +519,7 @@ impl<T: ReflectedListItem> ReflectedListEditor<T> {
             for (k, (_, editor)) in rows.editors.iter().enumerate() {
                 layout.push(Entry::Field(i, k));
                 if let Some(nested) = &editor.rows {
-                    layout.extend(
-                        (0..nested.row_count(cx)).map(|ix| Entry::Nested(i, k, ix)),
-                    );
+                    layout.extend((0..nested.row_count(cx)).map(|ix| Entry::Nested(i, k, ix)));
                 }
             }
         }
@@ -631,15 +629,16 @@ impl<T: ReflectedListItem> ReflectedListEditor<T> {
         let Some(entry) = self.layout.get(ix).copied() else {
             return gpui::div().into_any_element();
         };
-        let field_view = |view: gpui::AnyView| {
-            gpui::div()
-                .w_full()
-                .pl(gpui::px(12.))
-                .child(view.cached_auto_height(
-                    gpui::StyleRefinement::default().w_full().flex_shrink_0(),
-                ))
-                .into_any_element()
-        };
+        let field_view =
+            |view: gpui::AnyView| {
+                gpui::div()
+                    .w_full()
+                    .pl(gpui::px(12.))
+                    .child(view.cached_auto_height(
+                        gpui::StyleRefinement::default().w_full().flex_shrink_0(),
+                    ))
+                    .into_any_element()
+            };
         match entry {
             Entry::Header(i) => {
                 // The title is read in place: cloning the item to read it would
@@ -672,9 +671,10 @@ impl<T: ReflectedListItem> ReflectedListEditor<T> {
             },
             Entry::Nested(i, k, n) => {
                 let nested = match self.items.get(i) {
-                    Some(Some((rows, _))) => {
-                        rows.editors.get(k).and_then(|(_, editor)| editor.rows.clone())
-                    }
+                    Some(Some((rows, _))) => rows
+                        .editors
+                        .get(k)
+                        .and_then(|(_, editor)| editor.rows.clone()),
                     _ => None,
                 };
                 match nested {
@@ -786,8 +786,7 @@ impl<T: ReflectedListItem> VirtualRows for ListRows<T> {
     }
 
     fn mark_stale(&self) {
-        self.stale
-            .store(true, std::sync::atomic::Ordering::Release);
+        self.stale.store(true, std::sync::atomic::Ordering::Release);
     }
 }
 

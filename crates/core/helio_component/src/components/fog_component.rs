@@ -68,7 +68,12 @@ impl MediumProps {
             anisotropy: self.anisotropy,
             height_falloff: self.height_falloff,
             height: self.height,
-            planet: [self.planet_center[0], self.planet_center[1], self.planet_center[2], self.planet_radius],
+            planet: [
+                self.planet_center[0],
+                self.planet_center[1],
+                self.planet_center[2],
+                self.planet_radius,
+            ],
             ..Default::default()
         }
     }
@@ -192,8 +197,14 @@ mod tests {
             },
             ..GlobalFogComponent::default()
         };
-        assert!(placed.for_air(VoxelAir::Custom, 1.0, 1.0).is_none(), "custom keeps the authored medium");
-        assert!(!placed.for_air(VoxelAir::None, 1.0, 1.0).unwrap().enabled, "no air, no haze");
+        assert!(
+            placed.for_air(VoxelAir::Custom, 1.0, 1.0).is_none(),
+            "custom keeps the authored medium"
+        );
+        assert!(
+            !placed.for_air(VoxelAir::None, 1.0, 1.0).unwrap().enabled,
+            "no air, no haze"
+        );
         let earth = placed.for_air(VoxelAir::Earthlike, 1.0, 1.0).unwrap();
         let flight = GlobalMedium {
             mode: 1,
@@ -206,7 +217,16 @@ mod tests {
         assert!(earth.enabled);
         assert_eq!(earth.medium.to_medium(), flight);
         let hazy = placed.for_air(VoxelAir::Earthlike, 0.5, 4.0).unwrap();
-        assert!((hazy.medium.extinction - 0.0012).abs() < 1e-9, "half the air, four times the haze");
-        assert!(!placed.for_air(VoxelAir::Earthlike, 1.0, 0.0).unwrap().enabled, "no haze at all");
+        assert!(
+            (hazy.medium.extinction - 0.0012).abs() < 1e-9,
+            "half the air, four times the haze"
+        );
+        assert!(
+            !placed
+                .for_air(VoxelAir::Earthlike, 1.0, 0.0)
+                .unwrap()
+                .enabled,
+            "no haze at all"
+        );
     }
 }

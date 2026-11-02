@@ -299,7 +299,9 @@ impl VoxelTerrainStackEditor {
                 cx,
             ),
             Slot::Layer(i) => {
-                let Some(layer) = stack.layers.get(i) else { return };
+                let Some(layer) = stack.layers.get(i) else {
+                    return;
+                };
                 Self::rows(
                     &id,
                     &format!("layer{i}"),
@@ -314,7 +316,9 @@ impl VoxelTerrainStackEditor {
                 )
             }
             Slot::Rule(i) => {
-                let Some(rule) = stack.rules.get(i) else { return };
+                let Some(rule) = stack.rules.get(i) else {
+                    return;
+                };
                 Self::rows(
                     &id,
                     &format!("rule{i}"),
@@ -577,13 +581,8 @@ impl VoxelTerrainStackEditor {
         let Some(entry) = self.layout.get(ix).copied() else {
             return gpui::div().into_any_element();
         };
-        let indented = |el: AnyElement, by: f32| {
-            gpui::div()
-                .w_full()
-                .pl(px(by))
-                .child(el)
-                .into_any_element()
-        };
+        let indented =
+            |el: AnyElement, by: f32| gpui::div().w_full().pl(px(by)).child(el).into_any_element();
         let field_view = |view: gpui::AnyView| {
             indented(
                 view.cached_auto_height(gpui::StyleRefinement::default().w_full().flex_shrink_0())
@@ -664,7 +663,11 @@ impl VoxelTerrainStackEditor {
                 let Some(title) = title else {
                     return gpui::div().into_any_element();
                 };
-                let tag = if list == List::Layers { "layer" } else { "rule" };
+                let tag = if list == List::Layers {
+                    "layer"
+                } else {
+                    "rule"
+                };
                 collapsible_item_card(
                     &format!("{}-{tag}", self.id),
                     i,
@@ -750,14 +753,16 @@ impl gpui::Render for VoxelTerrainStackEditor {
         _window: &mut Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl gpui::IntoElement {
-        v_flex().w_full().child(pulsar_reflection::prims::editor_row(
-            &self.label,
-            Dropdown::new(&self.presets)
-                .xsmall()
-                .w(px(140.0))
-                .placeholder("Apply preset"),
-            cx,
-        ))
+        v_flex()
+            .w_full()
+            .child(pulsar_reflection::prims::editor_row(
+                &self.label,
+                Dropdown::new(&self.presets)
+                    .xsmall()
+                    .w(px(140.0))
+                    .placeholder("Apply preset"),
+                cx,
+            ))
     }
 }
 
@@ -796,9 +801,8 @@ fn voxel_terrain_stack_editor(
 ) -> BoundPropertyEditor {
     let wake: ListWake = Default::default();
     let stale = Arc::new(AtomicBool::new(false));
-    let entity = cx.new(|cx| {
-        VoxelTerrainStackEditor::new(args, wake.clone(), stale.clone(), window, cx)
-    });
+    let entity =
+        cx.new(|cx| VoxelTerrainStackEditor::new(args, wake.clone(), stale.clone(), window, cx));
     BoundPropertyEditor::new(
         entity.clone(),
         |editor: &mut VoxelTerrainStackEditor, value: &VoxelTerrainStack, window, cx| {

@@ -36,8 +36,8 @@
 //! checks every length against what the format and dimensions require, so a
 //! damaged or outdated file is refused instead of uploaded.
 
-use helio_mats::texture_mips::{mip_chain, TexelKind};
-use intel_tex_2::{bc7, RgbaSurface};
+use helio_mats::texture_mips::{TexelKind, mip_chain};
+use intel_tex_2::{RgbaSurface, bc7};
 
 const MAGIC: [u8; 4] = *b"PTX2";
 const HEADER_LEN: usize = 24;
@@ -158,7 +158,11 @@ impl TextureUse {
             TextureUse::Normal => 1,
             TextureUse::Data => 0,
         };
-        if rank(other) > rank(self) { other } else { self }
+        if rank(other) > rank(self) {
+            other
+        } else {
+            self
+        }
     }
 }
 
@@ -187,7 +191,9 @@ fn round_up_4(value: u32) -> u32 {
 fn level_bytes(format: CookFormat, width: u32, height: u32) -> usize {
     match format {
         CookFormat::Rgba8 => width as usize * height as usize * 4,
-        CookFormat::Bc7 => (round_up_4(width) / 4) as usize * (round_up_4(height) / 4) as usize * 16,
+        CookFormat::Bc7 => {
+            (round_up_4(width) / 4) as usize * (round_up_4(height) / 4) as usize * 16
+        }
     }
 }
 
@@ -243,7 +249,9 @@ impl CookedTexture {
             return self.clone();
         }
         let (width, height) = level_extent(self.width, self.height, drop);
-        let levels = (drop..self.mip_count()).map(|level| self.mip(level).to_vec()).collect();
+        let levels = (drop..self.mip_count())
+            .map(|level| self.mip(level).to_vec())
+            .collect();
         Self::from_levels(self.format, self.usage, width, height, levels)
     }
 
@@ -265,7 +273,14 @@ impl CookedTexture {
             ranges.push(bytes.len()..bytes.len() + level.len());
             bytes.extend_from_slice(level);
         }
-        Self { format, usage, width, height, levels: ranges, bytes }
+        Self {
+            format,
+            usage,
+            width,
+            height,
+            levels: ranges,
+            bytes,
+        }
     }
 
     /// The container (see the module docs).
@@ -370,7 +385,12 @@ fn compress_bc7(rgba: &[u8], width: u32, height: u32, opaque: bool) -> Vec<u8> {
 }
 
 /// Cook a colour texture: [`cook_as`] with [`TextureUse::Color`].
-pub fn cook(rgba: &[u8], width: u32, height: u32, format: CookFormat) -> Result<CookedTexture, String> {
+pub fn cook(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    format: CookFormat,
+) -> Result<CookedTexture, String> {
     cook_as(rgba, width, height, format, TextureUse::Color)
 }
 
@@ -401,7 +421,9 @@ pub fn cook_as(
             }
         })
         .collect();
-    Ok(CookedTexture::from_levels(format, usage, width, height, levels))
+    Ok(CookedTexture::from_levels(
+        format, usage, width, height, levels,
+    ))
 }
 
 #[cfg(test)]
@@ -438,7 +460,11 @@ mod tests {
         for level in 0..smaller.mip_count() {
             assert_eq!(smaller.mip(level), cooked.mip(level + 2), "level {level}");
         }
-        assert_eq!(cooked.without_top_mips(0), cooked, "dropping nothing changes nothing");
+        assert_eq!(
+            cooked.without_top_mips(0),
+            cooked,
+            "dropping nothing changes nothing"
+        );
     }
 
     #[test]
@@ -449,7 +475,11 @@ mod tests {
 
         let bc7 = cook(&solid(16, 16, [1, 2, 3, 255]), 16, 16, CookFormat::Bc7).unwrap();
         let smallest = bc7.without_top_mips(99);
-        assert_eq!((smallest.width, smallest.height), (4, 4), "BC7 keeps a whole-block base");
+        assert_eq!(
+            (smallest.width, smallest.height),
+            (4, 4),
+            "BC7 keeps a whole-block base"
+        );
         assert_eq!(smallest.mip_count(), 3);
         assert!(bc7.byte_size_without_top_mips(1) < bc7.byte_size());
     }
@@ -458,32 +488,66 @@ mod tests {
     fn levels_are_the_shared_mip_chain_filtered_as_their_use() {
         // A normal map whose texels lean four ways: its mips carry the
         // spread in alpha, and colour, data and normal filter differently.
-        let texels: Vec<u8> = (0..64).flat_map(|i| [[230, 128, 230, 255], [25, 128, 230, 255]][i % 2]).collect();
+        let texels: Vec<u8> = (0..64)
+            .flat_map(|i| [[230, 128, 230, 255], [25, 128, 230, 255]][i % 2])
+            .collect();
         for usage in TextureUse::ALL {
             let cooked = cook_as(&texels, 8, 8, CookFormat::Rgba8, usage).unwrap();
             let chain = mip_chain(&texels, 8, 8, usage.texels());
             for level in 0..cooked.mip_count() {
-                assert_eq!(cooked.mip(level), chain[level as usize].texels.as_slice(), "{usage:?} level {level}");
+                assert_eq!(
+                    cooked.mip(level),
+                    chain[level as usize].texels.as_slice(),
+                    "{usage:?} level {level}"
+                );
             }
         }
         let normal = cook_as(&texels, 8, 8, CookFormat::Rgba8, TextureUse::Normal).unwrap();
-        assert!(normal.mip(1)[3] < 200, "spread kept in alpha: {}", normal.mip(1)[3]);
+        assert!(
+            normal.mip(1)[3] < 200,
+            "spread kept in alpha: {}",
+            normal.mip(1)[3]
+        );
     }
 
     #[test]
     fn the_use_picks_the_gpu_colour_space() {
-        assert_eq!(wgpu_format(CookFormat::Rgba8, TextureUse::Color), wgpu::TextureFormat::Rgba8UnormSrgb);
-        assert_eq!(wgpu_format(CookFormat::Rgba8, TextureUse::Data), wgpu::TextureFormat::Rgba8Unorm);
-        assert_eq!(wgpu_format(CookFormat::Bc7, TextureUse::Color), wgpu::TextureFormat::Bc7RgbaUnormSrgb);
-        assert_eq!(wgpu_format(CookFormat::Bc7, TextureUse::Normal), wgpu::TextureFormat::Bc7RgbaUnorm);
+        assert_eq!(
+            wgpu_format(CookFormat::Rgba8, TextureUse::Color),
+            wgpu::TextureFormat::Rgba8UnormSrgb
+        );
+        assert_eq!(
+            wgpu_format(CookFormat::Rgba8, TextureUse::Data),
+            wgpu::TextureFormat::Rgba8Unorm
+        );
+        assert_eq!(
+            wgpu_format(CookFormat::Bc7, TextureUse::Color),
+            wgpu::TextureFormat::Bc7RgbaUnormSrgb
+        );
+        assert_eq!(
+            wgpu_format(CookFormat::Bc7, TextureUse::Normal),
+            wgpu::TextureFormat::Bc7RgbaUnorm
+        );
     }
 
     #[test]
     fn colour_wins_when_one_texture_feeds_several_uses() {
-        assert_eq!(TextureUse::Data.strongest(TextureUse::Color), TextureUse::Color);
-        assert_eq!(TextureUse::Color.strongest(TextureUse::Data), TextureUse::Color);
-        assert_eq!(TextureUse::Data.strongest(TextureUse::Normal), TextureUse::Normal);
-        assert_eq!(TextureUse::Data.strongest(TextureUse::Data), TextureUse::Data);
+        assert_eq!(
+            TextureUse::Data.strongest(TextureUse::Color),
+            TextureUse::Color
+        );
+        assert_eq!(
+            TextureUse::Color.strongest(TextureUse::Data),
+            TextureUse::Color
+        );
+        assert_eq!(
+            TextureUse::Data.strongest(TextureUse::Normal),
+            TextureUse::Normal
+        );
+        assert_eq!(
+            TextureUse::Data.strongest(TextureUse::Data),
+            TextureUse::Data
+        );
     }
 
     #[test]
@@ -497,18 +561,32 @@ mod tests {
     #[test]
     fn bc7_levels_are_whole_blocks_and_small_levels_round_up() {
         let cooked = cook(&solid(16, 16, [80, 160, 240, 255]), 16, 16, CookFormat::Bc7).unwrap();
-        let sizes: Vec<usize> = (0..cooked.mip_count()).map(|l| cooked.mip(l).len()).collect();
+        let sizes: Vec<usize> = (0..cooked.mip_count())
+            .map(|l| cooked.mip(l).len())
+            .collect();
         // 16x16 = 4x4 blocks, then 2x2, 1, and the 2x2, 1x1 tail each one padded block.
         assert_eq!(sizes, [16 * 16, 4 * 16, 16, 16, 16]);
-        assert!(cooked.byte_size() < 16 * 16 * 4 * 2, "BC7 is a quarter of RGBA8, with mips");
+        assert!(
+            cooked.byte_size() < 16 * 16 * 4 * 2,
+            "BC7 is a quarter of RGBA8, with mips"
+        );
     }
 
     #[test]
     fn bc7_refuses_sizes_that_are_not_whole_blocks() {
         assert!(cook(&solid(6, 8, [1, 2, 3, 255]), 6, 8, CookFormat::Bc7).is_err());
-        assert_eq!(CookFormat::best_for(wgpu::Features::TEXTURE_COMPRESSION_BC, 6, 8), CookFormat::Rgba8);
-        assert_eq!(CookFormat::best_for(wgpu::Features::TEXTURE_COMPRESSION_BC, 8, 8), CookFormat::Bc7);
-        assert_eq!(CookFormat::best_for(wgpu::Features::empty(), 8, 8), CookFormat::Rgba8);
+        assert_eq!(
+            CookFormat::best_for(wgpu::Features::TEXTURE_COMPRESSION_BC, 6, 8),
+            CookFormat::Rgba8
+        );
+        assert_eq!(
+            CookFormat::best_for(wgpu::Features::TEXTURE_COMPRESSION_BC, 8, 8),
+            CookFormat::Bc7
+        );
+        assert_eq!(
+            CookFormat::best_for(wgpu::Features::empty(), 8, 8),
+            CookFormat::Rgba8
+        );
     }
 
     #[test]
@@ -521,7 +599,10 @@ mod tests {
                 assert_eq!(read, cooked);
                 assert_eq!(read.usage, usage);
 
-                assert!(CookedTexture::from_bytes(&bytes[..bytes.len() - 1]).is_err(), "truncated");
+                assert!(
+                    CookedTexture::from_bytes(&bytes[..bytes.len() - 1]).is_err(),
+                    "truncated"
+                );
                 let mut extra = bytes.clone();
                 extra.push(0);
                 assert!(CookedTexture::from_bytes(&extra).is_err(), "trailing bytes");
@@ -533,7 +614,10 @@ mod tests {
                 assert!(CookedTexture::from_bytes(&wrong_length).is_err());
                 let mut wrong_use = bytes.clone();
                 wrong_use[8] = 9;
-                assert!(CookedTexture::from_bytes(&wrong_use).is_err(), "unknown use");
+                assert!(
+                    CookedTexture::from_bytes(&wrong_use).is_err(),
+                    "unknown use"
+                );
             }
         }
     }

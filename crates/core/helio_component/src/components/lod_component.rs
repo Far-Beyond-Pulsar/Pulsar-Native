@@ -2,7 +2,7 @@
 
 use super::MeshAssetPath;
 use engine_class_derive::{engine_class, register_world_component};
-use pulsar_reflection::{pulsar_type, ReflectError, ReflectResult};
+use pulsar_reflection::{ReflectError, ReflectResult, pulsar_type};
 
 /// Selects among authored mesh assets according to camera distance.
 ///
@@ -115,7 +115,7 @@ impl LODLevelGpu {
 
 #[cfg(test)]
 mod tests {
-    use super::{refresh_gpu_levels, select_lod_level, LODComponent, LODLevel};
+    use super::{LODComponent, LODLevel, refresh_gpu_levels, select_lod_level};
     use crate::components::MeshAssetPath;
 
     fn levels(thresholds: &[f32]) -> Vec<LODLevel> {

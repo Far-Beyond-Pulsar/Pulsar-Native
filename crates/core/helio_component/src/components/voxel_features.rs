@@ -82,10 +82,12 @@ impl VoxelMaterialList {
     pub fn text(&self) -> String {
         self.0
             .iter()
-            .map(|&id| match material::NAMES.get((id as usize).wrapping_sub(1)) {
-                Some(name) if id > 0 => (*name).to_string(),
-                _ => id.to_string(),
-            })
+            .map(
+                |&id| match material::NAMES.get((id as usize).wrapping_sub(1)) {
+                    Some(name) if id > 0 => (*name).to_string(),
+                    _ => id.to_string(),
+                },
+            )
             .collect::<Vec<_>>()
             .join(", ")
     }
@@ -335,7 +337,11 @@ impl super::reflected_list::ReflectedListItem for VoxelFeatureSpawn {
     const MAX_ITEMS: usize = helio_pass_voxel_planet::features::MAX_SPAWNS;
 
     fn title(&self, index: usize) -> String {
-        let name = if self.name.is_empty() { "spawn" } else { &self.name };
+        let name = if self.name.is_empty() {
+            "spawn"
+        } else {
+            &self.name
+        };
         format!("{}. {name} ({} m)", index + 1, self.spacing_m)
     }
 }
@@ -389,7 +395,11 @@ pub struct VoxelMaterialListEditor {
 }
 
 impl VoxelMaterialListEditor {
-    fn new(args: &PropertyEditorArgs<'_>, window: &mut Window, cx: &mut gpui::Context<Self>) -> Self {
+    fn new(
+        args: &PropertyEditorArgs<'_>,
+        window: &mut Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> Self {
         let value = args
             .current_value
             .downcast_ref::<VoxelMaterialList>()
@@ -404,7 +414,8 @@ impl VoxelMaterialListEditor {
                 if !matches!(event, InputEvent::Change | InputEvent::Blur) {
                     return;
                 }
-                let Ok(parsed) = VoxelMaterialList::parse(&input.read(cx).text().to_string()) else {
+                let Ok(parsed) = VoxelMaterialList::parse(&input.read(cx).text().to_string())
+                else {
                     return;
                 };
                 if parsed == this.value {
@@ -424,7 +435,12 @@ impl VoxelMaterialListEditor {
     }
 
     /// Accept a value that changed elsewhere (undo, a preset).
-    fn set_value(&mut self, value: &VoxelMaterialList, window: &mut Window, cx: &mut gpui::Context<Self>) {
+    fn set_value(
+        &mut self,
+        value: &VoxelMaterialList,
+        window: &mut Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
         if self.value == *value {
             return;
         }
@@ -435,8 +451,16 @@ impl VoxelMaterialListEditor {
 }
 
 impl gpui::Render for VoxelMaterialListEditor {
-    fn render(&mut self, _window: &mut Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
-        pulsar_reflection::prims::editor_row(&self.label, Input::new(&self.input).xsmall().w(px(180.0)), cx)
+    fn render(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        pulsar_reflection::prims::editor_row(
+            &self.label,
+            Input::new(&self.input).xsmall().w(px(180.0)),
+            cx,
+        )
     }
 }
 
@@ -480,7 +504,8 @@ mod tests {
             serde_json::to_value(VoxelFeatureGrowth::default()).unwrap(),
             serde_json::to_value(Growth::default()).unwrap()
         );
-        let partial: Vec<VoxelFeatureSpawn> = serde_json::from_str(r#"[{"name":"rocks","growths":[{"form":"Boulder"}]}]"#).unwrap();
+        let partial: Vec<VoxelFeatureSpawn> =
+            serde_json::from_str(r#"[{"name":"rocks","growths":[{"form":"Boulder"}]}]"#).unwrap();
         assert_eq!(
             feature_recipe(&partial),
             serde_json::from_str(r#"[{"name":"rocks","growths":[{"form":"Boulder"}]}]"#).unwrap(),

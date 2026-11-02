@@ -39,7 +39,9 @@ fn sprite_texel(world: &World, entity: Entity) -> Option<[u8; 4]> {
 }
 
 fn texel(image: &LoadedTexture) -> Option<[u8; 4]> {
-    let cooked = image.cooked(helio_component::cooked_texture::CookFormat::Rgba8).ok()?;
+    let cooked = image
+        .cooked(helio_component::cooked_texture::CookFormat::Rgba8)
+        .ok()?;
     let rgba = cooked.mip(0);
     rgba.get(..4).map(|t| [t[0], t[1], t[2], t[3]])
 }

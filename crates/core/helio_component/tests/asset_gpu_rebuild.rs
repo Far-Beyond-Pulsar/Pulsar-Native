@@ -75,8 +75,7 @@ fn a_new_device_gets_every_bound_asset_again_without_the_files() {
     )
     .unwrap();
     std::fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../assets/meshes/primitives/SM_Cube.fbx"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/meshes/primitives/SM_Cube.fbx"),
         project.path().join("meshes/cube.fbx"),
     )
     .unwrap();

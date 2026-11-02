@@ -9,11 +9,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use helio_component::cooked_texture::{CookFormat, COOK_VERSION};
-use helio_component::texture_assets::{max_texture_size, set_preferred_cook_format, LoadedTexture};
+use helio_component::cooked_texture::{COOK_VERSION, CookFormat};
+use helio_component::texture_assets::{LoadedTexture, max_texture_size, set_preferred_cook_format};
 use pulsar_scenedb::{
-    derive_cached, derived_stats, residency_budget, set_derived_cache_dir, set_residency_budget,
-    DerivedRequest,
+    DerivedRequest, derive_cached, derived_stats, residency_budget, set_derived_cache_dir,
+    set_residency_budget,
 };
 
 /// The derived-data cache directory, the preferred format and the residency budget
@@ -24,7 +24,11 @@ fn write_png(dir: &Path, name: &str, width: u32, height: u32, seed: u8) -> PathB
     let path = dir.join(name);
     let mut image = image::RgbImage::new(width, height);
     for (x, y, pixel) in image.enumerate_pixels_mut() {
-        *pixel = image::Rgb([(x as u8).wrapping_add(seed), (y as u8).wrapping_mul(3), seed]);
+        *pixel = image::Rgb([
+            (x as u8).wrapping_add(seed),
+            (y as u8).wrapping_mul(3),
+            seed,
+        ]);
     }
     image.save(&path).unwrap();
     path
@@ -32,7 +36,12 @@ fn write_png(dir: &Path, name: &str, width: u32, height: u32, seed: u8) -> PathB
 
 fn cache_files(root: &Path) -> usize {
     std::fs::read_dir(root.join("texture"))
-        .map(|entries| entries.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "pdd")).count())
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().extension().is_some_and(|x| x == "pdd"))
+                .count()
+        })
         .unwrap_or(0)
 }
 
@@ -59,13 +68,23 @@ fn textures_are_cooked_once_rebuilt_from_disk_and_heal_a_bad_entry() {
     let second = LoadedTexture::load(&image).unwrap();
     let after_second = derived_stats();
     assert_eq!(after_second.hits - after_first.hits, 1);
-    assert_eq!(after_second.misses, after_first.misses, "nothing was cooked again");
-    assert_eq!(*second.cooked(CookFormat::Bc7).unwrap(), *cooked, "same bytes from disk");
+    assert_eq!(
+        after_second.misses, after_first.misses,
+        "nothing was cooked again"
+    );
+    assert_eq!(
+        *second.cooked(CookFormat::Bc7).unwrap(),
+        *cooked,
+        "same bytes from disk"
+    );
 
     // Another format is another result, cooked on first use and kept.
     let rgba8 = second.cooked(CookFormat::Rgba8).unwrap();
     assert_eq!(rgba8.format, CookFormat::Rgba8);
-    assert!(rgba8.byte_size() > cooked.byte_size() * 3, "BC7 is a quarter of RGBA8");
+    assert!(
+        rgba8.byte_size() > cooked.byte_size() * 3,
+        "BC7 is a quarter of RGBA8"
+    );
     assert_eq!(cache_files(&cache), 2);
 
     // A value the residency cache drops is rebuilt by reading the file, not by
@@ -74,7 +93,10 @@ fn textures_are_cooked_once_rebuilt_from_disk_and_heal_a_bad_entry() {
     set_residency_budget(1);
     let other = write_png(scratch.path(), "floor.png", 64, 64, 90);
     let _filler = LoadedTexture::load(&other).unwrap();
-    assert!(!first.is_resident(), "the first texture was evicted for room");
+    assert!(
+        !first.is_resident(),
+        "the first texture was evicted for room"
+    );
     let misses_before = derived_stats().misses;
     let hits_before = derived_stats().hits;
     assert_eq!(*first.cooked(CookFormat::Bc7).unwrap(), *cooked);
@@ -104,8 +126,15 @@ fn textures_are_cooked_once_rebuilt_from_disk_and_heal_a_bad_entry() {
     assert_eq!(healed.cooked(CookFormat::Bc7).unwrap().mip_count(), 6);
     let hits = derived_stats().hits;
     LoadedTexture::load(&healing).unwrap();
-    assert_eq!(derived_stats().hits, hits + 1, "the repaired entry is a hit now");
-    assert!(derived_stats().misses >= misses, "the bad entry was replaced");
+    assert_eq!(
+        derived_stats().hits,
+        hits + 1,
+        "the repaired entry is a hit now"
+    );
+    assert!(
+        derived_stats().misses >= misses,
+        "the bad entry was replaced"
+    );
 
     // A size that is not a whole number of blocks cannot be BC7: it is cooked
     // uncompressed, and still gets its chain.
@@ -129,7 +158,11 @@ fn warming_an_evicted_texture_brings_it_back_ahead_of_use_and_a_resident_one_is_
     // Resident: warming starts nothing.
     let before = pulsar_scenedb::residency_stats().prefetches;
     kept.warm();
-    assert_eq!(pulsar_scenedb::residency_stats().prefetches, before, "already in memory");
+    assert_eq!(
+        pulsar_scenedb::residency_stats().prefetches,
+        before,
+        "already in memory"
+    );
 
     // Make the cache drop it.
     let old_budget = residency_budget();
@@ -143,7 +176,10 @@ fn warming_an_evicted_texture_brings_it_back_ahead_of_use_and_a_resident_one_is_
     assert_eq!(pulsar_scenedb::residency_stats().prefetches, before + 1);
     let started = std::time::Instant::now();
     while !kept.is_resident_in(CookFormat::Rgba8) {
-        assert!(started.elapsed() < std::time::Duration::from_secs(5), "never came back");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "never came back"
+        );
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     set_derived_cache_dir(None);

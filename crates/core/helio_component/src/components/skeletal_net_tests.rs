@@ -4,9 +4,9 @@
 
 use super::phase3_tests::*;
 use super::*;
+use RootMotionAuthoritySetting::*;
 use pulsar_scenedb::World;
 use pulsar_world_registry::ComponentRuntimeState;
-use RootMotionAuthoritySetting::*;
 
 struct Run {
     position: [f64; 3],
@@ -92,10 +92,12 @@ fn authority_and_the_owning_client_log_identical_moves_and_the_others_log_none()
         (travelled - 8.0).abs() < 1e-2,
         "the log sums to the walk: {travelled}"
     );
-    assert!(server
-        .moves
-        .iter()
-        .all(|m| m.montage.is_none() && m.delta_seconds > 0.0));
+    assert!(
+        server
+            .moves
+            .iter()
+            .all(|m| m.montage.is_none() && m.delta_seconds > 0.0)
+    );
     assert!(
         run(Standalone, false, 8).moves.is_empty()
             && run(SimulatedProxy, false, 8).moves.is_empty()

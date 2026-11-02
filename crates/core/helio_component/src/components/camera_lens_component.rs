@@ -2645,7 +2645,9 @@ fn camera_lens_clear(mirror: &GpuMirrorHandle, row: u32) {
         let Some(by_store) = stores.as_mut() else {
             return;
         };
-        let block = by_store.get_mut(&key).and_then(|blocks| blocks.release(row));
+        let block = by_store
+            .get_mut(&key)
+            .and_then(|blocks| blocks.release(row));
         if by_store
             .get(&key)
             .is_some_and(|blocks| blocks.by_lens_row.is_empty())

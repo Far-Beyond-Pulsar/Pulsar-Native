@@ -4,15 +4,15 @@
 
 use helio_component::components::VgOverrideGpu;
 use helio_component::virtual_geometry_instances::{
-    VgAssetReadyRow, VgInstanceKeys, VirtualGeometryInstances, LOD_SUPPRESSED_KEY,
-    VG_ASSET_READY_FLAG_READY, VG_ASSET_READY_KEY, VG_INSTANCES_KEY, VG_INSTANCE_COUNT_KEY,
+    LOD_SUPPRESSED_KEY, VG_ASSET_READY_FLAG_READY, VG_ASSET_READY_KEY, VG_INSTANCE_COUNT_KEY,
+    VG_INSTANCES_KEY, VgAssetReadyRow, VgInstanceKeys, VirtualGeometryInstances,
 };
 use helio_core::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };
 use helio_vg_format::{
-    GpuVgInstance, TierLock, INST_CONE_CULL, INST_ENABLED, INST_FORCE_ROOT_ONLY,
-    INST_LOD_SUPPRESS, INST_SHADOW_CASTER, INST_TIER_SHIFT,
+    GpuVgInstance, INST_CONE_CULL, INST_ENABLED, INST_FORCE_ROOT_ONLY, INST_LOD_SUPPRESS,
+    INST_SHADOW_CASTER, INST_TIER_SHIFT, TierLock,
 };
 use std::sync::Arc;
 
@@ -73,8 +73,12 @@ fn read<T: bytemuck::Pod>(
     let mut encoder = device.create_command_encoder(&Default::default());
     encoder.copy_buffer_to_buffer(&handle.buffer, 0, &staging, 0, bytes);
     queue.submit([encoder.finish()]);
-    staging.slice(..).map_async(wgpu::MapMode::Read, |r| r.expect("map"));
-    device.poll(wgpu::PollType::wait_indefinitely()).expect("poll");
+    staging
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, |r| r.expect("map"));
+    device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("poll");
     let mapped = staging.slice(..).get_mapped_range().expect("range");
     let out = mapped
         .chunks_exact(std::mem::size_of::<T>())
@@ -138,7 +142,10 @@ fn scene(device: &wgpu::Device, queue: &wgpu::Queue, asset_generation: u64) -> S
     override_handles[20] = [0, 1];
     override_handles[21] = [1, 1];
     let overrides = [
-        VgOverrideGpu { flags: 0, lod_error_scale: 1.0 },
+        VgOverrideGpu {
+            flags: 0,
+            lod_error_scale: 1.0,
+        },
         VgOverrideGpu {
             flags: INST_ENABLED
                 | INST_FORCE_ROOT_ONLY
@@ -159,19 +166,39 @@ fn scene(device: &wgpu::Device, queue: &wgpu::Queue, asset_generation: u64) -> S
             asset_slot: 6,
             flags: VG_ASSET_READY_FLAG_READY,
         },
-        VgAssetReadyRow { vertex_offset: 300, vertex_count: 24, asset_slot: 7, flags: 0 },
+        VgAssetReadyRow {
+            vertex_offset: 300,
+            vertex_count: 24,
+            asset_slot: 7,
+            flags: 0,
+        },
         VgAssetReadyRow::PADDING,
     ];
 
     let projection = SceneBufferProjection::from_handles([
         (keys.owners, upload(device, queue, &owners, 1)),
         (keys.generations, upload(device, queue, &[7u32; 32], 1)),
-        (keys.override_handles, upload(device, queue, &override_handles, 1)),
+        (
+            keys.override_handles,
+            upload(device, queue, &override_handles, 1),
+        ),
         (keys.overrides, upload(device, queue, &overrides, 1)),
-        (keys.section_handles, upload(device, queue, &section_handles, 1)),
-        (keys.vertex_handles, upload(device, queue, &vertex_handles, 1)),
-        (BufferKey::of("static_objects"), upload(device, queue, &objects, 1)),
-        (VG_ASSET_READY_KEY, upload(device, queue, &ready, asset_generation)),
+        (
+            keys.section_handles,
+            upload(device, queue, &section_handles, 1),
+        ),
+        (
+            keys.vertex_handles,
+            upload(device, queue, &vertex_handles, 1),
+        ),
+        (
+            BufferKey::of("static_objects"),
+            upload(device, queue, &objects, 1),
+        ),
+        (
+            VG_ASSET_READY_KEY,
+            upload(device, queue, &ready, asset_generation),
+        ),
     ]);
     Scene { projection, keys }
 }
@@ -184,7 +211,12 @@ fn derive(
 ) -> (Vec<GpuVgInstance>, Vec<u32>, bool) {
     let mut encoder = device.create_command_encoder(&Default::default());
     let output = derivation.derive(
-        &SceneDerivationContext { device, queue, inputs: projection, world_origin: glam::DVec3::ZERO },
+        &SceneDerivationContext {
+            device,
+            queue,
+            inputs: projection,
+            world_origin: glam::DVec3::ZERO,
+        },
         &mut encoder,
     );
     queue.submit([encoder.finish()]);
@@ -218,7 +250,15 @@ fn ready_placed_enabled_instances_become_active_with_derived_flags() {
     assert_eq!(rows.len(), 4, "{rows:?}");
 
     let defaults = INST_ENABLED | INST_SHADOW_CASTER | INST_LOD_SUPPRESS | INST_CONE_CULL;
-    assert_eq!(rows[0], GpuVgInstance { asset_slot: 5, flags: defaults, lod_error_scale: 1.0, object_row: 0 });
+    assert_eq!(
+        rows[0],
+        GpuVgInstance {
+            asset_slot: 5,
+            flags: defaults,
+            lod_error_scale: 1.0,
+            object_row: 0
+        }
+    );
 
     // Authored overrides replace the defaults; derived bits are still set.
     let authored = INST_ENABLED
@@ -226,7 +266,15 @@ fn ready_placed_enabled_instances_become_active_with_derived_flags() {
         | INST_LOD_SUPPRESS
         | INST_CONE_CULL
         | ((TierLock::SwRaster as u32) << INST_TIER_SHIFT);
-    assert_eq!(rows[1], GpuVgInstance { asset_slot: 6, flags: authored, lod_error_scale: 2.0, object_row: 1 });
+    assert_eq!(
+        rows[1],
+        GpuVgInstance {
+            asset_slot: 6,
+            flags: authored,
+            lod_error_scale: 2.0,
+            object_row: 1
+        }
+    );
     assert_eq!(rows[1].tier_lock(), TierLock::SwRaster);
 
     // Mirrored and non-uniformly scaled instances are active but never
@@ -259,12 +307,29 @@ fn the_derivation_follows_readiness_and_the_global_switch() {
 
     // The streamer finishing asset 300 makes instance 2 active.
     let ready = [
-        VgAssetReadyRow { vertex_offset: 100, vertex_count: 24, asset_slot: 5, flags: 1 },
-        VgAssetReadyRow { vertex_offset: 200, vertex_count: 24, asset_slot: 6, flags: 1 },
-        VgAssetReadyRow { vertex_offset: 300, vertex_count: 24, asset_slot: 7, flags: 1 },
+        VgAssetReadyRow {
+            vertex_offset: 100,
+            vertex_count: 24,
+            asset_slot: 5,
+            flags: 1,
+        },
+        VgAssetReadyRow {
+            vertex_offset: 200,
+            vertex_count: 24,
+            asset_slot: 6,
+            flags: 1,
+        },
+        VgAssetReadyRow {
+            vertex_offset: 300,
+            vertex_count: 24,
+            asset_slot: 7,
+            flags: 1,
+        },
         VgAssetReadyRow::PADDING,
     ];
-    scene.projection.insert(VG_ASSET_READY_KEY, upload(&device, &queue, &ready, 2));
+    scene
+        .projection
+        .insert(VG_ASSET_READY_KEY, upload(&device, &queue, &ready, 2));
     let (rows, suppressed, recorded) = derive(&device, &queue, &mut derivation, &scene.projection);
     assert!(recorded);
     assert_eq!(rows.len(), 5);

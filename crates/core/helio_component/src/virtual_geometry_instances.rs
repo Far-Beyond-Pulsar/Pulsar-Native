@@ -75,11 +75,11 @@
 use helio_core::{
     BufferHandle, BufferKey, SceneDerivation, SceneDerivationContext, SceneDerivationOutput,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use helio_vg_format::{
-    GpuVgInstance, VgAssetReadyRow, INST_LOD_SUPPRESS, VG_ASSET_READY_FLAG_READY,
+    GpuVgInstance, INST_LOD_SUPPRESS, VG_ASSET_READY_FLAG_READY, VgAssetReadyRow,
 };
 
 /// The VG instance rows (`GpuVgInstance`, 16 B each), one per VG-active
@@ -96,7 +96,6 @@ pub const CLASSIC_SUPPRESSED_KEY: BufferKey = BufferKey::of("classic_suppressed"
 /// Asset readiness rows published by `helio-vg-stream`. See the module doc.
 pub const VG_ASSET_READY_KEY: BufferKey = BufferKey::of("vg_asset_ready");
 
-
 pub const VG_INSTANCE_ROW_BYTES: u64 = 16;
 pub const VG_INSTANCE_COUNT_ROW_BYTES: u64 = 16;
 pub const LOD_SUPPRESSED_ROW_BYTES: u64 = 4;
@@ -110,12 +109,10 @@ const OVERRIDE_ROW_BYTES: u64 = 8;
 const OBJECT_ROW_BYTES: u64 = 252;
 const WORKGROUP: u32 = 64;
 
-
 const _: () = assert!(std::mem::size_of::<VgAssetReadyRow>() as u64 == VG_ASSET_READY_ROW_BYTES);
 const _: () = assert!(std::mem::size_of::<GpuVgInstance>() as u64 == VG_INSTANCE_ROW_BYTES);
-const _: () = assert!(
-    std::mem::size_of::<crate::components::VgOverrideGpu>() as u64 == OVERRIDE_ROW_BYTES
-);
+const _: () =
+    assert!(std::mem::size_of::<crate::components::VgOverrideGpu>() as u64 == OVERRIDE_ROW_BYTES);
 
 /// Where the frontend's authored rows live.
 #[derive(Clone, Copy, Debug)]
@@ -208,7 +205,12 @@ impl Output {
         }
     }
 
-    pub(crate) fn allocate(device: &wgpu::Device, label: &str, row_bytes: u64, rows: u32) -> wgpu::Buffer {
+    pub(crate) fn allocate(
+        device: &wgpu::Device,
+        label: &str,
+        row_bytes: u64,
+        rows: u32,
+    ) -> wgpu::Buffer {
         device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: row_bytes * u64::from(rows.max(1)),
@@ -463,8 +465,13 @@ impl SceneDerivation for VirtualGeometryInstances {
                 Some(section_handles),
                 Some(vertex_handles),
                 Some(objects),
-            ) = (owners, generations, section_handles, vertex_handles, objects)
-            {
+            ) = (
+                owners,
+                generations,
+                section_handles,
+                vertex_handles,
+                objects,
+            ) {
                 let empty = &self.empty;
                 let override_handles = override_handles.map_or(empty, |h| &h.buffer);
                 let overrides = overrides.map_or(empty, |h| &h.buffer);
@@ -583,12 +590,18 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {name}"));
             layouter[handle].size as usize
         };
-        assert_eq!(size_of_struct("AssetReady"), std::mem::size_of::<VgAssetReadyRow>());
+        assert_eq!(
+            size_of_struct("AssetReady"),
+            std::mem::size_of::<VgAssetReadyRow>()
+        );
         assert_eq!(
             size_of_struct("Override"),
             std::mem::size_of::<crate::components::VgOverrideGpu>()
         );
-        assert_eq!(size_of_struct("VgInstance"), std::mem::size_of::<GpuVgInstance>());
+        assert_eq!(
+            size_of_struct("VgInstance"),
+            std::mem::size_of::<GpuVgInstance>()
+        );
         assert_eq!(size_of_struct("Owner") as u64, OWNER_ROW_BYTES);
         assert_eq!(size_of_struct("Uniforms"), std::mem::size_of::<Uniforms>());
     }
@@ -604,6 +617,9 @@ mod tests {
     fn standard_keys_name_the_published_buffers() {
         let keys = VgInstanceKeys::standard();
         assert_eq!(keys.overrides, BufferKey::of("vg_instance_overrides"));
-        assert_eq!(keys.override_handles, BufferKey::of("vg_instance_overrides::handles"));
+        assert_eq!(
+            keys.override_handles,
+            BufferKey::of("vg_instance_overrides::handles")
+        );
     }
 }
