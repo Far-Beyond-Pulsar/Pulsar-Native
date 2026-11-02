@@ -157,8 +157,10 @@ impl SceneRenderer {
             voxels.temporal_quality(&entries, [width, height])
         };
         let mut virtual_geometry = VirtualGeometryHost::new();
-        let mut config = super::project_settings::renderer_config(width, height, format, &settings)
-            .with_virtual_geometry(virtual_geometry.runtime());
+        let mut config = helio_default_passes::with_virtual_geometry(
+            super::project_settings::renderer_config(width, height, format, &settings),
+            virtual_geometry.runtime(),
+        );
         if let Some(quality) = super::project_settings::tsr_quality(&settings, voxel_quality) {
             config = config.with_tsr_quality(quality);
         }

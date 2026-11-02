@@ -602,7 +602,7 @@ pub fn portal_projection(
 // ── Virtual geometry ────────────────────────────────────────────────────────
 //
 // Plan: `.agents/plans/virtual-geometry.md`. A host owns one
-// [`VirtualGeometryHost`]; it hands its runtime to `RendererConfig::with_virtual_geometry`
+// [`VirtualGeometryHost`]; it hands its runtime to `helio_default_passes::with_virtual_geometry`
 // (the graph passes), installs the two derivations below between the scene
 // join and the authored-LOD selection, and calls [`sync_virtual_geometry`]
 // every frame.

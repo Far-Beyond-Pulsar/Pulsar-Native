@@ -33,14 +33,19 @@ pub fn voxels() -> Resolved {
     resolved(&helio_settings::VOXEL_RESIDENCY)
 }
 
-/// A renderer config with the project's settings.
+/// A renderer config with the project's settings: the renderer's own and
+/// the default features' (foliage), which `RendererConfig::with_settings`
+/// alone does not know.
 pub fn renderer_config(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
     settings: &Resolved,
 ) -> helio::RendererConfig {
-    helio::RendererConfig::new(width, height, format).with_settings(settings)
+    helio_default_passes::config_with_host_settings(
+        helio::RendererConfig::new(width, height, format),
+        settings,
+    )
 }
 
 /// The TSR preset to render with: the project's, or with "Automatic" the

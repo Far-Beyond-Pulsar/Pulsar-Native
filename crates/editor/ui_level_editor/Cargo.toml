@@ -87,6 +87,7 @@ wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
+helio-default-passes.workspace = true
 tempfile = { workspace = true }
 # Headless `TestAppContext` window for the properties-panel layout budget test
 # (`workspace/panels/properties_perf_tests.rs`). Test binaries only.

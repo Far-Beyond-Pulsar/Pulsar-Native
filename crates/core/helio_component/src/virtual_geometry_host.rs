@@ -75,7 +75,7 @@ impl VirtualGeometryHost {
         }
     }
 
-    /// The streaming runtime, for `RendererConfig::with_virtual_geometry`.
+    /// The streaming runtime, for `helio_default_passes::with_virtual_geometry`.
     pub fn runtime(&self) -> &VgRuntime {
         &self.runtime
     }

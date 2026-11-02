@@ -634,7 +634,7 @@ fn colour_stats(frame: &Frame) -> (usize, f32) {
 
 #[test]
 fn virtual_geometry_debug_views_register_and_render() {
-    use helio::vg_debug_view::{VgDebugView as D, ALL};
+    use helio_default_passes::vg_debug_view::{VgDebugView as D, ALL};
     let Some(harness) = setup() else { return };
     let (state, _) = scene(Some(VirtualGeometryComponent::default()));
     let mut renderer = harness.renderer(&state);

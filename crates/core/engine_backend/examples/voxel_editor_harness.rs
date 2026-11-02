@@ -28,7 +28,7 @@
 //!   the level as the editor's Create Voxel Terrain does
 //!   (`scene::voxel_presets`), its camera the level's; applied before the
 //!   first frame wherever the step stands.
-//! - `set:<group>.<key>=<value>`: a project setting (`rendering.foliage_range=200`;
+//! - `set:<group>.<key>=<value>`: a project setting (`rendering.features.edit::<helio_pass_foliage_place::FoliageSettings>().range =200`;
 //!   the groups are Helio's, `helio_settings::GROUPS`), applied before the
 //!   first frame wherever the step stands.
 //! - `debug:<mode>`: later views render the renderer's debug view `mode`
