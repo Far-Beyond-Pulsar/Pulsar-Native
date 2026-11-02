@@ -36,8 +36,8 @@ use std::process::{Command, Stdio};
 
 use pulsar_class::{ClassIndex, ClassRegistry};
 use pulsar_content::{
-    ASSET_REGISTRY_FILE, AssetRegistry, BuildProfile, CONTENT_DIR_NAME, PAK_FILE_NAME,
-    PROJECT_SETTINGS_FILE, PakWriter, ProjectSettings,
+    AssetRegistry, BuildProfile, PakWriter, ProjectSettings, ASSET_REGISTRY_FILE, CONTENT_DIR_NAME,
+    PAK_FILE_NAME, PROJECT_SETTINGS_FILE,
 };
 use serde::Serialize;
 
