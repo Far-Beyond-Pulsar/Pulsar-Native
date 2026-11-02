@@ -179,18 +179,17 @@ fn probe_on(
         wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
     );
 
-    let config = helio::RendererConfig::new(64, 64, wgpu::TextureFormat::Bgra8UnormSrgb);
-    let mut env = helio_graph_asset::BuildEnv::new(
-        &device,
-        &queue,
-        config,
-        Arc::new(std::sync::Mutex::new(helio::DebugDrawState::default())),
-        &camera,
-        &debug_camera,
-        &cull_stats,
-        false,
+    let mut env = helio_graph_asset::build_env(&helio::PassBuildContext {
+        device: &device,
+        queue: &queue,
+        config: helio::RendererConfig::new(64, 64, wgpu::TextureFormat::Bgra8UnormSrgb),
+        debug_state: Arc::new(std::sync::Mutex::new(helio::DebugDrawState::default())),
+        camera_buffer: &camera,
+        debug_camera_buffer: &debug_camera,
+        cull_stats_buffer: &cull_stats,
+        owns_device: false,
         scene_db,
-    );
+    });
     // The registry as it is now: its pin table is shared, so the nodes it holds
     // get their pins when the result is applied.
     let registry = node_registry_cell()

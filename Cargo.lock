@@ -4893,6 +4893,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-core",
+ "helio-feature-api",
  "helio-graph-asset",
  "helio-mats",
  "helio-pass-billboard",
@@ -4950,11 +4951,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-feature-api"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "serde",
+ "serde_json",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-graph-asset"
 version = "0.1.0"
 dependencies = [
  "helio",
  "helio-core",
+ "helio-feature-api",
  "log",
  "serde",
  "serde_json",
