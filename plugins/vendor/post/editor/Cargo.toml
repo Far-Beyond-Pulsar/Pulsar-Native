@@ -1,0 +1,20 @@
+[package]
+name = "post_plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Post-Process Volumes (pulsar.post): the editor plugin -- its metadata, over the plugin's component crate"
+
+[lib]
+name = "post_plugin"
+
+[features]
+# Statically linked hosts (the editor) use the Rust API; the component crate
+# (with everything it registers) comes with this crate.
+builtin = []
+
+[dependencies]
+post_component = { workspace = true }
+plugin_editor_api = { workspace = true }
+
+[lints]
+workspace = true
