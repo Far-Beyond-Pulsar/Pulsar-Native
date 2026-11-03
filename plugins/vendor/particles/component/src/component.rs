@@ -11,7 +11,7 @@
 //! `max_particles` is how many particles the emitter may have alive at
 //! once: its share of the pass's shared particle pool. The pool, the
 //! emitter's place in it and its spawn cursor are runtime state, never
-//! authored: SceneDB derives a `CoronaEmitterSourceRow` (`environment_rows`)
+//! authored: SceneDB derives a [`CoronaEmitterSourceRow`](crate::CoronaEmitterSourceRow)
 //! from the authored value, and the environment join gates it on the
 //! instance and its owner's visibility, places it at the owner and allocates
 //! its range of the pool on the GPU, clamped when the pool is full.

@@ -1,0 +1,19 @@
+[package]
+name = "helio-pass-corona"
+version = "0.1.0"
+edition = "2021"
+description = "Helio render pass: GPU-native particle system (Corona)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-scene-join = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-feature-api = { workspace = true }
+pulsar_reflection = { workspace = true }
+helio-core = { workspace = true }
+# The frame's world origin (`PrepareContext::world_origin`).
+glam = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+wgpu = { workspace = true }
+pulsar_scenedb = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
