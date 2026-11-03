@@ -154,7 +154,13 @@ mod tests {
                 "{name} is not a script method"
             );
         }
-        let mut spline = SplineComponent::default();
+        let mut spline = SplineComponent {
+            points: vec![
+                SplinePoint::new([0.0; 3]),
+                SplinePoint::new([4.0, 0.0, 0.0]),
+            ],
+            ..Default::default()
+        };
         let resample = methods
             .iter()
             .find(|method| method.name == "resample")
