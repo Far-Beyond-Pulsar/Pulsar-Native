@@ -4,8 +4,9 @@
 //! interpolated, and every edit operation the editor's spline tools perform.
 //! It hydrates into a typed World value on its object's entity, so the curve
 //! saves, loads and replicates with the level like every other component,
-//! and the renderer draws it from the World in the editor's debug overlay
-//! ([`spline_debug_lines`]) instead of the UI painting it over the viewport.
+//! and the editor's viewports draw it from the World in the renderer's
+//! editor debug lines ([`SplineLines`], registered by the crate root) instead
+//! of the UI painting it over the viewport.
 
 use engine_class_derive::{engine_class, register_world_component};
 use glam::Vec3;
@@ -449,7 +450,8 @@ impl SplineComponent {
 }
 
 // The World value is the curve; nothing is pushed anywhere else. The
-// renderer reads it back through `spline_debug_lines`.
+// editor's viewports draw it through `SplineLines` (an editor line set the
+// crate root registers).
 #[register_world_component]
 impl SplineComponent {}
 
