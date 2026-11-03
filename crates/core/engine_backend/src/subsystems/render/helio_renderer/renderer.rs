@@ -6,7 +6,6 @@ use std::time::Instant;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
-pub use helio_scene_derivations::portals::PortalDebugText;
 
 use super::camera_ground::{altitude_speed_scale, CameraGround};
 use super::fly_camera::{direction, yaw_pitch, FlyCamera};
@@ -347,9 +346,7 @@ pub struct HelioEditorMailbox {
     camera_sync_locked: Arc<AtomicBool>,
     camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
-    pending_portal_debug_texts:
-        Arc<Mutex<Option<Vec<helio_scene_derivations::portals::PortalDebugText>>>>,
-    pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
+    pending_view_payloads: Arc<Mutex<Vec<(&'static str, Option<ViewPayload>)>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
     requested_pipeline: super::pipelines::RequestedPipeline,
@@ -358,9 +355,9 @@ pub struct HelioEditorMailbox {
 /// A debug view advertised by a pass in the editor viewport's render graph.
 pub type ViewportDebugLegend = helio::DebugViewLegend;
 
-/// Editor-only view selection for portal diagnostics. The renderer keeps its
-/// color output lit while the editor draws portal labels and pairing overlays.
-pub const PORTAL_DEBUG_VIEW_MODE: u32 = 35;
+/// What an editor publishes for one viewport's passes, under a feature's
+/// payload contract key (`helio_core::PayloadContract`).
+pub type ViewPayload = Arc<dyn std::any::Any + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ViewportDebugView {
@@ -460,21 +457,13 @@ impl HelioEditorMailbox {
         self.requested_pipeline.set(id);
     }
 
-    /// Update world-anchored portal labels rendered by Helio's overlay pass.
-    pub fn set_portal_debug_texts(
-        &self,
-        texts: Vec<helio_scene_derivations::portals::PortalDebugText>,
-    ) {
-        if let Ok(mut pending) = self.pending_portal_debug_texts.lock() {
-            *pending = Some(texts);
-        }
-    }
-
-    /// Show the geometry mapped through the selected portal in the editor.
-    /// An empty vector clears the ghost overlay.
-    pub fn set_portal_debug_geometry(&self, vertices: Vec<[f64; 3]>) {
-        if let Ok(mut pending) = self.pending_portal_debug_geometry.lock() {
-            *pending = Some(vertices);
+    /// Publish `payload` for this viewport's passes under a feature's payload
+    /// contract key (`None` withdraws it): editor-only data a plugin's
+    /// overlay draws (a portal's labels and what it maps), beside what the
+    /// scene publishes. Applied at the next frame, which it wakes.
+    pub fn set_view_payload(&self, key: &'static str, payload: Option<ViewPayload>) {
+        if let Ok(mut pending) = self.pending_view_payloads.lock() {
+            pending.push((key, payload));
         }
     }
 
@@ -581,9 +570,7 @@ pub struct HelioRenderer {
     ortho_boom: f32,
     /// Debug views advertised by the active render graph, exposed to editor UI.
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
-    pending_portal_debug_texts:
-        Arc<Mutex<Option<Vec<helio_scene_derivations::portals::PortalDebugText>>>>,
-    pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
+    pending_view_payloads: Arc<Mutex<Vec<(&'static str, Option<ViewPayload>)>>>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
     frame_delta_override: Option<f32>,
@@ -690,8 +677,9 @@ struct HelioInner {
     applied_postprocess: Option<crate::scene::EditorPostProcess>,
     /// The debug mode last handed to the graph (0: lit).
     applied_debug_mode: u32,
-    /// Watches the scene for spline changes; created with the first sync.
-    spline_lines: Option<helio_component::components::SplineLines>,
+    /// The plugins' editor line sets (`EditorLinesRegistration`), each
+    /// watching the scene; created with the first sync.
+    editor_lines: Option<Vec<(&'static str, Box<dyn super::render_features::EditorLines>)>>,
 }
 
 use super::project_settings::{ProjectGraphSettings, ProjectGraphSettingsCache};
@@ -740,8 +728,7 @@ impl HelioRenderer {
             active_view: ViewKind::Perspective,
             ortho_boom: CAMERA_PIVOT_DISTANCE as f32,
             viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
-            pending_portal_debug_texts: Arc::new(Mutex::new(None)),
-            pending_portal_debug_geometry: Arc::new(Mutex::new(None)),
+            pending_view_payloads: Arc::new(Mutex::new(Vec::new())),
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
@@ -1020,7 +1007,7 @@ impl HelioRenderer {
                 has_rendered_frame: false,
                 applied_postprocess: None,
                 applied_debug_mode: 0,
-                spline_lines: None,
+                editor_lines: None,
             };
             self.inner = Some(inner);
             self.applied_graph_settings = Some(graph_settings.clone());
@@ -1190,35 +1177,21 @@ impl HelioRenderer {
         self.apply_view_fog();
         let ortho_half_height = self.ortho_half_height();
 
-        let portal_debug_texts = self
-            .pending_portal_debug_texts
+        let view_payloads = self
+            .pending_view_payloads
             .lock()
-            .ok()
-            .and_then(|mut pending| pending.take());
-        let portal_debug_geometry = self
-            .pending_portal_debug_geometry
-            .lock()
-            .ok()
-            .and_then(|mut pending| pending.take());
+            .map(|mut pending| std::mem::take(&mut *pending))
+            .unwrap_or_default();
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => return None,
         };
 
-        let portal_debug_texts_changed = portal_debug_texts
-            .map(|texts| {
-                helio_scene_derivations::portals::set_debug_texts(&mut inner.scene.renderer, texts)
-            })
-            .unwrap_or(false);
-        let portal_debug_geometry_changed = portal_debug_geometry
-            .map(|vertices| {
-                helio_scene_derivations::portals::set_debug_geometry(
-                    &mut inner.scene.renderer,
-                    vertices,
-                )
-            })
-            .unwrap_or(false);
+        let view_payloads_changed = !view_payloads.is_empty();
+        for (key, payload) in view_payloads {
+            inner.scene.set_view_payload(key, payload);
+        }
         // Passes whose output shows their own cost (the lighting's cost view)
         // get their measured GPU time.
         let measured_deferred_light_changed = inner.scene.renderer.feed_measured_gpu_times();
@@ -1263,8 +1236,7 @@ impl HelioRenderer {
             || viewport_resized
             || postprocess_changed
             || debug_view_changed
-            || portal_debug_texts_changed
-            || portal_debug_geometry_changed
+            || view_payloads_changed
             || (self.viewport_debug_mode.load(Ordering::Acquire) == 34
                 && measured_deferred_light_changed)
             || view_kind_changed
@@ -1370,18 +1342,18 @@ impl HelioRenderer {
                 self.scene_store.write()
             };
             {
-                // Splines are SceneDB components drawn by Helio's editor debug
-                // pass in world space, so they follow the camera like the grid.
-                // Their lines are rebuilt only when a spline or its owner changed.
-                profiling::profile_scope!("helio_sync_spline_lines");
-                let spline_lines = inner.spline_lines.get_or_insert_with(|| {
-                    helio_component::components::SplineLines::new(&scene_store.world)
-                });
-                if let Some(lines) = spline_lines.poll(&scene_store.world) {
-                    inner
-                        .scene
-                        .renderer
-                        .debug_set_editor_lines("splines", lines);
+                // The plugins' editor line sets (a spline's curve) are drawn
+                // by Helio's editor debug pass in world space, so they follow
+                // the camera like the grid; each rebuilds only when what it
+                // shows changed.
+                profiling::profile_scope!("helio_sync_editor_lines");
+                let editor_lines = inner
+                    .editor_lines
+                    .get_or_insert_with(|| super::render_features::editor_lines(&scene_store.world));
+                for (name, lines) in editor_lines.iter_mut() {
+                    if let Some(lines) = lines.poll(&scene_store.world) {
+                        inner.scene.renderer.debug_set_editor_lines(name, lines);
+                    }
                 }
             }
             // SceneDB steps, with the subsystems plugins add to scenes
@@ -2066,8 +2038,7 @@ impl HelioRenderer {
             camera_sync_locked: self.camera_sync_locked.clone(),
             camera_sync_join: self.camera_sync_join.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
-            pending_portal_debug_texts: self.pending_portal_debug_texts.clone(),
-            pending_portal_debug_geometry: self.pending_portal_debug_geometry.clone(),
+            pending_view_payloads: self.pending_view_payloads.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
             requested_pipeline: self.requested_pipeline.clone(),

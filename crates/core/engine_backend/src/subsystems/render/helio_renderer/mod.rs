@@ -19,12 +19,15 @@ pub use core::{
     CameraInput, DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData, RenderMetrics,
     RenderSpikeLogConfig,
 };
+pub use animated_content::AnimatedContentRegistration;
 pub use fly_camera::FlyCamera;
-pub use render_features::RenderFeatureRegistration;
+pub use render_features::{
+    EditorLines, EditorLinesRegistration, RenderFeatureRegistration, ViewOverscanRegistration,
+};
 pub use renderer::{
     CameraSync, CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer,
-    PendingPointerEvent, PortalDebugText, RendererCommand, StaticDragWarning, ToolRay, ViewKind,
-    ViewportDebugLegend, ViewportDebugView, CAMERA_PIVOT_DISTANCE, PORTAL_DEBUG_VIEW_MODE,
+    PendingPointerEvent, RendererCommand, StaticDragWarning, ToolRay, ViewKind, ViewPayload,
+    ViewportDebugLegend, ViewportDebugView, CAMERA_PIVOT_DISTANCE,
 };
 pub use scene_renderer::{
     DeviceOwner, FrameProjection, FrameView, PreparedFrame, SceneRenderer, SceneRendererOptions,

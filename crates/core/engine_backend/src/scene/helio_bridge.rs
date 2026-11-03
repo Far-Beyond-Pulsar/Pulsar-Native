@@ -9,24 +9,24 @@
 //! they change. This module keeps no frame projection, render-row
 //! subscription, material table or per-frame input assembly
 //! (Pulsar-Native#1035, Phase 2). Every other kind's row join
-//! ([`environment_join`]: fog volumes, post-process volumes, camera
-//! post-process settings, the lens, water, foliage, atmospheres, decals,
-//! particle emitters, sprites) does the same for its rows (Phase 4); each
-//! kind's join is its Helio crate's (`scene_rows`), grouped here until each
-//! kind's plugin installs its own.
+//! ([`environment_join`]) does the same for its rows (Phase 4); each kind's
+//! join is its feature crate's (`scene_rows`). The kinds still in the
+//! engine (fog volumes, post-process volumes, camera post-process settings,
+//! water, foliage, atmospheres) are grouped here until their plugins
+//! install their own; a plugin's kind registers its source rows and its
+//! join ([`SceneRowsRegistration`]), and the spaces it puts in the frame's
+//! table ([`SpaceProducerRegistration`]).
 use std::sync::Arc;
 
 use helio_component::components::{
-    AtmosphereSourceRow, CameraPostProcessSourceRow, CoronaEmitterSourceRow, DecalSourceRow,
-    FoliageSourceRow, GlobalFogSourceRow, GlobalWindSourceRow, LODComponent, LightSourceRow,
-    LocalFogSourceRow, PostProcessVolumeSourceRow, SkeletalMeshComponent, SpriteSourceRow,
-    StaticMeshComponent, StaticMeshDraw, VirtualGeometryComponent, WaterVolumeSourceRow,
-    ATMOSPHERE_SOURCES_BUFFER, CAMERA_POST_PROCESS_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER,
-    DECAL_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER, GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER,
-    LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
-    POST_PROCESS_VOLUME_SOURCES_BUFFER, SKELETAL_PALETTE_HANDLES_BUFFER,
-    SKELETAL_SKIN_HANDLES_BUFFER, SPRITE_SOURCES_BUFFER, WATER_VOLUME_SOURCES_BUFFER,
-    WIND_SOURCES_BUFFER,
+    AtmosphereSourceRow, CameraPostProcessSourceRow, FoliageSourceRow, GlobalFogSourceRow,
+    GlobalWindSourceRow, LODComponent, LightSourceRow, LocalFogSourceRow,
+    PostProcessVolumeSourceRow, SkeletalMeshComponent, StaticMeshComponent, StaticMeshDraw,
+    VirtualGeometryComponent, WaterVolumeSourceRow, ATMOSPHERE_SOURCES_BUFFER,
+    CAMERA_POST_PROCESS_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER, GLOBAL_FOG_SOURCES_BUFFER,
+    LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER,
+    MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER, SKELETAL_PALETTE_HANDLES_BUFFER,
+    SKELETAL_SKIN_HANDLES_BUFFER, WATER_VOLUME_SOURCES_BUFFER, WIND_SOURCES_BUFFER,
 };
 use helio_pass_light_cull::scene_rows::{LightJoin, LightJoinKeys};
 use helio_pass_object_batch::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
@@ -146,18 +146,34 @@ pub fn row_join_keys() -> RowJoinKeys {
     }
 }
 
-/// Every other kind's row join over this engine's rows (each kind's Helio
-/// crate's `scene_rows`), for `RendererBuilder::with_scene_derivation`,
+/// A plugin's kind of scene rows: the source rows its components derive
+/// (SceneDB columns, registered with the GPU mirror by
+/// [`ensure_gpu_mirror`]) and the derivation that turns them into the rows
+/// its passes read ([`environment_join`] runs it, after the engine's own
+/// kinds). The engine knows neither: the plugin's component crate submits
+/// one with `inventory::submit!`.
+pub struct SceneRowsRegistration {
+    /// Registers the kind's source-row columns (initial capacities; they
+    /// grow).
+    pub register_columns: fn(&mut SceneGpuStore, &Arc<wgpu::Device>),
+    /// The kind's derivation over this engine's rows ([`row_join_keys`]).
+    pub derivation: fn(&wgpu::Device, RowJoinKeys) -> Box<dyn SceneDerivation>,
+}
+
+inventory::collect!(SceneRowsRegistration);
+
+/// Every other kind's row join over this engine's rows (each kind's
+/// feature crate's `scene_rows`), for `RendererBuilder::with_scene_derivation`,
 /// after [`scene_join`] (water takes the sun from the light list): fog
-/// volumes, post-process volumes and camera baselines, camera lenses, water
-/// volumes (and the interaction rows physics bodies on the `WaterSim`
-/// channel derive, #1080), foliage and the level's wind, atmospheres,
-/// decals, particle emitters and 2D sprites (#1060).
+/// volumes, post-process volumes and camera baselines, water volumes (and
+/// the interaction rows physics bodies on the `WaterSim` channel derive,
+/// #1080), foliage and the level's wind, atmospheres, then every plugin's
+/// kind ([`SceneRowsRegistration`]).
 pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
     let keys = row_join_keys();
     let key = BufferKey::of;
     let wind = key(WIND_SOURCES_BUFFER);
-    let joins: Vec<Box<dyn SceneDerivation>> = vec![
+    let mut joins: Vec<Box<dyn SceneDerivation>> = vec![
         Box::new(helio_pass_volumetric_fog::scene_rows::scene_rows(
             device,
             keys,
@@ -173,11 +189,6 @@ pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
                 post_process_volumes: key(POST_PROCESS_VOLUME_SOURCES_BUFFER),
                 camera_post_process: key(CAMERA_POST_PROCESS_SOURCES_BUFFER),
             },
-        )),
-        Box::new(helio_pass_lens::scene_rows::scene_rows(
-            device,
-            keys,
-            key(helio_component::components::CAMERA_LENS_SOURCES_BUFFER),
         )),
         Box::new(helio_pass_water_sim::scene_rows::scene_rows(
             device,
@@ -201,22 +212,12 @@ pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
             keys,
             key(ATMOSPHERE_SOURCES_BUFFER),
         )),
-        Box::new(helio_pass_decal::scene_rows::scene_rows(
-            device,
-            keys,
-            key(DECAL_SOURCES_BUFFER),
-        )),
-        Box::new(helio_pass_corona::scene_rows::scene_rows(
-            device,
-            keys,
-            key(CORONA_EMITTER_SOURCES_BUFFER),
-        )),
-        Box::new(helio_pass_sprite_batch::scene_rows::scene_rows(
-            device,
-            keys,
-            key(SPRITE_SOURCES_BUFFER),
-        )),
     ];
+    joins.extend(
+        inventory::iter::<SceneRowsRegistration>
+            .into_iter()
+            .map(|registration| (registration.derivation)(device, keys)),
+    );
     Box::new(DerivationGroup::new("EnvironmentJoins", joins))
 }
 
@@ -285,25 +286,16 @@ pub fn ensure_gpu_mirror(
     ObjectFrame::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     TransformRow::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The kinds' row joins' inputs (see `environment_join`); the fog
-    // media, post-process volume, camera, water volume, foliage, atmosphere,
-    // decal, Corona emitter and water hitbox rows the passes read are its
-    // outputs.
+    // media, post-process volume, camera, water volume, foliage, atmosphere
+    // and water hitbox rows the passes read are its outputs.
     GlobalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
     LocalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     PostProcessVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     CameraPostProcessSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
-    // The camera lens: the authored `CameraLensComponent` derives its source
-    // row (the environment join publishes it as `camera_lenses`) and the
-    // lens pass's `lens_elements` rows.
-    helio_component::components::register_lens_gpu_columns(&mut gpu_store, &device);
     WaterVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
     FoliageSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
     AtmosphereSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
-    DecalSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
-    CoronaEmitterSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     GlobalWindSourceRow::register_gpu_columns_growable(&mut gpu_store, 2, &device);
-    // 2D sprites; the join places them as the sprite overlay's rows.
-    SpriteSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     // Bodies that push simulated water; the join bounds them by their
     // owners' meshes into the water simulation's hitbox rows.
     pulsar_physics::WaterHitboxSourceRow::register_gpu_columns_growable(
@@ -311,6 +303,10 @@ pub fn ensure_gpu_mirror(
         64,
         &device,
     );
+    // Every plugin's kind's source rows.
+    for registration in inventory::iter::<SceneRowsRegistration> {
+        (registration.register_columns)(&mut gpu_store, &device);
+    }
 
     // SceneDB owns residency budgets and tier configuration. The bridge only
     // installs project settings while constructing the shared store.
@@ -477,10 +473,6 @@ mod tests {
             helio_pass_post_volumes::scene_rows::CAMERA_POST_PROCESS_SOURCE_ROW_BYTES
         );
         assert_eq!(
-            size_of::<helio_component::components::CameraLensSourceRow>() as u64,
-            helio_pass_lens::scene_rows::CAMERA_LENS_SOURCE_ROW_BYTES
-        );
-        assert_eq!(
             size_of::<WaterVolumeSourceRow>() as u64,
             helio_pass_water_sim::scene_rows::WATER_VOLUME_SOURCE_ROW_BYTES
         );
@@ -496,18 +488,14 @@ mod tests {
             size_of::<pulsar_physics::WaterHitboxSourceRow>() as u64,
             helio_pass_water_sim::scene_rows::WATER_HITBOX_SOURCE_ROW_BYTES
         );
-        assert_eq!(
-            size_of::<SpriteSourceRow>() as u64,
-            helio_pass_sprite_batch::scene_rows::SPRITE_SOURCE_ROW_BYTES
-        );
     }
 }
 
 /// The one coordinate-space table. Spaces objects define (rigid frames, sublevel
 /// placements; `pulsar_scene_model::frames`) fill slots `1..` in slot order;
-/// every other producer (a portal projection) asks this for slots through
-/// [`CoordinateSpaceAllocator`], so no producer numbers the table itself and
-/// none can overwrite another.
+/// every other producer ([`SpaceProducerRegistration`]: a portal projection)
+/// asks this for slots through [`CoordinateSpaceAllocator`], so no producer
+/// numbers the table itself and none can overwrite another.
 pub struct SpaceTable {
     matrices: Vec<glam::Mat4>,
     /// Slots handed out by `space_for`, to reuse an equal matrix.
@@ -554,52 +542,93 @@ impl helio_core::CoordinateSpaceAllocator for SpaceTable {
     }
 }
 
+/// Something besides the objects that define spaces that puts spaces in the
+/// frame's coordinate-space table: a portal projection (the matrices mapping
+/// what an opening shows into where it shows it). Its plugin registers it
+/// (`inventory::submit!`); each renderer makes its own ([`SpaceSync`]) and
+/// installs its derivation.
+pub struct SpaceProducerRegistration {
+    /// For diagnostics.
+    pub name: &'static str,
+    pub new: fn() -> Box<dyn SpaceProducer>,
+}
+
+inventory::collect!(SpaceProducerRegistration);
+
+/// One renderer's space producer ([`SpaceProducerRegistration`]).
+pub trait SpaceProducer: Send + Sync {
+    /// The coming frame's camera (view-projection and position, relative to
+    /// the frame's origin), so it can skip what the camera cannot see.
+    fn set_view(&mut self, _view_projection: glam::Mat4, _position: glam::Vec3) {}
+
+    /// Take this frame's slots from `table` for `world`, relative to `origin`
+    /// (the frame's world origin), and publish what its passes read about the
+    /// frame into `payloads` (by their payload contracts' keys).
+    fn apply(
+        &mut self,
+        world: &pulsar_scenedb::World,
+        origin: glam::DVec3,
+        table: &mut SpaceTable,
+        payloads: &mut helio_core::ScenePayloads,
+    );
+
+    /// The scene derivation that uploads what [`Self::apply`] produced, for
+    /// `RendererBuilder::with_scene_derivation`; asked once, when the
+    /// renderer is built.
+    fn derivation(&self, device: &wgpu::Device) -> Option<Box<dyn SceneDerivation>>;
+}
+
 /// Keeps a renderer's coordinate-space table current. Each frame it makes sure
 /// every space-defining object has its slot (the allocator,
 /// `pulsar_scene_model::frames::sync_spaces`, taking the write lock only when
-/// something changed), builds the [`SpaceTable`] and uploads it only when it
-/// differs, so the many objects inside a space are never touched.
-#[derive(Default)]
+/// something changed), lets every registered producer take its slots
+/// ([`SpaceProducerRegistration`]), builds the [`SpaceTable`] and uploads it
+/// only when it differs, so the many objects inside a space are never touched.
 pub struct SpaceSync {
     last: Vec<glam::Mat4>,
-    portals: crate::scene::portals::PortalSync,
+    producers: Vec<Box<dyn SpaceProducer>>,
+}
+
+impl Default for SpaceSync {
+    /// With every registered producer.
+    fn default() -> Self {
+        Self {
+            last: Vec::new(),
+            producers: inventory::iter::<SpaceProducerRegistration>
+                .into_iter()
+                .map(|registration| (registration.new)())
+                .collect(),
+        }
+    }
 }
 
 impl SpaceSync {
-    /// The camera of the coming frame (view-projection and position, relative to
-    /// the origin given to `sync`), so portal chains are built only for the
-    /// portals it can see.
-    pub fn set_view(&mut self, view_projection: glam::Mat4, position: glam::Vec3) {
-        self.portals.set_view(Some((view_projection, position)));
+    /// The producers' scene derivations, for `RendererBuilder::with_scene_derivation`.
+    pub fn derivations(&self, device: &wgpu::Device) -> Vec<Box<dyn SceneDerivation>> {
+        self.producers
+            .iter()
+            .filter_map(|producer| producer.derivation(device))
+            .collect()
     }
 
-    /// The rows Helio's portal derivation uploads (`portal_projection` takes a
-    /// clone). Authored portals are paired and projected in [`Self::sync_with`].
-    pub fn portal_input(&self) -> helio_scene_derivations::portal_projection::PortalProjectionInput {
-        self.portals.input()
+    /// The camera of the coming frame (view-projection and position, relative to
+    /// the origin given to `sync`), so producers can skip what it cannot see.
+    pub fn set_view(&mut self, view_projection: glam::Mat4, position: glam::Vec3) {
+        for producer in &mut self.producers {
+            producer.set_view(view_projection, position);
+        }
     }
 
     /// Bring `renderer`'s table up to date with `scene`'s spaces, relative to
     /// `origin` (the frame's world origin; zero outside camera-relative
-    /// frames). Returns whether the table changed.
+    /// frames), and add what the producers publish about the frame to
+    /// `payloads`. Returns whether the table changed.
     pub fn sync(
         &mut self,
         scene: &crate::scene::SharedScene,
         origin: glam::DVec3,
         renderer: &mut helio::Renderer,
-    ) -> bool {
-        self.sync_with(scene, origin, renderer, |_| {})
-    }
-
-    /// [`Self::sync`], first letting `others` add the spaces other producers
-    /// need (a portal projection built with
-    /// `PortalProjectionBridge::build_into`).
-    pub fn sync_with(
-        &mut self,
-        scene: &crate::scene::SharedScene,
-        origin: glam::DVec3,
-        renderer: &mut helio::Renderer,
-        others: impl FnOnce(&mut SpaceTable),
+        payloads: &mut helio_core::ScenePayloads,
     ) -> bool {
         // Levels that displays show, and the slots of everything that defines a
         // space. Both checks are cheap reads; the write lock is taken only when
@@ -618,11 +647,12 @@ impl SpaceSync {
             &scene.read().world,
             origin,
         ));
-        // Portal projections take their slots from the same table.
-        let portal_counts = self.portals.apply(&scene.read().world, origin, &mut table);
-        others(&mut table);
-        if let Some((views, chains)) = portal_counts {
-            renderer.set_portal_projection_counts(views, chains);
+        // Every other producer takes its slots from the same table.
+        {
+            let world = &scene.read().world;
+            for producer in &mut self.producers {
+                producer.apply(world, origin, &mut table, payloads);
+            }
         }
         if table.matrices == self.last {
             return false;
@@ -659,15 +689,6 @@ pub fn first_fixed_in_group(
         .into_iter()
         .filter(|descendant| frame_above(world, *descendant) == space)
         .find_map(fixed)
-}
-
-/// Helio's portal derivation, for `RendererBuilder::with_scene_derivation`.
-/// `input` is [`SpaceSync::portal_input`]: the rows the host builds each frame.
-pub fn portal_projection(
-    device: &wgpu::Device,
-    input: helio_scene_derivations::portal_projection::PortalProjectionInput,
-) -> Box<helio_scene_derivations::portal_projection::PortalProjection> {
-    Box::new(helio_scene_derivations::portal_projection::PortalProjection::new(device, input))
 }
 
 // ── Virtual geometry ────────────────────────────────────────────────────────

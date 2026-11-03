@@ -251,9 +251,20 @@ impl std::fmt::Debug for BoundTexture {
     }
 }
 
+/// How a plugin's component that shows an image (a sprite, a decal) takes
+/// in a loaded texture asset: `register` calls `pulsar_scenedb::register_binding`
+/// for the component with [`TEXTURE_ASSET_KIND`]. Submitted by the plugin's
+/// component crate; run by [`register_texture_assets`].
+pub struct TextureBindingRegistration {
+    pub register: fn(),
+}
+
+inventory::collect!(TextureBindingRegistration);
+
 /// Registers the texture asset kind with SceneDB: its loader and payload
-/// size, and how sprites and decals take in a loaded image. Idempotent; done
-/// on the first [`texture_asset_id`].
+/// size, and how the registered components take in a loaded image
+/// ([`TextureBindingRegistration`]). Idempotent; done on the first
+/// [`texture_asset_id`].
 pub fn register_texture_assets() {
     static REGISTER: std::sync::Once = std::sync::Once::new();
     REGISTER.call_once(|| {
@@ -265,7 +276,9 @@ pub fn register_texture_assets() {
                 .downcast_ref::<LoadedTexture>()
                 .map_or(0, |_| std::mem::size_of::<LoadedTexture>())
         });
-        crate::components::register_texture_bindings();
+        for registration in inventory::iter::<TextureBindingRegistration> {
+            (registration.register)();
+        }
     });
 }
 
@@ -431,7 +444,7 @@ fn decode_rgba(path: &std::path::Path, cap: u32) -> Result<(u32, u32, Vec<u8>), 
 /// Bind the asset `view` into `bound` when it is the image `path` names: the
 /// decoded image when it loaded, nothing when it failed (`what` names the
 /// component in the warning).
-pub(crate) fn bind_texture(bound: &mut BoundTexture, path: &str, view: &AssetView, what: &str) {
+pub fn bind_texture(bound: &mut BoundTexture, path: &str, view: &AssetView, what: &str) {
     if view.id.is_zero() || view.id != texture_asset_id_of(path) {
         return;
     }
@@ -456,14 +469,14 @@ pub(crate) fn bind_texture(bound: &mut BoundTexture, path: &str, view: &AssetVie
 /// The handle-ledger reference of the image `path` names: exactly one entry,
 /// [`AssetId::ZERO`] for none (the ledger diffs a value's handles by
 /// position, as it does a derived collector's fields).
-pub(crate) fn collect_texture(path: &str, out: &mut Vec<pulsar_scenedb::handle_ledger::HandleId>) {
+pub fn collect_texture(path: &str, out: &mut Vec<pulsar_scenedb::handle_ledger::HandleId>) {
     out.push(texture_asset_id(path).handle());
 }
 
 /// The scene texture store slot of `bound`'s image when it is the one
 /// `path` names, uploading it on first use and again after a reload;
 /// `u32::MAX` for none (the tint alone).
-pub(crate) fn texture_slot(
+pub fn texture_slot(
     bound: &BoundTexture,
     path: &str,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,

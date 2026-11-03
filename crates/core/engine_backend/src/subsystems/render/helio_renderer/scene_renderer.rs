@@ -114,6 +114,9 @@ pub struct SceneRenderer {
     /// The registered pipeline id the graph was built from (`None`: the
     /// default).
     pipeline: Option<String>,
+    /// What the host publishes for this view's passes besides the scene's
+    /// payloads ([`Self::set_view_payload`]).
+    view_payloads: Vec<(&'static str, super::ViewPayload)>,
 }
 
 impl SceneRenderer {
@@ -181,12 +184,12 @@ impl SceneRenderer {
                 // one staging pool.
                 crate::gpu::Uploads::new(&device),
             ))
-            .with_scene_derivation(crate::scene::environment_join(&device))
-            // Authored portals, paired and projected each frame by `spaces`.
-            .with_scene_derivation(crate::scene::portal_projection(
-                &device,
-                spaces.portal_input(),
-            ))
+            .with_scene_derivation(crate::scene::environment_join(&device));
+        // What the plugins' space producers project each frame (`spaces`).
+        for derivation in spaces.derivations(&device) {
+            builder = builder.with_scene_derivation(derivation);
+        }
+        let mut builder = builder
             // No default ambient: all illumination comes from the scene.
             .with_feature(helio::AmbientLight {
                 color: [0.0; 3],
@@ -227,6 +230,18 @@ impl SceneRenderer {
             virtual_geometry,
             virtual_geometry_override: options.virtual_geometry,
             pipeline,
+            view_payloads: Vec::new(),
+        }
+    }
+
+    /// Publish `payload` for this view's passes under a feature's payload
+    /// contract key, every frame until replaced (`None` withdraws it):
+    /// editor-only data a plugin's overlay draws, beside what the scene
+    /// publishes.
+    pub fn set_view_payload(&mut self, key: &'static str, payload: Option<super::ViewPayload>) {
+        self.view_payloads.retain(|(existing, _)| *existing != key);
+        if let Some(payload) = payload {
+            self.view_payloads.push((key, payload));
         }
     }
 
@@ -323,7 +338,9 @@ impl SceneRenderer {
         for (key, payload) in published.payloads {
             payloads.insert_any(key, payload);
         }
-        self.renderer.set_scene_payloads(payloads);
+        for (key, payload) in &self.view_payloads {
+            payloads.insert_any(key, payload.clone());
+        }
 
         // The live settings: the TSR preset (the scene content's under
         // "Automatic") and the render scale while TSR is off.
@@ -375,25 +392,25 @@ impl SceneRenderer {
                 ortho_camera(view.eye, view.forward, view.up, view.aspect, half_height)
             }
         };
-        // A lens that maps past the frame (fisheye, barrel distortion) needs
-        // a wider render than the frame, which it then crops back; the camera
-        // lens component owns how much, and tells the lens pass the same
-        // factor. TODO(review): this names one component's helper from the
-        // generic renderer, like the lens GPU column registration in
-        // `helio_bridge`; it belongs behind a view-projection hook that helio
-        // components register, once one exists.
-        let lens_overscan = helio_component::components::camera_lens_view_overscan(
+        // A view that maps past the frame (a fisheye or barrel-distorted
+        // lens) needs a wider render than the frame, which it then crops
+        // back; whatever owns the camera's optics says how much
+        // (`ViewOverscanRegistration`).
+        let overscan = super::render_features::view_overscan(
             &self.scene.read().world,
             camera.view_id,
             view.aspect,
         );
-        let camera = camera.with_overscan(lens_overscan);
+        let camera = camera.with_overscan(overscan);
         // Rigid frames: one matrix each, relative to the same origin. Their
         // members' rows never change when a frame moves; this table does.
-        // Portal chains are built for the portals this camera can see.
+        // Producers (portal projections) build only what this camera sees,
+        // and publish what their passes read about the frame.
         self.spaces
             .set_view(camera.view_proj_in(origin), camera.position_in(origin));
-        self.spaces.sync(&self.scene, origin, &mut self.renderer);
+        self.spaces
+            .sync(&self.scene, origin, &mut self.renderer, &mut payloads);
+        self.renderer.set_scene_payloads(payloads);
 
         let errors = published.problems;
         let new_errors = (errors != self.last_errors).then(|| {

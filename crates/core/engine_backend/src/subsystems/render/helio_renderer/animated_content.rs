@@ -1,8 +1,9 @@
 //! Whether the scene holds content that moves on its own (Pulsar-Native
-//! #1123, #1109): foliage in a wind, particle emitters, water (#1065),
-//! surfaces whose shader graph reads `time`. While the viewport is realtime such content
-//! changes every frame with no scene write, so the editor renderer keeps
-//! rendering instead of going idle.
+//! #1123, #1109): foliage in a wind, water (#1065), surfaces whose shader
+//! graph reads `time`, and what plugins register (particle emitters,
+//! [`AnimatedContentRegistration`]). While the viewport is realtime such
+//! content changes every frame with no scene write, so the editor renderer
+//! keeps rendering instead of going idle.
 //!
 //! The answer depends only on the authored components, so it is
 //! re-checked only when one of the components it reads changed (through
@@ -11,11 +12,21 @@
 //! check walks every mesh's material slots.
 
 use helio_component::components::{
-    mesh_reads_time, FoliageComponent, ParticleEmitterComponent, StaticMeshComponent,
-    WaterVolumeComponent, WindComponent,
+    mesh_reads_time, FoliageComponent, StaticMeshComponent, WaterVolumeComponent, WindComponent,
 };
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::{ChangeCursor, ChangeRead, World};
+
+/// A plugin's content that moves on its own (a particle emitter): `watch`
+/// opens a change cursor on the component the answer reads, and `animated`
+/// says whether `world` holds such content now. Submitted by the plugin's
+/// component crate.
+pub struct AnimatedContentRegistration {
+    pub watch: fn(&World) -> ChangeCursor,
+    pub animated: fn(&World) -> bool,
+}
+
+inventory::collect!(AnimatedContentRegistration);
 
 /// The last answer, and cursors on the components it was computed from.
 #[derive(Default)]
@@ -41,13 +52,17 @@ impl AnimatedContent {
         };
         if fresh {
             self.cursors = vec![
-                world.open_change_cursor::<ParticleEmitterComponent>(),
                 world.open_change_cursor::<FoliageComponent>(),
                 world.open_change_cursor::<WaterVolumeComponent>(),
                 world.open_change_cursor::<WindComponent>(),
                 world.open_change_cursor::<StaticMeshComponent>(),
                 world.open_change_cursor::<attachments::ComponentOwner>(),
             ];
+            self.cursors.extend(
+                inventory::iter::<AnimatedContentRegistration>
+                    .into_iter()
+                    .map(|registration| (registration.watch)(world)),
+            );
             self.live = self.check(world);
         } else {
             // Cheap: a cursor read costs the changes since the last one,
@@ -75,17 +90,16 @@ impl AnimatedContent {
     }
 }
 
-/// Animated content in `world`: an enabled particle emitter, foliage in a
-/// wind faster than calm, an enabled water volume, or a mesh drawn with a
-/// shader graph that reads the frame clock.
+/// Animated content in `world`: foliage in a wind faster than calm, an
+/// enabled water volume, a mesh drawn with a shader graph that reads the
+/// frame clock, or a plugin's animated content.
 pub(super) fn animated(world: &World) -> bool {
-    particles(world) || foliage_in_wind(world) || water(world) || animated_graph_materials(world)
-}
-
-fn particles(world: &World) -> bool {
-    world
-        .query::<&ParticleEmitterComponent>()
-        .any(|(instance, emitter)| emitter.enabled && attachments::is_enabled(world, instance))
+    foliage_in_wind(world)
+        || water(world)
+        || animated_graph_materials(world)
+        || inventory::iter::<AnimatedContentRegistration>
+            .into_iter()
+            .any(|registration| (registration.animated)(world))
 }
 
 /// Water simulates on the frame clock: its waves travel in a wind, and
