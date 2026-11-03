@@ -7,4 +7,5 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
+crates/renderer/helio 06198ade4ab342b8e885c900d687e29d36bf517f Far-Beyond-Pulsar/Helio#377 (rewrite phase B batch 1; the stacked rewrite PRs land together)
 crates/renderer/helio 3b1d28953417d6c985e5640f6d2a3251cb7df0b4 Far-Beyond-Pulsar/Helio#370 (rewrite phase 0; the stacked rewrite PRs land together)
