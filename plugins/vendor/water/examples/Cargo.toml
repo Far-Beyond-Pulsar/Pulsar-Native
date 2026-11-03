@@ -1,0 +1,47 @@
+[package]
+name = "water-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The water plugin's standalone hosts on Helio: the cathedral water and the oil rig at night"
+
+[features]
+default = ["gpu"]
+gpu = []
+
+[[bin]]
+name = "indoor_cathedral_water"
+path = "indoor_cathedral_water.rs"
+
+[[bin]]
+name = "oil_rig_night"
+path = "oil_rig_night.rs"
+
+[dependencies]
+env_logger = "0.11"
+glam = { workspace = true }
+helio = { workspace = true }
+helio-bake = { workspace = true }
+helio-components = { workspace = true, features = ["bake"] }
+helio-core = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-mesh-api = { workspace = true }
+helio-pass-debug-overlay = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+helio-pass-object-batch = { workspace = true }
+helio-pass-perf-overlay = { workspace = true }
+helio-pass-shadow-matrix = { workspace = true }
+helio-pass-sky = { workspace = true }
+helio-pass-water-sim = { workspace = true, features = ["host-rows"] }
+helio-presets = { workspace = true }
+image = { workspace = true, features = ["png", "jpeg"] }
+log = { workspace = true }
+pollster = "0.4"
+# `#[derive(SceneStore)]` expands to reflection paths.
+pulsar_reflection = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+scenedb-inspector-agent = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
