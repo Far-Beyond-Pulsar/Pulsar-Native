@@ -14,7 +14,15 @@ fn gpu() -> (Arc<wgpu::Device>, Arc<wgpu::Queue>) {
             .request_adapter(&Default::default())
             .await
             .expect("GPU adapter required for fog regressions");
-        let (device, queue) = adapter.request_device(&Default::default()).await.unwrap();
+        // The fog's inject stage binds nine storage buffers: the adapter's
+        // limits, not the defaults (eight).
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                required_limits: adapter.limits(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         (Arc::new(device), Arc::new(queue))
     })
 }

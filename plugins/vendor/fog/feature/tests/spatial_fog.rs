@@ -43,7 +43,15 @@ fn scenedb_local_fog_is_visible_from_outside_and_tracks_edits_and_removal() {
             .request_adapter(&Default::default())
             .await
             .expect("GPU adapter required");
-        let (device, queue) = adapter.request_device(&Default::default()).await.unwrap();
+        // The fog's inject stage binds nine storage buffers: the adapter's
+        // limits, not the defaults (eight).
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                required_limits: adapter.limits(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         let device = Arc::new(device);
         let queue = Arc::new(queue);
         // Also validate the production injection/integration pipeline layouts.
