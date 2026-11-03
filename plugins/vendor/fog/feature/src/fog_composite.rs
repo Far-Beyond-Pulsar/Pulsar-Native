@@ -243,7 +243,12 @@ impl RenderPass for FogCompositePass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["depth", crate::FOG_ACCUM, crate::FOG_PARAMETERS]
+        &[
+            helio_frame_api::color::SCENE_COLOR,
+            "depth",
+            crate::FOG_ACCUM,
+            crate::FOG_PARAMETERS,
+        ]
     }
 
     fn writes(&self) -> &'static [&'static str] {
