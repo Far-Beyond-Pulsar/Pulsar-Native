@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use engine_backend::scene::{attachments, SceneWorldExt, SpawnObject};
-use helio_component::components::{
+use lens_component::{
     camera_lens_view_overscan, CameraLensComponent, LensElementKind, LensElementProps, LensPreset,
     LensProjectionModel, LensRegionShape, LENS_ELEMENT_SLOTS,
 };

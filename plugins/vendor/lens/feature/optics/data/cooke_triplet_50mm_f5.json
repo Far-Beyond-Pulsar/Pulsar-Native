@@ -1,0 +1,58 @@
+{
+  "name": "Cooke triplet 50 mm f/5",
+  "source": "Cooke triplet (N-SK16 / F2 / N-SK16) after the commonly tabulated 'Cooke 40 degree field' sample data (Zemax sample file; reconstructed, not verified against the primary source; the unscaled data has EFL ~45.8 mm, so a uniform scale of ~1.091 is applied here): radii/thicknesses 22.01359/-435.76044/-22.21328/20.29192/STOP/79.6836/-18.39533. Uniformly scaled to EFL 50 mm, stop set to f/5, sensor at the paraxial focus; semi-apertures chosen here. About 40 degrees full field.",
+  "focal_length_mm": 50.0,
+  "f_number": 5.0,
+  "sensor_half_diagonal_mm": 18.0,
+  "surfaces": [
+    {
+      "radius": 24.01803,
+      "thickness": 3.5557,
+      "glass": {
+        "Catalog": "N-SK16"
+      },
+      "semi_aperture": 10.36502
+    },
+    {
+      "radius": -475.43852,
+      "thickness": 6.55457,
+      "glass": "Air",
+      "semi_aperture": 10.36502
+    },
+    {
+      "radius": -24.23591,
+      "thickness": 1.09102,
+      "glass": {
+        "Catalog": "F2"
+      },
+      "semi_aperture": 6.54633
+    },
+    {
+      "radius": 22.1396,
+      "thickness": 5.18296,
+      "glass": "Air",
+      "semi_aperture": 6.54633
+    },
+    {
+      "radius": 0.0,
+      "thickness": 3.22088,
+      "glass": "Air",
+      "semi_aperture": 4.1633,
+      "stop": true
+    },
+    {
+      "radius": 86.93918,
+      "thickness": 3.22088,
+      "glass": {
+        "Catalog": "N-SK16"
+      },
+      "semi_aperture": 8.72844
+    },
+    {
+      "radius": -20.07031,
+      "thickness": 44.61611,
+      "glass": "Air",
+      "semi_aperture": 8.72844
+    }
+  ]
+}

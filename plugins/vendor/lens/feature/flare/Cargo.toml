@@ -1,0 +1,24 @@
+[package]
+name = "helio-pass-flare"
+version = "0.1.0"
+edition = "2021"
+description = "Helio render pass: image-based scene-linear lens response (ghosts, halo, glare, streaks)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-frame-api = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-core = { workspace = true }
+# The camera optics the lens response is built from.
+helio-pass-lens = { workspace = true }
+# Shadow matrices for analytic lens-source visibility.
+helio-pass-shadow-matrix = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }
+pollster = "0.4"
+glam = { workspace = true }
+# Tests build the real resolved-settings ABI instead of a hand-copied mirror.
+helio-pass-postprocess = { workspace = true }

@@ -1785,7 +1785,7 @@ impl LensElementProps {
     }
 }
 
-impl super::reflected_list::ReflectedListItem for LensElementProps {
+impl helio_component::components::reflected_list::ReflectedListItem for LensElementProps {
     const CLASS_NAME: &'static str = "LensElementProps";
     const NOUN: &'static str = "element";
     const MAX_ITEMS: usize = LENS_ELEMENT_SLOTS;
@@ -1805,7 +1805,7 @@ impl super::reflected_list::ReflectedListItem for LensElementProps {
     }
 }
 
-crate::register_reflected_list_editor!(LensElementProps);
+helio_component::register_reflected_list_editor!(LensElementProps);
 
 lens_enum! {
     /// A named lens setup. `Custom` uses the fields below it; any other

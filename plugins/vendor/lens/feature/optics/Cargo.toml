@@ -1,0 +1,11 @@
+[package]
+name = "helio-lens-optics"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-CPU real lens prescription tracer and lookup-table baker for the Helio lens pass"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+bytemuck = { workspace = true }
