@@ -1,8 +1,8 @@
 //! Voxel sculpt tool settings. They persist across tool switches.
 
 use engine_backend::scene::SceneWorldExt;
-use voxel_plugin::data::{VoxelBrushOp, VoxelBrushShape};
-use voxel_plugin::sculpt::{VoxelBrushRequest, VoxelBrushTool};
+use voxel_component::data::{VoxelBrushOp, VoxelBrushShape};
+use voxel_component::sculpt::{VoxelBrushRequest, VoxelBrushTool};
 
 /// What a click does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,9 +49,10 @@ pub const MIN_RADIUS_M: f32 = 0.1;
 /// cost is the tiles they cover regenerating, coarsest first, which
 /// streaming spreads over frames.
 pub const MAX_RADIUS_M: f32 = 10_000_000.0;
-/// Solid terrain material ids (see `voxel_plugin::world::material`):
+/// Solid terrain material ids (see `voxel_component::world::material`):
 /// every built-in material, shared by all terrain programs.
-pub const MATERIALS: std::ops::RangeInclusive<u32> = 1..=voxel_plugin::world::material::COUNT - 1;
+pub const MATERIALS: std::ops::RangeInclusive<u32> =
+    1..=voxel_component::world::material::COUNT - 1;
 
 impl VoxelSculptDomain {
     pub fn is_favorite(&self, material: u32) -> bool {
@@ -101,7 +102,7 @@ impl VoxelSculptDomain {
 
     /// Name of the selected material.
     pub fn material_name(&self) -> &'static str {
-        voxel_plugin::world::material::NAMES
+        voxel_component::world::material::NAMES
             .get(self.material.saturating_sub(1) as usize)
             .copied()
             .unwrap_or("?")
@@ -136,7 +137,7 @@ fn terrains(world: &pulsar_scenedb::World) -> (Vec<VoxelStrokeTerrain>, u64) {
     use engine_backend::scene::attachments;
     let mut ids = Vec::new();
     let mut revision = 0u64;
-    for (instance, terrain) in world.query::<&voxel_plugin::VoxelTerrainComponent>() {
+    for (instance, terrain) in world.query::<&voxel_component::VoxelTerrainComponent>() {
         let id = attachments::owner_of(world, instance).and_then(|owner| world.stable_id_of(owner));
         if let (Some(id), Some(meta)) = (id, attachments::meta(world, instance)) {
             ids.push(VoxelStrokeTerrain {
@@ -195,7 +196,7 @@ impl VoxelStroke {
             let Some(terrain) =
                 engine_backend::scene::attachments::instance_by_id(&world, terrain_before.instance)
                     .and_then(|instance| {
-                        world.get::<voxel_plugin::VoxelTerrainComponent>(instance)
+                        world.get::<voxel_component::VoxelTerrainComponent>(instance)
                     })
             else {
                 continue;
@@ -259,7 +260,7 @@ mod tests {
     #[test]
     fn a_sculpt_stroke_is_one_undo_step() {
         use crate::scene_edit::{components, objects, ObjectType, SceneObjectData, Transform};
-        use voxel_plugin::VoxelTerrainComponent;
+        use voxel_component::VoxelTerrainComponent;
 
         let mut state = crate::state::LevelEditorState::new();
         let id = {
@@ -312,7 +313,7 @@ mod tests {
             >(&world, owner)[0]
                 .0;
             let mut terrain = world.get_mut::<VoxelTerrainComponent>(entity).unwrap();
-            terrain.edits.push(voxel_plugin::data::VoxelBrushEdit {
+            terrain.edits.push(voxel_component::data::VoxelBrushEdit {
                 center: [x, 0.0, 0.0],
                 radius: 1.0,
                 shape: VoxelBrushShape::Sphere,

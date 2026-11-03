@@ -28,9 +28,9 @@ physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = [
 # The input plugin is linked the same way; its PlayerInputComponent is a scene
 # component.
 input_plugin = { path = "../../../plugins/vendor/input_plugin", default-features = false, features = ["builtin"] }
-# The voxel plugin is linked the same way; its terrain components are scene
-# components.
-voxel_plugin = { workspace = true }
+# The voxel plugin's component crate is linked the same way; its terrain
+# components are scene components.
+voxel_component = { workspace = true }
 
 [lints]
 workspace = true

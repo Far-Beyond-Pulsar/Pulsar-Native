@@ -2,7 +2,7 @@
 //!
 //! - **World** — create the level's voxel world in one click from a
 //!   ready-made preset (Earth-like planet, Moon, desert planet, flat block
-//!   world: `voxel_plugin::presets`), and the level's voxel
+//!   world: `voxel_component::presets`), and the level's voxel
 //!   terrains, each selected with a click so the inspector shows its layers
 //!   and features. Worlds are sculpted with the voxel sculpt tool.
 //! - **Foliage** — foliage sets and their brush.
@@ -19,8 +19,8 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
-use voxel_plugin::presets::VoxelWorldPreset;
-use voxel_plugin::{VoxelTerrainComponent, VoxelWorldShape};
+use voxel_component::presets::VoxelWorldPreset;
+use voxel_component::{VoxelTerrainComponent, VoxelWorldShape};
 
 use super::widgets::{collapsible_header, SharedState};
 use crate::commands::{execute_command, SceneCommand};

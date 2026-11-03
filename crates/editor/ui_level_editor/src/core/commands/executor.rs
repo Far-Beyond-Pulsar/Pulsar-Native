@@ -57,7 +57,7 @@ fn command_scope(world: &pulsar_scenedb::World, cmd: &SceneCommand) -> Vec<Strin
         SceneCommand::SetMovability { ids, .. } => ids.clone(),
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
-        SceneCommand::AddVoxelWorld { .. } => voxel_plugin::presets::objects_changed_by(world),
+        SceneCommand::AddVoxelWorld { .. } => voxel_component::presets::objects_changed_by(world),
     }
 }
 
@@ -832,7 +832,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
 
             SceneCommand::AddVoxelWorld { preset } => {
                 let setup =
-                    voxel_plugin::presets::add_voxel_world(&mut state.scene.world_mut(), preset);
+                    voxel_component::presets::add_voxel_world(&mut state.scene.world_mut(), preset);
                 let setup = match setup {
                     Ok(setup) => setup,
                     Err(error) => {

@@ -648,7 +648,7 @@ fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
 #[gpui::test]
 fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) {
     let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    use voxel_plugin::VoxelTerrainComponent;
+    use voxel_component::VoxelTerrainComponent;
 
     cx.update(|cx| ui::init(cx));
     // A selected terrain with its layer stack (the heaviest card), built
@@ -665,7 +665,8 @@ fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) 
             ),
             (
                 "VoxelTerrainLayersComponent",
-                serde_json::to_value(voxel_plugin::VoxelTerrainLayersComponent::earth()).unwrap(),
+                serde_json::to_value(voxel_component::VoxelTerrainLayersComponent::earth())
+                    .unwrap(),
             ),
         ] {
             crate::scene_edit::components::add_component(&mut world, &id, class.into(), value);
@@ -717,11 +718,11 @@ fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) 
     render_stats::reset();
     for x in 0..5 {
         edit_terrain(&|terrain| {
-            terrain.edits.push(voxel_plugin::data::VoxelBrushEdit {
+            terrain.edits.push(voxel_component::data::VoxelBrushEdit {
                 center: [f64::from(x), 0.0, 0.0],
                 radius: 1.0,
-                shape: voxel_plugin::data::VoxelBrushShape::Sphere,
-                op: voxel_plugin::data::VoxelBrushOp::Remove,
+                shape: voxel_component::data::VoxelBrushShape::Sphere,
+                op: voxel_component::data::VoxelBrushOp::Remove,
                 material: 0,
                 height: Default::default(),
             });

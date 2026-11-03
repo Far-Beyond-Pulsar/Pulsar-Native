@@ -27,10 +27,12 @@ members = [
     # Input actions (.inputaction), input mappings (.inputmap), and the input
     # runtime that publishes them on the event bus; built-in plugin of the editor.
     "plugins/vendor/input_plugin",
-    # Voxel worlds (`pulsar.voxel`): the voxel terrain components, their
-    # runtime, file formats and the Helio feature they render with; built-in
-    # plugin of the editor and the game.
-    "plugins/vendor/voxel_plugin",
+    # Voxel worlds (`pulsar.voxel`): the plugin's crates -- api (contracts),
+    # world (the GPU-free world system), feature (its Helio feature), component
+    # (components, methods, runtime, file formats), editor (the editor plugin)
+    # and examples (its standalone hosts: voxel_craft, voxel_flight,
+    # water_world). Built-in plugin of the editor and the game.
+    "plugins/voxel/*",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -163,7 +165,11 @@ engine_fs                          = { path = "crates/core/engine_fs", default-f
 editor_task_queue                  = { path = "crates/core/editor_task_queue" }
 asset_import                       = { path = "crates/core/asset_import" }
 skeletal_assets                    = { path = "plugins/vendor/skm_editor/skeletal_assets" }
-voxel_plugin                       = { path = "plugins/vendor/voxel_plugin", features = ["builtin"] }
+# The voxel plugin (`pulsar.voxel`): hosts link the component crate (the game)
+# or the editor plugin crate (the editor); its other crates are below, with
+# the Helio crates.
+voxel_component                    = { path = "plugins/voxel/component" }
+voxel_plugin                       = { path = "plugins/voxel/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -249,9 +255,11 @@ helio-presets              = { path = "crates/renderer/helio/crates/helio-preset
 helio-scene-derivations    = { path = "crates/renderer/helio/crates/helio-scene-derivations" }
 helio-graph-asset           = { path = "crates/renderer/helio/crates/helio-graph-asset" }
 helio-feature-api = { path = "crates/renderer/helio/crates/helio-feature-api" }
-# Helio-Voxel (Helio's voxel/ folder): only the pulsar.voxel plugin uses it.
-helio-voxel-data = { path = "crates/renderer/helio/voxel/helio-voxel-data" }
-helio-pass-voxel-planet = { path = "crates/renderer/helio/voxel/helio-pass-voxel-planet" }
+# The voxel plugin's api, world and feature crates (plugins/voxel/): only the
+# plugin's own crates use them.
+helio-voxel-data = { path = "plugins/voxel/api" }
+helio-voxel-world = { path = "plugins/voxel/world" }
+helio-pass-voxel-planet = { path = "plugins/voxel/feature" }
 helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }
 helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
@@ -277,6 +285,13 @@ helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/hel
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
 helio-pass-foliage-place = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-foliage-place" }
 helio-pass-portal-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-portal-cull" }
+# Helio crates the voxel plugin's feature and hosts use.
+helio-xr = { path = "crates/renderer/helio/crates/helio-xr" }
+helio-components = { path = "crates/renderer/helio/crates/helio-components" }
+helio-water-api = { path = "crates/renderer/helio/crates/api/helio-water-api" }
+helio-gi-api = { path = "crates/renderer/helio/crates/api/helio-gi-api" }
+helio-foliage-api = { path = "crates/renderer/helio/crates/api/helio-foliage-api" }
+helio-pass-shadow-matrix = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-shadow-matrix" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

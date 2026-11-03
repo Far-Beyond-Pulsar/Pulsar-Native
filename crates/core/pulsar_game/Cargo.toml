@@ -76,7 +76,7 @@ skeletal_assets = { workspace = true }
 # Voxel worlds (`pulsar.voxel`): levels with voxel terrain need its
 # components, scene subsystems and render feature registered (`src/lib.rs`
 # links it).
-voxel_plugin    = { workspace = true }
+voxel_component = { workspace = true }
 
 [lints]
 workspace = true

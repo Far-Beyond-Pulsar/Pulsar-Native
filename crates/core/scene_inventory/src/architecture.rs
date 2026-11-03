@@ -90,13 +90,12 @@ pub const RECORD_BOUNDARY_FILES: &[(&str, &str)] = &[
 ];
 
 /// Source roots of the renderer: the editor's Helio bridge, the Helio
-/// crates, and the voxel plugin with Helio-Voxel (its feature).
+/// crates, and the voxel plugin (its component, world and feature crates).
 pub const RENDERER_ROOTS: &[&str] = &[
     "crates/core/engine_backend/src/subsystems/render/",
     "crates/renderer/helio/crates/",
-    "crates/renderer/helio/voxel/",
     "crates/core/helio_component/",
-    "plugins/vendor/voxel_plugin/",
+    "plugins/voxel/",
 ];
 
 /// The renderer's `World::query` call sites, with why each is not a
@@ -124,7 +123,7 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "bake_scene_from_world: an explicit one-shot bake input, not the frame path",
     ),
     (
-        "plugins/vendor/voxel_plugin/src/world.rs",
+        "plugins/voxel/component/src/world.rs",
         1,
         "journals_to_compact: the editor's level save folds long voxel edit journals, once per save, not the frame path",
     ),

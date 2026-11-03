@@ -24,7 +24,7 @@ extern crate physics_plugin;
 extern crate pulsar_class;
 extern crate pulsar_physics;
 extern crate pulsar_scene_model;
-extern crate voxel_plugin;
+extern crate voxel_component;
 
 pub mod architecture;
 pub mod ledger;

@@ -327,7 +327,7 @@ fn has_terrain(state: &SharedState) -> bool {
         .read()
         .scene
         .world()
-        .query::<&voxel_plugin::VoxelTerrainComponent>()
+        .query::<&voxel_component::VoxelTerrainComponent>()
         .next()
         .is_some()
 }

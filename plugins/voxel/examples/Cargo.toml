@@ -1,0 +1,50 @@
+[package]
+name = "helio-voxel-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The voxel plugin's standalone hosts on Helio: Voxel Craft, Voxel Flight and Water World"
+
+# Voxel Craft: a Minecraft-style sandbox on a voxel planet (folder-based example).
+[[bin]]
+name = "voxel_craft"
+path = "voxel_craft/main.rs"
+
+# Voxel Flight: fly a voxel Earth, Moon or desert (presets in worlds.rs).
+[[bin]]
+name = "voxel_flight"
+path = "voxel_flight/main.rs"
+
+# Water World: Ultra-Water on a voxel coast (shares voxel_flight's worlds).
+[[bin]]
+name = "water_world"
+path = "water_world.rs"
+
+[dependencies]
+helio = { workspace = true }
+helio-core = { workspace = true }
+helio-components = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-presets = { workspace = true }
+helio-xr = { workspace = true }
+helio-pass-voxel-planet = { workspace = true }
+helio-pass-foliage-place = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+helio-pass-object-batch = { workspace = true }
+helio-pass-postprocess = { workspace = true }
+helio-pass-sky = { workspace = true }
+helio-pass-tsr = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true }
+helio-pass-water-sim = { workspace = true }
+pulsar_scenedb = { workspace = true }
+scenedb-inspector-agent = { workspace = true }
+profiling = { workspace = true }
+glam = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+image = { workspace = true, features = ["png", "jpeg"] }
+pollster = "0.4"
+serde_json = { workspace = true }
+env_logger = "0.11"
+log = { workspace = true }

@@ -149,11 +149,11 @@ pub fn after_property_edit(
         return;
     }
     let Some(terrain) = instance_at(world, object_id, index)
-        .and_then(|instance| world.get::<voxel_plugin::VoxelTerrainComponent>(instance))
+        .and_then(|instance| world.get::<voxel_component::VoxelTerrainComponent>(instance))
     else {
         return;
     };
-    let Some(class) = voxel_plugin::world::generator_settings_component(
+    let Some(class) = voxel_component::world::generator_settings_component(
         &terrain.generator.id,
         terrain.generator.version,
     ) else {

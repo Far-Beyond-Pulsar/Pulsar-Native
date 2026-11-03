@@ -12,7 +12,8 @@ use ui::{
 };
 
 pub(super) fn material_label(id: u32) -> String {
-    let Some(name) = voxel_plugin::world::material::NAMES.get(id.saturating_sub(1) as usize) else {
+    let Some(name) = voxel_component::world::material::NAMES.get(id.saturating_sub(1) as usize)
+    else {
         return String::new();
     };
     let key = format!("LevelEditor.VoxelPanel.{name}");
@@ -28,7 +29,7 @@ pub(super) fn material_label(id: u32) -> String {
 /// The material's base colour in the engine's built-in appearance.
 /// Lighting and procedural texture variation are intentionally absent in these chips.
 pub(super) fn material_color(id: u32) -> Hsla {
-    let [r, g, b] = voxel_plugin::world::material_colour(id)
+    let [r, g, b] = voxel_component::world::material_colour(id)
         .map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u32);
     rgb((r << 16) | (g << 8) | b).into()
 }
@@ -137,7 +138,7 @@ impl VoxelSculptPanel {
         let mut count = 0;
         for id in MATERIALS {
             let label = material_label(id);
-            let engine_name = voxel_plugin::world::material::NAMES[(id - 1) as usize];
+            let engine_name = voxel_component::world::material::NAMES[(id - 1) as usize];
             let favorite = brush.is_favorite(id);
             if self.favorites_only && !favorite {
                 continue;

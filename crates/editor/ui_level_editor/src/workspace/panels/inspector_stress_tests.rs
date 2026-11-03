@@ -437,7 +437,7 @@ pulsar_reflection::inventory::submit! {
 
 // ── Helio's list editor (the voxel Features list) ───────────────────────────
 
-use voxel_plugin::{VoxelFeatureGrowth, VoxelFeatureSpawn};
+use voxel_component::{VoxelFeatureGrowth, VoxelFeatureSpawn};
 
 /// The real `features` property of the voxel terrain: its type and a value.
 fn features_host(
@@ -510,7 +510,7 @@ fn the_features_list_with_thousands_of_nested_items(cx: &mut TestAppContext) {
 
 // ── Terrain layers stack ────────────────────────────────────────────────────
 
-use voxel_plugin::VoxelTerrainStack;
+use voxel_component::VoxelTerrainStack;
 
 fn stack_host(
     cx: &mut TestAppContext,

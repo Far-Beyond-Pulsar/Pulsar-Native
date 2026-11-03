@@ -178,6 +178,7 @@ const SCAN_ROOTS: &[&str] = &[
     "crates/subsystems",
     "crates/renderer/helio/crates",
     "plugins/vendor",
+    "plugins/voxel",
 ];
 
 const SKIPPED_DIRS: &[&str] = &[
@@ -558,11 +559,11 @@ pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
             .unwrap_or_default();
     let mut cache = HashMap::new();
     let mut out = Vec::new();
-    // Helio's pass crates, and Helio-Voxel's (the voxel plugin's feature).
+    // Helio's pass crates, and the voxel plugin's feature crate.
     let groups = [
         helio.join("passes/2d"),
         helio.join("passes/3d"),
-        root.join("crates/renderer/helio/voxel"),
+        root.join("plugins/voxel"),
     ];
     for group in groups {
         let Ok(entries) = fs::read_dir(&group) else {

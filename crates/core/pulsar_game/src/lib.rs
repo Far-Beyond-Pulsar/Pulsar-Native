@@ -84,7 +84,7 @@ extern crate self as pulsar_game;
 // Linked for its link-time registrations only (components, scene
 // subsystems, payload publishers, the render feature and its settings):
 // a game runs levels with voxel terrain without naming a voxel type.
-extern crate voxel_plugin;
+extern crate voxel_component;
 
 // Compile-time drift guard: exported actors must match the pinned crates
 #[cfg(test)]

@@ -2,12 +2,12 @@
 
 Pulsar's voxel terrain: destructible planets and planes of real voxels
 (0.1 m to 1 m), authored as SceneDB components, edited in the level editor or
-from scripts, and rendered by Helio's chunk pass. This document maps
-the Pulsar side end to end: data, flow, editor, scripting, rendering
-integration, decisions and pitfalls. The renderer itself (grid, generators,
-chunk trees: residency, drawing, lighting) is documented in Helio's
-`crates/passes/3d/helio-pass-voxel-planet/README.md`
-(`crates/renderer/helio/...` in this repository).
+from scripts, and rendered by the voxel plugin's chunk passes on Helio. This
+document maps the Pulsar side end to end: data, flow, editor, scripting,
+rendering integration, decisions and pitfalls. The world system and the
+renderer feature (grid, generators, chunk trees: residency, drawing,
+lighting) are documented in `plugins/voxel/world/README.md` and
+`plugins/voxel/feature/README.md`.
 
 ## Contents
 
@@ -26,12 +26,12 @@ chunk trees: residency, drawing, lighting) is documented in Helio's
 
 | Layer | Where | Owns |
 |---|---|---|
-| Plugin | `plugins/vendor/voxel_plugin` (`pulsar.voxel`, `src/lib.rs`) | Links statically (editor through `ui_core`, the game through `pulsar_game`) and registers everything with `inventory`: `VoxelFeature` and its settings (`engine_backend`'s `RenderFeatureRegistration`), the `VOXEL_RESIDENCY` settings group (`pulsar_settings`' `SettingsGroupRegistration`), the terrain's material names for ground-material lists (`helio_component::GroundMaterialNames`). |
-| Components | `voxel_plugin` (`component.rs`, `features.rs`, `component_runtime.rs`) | `VoxelTerrainComponent` (the world's description, air included), generator settings components, `VoxelEditJournal` field, inspector metadata, block events. |
-| World queries | `voxel_plugin` (`world.rs`, `sculpt.rs`) | Recipe/brush mapping, block API, scripting world methods (ground queries, sculpting), editor framing, journal compaction. |
-| Runtime | `voxel_plugin` (`runtime.rs`, `sync.rs`) | One world per terrain built off the game thread, the `VoxelWorlds` scene subsystem, the `VOXEL_FRAME` payload; `VoxelWorldSync`: journals and skies follow their world (`sky_for_air`, `haze_for_air`). |
-| Ready-made worlds | `voxel_plugin` (`presets.rs`), `assets/examples/voxel_*` | `VoxelWorldPreset` (Earth, Moon, Desert, Blocks): an example level's world added to a level in one step (`add_voxel_world`), taking over its sky, sun, haze, wind, ground cover and look. |
-| Canonical world, feature | Helio-Voxel (Helio `voxel/`: `helio-voxel-world`, `helio-voxel-data`, `helio-pass-voxel-planet`) | Grid, terrain generators, edits, `Planet` queries and ray casts, the chunk passes and `VoxelFeature`. |
+| Plugin | `plugins/voxel/` (`pulsar.voxel`): `component` (`voxel_component`, `src/lib.rs`), `editor` (`voxel_plugin`: the plugin's metadata and the generator and stack inspector editors), `api`, `world`, `feature`, `examples` | Links statically (the editor through `ui_core`, which links `voxel_plugin`; the game through `pulsar_game`, which links `voxel_component`) and registers everything with `inventory`: `VoxelFeature` and its settings (`engine_backend`'s `RenderFeatureRegistration`), the `VOXEL_RESIDENCY` settings group (`pulsar_settings`' `SettingsGroupRegistration`), the terrain's material names for ground-material lists (`helio_component::GroundMaterialNames`). |
+| Components | `voxel_component` (`component.rs`, `features.rs`, `component_runtime.rs`) | `VoxelTerrainComponent` (the world's description, air included), generator settings components, `VoxelEditJournal` field, inspector metadata, block events. |
+| World queries | `voxel_component` (`world.rs`, `sculpt.rs`) | Recipe/brush mapping, block API, scripting world methods (ground queries, sculpting), editor framing, journal compaction. |
+| Runtime | `voxel_component` (`runtime.rs`, `sync.rs`) | One world per terrain built off the game thread, the `VoxelWorlds` scene subsystem, the `VOXEL_FRAME` payload; `VoxelWorldSync`: journals and skies follow their world (`sky_for_air`, `haze_for_air`). |
+| Ready-made worlds | `voxel_component` (`presets.rs`), `assets/examples/voxel_*` | `VoxelWorldPreset` (Earth, Moon, Desert, Blocks): an example level's world added to a level in one step (`add_voxel_world`), taking over its sky, sun, haze, wind, ground cover and look. |
+| Canonical world, feature | The plugin's `world` (`helio-voxel-world`), `api` (`helio-voxel-data`) and `feature` (`helio-pass-voxel-planet`) crates in `plugins/voxel/` | Grid, terrain generators, edits, `Planet` queries and ray casts, the chunk passes and `VoxelFeature`. |
 | Viewport renderer | `engine_backend/.../helio_renderer/renderer.rs` | Camera (ground queries through component methods), camera-relative frames, publishing views, tool rays. No voxel code. |
 | Editor | `ui_level_editor` (`state/voxel.rs`, `tool_modes/voxel_sculpt/`, `tool_modes/terrain/`, `ui/viewport/build_handlers.rs`, panel handlers) | Create Voxel Terrain (`SceneCommand::AddVoxelWorld`), sculpt tool, strokes and undo, focus, generator picker, settings components. |
 
@@ -70,7 +70,7 @@ engine's flora: trees of a species, bushes, shrubs, cacti, boulders,
 craters, each with its materials, sizes, seed salt and variant count) and
 where (spacing, density, a noise field, ground materials, heights and how
 they wander, relief, sink, a far form drawn as canopy past the near
-levels), sizes in metres. Its JSON is Helio's
+levels), sizes in metres. Its JSON is the feature crate's
 `helio_pass_voxel_planet::feature_recipe::FeatureRecipe`, field for field
 (`VoxelFeatureSpawn` and `VoxelFeatureGrowth` are its reflected form for
 the inspector's lists; a growth's card shows the fields its form reads,
@@ -81,12 +81,12 @@ kilobytes for forests to the horizon. Features are part of the ground: a
 change rebuilds the world (a set the planet rejects, such as spawns out of
 spacing order, keeps the last good world with the error), and edits made
 before it are dropped. `FeatureRecipe::earth()`, `moon()` and `desert()`
-are Helio's setups (`use_feature_preset`). Materials past the built-in
+are the feature crate's setups (`use_feature_preset`). Materials past the built-in
 ones (the presets' needles, birch bark, sage and dry wood, ids 22 to 25)
 get their look from the appearance JSON (`FeatureRecipe::appearance`).
 
 **Generator settings** live in a separate component instance on the same
-object, named by the generator (`VoxelTerrainLayersComponent` for Helio's
+object, named by the generator (`VoxelTerrainLayersComponent` for the built-in
 `helio.terrain`), found with `resolve_instance`. The projection serializes it
 into the generator's parameters. Choosing a
 generator in the inspector attaches its settings component. Settings changes
@@ -116,8 +116,8 @@ built (the error says what to fix); it is not rebuilt every frame.
 **The examples.** The projects `assets/examples/voxel_planet` (Earth),
 `voxel_moon`, `voxel_desert` and `voxel_blocks` (each a `Pulsar.toml` and its
 `scene/default.level`; open one with `just example voxel_planet`, or
-`--project-path`) are Helio's voxel_flight setups
-(`examples/voxel_flight/worlds.rs`) with seed 75, generically: layer stack,
+`--project-path`) are voxel_flight's setups
+(`plugins/voxel/examples/voxel_flight/worlds.rs`) with seed 75, generically: layer stack,
 features and their look, air, clouds, haze, and on Earth the engine meadow
 (six `FoliageComponent`s on a Meadow object, a `WindComponent` of 4.5 m/s).
 The editor spawns over the north pole under a sun 32 degrees high. An
@@ -214,7 +214,7 @@ reaches at most 500 m.
    world in place, while other changes rebuild it. It then posts a
    `PlanetFrame` to its pass's mailbox.
 4. **Render.** Helio's deferred graph runs the backend's pass in the GBuffer
-   stage (see the Helio README for what happens inside). The viewport keeps
+   stage (see the feature crate's README for what happens inside). The viewport keeps
    rendering while `needs_frame` reports streaming work, even if the camera
    is still.
 
@@ -369,10 +369,11 @@ and gameplay agree on every block. On generated terrain the older
 - The Flamegraph profiler (status bar) records scopes including
   `voxel_brush`, `voxel_altitude`, `voxel_project_entries`; stop recordings
   within ~30 s (it stops saving at 1M events).
-- Tests: `cargo test -p voxel_plugin --test voxel_block_api` (block API,
-  set_block, fills and ray casts, legacy sample edits, world cache, origin,
-  generator picker), `--test voxel_component_schema` (inspector properties),
-  `cargo test -p voxel_plugin --lib` (runtime, sculpting, sync, settings
+- Tests: `cargo test -p voxel_component --test voxel_block_api` (block API,
+  set_block, fills and ray casts, legacy sample edits, world cache, origin),
+  `--test voxel_component_schema` (inspector properties),
+  `cargo test -p voxel_plugin` (the generator picker and the layer stack
+  editor), `cargo test -p voxel_component --lib` (runtime, sculpting, sync, settings
   components, unknown generator, paint and single blocks; `presets`: a
   ready-made world in an empty level is its example, a second one takes over
   the first), `cargo test -p engine_backend` and
@@ -380,28 +381,29 @@ and gameplay agree on every block. On generated terrain the older
   smooth transport over the planet); `ui_level_editor` sculpt stroke tests
   (a stroke is one undo step) and the Create Voxel Terrain command (one undo
   step).
-- Renderer-side performance and correctness are measured in Helio
-  (`voxel_flight`: `HELIO_VOXEL_FLIGHT_HOLD=<view>` holds a view and times
+- Renderer-side performance and correctness are measured with the plugin's
+  hosts (`plugins/voxel/examples`; `voxel_flight`: `HELIO_VOXEL_FLIGHT_HOLD=<view>` holds a view and times
   it, `HELIO_VOXEL_CHUNKS_ENGINE=1` through the chunk pass as the editor
   draws it, `HELIO_VOXEL_CHUNKS_FLY=descent|cruise` streams along a path),
-  and `tests/chunks.rs` checks drawn hits against CPU ray casts.
+  and the feature's `tests/chunks.rs` checks drawn hits against CPU ray
+  casts.
 - The editor's own renderer, driven headless:
-  `cargo run --release -p voxel_plugin --example voxel_editor_harness`
+  `cargo run --release -p voxel_component --example voxel_editor_harness`
   (views, flights, drag strokes, stress flights with a per-frame CSV,
   per-pass GPU profiles, project settings with `set:`, a ready-made world
   with `world:<preset>`; its module doc lists the steps). Its `view` prints the eye and sun, and voxel_flight renders
   the same view (`HELIO_VOXEL_FLIGHT_HOLD=eye`, `_EYE`, `_SUN`, `_LAYERS`,
   `_SEED`, `HELIO_VOXEL_CHUNKS_ENGINE=1`) for parity.
-- `cargo test -p voxel_plugin --test voxel_example_levels`: the example
-  levels (the ready-made worlds) against voxel_flight's worlds (Helio
-  `voxel/examples/voxel_flight/worlds.rs`, compiled into the test): ground,
+- `cargo test -p voxel_component --test voxel_example_levels`: the example
+  levels (the ready-made worlds) against voxel_flight's worlds
+  (`plugins/voxel/examples/voxel_flight/worlds.rs`, compiled into the test): ground,
   features, air, haze, clouds, meadow, wind, exposure, and a camera over the
   ground.
 
 ## Extending
 
-- **A terrain generator**: implement and register it in Helio (see its
-  README), give it a settings component registered in the plugin's
+- **A terrain generator**: implement and register it in the plugin's world
+  crate (see its README), give it a settings component registered in the plugin's
   `component_runtime.rs`, and name that component in its info so the
   picker attaches it.
 - **A ready-made world**: add an example project under `assets/examples`
@@ -410,5 +412,5 @@ and gameplay agree on every block. On generated terrain the older
 - **A tool**: return `ToolPointerResult::Ray` like
   `tool_modes/voxel_sculpt/`: the render thread calls it with the pointer's
   ray and the scene, and it acts through the component's methods
-  (`voxel_plugin::sculpt::sculpt`), which append to the journal with the
+  (`voxel_component::sculpt::sculpt`), which append to the journal with the
   scene history, so undo works.

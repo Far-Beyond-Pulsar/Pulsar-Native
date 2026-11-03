@@ -14,7 +14,7 @@ use ui::{
     input::TextInput,
     v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable,
 };
-use voxel_plugin::data::VoxelBrushShape;
+use voxel_component::data::VoxelBrushShape;
 
 impl VoxelSculptPanel {
     pub(super) fn render_brush(

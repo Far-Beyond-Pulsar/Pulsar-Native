@@ -58,7 +58,8 @@ skeletal_animation_plugin = { path = "../../../plugins/vendor/skm_editor", featu
 physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = ["builtin"] }
 ui_editor_plugin = { path = "../../../plugins/vendor/ui_editor", features = ["builtin"] }
 input_plugin = { path = "../../../plugins/vendor/input_plugin", features = ["builtin"] }
-# Voxel worlds (`pulsar.voxel`); registers everything through `inventory`.
+# Voxel worlds (`pulsar.voxel`): the editor plugin crate, which links the
+# plugin's component crate; both register everything through `inventory`.
 voxel_plugin = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }

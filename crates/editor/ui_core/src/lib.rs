@@ -12,8 +12,9 @@ use ui_git_manager as _;
 use ui_multiplayer as _;
 use ui_plugin_manager as _;
 use ui_settings as _;
-// The voxel plugin is linked statically: its components, scene subsystems,
-// render feature and settings register through `inventory`.
+// The voxel plugin is linked statically: its inspector editors, and its
+// component crate's components, scene subsystems, render feature and
+// settings, register through `inventory`.
 use voxel_plugin as _;
 
 // Initialize translations

@@ -60,7 +60,7 @@ pub(crate) struct VoxelEditJournalEntry {
     pub(crate) instance: engine_backend::scene::attachments::ComponentInstanceId,
     pub(crate) before_len: usize,
     pub(crate) before_revision: u64,
-    pub(crate) edits: Vec<voxel_plugin::data::VoxelBrushEdit>,
+    pub(crate) edits: Vec<voxel_component::data::VoxelBrushEdit>,
     pub(crate) after_revision: u64,
 }
 

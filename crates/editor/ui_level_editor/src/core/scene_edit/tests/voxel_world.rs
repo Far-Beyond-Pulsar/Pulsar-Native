@@ -2,8 +2,8 @@
 
 use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
-use voxel_plugin::presets::VoxelWorldPreset;
-use voxel_plugin::VoxelTerrainComponent;
+use voxel_component::presets::VoxelWorldPreset;
+use voxel_component::VoxelTerrainComponent;
 
 use crate::commands::{execute_command, SceneCommand};
 use crate::scene_edit::sky;

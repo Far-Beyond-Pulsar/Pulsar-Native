@@ -416,7 +416,7 @@ impl SceneDomain {
             else {
                 return false;
             };
-            let Some(mut terrain) = world.get_mut::<voxel_plugin::VoxelTerrainComponent>(entity)
+            let Some(mut terrain) = world.get_mut::<voxel_component::VoxelTerrainComponent>(entity)
             else {
                 return false;
             };

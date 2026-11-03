@@ -1,0 +1,10 @@
+[package]
+name = "helio-voxel-data"
+version = "0.1.0"
+edition = "2021"
+description = "Renderer-independent voxel data and SceneDB publication contract"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# Saved edits must load bit-exact (brush centres sit on cell centres).
+serde_json = { version = "1", features = ["float_roundtrip"] }

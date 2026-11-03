@@ -45,7 +45,7 @@ helio.workspace = true
 # Voxel worlds: the sculpt tool, the terrain panel, strokes and their undo,
 # Create Voxel Terrain, and the save's journal compaction and kept chunks act
 # through the plugin's component methods.
-voxel_plugin.workspace = true
+voxel_component.workspace = true
 helio-pass-buffer-view.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
