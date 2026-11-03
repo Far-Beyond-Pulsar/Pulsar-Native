@@ -1,7 +1,7 @@
-//! Images as world assets (SceneDB#84): a sprite's `texture` and a decal's
-//! `albedo_texture` are loaded by the world, off the write path, however
-//! the value was written, and bound into the component; a changed file is
-//! reloaded into every component showing it.
+//! Images as world assets (SceneDB#84): a sprite's `texture` is loaded by
+//! the world, off the write path, however the value was written, and bound
+//! into the component; a changed file is reloaded into every component
+//! showing it. (The decals plugin checks a decal's `albedo_texture`.)
 //!
 //! One test, because the project path sources resolve against is a process
 //! global. No GPU: the mirror's upload of the bound image is covered by the
@@ -10,7 +10,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use helio_component::components::{DecalComponent, SpriteComponent};
+use sprites_component::SpriteComponent;
 use helio_component::texture_assets::{
     LoadedTexture, texture_asset_id, texture_asset_id_of, texture_source_for_file,
 };
@@ -204,31 +204,6 @@ fn texture_assets_load_rebind_reload_and_survive_bad_input() {
         0
     );
 
-    // ── A decal decoded from a level binds its albedo image the same way ───
-    let decoded = pulsar_world_registry::decode_world_component_value(
-        "DecalComponent",
-        &serde_json::json!({ "albedo_texture": "images/white.png" }),
-    )
-    .expect("registered")
-    .expect("decodes");
-    let decal = world.spawn();
-    world.insert(decal, *decoded.downcast::<DecalComponent>().unwrap());
-    assert_eq!(world.asset_ref_count(white), 2);
-    resolve(&mut world);
-    let bound = world.get::<DecalComponent>(decal).unwrap();
-    assert_eq!(
-        bound
-            .albedo_image
-            .image_for(white)
-            .and_then(|image| texel(image)),
-        Some(WHITE)
-    );
-    // Saving it writes the path, never the image.
-    let saved = serde_json::to_value(bound).unwrap();
-    assert_eq!(saved["albedo_texture"], "images/white.png");
-    assert!(saved.get("albedo_image").is_none());
-
-    world.despawn(decal);
     world.despawn(second);
     world.despawn(sprite);
     assert_eq!(world.asset_ref_count(white), 0);

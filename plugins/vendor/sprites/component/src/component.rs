@@ -13,13 +13,13 @@
 //! scale it; the owner's Z position and the other rotations do not apply.
 //!
 //! The image is a project-relative asset path. The world loads it as a
-//! texture asset ([`crate::texture_assets`]) and binds it into `image`; the
+//! texture asset (`helio_component::texture_assets`) and binds it into `image`; the
 //! row registers that image in the scene's texture store as it is derived
 //! (as decals do), so it carries its bindless slot. An image that is a sheet of equal frames (`atlas_columns`
 //! by `atlas_rows`) shows the frame `atlas_frame`, counted row by row from
 //! the top left.
 //!
-//! SceneDB derives a `SpriteSourceRow` (`environment_rows`) from the
+//! SceneDB derives a [`SpriteSourceRow`](crate::SpriteSourceRow) from the
 //! authored value; the environment join places it as the sprite passes'
 //! `helio_pass_sprite_batch::SpriteRow` row in `"sprite_instances"`.
 
@@ -62,7 +62,7 @@ pub struct SpriteComponent {
     pub atlas_frame: i32,
     /// The image `texture` names, as the world loaded it. Never authored.
     #[serde(skip)]
-    pub image: crate::texture_assets::BoundTexture,
+    pub image: helio_component::texture_assets::BoundTexture,
 }
 
 impl Default for SpriteComponent {
@@ -127,7 +127,7 @@ fn collect_sprite_handles(
     // SAFETY: SceneDB reaches this only through `SpriteComponent`'s own
     // `ComponentId`, with a pointer to a live value.
     let sprite = unsafe { &*(value as *const SpriteComponent) };
-    crate::texture_assets::collect_texture(&sprite.texture, out);
+    helio_component::texture_assets::collect_texture(&sprite.texture, out);
 }
 
 pulsar_scenedb::pulsar_reflection::inventory::submit! {
@@ -138,8 +138,13 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
 }
 
 /// How a sprite takes in its loaded (or failed) image.
-pub(crate) fn bind_sprite_texture(sprite: &mut SpriteComponent, view: &pulsar_scenedb::AssetView) {
-    crate::texture_assets::bind_texture(&mut sprite.image, &sprite.texture, view, "sprite");
+pub fn bind_sprite_texture(sprite: &mut SpriteComponent, view: &pulsar_scenedb::AssetView) {
+    helio_component::texture_assets::bind_texture(
+        &mut sprite.image,
+        &sprite.texture,
+        view,
+        "sprite",
+    );
 }
 
 #[cfg(test)]
