@@ -108,13 +108,16 @@ impl Fixtures {
         }
     }
 
-    /// `preset` with the voxel and foliage features, built.
+    /// `preset` with the voxel and media features (as the engine adds them), built.
     fn build(&self, preset: Preset) -> helio_core::RenderGraph {
         preset
             .with_features(
                 &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
-                    .with(helio_pass_foliage_gbuffer::FoliageFeature),
+                    .with(helio_pass_foliage_gbuffer::FoliageFeature)
+                    .with(helio_pass_water_sim::WaterFeature)
+                    .with(helio_pass_volumetric_fog::FogFeature)
+                    .with(helio_pass_post_volumes::PostVolumesFeature),
             )
             .build(self.context())
     }

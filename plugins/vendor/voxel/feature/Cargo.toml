@@ -45,6 +45,9 @@ helio-presets = { workspace = true }
 helio-components = { workspace = true }
 helio-pass-foliage-place = { workspace = true, features = ["host-rows"] }
 helio-pass-foliage-gbuffer = { workspace = true }
+helio-pass-water-sim = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true }
+helio-pass-post-volumes = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-sky = { workspace = true }
 pulsar_scenedb = { workspace = true }
