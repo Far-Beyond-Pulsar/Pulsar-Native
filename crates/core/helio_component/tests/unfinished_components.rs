@@ -28,7 +28,6 @@ fn unfinished_components_declare_why_and_their_issue() {
         "CameraLensComponent",
         "WaterVolumeComponent",
         "FoliageComponent",
-        "VoxelTerrainComponent",
     ] {
         assert!(
             pulsar_world_registry::unfinished_component(class).is_none(),

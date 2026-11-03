@@ -9,6 +9,8 @@ description = "All engine and project settings registrations for Pulsar Engine"
 pulsar-config.workspace = true
 # The renderer's settings, described by Helio.
 helio-settings.workspace = true
+# Plugins' settings groups (`project::rendering::SettingsGroupRegistration`).
+inventory.workspace = true
 
 [lints]
 workspace = true

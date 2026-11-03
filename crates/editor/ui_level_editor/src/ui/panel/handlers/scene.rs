@@ -78,13 +78,13 @@ fn focus_camera(
         DVec3::new(sy * cp, sp, -cy * cp)
     });
     let terrain = engine_backend::scene::attachments::enabled_components_of::<
-        helio_component::VoxelTerrainComponent,
+        voxel_component::VoxelTerrainComponent,
     >(world, entity)
     .first()
     .map(|(instance, _)| *instance);
     let (position, forward) = if let Some(terrain) = terrain {
-        match helio_component::voxel_world::terrain_world(world, terrain) {
-            Ok(planet) => helio_component::voxel_world::frame_view(&planet, eye, forward, 30.0),
+        match voxel_component::world::terrain_world(world, terrain) {
+            Ok(planet) => voxel_component::world::frame_view(&planet, eye, forward, 30.0),
             Err(error) => {
                 tracing::warn!("Focus: {error}");
                 return None;

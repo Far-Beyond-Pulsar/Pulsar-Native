@@ -2,7 +2,7 @@
 //!
 //! - **World** — create the level's voxel world in one click from a
 //!   ready-made preset (Earth-like planet, Moon, desert planet, flat block
-//!   world: `engine_backend::scene::voxel_presets`), and the level's voxel
+//!   world: `voxel_component::presets`), and the level's voxel
 //!   terrains, each selected with a click so the inspector shows its layers
 //!   and features. Worlds are sculpted with the voxel sculpt tool.
 //! - **Foliage** — foliage sets and their brush.
@@ -11,16 +11,16 @@
 
 use std::collections::HashSet;
 
-use engine_backend::scene::voxel_presets::VoxelWorldPreset;
 use engine_backend::scene::{attachments, SceneWorldExt};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use helio_component::{VoxelTerrainComponent, VoxelWorldShape};
 use rust_i18n::t;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
+use voxel_component::presets::VoxelWorldPreset;
+use voxel_component::{VoxelTerrainComponent, VoxelWorldShape};
 
 use super::widgets::{collapsible_header, SharedState};
 use crate::commands::{execute_command, SceneCommand};

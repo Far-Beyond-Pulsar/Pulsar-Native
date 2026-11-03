@@ -100,51 +100,6 @@ impl Default for GlobalFogComponent {
     }
 }
 
-impl GlobalFogComponent {
-    /// The ground haze a voxel world's `air` settings describe, over its
-    /// planet (`planet_center` and `planet_radius` kept): `None` for
-    /// `Custom` (the authored medium stays); `VoxelAir::None` is no haze. A
-    /// preset's haze thins with altitude over the ground, scattering
-    /// forward, of the air's aerosols' colour; `density` and `haze` scale
-    /// its extinction as they scale the sky's aerosols
-    /// ([`super::AtmosphereComponent::for_air`]).
-    pub fn for_air(&self, air: crate::VoxelAir, density: f32, haze: f32) -> Option<Self> {
-        use crate::VoxelAir;
-        // Extinction (1/m), its falloff with altitude (1/m), anisotropy and
-        // the share it scatters, per channel.
-        let (extinction, falloff, anisotropy, albedo) = match air {
-            VoxelAir::Custom => return None,
-            VoxelAir::None => {
-                return Some(Self {
-                    enabled: false,
-                    ..self.clone()
-                });
-            }
-            // A clear day's boundary layer: kilometres of visibility,
-            // thinning over a few hundred metres.
-            VoxelAir::Earthlike => (6.0e-4, 4.0e-3, 0.6, [1.0; 3]),
-            // Fine butterscotch dust lofted high in thin air.
-            VoxelAir::Thin => (4.0e-4, 1.2e-3, 0.65, [0.95, 0.78, 0.6]),
-            // A deep orange smog hugging the ground.
-            VoxelAir::Dense => (4.0e-3, 8.0e-4, 0.5, [0.9, 0.65, 0.35]),
-        };
-        let extinction = extinction * density.max(0.0) * haze.max(0.0);
-        Some(Self {
-            enabled: extinction > 0.0,
-            medium: MediumProps {
-                mode: FogMode::HeightBased,
-                extinction,
-                albedo,
-                emission: [0.0; 3],
-                anisotropy,
-                height_falloff: falloff,
-                height: 0.0,
-                ..self.medium.clone()
-            },
-        })
-    }
-}
-
 #[engine_class(category = "Rendering", clone, debug, serialize, deserialize)]
 #[category("Medium", category_color = "#D18F6F")]
 #[category("Volume", category_color = "#8F8F8F")]
@@ -180,53 +135,3 @@ impl GlobalFogComponent {}
 
 #[register_world_component]
 impl LocalFogVolumeComponent {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::VoxelAir;
-
-    /// Earth's air makes the haze Helio's voxel worlds fly through, over
-    /// the planet the fog was placed on; the air's amounts scale it.
-    #[test]
-    fn a_worlds_air_derives_its_ground_haze() {
-        let placed = GlobalFogComponent {
-            medium: MediumProps {
-                planet_radius: 6_371_000.0,
-                ..MediumProps::default()
-            },
-            ..GlobalFogComponent::default()
-        };
-        assert!(
-            placed.for_air(VoxelAir::Custom, 1.0, 1.0).is_none(),
-            "custom keeps the authored medium"
-        );
-        assert!(
-            !placed.for_air(VoxelAir::None, 1.0, 1.0).unwrap().enabled,
-            "no air, no haze"
-        );
-        let earth = placed.for_air(VoxelAir::Earthlike, 1.0, 1.0).unwrap();
-        let flight = GlobalMedium {
-            mode: 1,
-            extinction: 0.0006,
-            height_falloff: 0.004,
-            anisotropy: 0.6,
-            ..GlobalMedium::default()
-        }
-        .around_planet([0.0; 3], 6_371_000.0);
-        assert!(earth.enabled);
-        assert_eq!(earth.medium.to_medium(), flight);
-        let hazy = placed.for_air(VoxelAir::Earthlike, 0.5, 4.0).unwrap();
-        assert!(
-            (hazy.medium.extinction - 0.0012).abs() < 1e-9,
-            "half the air, four times the haze"
-        );
-        assert!(
-            !placed
-                .for_air(VoxelAir::Earthlike, 1.0, 0.0)
-                .unwrap()
-                .enabled,
-            "no haze at all"
-        );
-    }
-}

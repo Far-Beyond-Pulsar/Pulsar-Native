@@ -1,0 +1,28 @@
+[package]
+name = "voxel_plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Voxel worlds (pulsar.voxel): the editor plugin -- its metadata and the voxel terrain's inspector editors, over the plugin's component crate"
+
+[lib]
+name = "voxel_plugin"
+
+[features]
+# Statically linked hosts (the editor) use the Rust API; the inspector
+# editors register through `inventory` once the crate is linked, and the
+# component crate (with everything it registers) comes with it.
+builtin = []
+
+[dependencies]
+voxel_component = { workspace = true }
+helio-pass-voxel-planet = { workspace = true }
+helio_component = { workspace = true }
+plugin_editor_api = { workspace = true }
+# The property editors' GPUI-typed prims (as helio-component).
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+gpui-ce = { workspace = true }
+ui = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

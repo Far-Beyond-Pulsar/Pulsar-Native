@@ -3088,6 +3088,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-core",
+ "helio-feature-api",
  "helio-graph-asset",
  "helio-mats",
  "helio-mesh-api",
@@ -3107,14 +3108,12 @@ dependencies = [
  "helio-pass-sprite-batch",
  "helio-pass-tsr",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "helio-presets",
  "helio-scene-derivations",
  "helio-scene-join",
  "helio-vg-format",
  "helio-vg-stream",
- "helio-voxel-data",
  "helio_component",
  "image",
  "inventory",
@@ -5574,21 +5573,31 @@ dependencies = [
 name = "helio-pass-voxel-planet"
 version = "0.1.0"
 dependencies = [
+ "ash",
  "bytemuck",
  "glam 0.33.5",
+ "helio",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-foliage-api",
  "helio-frame-api",
  "helio-gi-api",
  "helio-mats",
+ "helio-pass-foliage-place",
+ "helio-pass-forward-lit",
  "helio-pass-shadow-matrix",
+ "helio-pass-sky",
  "helio-pass-tsr",
+ "helio-presets",
  "helio-settings",
  "helio-voxel-world",
  "helio-water-api",
  "image",
  "miniz_oxide",
+ "naga",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
  "rayon",
  "rustc-hash 2.1.3",
  "serde",
@@ -5671,7 +5680,6 @@ dependencies = [
  "helio-pass-tsr",
  "helio-pass-vg",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "helio-spine",
  "helio-vg-format",
@@ -5805,11 +5813,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-voxel-examples"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-foliage-place",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-object-batch",
+ "helio-pass-post-volumes",
+ "helio-pass-postprocess",
+ "helio-pass-sky",
+ "helio-pass-tsr",
+ "helio-pass-volumetric-fog",
+ "helio-pass-voxel-planet",
+ "helio-pass-water-sim",
+ "helio-presets",
+ "helio-xr",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "profiling 0.1.0",
+ "pulsar_scenedb",
+ "scenedb-inspector-agent",
+ "serde_json",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "helio-voxel-world"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "image",
  "rayon",
  "rustc-hash 2.1.3",
  "serde",
@@ -5859,14 +5903,13 @@ dependencies = [
  "helio-pass-sky",
  "helio-pass-sprite-batch",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "helio-vg-build",
  "helio-vg-format",
  "helio-vg-stream",
- "helio-voxel-data",
  "image",
  "intel_tex_2",
+ "inventory",
  "naga",
  "plugin_editor_api",
  "pollster 0.4.0",
@@ -10212,6 +10255,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "uuid",
+ "voxel_component",
  "wgpu",
  "winit",
 ]
@@ -10501,6 +10545,7 @@ name = "pulsar_settings"
 version = "0.1.0"
 dependencies = [
  "helio-settings",
+ "inventory",
  "pulsar-config",
 ]
 
@@ -11727,6 +11772,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 1.1.4+spec-1.1.0",
+ "voxel_component",
 ]
 
 [[package]]
@@ -14727,6 +14773,7 @@ dependencies = [
  "ui_settings",
  "ui_type_debugger",
  "ui_types_common",
+ "voxel_plugin",
  "window_manager",
 ]
 
@@ -14926,7 +14973,6 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-buffer-view",
  "helio-presets",
- "helio-voxel-data",
  "helio_component",
  "image",
  "objc2 0.6.4",
@@ -14965,6 +15011,7 @@ dependencies = [
  "ui_common",
  "ui_helio_viewport",
  "ui_types_common",
+ "voxel_component",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -15429,6 +15476,57 @@ name = "virtue"
 version = "0.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
+
+[[package]]
+name = "voxel_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "engine_state",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-feature-api",
+ "helio-pass-foliage-place",
+ "helio-pass-sky",
+ "helio-pass-volumetric-fog",
+ "helio-pass-voxel-planet",
+ "helio-settings",
+ "helio-voxel-data",
+ "helio_component",
+ "image",
+ "inventory",
+ "parking_lot",
+ "pollster 0.4.0",
+ "pulsar_class",
+ "pulsar_events",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_settings",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "wgpu",
+]
+
+[[package]]
+name = "voxel_plugin"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "helio-pass-voxel-planet",
+ "helio_component",
+ "plugin_editor_api",
+ "pulsar_reflection",
+ "serde_json",
+ "ui",
+ "voxel_component",
+]
 
 [[package]]
 name = "wait-timeout"

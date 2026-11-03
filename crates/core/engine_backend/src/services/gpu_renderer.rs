@@ -402,7 +402,7 @@ mod tests {
         let drained = std::mem::take(&mut *queue.lock().unwrap());
         assert_eq!(drained.len(), 2);
         match drained[0] {
-            PendingPointerEvent::MouseMove { .. } | PendingPointerEvent::VoxelBrush { .. } => {
+            PendingPointerEvent::MouseMove { .. } | PendingPointerEvent::ToolRay { .. } => {
                 panic!("expected LeftClick first")
             }
             PendingPointerEvent::LeftClick { norm_x, norm_y } => {
@@ -419,21 +419,13 @@ mod tests {
 
     #[test]
     fn drag_samples_and_hover_moves_coalesce_while_clicks_keep_order() {
-        use crate::subsystems::render::{PendingPointerEvent as E, VoxelBrushRequest};
-        let request = VoxelBrushRequest {
-            op: helio_voxel_data::VoxelBrushOp::Remove,
-            shape: helio_voxel_data::VoxelBrushShape::Sphere,
-            radius: 1.0,
-            material: 0,
-            single_block: false,
-            level: Default::default(),
-            tool: Default::default(),
-        };
-        let brush = |x: f32, start: bool| E::VoxelBrush {
+        use crate::subsystems::render::{PendingPointerEvent as E, ToolRay};
+        let tool = ToolRay(std::sync::Arc::new(|_, _, _, _| {}));
+        let brush = |x: f32, start: bool| E::ToolRay {
             norm_x: x,
             norm_y: 0.5,
-            request,
             start,
+            tool: tool.clone(),
         };
         let mut queue = Vec::new();
         E::queue(&mut queue, brush(0.0, true));
@@ -450,9 +442,9 @@ mod tests {
             E::queue(&mut queue, brush(n as f32, false));
         }
         assert_eq!(queue.len(), 3, "{queue:?}");
-        assert!(matches!(queue[0], E::VoxelBrush { start: true, norm_x, .. } if norm_x == 0.0));
+        assert!(matches!(queue[0], E::ToolRay { start: true, norm_x, .. } if norm_x == 0.0));
         assert!(matches!(queue[1], E::MouseMove { norm_x, .. } if norm_x == 50.0));
-        assert!(matches!(queue[2], E::VoxelBrush { start: false, norm_x, .. } if norm_x == 50.0));
+        assert!(matches!(queue[2], E::ToolRay { start: false, norm_x, .. } if norm_x == 50.0));
         // Nothing latest-wins jumps a release or a stroke start.
         E::queue(&mut queue, E::LeftRelease);
         E::queue(&mut queue, brush(60.0, true));
@@ -466,7 +458,7 @@ mod tests {
         );
         assert_eq!(queue.len(), 7, "{queue:?}");
         assert!(matches!(queue[3], E::LeftRelease));
-        assert!(matches!(queue[5], E::VoxelBrush { start: false, norm_x, .. } if norm_x == 61.0));
+        assert!(matches!(queue[5], E::ToolRay { start: false, norm_x, .. } if norm_x == 61.0));
     }
 
     #[test]

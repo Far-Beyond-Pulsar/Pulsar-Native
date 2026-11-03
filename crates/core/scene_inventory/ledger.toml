@@ -366,10 +366,10 @@ name = "VoxelTerrainLayersComponent"
 category = "Voxel/Terrain"
 world_registered = true
 own_gpu_columns = false
-owner = "helio_component::components::voxel_component_runtime"
+owner = "voxel_component::component_runtime"
 disposition = "voxel domain: the built-in generator's layer stack (helio.terrain), resolved as the terrain's sibling instance (resolve_instance) and handed to the generator as its settings JSON when the world revision changes; its scripting surface (use_preset, add_layer, the layer setters) rebuilds the world from the changed settings"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/voxel_component_schema.rs; crates/core/engine_backend/tests/voxel_block_api.rs"
+test = "plugins/voxel/component/tests/voxel_component_schema.rs; plugins/voxel/component/tests/voxel_block_api.rs"
 status = "verified"
 
 [[class]]
@@ -377,10 +377,10 @@ name = "VoxelTerrainComponent"
 category = "Voxel/Terrain"
 world_registered = true
 own_gpu_columns = false
-owner = "helio_component::components::voxel_component_runtime"
+owner = "voxel_component::component_runtime"
 disposition = "voxel domain, audited Phase 4: voxel_frame reads terrain entries, the edit journal and the sun (the first enabled, visible directional light) when the world revision changes; the voxel-planet pass receives a CPU PlanetFrame (Arc<Planet>, sun) and syncs journal edits to the GPU change-driven. Generation and sculpting stay real work; the CPU planet rebuilds on the `voxel-world` builder thread (WorldBuilder; the render thread keeps the last world meanwhile), and renderer brush commits bypass append_edits' validation (recorded, not changed)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
+test = "plugins/voxel/component/tests/voxel_component_schema.rs"
 status = "out-of-scope"
 notes = "Voxel work continues on its own branch (Pulsar-Native#994, Helio#314); Phase 4 recorded the audit (15-phase-4.md)."
 
@@ -1392,12 +1392,12 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "crates/core/engine_backend/src/scene/voxel_frame.rs"
-count = 5
-owner = "core::engine_backend::scene::voxel_frame (VoxelWorldSync)"
+file = "plugins/voxel/component/src/sync.rs"
+count = 6
+owner = "voxel_component::sync (VoxelWorldSync)"
 disposition = "keep: independent VoxelTerrainComponent, VoxelTerrainLayersComponent and AtmosphereComponent cursors, read in two places (the check and the drain after a replaced world); the renderer's scene step re-checks edit journals against their ground, and skies against their world's air, only when one of them changed (a replaced world reopens them)"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "crates/core/engine_backend/src/scene/voxel_frame.rs (journals_are_checked_only_when_a_terrain_or_its_layers_change, edits_are_dropped_when_the_ground_changes)"
+test = "plugins/voxel/component/src/sync.rs (journals_are_checked_only_when_a_terrain_or_its_layers_change, edits_are_dropped_when_the_ground_changes)"
 status = "verified"
 
 [[site]]
@@ -2184,7 +2184,7 @@ status = "verified"
 [[buffer]]
 key = "materials"
 producers = ["MaterialComponent"]
-consumers = ["helio-presets", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-vg-shade"]
+consumers = ["helio-presets", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-vg-shade", "helio-pass-voxel-planet"]
 owner = "helio-scene-derivations scene join (execution output, one row per drawn section)"
 disposition = "keep: material rows come from StaticMeshDraw's resolved slot materials; the default is the slot's imported surface, defined once in helio-component (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2254,7 +2254,7 @@ status = "out-of-scope"
 [[buffer]]
 key = "scene_lights"
 producers = ["LightComponent"]
-consumers = ["helio-presets", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-sky", "helio-pass-transparent", "helio-pass-vg-shade", "helio-pass-volumetric-fog"]
+consumers = ["helio-presets", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-sky", "helio-pass-transparent", "helio-pass-vg-shade", "helio-pass-volumetric-fog", "helio-pass-voxel-planet"]
 owner = "helio-scene-derivations scene join (execution output)"
 disposition = "keep: light rows are joined on the GPU from LightSourceRow and the owner transform/visibility; shadow-matrix assigns atlas slots in them (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2899,9 +2899,9 @@ status = "verified"
 [[pass]]
 crate = "helio-pass-voxel-planet"
 in_default_graph = false
-reads = []
-owner = "helio-presets"
-disposition = "not in the default graph: the editor's graph adds its ChunkPass through the voxel pass factories (build_default_graph_external_with_voxel_passes); it reads the frame's camera and a CPU PlanetFrame, no SceneDB rows"
+reads = ["materials", "scene_lights"]
+owner = "voxel_component (RenderFeatureRegistration)"
+disposition = "the voxel plugin's feature crate (plugins/voxel/feature), not in Helio's default features: the plugin registers VoxelFeature with the engine's renderer, which adds it to every preset; its ChunkPass reads the frame's camera, the VOXEL_FRAME payload the terrain runtime publishes, and the scene's material rows (terrain textured like meshes) and lights (their shadows on the terrain); no SceneDB rows of its own"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: not in a production graph"
 status = "out-of-scope"

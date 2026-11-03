@@ -115,6 +115,12 @@ pub(crate) fn wind(component: &FoliageComponent) -> helio_pass_foliage_place::Gp
 }
 
 impl FoliageComponent {
+    /// The foliage type row the component derives ([`Self::from_type`]'s
+    /// inverse).
+    pub fn type_row(&self) -> helio_pass_foliage_place::components::FoliageTypeRow {
+        gpu_type(self)
+    }
+
     /// A foliage type row as authored: the component whose type row is
     /// `row` (`gpu_type`), growing everywhere (a row has no layer) in the
     /// level's global wind. A row without an authored material takes the
@@ -139,7 +145,7 @@ impl FoliageComponent {
         placement.slope_min_degrees = row.slope_range[1].clamp(-1.0, 1.0).acos().to_degrees();
         [placement.altitude_min, placement.altitude_max] = row.altitude_range;
         placement.has_infinite_extent = true;
-        placement.grows_on = crate::VoxelMaterialList(
+        placement.grows_on = crate::GroundMaterialList(
             (0..32)
                 .filter(|id| row.ground_mask >> id & 1 != 0)
                 .collect(),
@@ -192,27 +198,6 @@ impl FoliageComponent {}
 mod tests {
     use super::*;
 
-    /// Helio's voxel meadow is a level's foliage: every row of it, tall
-    /// stands included, comes back from its component bit for bit.
-    #[test]
-    fn the_engine_meadow_is_authored_foliage() {
-        let meadow = helio_pass_voxel_planet::meadow::meadow().with_tall_stands();
-        for row in &meadow.types {
-            let row = helio_pass_foliage_place::GpuFoliageType::from(*row);
-            let component = FoliageComponent::from_type(&row);
-            let derived: helio_pass_foliage_place::GpuFoliageType = gpu_type(&component).into();
-            // The component's rows carry no impostor (the meadow's is unused).
-            let derived = helio_pass_foliage_place::GpuFoliageType {
-                mesh_or_impostor_id: row.mesh_or_impostor_id,
-                ..derived
-            };
-            assert_eq!(
-                bytemuck::bytes_of(&derived),
-                bytemuck::bytes_of(&row),
-                "{row:?}"
-            );
-        }
-    }
     #[test]
     fn registers_under_its_class_name() {
         assert_eq!(

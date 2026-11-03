@@ -37,11 +37,11 @@ pub struct PlacementFoliageProps {
     /// foliage ring around the camera instead of stopping at the volume box.
     #[property(category = "Placement")]
     pub has_infinite_extent: bool,
-    /// The ground it grows on (empty: any): on voxel ground its terrain
-    /// materials, by name or id ("Grass").
+    /// The ground it grows on (empty: any): the ground's materials, by the
+    /// names its plugin registers or by id ("Grass").
     #[serde(default)]
     #[property(category = "Placement", label = "Grows on")]
-    pub grows_on: crate::VoxelMaterialList,
+    pub grows_on: crate::GroundMaterialList,
 }
 
 impl Default for PlacementFoliageProps {
@@ -57,7 +57,7 @@ impl Default for PlacementFoliageProps {
             altitude_max: 50.0,
             layer_extent: 120.0,
             has_infinite_extent: false,
-            grows_on: crate::VoxelMaterialList::default(),
+            grows_on: crate::GroundMaterialList::default(),
         }
     }
 }

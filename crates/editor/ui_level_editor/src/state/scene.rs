@@ -11,7 +11,6 @@ use crate::scene_edit::history::VoxelEditJournal;
 use crate::scene_edit::{self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData};
 use crate::world_settings_data::WorldSettingsData;
 use engine_backend::scene::{SceneWorldExt as _, SharedScene};
-use engine_backend::subsystems::render::VoxelChunkSaves;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
@@ -96,9 +95,6 @@ pub struct SceneDomain {
     /// The host's undo histories, when the editor was given them: the
     /// level's history is registered there under its file.
     pub undo_service: Option<UndoService>,
-    /// Where saves ask the viewport's renderer for the voxel terrain's
-    /// edited chunks (`ui::save`), once the viewport has one.
-    pub voxel_chunk_saves: Option<VoxelChunkSaves>,
 }
 
 /// One undoable change to a level.
@@ -143,7 +139,6 @@ impl Default for SceneDomain {
             pending_selection_sync: false,
             history: new_history(),
             undo_service: None,
-            voxel_chunk_saves: None,
         }
     }
 }
@@ -169,7 +164,6 @@ impl SceneDomain {
             pending_selection_sync: self.pending_selection_sync,
             history: new_history(),
             undo_service: self.undo_service.clone(),
-            voxel_chunk_saves: self.voxel_chunk_saves.clone(),
         }
     }
 
@@ -422,7 +416,7 @@ impl SceneDomain {
             else {
                 return false;
             };
-            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity)
+            let Some(mut terrain) = world.get_mut::<voxel_component::VoxelTerrainComponent>(entity)
             else {
                 return false;
             };

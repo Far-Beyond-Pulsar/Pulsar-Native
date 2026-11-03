@@ -1,5 +1,6 @@
-//! Exact voxel edits routed through the registered backend into the
-//! terrain's edit journal.
+//! Sculpt strokes: each pointer sample is a ray the render thread casts with
+//! the frame's camera; the terrain component's `sculpt` method stamps where
+//! it hits the terrain as drawn (the same method scripts call).
 
 use gpui::{AppContext as _, MouseButton};
 
@@ -84,10 +85,39 @@ impl ToolMode for VoxelSculptMode {
             }
             _ => return ToolPointerResult::PassThrough,
         }
-        ToolPointerResult::VoxelBrush(ctx.state.editor.voxel.request(event.holding_mods.shift))
+        ToolPointerResult::Ray(sculpt_ray(
+            ctx.state.editor.voxel.request(event.holding_mods.shift),
+        ))
     }
 
     fn clone_box(&self) -> Box<dyn ToolMode> {
         Box::new(*self)
     }
+}
+
+/// A stroke sample of `request` along the pointer ray, on every enabled,
+/// editable voxel terrain: through `VoxelTerrainComponent`'s `sculpt`.
+fn sculpt_ray(
+    request: voxel_component::sculpt::VoxelBrushRequest,
+) -> engine_backend::subsystems::render::ToolRay {
+    engine_backend::subsystems::render::ToolRay(std::sync::Arc::new(
+        move |world, origin, direction, start| {
+            let terrains: Vec<_> = world
+                .query::<&voxel_component::VoxelTerrainComponent>()
+                .filter(|(entity, terrain)| {
+                    terrain.enabled
+                        && terrain.editable
+                        && engine_backend::scene::attachments::is_enabled(world, *entity)
+                })
+                .map(|(entity, _)| entity)
+                .collect();
+            for terrain in terrains {
+                if let Err(error) = voxel_component::sculpt::sculpt(
+                    world, terrain, origin, direction, request, start,
+                ) {
+                    tracing::warn!("Voxel sculpt: {error}");
+                }
+            }
+        },
+    ))
 }
