@@ -30,7 +30,7 @@ pub fn renderer() -> Resolved {
 }
 
 /// A renderer config with the project's settings: the renderer's own and
-/// the default features' (foliage), which `RendererConfig::with_settings`
+/// Helio's default features' (GI), which `RendererConfig::with_settings`
 /// alone does not know.
 pub fn renderer_config(
     width: u32,

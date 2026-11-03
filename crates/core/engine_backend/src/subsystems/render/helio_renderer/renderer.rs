@@ -1174,7 +1174,6 @@ impl HelioRenderer {
             self.apply_postprocess_baseline()
         };
         let debug_view_changed = self.apply_viewport_debug_mode();
-        self.apply_view_fog();
         let ortho_half_height = self.ortho_half_height();
 
         let view_payloads = self
@@ -1815,23 +1814,6 @@ impl HelioRenderer {
         true
     }
 
-    /// Orthographic views (top, front, side) never fog: fog is a function of
-    /// the distance from the eye, which means nothing in a parallel projection,
-    /// and a haze over a drawing meant for measuring defeats it. Set every
-    /// frame, since a rebuilt graph starts with the fog on.
-    fn apply_view_fog(&mut self) {
-        let fog = !self.active_view.is_orthographic();
-        if let Some(inner) = self.inner.as_mut() {
-            if let Some(pass) = inner
-                .scene
-                .renderer
-                .find_pass_mut::<helio_pass_volumetric_fog::VolumetricFogPass>()
-            {
-                pass.set_active(fog);
-            }
-        }
-    }
-
     /// Adopt the view the editor asked for. Returns whether it changed.
     fn apply_view_kind(&mut self) -> bool {
         let wanted = ViewKind::from_u8(self.view_kind.load(Ordering::Acquire));
@@ -1885,11 +1867,12 @@ impl HelioRenderer {
         true
     }
 
-    /// Keep the post-process resolver's baseline in step with the toolbar's
+    /// Keep the viewport's post-process baseline in step with the toolbar's
     /// Bloom toggle and the project's graphics settings: a renderer setting
-    /// ([`crate::scene::EditorPostProcess`]), so nothing is written into the
-    /// scene. Returns whether it changed this frame. Also drains the legacy
-    /// feature commands, which carry no state.
+    /// ([`crate::scene::EditorPostProcess`]), published as the frame's
+    /// `helio_pass_postprocess::POST_BASELINE` (a view payload), so nothing
+    /// is written into the scene. Returns whether it changed this frame.
+    /// Also drains the legacy feature commands, which carry no state.
     fn apply_postprocess_baseline(&mut self) -> bool {
         while let Ok(command) = self.command_receiver.try_recv() {
             match command {
@@ -1907,15 +1890,10 @@ impl HelioRenderer {
         if inner.applied_postprocess == Some(desired) {
             return false;
         }
-        let queue = inner.queue.clone();
-        let Some(resolver) = inner
-            .scene
-            .renderer
-            .find_pass_mut::<helio_pass_post_volumes::PostProcessVolumeBlendPass>()
-        else {
-            return false;
-        };
-        resolver.set_defaults(&queue, &desired.settings());
+        inner.scene.set_view_payload(
+            helio_pass_postprocess::POST_BASELINE.key(),
+            Some(Arc::new(desired.settings())),
+        );
         inner.applied_postprocess = Some(desired);
         tracing::info!(
             bloom = desired.bloom_enabled,
@@ -1925,15 +1903,11 @@ impl HelioRenderer {
         true
     }
 
-    /// The post-process baseline the editor viewport's resolver holds, once
-    /// the renderer is initialized.
+    /// The post-process baseline the editor viewport publishes, once the
+    /// renderer is initialized and has published one.
     pub fn postprocess_defaults(&mut self) -> Option<helio_pass_postprocess::PostProcessSettings> {
         let inner = self.inner.as_mut()?;
-        inner
-            .scene
-            .renderer
-            .find_pass_mut::<helio_pass_post_volumes::PostProcessVolumeBlendPass>()
-            .map(|resolver| resolver.defaults().clone())
+        inner.applied_postprocess.map(|baseline| baseline.settings())
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -1958,18 +1932,14 @@ impl HelioRenderer {
             .map(|inner| inner.scene.renderer.debug_depth_texture())
     }
 
-    /// The water simulation's height field as of the last encoded frame
-    /// (Helio's `WaterSimPass::sim_texture`: layer `volume row * 3 +
-    /// cascade`); `None` before the renderer is initialized. Read-only
-    /// diagnostics: lets a test read the simulated water back.
-    pub fn debug_water_sim_texture(&self) -> Option<&wgpu::Texture> {
-        self.inner.as_ref().and_then(|inner| {
-            inner
-                .scene
-                .renderer
-                .find_pass::<helio_pass_water_sim::WaterSimPass>()
-                .map(|pass| pass.sim_texture())
-        })
+    /// The graph's pass of type `T` as of the last encoded frame; `None`
+    /// before the renderer is initialized or when the graph has none.
+    /// Read-only diagnostics: lets a plugin's test read its pass's state back
+    /// (a water simulation's height field).
+    pub fn debug_pass<T: helio_core::RenderPass + 'static>(&self) -> Option<&T> {
+        self.inner
+            .as_ref()
+            .and_then(|inner| inner.scene.renderer.find_pass::<T>())
     }
 
     /// The default graph's passes, in execution order, and whether each

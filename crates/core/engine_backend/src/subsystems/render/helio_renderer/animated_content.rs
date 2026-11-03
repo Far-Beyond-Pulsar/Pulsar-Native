@@ -1,7 +1,7 @@
 //! Whether the scene holds content that moves on its own (Pulsar-Native
-//! #1123, #1109): foliage in a wind, water (#1065), surfaces whose shader
-//! graph reads `time`, and what plugins register (particle emitters,
-//! [`AnimatedContentRegistration`]). While the viewport is realtime such
+//! #1123, #1109): surfaces whose shader graph reads `time`, and what
+//! plugins register ([`AnimatedContentRegistration`]: particle emitters,
+//! foliage in a wind, water). While the viewport is realtime such
 //! content changes every frame with no scene write, so the editor renderer
 //! keeps rendering instead of going idle.
 //!
@@ -11,16 +11,15 @@
 //! moves: a drag changes the world every frame (Pulsar-Native#995), and the
 //! check walks every mesh's material slots.
 
-use helio_component::components::{
-    mesh_reads_time, FoliageComponent, StaticMeshComponent, WaterVolumeComponent, WindComponent,
-};
+use helio_component::components::{mesh_reads_time, StaticMeshComponent};
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::{ChangeCursor, ChangeRead, World};
 
 /// A plugin's content that moves on its own (a particle emitter): `watch`
 /// opens a change cursor on the component the answer reads, and `animated`
 /// says whether `world` holds such content now. Submitted by the plugin's
-/// component crate.
+/// component crate; an answer that reads several components submits one
+/// registration for each.
 pub struct AnimatedContentRegistration {
     pub watch: fn(&World) -> ChangeCursor,
     pub animated: fn(&World) -> bool,
@@ -52,9 +51,6 @@ impl AnimatedContent {
         };
         if fresh {
             self.cursors = vec![
-                world.open_change_cursor::<FoliageComponent>(),
-                world.open_change_cursor::<WaterVolumeComponent>(),
-                world.open_change_cursor::<WindComponent>(),
                 world.open_change_cursor::<StaticMeshComponent>(),
                 world.open_change_cursor::<attachments::ComponentOwner>(),
             ];
@@ -90,65 +86,13 @@ impl AnimatedContent {
     }
 }
 
-/// Animated content in `world`: foliage in a wind faster than calm, an
-/// enabled water volume, a mesh drawn with a shader graph that reads the
-/// frame clock, or a plugin's animated content.
+/// Animated content in `world`: a mesh drawn with a shader graph that
+/// reads the frame clock, or a plugin's animated content.
 pub(super) fn animated(world: &World) -> bool {
-    foliage_in_wind(world)
-        || water(world)
-        || animated_graph_materials(world)
+    animated_graph_materials(world)
         || inventory::iter::<AnimatedContentRegistration>
             .into_iter()
             .any(|registration| (registration.animated)(world))
-}
-
-/// Water simulates on the frame clock: its waves travel in a wind, and
-/// ripples from bodies moving through it (#1080) spread and settle over
-/// many frames after the edit that made them. Any enabled volume counts.
-fn water(world: &World) -> bool {
-    world
-        .query::<&WaterVolumeComponent>()
-        .any(|(instance, water)| water.enabled && attachments::is_enabled(world, instance))
-}
-
-/// The foliage passes' one wind (as the environment join picks it): a
-/// foliage component's own wind when one opts out of the global wind, else
-/// the level's global wind, else the components' own. Approximated by the
-/// fastest candidate at the deciding level.
-fn foliage_in_wind(world: &World) -> bool {
-    let foliage: Vec<&FoliageComponent> = world
-        .query::<&FoliageComponent>()
-        .filter(|(instance, foliage)| {
-            foliage.general.enabled && attachments::is_enabled(world, *instance)
-        })
-        .map(|(_, foliage)| foliage)
-        .collect();
-    if foliage.is_empty() {
-        return false;
-    }
-    let own_speed = |foliage: &FoliageComponent| {
-        if foliage.wind.wind_enabled {
-            foliage.wind.wind_speed
-        } else {
-            0.0
-        }
-    };
-    let opted_out: Vec<f32> = foliage
-        .iter()
-        .filter(|foliage| !foliage.wind.use_global_wind)
-        .map(|foliage| own_speed(foliage))
-        .collect();
-    if !opted_out.is_empty() {
-        return opted_out.iter().any(|speed| *speed > 0.0);
-    }
-    let global = world
-        .query::<&WindComponent>()
-        .find(|(instance, wind)| wind.enabled && attachments::is_enabled(world, *instance))
-        .map(|(_, wind)| wind.speed);
-    match global {
-        Some(speed) => speed > 0.0,
-        None => foliage.iter().any(|foliage| own_speed(foliage) > 0.0),
-    }
 }
 
 fn animated_graph_materials(world: &World) -> bool {
@@ -179,20 +123,11 @@ mod tests {
         }
         assert_eq!(content.checks, 1);
 
-        let water = pulsar_world_registry::attach_value(
-            &mut world,
-            object,
-            WaterVolumeComponent::default(),
-        )
-        .unwrap();
-        assert!(content.live(&world), "an enabled water volume animates");
+        // An edit of a component the answer reads checks again.
+        pulsar_world_registry::attach_value(&mut world, object, StaticMeshComponent::default())
+            .unwrap();
+        assert!(!content.live(&world), "a mesh without a timed graph is still");
         assert_eq!(content.checks, 2);
-
-        world
-            .get_mut::<WaterVolumeComponent>(water)
-            .unwrap()
-            .enabled = false;
-        assert!(!content.live(&world), "a disabled one does not");
 
         // A new world is checked from scratch.
         let other = World::new();

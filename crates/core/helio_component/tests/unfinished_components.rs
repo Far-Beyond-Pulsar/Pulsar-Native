@@ -21,12 +21,6 @@ fn unfinished_components_declare_why_and_their_issue() {
         "StaticMeshComponent",
         "LODComponent",
         "LightComponent",
-        "GlobalFogComponent",
-        "LocalFogVolumeComponent",
-        "PostProcessVolumeComponent",
-        "CameraPostProcessComponent",
-        "WaterVolumeComponent",
-        "FoliageComponent",
     ] {
         assert!(
             pulsar_world_registry::unfinished_component(class).is_none(),

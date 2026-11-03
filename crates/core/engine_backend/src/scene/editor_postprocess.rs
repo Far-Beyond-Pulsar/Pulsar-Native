@@ -1,15 +1,15 @@
 //! The editor viewport's post-process baseline.
 //!
-//! Helio resolves post-processing on the GPU from its defaults, the
-//! camera's `camera_postprocess` rows (authored `CameraPostProcessComponent`s)
-//! and post-process volumes. The editor viewport's toggles are a renderer
+//! The frame's post settings start from the host's baseline
+//! (`helio_pass_postprocess::POST_BASELINE`): the tone map's stand-in, and
+//! what a post-settings publisher (the post plugin's camera rows and
+//! volumes) blends over. The editor viewport's toggles are a renderer
 //! setting, not scene data: bloom comes from the project's graphics settings
 //! (`bloom_enabled`, `bloom_intensity`) and the toolbar's Bloom toggle, and
-//! the renderer sets them as the resolver's defaults
-//! (`PostProcessVolumeBlendPass::set_defaults`). Every other setting stays at
-//! Helio's default. Authored camera rows and volumes in the level still
-//! override it (Pulsar-Native#1035, Phase 4: the editor no longer writes a
-//! row of its own into the scene world).
+//! the renderer publishes them as the viewport's baseline (a view payload).
+//! Every other setting stays at Helio's default. Authored camera rows and
+//! volumes in the level still override it (Pulsar-Native#1035, Phase 4: the
+//! editor no longer writes a row of its own into the scene world).
 
 use helio_pass_postprocess::PostProcessSettings;
 
@@ -60,7 +60,7 @@ impl EditorPostProcess {
         Self::resolve(enabled, intensity, viewport_bloom)
     }
 
-    /// The resolver defaults this baseline stands for.
+    /// The post settings this baseline stands for.
     pub fn settings(self) -> PostProcessSettings {
         let mut settings = PostProcessSettings::default();
         settings.bloom_enabled = self.bloom_enabled;
