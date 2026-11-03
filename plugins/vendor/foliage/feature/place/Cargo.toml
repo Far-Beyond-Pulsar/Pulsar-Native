@@ -1,0 +1,25 @@
+[package]
+name = "helio-pass-foliage-place"
+version = "0.1.0"
+edition = "2021"
+description = "Foliage tile residency, GPU placement, tile/cluster culling and per-LOD compaction for Helio"
+
+[features]
+default = ["gpu"]
+gpu = []
+# Row components for standalone hosts (`host_rows`): examples and tests
+# enable it; engines derive the rows from their own components.
+host-rows = ["helio-foliage-api/host-rows"]
+
+[dependencies]
+helio-scene-join = { workspace = true }
+helio-settings = { workspace = true }
+pulsar_reflection = { workspace = true }
+glam = { workspace = true }
+helio-core = { workspace = true }
+helio-foliage-api = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+log = { workspace = true }
+pulsar_scenedb = { workspace = true }
+serde_json = { workspace = true }
