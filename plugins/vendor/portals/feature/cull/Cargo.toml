@@ -1,0 +1,23 @@
+[package]
+name = "helio-pass-portal-cull"
+version = "0.1.0"
+edition = "2021"
+description = "Per-portal GPU frustum culling: selects which instances get a duplicate draw through each active portal"
+
+[features]
+default = ["gpu"]
+gpu = []
+
+[dependencies]
+# Host settings (`settings::PORTALS`).
+helio-settings = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-feature-api = { workspace = true }
+pulsar_reflection = { workspace = true }
+glam = { workspace = true }
+helio-core = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+log = { workspace = true }
+pulsar_scenedb = { workspace = true }

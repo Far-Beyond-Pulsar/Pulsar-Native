@@ -1,0 +1,48 @@
+[package]
+name = "portals_component"
+version = "0.1.0"
+edition = "2024"
+description = "Portals (pulsar.portals): the portal component, pairing and projection, and the registrations of the plugin's Helio features"
+
+# Hosts (the editor through the plugin crate, the game) link it; the
+# component, its space producer, settings and render features
+# register through `inventory` once the crate is linked.
+[lib]
+name = "portals_component"
+
+[features]
+# `#[derive(SceneStore)]` checks the deriving crate's own `gpu` feature.
+default = ["gpu"]
+gpu = []
+
+[dependencies]
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+gpui-ce = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_scene_model = { workspace = true }
+pulsar_settings = { workspace = true }
+helio_component = { workspace = true }
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+inventory = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+wgpu = { workspace = true }
+glam = { workspace = true }
+tracing = { workspace = true }
+helio-core = { workspace = true }
+helio-settings = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-scene-join = { workspace = true }
+helio-pass-portal-cull = { workspace = true }
+helio-pass-portal-instances = { workspace = true }
+
+[lints]
+workspace = true

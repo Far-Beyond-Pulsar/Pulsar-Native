@@ -8,7 +8,7 @@
 //! on the far side.
 //!
 //! Nothing here renders anything. The engine pairs the authored portals each
-//! frame (`engine_backend::scene::portals`), runs Helio's projection bridge over
+//! frame ([`crate::projection`]), runs the feature's projection bridge over
 //! them, and hands the portal passes their rows. Portals inside a level instance
 //! (a `SubLevelDisplayComponent`'s contents) pair with portals outside it the
 //! same way, which is how a doorway into another level instance is made.
