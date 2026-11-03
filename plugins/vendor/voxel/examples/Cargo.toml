@@ -29,9 +29,14 @@ helio-mesh-api = { workspace = true }
 helio-presets = { workspace = true }
 helio-xr = { workspace = true }
 helio-pass-voxel-planet = { workspace = true }
-# The lens plugin's features (the camera lens and its flare).
+# The leaf kinds' plugins' features (as the engine adds them).
+helio-pass-corona = { workspace = true }
+helio-pass-sprite-batch = { workspace = true }
+helio-pass-decal = { workspace = true }
 helio-pass-lens = { workspace = true }
 helio-pass-flare = { workspace = true }
+helio-pass-portal-cull = { workspace = true }
+helio-pass-portal-instances = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-gbuffer = { workspace = true }
