@@ -12,7 +12,7 @@
 //! amount)`, which lowers it and returns what is left), e.g. a little every
 //! tick.
 //!
-//! SceneDB derives a `DecalSourceRow` (`environment_rows`) from the authored
+//! SceneDB derives a [`DecalSourceRow`](crate::DecalSourceRow) from the authored
 //! value; the environment join places it as the decal pass's
 //! `helio_pass_decal::DecalRow` row in `"decals"`, its world-to-decal
 //! transform built from the owner's transform on the GPU.
@@ -83,9 +83,9 @@ pub struct DecalComponent {
     #[property(category = "Decal")]
     pub layers: DecalLayers,
     /// The image `albedo_texture` names, as the world loaded it (a texture
-    /// asset, [`crate::texture_assets`]). Never authored.
+    /// asset, `helio_component::texture_assets`). Never authored.
     #[serde(skip)]
-    pub albedo_image: crate::texture_assets::BoundTexture,
+    pub albedo_image: helio_component::texture_assets::BoundTexture,
 }
 
 impl Default for DecalComponent {
@@ -157,7 +157,7 @@ fn collect_decal_handles(value: *const (), out: &mut Vec<pulsar_scenedb::handle_
     // SAFETY: SceneDB reaches this only through `DecalComponent`'s own
     // `ComponentId`, with a pointer to a live value.
     let decal = unsafe { &*(value as *const DecalComponent) };
-    crate::texture_assets::collect_texture(&decal.albedo_texture, out);
+    helio_component::texture_assets::collect_texture(&decal.albedo_texture, out);
 }
 
 pulsar_scenedb::pulsar_reflection::inventory::submit! {
@@ -168,8 +168,8 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
 }
 
 /// How a decal takes in its loaded (or failed) albedo image.
-pub(crate) fn bind_decal_texture(decal: &mut DecalComponent, view: &pulsar_scenedb::AssetView) {
-    crate::texture_assets::bind_texture(
+pub fn bind_decal_texture(decal: &mut DecalComponent, view: &pulsar_scenedb::AssetView) {
+    helio_component::texture_assets::bind_texture(
         &mut decal.albedo_image,
         &decal.albedo_texture,
         view,
