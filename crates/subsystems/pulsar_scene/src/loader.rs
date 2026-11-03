@@ -22,7 +22,6 @@ use serde_json::Value;
 // linker from dropping helio_component's #[used] inventory statics.
 pub use helio_component::FoliageComponent as _ForceLink_FoliageComponent;
 pub use helio_component::LightComponent as _ForceLink_LightComponent;
-pub use helio_component::PortalComponent as _ForceLink_PortalComponent;
 pub use helio_component::PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent;
 pub use helio_component::ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent;
 pub use helio_component::StaticMeshComponent as _ForceLink_StaticMeshComponent;

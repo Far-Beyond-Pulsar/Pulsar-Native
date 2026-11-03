@@ -33,6 +33,33 @@ members = [
     # and examples (its standalone hosts: voxel_craft, voxel_flight,
     # water_world). Built-in plugin of the editor and the game.
     "plugins/vendor/voxel/*",
+    # The leaf object kinds' plugins (layered rewrite phase B, batch 1): each
+    # has a component crate (components, methods, rows, registrations), its
+    # feature crates (the Helio passes it brought from the Helio repo), an
+    # editor crate (the editor plugin) and, when it has demos, an examples
+    # crate. Built-in plugins of the editor and the game.
+    "plugins/vendor/particles/component",
+    "plugins/vendor/particles/feature",
+    "plugins/vendor/particles/editor",
+    "plugins/vendor/particles/examples",
+    "plugins/vendor/sprites/component",
+    "plugins/vendor/sprites/feature/*",
+    "plugins/vendor/sprites/editor",
+    "plugins/vendor/sprites/examples",
+    "plugins/vendor/decals/component",
+    "plugins/vendor/decals/feature",
+    "plugins/vendor/decals/editor",
+    "plugins/vendor/decals/examples",
+    "plugins/vendor/lens/component",
+    "plugins/vendor/lens/feature/*",
+    "plugins/vendor/lens/editor",
+    "plugins/vendor/lens/examples",
+    "plugins/vendor/portals/component",
+    "plugins/vendor/portals/feature/*",
+    "plugins/vendor/portals/editor",
+    "plugins/vendor/portals/examples",
+    "plugins/vendor/splines/component",
+    "plugins/vendor/splines/editor",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -170,6 +197,19 @@ skeletal_assets                    = { path = "plugins/vendor/skm_editor/skeleta
 # the Helio crates.
 voxel_component                    = { path = "plugins/vendor/voxel/component" }
 voxel_plugin                       = { path = "plugins/vendor/voxel/editor", features = ["builtin"] }
+# The leaf kinds' plugins, the same way (their feature crates are below).
+particles_component                = { path = "plugins/vendor/particles/component" }
+particles_plugin                   = { path = "plugins/vendor/particles/editor", features = ["builtin"] }
+sprites_component                  = { path = "plugins/vendor/sprites/component" }
+sprites_plugin                     = { path = "plugins/vendor/sprites/editor", features = ["builtin"] }
+decals_component                   = { path = "plugins/vendor/decals/component" }
+decals_plugin                      = { path = "plugins/vendor/decals/editor", features = ["builtin"] }
+lens_component                     = { path = "plugins/vendor/lens/component" }
+lens_plugin                        = { path = "plugins/vendor/lens/editor", features = ["builtin"] }
+portals_component                  = { path = "plugins/vendor/portals/component" }
+portals_plugin                     = { path = "plugins/vendor/portals/editor", features = ["builtin"] }
+splines_component                  = { path = "plugins/vendor/splines/component" }
+splines_plugin                     = { path = "plugins/vendor/splines/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -260,19 +300,27 @@ helio-feature-api = { path = "crates/renderer/helio/crates/helio-feature-api" }
 helio-voxel-data = { path = "plugins/vendor/voxel/api" }
 helio-voxel-world = { path = "plugins/vendor/voxel/world" }
 helio-pass-voxel-planet = { path = "plugins/vendor/voxel/feature" }
+# The leaf kinds' feature crates (plugins/vendor/<kind>/feature): only their
+# plugins' own crates use them.
+helio-pass-corona = { path = "plugins/vendor/particles/feature" }
+helio-pass-decal = { path = "plugins/vendor/decals/feature" }
+helio-pass-sprite-batch = { path = "plugins/vendor/sprites/feature/batch" }
+helio-pass-sprite-cull = { path = "plugins/vendor/sprites/feature/cull" }
+helio-pass-sprite-simulate = { path = "plugins/vendor/sprites/feature/simulate" }
+helio-pass-radiance-cascades-2d = { path = "plugins/vendor/sprites/feature/radiance-cascades-2d" }
+helio-pass-lens = { path = "plugins/vendor/lens/feature/lens" }
+helio-pass-flare = { path = "plugins/vendor/lens/feature/flare" }
+helio-lens-optics = { path = "plugins/vendor/lens/feature/optics" }
+helio-pass-portal-cull = { path = "plugins/vendor/portals/feature/cull" }
+helio-pass-portal-instances = { path = "plugins/vendor/portals/feature/instances" }
 helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }
 helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
 helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
-helio-pass-corona = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-corona" }
-helio-pass-decal = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-decal" }
-helio-pass-sprite-batch = { path = "crates/renderer/helio/crates/passes/2d/helio-pass-sprite-batch" }
-helio-pass-sprite-cull = { path = "crates/renderer/helio/crates/passes/2d/helio-pass-sprite-cull" }
 helio-pass-gbuffer = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-gbuffer" }
 helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-water-sim" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
-helio-pass-lens = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-lens" }
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
 helio-mesh-api = { path = "crates/renderer/helio/crates/api/helio-mesh-api" }
 helio-scene-join = { path = "crates/renderer/helio/crates/helio-scene-join" }
@@ -286,10 +334,12 @@ scenedb-inspector-agent = { path = "crates/renderer/helio/crates/scenedb-inspect
 helio_snapshot = { package = "helio-snapshot", path = "crates/renderer/helio/crates_other/helio-snapshot" }
 helio-settings = { path = "crates/renderer/helio/crates/helio-settings" }
 helio-pass-object-batch = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-object-batch" }
+helio-pass-debug-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay" }
+helio-pass-perf-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay" }
+helio-bake = { path = "crates/renderer/helio/crates/helio-bake" }
 helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-volumetric-fog" }
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
 helio-pass-foliage-place = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-foliage-place" }
-helio-pass-portal-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-portal-cull" }
 # Helio crates the voxel plugin's feature and hosts use.
 helio-xr = { path = "crates/renderer/helio/crates/helio-xr" }
 helio-components = { path = "crates/renderer/helio/crates/helio-components" }

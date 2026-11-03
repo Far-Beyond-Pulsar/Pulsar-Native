@@ -47,6 +47,9 @@ helio.workspace = true
 # Create Voxel Terrain, and the save's journal compaction and kept chunks act
 # through the plugin's component methods.
 voxel_component.workspace = true
+splines_component.workspace = true
+sprites_component.workspace = true
+portals_component.workspace = true
 helio-pass-buffer-view.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
@@ -91,6 +94,10 @@ wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
+# The kinds the render acceptance test draws (the editor links their plugins).
+decals_component.workspace = true
+particles_component.workspace = true
+lens_component.workspace = true
 helio-presets.workspace = true
 tempfile = { workspace = true }
 # Headless `TestAppContext` window for the properties-panel layout budget test

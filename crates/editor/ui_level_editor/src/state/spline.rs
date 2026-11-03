@@ -1,11 +1,11 @@
-//! Spline tool and panel preferences. The curve itself is Helio's
+//! Spline tool and panel preferences. The curve itself is the splines plugin's
 //! `SplineComponent`, a SceneDB World component on the owning object; the
 //! aliases below keep the editor's names for it.
 
-pub use helio_component::components::{CurveAlgorithm, SplinePoint};
+pub use splines_component::{CurveAlgorithm, SplinePoint};
 
-/// The editor's name for a curve: Helio's SceneDB spline component.
-pub type SplineData = helio_component::components::SplineComponent;
+/// The editor's name for a curve: the splines plugin's SceneDB spline component.
+pub type SplineData = splines_component::SplineComponent;
 
 /// Locale keys for curve algorithms, which are editor text.
 pub trait CurveAlgorithmText {

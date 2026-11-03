@@ -85,6 +85,13 @@ extern crate self as pulsar_game;
 // subsystems, payload publishers, the render feature and its settings):
 // a game runs levels with voxel terrain without naming a voxel type.
 extern crate voxel_component;
+// The leaf kinds' plugins, the same way (Phase B batch 1).
+extern crate decals_component;
+extern crate lens_component;
+extern crate particles_component;
+extern crate portals_component;
+extern crate splines_component;
+extern crate sprites_component;
 
 // Compile-time drift guard: exported actors must match the pinned crates
 #[cfg(test)]

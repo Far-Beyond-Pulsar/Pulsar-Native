@@ -1979,7 +1979,7 @@ const SUN: f32 = 20.0;
 /// `DecalComponent::fade_by` (its method), called as a script calls them.
 #[test]
 fn decals_reach_the_frame_and_scripts_set_their_opacity() {
-    use helio_component::components::{DecalComponent, DecalLayers};
+    use decals_component::{DecalComponent, DecalLayers};
     use pulsar_script_vm::{Host, NativeRegistry, Value};
     use ui_level_editor::commands::TypedComponent;
 
@@ -2123,7 +2123,7 @@ fn half_change(frame: &Frame, reference: &Frame, left: bool) -> (usize, f32, f32
 /// restores its side of the frame while the other keeps drawing.
 #[test]
 fn particle_emitters_reach_the_frame_from_one_pool() {
-    use helio_component::components::{ParticleEmitterComponent, ParticleEmitterShape};
+    use particles_component::{ParticleEmitterComponent, ParticleEmitterShape};
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2395,7 +2395,8 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
 /// the viewport goes idle again.
 #[test]
 fn a_realtime_viewport_keeps_rendering_animated_content() {
-    use helio_component::components::{FoliageComponent, ParticleEmitterComponent};
+    use helio_component::components::FoliageComponent;
+    use particles_component::ParticleEmitterComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2876,7 +2877,7 @@ fn assert_color(what: &str, actual: [u8; 4], expected: [u8; 3]) {
 /// restores the 3D frame.
 #[test]
 fn sprites_draw_in_2d_over_the_3d_scene() {
-    use helio_component::components::SpriteComponent;
+    use sprites_component::SpriteComponent;
     use ui_level_editor::scene_edit::sprite::create_sprite;
 
     let _ = tracing_subscriber::fmt()
@@ -3099,7 +3100,7 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
 /// distance blurs, and disabling the lens restores the frame.
 #[test]
 fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
-    use helio_component::components::CameraLensComponent;
+    use lens_component::CameraLensComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -3179,7 +3180,7 @@ fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
 /// inside the frame (the defocus test above) leaves it untouched.
 #[test]
 fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
-    use helio_component::components::{
+    use lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensProjectionModel,
         LensRegionShape,
     };
@@ -3254,7 +3255,7 @@ fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
 /// against the same lens with its effect switched off.
 #[test]
 fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
-    use helio_component::components::{
+    use lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice, LensPreset,
         LensRegionShape,
     };

@@ -12,9 +12,9 @@ use glam::{Mat4, Quat, Vec3};
 use pulsar_scenedb::World;
 use rust_i18n::t;
 
-/// The component class a curve is stored as: Helio's SceneDB spline
+/// The component class a curve is stored as: the splines plugin's SceneDB spline
 /// component, so it hydrates into the World and the renderer draws it.
-pub const SPLINE_CLASS: &str = helio_component::components::SPLINE_CLASS_NAME;
+pub const SPLINE_CLASS: &str = splines_component::SPLINE_CLASS_NAME;
 
 /// Where curves lived before they were components (a JSON prop the
 /// renderer never saw). Still read so older levels load; an edit moves the

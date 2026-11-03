@@ -25,6 +25,12 @@ extern crate pulsar_class;
 extern crate pulsar_physics;
 extern crate pulsar_scene_model;
 extern crate voxel_component;
+extern crate decals_component;
+extern crate lens_component;
+extern crate particles_component;
+extern crate portals_component;
+extern crate splines_component;
+extern crate sprites_component;
 
 pub mod architecture;
 pub mod ledger;

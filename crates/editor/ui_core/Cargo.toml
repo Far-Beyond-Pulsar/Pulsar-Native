@@ -61,6 +61,12 @@ input_plugin = { path = "../../../plugins/vendor/input_plugin", features = ["bui
 # Voxel worlds (`pulsar.voxel`): the editor plugin crate, which links the
 # plugin's component crate; both register everything through `inventory`.
 voxel_plugin = { workspace = true }
+decals_plugin = { workspace = true }
+lens_plugin = { workspace = true }
+particles_plugin = { workspace = true }
+portals_plugin = { workspace = true }
+splines_plugin = { workspace = true }
+sprites_plugin = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

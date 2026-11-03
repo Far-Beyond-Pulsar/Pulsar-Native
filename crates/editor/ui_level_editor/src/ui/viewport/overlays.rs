@@ -218,16 +218,16 @@ impl ViewportPanel {
                 .ok()
                 .and_then(|engine| engine.editor_mailbox())
             {
-                mailbox.set_portal_debug_texts(Vec::new());
-                mailbox.set_portal_debug_geometry(Vec::new());
+                mailbox.set_view_payload(portals_component::PORTAL_DEBUG_TEXTS.key(), None);
+                mailbox.set_view_payload(portals_component::PORTAL_DEBUG_GEOMETRY.key(), None);
             }
         } else if let Some(mailbox) = gpu_engine
             .try_lock()
             .ok()
             .and_then(|engine| engine.editor_mailbox())
         {
-            mailbox.set_portal_debug_texts(Vec::new());
-            mailbox.set_portal_debug_geometry(Vec::new());
+            mailbox.set_view_payload(portals_component::PORTAL_DEBUG_TEXTS.key(), None);
+            mailbox.set_view_payload(portals_component::PORTAL_DEBUG_GEOMETRY.key(), None);
         }
 
         // What the overlay samples, on its own timer: the renderer's statistics
@@ -390,15 +390,15 @@ where
 {
     let state = state_arc.read();
     let world = state.scene.world();
-    let pairing = engine_backend::scene::portals::pair_portals(&world);
+    let pairing = portals_component::pair_portals(&world);
     let paired_count = pairing.pairs.len();
     let unlinked_count = engine_backend::scene::attachments::enabled_components::<
-        helio_component::components::PortalComponent,
+        portals_component::PortalComponent,
     >(&world)
     .filter(|(_, _, portal)| portal.enabled && portal.link_id == 0)
     .count();
     let disabled_count = engine_backend::scene::attachments::enabled_components::<
-        helio_component::components::PortalComponent,
+        portals_component::PortalComponent,
     >(&world)
     .filter(|(_, _, portal)| !portal.enabled)
     .count();
@@ -482,10 +482,10 @@ where
 
     for problem in pairing.problems {
         let message = match problem {
-            engine_backend::scene::portals::PortalProblem::Alone { link_id } => {
+            portals_component::PortalProblem::Alone { link_id } => {
                 format!("Link {link_id} · needs one more portal")
             }
-            engine_backend::scene::portals::PortalProblem::Crowded { link_id, count } => {
+            portals_component::PortalProblem::Crowded { link_id, count } => {
                 format!("Link {link_id} · {count} portals; needs exactly 2")
             }
         };
@@ -573,8 +573,8 @@ where
 fn select_portal_debug_view(
     state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-    source: engine_backend::scene::portals::Portal,
-    target: engine_backend::scene::portals::Portal,
+    source: portals_component::Portal,
+    target: portals_component::Portal,
 ) {
     use engine_backend::scene::SceneWorldExt as _;
     let mut state = state_arc.write();
@@ -589,7 +589,10 @@ fn select_portal_debug_view(
         .ok()
         .and_then(|engine| engine.editor_mailbox())
     {
-        mailbox.set_portal_debug_geometry(ghost);
+        mailbox.set_view_payload(
+            portals_component::PORTAL_DEBUG_GEOMETRY.key(),
+            Some(std::sync::Arc::new(ghost) as engine_backend::subsystems::render::ViewPayload),
+        );
     }
 }
 
@@ -597,8 +600,8 @@ fn select_portal_debug_view(
 /// pair. This is a deliberate, bounded editor-only inspection payload.
 fn portal_ghost_geometry(
     world: &pulsar_scenedb::World,
-    source: engine_backend::scene::portals::Portal,
-    target: engine_backend::scene::portals::Portal,
+    source: portals_component::Portal,
+    target: portals_component::Portal,
 ) -> Vec<[f64; 3]> {
     use glam::{DMat4, DVec3};
     use helio_component::components::StaticMeshComponent;
@@ -672,7 +675,7 @@ fn render_portal_badges(
 
     let state = state_arc.read();
     let world = state.scene.world();
-    let pairing = engine_backend::scene::portals::pair_portals(&world);
+    let pairing = portals_component::pair_portals(&world);
     let mut paired_sides = std::collections::HashMap::new();
     for (a, b) in pairing.pairs {
         paired_sides.insert(a.instance, 'A');
@@ -680,7 +683,7 @@ fn render_portal_badges(
     }
     let mut labels = Vec::new();
     for (instance, owner, portal) in engine_backend::scene::attachments::enabled_components::<
-        helio_component::components::PortalComponent,
+        portals_component::PortalComponent,
     >(&world)
     {
         let Some(matrix) =
@@ -721,7 +724,7 @@ fn render_portal_badges(
             ][color_id.unsigned_abs() as usize % 6]
         };
         labels.push(
-            engine_backend::subsystems::render::helio_renderer::PortalDebugText {
+            portals_component::PortalDebugText {
                 world_position: matrix.transform_point3(anchor).to_array(),
                 text: label,
                 color,
@@ -735,7 +738,10 @@ fn render_portal_badges(
         .ok()
         .and_then(|engine| engine.editor_mailbox())
     {
-        mailbox.set_portal_debug_texts(labels);
+        mailbox.set_view_payload(
+            portals_component::PORTAL_DEBUG_TEXTS.key(),
+            Some(std::sync::Arc::new(labels) as engine_backend::subsystems::render::ViewPayload),
+        );
     }
 
     gpui::canvas(|_, _, _| (), |_, _, _, _| ())

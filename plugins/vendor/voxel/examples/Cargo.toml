@@ -29,6 +29,9 @@ helio-mesh-api = { workspace = true }
 helio-presets = { workspace = true }
 helio-xr = { workspace = true }
 helio-pass-voxel-planet = { workspace = true }
+# The lens plugin's features (the camera lens and its flare).
+helio-pass-lens = { workspace = true }
+helio-pass-flare = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-gbuffer = { workspace = true }

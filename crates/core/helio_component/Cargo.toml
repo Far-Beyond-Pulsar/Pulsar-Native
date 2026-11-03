@@ -58,12 +58,8 @@ image.workspace = true
 intel_tex_2 = "0.5"
 helio-asset-compat = { workspace = true }
 skeletal_assets.workspace = true
-helio-pass-corona = { workspace = true }
-helio-pass-decal = { workspace = true }
 helio-pass-postprocess = { workspace = true }
-helio-pass-lens = { workspace = true }
 helio-pass-sky = { workspace = true }
-helio-pass-sprite-batch = { workspace = true }
 helio-pass-volumetric-fog = { workspace = true }
 helio-pass-water-sim = { workspace = true }
 helio-pass-foliage-place = { workspace = true }

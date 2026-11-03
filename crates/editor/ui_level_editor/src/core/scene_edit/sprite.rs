@@ -20,7 +20,7 @@ pub const SPRITE_OBJECT_NAME: &str = "Sprite";
 pub fn create_sprite(
     state: &mut LevelEditorState,
     position: [f32; 2],
-    sprite: helio_component::components::SpriteComponent,
+    sprite: sprites_component::SpriteComponent,
 ) -> CommandResult {
     let result = execute_command(
         state,

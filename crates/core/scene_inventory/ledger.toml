@@ -55,10 +55,10 @@ name = "ParticleEmitterComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::particle_emitter_component"
+owner = "particles_component::component"
 disposition = "render (#1059). Its derived CoronaEmitterSourceRow is written on every insert, write, removal and replay; the environment join gates it on the instance and its owner's visibility, places it at the owner and allocates its range of the Corona particle pool (sized by max_particles, clamped when the pool is full). Sprites are the Corona pass's built-in atlas cells"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); plugins/vendor/particles/component/tests/scene_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[class]]
@@ -66,10 +66,10 @@ name = "SpriteComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::sprite_component"
+owner = "sprites_component::component"
 disposition = "render, 2D (#1060). Its derived SpriteSourceRow is written on every insert, write, removal and replay (its image registered in the scene texture store); the environment join gates it on the instance and its owner's visibility and places it into sprite_instances at the owner's X/Y, turned by its roll and scaled by its X/Y scale. The default graphs draw sprites as the final 2D overlay after post-processing, ordered by z_index, with their own orthographic camera (1 unit = 1 output pixel, origin at the view's centre); no 3D pass reads them. The editor places one from the hierarchy (scene_edit::sprite::create_sprite)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[class]]
@@ -77,10 +77,10 @@ name = "DecalComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::decal_component"
+owner = "decals_component::component"
 disposition = "render (#1058). Its derived DecalSourceRow is written on every insert, write, removal and replay (its image registered in the scene texture store); the environment join gates it on the instance and its owner's visibility and places it into decals with the owner's box as its transform. Permanent (fade time 0); scripts set its opacity (set_opacity, fade_by)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); plugins/vendor/decals/component/tests/scene_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[class]]
@@ -99,10 +99,10 @@ name = "CameraLensComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::camera_lens_component"
+owner = "lens_component::component"
 disposition = "render. The camera's lens as authored (optics, focus, focal surface, element stack, presets). Its derived rows are written on every insert, write, removal and replay: the LensComponent row at the instance row of camera_lenses, and its LensElementComponent rows in a compact per-lens block of lens_elements; removal zeroes both"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/core/helio_component/src/components/camera_lens_component.rs (tests)"
+test = "plugins/vendor/lens/component/tests/camera_lens_rows.rs; plugins/vendor/lens/component/src/component.rs (tests)"
 status = "verified"
 
 [[class]]
@@ -222,7 +222,7 @@ name = "PortalComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = false
-owner = "helio_component::components::portal_component"
+owner = "portals_component::component"
 disposition = "unfinished, Phase 4 (tracked in #1055): Helio draws linked portal pairs from projection rows at dense reserved entity slots; this component authors no peer and the editor world cannot provide those slots. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/helio_component/tests/unfinished_components.rs; tracked in #1055"
@@ -332,10 +332,10 @@ name = "SplineComponent"
 category = "Gameplay"
 world_registered = true
 own_gpu_columns = false
-owner = "helio_component::components::spline_component"
+owner = "splines_component::component"
 disposition = "editor visualization, Phase 4: SplineLines reads SceneDB's change journal and rebuilds the debug lines only when a spline, or its owner's transform, visibility, selection or enabled state, changes; nothing scans the World on a sync without such a change"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
+test = "plugins/vendor/splines/component/src/component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
 status = "verified"
 
 [[class]]
@@ -704,7 +704,7 @@ writer = "helio-scene-derivations environment join from ParticleEmitterComponent
 owner = "helio_pass_corona::components"
 disposition = "keep as the pass row layout of corona_emitters; produced by the join (transform from the owner, particle range from the pool, emitter identity), not registered as a column. The spawn cursor is the pass's own state"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); plugins/vendor/particles/component/tests/scene_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[schema]]
@@ -718,7 +718,7 @@ writer = "helio-scene-derivations environment join from SpriteComponent's source
 owner = "helio_pass_sprite_batch"
 disposition = "keep as the pass row layout of sprite_instances; produced by the join (the 2D placement from the owner), not registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[schema]]
@@ -732,7 +732,7 @@ writer = "helio-scene-derivations environment join from DecalComponent's source 
 owner = "helio_pass_decal::components"
 disposition = "keep as the pass row layout of decals; produced by the join (the world-to-decal transform from the owner), not registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); plugins/vendor/decals/component/tests/scene_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[schema]]
@@ -967,10 +967,10 @@ clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "none: the authored component has no column of its own; on every insert, write, removal and replay it derives its CameraLensSourceRow (camera_lens_sources, which the environment join publishes as camera_lenses) and its block of LensElementComponent rows (lens_elements), zeroed and freed on removal"
-owner = "helio_component::components::camera_lens_component"
+owner = "lens_component::component"
 disposition = "keep: the camera's lens as authored; its GPU rows are the derived ones above"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/core/helio_component/src/components/camera_lens_component.rs (tests)"
+test = "plugins/vendor/lens/component/tests/camera_lens_rows.rs; plugins/vendor/lens/component/src/component.rs (tests)"
 status = "verified"
 
 [[schema]]
@@ -1037,10 +1037,10 @@ clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived SpriteSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
-owner = "helio_component::components::sprite_component"
+owner = "sprites_component::component"
 disposition = "keep: the authored type's GPU row is SpriteSourceRow, the environment join's input; the scanner attributes sprite_instances to it by name, but the row it writes is sprite_sources"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[schema]]
@@ -1054,7 +1054,7 @@ writer = "SpriteComponent's derived GPU registration (the pass row at the 2D ori
 owner = "helio_component::components::environment_rows"
 disposition = "keep: the environment join's sprite input (#1060)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[schema]]
@@ -1065,10 +1065,10 @@ clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived DecalSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
-owner = "helio_component::components::decal_component"
+owner = "decals_component::component"
 disposition = "keep: the authored type's GPU row is DecalSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); plugins/vendor/decals/component/tests/scene_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[schema]]
@@ -1107,10 +1107,10 @@ clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived CoronaEmitterSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
-owner = "helio_component::components::particle_emitter_component"
+owner = "particles_component::component"
 disposition = "keep: the authored type's GPU row is CoronaEmitterSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); plugins/vendor/particles/component/tests/scene_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[schema]]
@@ -1124,7 +1124,7 @@ writer = "ParticleEmitterComponent's derived GPU registration (the pass row in t
 owner = "helio_component::components::environment_rows"
 disposition = "keep: the environment join's corona_emitters input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); plugins/vendor/particles/component/tests/scene_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[schema]]
@@ -1138,7 +1138,7 @@ writer = "DecalComponent's derived GPU registration (the pass row in the owner's
 owner = "helio_component::components::environment_rows"
 disposition = "keep: the environment join's decals input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); plugins/vendor/decals/component/tests/scene_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[schema]]
@@ -1555,10 +1555,10 @@ status = "verified"
 pattern = "change-cursor"
 file = "crates/core/helio_component/src/components/spline_component.rs"
 count = 6
-owner = "helio_component::components::spline_component"
+owner = "splines_component::component"
 disposition = "keep: SplineLines' own cursors (spline values, attachment state, owner transform, visibility, selection) make the editor's spline lines change-driven (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/helio_component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
+test = "plugins/vendor/splines/component/src/component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
 status = "verified"
 
 [[site]]
@@ -1609,7 +1609,7 @@ clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived CameraLensSourceRow (camera_lens_sources) and its lens_elements block, on every insert, write, removal and replay; the generated companion uploads nothing"
-owner = "helio_component::components::camera_lens_component"
+owner = "lens_component::component"
 disposition = "keep: the authored lens's GPU rows are CameraLensSourceRow, the environment join's input (published as camera_lenses), and its lens_elements block"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/camera_lens_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state)"
@@ -1749,7 +1749,7 @@ clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "CameraLensComponent's derived GPU registration (the pass lens row, enabled from the authored flag), on every insert, write, removal and replay"
-owner = "helio_component::components::camera_lens_component"
+owner = "lens_component::component"
 disposition = "keep: the environment join's camera_lenses input"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/camera_lens_rows.rs"
@@ -2088,7 +2088,7 @@ consumers = ["helio-presets", "helio-pass-corona"]
 owner = "helio-scene-derivations environment join (execution output, packed into MAX_CORONA_EMITTERS rows)"
 disposition = "keep: the join places each enabled ParticleEmitterComponent of a visible owner at the owner and gives it the next contiguous, aligned range of the Corona particle pool (a GPU prefix sum of max_particles, clamped to the pool) (#1059)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); plugins/vendor/particles/component/tests/scene_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[buffer]]
@@ -2108,7 +2108,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: ParticleEmitterComponent in its owner's space, derived on every write; the environment join reads it into corona_emitters"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); plugins/vendor/particles/component/tests/scene_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[buffer]]
@@ -2118,7 +2118,7 @@ consumers = ["helio-presets", "helio-pass-decal"]
 owner = "helio-scene-derivations environment join (execution output, packed into MAX_DECALS rows)"
 disposition = "keep: the join places each enabled DecalComponent of a visible owner with a non-zero box and writes its world-to-decal transform from the owner's transform (#1058)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); plugins/vendor/decals/component/tests/scene_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[buffer]]
@@ -2268,7 +2268,7 @@ consumers = ["helio-presets", "helio-pass-sprite-batch", "helio-pass-sprite-cull
 owner = "helio-scene-derivations environment join (execution output)"
 disposition = "keep: authored 2D sprites, joined on the GPU from sprite_sources and the owner transform/visibility; the default graphs' 2D overlay culls, Z-sorts and draws them after post-processing (#1060)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[buffer]]
@@ -2278,7 +2278,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: SpriteComponent at the 2D origin, derived on every write; the environment join reads it into sprite_instances"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[buffer]]
@@ -2372,7 +2372,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: DecalComponent in its owner's space, derived on every write; the environment join reads it into decals"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); plugins/vendor/decals/component/tests/scene_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[buffer]]
@@ -2399,7 +2399,7 @@ status = "verified"
 key = "camera_lens_sources"
 producers = ["CameraLensSourceRow"]
 consumers = []
-owner = "helio_component::components::camera_lens_component"
+owner = "lens_component::component"
 disposition = "keep: CameraLensComponent's pass row, derived on every write; the environment join reads it into camera_lenses"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/camera_lens_rows.rs"
@@ -2452,7 +2452,7 @@ reads = ["sprite_instances"]
 owner = "helio-presets"
 disposition = "keep: the default graphs' final 2D overlay after post-processing (cull + Z sort, then draw with its own orthographic camera); reads sprite_instances (joined from SpriteComponent, #1060) and records nothing while it holds no sprite"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[pass]]
@@ -2462,7 +2462,7 @@ reads = ["sprite_instances"]
 owner = "helio-presets"
 disposition = "keep: the default graphs' final 2D overlay after post-processing (cull + Z sort, then draw with its own orthographic camera); reads sprite_instances (joined from SpriteComponent, #1060) and records nothing while it holds no sprite"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); plugins/vendor/sprites/component/tests/scene_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[pass]]
@@ -2502,7 +2502,7 @@ reads = ["corona_emitters"]
 owner = "helio-presets (mapping); helio-pass-corona (algorithm)"
 disposition = "runs in the editor graph: authored ParticleEmitterComponents reach it through the environment join (corona_emitters, #1059). Emitters draw from one shared particle pool by their join-allocated ranges; the particle-wide passes dispatch indirectly over the used range (no CPU readback); a row whose emitter or range changes restarts its particles. Depth sort is off (no CPU-built sort steps for GPU-allocated ranges)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); plugins/vendor/particles/component/tests/scene_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[pass]]
@@ -2522,7 +2522,7 @@ reads = ["decals"]
 owner = "helio-presets (mapping); helio-pass-decal (algorithm)"
 disposition = "runs in the editor graph: authored DecalComponents reach it through the environment join (decals, #1058); authored decals are permanent (fade time 0) and scripts set their opacity"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); plugins/vendor/decals/component/tests/scene_rows.rs (decals_are_placed_in_their_owners_box)"
 status = "verified"
 
 [[pass]]

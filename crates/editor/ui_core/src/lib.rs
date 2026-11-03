@@ -16,6 +16,13 @@ use ui_settings as _;
 // component crate's components, scene subsystems, render feature and
 // settings, register through `inventory`.
 use voxel_plugin as _;
+// The leaf kinds' plugins, the same way.
+use decals_plugin as _;
+use lens_plugin as _;
+use particles_plugin as _;
+use portals_plugin as _;
+use splines_plugin as _;
+use sprites_plugin as _;
 
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");

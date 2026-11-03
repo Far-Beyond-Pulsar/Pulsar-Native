@@ -315,9 +315,13 @@ impl Showcase {
         let renderer_config = renderer_config.with_feature(terrain);
         let mut renderer = RendererBuilder::new(renderer_config.clone(), mirror)
             .with_external_device()
-            // The voxel world is a feature Helio's presets do not list.
+            // The voxel world, the camera lens and its flare are features
+            // Helio's presets do not list (the voxel and lens plugins').
             .with_graph(Preset::Deferred.with_features(
-                &helio_feature_api::FeatureSet::new().with(helio_pass_voxel_planet::VoxelFeature),
+                &helio_feature_api::FeatureSet::new()
+                    .with(helio_pass_voxel_planet::VoxelFeature)
+                    .with(helio_pass_lens::LensFeature)
+                    .with(helio_pass_flare::LensFlareFeature),
             ))
             .build(
                 device.clone(),

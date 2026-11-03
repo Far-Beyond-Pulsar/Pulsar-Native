@@ -1,6 +1,6 @@
 //! Spline tools: the Spline panel's authoring, driven by data.
 //!
-//! A spline is an ordinary object carrying a `SplineComponent` (Helio's
+//! A spline is an ordinary object carrying a `SplineComponent` (the splines plugin's
 //! SceneDB spline component); edits go through `UpdateObject`, so they are
 //! undoable like the panel's.
 

@@ -963,6 +963,15 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
@@ -2445,6 +2454,75 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
+name = "decals-examples"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-bake",
+ "helio-components",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-debug-overlay",
+ "helio-pass-decal",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-perf-overlay",
+ "helio-pass-shadow-matrix",
+ "helio-pass-sky",
+ "helio-presets",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "decals_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "engine_state",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-decal",
+ "helio-pass-object-batch",
+ "helio-scene-join",
+ "helio_component",
+ "image",
+ "inventory",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "decals_plugin"
+version = "0.1.0"
+dependencies = [
+ "decals_component",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "deflate64"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3093,19 +3171,14 @@ dependencies = [
  "helio-mats",
  "helio-mesh-api",
  "helio-pass-billboard",
- "helio-pass-corona",
- "helio-pass-decal",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
- "helio-pass-lens",
  "helio-pass-light-cull",
  "helio-pass-object-batch",
- "helio-pass-portal-cull",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-sky",
- "helio-pass-sprite-batch",
  "helio-pass-tsr",
  "helio-pass-volumetric-fog",
  "helio-pass-water-sim",
@@ -4331,7 +4404,7 @@ dependencies = [
  "arboard",
  "async-task",
  "backtrace",
- "bincode",
+ "bincode 2.0.1",
  "bytemuck",
  "circular-buffer",
  "clipboard-rs",
@@ -4658,6 +4731,7 @@ version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
 dependencies = [
+ "bytemuck",
  "cfg-if",
  "crunchy",
  "num-traits",
@@ -4830,6 +4904,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-bake"
+version = "0.1.0"
+dependencies = [
+ "bincode 1.3.3",
+ "bytemuck",
+ "getrandom 0.2.17",
+ "glam 0.33.5",
+ "half",
+ "helio-bake-types",
+ "helio-core",
+ "helio-mesh-api",
+ "log",
+ "nebula",
+ "pollster 0.4.0",
+ "serde",
+ "thiserror 2.0.20",
+ "uuid",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-bake-types"
 version = "0.1.0"
 
@@ -4841,23 +4936,19 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-asset-compat",
+ "helio-bake",
  "helio-core",
  "helio-mats",
  "helio-mesh-api",
  "helio-pass-billboard",
- "helio-pass-corona",
- "helio-pass-decal",
  "helio-pass-deferred-light",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
- "helio-pass-lens",
  "helio-pass-object-batch",
- "helio-pass-portal-cull",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-sky",
- "helio-pass-sprite-batch",
  "helio-pass-volumetric-fog",
  "helio-pass-water-sim",
  "helio-scene-derivations",
@@ -5020,14 +5111,23 @@ name = "helio-pass-decal"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
  "helio-mats",
+ "helio-mesh-api",
+ "helio-pass-gbuffer",
+ "helio-presets",
  "helio-scene-join",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5051,11 +5151,15 @@ name = "helio-pass-flare"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
  "helio-pass-lens",
+ "helio-pass-postprocess",
  "helio-pass-shadow-matrix",
+ "naga",
+ "pollster 0.4.0",
  "wgpu",
 ]
 
@@ -5197,11 +5301,13 @@ name = "helio-pass-lens"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
  "helio-lens-optics",
  "helio-scene-join",
+ "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
  "wgpu",
@@ -5279,6 +5385,7 @@ dependencies = [
  "helio-feature-api",
  "helio-frame-api",
  "helio-pass-gbuffer",
+ "helio-settings",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -5297,6 +5404,7 @@ dependencies = [
  "helio-pass-gbuffer",
  "helio-pass-portal-cull",
  "log",
+ "naga",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -5324,6 +5432,18 @@ dependencies = [
  "helio-frame-api",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-radiance-cascades-2d"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "log",
+ "pollster 0.4.0",
  "wgpu",
 ]
 
@@ -5416,7 +5536,18 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "log",
+ "pollster 0.4.0",
  "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-sprite-simulate"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "log",
  "wgpu",
 ]
 
@@ -5644,11 +5775,8 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-billboard",
  "helio-pass-buffer-view",
- "helio-pass-corona",
  "helio-pass-debug-overlay",
- "helio-pass-decal",
  "helio-pass-deferred-light",
- "helio-pass-flare",
  "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
@@ -5658,14 +5786,11 @@ dependencies = [
  "helio-pass-hiz",
  "helio-pass-hlfs",
  "helio-pass-indirect-dispatch",
- "helio-pass-lens",
  "helio-pass-light-cull",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-perf-overlay",
  "helio-pass-planar-reflection",
- "helio-pass-portal-cull",
- "helio-pass-portal-instances",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-shadow",
@@ -5673,8 +5798,6 @@ dependencies = [
  "helio-pass-shadow-matrix",
  "helio-pass-simple-cube",
  "helio-pass-sky",
- "helio-pass-sprite-batch",
- "helio-pass-sprite-cull",
  "helio-pass-ssr",
  "helio-pass-transparent",
  "helio-pass-tsr",
@@ -5702,8 +5825,6 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-light-cull",
  "helio-pass-object-batch",
- "helio-pass-portal-cull",
- "helio-pass-portal-instances",
  "helio-scene-join",
  "log",
  "pollster 0.4.0",
@@ -5823,9 +5944,11 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-mesh-api",
+ "helio-pass-flare",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-lens",
  "helio-pass-object-batch",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
@@ -5894,14 +6017,10 @@ dependencies = [
  "helio-core",
  "helio-mats",
  "helio-mesh-api",
- "helio-pass-corona",
- "helio-pass-decal",
  "helio-pass-foliage-place",
- "helio-pass-lens",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-sky",
- "helio-pass-sprite-batch",
  "helio-pass-volumetric-fog",
  "helio-pass-water-sim",
  "helio-vg-build",
@@ -6860,6 +6979,74 @@ dependencies = [
 ]
 
 [[package]]
+name = "lens-examples"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-flare",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-lens",
+ "helio-pass-post-volumes",
+ "helio-pass-postprocess",
+ "helio-presets",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "lens_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-flare",
+ "helio-pass-lens",
+ "helio-pass-object-batch",
+ "helio-scene-join",
+ "helio_component",
+ "inventory",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "lens_plugin"
+version = "0.1.0"
+dependencies = [
+ "lens_component",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "level_migrate"
 version = "0.1.0"
 dependencies = [
@@ -7734,6 +7921,133 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "nebula"
+version = "0.1.0"
+dependencies = [
+ "nebula-ao",
+ "nebula-core",
+ "nebula-gpu",
+ "nebula-light",
+ "nebula-probe",
+ "nebula-serialize",
+ "nebula-visibility",
+]
+
+[[package]]
+name = "nebula-ao"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "nebula-core",
+ "nebula-gpu",
+ "nebula-serialize",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "wgpu",
+]
+
+[[package]]
+name = "nebula-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitflags 2.13.1",
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "pollster 0.3.0",
+ "serde",
+ "thiserror 1.0.69",
+ "uuid",
+ "wgpu",
+]
+
+[[package]]
+name = "nebula-gpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "nebula-core",
+ "thiserror 1.0.69",
+ "wgpu",
+]
+
+[[package]]
+name = "nebula-light"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "nebula-core",
+ "nebula-gpu",
+ "nebula-serialize",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "uuid",
+ "wgpu",
+]
+
+[[package]]
+name = "nebula-probe"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bincode 2.0.1",
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "nebula-core",
+ "nebula-gpu",
+ "nebula-serialize",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "wgpu",
+]
+
+[[package]]
+name = "nebula-serialize"
+version = "0.1.0"
+dependencies = [
+ "bincode 2.0.1",
+ "log",
+ "nebula-core",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "zstd",
+]
+
+[[package]]
+name = "nebula-visibility"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bincode 2.0.1",
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "nebula-core",
+ "nebula-gpu",
+ "nebula-serialize",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "wgpu",
 ]
 
 [[package]]
@@ -9033,6 +9347,71 @@ dependencies = [
 ]
 
 [[package]]
+name = "particles-examples"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-corona",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-sky",
+ "helio-presets",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "particles_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-corona",
+ "helio-pass-object-batch",
+ "helio-scene-join",
+ "helio_component",
+ "inventory",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "particles_plugin"
+version = "0.1.0"
+dependencies = [
+ "particles_component",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9609,6 +9988,12 @@ checksum = "5da3b0203fd7ee5720aa0b5e790b591aa5d3f41c3ed2c34a3a393382198af2f7"
 
 [[package]]
 name = "pollster"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22686f4785f02a4fcc856d3b3bb19bf6c8160d103f7a99cc258bddd0251dc7f2"
+
+[[package]]
+name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
@@ -9641,6 +10026,73 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a106d1259c23fac8e543272398ae0e3c0b8d33c88ed73d0cc71b0f1d902618"
 dependencies = [
  "portable-atomic",
+]
+
+[[package]]
+name = "portals-examples"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-object-batch",
+ "helio-pass-portal-cull",
+ "helio-pass-portal-instances",
+ "helio-presets",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "portals_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-portal-cull",
+ "helio-pass-portal-instances",
+ "helio-scene-join",
+ "helio-settings",
+ "helio_component",
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_settings",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "portals_plugin"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+ "portals_component",
 ]
 
 [[package]]
@@ -10037,7 +10489,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.23.1",
- "bincode",
+ "bincode 2.0.1",
  "bytes",
  "chrono",
  "clap",
@@ -10219,6 +10671,7 @@ name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
  "blueprint_compiler",
+ "decals_component",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
@@ -10230,9 +10683,12 @@ dependencies = [
  "image",
  "input_plugin",
  "inventory",
+ "lens_component",
  "libloading 0.9.0",
  "parking_lot",
+ "particles_component",
  "pollster 1.0.1",
+ "portals_component",
  "profiling 0.1.0",
  "pulsar_class",
  "pulsar_content",
@@ -10252,6 +10708,8 @@ dependencies = [
  "serde",
  "serde_json",
  "skeletal_assets",
+ "splines_component",
+ "sprites_component",
  "tempfile",
  "tracing",
  "uuid",
@@ -10521,7 +10979,7 @@ dependencies = [
 name = "pulsar_script_vm"
 version = "0.1.0"
 dependencies = [
- "bincode",
+ "bincode 2.0.1",
  "inventory",
  "libloading 0.9.0",
  "pulsar_reflection",
@@ -11758,10 +12216,14 @@ checksum = "ece8e78b2f38ec51c51f5d475df0a7187ba5111b2a28bdc761ee05b075d40a71"
 name = "scene_inventory"
 version = "0.1.0"
 dependencies = [
+ "decals_component",
  "engine_backend",
  "helio_component",
  "input_plugin",
+ "lens_component",
+ "particles_component",
  "physics_plugin",
+ "portals_component",
  "pulsar_class",
  "pulsar_physics",
  "pulsar_reflection",
@@ -11771,6 +12233,8 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "splines_component",
+ "sprites_component",
  "toml 1.1.4+spec-1.1.0",
  "voxel_component",
 ]
@@ -12700,6 +13164,99 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "splines_component"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_class_derive",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "splines_plugin"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+ "splines_component",
+]
+
+[[package]]
+name = "sprites-examples"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-radiance-cascades-2d",
+ "helio-pass-sprite-batch",
+ "helio-pass-sprite-cull",
+ "helio-pass-sprite-simulate",
+ "helio-presets",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "sprites_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "engine_state",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-object-batch",
+ "helio-pass-sprite-batch",
+ "helio-scene-join",
+ "helio_component",
+ "image",
+ "inventory",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "sprites_plugin"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+ "sprites_component",
 ]
 
 [[package]]
@@ -14720,6 +15277,7 @@ dependencies = [
  "anyhow",
  "asset_import",
  "asset_viewer_plugin",
+ "decals_plugin",
  "directories 6.0.0",
  "dirs 6.0.0",
  "editor_table_plugin",
@@ -14730,10 +15288,13 @@ dependencies = [
  "gpui-ce",
  "image",
  "input_plugin",
+ "lens_plugin",
+ "particles_plugin",
  "physics_plugin",
  "plugin_editor_api",
  "plugin_manager",
  "plugin_matter",
+ "portals_plugin",
  "profiling 0.1.0",
  "pulsar_events",
  "pulsar_physics",
@@ -14751,6 +15312,8 @@ dependencies = [
  "shader_editor_plugin",
  "skeletal_animation_plugin",
  "smol",
+ "splines_plugin",
+ "sprites_plugin",
  "tempfile",
  "tracing",
  "ui",
@@ -14960,6 +15523,7 @@ dependencies = [
  "chrono",
  "core-foundation-sys",
  "core-graphics2 0.6.1",
+ "decals_component",
  "device_query 4.0.1",
  "editor_task_queue 0.1.0",
  "engine_backend",
@@ -14975,13 +15539,16 @@ dependencies = [
  "helio-presets",
  "helio_component",
  "image",
+ "lens_component",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "parking_lot",
+ "particles_component",
  "plugin_editor_api",
  "plugin_manager",
  "pollster 0.4.0",
+ "portals_component",
  "profiling 0.1.0",
  "psgc",
  "pulsar_class",
@@ -15001,6 +15568,8 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
+ "splines_component",
+ "sprites_component",
  "tempfile",
  "tool_registry",
  "tool_registry_macros",

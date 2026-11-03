@@ -28,7 +28,7 @@
 #[allow(unused_imports)]
 use helio_component::{
     FoliageComponent as _ForceLink_FoliageComponent, LODComponent as _ForceLink_LODComponent,
-    LightComponent as _ForceLink_LightComponent, PortalComponent as _ForceLink_PortalComponent,
+    LightComponent as _ForceLink_LightComponent,
     PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent,
     ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent,
     StaticMeshComponent as _ForceLink_StaticMeshComponent,

@@ -77,6 +77,12 @@ skeletal_assets = { workspace = true }
 # components, scene subsystems and render feature registered (`src/lib.rs`
 # links it).
 voxel_component = { workspace = true }
+decals_component = { workspace = true }
+lens_component = { workspace = true }
+particles_component = { workspace = true }
+portals_component = { workspace = true }
+splines_component = { workspace = true }
+sprites_component = { workspace = true }
 
 [lints]
 workspace = true

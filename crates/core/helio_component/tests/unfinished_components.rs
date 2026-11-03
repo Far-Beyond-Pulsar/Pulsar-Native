@@ -25,7 +25,6 @@ fn unfinished_components_declare_why_and_their_issue() {
         "LocalFogVolumeComponent",
         "PostProcessVolumeComponent",
         "CameraPostProcessComponent",
-        "CameraLensComponent",
         "WaterVolumeComponent",
         "FoliageComponent",
     ] {

@@ -10,7 +10,8 @@
 
 use std::sync::Arc;
 
-use engine_backend::subsystems::render::{ViewKind, ViewportDebugView, PORTAL_DEBUG_VIEW_MODE};
+use engine_backend::subsystems::render::{ViewKind, ViewportDebugView};
+use portals_component::PORTAL_DEBUG_VIEW_MODE;
 use gpui::*;
 use ui::dropdown::{DropdownEvent, SearchableVec};
 
