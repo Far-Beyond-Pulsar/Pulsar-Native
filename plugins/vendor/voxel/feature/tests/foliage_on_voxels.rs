@@ -9,7 +9,7 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
     RendererBuilder, RendererConfig,
 };
-use helio_components::FoliageTypeComponent;
+use helio_pass_foliage_place::host_rows::FoliageTypeComponent;
 use helio_pass_foliage_place::{
     pack_kind_and_flags, unpack_blade, FoliageKind, FoliagePlacePass, GpuBladeInstance,
     GpuFoliageTile, GpuFoliageType, GpuTileFrame, TileState,
@@ -21,9 +21,12 @@ use helio_pass_voxel_planet::{Brush, BrushOp, BrushShape, Cell, Planet, PlanetRe
 use helio_presets::Preset;
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 
-/// The engine's features over Helio's: the voxel terrain's.
+/// The engine's features over Helio's: the voxel terrain's and the
+/// foliage that grows on it.
 fn voxel_features() -> helio_feature_api::FeatureSet {
-    helio_feature_api::FeatureSet::new().with(helio_pass_voxel_planet::VoxelFeature)
+    helio_feature_api::FeatureSet::new()
+        .with(helio_pass_voxel_planet::VoxelFeature)
+        .with(helio_pass_foliage_gbuffer::FoliageFeature)
 }
 
 const SIZE: [u32; 2] = [640, 360];

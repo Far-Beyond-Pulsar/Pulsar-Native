@@ -3171,17 +3171,13 @@ dependencies = [
  "helio-mats",
  "helio-mesh-api",
  "helio-pass-billboard",
- "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-light-cull",
  "helio-pass-object-batch",
- "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-sky",
  "helio-pass-tsr",
- "helio-pass-volumetric-fog",
- "helio-pass-water-sim",
  "helio-presets",
  "helio-scene-derivations",
  "helio-scene-join",
@@ -3733,6 +3729,76 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "fog-examples"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-object-batch",
+ "helio-pass-post-volumes",
+ "helio-pass-postprocess",
+ "helio-pass-shadow-matrix",
+ "helio-pass-volumetric-fog",
+ "helio-presets",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "fog_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-object-batch",
+ "helio-pass-post-volumes",
+ "helio-pass-volumetric-fog",
+ "helio-scene-join",
+ "helio_component",
+ "inventory",
+ "pollster 0.4.0",
+ "post_component",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "fog_plugin"
+version = "0.1.0"
+dependencies = [
+ "fog_component",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3743,6 +3809,73 @@ name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
+name = "foliage-examples"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-foliage-gbuffer",
+ "helio-pass-foliage-place",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-sky",
+ "helio-presets",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "foliage_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-foliage-api",
+ "helio-pass-foliage-gbuffer",
+ "helio-pass-foliage-place",
+ "helio-pass-object-batch",
+ "helio-pass-sky",
+ "helio-scene-join",
+ "helio_component",
+ "inventory",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_settings",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "foliage_plugin"
+version = "0.1.0"
+dependencies = [
+ "foliage_component",
+ "plugin_editor_api",
+]
 
 [[package]]
 name = "font-kit"
@@ -4942,15 +5075,11 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-billboard",
  "helio-pass-deferred-light",
- "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-object-batch",
- "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-sky",
- "helio-pass-volumetric-fog",
- "helio-pass-water-sim",
  "helio-scene-derivations",
  "helio-vg-stream",
  "log",
@@ -4994,8 +5123,13 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio-components",
  "helio-core",
+ "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
+ "wgpu",
 ]
 
 [[package]]
@@ -5414,12 +5548,17 @@ name = "helio-pass-post-volumes"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
  "helio-pass-postprocess",
  "helio-scene-join",
+ "pollster 0.4.0",
+ "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
  "wgpu",
 ]
 
@@ -5688,15 +5827,22 @@ name = "helio-pass-volumetric-fog"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-shadow-matrix",
+ "helio-pass-volumetric-fog",
  "helio-scene-join",
  "helio-sky-api",
+ "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
  "wgpu",
 ]
 
@@ -5715,6 +5861,7 @@ dependencies = [
  "helio-frame-api",
  "helio-gi-api",
  "helio-mats",
+ "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-shadow-matrix",
@@ -5742,6 +5889,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-foliage-api",
@@ -5756,9 +5904,12 @@ dependencies = [
  "helio-scene-join",
  "helio-sky-api",
  "helio-water-api",
+ "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
  "rayon",
+ "serde_json",
  "wgpu",
 ]
 
@@ -5777,8 +5928,6 @@ dependencies = [
  "helio-pass-buffer-view",
  "helio-pass-debug-overlay",
  "helio-pass-deferred-light",
- "helio-pass-foliage-gbuffer",
- "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-fxaa",
  "helio-pass-gbuffer",
@@ -5791,7 +5940,6 @@ dependencies = [
  "helio-pass-occlusion-cull",
  "helio-pass-perf-overlay",
  "helio-pass-planar-reflection",
- "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-shadow",
  "helio-pass-shadow-dirty",
@@ -5802,8 +5950,6 @@ dependencies = [
  "helio-pass-transparent",
  "helio-pass-tsr",
  "helio-pass-vg",
- "helio-pass-volumetric-fog",
- "helio-pass-water-sim",
  "helio-spine",
  "helio-vg-format",
  "helio-vg-stream",
@@ -5947,6 +6093,7 @@ dependencies = [
  "helio-pass-corona",
  "helio-pass-decal",
  "helio-pass-flare",
+ "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
@@ -6022,12 +6169,8 @@ dependencies = [
  "helio-core",
  "helio-mats",
  "helio-mesh-api",
- "helio-pass-foliage-place",
- "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-sky",
- "helio-pass-volumetric-fog",
- "helio-pass-water-sim",
  "helio-vg-build",
  "helio-vg-format",
  "helio-vg-stream",
@@ -10101,6 +10244,75 @@ dependencies = [
 ]
 
 [[package]]
+name = "post-examples"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-bake",
+ "helio-components",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-debug-overlay",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-perf-overlay",
+ "helio-pass-post-volumes",
+ "helio-pass-postprocess",
+ "helio-pass-shadow-matrix",
+ "helio-pass-sky",
+ "helio-pass-volumetric-fog",
+ "helio-presets",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "post_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-object-batch",
+ "helio-pass-post-volumes",
+ "helio-pass-postprocess",
+ "helio-scene-join",
+ "helio_component",
+ "inventory",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "post_plugin"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+ "post_component",
+]
+
+[[package]]
 name = "postage"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10681,6 +10893,8 @@ dependencies = [
  "engine_class_derive",
  "engine_fs",
  "engine_state",
+ "fog_component",
+ "foliage_component",
  "glam 0.33.5",
  "graphy-blueprint",
  "helio",
@@ -10698,6 +10912,7 @@ dependencies = [
  "particles_component",
  "pollster 1.0.1",
  "portals_component",
+ "post_component",
  "profiling 0.1.0",
  "pulsar_class",
  "pulsar_content",
@@ -10723,6 +10938,7 @@ dependencies = [
  "tracing",
  "uuid",
  "voxel_component",
+ "water_component",
  "wgpu",
  "winit",
 ]
@@ -10798,6 +11014,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
+ "helio-water-api",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -12227,12 +12444,15 @@ version = "0.1.0"
 dependencies = [
  "decals_component",
  "engine_backend",
+ "fog_component",
+ "foliage_component",
  "helio_component",
  "input_plugin",
  "lens_component",
  "particles_component",
  "physics_plugin",
  "portals_component",
+ "post_component",
  "pulsar_class",
  "pulsar_physics",
  "pulsar_reflection",
@@ -12246,6 +12466,7 @@ dependencies = [
  "sprites_component",
  "toml 1.1.4+spec-1.1.0",
  "voxel_component",
+ "water_component",
 ]
 
 [[package]]
@@ -15293,6 +15514,8 @@ dependencies = [
  "editor_task_queue 0.1.0",
  "engine_backend",
  "engine_state",
+ "fog_plugin",
+ "foliage_plugin",
  "futures",
  "gpui-ce",
  "image",
@@ -15304,6 +15527,7 @@ dependencies = [
  "plugin_manager",
  "plugin_matter",
  "portals_plugin",
+ "post_plugin",
  "profiling 0.1.0",
  "pulsar_events",
  "pulsar_physics",
@@ -15346,6 +15570,7 @@ dependencies = [
  "ui_type_debugger",
  "ui_types_common",
  "voxel_plugin",
+ "water_plugin",
  "window_manager",
 ]
 
@@ -15538,6 +15763,8 @@ dependencies = [
  "engine_backend",
  "engine_fs",
  "engine_state",
+ "fog_component",
+ "foliage_component",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
@@ -15545,6 +15772,7 @@ dependencies = [
  "helio-core",
  "helio-mesh-api",
  "helio-pass-buffer-view",
+ "helio-pass-water-sim",
  "helio-presets",
  "helio_component",
  "image",
@@ -15558,6 +15786,7 @@ dependencies = [
  "plugin_manager",
  "pollster 0.4.0",
  "portals_component",
+ "post_component",
  "profiling 0.1.0",
  "psgc",
  "pulsar_class",
@@ -15590,6 +15819,7 @@ dependencies = [
  "ui_helio_viewport",
  "ui_types_common",
  "voxel_component",
+ "water_component",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -16063,6 +16293,8 @@ dependencies = [
  "engine_backend",
  "engine_class_derive",
  "engine_state",
+ "fog_component",
+ "foliage_component",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
@@ -16078,6 +16310,7 @@ dependencies = [
  "inventory",
  "parking_lot",
  "pollster 0.4.0",
+ "post_component",
  "pulsar_class",
  "pulsar_events",
  "pulsar_reflection",
@@ -16240,6 +16473,79 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "water-examples"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-bake",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-pass-debug-overlay",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-object-batch",
+ "helio-pass-perf-overlay",
+ "helio-pass-shadow-matrix",
+ "helio-pass-sky",
+ "helio-pass-water-sim",
+ "helio-presets",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "scenedb-inspector-agent",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "water_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "foliage_component",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-foliage-api",
+ "helio-pass-object-batch",
+ "helio-pass-water-sim",
+ "helio-scene-join",
+ "helio-water-api",
+ "helio_component",
+ "inventory",
+ "pollster 0.4.0",
+ "pulsar_physics",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "water_plugin"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+ "water_component",
 ]
 
 [[package]]

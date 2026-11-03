@@ -60,6 +60,27 @@ members = [
     "plugins/vendor/portals/examples",
     "plugins/vendor/splines/component",
     "plugins/vendor/splines/editor",
+    # The media and placement kinds' plugins (phase B, batch 2), the same
+    # way; water and foliage also have an api crate (contracts other
+    # plugins read: the terrain seam and hitbox rows, the wind rows).
+    "plugins/vendor/fog/component",
+    "plugins/vendor/fog/feature",
+    "plugins/vendor/fog/editor",
+    "plugins/vendor/fog/examples",
+    "plugins/vendor/post/component",
+    "plugins/vendor/post/feature",
+    "plugins/vendor/post/editor",
+    "plugins/vendor/post/examples",
+    "plugins/vendor/water/api",
+    "plugins/vendor/water/component",
+    "plugins/vendor/water/feature",
+    "plugins/vendor/water/editor",
+    "plugins/vendor/water/examples",
+    "plugins/vendor/foliage/api",
+    "plugins/vendor/foliage/component",
+    "plugins/vendor/foliage/feature/*",
+    "plugins/vendor/foliage/editor",
+    "plugins/vendor/foliage/examples",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -210,6 +231,15 @@ portals_component                  = { path = "plugins/vendor/portals/component"
 portals_plugin                     = { path = "plugins/vendor/portals/editor", features = ["builtin"] }
 splines_component                  = { path = "plugins/vendor/splines/component" }
 splines_plugin                     = { path = "plugins/vendor/splines/editor", features = ["builtin"] }
+# The media and placement kinds' plugins, the same way.
+fog_component                      = { path = "plugins/vendor/fog/component" }
+fog_plugin                         = { path = "plugins/vendor/fog/editor", features = ["builtin"] }
+post_component                     = { path = "plugins/vendor/post/component" }
+post_plugin                        = { path = "plugins/vendor/post/editor", features = ["builtin"] }
+water_component                    = { path = "plugins/vendor/water/component" }
+water_plugin                       = { path = "plugins/vendor/water/editor", features = ["builtin"] }
+foliage_component                  = { path = "plugins/vendor/foliage/component" }
+foliage_plugin                     = { path = "plugins/vendor/foliage/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -313,12 +343,21 @@ helio-pass-flare = { path = "plugins/vendor/lens/feature/flare" }
 helio-lens-optics = { path = "plugins/vendor/lens/feature/optics" }
 helio-pass-portal-cull = { path = "plugins/vendor/portals/feature/cull" }
 helio-pass-portal-instances = { path = "plugins/vendor/portals/feature/instances" }
+# The media and placement kinds' api and feature crates: their plugins'
+# crates, and plugins that read their contracts (voxel reads foliage's and
+# water's apis; physics water's), use them.
+helio-pass-volumetric-fog = { path = "plugins/vendor/fog/feature" }
+helio-pass-post-volumes = { path = "plugins/vendor/post/feature" }
+helio-water-api = { path = "plugins/vendor/water/api" }
+helio-pass-water-sim = { path = "plugins/vendor/water/feature" }
+helio-foliage-api = { path = "plugins/vendor/foliage/api" }
+helio-pass-foliage-place = { path = "plugins/vendor/foliage/feature/place" }
+helio-pass-foliage-gbuffer = { path = "plugins/vendor/foliage/feature/gbuffer" }
 helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }
 helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
 helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
 helio-pass-gbuffer = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-gbuffer" }
-helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-water-sim" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
@@ -326,7 +365,6 @@ helio-mesh-api = { path = "crates/renderer/helio/crates/api/helio-mesh-api" }
 helio-scene-join = { path = "crates/renderer/helio/crates/helio-scene-join" }
 helio-pass-light-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-light-cull" }
 helio-frame-api = { path = "crates/renderer/helio/crates/helio-frame-api" }
-helio-pass-post-volumes = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-post-volumes" }
 helio-vg-format = { path = "crates/renderer/helio/crates/helio-vg-format" }
 helio-vg-stream = { path = "crates/renderer/helio/crates/helio-vg-stream" }
 helio-vg-build = { path = "crates/renderer/helio/crates/helio-vg-build" }
@@ -337,16 +375,17 @@ helio-pass-object-batch = { path = "crates/renderer/helio/crates/passes/3d/helio
 helio-pass-debug-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay" }
 helio-pass-perf-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay" }
 helio-bake = { path = "crates/renderer/helio/crates/helio-bake" }
-helio-pass-volumetric-fog = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-volumetric-fog" }
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
-helio-pass-foliage-place = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-foliage-place" }
 # Helio crates the voxel plugin's feature and hosts use.
 helio-xr = { path = "crates/renderer/helio/crates/helio-xr" }
 helio-components = { path = "crates/renderer/helio/crates/helio-components" }
-helio-water-api = { path = "crates/renderer/helio/crates/api/helio-water-api" }
 helio-gi-api = { path = "crates/renderer/helio/crates/api/helio-gi-api" }
-helio-foliage-api = { path = "crates/renderer/helio/crates/api/helio-foliage-api" }
 helio-pass-shadow-matrix = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-shadow-matrix" }
+# Helio crates the media plugins' features read.
+helio-sky-api = { path = "crates/renderer/helio/crates/api/helio-sky-api" }
+helio-pass-hiz = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-hiz" }
+helio-pass-indirect-dispatch = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-indirect-dispatch" }
+helio-pass-occlusion-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-occlusion-cull" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

@@ -219,7 +219,7 @@ fn a_level_file_with_two_skies_loads_with_the_first_one_enabled() {
 /// level file with two loads with the first one enabled.
 #[test]
 fn a_level_has_one_global_wind() {
-    use helio_component::components::WindComponent;
+    use foliage_component::WindComponent;
     let mut state = LevelEditorState::new();
     assert_eq!(wind::level_wind(&state.scene.world()), None);
     let created = wind::create_wind(&mut state);
@@ -252,7 +252,7 @@ fn a_level_has_one_global_wind() {
 
     let again = wind::create_wind(&mut state);
     assert!(!again.changed);
-    assert_eq!(again.no_op_reason, level_rules::ONE_WIND);
+    assert_eq!(again.no_op_reason, foliage_component::ONE_WIND);
     let other = add_object(&mut state, "Other");
     let result = execute_command(
         &mut state,
@@ -262,7 +262,7 @@ fn a_level_has_one_global_wind() {
             value: None,
         },
     );
-    assert_eq!(result.no_op_reason, level_rules::ONE_WIND);
+    assert_eq!(result.no_op_reason, foliage_component::ONE_WIND);
     let result = execute_command(
         &mut state,
         SceneCommand::DuplicateComponent {
@@ -270,7 +270,7 @@ fn a_level_has_one_global_wind() {
             component_index: 0,
         },
     );
-    assert_eq!(result.no_op_reason, level_rules::ONE_WIND);
+    assert_eq!(result.no_op_reason, foliage_component::ONE_WIND);
 
     // Only a file can hold two: write the second past the rules.
     {
@@ -283,7 +283,7 @@ fn a_level_has_one_global_wind() {
     crate::scene_edit::level_io::save_to_file(&state.scene.world(), &path).unwrap();
     let mut loaded = engine_backend::scene::new_scene();
     crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
-    let enabled: Vec<bool> = level_rules::winds(&loaded.world)
+    let enabled: Vec<bool> = foliage_component::winds(&loaded.world)
         .iter()
         .map(|instance| engine_backend::scene::attachments::is_enabled(&loaded.world, *instance))
         .collect();

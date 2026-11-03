@@ -34,7 +34,7 @@ helio-pass-flare = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-gbuffer = { workspace = true }
 helio-pass-lens = { workspace = true }
-helio-pass-post-volumes = { workspace = true }
+helio-pass-post-volumes = { workspace = true, features = ["host-rows"] }
 helio-pass-postprocess = { workspace = true }
 helio-presets = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }

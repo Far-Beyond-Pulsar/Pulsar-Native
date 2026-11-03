@@ -8,7 +8,8 @@ use pulsar_scenedb::{Entity, World};
 
 use crate::world::{WorldSource, entity_source};
 use crate::{VoxelAir, VoxelTerrainComponent, VoxelTerrainLayersComponent, VoxelWorldShape};
-use helio_component::{AtmosphereComponent, AtmospherePlacement, GlobalFogComponent};
+use fog_component::GlobalFogComponent;
+use helio_component::{AtmosphereComponent, AtmospherePlacement};
 use helio_pass_voxel_planet::grid::Shape;
 
 /// Edits belong to the terrain they were made on: a terrain whose form,
@@ -281,8 +282,8 @@ pub fn haze_for_air(
     let extinction = extinction * density.max(0.0) * haze.max(0.0);
     Some(GlobalFogComponent {
         enabled: extinction > 0.0,
-        medium: helio_component::MediumProps {
-            mode: helio_component::FogMode::HeightBased,
+        medium: fog_component::MediumProps {
+            mode: fog_component::FogMode::HeightBased,
             extinction,
             albedo,
             emission: [0.0; 3],
@@ -545,7 +546,7 @@ mod tests {
     #[test]
     fn a_worlds_air_preset_makes_its_haze() {
         use crate::VoxelAir;
-        use helio_component::GlobalFogComponent;
+        use fog_component::GlobalFogComponent;
         let mut world = World::new();
         let object = world.spawn();
         let mut planet = VoxelTerrainComponent::planet(6_371_000.0);
@@ -763,7 +764,7 @@ mod tests {
     /// the planet the fog was placed on; the air's amounts scale it.
     #[test]
     fn a_worlds_air_derives_its_ground_haze() {
-        use helio_component::{GlobalFogComponent, MediumProps};
+        use fog_component::{GlobalFogComponent, MediumProps};
         use helio_pass_volumetric_fog::GlobalFogRow as GlobalMedium;
         let placed = GlobalFogComponent {
             medium: MediumProps {

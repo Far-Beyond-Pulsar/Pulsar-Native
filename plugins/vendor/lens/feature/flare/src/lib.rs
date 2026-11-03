@@ -90,6 +90,8 @@ type BindingKey = [Option<wgpu::TextureView>; 5];
 /// All persistent state is derived GPU machinery; no CPU copy of settings or lights.
 pub struct LensFlarePass {
     input_key: &'static str,
+    /// The image the input may be a view of (`helio_frame_api::color::alias`).
+    input_alias: Option<&'static str>,
     control: wgpu::ComputePipeline,
     extract: wgpu::ComputePipeline,
     downsample: wgpu::ComputePipeline,
@@ -352,7 +354,8 @@ impl LensFlarePass {
         let (w, h) = reduced_size(width, height);
         let history = history_texture(device, w, h);
         Self {
-            input_key: "fogged_hdr",
+            input_key: "pre_aa",
+            input_alias: None,
             control: pipeline("cs_control", &[Some(&control_layout)]),
             extract: pipeline("cs_extract", &[Some(&image_layout), Some(&optics_layout)]),
             downsample: pipeline("cs_downsample", &[Some(&image_layout)]),
@@ -424,9 +427,16 @@ impl LensFlarePass {
     }
 
     /// Select a resolved HDR texture, e.g. the TSR output. Configure before graph
-    /// construction. Only the default fogged_hdr path falls back to pre_aa.
+    /// construction.
     pub fn with_color_input(mut self, key: &'static str) -> Self {
         self.input_key = key;
+        self
+    }
+
+    /// The image the input may be a view of (`helio_frame_api::color::alias`):
+    /// read too, so it stays alive, and used when the input is not published.
+    pub fn with_color_alias(mut self, alias: Option<&'static str>) -> Self {
+        self.input_alias = alias;
         self
     }
 
@@ -850,8 +860,8 @@ impl RenderPass for LensFlarePass {
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
         builder.read("postprocess_uniforms");
         builder.read(self.input_key);
-        if self.input_key == "fogged_hdr" {
-            builder.read("pre_aa");
+        if let Some(alias) = self.input_alias {
+            builder.read(alias);
         }
         // Analytic light sources: current-frame shadows for lens visibility.
         builder.read("shadow_atlas");
@@ -882,9 +892,8 @@ impl RenderPass for LensFlarePass {
             .registry
             .get(ResourceKey::new(self.input_key))
             .or_else(|| {
-                (self.input_key == "fogged_hdr")
-                    .then(|| ctx.registry.get(ResourceKey::new("pre_aa")))
-                    .flatten()
+                self.input_alias
+                    .and_then(|alias| ctx.registry.get(ResourceKey::new(alias)))
             });
         let pp = ctx.registry.get(ResourceKey::new("postprocess_uniforms"));
         let optics = OpticsInputs {

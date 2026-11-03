@@ -1,7 +1,7 @@
 //! Helio's voxel meadow is a level's foliage: every row of it, tall stands
 //! included, comes back from its component bit for bit.
 
-use helio_component::FoliageComponent;
+use foliage_component::FoliageComponent;
 
 #[test]
 fn the_engine_meadow_is_authored_foliage() {

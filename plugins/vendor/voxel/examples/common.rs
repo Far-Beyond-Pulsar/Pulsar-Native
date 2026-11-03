@@ -65,22 +65,22 @@ pub fn new_scene_db_with_gpu_mirror_and(
         helio_pass_forward_lit::MAX_LIGHTS,
         device,
     );
-    helio_components::CameraPostProcessComponent::register_gpu_columns_growable(
+    helio_pass_post_volumes::host_rows::CameraPostProcessComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
-    helio_components::GlobalFogComponent::register_gpu_columns_growable(
+    helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
-    helio_components::LocalFogVolumeComponent::register_gpu_columns_growable(
+    helio_pass_volumetric_fog::host_rows::LocalFogVolumeComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
-    helio_components::VolumetricFogSettingsComponent::register_gpu_columns_growable(
+    helio_pass_volumetric_fog::host_rows::VolumetricFogSettingsComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
@@ -417,7 +417,7 @@ pub fn set_camera_postprocess(
     view_id: u32,
     settings: &helio_pass_postprocess::PostProcessSettings,
 ) {
-    use helio_components::CameraPostProcessComponent;
+    use helio_pass_post_volumes::host_rows::CameraPostProcessComponent;
     let existing = world
         .query::<&CameraPostProcessComponent>()
         .find(|(_, row)| row.view_id == view_id)

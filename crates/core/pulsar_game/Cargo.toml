@@ -83,6 +83,10 @@ particles_component = { workspace = true }
 portals_component = { workspace = true }
 splines_component = { workspace = true }
 sprites_component = { workspace = true }
+fog_component = { workspace = true }
+post_component = { workspace = true }
+water_component = { workspace = true }
+foliage_component = { workspace = true }
 
 [lints]
 workspace = true

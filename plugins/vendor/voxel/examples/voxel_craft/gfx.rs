@@ -14,7 +14,7 @@ use helio::{
     RendererConfig,
 };
 use helio_components::AtmosphereComponent;
-use helio_components::FoliageInteractorComponent;
+use helio_pass_foliage_place::host_rows::FoliageInteractorComponent;
 use helio_components::WorldRows;
 use helio_presets::Preset;
 use helio_pass_voxel_planet::chunks::pass::ChunkPass;
@@ -406,7 +406,7 @@ impl Gfx {
         let haze = scene.world.spawn();
         scene.world.insert(
             haze,
-            helio_components::GlobalFogComponent {
+            helio_pass_volumetric_fog::host_rows::GlobalFogComponent {
                 mode: 1,
                 extinction: 0.001,
                 height_falloff: 0.01,
@@ -451,9 +451,10 @@ impl Gfx {
         let handle = scene_db_handle(&scene);
         let builder =
             RendererBuilder::new(renderer_config.clone(), handle).with_graph(
-                // The voxel world and the leaf kinds (particles, sprites, decals,
-            // the lens and its flare, portals) are features Helio's presets do
-            // not list: their plugins', which a host adds as the engine does.
+                // The voxel world, the leaf kinds (particles, sprites, decals,
+            // the lens and its flare, portals) and the media kinds (foliage,
+            // water, fog, post-process volumes) are features Helio's presets
+            // do not list: their plugins', which a host adds as the engine does.
                 Preset::Deferred.with_features(
                     &helio_feature_api::FeatureSet::new()
                         .with(helio_pass_voxel_planet::VoxelFeature)
@@ -463,7 +464,11 @@ impl Gfx {
                         .with(helio_pass_lens::LensFeature)
                         .with(helio_pass_flare::LensFlareFeature)
                         .with(helio_pass_portal_cull::PortalCullFeature)
-                        .with(helio_pass_portal_instances::PortalFeature),
+                        .with(helio_pass_portal_instances::PortalFeature)
+                        .with(helio_pass_foliage_gbuffer::FoliageFeature)
+                        .with(helio_pass_water_sim::WaterFeature)
+                        .with(helio_pass_volumetric_fog::FogFeature)
+                        .with(helio_pass_post_volumes::PostVolumesFeature),
                 ),
             );
         let (mut renderer, xr_input) = graphics

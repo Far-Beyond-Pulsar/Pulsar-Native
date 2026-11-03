@@ -27,12 +27,9 @@
 // reasoning as `pulsar_scene::loader`'s forced re-exports).
 #[allow(unused_imports)]
 use helio_component::{
-    FoliageComponent as _ForceLink_FoliageComponent, LODComponent as _ForceLink_LODComponent,
-    LightComponent as _ForceLink_LightComponent,
-    PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent,
+    LODComponent as _ForceLink_LODComponent, LightComponent as _ForceLink_LightComponent,
     ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent,
     StaticMeshComponent as _ForceLink_StaticMeshComponent,
-    WaterVolumeComponent as _ForceLink_WaterVolumeComponent,
 };
 #[allow(unused_imports)]
 use pulsar_physics::{

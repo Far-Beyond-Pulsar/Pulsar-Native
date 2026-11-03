@@ -942,10 +942,9 @@ fn history_level_replacement_and_viewports_need_no_resync() {
 
 #[test]
 fn environment_components_reach_the_frame() {
-    use helio_component::components::{
-        CameraPostProcessComponent, GlobalFogComponent, LocalFogVolumeComponent,
-        PostProcessVolumeComponent, WaterVolumeComponent,
-    };
+    use fog_component::{GlobalFogComponent, LocalFogVolumeComponent};
+    use post_component::{CameraPostProcessComponent, PostProcessVolumeComponent};
+    use water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -1062,7 +1061,7 @@ fn environment_components_reach_the_frame() {
 /// camera stands 4 m from the origin, 0.7 m up.
 #[test]
 fn foliage_reaches_the_frame() {
-    use helio_component::components::FoliageComponent;
+    use foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2261,14 +2260,14 @@ fn particle_emitters_reach_the_frame_from_one_pool() {
 /// Edit the level's global wind in place, as its World Settings rows do.
 fn set_global_wind(
     state: &mut LevelEditorState,
-    edit: impl FnOnce(&mut helio_component::components::WindComponent),
+    edit: impl FnOnce(&mut foliage_component::WindComponent),
 ) {
     let mut world = state.scene.world_mut();
     let (instance, _) =
-        engine_backend::scene::level_rules::level_wind(&world).expect("the level has a wind");
+        foliage_component::level_wind(&world).expect("the level has a wind");
     edit(
         &mut world
-            .get_mut::<helio_component::components::WindComponent>(instance)
+            .get_mut::<foliage_component::WindComponent>(instance)
             .unwrap(),
     );
 }
@@ -2283,7 +2282,7 @@ fn set_global_wind(
 /// foliage LOD cross-fade dither), so an unchanged frame is identical.
 #[test]
 fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
-    use helio_component::components::FoliageComponent;
+    use foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2395,7 +2394,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
 /// the viewport goes idle again.
 #[test]
 fn a_realtime_viewport_keeps_rendering_animated_content() {
-    use helio_component::components::FoliageComponent;
+    use foliage_component::FoliageComponent;
     use particles_component::ParticleEmitterComponent;
     use ui_level_editor::commands::TypedComponent;
 
@@ -2486,7 +2485,7 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     let water = add(
         &mut state,
         "Lake",
-        TypedComponent::new(helio_component::components::WaterVolumeComponent::default()),
+        TypedComponent::new(water_component::WaterVolumeComponent::default()),
     );
     assert!(keeps_rendering(&mut renderer), "live water went idle");
     assert!(components::set_component_enabled(
@@ -2526,7 +2525,8 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
 /// RGBA16F array texture.
 fn water_heights(harness: &Harness, renderer: &HelioRenderer, layer: u32) -> Vec<f32> {
     let texture = renderer
-        .debug_water_sim_texture()
+        .debug_pass::<helio_pass_water_sim::WaterSimPass>()
+        .map(|pass| pass.sim_texture())
         .expect("the editor graph simulates water");
     let size = texture.size();
     let row = size.width * 8;
@@ -2609,7 +2609,7 @@ fn roughness(heights: &[f32]) -> f32 {
 /// it stands still with Realtime off.
 #[test]
 fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
-    use helio_component::components::WaterVolumeComponent;
+    use water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2714,7 +2714,7 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
 /// stays put); moving it displaces the water where it goes.
 #[test]
 fn bodies_on_the_water_sim_channel_push_the_water() {
-    use helio_component::components::WaterVolumeComponent;
+    use water_component::WaterVolumeComponent;
     use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
 

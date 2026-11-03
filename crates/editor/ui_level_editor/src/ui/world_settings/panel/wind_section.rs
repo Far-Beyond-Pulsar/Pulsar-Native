@@ -20,7 +20,7 @@ use super::WorldSettingsPanelImpl;
 use crate::scene_edit::wind::{self, LevelWind};
 use crate::WorldSettingsPanel;
 
-const WIND_CLASS: &str = engine_backend::scene::level_rules::WIND_CLASS;
+const WIND_CLASS: &str = foliage_component::WIND_CLASS_NAME;
 
 impl WorldSettingsPanelImpl {
     pub(super) fn render_wind_section(

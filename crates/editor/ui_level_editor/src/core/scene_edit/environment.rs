@@ -40,7 +40,7 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
             helio_component::AtmosphereComponent::default(),
         )],
         "WindComponent" => vec![TypedComponent::new(
-            helio_component::WindComponent::default(),
+            foliage_component::WindComponent::default(),
         )],
         "LightComponent" => vec![TypedComponent::new(
             helio_component::LightComponent::default(),
@@ -63,19 +63,19 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
             vec![TypedComponent::new(light)]
         }
         "GlobalFogComponent" => vec![TypedComponent::new(
-            helio_component::GlobalFogComponent::default(),
+            fog_component::GlobalFogComponent::default(),
         )],
         "LocalFogVolumeComponent" => vec![TypedComponent::new(
-            helio_component::LocalFogVolumeComponent::default(),
+            fog_component::LocalFogVolumeComponent::default(),
         )],
         "PostProcessVolumeComponent" => vec![TypedComponent::new(
-            helio_component::PostProcessVolumeComponent::default(),
+            post_component::PostProcessVolumeComponent::default(),
         )],
         "ReflectionCaptureComponent" => vec![TypedComponent::new(
             helio_component::ReflectionCaptureComponent::default(),
         )],
         "WaterVolumeComponent" => vec![TypedComponent::new(
-            helio_component::WaterVolumeComponent::default(),
+            water_component::WaterVolumeComponent::default(),
         )],
         _ => return CommandResult::noop("Unknown environment component"),
     };

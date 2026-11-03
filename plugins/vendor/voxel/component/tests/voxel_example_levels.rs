@@ -9,10 +9,10 @@ use std::path::Path;
 
 use engine_backend::scene::EditorCamera;
 use glam::DVec3;
-use helio_component::{
-    AtmosphereComponent, FoliageComponent, FoliageSourceRow, GlobalFogComponent,
-    PostProcessVolumeComponent, WindComponent,
-};
+use fog_component::GlobalFogComponent;
+use foliage_component::{FoliageComponent, FoliageSourceRow, WindComponent};
+use helio_component::AtmosphereComponent;
+use post_component::PostProcessVolumeComponent;
 use helio_pass_foliage_place::GpuFoliageType;
 use helio_pass_voxel_planet::layers::TerrainLayers;
 use pulsar_scenedb::{Entity, World};

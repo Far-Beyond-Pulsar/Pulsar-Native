@@ -65,26 +65,6 @@ pub fn new_scene_db_with_gpu_mirror_and(
         helio_pass_forward_lit::MAX_LIGHTS,
         device,
     );
-    helio_components::CameraPostProcessComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        device,
-    );
-    helio_components::GlobalFogComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        device,
-    );
-    helio_components::LocalFogVolumeComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        device,
-    );
-    helio_components::VolumetricFogSettingsComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        device,
-    );
     register_extra(&mut gpu_store);
     let gpu_store = Arc::new(gpu_store);
     let mirror = pulsar_scenedb::gpu::GpuMirrorHandle::new(gpu_store, queue.clone());

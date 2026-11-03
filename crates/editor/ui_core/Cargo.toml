@@ -67,6 +67,10 @@ particles_plugin = { workspace = true }
 portals_plugin = { workspace = true }
 splines_plugin = { workspace = true }
 sprites_plugin = { workspace = true }
+fog_plugin = { workspace = true }
+post_plugin = { workspace = true }
+water_plugin = { workspace = true }
+foliage_plugin = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

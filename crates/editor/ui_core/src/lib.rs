@@ -23,6 +23,11 @@ use particles_plugin as _;
 use portals_plugin as _;
 use splines_plugin as _;
 use sprites_plugin as _;
+// The media and placement kinds' plugins (Phase B batch 2).
+use fog_plugin as _;
+use foliage_plugin as _;
+use post_plugin as _;
+use water_plugin as _;
 
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");

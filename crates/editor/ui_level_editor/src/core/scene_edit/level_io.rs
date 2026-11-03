@@ -678,7 +678,7 @@ mod voxel_example_tests {
         assert_eq!(stacks, [voxel_component::VoxelTerrainStack::earth()]);
         // Graded like an outdoor scene: one unbound volume tone maps it.
         let volumes: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            helio_component::PostProcessVolumeComponent,
+            post_component::PostProcessVolumeComponent,
         >(&world)
         .map(|(_, _, v)| v.clone())
         .collect();
@@ -693,7 +693,7 @@ mod voxel_example_tests {
         assert!(
             volumes[0].unbound
                 && volumes[0].settings.tonemap_operator
-                    == helio_component::TonemapOperator::AgxPunchy
+                    == post_component::TonemapOperator::AgxPunchy
         );
     }
 }

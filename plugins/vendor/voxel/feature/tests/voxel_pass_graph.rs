@@ -17,9 +17,12 @@ use helio_pass_voxel_planet::{Planet, PlanetRecipe};
 use helio_presets::Preset;
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 
-/// The engine's features over Helio's: the voxel terrain's.
+/// The engine's features over Helio's: the voxel terrain's and the
+/// foliage that grows on it.
 fn voxel_features() -> helio_feature_api::FeatureSet {
-    helio_feature_api::FeatureSet::new().with(helio_pass_voxel_planet::VoxelFeature)
+    helio_feature_api::FeatureSet::new()
+        .with(helio_pass_voxel_planet::VoxelFeature)
+        .with(helio_pass_foliage_gbuffer::FoliageFeature)
 }
 
 struct FinalResourceConsumer {

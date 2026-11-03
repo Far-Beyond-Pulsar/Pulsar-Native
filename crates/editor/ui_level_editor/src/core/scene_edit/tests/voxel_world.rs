@@ -45,7 +45,7 @@ fn a_voxel_world_is_one_undo_step_that_selects_its_terrain_and_moves_the_camera(
     {
         let world = state.scene.world();
         assert_eq!(level_rules::atmospheres(&world).len(), 1);
-        assert_eq!(level_rules::winds(&world).len(), 1);
+        assert_eq!(foliage_component::winds(&world).len(), 1);
         assert_eq!(level_rules::directional_lights(&world).len(), 1);
     }
 

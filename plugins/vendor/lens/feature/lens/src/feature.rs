@@ -29,6 +29,7 @@ impl Feature for LensFeature {
                     let user = build.env.setting::<LensUser>().map(|user| user.0);
                     let pass = LensPass::new_with_user(build.env.device, iw, ih, user)
                         .with_color_input(input)
+                        .with_color_alias(color::alias(build.env))
                         .with_bundled_resources();
                     build.graph.add_pass(Box::new(pass));
                     color::advance(build.env, LENS_COLOR);

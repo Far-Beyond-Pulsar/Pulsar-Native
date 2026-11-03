@@ -43,7 +43,8 @@ naga = { version = "30.0.1", features = ["wgsl-in", "spv-out"] }
 helio = { workspace = true }
 helio-presets = { workspace = true }
 helio-components = { workspace = true }
-helio-pass-foliage-place = { workspace = true }
+helio-pass-foliage-place = { workspace = true, features = ["host-rows"] }
+helio-pass-foliage-gbuffer = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-sky = { workspace = true }
 pulsar_scenedb = { workspace = true }

@@ -1,7 +1,8 @@
 //! The engine's pipelines carry every linked plugin's features: Helio's
 //! presets built the way the engine builds them (its plugins' features
 //! added, their settings applied) list the same passes as before the leaf
-//! kinds left Helio. Dumps every preset's pass declarations for four
+//! kinds (batch 1) and the media and placement kinds (batch 2: fog,
+//! post-process volumes, water, foliage) left Helio. Dumps every preset's pass declarations for four
 //! configs into `PRESET_SNAPSHOT_OUT` (the format of Helio's preset
 //! snapshot), to diff against a snapshot of the presets from before the
 //! move; skips without the variable. Also checks, always, that the plugins'
@@ -17,11 +18,15 @@ use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, Sce
 
 // Linked for their registrations, as the game links them.
 use decals_component as _;
+use fog_component as _;
+use foliage_component as _;
 use lens_component as _;
 use particles_component as _;
 use portals_component as _;
+use post_component as _;
 use splines_component as _;
 use sprites_component as _;
+use water_component as _;
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     pollster::block_on(async {
@@ -132,6 +137,13 @@ fn the_engines_presets_carry_the_plugins_passes() {
                     "PortalMask",
                     "PortalInstance",
                     "PortalEditorOverlay",
+                    "VolumetricFogPass",
+                    "FogComposite",
+                    "PostProcessVolumeBlendPass",
+                    "WaterSim",
+                    "WaterTransmission",
+                    "FoliagePlace",
+                    "FoliageGBuffer",
                 ] {
                     assert!(
                         passes.iter().any(|(pass, _)| pass.pass == name),

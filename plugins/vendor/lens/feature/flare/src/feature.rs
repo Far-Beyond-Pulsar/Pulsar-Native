@@ -24,8 +24,9 @@ impl Feature for LensFlareFeature {
                 |build| {
                     let (iw, ih) = build.env.internal_size();
                     let input = color::current(build.env);
-                    let pass =
-                        LensFlarePass::new_hdr(build.env.device, iw, ih).with_color_input(input);
+                    let pass = LensFlarePass::new_hdr(build.env.device, iw, ih)
+                        .with_color_input(input)
+                        .with_color_alias(color::alias(build.env));
                     build.graph.add_pass(Box::new(pass));
                     Ok(())
                 },

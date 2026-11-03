@@ -65,28 +65,13 @@ pub fn new_scene_db_with_gpu_mirror_and(
         helio_pass_forward_lit::MAX_LIGHTS,
         device,
     );
-    helio_components::CameraPostProcessComponent::register_gpu_columns_growable(
+    helio_pass_post_volumes::host_rows::CameraPostProcessComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
     LensComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     LensElementComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
-    helio_components::GlobalFogComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        device,
-    );
-    helio_components::LocalFogVolumeComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        device,
-    );
-    helio_components::VolumetricFogSettingsComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4096,
-        device,
-    );
     register_extra(&mut gpu_store);
     let gpu_store = Arc::new(gpu_store);
     let mirror = pulsar_scenedb::gpu::GpuMirrorHandle::new(gpu_store, queue.clone());
@@ -372,7 +357,7 @@ pub fn set_camera_postprocess(
     view_id: u32,
     settings: &helio_pass_postprocess::PostProcessSettings,
 ) {
-    use helio_components::CameraPostProcessComponent;
+    use helio_pass_post_volumes::host_rows::CameraPostProcessComponent;
     let existing = world
         .query::<&CameraPostProcessComponent>()
         .find(|(_, row)| row.view_id == view_id)
@@ -415,7 +400,10 @@ pub fn preset() -> helio_presets::PresetGraph {
     helio_presets::Preset::Deferred.with_features(
         &helio_feature_api::FeatureSet::new()
             .with(helio_pass_lens::LensFeature)
-            .with(helio_pass_flare::LensFlareFeature),
+            .with(helio_pass_flare::LensFlareFeature)
+            // The camera's lens and grading settings are a post-process
+            // camera row (the post plugin's).
+            .with(helio_pass_post_volumes::PostVolumesFeature),
     )
 }
 

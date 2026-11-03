@@ -240,7 +240,7 @@ impl super::WorldSettingsPanelImpl {
                 "Missing · creates a sky",
             ),
             (
-                engine_backend::scene::level_rules::WIND_CLASS,
+                foliage_component::WIND_CLASS_NAME,
                 "Global Wind",
                 "Missing · creates global wind",
             ),
@@ -401,7 +401,7 @@ impl super::WorldSettingsPanelImpl {
                 if class_name == engine_backend::scene::level_rules::ATMOSPHERE_CLASS {
                     return self.render_sky_section(window, cx);
                 }
-                if class_name == engine_backend::scene::level_rules::WIND_CLASS {
+                if class_name == foliage_component::WIND_CLASS_NAME {
                     return self.render_wind_section(window, cx);
                 }
                 let object_name = objects::get_all_objects(&self.state.read().scene.world())

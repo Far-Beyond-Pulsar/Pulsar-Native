@@ -406,6 +406,8 @@ fn entry(binding: u32, resource: wgpu::BindingResource<'_>) -> wgpu::BindGroupEn
 /// the resolved lens. No CPU copy of rows or settings.
 pub struct LensPass {
     input_key: &'static str,
+    /// The image the input may be a view of (`helio_frame_api::color::alias`).
+    input_alias: Option<&'static str>,
     stages: [Stage; STAGES],
     sampler: wgpu::Sampler,
     /// Indirect dispatch triples, sized by `cs_resolve` from the lens row.
@@ -638,7 +640,8 @@ impl LensPass {
             view_formats: &[],
         });
         Self {
-            input_key: "fogged_hdr",
+            input_key: "pre_aa",
+            input_alias: None,
             stages,
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("Lens sampler"),
@@ -749,9 +752,16 @@ impl LensPass {
     }
 
     /// Select a resolved HDR texture, e.g. the TSR output. Configure before graph
-    /// construction. Only the default fogged_hdr path falls back to pre_aa.
+    /// construction.
     pub fn with_color_input(mut self, key: &'static str) -> Self {
         self.input_key = key;
+        self
+    }
+
+    /// The image the input may be a view of (`helio_frame_api::color::alias`):
+    /// read too, so it stays alive, and used when the input is not published.
+    pub fn with_color_alias(mut self, alias: Option<&'static str>) -> Self {
+        self.input_alias = alias;
         self
     }
 
@@ -1040,8 +1050,8 @@ impl RenderPass for LensPass {
     }
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
         builder.read(self.input_key);
-        if self.input_key == "fogged_hdr" {
-            builder.read("pre_aa");
+        if let Some(alias) = self.input_alias {
+            builder.read(alias);
         }
         // Manually owned resources: these declarations track the dependency,
         // while publish routes the actual views without a second texture.
@@ -1096,12 +1106,10 @@ impl RenderPass for LensPass {
             .registry
             .get::<&wgpu::TextureView>(ResourceKey::new(self.input_key))
             .or_else(|| {
-                (self.input_key == "fogged_hdr")
-                    .then(|| {
-                        ctx.registry
-                            .get::<&wgpu::TextureView>(ResourceKey::new("pre_aa"))
-                    })
-                    .flatten()
+                self.input_alias.and_then(|alias| {
+                    ctx.registry
+                        .get::<&wgpu::TextureView>(ResourceKey::new(alias))
+                })
             });
         let scene = LensInputs {
             camera: Some(ctx.camera),

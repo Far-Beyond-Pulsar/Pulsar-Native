@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// Brush parameters for painting foliage instances.
 ///
-/// Mirrors `helio_component::FoliageComponent`'s own sub-property groups
+/// Mirrors `foliage_component::FoliageComponent`'s own sub-property groups
 /// (`general`/`placement`/`rendering`/`wind`/`interaction` —
 /// `tool_modes::terrain::foliage::build_component` maps each field across
 /// one-to-one) so the brush can author everything the component actually

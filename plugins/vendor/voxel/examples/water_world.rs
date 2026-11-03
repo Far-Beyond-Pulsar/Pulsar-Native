@@ -24,10 +24,11 @@ mod worlds;
 
 use glam::{DVec3, Vec3};
 use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
-use helio_components::WaterVolumeComponent;
+use helio_pass_water_sim::host_rows::WaterVolumeComponent;
 use helio_components::WorldRows;
-use helio_components::{CameraPostProcessComponent, LightComponent};
-use helio_components::{FoliageTypeComponent, FoliageWindComponent};
+use helio_components::LightComponent;
+use helio_pass_foliage_place::host_rows::{FoliageTypeComponent, FoliageWindComponent};
+use helio_pass_post_volumes::host_rows::CameraPostProcessComponent;
 use helio_presets::Preset;
 use helio_pass_foliage_place::FoliagePlacePass;
 use helio_pass_foliage_place::{
@@ -156,8 +157,8 @@ impl Showcase {
             &mut store, 16, &device,
         );
         helio_components::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
-        helio_components::GlobalFogComponent::register_gpu_columns_growable(&mut store, 4, &device);
-        helio_components::WaterVolumeComponent::register_gpu_columns_growable(
+        helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(&mut store, 4, &device);
+        helio_pass_water_sim::host_rows::WaterVolumeComponent::register_gpu_columns_growable(
             &mut store, 8, &device,
         );
         FoliageTypeComponent::register_gpu_columns_growable(&mut store, 8, &device);
@@ -315,9 +316,10 @@ impl Showcase {
         let renderer_config = renderer_config.with_feature(terrain);
         let mut renderer = RendererBuilder::new(renderer_config.clone(), mirror)
             .with_external_device()
-            // The voxel world and the leaf kinds (particles, sprites, decals,
-            // the lens and its flare, portals) are features Helio's presets do
-            // not list: their plugins', which a host adds as the engine does.
+            // The voxel world, the leaf kinds (particles, sprites, decals,
+            // the lens and its flare, portals) and the media kinds (foliage,
+            // water, fog, post-process volumes) are features Helio's presets
+            // do not list: their plugins', which a host adds as the engine does.
             .with_graph(Preset::Deferred.with_features(
                 &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
@@ -327,7 +329,11 @@ impl Showcase {
                     .with(helio_pass_lens::LensFeature)
                     .with(helio_pass_flare::LensFlareFeature)
                     .with(helio_pass_portal_cull::PortalCullFeature)
-                    .with(helio_pass_portal_instances::PortalFeature),
+                    .with(helio_pass_portal_instances::PortalFeature)
+                    .with(helio_pass_foliage_gbuffer::FoliageFeature)
+                    .with(helio_pass_water_sim::WaterFeature)
+                    .with(helio_pass_volumetric_fog::FogFeature)
+                    .with(helio_pass_post_volumes::PostVolumesFeature),
             ))
             .build(
                 device.clone(),

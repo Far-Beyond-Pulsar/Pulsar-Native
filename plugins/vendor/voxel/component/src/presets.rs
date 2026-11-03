@@ -19,9 +19,10 @@ use engine_backend::scene::{
     EditorCamera, Name, ObjectType, RuntimeLevel, SceneWorldExt, SpawnObject, Transform,
     Visibility, level_rules,
 };
-use helio_component::{
-    FoliageComponent, FoliageForm, GlobalFogComponent, LightComponent, PostProcessVolumeComponent,
-};
+use fog_component::GlobalFogComponent;
+use foliage_component::{FoliageComponent, FoliageForm};
+use helio_component::LightComponent;
+use post_component::PostProcessVolumeComponent;
 use pulsar_scene_model::{NewInstance, attachments};
 use pulsar_scenedb::{Entity, World};
 
@@ -114,7 +115,7 @@ impl Plan {
             .filter_map(|(instance, _)| attachments::owner_of(world, instance))
             .min_by_key(|owner| world.stable_id_of(*owner).map(str::to_string));
         let mut replaced = level_rules::atmospheres(world);
-        replaced.extend(level_rules::winds(world));
+        replaced.extend(foliage_component::winds(world));
         replaced.extend(attached::<GlobalFogComponent>(world, |_| true));
         // Ground cover belongs to the voxel world it grows on.
         replaced.extend(attached::<FoliageComponent>(world, |foliage| {
@@ -399,7 +400,7 @@ mod tests {
                 1
             );
             assert!(level_rules::atmospheres(&world).len() <= 1);
-            assert!(level_rules::winds(&world).len() <= 1);
+            assert!(foliage_component::winds(&world).len() <= 1);
             assert_eq!(level_rules::directional_lights(&world).len(), 1);
         }
     }
@@ -419,7 +420,7 @@ mod tests {
         assert_eq!(world.children_of(None).len(), objects - 1);
         assert_eq!(world.query::<&FoliageComponent>().count(), 0);
         assert_eq!(level_rules::atmospheres(&world).len(), 1);
-        assert_eq!(level_rules::winds(&world).len(), 0);
+        assert_eq!(foliage_component::winds(&world).len(), 0);
         assert_eq!(level_rules::directional_lights(&world).len(), 1);
         assert_eq!(world.query::<&VoxelTerrainComponent>().count(), 1);
         assert_eq!(world.query::<&VoxelTerrainLayersComponent>().count(), 1);

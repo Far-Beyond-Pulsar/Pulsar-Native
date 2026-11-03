@@ -37,16 +37,17 @@ helio-pass-lens = { workspace = true }
 helio-pass-flare = { workspace = true }
 helio-pass-portal-cull = { workspace = true }
 helio-pass-portal-instances = { workspace = true }
-helio-pass-foliage-place = { workspace = true }
+helio-pass-foliage-place = { workspace = true, features = ["host-rows"] }
+helio-pass-foliage-gbuffer = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-gbuffer = { workspace = true }
 helio-pass-object-batch = { workspace = true }
 helio-pass-postprocess = { workspace = true }
-helio-pass-post-volumes = { workspace = true }
+helio-pass-post-volumes = { workspace = true, features = ["host-rows"] }
 helio-pass-sky = { workspace = true }
 helio-pass-tsr = { workspace = true }
-helio-pass-volumetric-fog = { workspace = true }
-helio-pass-water-sim = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true, features = ["host-rows"] }
+helio-pass-water-sim = { workspace = true, features = ["host-rows"] }
 pulsar_scenedb = { workspace = true }
 scenedb-inspector-agent = { workspace = true }
 profiling = { workspace = true }

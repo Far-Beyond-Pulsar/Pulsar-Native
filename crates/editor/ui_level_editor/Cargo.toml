@@ -50,6 +50,13 @@ voxel_component.workspace = true
 splines_component.workspace = true
 sprites_component.workspace = true
 portals_component.workspace = true
+# The media and placement kinds' components: the World Settings panels (fog,
+# post-process volumes, water, the global wind) and the terrain panel's
+# foliage act through them.
+fog_component.workspace = true
+post_component.workspace = true
+water_component.workspace = true
+foliage_component.workspace = true
 helio-pass-buffer-view.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
@@ -114,6 +121,8 @@ pulsar_script_vm = { workspace = true }
 # virtual-geometry acceptance test.
 pulsar_settings = { workspace = true }
 helio-core = { workspace = true }
+# Reads the water simulation back (its pass, through `debug_pass`).
+helio-pass-water-sim = { workspace = true }
 # Writes the VG museum's textured material graphs (vg_museum generator test).
 psgc = { workspace = true }
 

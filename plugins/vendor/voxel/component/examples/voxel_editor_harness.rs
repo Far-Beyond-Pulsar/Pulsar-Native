@@ -478,10 +478,9 @@ fn main() {
     // What the level lights and grades with (parity checks against Helio's
     // examples).
     {
-        use helio_component::components::{
-            AtmosphereComponent, CameraPostProcessComponent, GlobalFogComponent, LightComponent,
-            PostProcessVolumeComponent,
-        };
+        use fog_component::GlobalFogComponent;
+        use helio_component::components::{AtmosphereComponent, LightComponent};
+        use post_component::{CameraPostProcessComponent, PostProcessVolumeComponent};
         let world = &scene.read().world;
         for (_, light) in world.query::<&LightComponent>() {
             println!(
@@ -506,11 +505,11 @@ fn main() {
         for (_, c) in world.query::<&GlobalFogComponent>() {
             println!("HARNESS scene fog: {}", short(format!("{c:?}")));
         }
-        for (_, c) in world.query::<&helio_component::components::WindComponent>() {
+        for (_, c) in world.query::<&foliage_component::WindComponent>() {
             println!("HARNESS scene wind: {}", short(format!("{c:?}")));
         }
         let foliage = world
-            .query::<&helio_component::components::FoliageComponent>()
+            .query::<&foliage_component::FoliageComponent>()
             .count();
         if foliage > 0 {
             println!("HARNESS scene foliage: {foliage} types");

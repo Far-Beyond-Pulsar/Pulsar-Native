@@ -7,7 +7,6 @@
 //! level has one and a button that creates it when it does not
 //! ([`create_wind`]).
 
-use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::World;
 
@@ -31,7 +30,7 @@ pub struct LevelWind {
 
 /// The level's global wind, if it has one.
 pub fn level_wind(world: &World) -> Option<LevelWind> {
-    let (instance, owner) = level_rules::level_wind(world)?;
+    let (instance, owner) = foliage_component::level_wind(world)?;
     let object_id = world.stable_id_of(owner)?.to_string();
     let component_index = engine_backend::scene::attachments::instances(world, owner)
         .iter()
@@ -69,7 +68,7 @@ pub fn create_wind(state: &mut LevelEditorState) -> CommandResult {
             },
             parent_id: None,
             components: vec![TypedComponent::new(
-                helio_component::WindComponent::default(),
+                foliage_component::WindComponent::default(),
             )],
         },
     )

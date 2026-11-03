@@ -44,10 +44,10 @@ name = "WindComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::wind_component"
-disposition = "render (#1123). The level's global wind, one per level (engine_backend::scene::level_rules), edited in World Settings. Its derived GlobalWindSourceRow is written on every insert, write, removal and replay; the environment join places it as the foliage passes' wind row over the foliage components' own wind (visibility does not apply). Its motion is the renderer's frame clock"
+owner = "foliage_component::wind"
+disposition = "render (#1123). The level's global wind, one per level (a level singleton the foliage plugin registers with engine_backend::scene::level_rules), edited in World Settings. Its derived GlobalWindSourceRow is written on every insert, write, removal and replay; the environment join places it as the foliage passes' wind row over the foliage components' own wind (visibility does not apply). Its motion is the renderer's frame clock"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); plugins/vendor/foliage/component/tests/scene_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
 status = "verified"
 
 [[class]]
@@ -88,7 +88,7 @@ name = "CameraPostProcessComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::camera_post_process_component"
+owner = "post_component::camera"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into camera_postprocess, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
@@ -132,7 +132,7 @@ name = "FoliageComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::foliage_component"
+owner = "foliage_component::foliage"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Blades sway in the level's global wind (WindComponent) by their per-band response, on the renderer's frame clock (#1123, #1109); a component may opt out for its own wind (use_global_wind), and a level without a global wind uses the components' own. Grass grows on flat ground at Y 0, no terrain capture in the editor (#1064). Limits, each tracked: types share layers and one wind applies to all foliage (#1123), and the interactor and material colour fields have no consumer (#1063)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame, foliage_sways_in_the_global_wind_on_the_frame_clock)"
@@ -143,7 +143,7 @@ name = "GlobalFogComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::fog_component"
+owner = "fog_component::component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into global_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
@@ -188,7 +188,7 @@ name = "LocalFogVolumeComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::fog_component"
+owner = "fog_component::component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into local_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
@@ -214,7 +214,7 @@ own_gpu_columns = true
 owner = "pulsar_physics::components::physics_component"
 disposition = "physics subsystem data; SceneDB is the physics world (nothing is synced to a separate one). A body on the WaterSim collision channel (#1080) derives a WaterHitboxSourceRow on every insert, write, removal and replay, which the environment join bounds by the owner's meshes into water_hitboxes; its generated GPU companion uploads nothing"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value; crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value; crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); plugins/vendor/water/component/tests/scene_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[class]]
@@ -233,7 +233,7 @@ name = "PostProcessVolumeComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::post_process_volume_component"
+owner = "post_component::volume"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into post_process_volumes, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
@@ -389,10 +389,10 @@ name = "WaterVolumeComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::water_volume_component"
-disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. The simulation reads each volume's own spring, damping, wave scale, wave speed and wind from its row and steps on the renderer's frame clock (#1065); the wind is the level's global wind unless the volume opts out (use_global_wind), and the sun is the scene's directional light, written into the row by the join (the authored sun_direction is retired by a load migration)"
+owner = "water_component::component"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. The simulation reads each volume's own spring, damping, wave scale, wave speed and wind from its row and steps on the renderer's frame clock (#1065); the wind is the level's global wind unless the volume opts out (use_global_wind), and the sun is the lights' directional light, written into the row by the join (the authored sun_direction is retired by a load migration)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (water_volumes_are_packed_into_the_leading_rows, water_takes_the_scenes_sun_and_the_global_wind); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame, water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock)"
+test = "plugins/vendor/water/component/tests/scene_rows.rs (water_volumes_are_packed_into_the_leading_rows, water_takes_the_scenes_sun_and_the_global_wind); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame, water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock)"
 status = "verified"
 
 # ── GPU schemas ──────────────────────────────────────────────────────────
@@ -471,13 +471,13 @@ status = "verified"
 
 [[schema]]
 type = "CameraPostProcessComponentGpuMirror"
-path = "helio_component::components::camera_post_process_component::CameraPostProcessComponentGpuMirror"
+path = "post_component::camera::CameraPostProcessComponentGpuMirror"
 buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
-owner = "helio_component::components::camera_post_process_component"
+owner = "post_component::camera"
 disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
@@ -485,13 +485,13 @@ status = "verified"
 
 [[schema]]
 type = "GlobalFogComponentGpuMirror"
-path = "helio_component::components::fog_component::GlobalFogComponentGpuMirror"
+path = "fog_component::component::GlobalFogComponentGpuMirror"
 buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
-owner = "helio_component::components::fog_component"
+owner = "fog_component::component"
 disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
@@ -499,13 +499,13 @@ status = "verified"
 
 [[schema]]
 type = "LocalFogVolumeComponentGpuMirror"
-path = "helio_component::components::fog_component::LocalFogVolumeComponentGpuMirror"
+path = "fog_component::component::LocalFogVolumeComponentGpuMirror"
 buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
-owner = "helio_component::components::fog_component"
+owner = "fog_component::component"
 disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
@@ -513,13 +513,13 @@ status = "verified"
 
 [[schema]]
 type = "FoliageComponentGpuMirror"
-path = "helio_component::components::foliage_component::component::FoliageComponentGpuMirror"
+path = "foliage_component::foliage::component::FoliageComponentGpuMirror"
 buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
-owner = "helio_component::components::foliage_component::component"
+owner = "foliage_component::foliage::component"
 disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
@@ -625,13 +625,13 @@ status = "verified"
 
 [[schema]]
 type = "PostProcessVolumeComponentGpuMirror"
-path = "helio_component::components::post_process_volume_component::PostProcessVolumeComponentGpuMirror"
+path = "post_component::volume::PostProcessVolumeComponentGpuMirror"
 buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
-owner = "helio_component::components::post_process_volume_component"
+owner = "post_component::volume"
 disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
@@ -1073,30 +1073,30 @@ status = "verified"
 
 [[schema]]
 type = "WindComponent"
-path = "helio_component::components::wind_component::WindComponent"
+path = "foliage_component::wind::WindComponent"
 buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived GlobalWindSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
-owner = "helio_component::components::wind_component"
+owner = "foliage_component::wind"
 disposition = "keep: the authored type's GPU row is GlobalWindSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); plugins/vendor/foliage/component/tests/scene_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
 status = "verified"
 
 [[schema]]
 type = "GlobalWindSourceRow"
-path = "helio_component::components::environment_rows::GlobalWindSourceRow"
+path = "foliage_component::GlobalWindSourceRow"
 buffers = ["wind_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "WindComponent's derived GPU registration (the foliage wind row marked global; zero while disabled), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "foliage_component"
 disposition = "keep: the environment join's global wind input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); plugins/vendor/foliage/component/tests/scene_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
 status = "verified"
 
 [[schema]]
@@ -1250,7 +1250,7 @@ writer = "helio-scene-derivations environment join from the WaterHitboxSourceRow
 owner = "helio_pass_water_sim::components"
 disposition = "keep as the pass row layout of water_hitboxes; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); plugins/vendor/water/component/tests/scene_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[schema]]
@@ -1278,7 +1278,7 @@ writer = "the authored value's SceneDB GPU dispatch is its derived WaterHitboxSo
 owner = "pulsar_physics::components::physics_component"
 disposition = "keep: the authored type's GPU row is WaterHitboxSourceRow, the environment join's water hitbox input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); plugins/vendor/water/component/tests/scene_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[schema]]
@@ -1292,7 +1292,7 @@ writer = "PhysicsComponent's derived GPU registration (edge softness, strength a
 owner = "pulsar_physics::components::physics_component::water"
 disposition = "keep: the environment join's water hitbox input (#1080)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); plugins/vendor/water/component/tests/scene_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[schema]]
@@ -1617,13 +1617,13 @@ status = "verified"
 
 [[schema]]
 type = "CameraPostProcessComponent"
-path = "helio_component::components::camera_post_process_component::CameraPostProcessComponent"
+path = "post_component::camera::CameraPostProcessComponent"
 buffers = ["camera_postprocess"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived CameraPostProcessSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
-owner = "helio_component::components::camera_post_process_component"
+owner = "post_component::camera"
 disposition = "keep: the authored type's GPU row is CameraPostProcessSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1631,13 +1631,13 @@ status = "verified"
 
 [[schema]]
 type = "GlobalFogComponent"
-path = "helio_component::components::fog_component::GlobalFogComponent"
+path = "fog_component::component::GlobalFogComponent"
 buffers = ["global_fog_media"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived GlobalFogSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
-owner = "helio_component::components::fog_component"
+owner = "fog_component::component"
 disposition = "keep: the authored type's GPU row is GlobalFogSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1645,13 +1645,13 @@ status = "verified"
 
 [[schema]]
 type = "LocalFogVolumeComponent"
-path = "helio_component::components::fog_component::LocalFogVolumeComponent"
+path = "fog_component::component::LocalFogVolumeComponent"
 buffers = ["local_fog_media"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived LocalFogSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
-owner = "helio_component::components::fog_component"
+owner = "fog_component::component"
 disposition = "keep: the authored type's GPU row is LocalFogSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1659,13 +1659,13 @@ status = "verified"
 
 [[schema]]
 type = "FoliageComponent"
-path = "helio_component::components::foliage_component::component::FoliageComponent"
+path = "foliage_component::foliage::component::FoliageComponent"
 buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived FoliageSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
-owner = "helio_component::components::foliage_component::component"
+owner = "foliage_component::foliage::component"
 disposition = "keep: the authored type's GPU row is FoliageSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1687,13 +1687,13 @@ status = "verified"
 
 [[schema]]
 type = "PostProcessVolumeComponent"
-path = "helio_component::components::post_process_volume_component::PostProcessVolumeComponent"
+path = "post_component::volume::PostProcessVolumeComponent"
 buffers = ["post_process_volumes"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived PostProcessVolumeSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
-owner = "helio_component::components::post_process_volume_component"
+owner = "post_component::volume"
 disposition = "keep: the authored type's GPU row is PostProcessVolumeSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1701,13 +1701,13 @@ status = "verified"
 
 [[schema]]
 type = "GlobalFogSourceRow"
-path = "helio_component::components::environment_rows::GlobalFogSourceRow"
+path = "fog_component::GlobalFogSourceRow"
 buffers = ["global_fog_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "GlobalFogComponent's derived GPU registration (the pass GlobalFogComponent medium, enabled from the authored flag), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "fog_component"
 disposition = "keep: the environment join's global_fog_media input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1715,13 +1715,13 @@ status = "verified"
 
 [[schema]]
 type = "LocalFogSourceRow"
-path = "helio_component::components::environment_rows::LocalFogSourceRow"
+path = "fog_component::LocalFogSourceRow"
 buffers = ["local_fog_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "LocalFogVolumeComponent's derived GPU registration (the local box size, then the medium and edge fade; placed from the owner's transform by the join), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "fog_component"
 disposition = "keep: the environment join's local_fog_media input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1729,13 +1729,13 @@ status = "verified"
 
 [[schema]]
 type = "PostProcessVolumeSourceRow"
-path = "helio_component::components::environment_rows::PostProcessVolumeSourceRow"
+path = "post_component::PostProcessVolumeSourceRow"
 buffers = ["post_process_volume_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "PostProcessVolumeComponent's derived GPU registration (the volume size, then the pass row after its bounds (zeroed params when disabled); placed by the join), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "post_component"
 disposition = "keep: the environment join's post_process_volumes input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1757,13 +1757,13 @@ status = "verified"
 
 [[schema]]
 type = "CameraPostProcessSourceRow"
-path = "helio_component::components::environment_rows::CameraPostProcessSourceRow"
+path = "post_component::CameraPostProcessSourceRow"
 buffers = ["camera_postprocess_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "CameraPostProcessComponent's derived GPU registration (the pass camera row, enabled from the authored flag), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "post_component"
 disposition = "keep: the environment join's camera_postprocess input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1771,13 +1771,13 @@ status = "verified"
 
 [[schema]]
 type = "WaterVolumeSourceRow"
-path = "helio_component::components::environment_rows::WaterVolumeSourceRow"
+path = "water_component::WaterVolumeSourceRow"
 buffers = ["water_volume_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "WaterVolumeComponent's derived GPU registration (local size and surface offset, then the water row after its bounds; zero when disabled), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "water_component"
 disposition = "keep: the environment join's water_volumes input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1785,13 +1785,13 @@ status = "verified"
 
 [[schema]]
 type = "WaterVolumeComponent"
-path = "helio_component::components::water_volume_component::WaterVolumeComponent"
+path = "water_component::component::WaterVolumeComponent"
 buffers = ["water_volumes"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "SceneDB write path of the authored value itself, through its derived WaterVolumeSourceRow registration (Phase 4)"
-owner = "helio_component::components::water_volume_component"
+owner = "water_component::component"
 disposition = "keep: the authored type's GPU dispatch is the derived source row; the scanner attributes water_volumes to it by name, but the row it writes is water_volume_sources"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -1799,13 +1799,13 @@ status = "verified"
 
 [[schema]]
 type = "FoliageSourceRow"
-path = "helio_component::components::environment_rows::FoliageSourceRow"
+path = "foliage_component::FoliageSourceRow"
 buffers = ["foliage_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "FoliageComponent's derived GPU registration (type row, layer, wind row; zero when disabled), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "foliage_component"
 disposition = "keep: the environment join's foliage input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
@@ -2098,7 +2098,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: the level's WindComponent, derived on every write; the environment join reads it into foliage_wind and over the wind of every water_volumes row that does not opt out (#1065)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); plugins/vendor/foliage/component/tests/scene_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
 status = "verified"
 
 [[buffer]]
@@ -2308,7 +2308,7 @@ consumers = ["helio-presets", "helio-pass-water-sim"]
 owner = "helio-scene-derivations environment join (execution output)"
 disposition = "keep: bodies on the WaterSim collision channel, joined on the GPU from water_hitbox_sources, the owner transform and its meshes' bounds and packed into the simulation's fixed rows; the simulation keeps each body's previous bounds itself (#1080)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); plugins/vendor/water/component/tests/scene_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[buffer]]
@@ -2318,7 +2318,7 @@ consumers = []
 owner = "pulsar_physics::components::physics_component::water"
 disposition = "keep: PhysicsComponent's water interaction, derived on every write; the environment join reads it into water_hitboxes"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); plugins/vendor/water/component/tests/scene_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[buffer]]

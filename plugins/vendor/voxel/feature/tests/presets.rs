@@ -108,11 +108,13 @@ impl Fixtures {
         }
     }
 
-    /// `preset` with the voxel feature, built.
+    /// `preset` with the voxel and foliage features, built.
     fn build(&self, preset: Preset) -> helio_core::RenderGraph {
         preset
             .with_features(
-                &helio_feature_api::FeatureSet::new().with(helio_pass_voxel_planet::VoxelFeature),
+                &helio_feature_api::FeatureSet::new()
+                    .with(helio_pass_voxel_planet::VoxelFeature)
+                    .with(helio_pass_foliage_gbuffer::FoliageFeature),
             )
             .build(self.context())
     }

@@ -92,6 +92,11 @@ extern crate particles_component;
 extern crate portals_component;
 extern crate splines_component;
 extern crate sprites_component;
+// The media and placement kinds' plugins (Phase B batch 2).
+extern crate fog_component;
+extern crate foliage_component;
+extern crate post_component;
+extern crate water_component;
 
 // Compile-time drift guard: exported actors must match the pinned crates
 #[cfg(test)]
