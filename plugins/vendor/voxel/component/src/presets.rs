@@ -57,16 +57,16 @@ impl VoxelWorldPreset {
     fn level(self) -> &'static str {
         match self {
             Self::Earth => {
-                include_str!("../../../../assets/examples/voxel_planet/scene/default.level")
+                include_str!("../../../../../assets/examples/voxel_planet/scene/default.level")
             }
             Self::Moon => {
-                include_str!("../../../../assets/examples/voxel_moon/scene/default.level")
+                include_str!("../../../../../assets/examples/voxel_moon/scene/default.level")
             }
             Self::Desert => {
-                include_str!("../../../../assets/examples/voxel_desert/scene/default.level")
+                include_str!("../../../../../assets/examples/voxel_desert/scene/default.level")
             }
             Self::Blocks => {
-                include_str!("../../../../assets/examples/voxel_blocks/scene/default.level")
+                include_str!("../../../../../assets/examples/voxel_blocks/scene/default.level")
             }
         }
     }

@@ -6,8 +6,8 @@ from scripts, and rendered by the voxel plugin's chunk passes on Helio. This
 document maps the Pulsar side end to end: data, flow, editor, scripting,
 rendering integration, decisions and pitfalls. The world system and the
 renderer feature (grid, generators, chunk trees: residency, drawing,
-lighting) are documented in `plugins/voxel/world/README.md` and
-`plugins/voxel/feature/README.md`.
+lighting) are documented in `plugins/vendor/voxel/world/README.md` and
+`plugins/vendor/voxel/feature/README.md`.
 
 ## Contents
 
@@ -26,12 +26,12 @@ lighting) are documented in `plugins/voxel/world/README.md` and
 
 | Layer | Where | Owns |
 |---|---|---|
-| Plugin | `plugins/voxel/` (`pulsar.voxel`): `component` (`voxel_component`, `src/lib.rs`), `editor` (`voxel_plugin`: the plugin's metadata and the generator and stack inspector editors), `api`, `world`, `feature`, `examples` | Links statically (the editor through `ui_core`, which links `voxel_plugin`; the game through `pulsar_game`, which links `voxel_component`) and registers everything with `inventory`: `VoxelFeature` and its settings (`engine_backend`'s `RenderFeatureRegistration`), the `VOXEL_RESIDENCY` settings group (`pulsar_settings`' `SettingsGroupRegistration`), the terrain's material names for ground-material lists (`helio_component::GroundMaterialNames`). |
+| Plugin | `plugins/vendor/voxel/` (`pulsar.voxel`): `component` (`voxel_component`, `src/lib.rs`), `editor` (`voxel_plugin`: the plugin's metadata and the generator and stack inspector editors), `api`, `world`, `feature`, `examples` | Links statically (the editor through `ui_core`, which links `voxel_plugin`; the game through `pulsar_game`, which links `voxel_component`) and registers everything with `inventory`: `VoxelFeature` and its settings (`engine_backend`'s `RenderFeatureRegistration`), the `VOXEL_RESIDENCY` settings group (`pulsar_settings`' `SettingsGroupRegistration`), the terrain's material names for ground-material lists (`helio_component::GroundMaterialNames`). |
 | Components | `voxel_component` (`component.rs`, `features.rs`, `component_runtime.rs`) | `VoxelTerrainComponent` (the world's description, air included), generator settings components, `VoxelEditJournal` field, inspector metadata, block events. |
 | World queries | `voxel_component` (`world.rs`, `sculpt.rs`) | Recipe/brush mapping, block API, scripting world methods (ground queries, sculpting), editor framing, journal compaction. |
 | Runtime | `voxel_component` (`runtime.rs`, `sync.rs`) | One world per terrain built off the game thread, the `VoxelWorlds` scene subsystem, the `VOXEL_FRAME` payload; `VoxelWorldSync`: journals and skies follow their world (`sky_for_air`, `haze_for_air`). |
 | Ready-made worlds | `voxel_component` (`presets.rs`), `assets/examples/voxel_*` | `VoxelWorldPreset` (Earth, Moon, Desert, Blocks): an example level's world added to a level in one step (`add_voxel_world`), taking over its sky, sun, haze, wind, ground cover and look. |
-| Canonical world, feature | The plugin's `world` (`helio-voxel-world`), `api` (`helio-voxel-data`) and `feature` (`helio-pass-voxel-planet`) crates in `plugins/voxel/` | Grid, terrain generators, edits, `Planet` queries and ray casts, the chunk passes and `VoxelFeature`. |
+| Canonical world, feature | The plugin's `world` (`helio-voxel-world`), `api` (`helio-voxel-data`) and `feature` (`helio-pass-voxel-planet`) crates in `plugins/vendor/voxel/` | Grid, terrain generators, edits, `Planet` queries and ray casts, the chunk passes and `VoxelFeature`. |
 | Viewport renderer | `engine_backend/.../helio_renderer/renderer.rs` | Camera (ground queries through component methods), camera-relative frames, publishing views, tool rays. No voxel code. |
 | Editor | `ui_level_editor` (`state/voxel.rs`, `tool_modes/voxel_sculpt/`, `tool_modes/terrain/`, `ui/viewport/build_handlers.rs`, panel handlers) | Create Voxel Terrain (`SceneCommand::AddVoxelWorld`), sculpt tool, strokes and undo, focus, generator picker, settings components. |
 
@@ -117,7 +117,7 @@ built (the error says what to fix); it is not rebuilt every frame.
 `voxel_moon`, `voxel_desert` and `voxel_blocks` (each a `Pulsar.toml` and its
 `scene/default.level`; open one with `just example voxel_planet`, or
 `--project-path`) are voxel_flight's setups
-(`plugins/voxel/examples/voxel_flight/worlds.rs`) with seed 75, generically: layer stack,
+(`plugins/vendor/voxel/examples/voxel_flight/worlds.rs`) with seed 75, generically: layer stack,
 features and their look, air, clouds, haze, and on Earth the engine meadow
 (six `FoliageComponent`s on a Meadow object, a `WindComponent` of 4.5 m/s).
 The editor spawns over the north pole under a sun 32 degrees high. An
@@ -382,7 +382,7 @@ and gameplay agree on every block. On generated terrain the older
   (a stroke is one undo step) and the Create Voxel Terrain command (one undo
   step).
 - Renderer-side performance and correctness are measured with the plugin's
-  hosts (`plugins/voxel/examples`; `voxel_flight`: `HELIO_VOXEL_FLIGHT_HOLD=<view>` holds a view and times
+  hosts (`plugins/vendor/voxel/examples`; `voxel_flight`: `HELIO_VOXEL_FLIGHT_HOLD=<view>` holds a view and times
   it, `HELIO_VOXEL_CHUNKS_ENGINE=1` through the chunk pass as the editor
   draws it, `HELIO_VOXEL_CHUNKS_FLY=descent|cruise` streams along a path),
   and the feature's `tests/chunks.rs` checks drawn hits against CPU ray
@@ -396,7 +396,7 @@ and gameplay agree on every block. On generated terrain the older
   `_SEED`, `HELIO_VOXEL_CHUNKS_ENGINE=1`) for parity.
 - `cargo test -p voxel_component --test voxel_example_levels`: the example
   levels (the ready-made worlds) against voxel_flight's worlds
-  (`plugins/voxel/examples/voxel_flight/worlds.rs`, compiled into the test): ground,
+  (`plugins/vendor/voxel/examples/voxel_flight/worlds.rs`, compiled into the test): ground,
   features, air, haze, clouds, meadow, wind, exposure, and a camera over the
   ground.
 

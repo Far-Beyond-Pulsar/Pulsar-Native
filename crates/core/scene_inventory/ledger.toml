@@ -369,7 +369,7 @@ own_gpu_columns = false
 owner = "voxel_component::component_runtime"
 disposition = "voxel domain: the built-in generator's layer stack (helio.terrain), resolved as the terrain's sibling instance (resolve_instance) and handed to the generator as its settings JSON when the world revision changes; its scripting surface (use_preset, add_layer, the layer setters) rebuilds the world from the changed settings"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "plugins/voxel/component/tests/voxel_component_schema.rs; plugins/voxel/component/tests/voxel_block_api.rs"
+test = "plugins/vendor/voxel/component/tests/voxel_component_schema.rs; plugins/vendor/voxel/component/tests/voxel_block_api.rs"
 status = "verified"
 
 [[class]]
@@ -380,7 +380,7 @@ own_gpu_columns = false
 owner = "voxel_component::component_runtime"
 disposition = "voxel domain, audited Phase 4: voxel_frame reads terrain entries, the edit journal and the sun (the first enabled, visible directional light) when the world revision changes; the voxel-planet pass receives a CPU PlanetFrame (Arc<Planet>, sun) and syncs journal edits to the GPU change-driven. Generation and sculpting stay real work; the CPU planet rebuilds on the `voxel-world` builder thread (WorldBuilder; the render thread keeps the last world meanwhile), and renderer brush commits bypass append_edits' validation (recorded, not changed)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "plugins/voxel/component/tests/voxel_component_schema.rs"
+test = "plugins/vendor/voxel/component/tests/voxel_component_schema.rs"
 status = "out-of-scope"
 notes = "Voxel work continues on its own branch (Pulsar-Native#994, Helio#314); Phase 4 recorded the audit (15-phase-4.md)."
 
@@ -1392,12 +1392,12 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "plugins/voxel/component/src/sync.rs"
+file = "plugins/vendor/voxel/component/src/sync.rs"
 count = 6
 owner = "voxel_component::sync (VoxelWorldSync)"
 disposition = "keep: independent VoxelTerrainComponent, VoxelTerrainLayersComponent and AtmosphereComponent cursors, read in two places (the check and the drain after a replaced world); the renderer's scene step re-checks edit journals against their ground, and skies against their world's air, only when one of them changed (a replaced world reopens them)"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "plugins/voxel/component/src/sync.rs (journals_are_checked_only_when_a_terrain_or_its_layers_change, edits_are_dropped_when_the_ground_changes)"
+test = "plugins/vendor/voxel/component/src/sync.rs (journals_are_checked_only_when_a_terrain_or_its_layers_change, edits_are_dropped_when_the_ground_changes)"
 status = "verified"
 
 [[site]]
@@ -2901,7 +2901,7 @@ crate = "helio-pass-voxel-planet"
 in_default_graph = false
 reads = ["materials", "scene_lights"]
 owner = "voxel_component (RenderFeatureRegistration)"
-disposition = "the voxel plugin's feature crate (plugins/voxel/feature), not in Helio's default features: the plugin registers VoxelFeature with the engine's renderer, which adds it to every preset; its ChunkPass reads the frame's camera, the VOXEL_FRAME payload the terrain runtime publishes, and the scene's material rows (terrain textured like meshes) and lights (their shadows on the terrain); no SceneDB rows of its own"
+disposition = "the voxel plugin's feature crate (plugins/vendor/voxel/feature), not in Helio's default features: the plugin registers VoxelFeature with the engine's renderer, which adds it to every preset; its ChunkPass reads the frame's camera, the VOXEL_FRAME payload the terrain runtime publishes, and the scene's material rows (terrain textured like meshes) and lights (their shadows on the terrain); no SceneDB rows of its own"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: not in a production graph"
 status = "out-of-scope"

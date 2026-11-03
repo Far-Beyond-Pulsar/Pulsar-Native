@@ -30,7 +30,7 @@ use flight::Preset;
 /// scene steps do), and its camera.
 fn level(name: &str) -> (World, EditorCamera) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../../assets/examples/{name}/scene/default.level"
+        "../../../../assets/examples/{name}/scene/default.level"
     ));
     let mut scene = engine_backend::scene::new_scene();
     let extras = engine_backend::scene::RuntimeLevel::load_into(&path, &mut scene.world)

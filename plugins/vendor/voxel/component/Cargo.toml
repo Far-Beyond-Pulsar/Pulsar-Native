@@ -28,7 +28,7 @@ helio_component = { workspace = true }
 # pulsar_game): linking the plugin must not pull the editor's features into a
 # game build. A path dependency because the workspace table cannot opt out of
 # default features.
-engine_backend = { path = "../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
 inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

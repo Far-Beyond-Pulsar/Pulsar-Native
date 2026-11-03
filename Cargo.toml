@@ -32,7 +32,7 @@ members = [
     # (components, methods, runtime, file formats), editor (the editor plugin)
     # and examples (its standalone hosts: voxel_craft, voxel_flight,
     # water_world). Built-in plugin of the editor and the game.
-    "plugins/voxel/*",
+    "plugins/vendor/voxel/*",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -168,8 +168,8 @@ skeletal_assets                    = { path = "plugins/vendor/skm_editor/skeleta
 # The voxel plugin (`pulsar.voxel`): hosts link the component crate (the game)
 # or the editor plugin crate (the editor); its other crates are below, with
 # the Helio crates.
-voxel_component                    = { path = "plugins/voxel/component" }
-voxel_plugin                       = { path = "plugins/voxel/editor", features = ["builtin"] }
+voxel_component                    = { path = "plugins/vendor/voxel/component" }
+voxel_plugin                       = { path = "plugins/vendor/voxel/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -255,11 +255,11 @@ helio-presets              = { path = "crates/renderer/helio/crates/helio-preset
 helio-scene-derivations    = { path = "crates/renderer/helio/crates/helio-scene-derivations" }
 helio-graph-asset           = { path = "crates/renderer/helio/crates/helio-graph-asset" }
 helio-feature-api = { path = "crates/renderer/helio/crates/helio-feature-api" }
-# The voxel plugin's api, world and feature crates (plugins/voxel/): only the
+# The voxel plugin's api, world and feature crates (plugins/vendor/voxel/): only the
 # plugin's own crates use them.
-helio-voxel-data = { path = "plugins/voxel/api" }
-helio-voxel-world = { path = "plugins/voxel/world" }
-helio-pass-voxel-planet = { path = "plugins/voxel/feature" }
+helio-voxel-data = { path = "plugins/vendor/voxel/api" }
+helio-voxel-world = { path = "plugins/vendor/voxel/world" }
+helio-pass-voxel-planet = { path = "plugins/vendor/voxel/feature" }
 helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }
 helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
