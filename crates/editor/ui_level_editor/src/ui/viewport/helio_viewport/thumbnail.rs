@@ -53,7 +53,12 @@ pub(super) fn capture_viewport_png_tiled(
                 [width, height],
                 [tile_x, band_y],
                 [tile_width, tile_height],
-            )?;
+            )
+            .map_err(|error| {
+                format!(
+                    "Screenshot tile at ({tile_x}, {band_y}) with size {tile_width} × {tile_height} failed: {error}"
+                )
+            })?;
             tiles.push((tile_width, pixels));
             tile_x += tile_width;
         }

@@ -335,14 +335,27 @@ impl Render for HelioViewport {
                     let mut engine = engine
                         .lock()
                         .map_err(|_| "Helio renderer lock was poisoned".to_string())?;
-                    capture_viewport_png_tiled(
-                        &mut engine,
-                        &surface,
-                        width,
-                        height,
-                        format,
-                        &output_path,
-                    )?;
+                    // Keep renderer panics inside this lock guard so they are
+                    // reported as capture failures instead of poisoning the
+                    // viewport renderer mutex or unwinding through the task.
+                    catch_unwind(AssertUnwindSafe(|| {
+                        capture_viewport_png_tiled(
+                            &mut engine,
+                            &surface,
+                            width,
+                            height,
+                            format,
+                            &output_path,
+                        )
+                    }))
+                    .map_err(|payload| {
+                        let message = payload
+                            .downcast_ref::<String>()
+                            .map(String::as_str)
+                            .or_else(|| payload.downcast_ref::<&'static str>().copied())
+                            .unwrap_or("unknown panic");
+                        format!("Helio panicked while rendering a screenshot tile: {message}")
+                    })??;
                     Ok::<_, String>(output_path)
                 });
                 cx.spawn_in(window, async move |this, cx| {
