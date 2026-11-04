@@ -211,6 +211,10 @@ impl EventEmitter<DismissEvent> for HelioViewport {}
 impl Render for HelioViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         profiling::profile_scope!("helio_viewport_frame");
+        let (screenshot_processing, screenshot_progress) = {
+            let build = &self.shared_state.read().build;
+            (build.screenshot_processing, build.screenshot_progress)
+        };
         if self.debug_replace_with_yellow {
             return div()
                 .relative()
@@ -512,7 +516,7 @@ impl Render for HelioViewport {
                 }
             })
             .child(viewport_element)
-            .when(self.shared_state.read().build.screenshot_processing, |el| {
+            .when(screenshot_processing, |el| {
                 el.child(
                     div()
                         .absolute()
@@ -522,7 +526,12 @@ impl Render for HelioViewport {
                         .justify_center()
                         .bg(rgba(0x00000099))
                         .text_color(rgb(0xffffff))
-                        .child("High resolution screenshot is processing…"),
+                        .child(match screenshot_progress {
+                            Some((completed, total)) => format!(
+                                "High resolution screenshot: {completed}/{total} tiles complete…"
+                            ),
+                            None => "High resolution screenshot is processing…".to_string(),
+                        }),
                 )
             })
             .into_any_element()
