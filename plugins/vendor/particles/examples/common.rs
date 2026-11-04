@@ -6,8 +6,8 @@
 use glam::{Mat4, Vec3};
 use helio::{GpuLight, SceneDbHandle};
 use helio_components::MaterialComponent;
-use helio_pass_sky::host_rows::AtmosphereComponent;
 use helio_mesh_api::{MeshUpload, PackedVertex};
+use helio_pass_sky::host_rows::AtmosphereComponent;
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
 
@@ -49,7 +49,11 @@ pub fn new_scene_db_with_gpu_mirror_and(
         max_cells_metadata: 0,
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
-    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
+    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        4,
+        device,
+    );
     helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,
@@ -454,12 +458,14 @@ pub fn plane_mesh(center: [f32; 3], half_extent: f32) -> MeshUpload {
 /// The deferred preset with the plugin's features (Helio's presets do not
 /// list them: the particles are a Pulsar plugin's).
 pub fn preset() -> helio_presets::PresetGraph {
-    helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
-                .with(helio_pass_corona::CoronaFeature)
-                // The lighting plugins' (Helio's presets list neither).
-                .with(helio_pass_sky::SkyFeature)
-                .with(helio_pass_gi::GiFeature),
-        )
+    helio_mesh_host::presets::with(
+        helio_presets::Preset::Deferred,
+        &helio_feature_api::FeatureSet::new()
+            .with(helio_pass_corona::CoronaFeature)
+            // The lighting plugins' (Helio's presets list neither).
+            .with(helio_pass_sky::SkyFeature)
+            .with(helio_pass_gi::GiFeature),
+    )
 }
 
 // The plugin's rows as standalone hosts author them (contract rows, as

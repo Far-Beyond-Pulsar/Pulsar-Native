@@ -202,9 +202,8 @@ fn record_phase(
     // no masked bins either (it gets the same `materials` buffer).
     let masked = match (
         ctx.scene_buffers.get(BufferKey::of("materials")),
-        ctx.registry.get::<helio_mats::MaterialTextureBindings<'_>>(
-            helio_mats::material_textures(),
-        ),
+        ctx.registry
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures()),
     ) {
         (Some(materials), Some(material_textures)) => Some(VgMaskedInputs {
             materials: &materials.buffer,

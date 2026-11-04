@@ -70,30 +70,57 @@ fn constant(module: &naga::Module, name: &str) -> u32 {
 #[test]
 fn the_ray_surface_rows_match_the_rust() {
     let m = module(RAY_SURFACE_READER, RAY_SURFACE_SNIPPET);
-    assert_eq!(struct_size(&m, "RayInstance"), std::mem::size_of::<RayInstance>());
+    assert_eq!(
+        struct_size(&m, "RayInstance"),
+        std::mem::size_of::<RayInstance>()
+    );
     assert_eq!(constant(&m, "RAY_INSTANCE_PROXY"), RAY_INSTANCE_PROXY);
     assert_eq!(constant(&m, "RAY_INSTANCE_MASKED"), RAY_INSTANCE_MASKED);
-    assert_eq!(constant(&m, "RAY_INSTANCE_TWO_SIDED"), RAY_INSTANCE_TWO_SIDED);
-    assert_eq!(constant(&m, "MESH_VERTEX_WORDS") as usize * 4, std::mem::size_of::<PackedVertex>());
-    assert_eq!(u64::from(constant(&m, "RAY_PROXY_FLOATS")) * 4, RAY_PROXY_VERTEX_BYTES);
+    assert_eq!(
+        constant(&m, "RAY_INSTANCE_TWO_SIDED"),
+        RAY_INSTANCE_TWO_SIDED
+    );
+    assert_eq!(
+        constant(&m, "MESH_VERTEX_WORDS") as usize * 4,
+        std::mem::size_of::<PackedVertex>()
+    );
+    assert_eq!(
+        u64::from(constant(&m, "RAY_PROXY_FLOATS")) * 4,
+        RAY_PROXY_VERTEX_BYTES
+    );
 }
 
 #[test]
 fn the_draw_rows_match_the_rust() {
     let m = module(DRAW_ROWS_READER, DRAW_ROWS_SNIPPET);
-    assert_eq!(struct_size(&m, "GpuInstanceData"), std::mem::size_of::<GpuInstanceData>());
-    assert_eq!(struct_size(&m, "GpuDrawCall"), std::mem::size_of::<GpuDrawCall>());
+    assert_eq!(
+        struct_size(&m, "GpuInstanceData"),
+        std::mem::size_of::<GpuInstanceData>()
+    );
+    assert_eq!(
+        struct_size(&m, "GpuDrawCall"),
+        std::mem::size_of::<GpuDrawCall>()
+    );
     assert_eq!(
         struct_size(&m, "DrawIndexedIndirect"),
         std::mem::size_of::<DrawIndexedIndirectArgs>()
     );
     for (name, value) in [
         ("INSTANCE_FLAG_CASTS_SHADOW", INSTANCE_FLAG_CASTS_SHADOW),
-        ("INSTANCE_FLAG_RECEIVES_SHADOW", INSTANCE_FLAG_RECEIVES_SHADOW),
+        (
+            "INSTANCE_FLAG_RECEIVES_SHADOW",
+            INSTANCE_FLAG_RECEIVES_SHADOW,
+        ),
         ("INSTANCE_FLAG_ALWAYS_VISIBLE", INSTANCE_FLAG_ALWAYS_VISIBLE),
         ("INSTANCE_FLAG_MOVABLE", INSTANCE_FLAG_MOVABLE),
-        ("INSTANCE_FLAG_CLASSIC_SUPPRESSED", INSTANCE_FLAG_CLASSIC_SUPPRESSED),
-        ("INSTANCE_COORDINATE_SPACE_SHIFT", INSTANCE_COORDINATE_SPACE_SHIFT),
+        (
+            "INSTANCE_FLAG_CLASSIC_SUPPRESSED",
+            INSTANCE_FLAG_CLASSIC_SUPPRESSED,
+        ),
+        (
+            "INSTANCE_COORDINATE_SPACE_SHIFT",
+            INSTANCE_COORDINATE_SPACE_SHIFT,
+        ),
     ] {
         assert_eq!(constant(&m, name), value, "{name}");
     }

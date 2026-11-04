@@ -53,7 +53,13 @@ pub static FOLIAGE: Group = Group {
     title: "Foliage",
     description: "Scattered foliage (grass, flowers)",
     settings: &[
-        toggle("enabled", "Foliage", "Foliage", true, "Draw scattered foliage (grass, flowers)"),
+        toggle(
+            "enabled",
+            "Foliage",
+            "Foliage",
+            true,
+            "Draw scattered foliage (grass, flowers)",
+        ),
         pick(
             "quality",
             "Foliage Quality",

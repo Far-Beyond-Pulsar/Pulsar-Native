@@ -841,9 +841,9 @@ fn build_bench(
     let config = RendererConfig::new(WIDTH, HEIGHT, format)
         .with_render_scale(1.0)
         .with_feature(helio_pass_shadow_matrix::ShadowSettings {
-                quality: helio::ShadowQuality::High,
-                ..Default::default()
-            });
+            quality: helio::ShadowQuality::High,
+            ..Default::default()
+        });
     let mut renderer = RendererBuilder::new(config, scene_db_handle(&scene_db))
         .with_external_device()
         .with_editor_mode(args.editor)
@@ -855,9 +855,9 @@ fn build_bench(
         })
         .build(device.clone(), queue.clone(), WIDTH, HEIGHT, format);
     renderer.set_feature_live(helio::AmbientLight {
-            color: [0.08, 0.08, 0.09],
-            intensity: 1.0,
-        });
+        color: [0.08, 0.08, 0.09],
+        intensity: 1.0,
+    });
     renderer.set_frame_delta_override(Some(1.0 / 60.0));
     let acceleration = (mode == Mode::RayTraced).then(|| {
         if let Some(pass) = renderer.find_pass_mut::<helio_pass_hlfs::HlfsPass>() {

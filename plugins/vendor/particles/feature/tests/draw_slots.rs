@@ -15,5 +15,8 @@ fn the_vertex_shader_reads_the_slot_attribute() {
         "corona: reads @builtin(instance_index)"
     );
     let attribute = format!("@location({})", helio_mesh_api::DRAW_SLOT_LOCATION);
-    assert!(code.contains(&attribute), "corona: has no {attribute} slot input");
+    assert!(
+        code.contains(&attribute),
+        "corona: has no {attribute} slot input"
+    );
 }

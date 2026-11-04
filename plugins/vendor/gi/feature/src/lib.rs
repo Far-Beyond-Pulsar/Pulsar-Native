@@ -30,8 +30,8 @@ mod feature;
 mod mesh;
 pub mod settings;
 pub use feature::GiFeature;
-pub use settings::{GiSettings, GI};
 pub use mesh::{mesh_rays_supported, GiMeshTracePass};
+pub use settings::{GiSettings, GI};
 
 pub use helio_gi_api::{
     eye, Clipmap, GpuFrame, GpuLevel, DEFAULT_FINEST_SPACING, FRAME_BYTES, GI_CLIPMAP,

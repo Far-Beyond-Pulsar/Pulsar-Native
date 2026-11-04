@@ -25,18 +25,18 @@
 
 mod v3_demo_common;
 
-use helio_bake::BakeConfig;
 use helio::{
-    required_experimental_features, required_wgpu_features, required_wgpu_limits, 
-    Camera, HelioAction, HelioCommandBridge, HelioGraphicsConfig, HelioGraphicsContext, Renderer,
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
+    HelioAction, HelioCommandBridge, HelioGraphicsConfig, HelioGraphicsContext, Renderer,
     RendererBuilder, RendererConfig,
 };
+use helio_bake::BakeConfig;
 use helio_pass_perf_overlay::PerfOverlayMode;
 use pulsar_scenedb::{Entity, SceneDb};
 use v3_demo_common::{
     box_mesh, make_material, new_scene_db_with_gpu_mirror, plane_mesh, point_light,
-    scene_db_handle, spawn_light, spawn_material, spawn_mesh,
-    spawn_object, update_light, SceneRays, SurfaceCapture,
+    scene_db_handle, spawn_light, spawn_material, spawn_mesh, spawn_object, update_light,
+    SceneRays, SurfaceCapture,
 };
 
 use std::io::{self, BufRead};
@@ -207,11 +207,12 @@ impl ApplicationHandler for App {
         device.on_uncaptured_error(std::sync::Arc::new(|e: wgpu::Error| {
             panic!("[GPU UNCAPTURED ERROR] {:?}", e);
         }));
-        let config = RendererConfig::new(size.width, size.height, format)
-            .with_feature(helio_pass_shadow_matrix::ShadowSettings {
+        let config = RendererConfig::new(size.width, size.height, format).with_feature(
+            helio_pass_shadow_matrix::ShadowSettings {
                 quality: helio::ShadowQuality::Ultra,
                 ..Default::default()
-            });
+            },
+        );
         let mut scene_db = new_scene_db_with_gpu_mirror(&device, &queue);
         let graph_scene_db = scene_db_handle(&scene_db);
         let mut renderer = RendererBuilder::new(config, graph_scene_db.clone())
@@ -225,7 +226,6 @@ impl ApplicationHandler for App {
             &mut scene_db.world,
             make_material([0.75, 0.72, 0.68, 1.0], 0.85, 0.0, [0.0, 0.0, 0.0], 0.0),
         );
-
 
         // Lights are spawned BEFORE any mesh/material/object entity, not just
         // grouped here for readability: `LightComponent`'s "scene_lights" GPU

@@ -443,7 +443,10 @@ fn editor(width: u32, height: u32) -> Option<Editor> {
             intensity: 1.0,
         })
         .with_external_device()
-        .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &voxel_features()))
+        .with_graph(helio_mesh_host::presets::with(
+            helio_presets::Preset::Deferred,
+            &voxel_features(),
+        ))
         .build(
             Arc::clone(&device),
             Arc::clone(&queue),
@@ -480,7 +483,11 @@ fn editor(width: u32, height: u32) -> Option<Editor> {
 impl Editor {
     /// A directional sun shining from `towards`, and the scene's atmosphere
     /// row (`None` removes it).
-    fn set_sky(&mut self, towards: Vec3, air: Option<helio_pass_sky::host_rows::AtmosphereComponent>) {
+    fn set_sky(
+        &mut self,
+        towards: Vec3,
+        air: Option<helio_pass_sky::host_rows::AtmosphereComponent>,
+    ) {
         let sun = *self.sun.get_or_insert_with(|| self.scene.world.spawn());
         self.scene.world.insert(
             sun,

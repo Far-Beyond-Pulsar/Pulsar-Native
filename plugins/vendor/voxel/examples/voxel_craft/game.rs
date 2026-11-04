@@ -267,13 +267,10 @@ impl Game {
             }
         }
         let settled = self.gfx.settled() && self.world.loaded();
-        let shot = self
-            .tour
-            .as_mut()
-            .and_then(|t| {
-                t.world_ms = world_ms;
-                t.step(&mut self.player, &mut self.world, settled, &mut self.quit)
-            });
+        let shot = self.tour.as_mut().and_then(|t| {
+            t.world_ms = world_ms;
+            t.step(&mut self.player, &mut self.world, settled, &mut self.quit)
+        });
         let (eye, look) = self.player.camera(&self.world);
         #[cfg(not(target_arch = "wasm32"))]
         let (eye, look) = vr.as_ref().map_or((eye, look), |vr| {

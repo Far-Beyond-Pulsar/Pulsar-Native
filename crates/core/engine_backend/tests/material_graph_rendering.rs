@@ -670,9 +670,18 @@ fn gpu_mesh_upload_preserves_uv0_uv1_normals_and_stride() {
         .underlying()
         .clone();
     assert_eq!(std::mem::size_of::<helio_mesh_api::PackedVertex>(), 40);
-    assert_eq!(std::mem::offset_of!(helio_mesh_api::PackedVertex, tex_coords0), 16);
-    assert_eq!(std::mem::offset_of!(helio_mesh_api::PackedVertex, tex_coords1), 24);
-    assert_eq!(std::mem::offset_of!(helio_mesh_api::PackedVertex, normal), 32);
+    assert_eq!(
+        std::mem::offset_of!(helio_mesh_api::PackedVertex, tex_coords0),
+        16
+    );
+    assert_eq!(
+        std::mem::offset_of!(helio_mesh_api::PackedVertex, tex_coords1),
+        24
+    );
+    assert_eq!(
+        std::mem::offset_of!(helio_mesh_api::PackedVertex, normal),
+        32
+    );
     let staging = context.device().create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: 120,

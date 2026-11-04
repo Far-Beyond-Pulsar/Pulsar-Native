@@ -132,7 +132,10 @@ impl Harness {
             let mirror = scene.world.gpu_mirror().cloned().unwrap();
             let renderer = RendererBuilder::new(config.clone(), mirror)
                 .with_external_device()
-                .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &voxel_features()))
+                .with_graph(helio_mesh_host::presets::with(
+                    helio_presets::Preset::Deferred,
+                    &voxel_features(),
+                ))
                 .build(
                     device.clone(),
                     queue.clone(),

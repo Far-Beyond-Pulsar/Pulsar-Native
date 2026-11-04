@@ -7,8 +7,7 @@
 use glam::{Mat4, Vec3, Vec4};
 
 const SHADOW_WGSL: &str = include_str!("../shaders/shadow.wgsl");
-const SHADOW_DIRTY_WGSL: &str =
-    include_str!("../../shadow-dirty/shaders/shadow_dirty.wgsl");
+const SHADOW_DIRTY_WGSL: &str = include_str!("../../shadow-dirty/shaders/shadow_dirty.wgsl");
 
 /// The page-mask helpers of `source`: from `fn ratio_range` through the end of
 /// `fn sphere_pages`.

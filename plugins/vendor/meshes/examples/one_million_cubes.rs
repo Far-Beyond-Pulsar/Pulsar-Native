@@ -237,9 +237,7 @@ impl ApplicationHandler for App {
             .unwrap();
         let mut renderer = RendererBuilder::new(config, scene_handle)
             .with_external_device()
-            .with_pass_build_context(Box::new(
-                helio_mesh_host::presets::deferred,
-            ))
+            .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
             .build_with_graphics_context(&mut graphics)
             .expect("Helio renderer");
         let surface = graphics.surface;

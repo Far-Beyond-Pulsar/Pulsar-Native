@@ -5,9 +5,9 @@
 
 mod components;
 pub mod feature;
-pub mod scene_rows;
 #[cfg(feature = "host-rows")]
 pub mod host_rows;
+pub mod scene_rows;
 pub use scene_rows::PostRowSources;
 mod volume_blend;
 

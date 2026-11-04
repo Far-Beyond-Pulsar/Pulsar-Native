@@ -15,8 +15,8 @@ use super::vg_stress_data::{
     textures::{self, GltfMaterial},
 };
 use super::vg_stress_prep::{catalog::Config, polyhaven};
-use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_asset_compat::{load_scene_file_with_config, ConvertedMesh, LoadConfig, MaterialSource};
+use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_vg_stream::{content_words, VgeoBytes};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};

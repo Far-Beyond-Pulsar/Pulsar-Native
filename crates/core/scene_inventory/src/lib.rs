@@ -17,24 +17,24 @@
 // Rust only links a dependency that is referenced. These crates are needed
 // solely for their link-time registrations (`inventory` statics), which the
 // code below never names directly.
+extern crate decals_component;
 extern crate engine_backend;
+extern crate fog_component;
+extern crate foliage_component;
 extern crate helio_component;
 extern crate input_plugin;
+extern crate lens_component;
+extern crate particles_component;
 extern crate physics_plugin;
+extern crate portals_component;
+extern crate post_component;
 extern crate pulsar_class;
 extern crate pulsar_physics;
 extern crate pulsar_scene_model;
-extern crate voxel_component;
-extern crate decals_component;
-extern crate lens_component;
-extern crate particles_component;
-extern crate portals_component;
+extern crate sky_component;
 extern crate splines_component;
 extern crate sprites_component;
-extern crate fog_component;
-extern crate foliage_component;
-extern crate sky_component;
-extern crate post_component;
+extern crate voxel_component;
 extern crate water_component;
 
 pub mod architecture;

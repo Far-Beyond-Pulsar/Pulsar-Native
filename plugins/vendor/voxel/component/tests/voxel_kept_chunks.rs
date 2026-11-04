@@ -159,9 +159,8 @@ fn a_saved_journal_keeps_the_edited_chunks_and_a_new_renderer_restores_them() {
 
     // A save asks off the render thread; the idle viewport renders again
     // until it has answered.
-    let runtime =
-        voxel_component::runtime::VoxelTerrainRuntime::of(&scene.read().world, terrain)
-            .expect("the terrain's runtime");
+    let runtime = voxel_component::runtime::VoxelTerrainRuntime::of(&scene.read().world, terrain)
+        .expect("the terrain's runtime");
     let save = std::thread::spawn(move || runtime.kept_chunks(Duration::from_secs(120)));
     let mut frames = 0;
     while !save.is_finished() {

@@ -223,17 +223,29 @@ jobs:
           # repositories own their standalone applications. Letting Cargo
           # auto-enroll those repositories as workspace members makes their
           # identically named examples race for target/*/examples/standalone.
+          # Only members inside a plugin submodule are external: the in-tree
+          # plugins under plugins/vendor (the object kinds, the asset viewer,
+          # render_bps) are Pulsar's own crates.
+          $workspaceRoot = ($metadata["workspace_root"] -replace "\\", "/").TrimEnd("/")
+          $pluginSubmodules = @(
+            git config --file .gitmodules --get-regexp '\.path$' |
+              ForEach-Object { ($_ -split ' ', 2)[1] } |
+              Where-Object { $_ -like "plugins/vendor/*" }
+          )
           $workspaceMemberIds = @($metadata["workspace_members"])
           $vendorWorkspaceMembers = @(
             $metadata["packages"] | Where-Object {
+              $manifest = $_["manifest_path"] -replace "\\", "/"
               $workspaceMemberIds -contains $_["id"] -and
-              (($_["manifest_path"] -replace "\\", "/") -match "/plugins/vendor/")
+              @($pluginSubmodules | Where-Object {
+                $manifest.StartsWith("$workspaceRoot/$_/")
+              }).Count -ne 0
             } | ForEach-Object { $_["name"] } | Sort-Object
           )
-          # These two are explicit root-workspace members: the built-in asset
-          # viewer, and the GPUI-free Blueprint compiler tested
+          # The explicit root-workspace members from plugin repositories: their
+          # built-in integrations, and the GPUI-free Blueprint compiler tested
           # against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "render_bps_plugin", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin", "input_plugin")
+          $expectedVendorWorkspaceMembers = @("blueprint_compiler", "input_plugin", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )

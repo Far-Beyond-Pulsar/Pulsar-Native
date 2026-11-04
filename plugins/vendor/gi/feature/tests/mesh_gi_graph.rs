@@ -12,8 +12,8 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
     RendererBuilder, RendererConfig,
 };
+use helio_components::MaterialComponent;
 use helio_mesh_host::ray_tracing::SceneDbRayTracing;
-use helio_components::{MaterialComponent};
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_gi::{GiMeshTracePass, GiPass, PROBES, PROBE_WORDS};
 
@@ -230,7 +230,9 @@ fn a_mesh_scene_s_probes_trace_its_meshes_on_frames_with_a_tlas() {
     let config = RendererConfig::new(64, 64, wgpu::TextureFormat::Rgba8Unorm);
     let mut renderer =
         RendererBuilder::new(config.clone(), scene.world.gpu_mirror().cloned().unwrap())
-            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
+            .with_graph(helio_mesh_host::presets::with(
+                helio_presets::Preset::Deferred,
+                &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
             ))
             .with_external_device()
             .build(
@@ -321,7 +323,9 @@ fn without_ray_queries_a_mesh_scene_has_no_gi() {
     let config = RendererConfig::new(32, 32, wgpu::TextureFormat::Rgba8Unorm);
     let mut renderer =
         RendererBuilder::new(config.clone(), scene.world.gpu_mirror().cloned().unwrap())
-            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
+            .with_graph(helio_mesh_host::presets::with(
+                helio_presets::Preset::Deferred,
+                &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
             ))
             .with_external_device()
             .build(

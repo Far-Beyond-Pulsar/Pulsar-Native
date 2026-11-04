@@ -23,19 +23,19 @@
 
 mod common;
 
-use helio_bake::BakeConfig;
-use helio::{
-    required_experimental_features, required_wgpu_features, required_wgpu_limits, 
-    Camera, HelioAction, HelioCommandBridge, HelioGraphicsConfig, HelioGraphicsContext, Renderer,
-    RendererBuilder, RendererConfig,
-};
-use helio_pass_perf_overlay::PerfOverlayMode;
-use pulsar_scenedb::{Entity, SceneDb};
 use common::{
     box_mesh, make_material, new_scene_db_with_gpu_mirror, plane_mesh, point_light,
     scene_db_handle, spawn_indoor_cathedral_sky, spawn_light, spawn_material, spawn_mesh,
     spawn_object, update_light, SceneRays, SurfaceCapture,
 };
+use helio::{
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
+    HelioAction, HelioCommandBridge, HelioGraphicsConfig, HelioGraphicsContext, Renderer,
+    RendererBuilder, RendererConfig,
+};
+use helio_bake::BakeConfig;
+use helio_pass_perf_overlay::PerfOverlayMode;
+use pulsar_scenedb::{Entity, SceneDb};
 
 use std::io::{self, BufRead};
 use std::sync::mpsc::Receiver;
@@ -205,11 +205,12 @@ impl ApplicationHandler for App {
         device.on_uncaptured_error(std::sync::Arc::new(|e: wgpu::Error| {
             panic!("[GPU UNCAPTURED ERROR] {:?}", e);
         }));
-        let config = RendererConfig::new(size.width, size.height, format)
-            .with_feature(helio_pass_shadow_matrix::ShadowSettings {
+        let config = RendererConfig::new(size.width, size.height, format).with_feature(
+            helio_pass_shadow_matrix::ShadowSettings {
                 quality: helio::ShadowQuality::Ultra,
                 ..Default::default()
-            });
+            },
+        );
         let mut scene_db = new_scene_db_with_gpu_mirror(&device, &queue);
         let graph_scene_db = scene_db_handle(&scene_db);
         let mut renderer = RendererBuilder::new(config, graph_scene_db.clone())

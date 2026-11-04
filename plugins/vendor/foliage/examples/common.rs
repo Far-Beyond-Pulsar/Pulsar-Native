@@ -6,9 +6,9 @@ use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType, Renderer, RendererBuilder, RendererConfig, SceneDbHandle};
 #[allow(unused_imports)]
 use helio_components::{LightComponent, MaterialComponent};
+use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_sky::host_rows::AtmosphereComponent;
-use helio_mesh_api::{MeshUpload, PackedVertex};
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
 
@@ -50,7 +50,11 @@ pub fn new_scene_db_with_gpu_mirror_and(
         max_cells_metadata: 0,
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
-    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
+    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        4,
+        device,
+    );
     helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,

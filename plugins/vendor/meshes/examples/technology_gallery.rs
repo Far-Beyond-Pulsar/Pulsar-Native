@@ -3,8 +3,8 @@
 //! `plugins/vendor/fog`); this scene no longer has any.
 use crate::{architectural_mesh::Mesh, v3_demo_common::*};
 use glam::{Mat4, Vec3};
-use helio::{Camera};
-use helio_mesh_api::{MeshUpload};
+use helio::Camera;
+use helio_mesh_api::MeshUpload;
 use pulsar_scenedb::{Entity, World};
 
 pub fn camera(t: f32, aspect: f32) -> Camera {

@@ -6,7 +6,8 @@ fn main() {
     env_logger::init();
 
     // Resolve test.fbx relative to the workspace root (two levels up from this crate).
-    let model_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/assets/test.fbx");
+    let model_path: PathBuf =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/assets/test.fbx");
 
     println!("Rendering: {}", model_path.display());
 

@@ -21,7 +21,6 @@ pub struct MeshComponent {
     pub indices: Vec<u32>,
 }
 
-
 /// Stable group membership. `group_mask == 0` means always visible.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]

@@ -4,9 +4,9 @@
 
 use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType};
-use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_components::{LightComponent, MaterialComponent};
-use helio_mesh_host::{StaticObjectComponent};
+use helio_mesh_api::{MeshUpload, PackedVertex};
+use helio_mesh_host::StaticObjectComponent;
 use pulsar_scenedb::{Entity, World};
 
 pub type SceneResult<T> = Result<T, &'static str>;

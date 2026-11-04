@@ -1,7 +1,7 @@
 //! Every sky shader, with the snippets its passes build it with, parses and
 //! validates (naga), so a WGSL mistake fails here rather than on a device.
-use helio_pass_sky::atmosphere::{ATMOSPHERE_SKY_TABLE_SNIPPET, ATMOSPHERE_SNIPPET};
 use helio_frame_api::lighting::sun_transmittance::SNIPPET as SUN_TRANSMITTANCE_SNIPPET;
+use helio_pass_sky::atmosphere::{ATMOSPHERE_SKY_TABLE_SNIPPET, ATMOSPHERE_SNIPPET};
 use helio_pass_sky::clouds::CLOUDS_SNIPPET;
 
 fn validate(label: &str, source: &str) {

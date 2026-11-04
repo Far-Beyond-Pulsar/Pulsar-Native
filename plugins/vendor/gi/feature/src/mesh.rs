@@ -14,11 +14,11 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use helio_core::graph::ResourceBuilder;
 use helio_core::{PassContext, PrepareContext, RenderPass, ResourceKey, Result as HelioResult};
+use helio_frame_api::lighting::sun_transmittance::{self, SunTransmittance};
 use helio_pass_shadow_matrix::{
     SUN_OCCLUSION_FRAME, SUN_OCCLUSION_FRAME_BYTES, SUN_OCCLUSION_MAPS, SUN_OCCLUSION_PAGES,
     SUN_OCCLUSION_SNIPPET,
 };
-use helio_frame_api::lighting::sun_transmittance::{self, SunTransmittance};
 
 /// The scene's point and spot lights a hit chooses from: the first so many
 /// live ones (`gi_gather_lights`).
@@ -361,10 +361,8 @@ impl GiMeshTracePass {
         transmittance: Option<(&wgpu::TextureView, &wgpu::Buffer)>,
         seed: u32,
     ) {
-        let (cloud_map, cloud_frame) = transmittance.unwrap_or((
-            &self.no_sun_transmittance.0,
-            &self.no_sun_transmittance.1,
-        ));
+        let (cloud_map, cloud_frame) =
+            transmittance.unwrap_or((&self.no_sun_transmittance.0, &self.no_sun_transmittance.1));
         let (lights, count) = lights.unwrap_or((&self.no_lights, 0));
         let count = count.min((lights.size() / 128) as u32);
         let (occlusion_frame, occlusion_maps, occlusion_pages) = occlusion.unwrap_or((
@@ -513,12 +511,12 @@ impl RenderPass for GiMeshTracePass {
         else {
             return Ok(());
         };
-        let pool = |key: helio_core::BufferKey| ctx.scene_buffers.get(key).map(|h| h.buffer.clone());
+        let pool =
+            |key: helio_core::BufferKey| ctx.scene_buffers.get(key).map(|h| h.buffer.clone());
         let (Some(vertices), Some(indices)) = (
             pool(helio_mesh_api::MESH_VERTICES.key()),
             pool(helio_mesh_api::MESH_INDICES.key()),
-        )
-        else {
+        ) else {
             return Ok(());
         };
         let lights = pool(helio_core::BufferKey::of("scene_lights"));
@@ -527,9 +525,9 @@ impl RenderPass for GiMeshTracePass {
             proxy(helio_mesh_api::RAY_PROXY_VERTICES).zip(proxy(helio_mesh_api::RAY_PROXY_INDICES));
         // The material table, its bind group kept while it stays the same.
         let rows = pool(helio_mats::MATERIALS.key());
-        let textures = ctx.registry.get::<helio_mats::MaterialTextureBindings<'_>>(
-            helio_mats::material_textures(),
-        );
+        let textures = ctx
+            .registry
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures());
         match (rows, textures) {
             (Some(rows), Some(textures)) => {
                 let key = (rows, textures.material_textures.clone(), textures.version);

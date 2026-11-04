@@ -322,7 +322,9 @@ impl RenderPass for PortalCullPass {
         self.published_chain_count = scene
             .scene_buffers()
             .map_or(0, |buffers| portal_counts(buffers).chains);
-        self.active_chain_count.unwrap_or(self.published_chain_count) > 0
+        self.active_chain_count
+            .unwrap_or(self.published_chain_count)
+            > 0
     }
 
     fn declare_resources(&self, builder: &mut helio_core::graph::ResourceBuilder) {

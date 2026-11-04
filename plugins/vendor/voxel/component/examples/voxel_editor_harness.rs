@@ -341,7 +341,7 @@ impl Harness {
                 entry.1 += 1;
             }
             let mut top: Vec<_> = by_name.into_iter().collect();
-            top.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+            top.sort_by(|a, b| b.1.0.cmp(&a.1.0));
             let top: Vec<String> = top
                 .iter()
                 .take(10)
@@ -480,8 +480,8 @@ fn main() {
     {
         use fog_component::GlobalFogComponent;
         use helio_component::components::LightComponent;
-        use sky_component::AtmosphereComponent;
         use post_component::{CameraPostProcessComponent, PostProcessVolumeComponent};
+        use sky_component::AtmosphereComponent;
         let world = &scene.read().world;
         for (_, light) in world.query::<&LightComponent>() {
             println!(
@@ -549,7 +549,7 @@ fn main() {
     // `world:` steps: ready-made worlds, as the editor adds them.
     let mut camera = extras.editor_camera;
     for step in steps.iter().filter_map(|s| s.strip_prefix("world:")) {
-        use voxel_component::presets::{add_voxel_world, VoxelWorldPreset};
+        use voxel_component::presets::{VoxelWorldPreset, add_voxel_world};
         let preset = VoxelWorldPreset::ALL
             .into_iter()
             .find(|preset| format!("{preset:?}").eq_ignore_ascii_case(step))
@@ -860,7 +860,9 @@ fn main() {
                 let (position, look) = path(0.0);
                 h.look(position, look);
                 h.settle(3000);
-                let mut csv = String::from("t,altitude_m,ms,coarse,worst_px,switch_px,generated,budget,waiting,fading,plan_age,plan_ms,worst\n");
+                let mut csv = String::from(
+                    "t,altitude_m,ms,coarse,worst_px,switch_px,generated,budget,waiting,fading,plan_age,plan_ms,worst\n",
+                );
                 let (mut times, mut coarse, mut worst, mut switches) =
                     (Vec::new(), Vec::new(), Vec::new(), Vec::new());
                 let mut samples = Vec::new();
@@ -937,7 +939,8 @@ fn main() {
                 println!(
                     "HARNESS stress {mode}: frames over 33 ms {} | coarse mean {:.4} | worst px p50 {:.2} p95 {:.2} max {:.2} | switches {}, px p95 {:.2} max {:.2}, over 1.5 px {}, over 3 px {}",
                     times.iter().filter(|&&ms| ms > 33.3).count(),
-                    coarse.iter().filter(|c| c.is_finite()).sum::<f64>() / coarse.len().max(1) as f64,
+                    coarse.iter().filter(|c| c.is_finite()).sum::<f64>()
+                        / coarse.len().max(1) as f64,
                     at(&w, 0.5),
                     at(&w, 0.95),
                     at(&w, 1.0),

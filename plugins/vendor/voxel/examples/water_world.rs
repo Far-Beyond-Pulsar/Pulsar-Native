@@ -24,21 +24,21 @@ mod worlds;
 
 use glam::{DVec3, Vec3};
 use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
-use helio_pass_water_sim::host_rows::WaterVolumeComponent;
-use helio_components::WorldRows;
 use helio_components::LightComponent;
+use helio_components::WorldRows;
 use helio_pass_foliage_place::host_rows::{FoliageTypeComponent, FoliageWindComponent};
-use helio_pass_post_volumes::host_rows::CameraPostProcessComponent;
-use helio_presets::Preset;
 use helio_pass_foliage_place::FoliagePlacePass;
 use helio_pass_foliage_place::{
     pack_kind_and_flags, FoliageKind, FoliageMaterial, GpuFoliageType, FOLIAGE_FLAG_GROUND_COLOUR,
     FOLIAGE_FLAG_TWO_SIDED,
 };
+use helio_pass_post_volumes::host_rows::CameraPostProcessComponent;
 use helio_pass_voxel_planet::chunks::pass::ChunkPass;
 use helio_pass_voxel_planet::engine::{PlanetFrame, TerrainAppearance, VOXEL_FRAME};
 use helio_pass_voxel_planet::{Brush, BrushOp, BrushShape, Planet, PlanetRecipe, VolumeTransform};
+use helio_pass_water_sim::host_rows::WaterVolumeComponent;
 use helio_pass_water_sim::{GpuWaterVolume, OceanSpectrum, WaterSimPass, WaterSpraySettings};
+use helio_presets::Preset;
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -157,7 +157,9 @@ impl Showcase {
             &mut store, 16, &device,
         );
         helio_components::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
-        helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(&mut store, 4, &device);
+        helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(
+            &mut store, 4, &device,
+        );
         helio_pass_water_sim::host_rows::WaterVolumeComponent::register_gpu_columns_growable(
             &mut store, 8, &device,
         );
@@ -320,7 +322,9 @@ impl Showcase {
             // the lens and its flare, portals) and the media kinds (foliage,
             // water, fog, post-process volumes) and the lighting kinds (GI,
             // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
-            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
+            .with_graph(helio_mesh_host::presets::with(
+                helio_presets::Preset::Deferred,
+                &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
                     .with(helio_pass_corona::CoronaFeature)
                     .with(helio_pass_sprite_batch::SpriteFeature)

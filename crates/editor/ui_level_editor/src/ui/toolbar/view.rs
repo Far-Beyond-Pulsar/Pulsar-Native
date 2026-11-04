@@ -368,13 +368,12 @@ impl Render for ToolbarView {
         if let Some(mailbox) = &self.helio_mailbox {
             mailbox.set_viewport_bloom(state.editor.feature_bloom_enabled);
             mailbox.set_viewport_realtime(state.editor.realtime_viewport);
-            let render_debug_mode = if state.editor.viewport_debug_mode
-                == portals_component::PORTAL_DEBUG_VIEW_MODE
-            {
-                0
-            } else {
-                state.editor.viewport_debug_mode
-            };
+            let render_debug_mode =
+                if state.editor.viewport_debug_mode == portals_component::PORTAL_DEBUG_VIEW_MODE {
+                    0
+                } else {
+                    state.editor.viewport_debug_mode
+                };
             mailbox.set_viewport_debug_mode(render_debug_mode);
         }
         drop(_mailbox_scope);

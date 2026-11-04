@@ -23,6 +23,7 @@ use fog_component as _;
 use foliage_component as _;
 use gi_component as _;
 use lens_component as _;
+use meshes_component as _;
 use particles_component as _;
 use portals_component as _;
 use post_component as _;
@@ -30,7 +31,6 @@ use sky_component as _;
 use splines_component as _;
 use sprites_component as _;
 use water_component as _;
-use meshes_component as _;
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     pollster::block_on(async {
@@ -174,12 +174,10 @@ fn the_engines_presets_carry_the_plugins_passes() {
                         );
                     }
                 }
-                assert!(
-                    graph
-                        .external_input_names()
-                        .iter()
-                        .any(|input| *input == "corona_emitters")
-                );
+                assert!(graph
+                    .external_input_names()
+                    .iter()
+                    .any(|input| *input == "corona_emitters"));
             }
             writeln!(text, "### {} / {config_name}", preset.name()).unwrap();
             let mut inputs = graph.external_input_names();

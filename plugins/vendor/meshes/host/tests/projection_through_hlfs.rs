@@ -203,8 +203,8 @@ fn scenedb_projection_tracks_mesh_edits_transforms_removal_and_stale_frames() {
 fn non_deforming_meshes_reuse_their_blas_until_marked_dynamic() {
     pollster::block_on(async {
         use helio_components::MaterialComponent;
-        use helio_mesh_host::{MeshComponent, StaticObjectComponent};
         use helio_core::Movability;
+        use helio_mesh_host::{MeshComponent, StaticObjectComponent};
         use std::sync::Arc;
         let mut f = Fixture::new_rt(65, 49).await;
         f.publish_ray_frame = false;
@@ -313,4 +313,3 @@ fn non_deforming_meshes_reuse_their_blas_until_marked_dynamic() {
         );
     });
 }
-

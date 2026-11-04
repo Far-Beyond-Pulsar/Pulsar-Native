@@ -22,7 +22,9 @@ use crate::ray_proxies::{Lookup, VgRayProxies, VgRayStats};
 use crate::{MeshComponent, RenderGroupComponent, StaticObjectComponent};
 use helio_components::MaterialComponent;
 use helio_core::{BlasGeometry, BlasManager, Movability, TlasInstanceInput, TlasManager};
-use helio_mesh_api::{RayInstance, RAY_INSTANCE_MASKED, RAY_INSTANCE_PROXY, RAY_INSTANCE_TWO_SIDED};
+use helio_mesh_api::{
+    RayInstance, RAY_INSTANCE_MASKED, RAY_INSTANCE_PROXY, RAY_INSTANCE_TWO_SIDED,
+};
 use pulsar_scenedb::{
     ChangeCursor, ChangeRead, ComponentChange, ComponentChangeKind, Entity, World,
 };
@@ -276,7 +278,10 @@ impl SceneDbRayTracing {
     pub fn scene_rays(&self) -> Option<helio_frame_api::rays::SceneRays> {
         let mut rays = helio_frame_api::rays::SceneRays::new(self.tlas()?.clone());
         if let Some(transmission) = self.transmission() {
-            rays = rays.with(helio_frame_api::rays::RAY_TRANSMISSION, transmission.clone());
+            rays = rays.with(
+                helio_frame_api::rays::RAY_TRANSMISSION,
+                transmission.clone(),
+            );
         }
         if let Some(instances) = &self.instances_buffer {
             rays = rays.with(helio_mesh_api::RAY_INSTANCES, instances.clone());

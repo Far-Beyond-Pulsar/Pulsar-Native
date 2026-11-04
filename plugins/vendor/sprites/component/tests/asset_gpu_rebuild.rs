@@ -10,11 +10,11 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use helio_component::components::StaticMeshComponent;
-use sprites_component::SpriteComponent;
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
     EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore, TextureStore,
 };
+use sprites_component::SpriteComponent;
 
 fn context() -> Option<EngineGpuContext> {
     // Creating devices from many tests at once stalls some drivers; take turns.
@@ -76,7 +76,8 @@ fn a_new_device_gets_every_bound_asset_again_without_the_files() {
     )
     .unwrap();
     std::fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../assets/meshes/primitives/SM_Cube.fbx"),
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../assets/meshes/primitives/SM_Cube.fbx"),
         project.path().join("meshes/cube.fbx"),
     )
     .unwrap();

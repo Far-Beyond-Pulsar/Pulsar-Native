@@ -520,14 +520,12 @@ fn run(
     let mut renderer: Renderer = RendererBuilder::new(config, scene_db_handle(&scene_db))
         .with_external_device()
         .with_editor_mode(args.editor)
-        .with_pass_build_context(Box::new(
-            helio_mesh_host::presets::deferred,
-        ))
+        .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
         .build(device.clone(), queue.clone(), width, height, FORMAT);
     renderer.set_feature_live(helio::AmbientLight {
-            color: [0.08, 0.08, 0.09],
-            intensity: 1.0,
-        });
+        color: [0.08, 0.08, 0.09],
+        intensity: 1.0,
+    });
     renderer.set_frame_delta_override(Some(1.0 / 60.0));
     if args.bloom || args.auto_exposure {
         // The host's post-process baseline.

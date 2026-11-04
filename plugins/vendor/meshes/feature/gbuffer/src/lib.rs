@@ -34,11 +34,11 @@ use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
 pub mod depth_material;
+use helio_mats::radiant::{RadiantShaderCache, RadiantShaderKey};
 use helio_mesh_api::{
     multi_draw_indexed_indirect, CulledBatchFrameData, DrawSlots, ObjectBatchFrameData,
     DRAW_SLOT_LAYOUT,
 };
-use helio_mats::radiant::{RadiantShaderCache, RadiantShaderKey};
 
 /// Debug mode id of the wireframe view (needs `POLYGON_MODE_LINE`).
 const WIREFRAME_DEBUG_MODE: u32 = 40;
@@ -837,9 +837,11 @@ impl RenderPass for GBufferPass {
         let indices = &indices_handle.buffer;
 
         // Rebuild bind group 0 when camera or instances buffers change (GrowableBuffer realloc).
-        let coord_spaces = ctx.registry.get::<helio_core::CoordinateSpacesFrameData<'_>>(
-            helio_core::resource_keys::coordinate_spaces(),
-        );
+        let coord_spaces = ctx
+            .registry
+            .get::<helio_core::CoordinateSpacesFrameData<'_>>(
+                helio_core::resource_keys::coordinate_spaces(),
+            );
         let coordinate_spaces_buf = coord_spaces
             .map(|c| c.coordinate_spaces)
             .unwrap_or(ctx.camera);

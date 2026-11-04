@@ -71,7 +71,9 @@ pub fn upload_scene_materials(
             let entity = world.spawn();
             world.insert(
                 entity,
-                helio_components::MaterialComponent::from(helio_mats::MaterialRow::from(converted.gpu)),
+                helio_components::MaterialComponent::from(helio_mats::MaterialRow::from(
+                    converted.gpu,
+                )),
             );
             entity
         })
@@ -181,10 +183,10 @@ pub fn mesh_upload_to_bake(
 /// Call it after the scene is populated, and hand the result to `helio_components::bake`. Objects whose mesh row is gone (a stale
 /// generation) are skipped.
 pub fn bake_scene_from_world(world: &pulsar_scenedb::World) -> helio_bake::SceneGeometry {
+    use helio_bake::{LightSource, LightSourceKind};
     use helio_components::LightComponent;
     use helio_mesh_api::MeshUpload;
     use helio_pass_light_cull::{GpuLight, LightType};
-    use helio_bake::{LightSource, LightSourceKind};
 
     let meshes: std::collections::HashMap<u32, (u32, &MeshComponent)> = world
         .query::<&MeshComponent>()
@@ -254,12 +256,12 @@ pub fn bake_scene_from_world(world: &pulsar_scenedb::World) -> helio_bake::Scene
 #[cfg(test)]
 mod bake_scene_tests {
     use super::*;
+    use helio_bake::LightSourceKind;
     use helio_components::WorldRows;
     use helio_mesh_api::PackedVertex;
-    use helio_pass_light_cull::{GpuLight, LightType};
-    use helio_bake::LightSourceKind;
-    use helio_pass_light_cull::LightRow;
     use helio_mesh_api::StaticObjectRow;
+    use helio_pass_light_cull::LightRow;
+    use helio_pass_light_cull::{GpuLight, LightType};
 
     fn vertex(position: [f32; 3]) -> PackedVertex {
         PackedVertex {
@@ -341,7 +343,6 @@ mod bake_scene_tests {
         );
     }
 }
-
 
 /// Helio's presets over the meshes' features ([`features`]): what a
 /// standalone host builds a renderer with to draw meshes

@@ -386,7 +386,10 @@ fn portal_shader_source(material_binding: helio_mats::MaterialBindingConfig) -> 
     let source = Cow::Owned(
         helio_core::shader::resolve_with(
             &source,
-            &[helio_mats::SPECULAR_AA_SNIPPET, helio_mesh_api::DRAW_ROWS_SNIPPET],
+            &[
+                helio_mats::SPECULAR_AA_SNIPPET,
+                helio_mesh_api::DRAW_ROWS_SNIPPET,
+            ],
         )
         .into_owned(),
     );

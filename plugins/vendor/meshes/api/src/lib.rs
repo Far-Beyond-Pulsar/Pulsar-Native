@@ -120,4 +120,3 @@ pub const RAY_INSTANCE_MASKED: u32 = 2;
 /// [`RayInstance::flags`]: both faces are its outside (a double-sided
 /// material): a ray meeting its back has met a surface, not an inside.
 pub const RAY_INSTANCE_TWO_SIDED: u32 = 4;
-

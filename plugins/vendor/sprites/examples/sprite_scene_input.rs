@@ -4,8 +4,8 @@
 //! GPU row buffer. Helio receives only the type-erased projection; it does not
 //! own the persistent sprite state.
 
-use bytemuck::Zeroable;
 use crate::common::SpriteComponent;
+use bytemuck::Zeroable;
 use helio_core::{GpuCameraUniforms, SceneBufferProjection, SceneInput};
 use helio_pass_sprite_batch::{SpriteHandle, SpriteInstance};
 use pulsar_scenedb::{Entity, SceneDb};

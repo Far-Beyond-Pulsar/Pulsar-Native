@@ -52,10 +52,9 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererBuilder, RendererConfig,
 };
-use helio_components::WorldRows;
 use helio_components::LightComponent;
+use helio_components::WorldRows;
 use helio_pass_post_volumes::host_rows::CameraPostProcessComponent;
-use helio_presets::Preset;
 use helio_pass_voxel_planet::chunks::pass::ChunkPass;
 use helio_pass_voxel_planet::chunks::VolumeId;
 use helio_pass_voxel_planet::engine::{
@@ -64,6 +63,7 @@ use helio_pass_voxel_planet::engine::{
 use helio_pass_voxel_planet::{
     Brush, BrushOp, BrushShape, Planet, PlanetRecipe, VolumeTransform, VoxelVolume,
 };
+use helio_presets::Preset;
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -167,7 +167,9 @@ impl Flight {
             &mut store, 16, &device,
         );
         helio_components::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
-        helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(&mut store, 4, &device);
+        helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(
+            &mut store, 4, &device,
+        );
         let mirror = GpuMirrorHandle::new(Arc::new(store), queue.clone());
         let mut scene = pulsar_scenedb::SceneDb::new();
         scene.world.attach_gpu_mirror(mirror.clone());
@@ -266,7 +268,9 @@ impl Flight {
             // the lens and its flare, portals) and the media kinds (foliage,
             // water, fog, post-process volumes) and the lighting kinds (GI,
             // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
-            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
+            .with_graph(helio_mesh_host::presets::with(
+                helio_presets::Preset::Deferred,
+                &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
                     .with(helio_pass_corona::CoronaFeature)
                     .with(helio_pass_sprite_batch::SpriteFeature)

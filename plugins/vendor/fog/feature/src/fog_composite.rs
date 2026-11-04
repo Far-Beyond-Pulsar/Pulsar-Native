@@ -261,7 +261,9 @@ impl RenderPass for FogCompositePass {
         // or global/local media rows. Unknown row contents count as a medium.
         let mut medium = ctx
             .registry
-            .get::<bool>(ResourceKey::new(helio_pass_postprocess::FOG_SETTINGS_MAYBE_ACTIVE))
+            .get::<bool>(ResourceKey::new(
+                helio_pass_postprocess::FOG_SETTINGS_MAYBE_ACTIVE,
+            ))
             .unwrap_or(true);
         for (liveness, key) in [
             (&mut self.global_media, "global_fog_media"),

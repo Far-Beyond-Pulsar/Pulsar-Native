@@ -35,11 +35,11 @@
 //! and handed to later passes via [`RenderPass::publish`].
 
 pub mod feature;
-pub mod scene_rows;
 #[cfg(feature = "host-rows")]
 pub mod host_rows;
-pub use scene_rows::FogRowSources;
+pub mod scene_rows;
 pub use feature::FogFeature;
+pub use scene_rows::FogRowSources;
 mod fog_composite;
 pub use fog_composite::{FogCompositePass, FOGGED_HDR, FOGGED_HDR_FORMAT};
 
@@ -49,8 +49,8 @@ pub const FOG_ACCUM: &str = "fog_accum";
 pub const FOG_PARAMETERS: &str = "fog_parameters";
 
 use bytemuck::{Pod, Zeroable};
-use helio_frame_api::lighting::sun_transmittance::{self, SunTransmittance};
 use helio_core::{PassContext, PrepareContext, RenderPass, Result as HelioResult};
+use helio_frame_api::lighting::sun_transmittance::{self, SunTransmittance};
 
 pub mod components;
 pub use components::{

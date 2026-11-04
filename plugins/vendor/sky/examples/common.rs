@@ -7,8 +7,8 @@ use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType, Renderer, RendererBuilder, RendererConfig, SceneDbHandle};
 #[allow(unused_imports)]
 use helio_components::{LightComponent, MaterialComponent};
-use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_mesh_api::{MeshUpload, PackedVertex};
+use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_sky::host_rows::AtmosphereComponent;
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
@@ -114,7 +114,8 @@ pub fn build_default_renderer_with_context(
     graphics: &mut helio::HelioGraphicsContext<'_>,
     config: RendererConfig,
 ) -> Renderer {
-    let builder = RendererBuilder::new(config.clone(), scene_db_handle(scene_db)).with_graph(preset());
+    let builder =
+        RendererBuilder::new(config.clone(), scene_db_handle(scene_db)).with_graph(preset());
     graphics
         .build_renderer(builder, config)
         .expect("Helio renderer")

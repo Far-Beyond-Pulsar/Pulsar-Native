@@ -71,14 +71,19 @@ mod tests {
 
     #[test]
     fn host_defaults_are_the_default_settings() {
-        assert_eq!(GiSettings::from_settings(&GI.defaults()), GiSettings::default());
+        assert_eq!(
+            GiSettings::from_settings(&GI.defaults()),
+            GiSettings::default()
+        );
     }
 
     #[test]
     fn a_spacing_maps() {
-        let settings = GI.resolve(|key| {
-            (key == "probe_spacing").then_some(helio_settings::Value::Number(2.0))
-        });
-        assert_eq!(GiSettings::from_settings(&settings).probe_spacing, Some(2.0));
+        let settings = GI
+            .resolve(|key| (key == "probe_spacing").then_some(helio_settings::Value::Number(2.0)));
+        assert_eq!(
+            GiSettings::from_settings(&settings).probe_spacing,
+            Some(2.0)
+        );
     }
 }

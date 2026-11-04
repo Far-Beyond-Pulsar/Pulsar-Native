@@ -17,11 +17,7 @@ fn unfinished_components_declare_why_and_their_issue() {
             "{class}"
         );
     }
-    for class in [
-        "StaticMeshComponent",
-        "LODComponent",
-        "LightComponent",
-    ] {
+    for class in ["StaticMeshComponent", "LODComponent", "LightComponent"] {
         assert!(
             pulsar_world_registry::unfinished_component(class).is_none(),
             "{class}"

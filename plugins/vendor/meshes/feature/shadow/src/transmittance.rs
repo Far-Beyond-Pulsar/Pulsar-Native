@@ -349,8 +349,6 @@ impl Transmittance {
         pass.set_vertex_buffer(0, vertices.slice(..));
         pass.set_vertex_buffer(1, slots.slice(..));
         pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        helio_mesh_api::multi_draw_indexed_indirect(
-            &mut pass, indirect, 0, draw_count, gpu_count,
-        );
+        helio_mesh_api::multi_draw_indexed_indirect(&mut pass, indirect, 0, draw_count, gpu_count);
     }
 }

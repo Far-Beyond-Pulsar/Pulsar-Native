@@ -24,8 +24,7 @@ use glam::{Mat4, Vec3};
 use helio::{required_wgpu_features, required_wgpu_limits, Camera, RendererConfig};
 use v3_demo_common::{
     box_mesh, build_default_renderer, flush_scene_db, make_material, new_scene_db_with_gpu_mirror,
-    plane_mesh, point_light, spawn_light, spawn_material, spawn_mesh,
-    spawn_object,
+    plane_mesh, point_light, spawn_light, spawn_material, spawn_mesh, spawn_object,
 };
 
 fn room(world: &mut pulsar_scenedb::World) {
@@ -123,9 +122,9 @@ fn main() {
     let config = RendererConfig::new(width, height, format);
     let mut renderer = build_default_renderer(&scene_db, device.clone(), queue.clone(), config);
     renderer.set_feature_live(helio::AmbientLight {
-            color: [1.0, 0.95, 0.85],
-            intensity: 0.05,
-        });
+        color: [1.0, 0.95, 0.85],
+        intensity: 0.05,
+    });
 
     let target = |w: u32, h: u32| {
         device

@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use helio::{TextureUpload};
-use helio_mesh_api::{PackedVertex};
+use helio::TextureUpload;
+use helio_mesh_api::PackedVertex;
 use solid_rs::Scene;
 
 use crate::material_converter::{convert_material, ConvertedMaterial, ConvertedTextureRef};

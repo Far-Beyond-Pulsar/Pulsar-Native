@@ -98,10 +98,9 @@ impl ChunkPass {
     /// camera).
     pub fn new(config: ResidencyConfig) -> Self {
         let planet_ground = std::sync::Arc::new(super::ground::PlanetGround::default());
-        let foliage_ground =
-            std::sync::Arc::new(helio_foliage_api::GroundLink::answered_elsewhere(
-                Box::new(planet_ground.clone()),
-            ));
+        let foliage_ground = std::sync::Arc::new(
+            helio_foliage_api::GroundLink::answered_elsewhere(Box::new(planet_ground.clone())),
+        );
         Self {
             config,
             debug_mode: 0,

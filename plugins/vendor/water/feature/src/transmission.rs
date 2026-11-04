@@ -186,7 +186,11 @@ impl RenderPass for WaterTransmissionPass {
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.write_color_raw(TRANSMISSION, TRANSMISSION_FORMAT, ResourceSize::MatchSurface);
+        builder.write_color_raw(
+            TRANSMISSION,
+            TRANSMISSION_FORMAT,
+            ResourceSize::MatchSurface,
+        );
     }
 
     fn prepare(&mut self, ctx: &PrepareContext) -> HelioResult<()> {
@@ -249,9 +253,16 @@ impl RenderPass for WaterTransmissionPass {
         let remaps = ctx
             .scene_buffers
             .get(BufferKey::of(VIEW_REMAPS))
-            .map_or_else(|| self.fallback_remaps.clone(), |handle| handle.buffer.clone());
+            .map_or_else(
+                || self.fallback_remaps.clone(),
+                |handle| handle.buffer.clone(),
+            );
         let frame_key = [ctx.camera.clone(), volumes, remaps];
-        if self.frame_group.as_ref().is_none_or(|(key, _)| key != &frame_key) {
+        if self
+            .frame_group
+            .as_ref()
+            .is_none_or(|(key, _)| key != &frame_key)
+        {
             let group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Water transmission frame"),
                 layout: &self.frame_layout,
@@ -277,7 +288,11 @@ impl RenderPass for WaterTransmissionPass {
             self.frame_group = Some((frame_key, group));
         }
         let texture_key = [ctx.depth, lightmap_uv, near, deep].map(Clone::clone);
-        if self.texture_group.as_ref().is_none_or(|(key, _)| key != &texture_key) {
+        if self
+            .texture_group
+            .as_ref()
+            .is_none_or(|(key, _)| key != &texture_key)
+        {
             let group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Water transmission textures"),
                 layout: &self.texture_layout,
@@ -298,7 +313,9 @@ impl RenderPass for WaterTransmissionPass {
         else {
             return Ok(());
         };
-        let mut pass = ctx.render_cmds().expect("the graph opened this pass's render pass");
+        let mut pass = ctx
+            .render_cmds()
+            .expect("the graph opened this pass's render pass");
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, frame, &[]);
         pass.set_bind_group(1, textures, &[]);

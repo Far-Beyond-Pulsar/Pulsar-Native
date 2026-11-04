@@ -1,10 +1,10 @@
 //! Pass-owned SceneDB settings resolution, including empty scenes.
 use helio_core::graph::ResourceBuilder;
 use helio_core::{PassContext, PrepareContext, RenderPass, ResourceKey, Result as HelioResult};
-use pulsar_scenedb::gpu::BufferKey;
 use helio_pass_postprocess::{
     AUTO_EXPOSURE_MAYBE_ACTIVE, BLOOM_MAYBE_ACTIVE, FOG_SETTINGS_MAYBE_ACTIVE, POST_SETTINGS,
 };
+use pulsar_scenedb::gpu::BufferKey;
 use wgpu::util::DeviceExt;
 
 /// The resolver's shader (`cs_volume_blend`): the volume blend with the
@@ -79,7 +79,6 @@ impl SettingActivity {
     }
 }
 
-
 fn read_f32(row: &[u8], offset: usize) -> Option<f32> {
     row.get(offset..offset + 4)
         .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
@@ -90,9 +89,16 @@ fn read_u32(row: &[u8], offset: usize) -> Option<u32> {
         .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
 }
 
-const BLOOM_ENABLED: usize = std::mem::offset_of!(helio_pass_postprocess::GpuPostProcessUniforms, bloom_enabled);
-const EXPOSURE_MODE: usize = std::mem::offset_of!(helio_pass_postprocess::GpuPostProcessUniforms, exposure_mode);
-const FOG_ENABLED: usize = std::mem::offset_of!(helio_pass_postprocess::GpuPostProcessUniforms, fog_enabled);
+const BLOOM_ENABLED: usize = std::mem::offset_of!(
+    helio_pass_postprocess::GpuPostProcessUniforms,
+    bloom_enabled
+);
+const EXPOSURE_MODE: usize = std::mem::offset_of!(
+    helio_pass_postprocess::GpuPostProcessUniforms,
+    exposure_mode
+);
+const FOG_ENABLED: usize =
+    std::mem::offset_of!(helio_pass_postprocess::GpuPostProcessUniforms, fog_enabled);
 
 /// An enabled camera row whose settings enable bloom. The resolver also
 /// matches `view_id`; ignoring it here only errs toward "maybe".
@@ -184,9 +190,15 @@ fn volume_row_enables_fog(row: &[u8]) -> bool {
 
 impl PostProcessVolumeBlendPass {
     pub fn new(device: &wgpu::Device) -> Self {
-        Self::with_defaults(device, &helio_pass_postprocess::PostProcessSettings::default())
+        Self::with_defaults(
+            device,
+            &helio_pass_postprocess::PostProcessSettings::default(),
+        )
     }
-    pub fn with_defaults(device: &wgpu::Device, settings: &helio_pass_postprocess::PostProcessSettings) -> Self {
+    pub fn with_defaults(
+        device: &wgpu::Device,
+        settings: &helio_pass_postprocess::PostProcessSettings,
+    ) -> Self {
         let shader = shader(device);
         let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
             binding,
@@ -287,7 +299,11 @@ impl PostProcessVolumeBlendPass {
     /// Replace the baseline every view starts from before its camera row and
     /// the volumes apply: a renderer setting (an editor viewport's toggles,
     /// a project's graphics settings), not scene data.
-    pub fn set_defaults(&mut self, queue: &wgpu::Queue, settings: &helio_pass_postprocess::PostProcessSettings) {
+    pub fn set_defaults(
+        &mut self,
+        queue: &wgpu::Queue,
+        settings: &helio_pass_postprocess::PostProcessSettings,
+    ) {
         let gpu = settings.to_gpu();
         queue.write_buffer(&self.defaults, 0, bytemuck::bytes_of(&gpu));
         self.bloom.defaults = gpu.bloom_enabled != 0;
@@ -410,11 +426,7 @@ impl RenderPass for PostProcessVolumeBlendPass {
     }
     fn publish<'a>(&self, frame: &mut helio_core::ResourceRegistry<'a>) {
         let buffer: &'a wgpu::Buffer = unsafe { std::mem::transmute(&self.resolved) };
-        frame.write(
-            ResourceKey::new(POST_SETTINGS),
-            buffer,
-            self.name(),
-        );
+        frame.write(ResourceKey::new(POST_SETTINGS), buffer, self.name());
         frame.write(
             ResourceKey::new(BLOOM_MAYBE_ACTIVE),
             self.bloom.maybe_active,

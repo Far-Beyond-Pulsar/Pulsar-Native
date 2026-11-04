@@ -981,8 +981,16 @@ impl DrawPipelines {
             )
         };
         self.cross = Some(CrossPipelines {
-            shadow: compute("chunk shadows across volumes", &layouts.shadow_fallback, "shadow_cross"),
-            gi_trace: compute("chunk GI rays across volumes", &layouts.gi, "gi_trace_cross"),
+            shadow: compute(
+                "chunk shadows across volumes",
+                &layouts.shadow_fallback,
+                "shadow_cross",
+            ),
+            gi_trace: compute(
+                "chunk GI rays across volumes",
+                &layouts.gi,
+                "gi_trace_cross",
+            ),
             ground_probe: compute(
                 "chunk ground probes across volumes",
                 &layouts.ground,
@@ -1384,7 +1392,9 @@ impl ChunkWorld {
                 return height;
             }
             let half = f64::from(v.grid.cells()) * v.grid.voxel_size() * 0.5;
-            let out = (local.x.abs() - half).max(0.0).hypot((local.z.abs() - half).max(0.0));
+            let out = (local.x.abs() - half)
+                .max(0.0)
+                .hypot((local.z.abs() - half).max(0.0));
             height.hypot(out)
         };
         let Some((best, nearest)) = self

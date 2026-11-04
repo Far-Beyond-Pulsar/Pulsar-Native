@@ -5,7 +5,7 @@ use glam::{Vec2, Vec3};
 use helio::{Camera, GpuLight, GpuMaterial, LightType, Renderer, RendererBuilder, RendererConfig};
 use helio_asset_compat::{load_scene_file_with_config, ConvertedTextureRef, LoadConfig};
 use helio_components::LightComponent;
-use helio_components::{MaterialComponent};
+use helio_components::MaterialComponent;
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{Entity, SceneDb, World};
@@ -531,9 +531,7 @@ async fn render_snapshot_async<P: AsRef<Path>>(
     let mut scene_db = new_scene_db(&device, &queue);
     let mut renderer = RendererBuilder::new(renderer_cfg, scene_db_handle(&scene_db))
         .with_external_device()
-        .with_pass_build_context(Box::new(
-            helio_mesh_host::presets::deferred,
-        ))
+        .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
         .build(device.clone(), queue.clone(), cfg.width, cfg.height, FORMAT);
 
     // ── 6. Upload all meshes + materials via helio-asset-compat ──────────────
@@ -982,9 +980,7 @@ impl SnapshotBatch {
         let scene_db = new_scene_db(&device, &queue);
         let renderer = RendererBuilder::new(renderer_cfg, scene_db_handle(&scene_db))
             .with_external_device()
-            .with_pass_build_context(Box::new(
-                helio_mesh_host::presets::deferred,
-            ))
+            .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
             .build(
                 device.clone(),
                 queue.clone(),

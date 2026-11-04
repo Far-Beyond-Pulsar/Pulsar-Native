@@ -723,13 +723,11 @@ fn render_portal_badges(
                 [0.13, 0.83, 0.93, 1.0],
             ][color_id.unsigned_abs() as usize % 6]
         };
-        labels.push(
-            portals_component::PortalDebugText {
-                world_position: matrix.transform_point3(anchor).to_array(),
-                text: label,
-                color,
-            },
-        );
+        labels.push(portals_component::PortalDebugText {
+            world_position: matrix.transform_point3(anchor).to_array(),
+            text: label,
+            color,
+        });
     }
     drop(world);
     drop(state);

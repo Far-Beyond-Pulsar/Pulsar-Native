@@ -118,13 +118,15 @@ fn voxel_terrain_hydrates_as_a_typed_scenedb_world_row() {
     terrain.seed = 1234;
     terrain.appearance_parameters = r#"{"detail":[0.6,0.12,0.04,0.0]}"#.into();
     let terrain_json = serde_json::to_value(&terrain).unwrap();
-    assert!(pulsar_world_registry::hydrate_world_component_for_class(
-        "VoxelTerrainComponent",
-        &mut world,
-        entity,
-        &terrain_json,
-    )
-    .unwrap());
+    assert!(
+        pulsar_world_registry::hydrate_world_component_for_class(
+            "VoxelTerrainComponent",
+            &mut world,
+            entity,
+            &terrain_json,
+        )
+        .unwrap()
+    );
     let hydrated = world
         .get::<VoxelTerrainComponent>(entity)
         .expect("typed SceneDB component");

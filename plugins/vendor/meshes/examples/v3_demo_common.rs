@@ -1,7 +1,7 @@
 use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType, Renderer, RendererBuilder, RendererConfig, SceneDbHandle};
-use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_components::{MaterialComponent, ReflectionCaptureComponent};
+use helio_mesh_api::{MeshUpload, PackedVertex};
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
 
@@ -296,9 +296,7 @@ pub fn build_default_renderer(
     let graph_scene_db = scene_db_handle(scene_db);
     RendererBuilder::new(config.clone(), graph_scene_db.clone())
         .with_external_device()
-        .with_pass_build_context(Box::new(
-            helio_mesh_host::presets::deferred,
-        ))
+        .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
         .build(
             device,
             queue,
@@ -315,9 +313,8 @@ pub fn build_default_renderer_with_context(
     graphics: &mut helio::HelioGraphicsContext<'_>,
     config: RendererConfig,
 ) -> Renderer {
-    let builder = RendererBuilder::new(config.clone(), scene_db_handle(scene_db)).with_pass_build_context(
-        Box::new(helio_mesh_host::presets::deferred),
-    );
+    let builder = RendererBuilder::new(config.clone(), scene_db_handle(scene_db))
+        .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred));
     graphics
         .build_renderer(builder, config)
         .expect("Helio renderer")

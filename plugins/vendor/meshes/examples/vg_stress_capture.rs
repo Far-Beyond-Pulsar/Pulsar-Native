@@ -1228,7 +1228,10 @@ impl Capture {
         let aspect = size.0 as f32 / size.1 as f32;
         let (lens, fov) = match &shot.lens {
             Some(spec) => lens_component(spec, &pose, aspect),
-            None => (lens_component(&LensSpec::default(), &pose, aspect).0, pose.fov_deg),
+            None => (
+                lens_component(&LensSpec::default(), &pose, aspect).0,
+                pose.fov_deg,
+            ),
         };
         self.last_lens = Some((
             lens.focal_length_mm,

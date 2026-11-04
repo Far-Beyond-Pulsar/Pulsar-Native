@@ -22,12 +22,12 @@ use engine_backend::scene::SceneWorldExt;
 // GI's feature registers with the renderer as in the editor.
 use gi_component as _;
 // The meshes' features register with the renderer as in the editor.
-use meshes_component as _;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::{
     LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent,
     StaticMeshMaterialSlot, StaticMeshMaterialSlots,
 };
+use meshes_component as _;
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
@@ -948,8 +948,8 @@ fn history_level_replacement_and_viewports_need_no_resync() {
 fn environment_components_reach_the_frame() {
     use fog_component::{GlobalFogComponent, LocalFogVolumeComponent};
     use post_component::{CameraPostProcessComponent, PostProcessVolumeComponent};
-    use water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
+    use water_component::WaterVolumeComponent;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -2267,8 +2267,7 @@ fn set_global_wind(
     edit: impl FnOnce(&mut foliage_component::WindComponent),
 ) {
     let mut world = state.scene.world_mut();
-    let (instance, _) =
-        foliage_component::level_wind(&world).expect("the level has a wind");
+    let (instance, _) = foliage_component::level_wind(&world).expect("the level has a wind");
     edit(
         &mut world
             .get_mut::<foliage_component::WindComponent>(instance)
@@ -2613,8 +2612,8 @@ fn roughness(heights: &[f32]) -> f32 {
 /// it stands still with Realtime off.
 #[test]
 fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
-    use water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
+    use water_component::WaterVolumeComponent;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -2718,9 +2717,9 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
 /// stays put); moving it displaces the water where it goes.
 #[test]
 fn bodies_on_the_water_sim_channel_push_the_water() {
-    use water_component::WaterVolumeComponent;
     use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
+    use water_component::WaterVolumeComponent;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)

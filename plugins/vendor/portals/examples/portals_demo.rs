@@ -23,16 +23,16 @@
 
 mod common;
 
-use helio_pass_portal_cull::portal_pose_facing;
-use helio::{
-    required_experimental_features, required_wgpu_features,
-    required_wgpu_limits, Camera, Renderer, RendererBuilder, RendererConfig,
-};
-use pulsar_scenedb::{Entity, SceneDb};
 use common::{
     box_mesh, make_material, new_scene_db_with_gpu_mirror, point_light, scene_db_handle,
     spawn_light, spawn_material, spawn_mesh, spawn_object,
 };
+use helio::{
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
+    RendererBuilder, RendererConfig,
+};
+use helio_pass_portal_cull::portal_pose_facing;
+use pulsar_scenedb::{Entity, SceneDb};
 
 use winit::{
     application::ApplicationHandler,

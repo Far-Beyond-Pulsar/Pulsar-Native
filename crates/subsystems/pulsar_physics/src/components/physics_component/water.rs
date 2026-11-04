@@ -305,7 +305,10 @@ mod tests {
         let mut physics = PhysicsComponent::default();
         physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
         let row = WaterHitboxSourceRow::of(&physics);
-        assert_ne!(row.params[helio_water_api::WATER_HITBOX_GATE_WORD as usize], 0.0);
+        assert_ne!(
+            row.params[helio_water_api::WATER_HITBOX_GATE_WORD as usize],
+            0.0
+        );
     }
 
     /// Saved channels are their index; WaterSim follows Custom (8), so

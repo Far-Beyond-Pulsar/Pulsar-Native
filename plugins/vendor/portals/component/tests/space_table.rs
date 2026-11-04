@@ -2,11 +2,11 @@
 //! (rigid frames, sublevel placements) and a portal projection take their slots
 //! from the same allocator, so none overwrites another.
 
-use engine_backend::scene::frames::{frame_table, make_frame, SpaceSlot};
+use engine_backend::scene::frames::{SpaceSlot, frame_table, make_frame};
 use engine_backend::scene::{SceneWorldExt, SpaceTable, SpawnObject, Transform};
 use glam::{Mat4, Vec3};
 use helio_pass_portal_cull::{
-    components::PortalRow, PortalProjectionBridge, SubLevelContents, SubLevelResolver,
+    PortalProjectionBridge, SubLevelContents, SubLevelResolver, components::PortalRow,
 };
 use pulsar_scenedb::World;
 

@@ -1,9 +1,9 @@
 pub mod feature;
-pub mod scene_rows;
 #[cfg(feature = "host-rows")]
 pub mod host_rows;
-pub use scene_rows::WaterRowSources;
+pub mod scene_rows;
 pub use feature::WaterFeature;
+pub use scene_rows::WaterRowSources;
 
 pub mod pipeline;
 pub mod simulation;
@@ -21,7 +21,6 @@ mod reflection_capture;
 pub mod shoreline;
 pub mod surface_query;
 pub mod transmission;
-pub use transmission::WaterTransmissionPass;
 pub use components::WATER_HITBOXES;
 pub use components::WATER_VOLUMES;
 pub use components::{WaterHitboxRow, WaterVolumeRow};
@@ -32,6 +31,7 @@ pub use surface_query::{
     WaterSurfaceQueries, WaterSurfaceQueryConsumer, WaterSurfaceQueryPoint,
     WaterSurfaceQueryResult, MAX_WATER_SURFACE_QUERIES,
 };
+pub use transmission::WaterTransmissionPass;
 
 use pulsar_scenedb::gpu::BufferKey;
 

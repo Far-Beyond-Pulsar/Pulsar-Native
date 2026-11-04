@@ -123,7 +123,10 @@ pub fn sort_in_level_order(world: &World, instances: &mut [Entity]) {
 
 /// Of `instances` (instance entities), the attached ones in level order (a
 /// level file's order).
-pub fn attached_in_level_order(world: &World, instances: impl Iterator<Item = Entity>) -> Vec<Entity> {
+pub fn attached_in_level_order(
+    world: &World,
+    instances: impl Iterator<Item = Entity>,
+) -> Vec<Entity> {
     let mut found: Vec<Entity> = instances
         .filter(|instance| attachments::owner_of(world, *instance).is_some())
         .collect();

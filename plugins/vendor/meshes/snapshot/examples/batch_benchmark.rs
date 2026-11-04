@@ -10,7 +10,8 @@ fn main() {
         .filter_level(log::LevelFilter::Warn)
         .init();
 
-    let model_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/assets/test.fbx");
+    let model_path: PathBuf =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/assets/test.fbx");
 
     println!("Model: {}", model_path.display());
     println!("Initialising GPU and renderer...");

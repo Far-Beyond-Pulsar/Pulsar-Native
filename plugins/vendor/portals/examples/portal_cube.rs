@@ -22,20 +22,20 @@
 
 mod common;
 
+use common::PortalComponent;
+use common::{
+    box_mesh, flush_scene_db, make_material, new_scene_db_with_gpu_mirror, point_light,
+    scene_db_handle, spawn_light, spawn_material, spawn_mesh, spawn_object,
+};
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererBuilder, RendererConfig,
 };
-use common::PortalComponent;
 use helio_pass_portal_cull::{
     PortalProjectionBridge, PortalProjectionConfig, SubLevelContents, SubLevelResolver,
     MAX_PORTAL_CHAINS,
 };
 use pulsar_scenedb::{Entity, SceneDb};
-use common::{
-    box_mesh, flush_scene_db, make_material, new_scene_db_with_gpu_mirror, point_light,
-    scene_db_handle, spawn_light, spawn_material, spawn_mesh, spawn_object,
-};
 
 use winit::{
     application::ApplicationHandler,

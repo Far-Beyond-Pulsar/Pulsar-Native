@@ -133,4 +133,3 @@ impl From<FoliageLayerComponent> for crate::GpuFoliageLayer {
         crate::FoliageLayerRow::from(value).into()
     }
 }
-

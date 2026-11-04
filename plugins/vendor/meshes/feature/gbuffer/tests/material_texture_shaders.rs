@@ -28,9 +28,7 @@ fn texture_consumers_validate_with_scene_owned_slot_defaults() {
 #[test]
 fn depth_cutouts_validate_for_native_and_expanded_texture_bindings() {
     let material = include_str!("../shaders/depth_material.wgsl");
-    for geometry in [
-        include_str!("../../shadow/shaders/shadow.wgsl"),
-    ] {
+    for geometry in [include_str!("../../shadow/shaders/shadow.wgsl")] {
         let native = format!("{material}\n{geometry}");
         for source in [
             native.clone(),

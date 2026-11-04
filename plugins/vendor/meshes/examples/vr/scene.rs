@@ -35,8 +35,8 @@
 
 use glam::{Mat4, Quat, Vec3};
 use helio::{GpuLight, LightType, Renderer};
-use helio_mesh_api::{MeshUpload};
 use helio_asset_compat::{load_scene_bytes_with_config, LoadConfig};
+use helio_mesh_api::MeshUpload;
 use pulsar_scenedb::{Entity, World};
 
 use crate::v3_demo_common::{
@@ -372,8 +372,7 @@ fn bay_instancing(world: &mut World, z: f32, mats: &Mats) {
 /// the container on the floor regardless of the FBX's origin. `None` if the
 /// asset cannot be loaded, so a missing model never crashes the demo.
 fn load_container(world: &mut World) -> Option<(Entity, Entity, Vec3, Vec3)> {
-    const CONTAINER_FBX: &[u8] =
-        include_bytes!("../models/source/container with textures.fbx");
+    const CONTAINER_FBX: &[u8] = include_bytes!("../models/source/container with textures.fbx");
     let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models/source");
 
     let scene = match load_scene_bytes_with_config(
@@ -764,7 +763,6 @@ pub fn build(world: &mut World) -> Animated {
         world,
         point_light([0.0, HALL_HEIGHT - 0.6, 1.5], [0.6, 0.7, 1.0], 6.0, 8.0),
     );
-
 
     anim
 }

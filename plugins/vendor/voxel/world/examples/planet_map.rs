@@ -132,11 +132,10 @@ fn main() {
     std::fs::create_dir_all(&out).expect("output directory");
     let args: Vec<String> = args.collect();
     let started = std::time::Instant::now();
-    let stack: helio_voxel_world::layers::TerrainLayers =
-        std::env::var("HELIO_PLANET_MAP_LAYERS")
-            .ok()
-            .map(|json| serde_json::from_str(&json).expect("layer stack JSON"))
-            .unwrap_or_default();
+    let stack: helio_voxel_world::layers::TerrainLayers = std::env::var("HELIO_PLANET_MAP_LAYERS")
+        .ok()
+        .map(|json| serde_json::from_str(&json).expect("layer stack JSON"))
+        .unwrap_or_default();
     let planet = Planet::new(PlanetRecipe {
         terrain: stack.source(7),
         ..PlanetRecipe::default()

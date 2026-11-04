@@ -9,8 +9,8 @@ use pulsar_scenedb::{Entity, World};
 use crate::world::{WorldSource, entity_source};
 use crate::{VoxelAir, VoxelTerrainComponent, VoxelTerrainLayersComponent, VoxelWorldShape};
 use fog_component::GlobalFogComponent;
-use sky_component::{AtmosphereComponent, AtmospherePlacement};
 use helio_pass_voxel_planet::grid::Shape;
+use sky_component::{AtmosphereComponent, AtmospherePlacement};
 
 /// Edits belong to the terrain they were made on: a terrain whose form,
 /// generator, seed, settings or features changed drops the edits made on
@@ -711,8 +711,8 @@ mod tests {
     /// as authored.
     #[test]
     fn a_worlds_air_derives_its_sky() {
-        use sky_component::{AtmosphereComponent, AtmospherePlacement};
         use helio_pass_sky::AtmosphereRow;
+        use sky_component::{AtmosphereComponent, AtmospherePlacement};
         let sky = AtmosphereComponent {
             placement: AtmospherePlacement::PlanetAtOwner,
             planet_radius_km: 1737.0,

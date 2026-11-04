@@ -384,9 +384,8 @@ impl RenderPass for VgDensePass {
         let masked_tables = match (
             ctx.scene_buffers
                 .get(helio_core::BufferKey::of("materials")),
-            registry.get::<helio_mats::MaterialTextureBindings<'_>>(
-                helio_mats::material_textures(),
-            ),
+            registry
+                .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures()),
         ) {
             (Some(materials), Some(textures)) => Some((materials, textures)),
             _ => None,

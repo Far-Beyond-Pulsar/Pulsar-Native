@@ -11,9 +11,7 @@
 //!    against unrelated nearby real geometry.
 
 use helio_core::graph::{ResourceBuilder, ResourceSize};
-use helio_core::{
-    PassContext, PrepareContext, RenderPass, Result as HelioResult,
-};
+use helio_core::{PassContext, PrepareContext, RenderPass, Result as HelioResult};
 use pulsar_scenedb::gpu::BufferKey;
 
 pub struct PortalMaskPass {

@@ -1067,7 +1067,10 @@ mod tests {
         for &(key, p) in &views[0].pages {
             assert_eq!(e.resident.get(&key), Some(&p));
             let i = sun_occlusion_table_index(e.slot, usize::from(key.level), key.page);
-            assert_eq!(sun_occlusion_entry_physical(pages.table[i], key.page), Some(u32::from(p)));
+            assert_eq!(
+                sun_occlusion_entry_physical(pages.table[i], key.page),
+                Some(u32::from(p))
+            );
         }
         assert!(!pages.take_rows().is_empty() && pages.take_rows().is_empty());
         // Everything asked traced within a few frames, then nothing.
@@ -1168,7 +1171,8 @@ mod tests {
             for level in [2usize, 5, 9] {
                 for d in -3i32..=3 {
                     let bit = level * (WINDOW * WINDOW) as usize
-                        + ((WINDOW / 2 + d) * WINDOW + WINDOW / 2 + (frame as i32 % 5) - 2) as usize;
+                        + ((WINDOW / 2 + d) * WINDOW + WINDOW / 2 + (frame as i32 % 5) - 2)
+                            as usize;
                     words[bit / 32] |= 1 << (bit % 32);
                 }
             }
@@ -1179,7 +1183,11 @@ mod tests {
                 sun,
                 settled: frame > 30,
                 asked: asking.into_iter().map(|a| (a, words.clone())).collect(),
-                changes: if frame % 7 == 0 { vec![[c, c + DVec3::splat(3.0)]] } else { Vec::new() },
+                changes: if frame % 7 == 0 {
+                    vec![[c, c + DVec3::splat(3.0)]]
+                } else {
+                    Vec::new()
+                },
                 refined: vec![[c - DVec3::splat(20.0), c + DVec3::splat(6.4)]],
             }
         };
@@ -1208,8 +1216,16 @@ mod tests {
             }
             assert_eq!(planned.rows, rows, "frame {frame}");
             assert_eq!(
-                planned.epochs.iter().map(|e| (e.id, e.slot)).collect::<Vec<_>>(),
-                local.epochs.iter().map(|e| (e.id, e.slot)).collect::<Vec<_>>()
+                planned
+                    .epochs
+                    .iter()
+                    .map(|e| (e.id, e.slot))
+                    .collect::<Vec<_>>(),
+                local
+                    .epochs
+                    .iter()
+                    .map(|e| (e.id, e.slot))
+                    .collect::<Vec<_>>()
             );
             for (n, w) in planned.windows.iter().enumerate() {
                 thread.traced(w, 500.0 + n as f64);
@@ -1226,7 +1242,13 @@ mod tests {
         let eye = DVec3::new(0.0, 1000.0, 0.0);
         let (_, nears) = thread.frame(eye);
         let e = *thread.current().unwrap();
-        let resident = local.current().unwrap().resident.values().copied().collect::<Vec<_>>();
+        let resident = local
+            .current()
+            .unwrap()
+            .resident
+            .values()
+            .copied()
+            .collect::<Vec<_>>();
         assert!(resident
             .iter()
             .filter(|&&p| thread.nears[p as usize].0 == e.id)

@@ -10,11 +10,11 @@
 use std::path::Path;
 use std::time::Duration;
 
-use sprites_component::SpriteComponent;
 use helio_component::texture_assets::{
     LoadedTexture, texture_asset_id, texture_asset_id_of, texture_source_for_file,
 };
 use pulsar_scenedb::{AssetState, Entity, World};
+use sprites_component::SpriteComponent;
 
 fn write_png(path: &Path, rgba: [u8; 4]) {
     image::save_buffer(path, &rgba.repeat(4), 2, 2, image::ColorType::Rgba8).unwrap();

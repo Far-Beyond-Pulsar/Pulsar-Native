@@ -120,11 +120,12 @@ impl ApplicationHandler for App {
         let format = graphics.surface_config.format;
         let surface_format = format;
 
-        let config = RendererConfig::new(size.width, size.height, format)
-            .with_feature(helio_pass_shadow_matrix::ShadowSettings {
+        let config = RendererConfig::new(size.width, size.height, format).with_feature(
+            helio_pass_shadow_matrix::ShadowSettings {
                 quality: helio::ShadowQuality::Ultra,
                 ..Default::default()
-            });
+            },
+        );
         let mut scene_db = new_scene_db_with_gpu_mirror(&device, &queue);
         let mut renderer = RendererBuilder::new(config, scene_db_handle(&scene_db))
             .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))

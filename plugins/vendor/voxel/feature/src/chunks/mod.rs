@@ -1062,8 +1062,8 @@ impl Eye {
             f64::from(tile.cy * CHUNK) * s,
         );
         let w = f64::from(CHUNK) * s;
-        let across = axes[0] * (e[0].clamp(i0, i0 + w) - e[0])
-            + axes[1] * (e[1].clamp(j0, j0 + w) - e[1]);
+        let across =
+            axes[0] * (e[0].clamp(i0, i0 + w) - e[0]) + axes[1] * (e[1].clamp(j0, j0 + w) - e[1]);
         (across.length() - self.reach).abs()
     }
 
@@ -3183,11 +3183,17 @@ impl ChunkWorld {
         );
         let records_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("chunk records"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/chunk_records.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                include_str!("../../shaders/chunk_records.wgsl").into(),
+            ),
         });
         let records_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("chunk records"),
-            entries: &[storage(0, true, c), storage(1, false, c), storage(2, false, c)],
+            entries: &[
+                storage(0, true, c),
+                storage(1, false, c),
+                storage(2, false, c),
+            ],
         });
         let records_pipeline = helio_core::shader::create_compute_pipeline(
             device,
@@ -4902,7 +4908,8 @@ impl ChunkWorld {
         let events_scope = helio_core::CpuScope::new("VoxelChunks: report events");
         stats.reports = self.seen.iter().map(|r| r.len()).sum();
         if self.counting {
-            let distinct: FxHashSet<[i32; 4]> = self.seen.iter().flat_map(|r| r.iter().copied()).collect();
+            let distinct: FxHashSet<[i32; 4]> =
+                self.seen.iter().flat_map(|r| r.iter().copied()).collect();
             stats.seen = distinct.len();
         }
         stats.reached = self.reached.len();
@@ -5418,8 +5425,12 @@ impl ChunkWorld {
             &vol.brick_cache.buffer,
         );
         if !tile_jobs.is_empty() {
-            self.uploads
-                .write(encoder, &self.tile_jobs, 0, bytemuck::cast_slice(&tile_jobs));
+            self.uploads.write(
+                encoder,
+                &self.tile_jobs,
+                0,
+                bytemuck::cast_slice(&tile_jobs),
+            );
             let empty: Vec<[i32; 4]> =
                 vec![[i32::MAX, i32::MIN + 1, i32::MAX, i32::MIN + 1]; computed_count.max(1) * 4];
             self.uploads
@@ -5470,8 +5481,12 @@ impl ChunkWorld {
             0
         };
         if !chunk_jobs.is_empty() {
-            self.uploads
-                .write(encoder, &self.chunk_jobs, 0, bytemuck::cast_slice(&chunk_jobs));
+            self.uploads.write(
+                encoder,
+                &self.chunk_jobs,
+                0,
+                bytemuck::cast_slice(&chunk_jobs),
+            );
             if vol.has_features {
                 encoder.clear_buffer(
                     &self.job_features,
@@ -5699,7 +5714,10 @@ impl ChunkWorld {
         // would only make it flicker as a still view's cut breathes. Foliage is tiled on
         // the primary volume (the others near the eye change its ground where they move:
         // `update`).
-        if let Some(primary) = self.primary.and_then(|p| self.volumes[usize::from(p)].as_ref()) {
+        if let Some(primary) = self
+            .primary
+            .and_then(|p| self.volumes[usize::from(p)].as_ref())
+        {
             let (grid, transform, volume) = (primary.grid, primary.transform, primary.index);
             let levels = grid.levels();
             let mut over_removed = FxHashSet::default();
@@ -5848,14 +5866,22 @@ impl ChunkWorld {
                 });
             }
             let head = [(changes.len() / 3) as i32, 0, 0, 0];
-            self.uploads.write(encoder, &self.table_changes, 0, bytemuck::cast_slice(&head));
             self.uploads
-                .write(encoder, &self.table_changes, 16, bytemuck::cast_slice(&changes));
-            let group = self.gpu_cache.bind_group(&self.device, &wgpu::BindGroupDescriptor {
-                label: Some("chunk table"),
-                layout: &self.table_layout,
-                entries: &[entry(0, &self.table_changes), entry(1, &self.chunk_table)],
-            });
+                .write(encoder, &self.table_changes, 0, bytemuck::cast_slice(&head));
+            self.uploads.write(
+                encoder,
+                &self.table_changes,
+                16,
+                bytemuck::cast_slice(&changes),
+            );
+            let group = self.gpu_cache.bind_group(
+                &self.device,
+                &wgpu::BindGroupDescriptor {
+                    label: Some("chunk table"),
+                    layout: &self.table_layout,
+                    entries: &[entry(0, &self.table_changes), entry(1, &self.chunk_table)],
+                },
+            );
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("chunk table"),
                 timestamp_writes: None,
@@ -5936,18 +5962,30 @@ impl ChunkWorld {
             });
         }
         let head = [count as i32, 0, 0, 0];
-        self.uploads.write(encoder, &self.records_buffer, 0, bytemuck::cast_slice(&head));
-        self.uploads
-            .write(encoder, &self.records_buffer, 16, bytemuck::cast_slice(&self.records));
-        let group = self.gpu_cache.bind_group(&self.device, &wgpu::BindGroupDescriptor {
-            label: Some("chunk records"),
-            layout: &self.records_layout,
-            entries: &[
-                entry(0, &self.records_buffer),
-                entry(1, &self.statics),
-                entry(2, &self.chunk_keys),
-            ],
-        });
+        self.uploads.write(
+            encoder,
+            &self.records_buffer,
+            0,
+            bytemuck::cast_slice(&head),
+        );
+        self.uploads.write(
+            encoder,
+            &self.records_buffer,
+            16,
+            bytemuck::cast_slice(&self.records),
+        );
+        let group = self.gpu_cache.bind_group(
+            &self.device,
+            &wgpu::BindGroupDescriptor {
+                label: Some("chunk records"),
+                layout: &self.records_layout,
+                entries: &[
+                    entry(0, &self.records_buffer),
+                    entry(1, &self.statics),
+                    entry(2, &self.chunk_keys),
+                ],
+            },
+        );
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("chunk records"),
             timestamp_writes: None,
@@ -6559,7 +6597,12 @@ impl ChunkWorld {
                     // nodes under it are rock no ray from the camera
                     // reaches: a plane's underside is no world's).
                     let bottom = g.floor + CEILING_MARGIN;
-                    [(eye.y - g.ceiling) as f32, 0.0, (eye.y - bottom) as f32, 0.0]
+                    [
+                        (eye.y - g.ceiling) as f32,
+                        0.0,
+                        (eye.y - bottom) as f32,
+                        0.0,
+                    ]
                 }
                 Some(g) => {
                     let c = g.grid.radius() + g.ceiling;
@@ -6741,7 +6784,11 @@ impl ChunkWorld {
             .map(|v| {
                 v.as_ref().map(|v| {
                     let (cell, _) = v.grid.locate(v.transform.to_local(eye));
-                    ((cell.face, cell.i, cell.j), v.exact_level, v.grid.is_plane())
+                    (
+                        (cell.face, cell.i, cell.j),
+                        v.exact_level,
+                        v.grid.is_plane(),
+                    )
                 })
             })
             .collect();
@@ -6982,7 +7029,13 @@ impl ChunkWorld {
                 }
             }
         }
-        let mut laps = [self.occluder_ms, clock.elapsed().as_secs_f64() * 1e3, 0.0, 0.0, 0.0];
+        let mut laps = [
+            self.occluder_ms,
+            clock.elapsed().as_secs_f64() * 1e3,
+            0.0,
+            0.0,
+            0.0,
+        ];
         o.drawn_frame = frame;
         o.settled_since = settled.then(|| o.settled_since.unwrap_or(frame));
         // This frame's inputs go to the planner's thread for the next frame
@@ -7012,15 +7065,23 @@ impl ChunkWorld {
         let mut at = 0;
         for window in &windows {
             let near = self.trace_occlusion_view(encoder, frame, eye, window, &drawn_in, &mut at);
-            self.sun_occlusion.as_mut().unwrap().pages.traced(window, near);
+            self.sun_occlusion
+                .as_mut()
+                .unwrap()
+                .pages
+                .traced(window, near);
         }
         laps[3] = clock.elapsed().as_secs_f64() * 1e3;
         // The tables' changed rows (runs of them a write), the near
         // planes, the frame; this frame's requests cleared.
         let o = self.sun_occlusion.as_mut().unwrap();
         for (from, words) in &rows {
-            self.uploads
-                .write(encoder, &o.pages_buffer, *from as u64 * 4, bytemuck::cast_slice(words));
+            self.uploads.write(
+                encoder,
+                &o.pages_buffer,
+                *from as u64 * 4,
+                bytemuck::cast_slice(words),
+            );
         }
         let (gpu, near) = o.pages.frame(eye);
         self.uploads.write(
@@ -7029,7 +7090,8 @@ impl ChunkWorld {
             u64::from(SUN_OCCLUSION_TABLE_WORDS) * 4,
             bytemuck::cast_slice(&near),
         );
-        self.uploads.write(encoder, &o.frame, 0, bytemuck::bytes_of(&gpu));
+        self.uploads
+            .write(encoder, &o.frame, 0, bytemuck::bytes_of(&gpu));
         encoder.clear_buffer(&o.requests, 0, None);
         self.uploads.flush();
         // The render thread's CPU time, by part (the update's occluder
@@ -7050,7 +7112,8 @@ impl ChunkWorld {
         if let Some(parts) = parts {
             stats.planner_ms = parts.iter().sum();
         }
-        if std::env::var_os("HELIO_SUN_PAGES_LOG").is_some() && parts.is_some() && stats.traced > 0 {
+        if std::env::var_os("HELIO_SUN_PAGES_LOG").is_some() && parts.is_some() && stats.traced > 0
+        {
             eprintln!("SUNPAGES frame {frame}: {stats:?}, planner parts {parts:?}");
         }
         stamp(self, encoder, 17);
@@ -7939,8 +8002,12 @@ impl ChunkWorld {
                 },
             );
             // No fallbacks yet.
-            self.uploads
-                .write(encoder, &targets.fallbacks, 0, bytemuck::cast_slice(&[0u32]));
+            self.uploads.write(
+                encoder,
+                &targets.fallbacks,
+                0,
+                bytemuck::cast_slice(&[0u32]),
+            );
             self.uploads.write(
                 encoder,
                 &targets.fallback_groups,

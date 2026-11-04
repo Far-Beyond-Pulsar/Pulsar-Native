@@ -6,16 +6,16 @@
 
 use std::sync::Arc;
 
-use engine_backend::scene::{attachments, SceneWorldExt, SpawnObject};
-use lens_component::{
-    camera_lens_view_overscan, CameraLensComponent, LensElementKind, LensElementProps, LensPreset,
-    LensProjectionModel, LensRegionShape, LENS_ELEMENT_SLOTS,
-};
+use engine_backend::scene::{SceneWorldExt, SpawnObject, attachments};
+use helio_core::ENTITY_GENERATIONS_KEY;
+use helio_pass_lens::{LensElementRow, LensRow, element_kind};
 use helio_scene_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };
-use helio_core::ENTITY_GENERATIONS_KEY;
-use helio_pass_lens::{element_kind, LensElementRow, LensRow};
+use lens_component::{
+    CameraLensComponent, LENS_ELEMENT_SLOTS, LensElementKind, LensElementProps, LensPreset,
+    LensProjectionModel, LensRegionShape, camera_lens_view_overscan,
+};
 use pulsar_scenedb::{Entity, SceneDb};
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
@@ -203,10 +203,11 @@ fn an_authored_lens_reaches_the_passes_buffers_and_follows_edits_and_removal() {
     attachments::detach(&mut scene.world, second);
     let row = gpu.lens(&mut scene, second);
     assert_eq!((row.enabled, row.element_count), (0, 0));
-    assert!(gpu
-        .elements(&mut scene, block)
-        .iter()
-        .all(|e| e.kind == element_kind::NONE));
+    assert!(
+        gpu.elements(&mut scene, block)
+            .iter()
+            .all(|e| e.kind == element_kind::NONE)
+    );
 }
 
 /// A 35 mm lens with an equidistant fisheye projection over the frame: a map

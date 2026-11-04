@@ -13,16 +13,16 @@
 
 mod common;
 
-use helio::{
-    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
-    RendererConfig,
-};
-use pulsar_scenedb::SceneDb;
 use common::{
     box_mesh, build_default_renderer_with_context, cube_mesh, directional_light, make_material,
     new_scene_db_with_gpu_mirror, plane_mesh, point_light, spawn_light, spawn_material, spawn_mesh,
     spawn_object, spawn_sky, update_light,
 };
+use helio::{
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
+    RendererConfig,
+};
+use pulsar_scenedb::SceneDb;
 
 use winit::{
     application::ApplicationHandler,

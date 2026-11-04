@@ -7,8 +7,8 @@ use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType, Renderer, SceneDbHandle};
 #[allow(unused_imports)]
 use helio_components::{LightComponent, MaterialComponent};
-use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_mesh_api::{MeshUpload, PackedVertex};
+use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_sky::host_rows::AtmosphereComponent;
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;

@@ -957,10 +957,7 @@ mod tests {
         assert_eq!(std::mem::size_of::<GpuBvhNode>(), 32);
         assert_eq!(std::mem::size_of::<GpuBvhHeader>(), 128);
         assert_eq!(std::mem::size_of::<BuildCfgGpu>(), 16);
-        assert_eq!(
-            std::mem::size_of::<helio_mesh_api::StaticObjectRow>(),
-            252
-        );
+        assert_eq!(std::mem::size_of::<helio_mesh_api::StaticObjectRow>(), 252);
         assert_eq!(header_offsets::DISPATCH_LEAVES, 16 * 4);
         assert_eq!(header_offsets::DISPATCH_INSTANCES, 19 * 4);
         assert_eq!(header_offsets::DISPATCH_NODES, 22 * 4);

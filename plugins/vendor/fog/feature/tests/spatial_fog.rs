@@ -149,7 +149,9 @@ fn scenedb_local_fog_is_visible_from_outside_and_tracks_edits_and_removal() {
         );
         let local_media = buffer(
             &device,
-            &[0; std::mem::size_of::<helio_pass_volumetric_fog::host_rows::LocalFogVolumeComponent>()],
+            &[0;
+                std::mem::size_of::<helio_pass_volumetric_fog::host_rows::LocalFogVolumeComponent>(
+                )],
             wgpu::BufferUsages::STORAGE,
         );
         let output = buffer(

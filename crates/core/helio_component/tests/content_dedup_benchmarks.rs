@@ -16,8 +16,8 @@
 
 #![cfg(feature = "gpu")]
 
-use helio_mesh_api::PackedVertex;
 use helio_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
+use helio_mesh_api::PackedVertex;
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
     EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,

@@ -99,7 +99,10 @@ fn view(width: u32, height: u32, ground: bool) -> Option<View> {
             intensity: 0.0,
         })
         .with_external_device()
-        .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &voxel_features()))
+        .with_graph(helio_mesh_host::presets::with(
+            helio_presets::Preset::Deferred,
+            &voxel_features(),
+        ))
         .build(
             Arc::clone(&device),
             Arc::clone(&queue),

@@ -55,7 +55,9 @@ const _: () = assert!(
 );
 
 /// Split `GpuPostProcessUniforms` into the reflection-supported row parts.
-fn split_settings(settings: &helio_pass_postprocess::GpuPostProcessUniforms) -> ([u32; 116], [f32; 16]) {
+fn split_settings(
+    settings: &helio_pass_postprocess::GpuPostProcessUniforms,
+) -> ([u32; 116], [f32; 16]) {
     let bytes = bytemuck::bytes_of(settings);
     let mut head = [0u32; 116];
     let mut lens = [0f32; 16];
@@ -64,7 +66,10 @@ fn split_settings(settings: &helio_pass_postprocess::GpuPostProcessUniforms) -> 
     (head, lens)
 }
 
-fn join_settings(head: &[u32; 116], lens: &[f32; 16]) -> helio_pass_postprocess::GpuPostProcessUniforms {
+fn join_settings(
+    head: &[u32; 116],
+    lens: &[f32; 16],
+) -> helio_pass_postprocess::GpuPostProcessUniforms {
     let mut settings: helio_pass_postprocess::GpuPostProcessUniforms = bytemuck::Zeroable::zeroed();
     let bytes = bytemuck::bytes_of_mut(&mut settings);
     bytes[..SPLIT].copy_from_slice(bytemuck::bytes_of(head));
@@ -165,7 +170,10 @@ impl CameraPostProcessRow {
     pub fn new(view_id: u32, settings: &helio_pass_postprocess::PostProcessSettings) -> Self {
         Self::from_gpu(view_id, &settings.to_gpu())
     }
-    pub fn from_gpu(view_id: u32, settings: &helio_pass_postprocess::GpuPostProcessUniforms) -> Self {
+    pub fn from_gpu(
+        view_id: u32,
+        settings: &helio_pass_postprocess::GpuPostProcessUniforms,
+    ) -> Self {
         let (settings, lens) = split_settings(settings);
         Self {
             view_id,

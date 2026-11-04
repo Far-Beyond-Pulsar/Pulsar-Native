@@ -157,11 +157,11 @@ impl ApplicationHandler for App {
             .write()
             .unwrap()
             .compose_transparent_override(glass_transparent_wgsl);
-        templates
-            .transparent
-            .write()
-            .unwrap()
-            .register_str_at(glass_class, "glass_transparent", glass_transparent_src);
+        templates.transparent.write().unwrap().register_str_at(
+            glass_class,
+            "glass_transparent",
+            glass_transparent_src,
+        );
         log::info!(
             "[RADIANT] Glass (transparent) template registered as class {}",
             glass_class

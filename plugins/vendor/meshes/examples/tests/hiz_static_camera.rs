@@ -53,15 +53,13 @@ impl Harness {
             scene_db_handle(&scene_db),
         )
         .with_external_device()
-        .with_pass_build_context(Box::new(
-            helio_mesh_host::presets::deferred,
-        ))
+        .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
         .build(device.clone(), queue.clone(), SIZE, SIZE, format);
         renderer.set_clear_color([0.0, 0.0, 0.0, 1.0]);
         renderer.set_feature_live(helio::AmbientLight {
-        color: [0.0; 3],
-        intensity: 0.0,
-    });
+            color: [0.0; 3],
+            intensity: 0.0,
+        });
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {

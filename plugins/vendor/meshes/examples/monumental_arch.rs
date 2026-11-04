@@ -11,8 +11,8 @@
 //! light stand in.
 use crate::{architectural_mesh::Mesh, v3_demo_common::*};
 use glam::{Mat4, Vec2, Vec3};
-use helio::{Camera};
-use helio_mesh_api::{MeshUpload};
+use helio::Camera;
+use helio_mesh_api::MeshUpload;
 use pulsar_scenedb::{Entity, World};
 
 // Extrude a counter-clockwise polygon along depth. Rotating the entire prism

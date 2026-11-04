@@ -1,8 +1,8 @@
 //! Execute production WGSL and the real pass, not a CPU copy of its equations.
+use helio_core::{CommandRecorder, GpuCameraUniforms, SceneBufferProjection, SceneInput};
 use helio_pass_volumetric_fog::host_rows::{
     GlobalFogComponent, LocalFogVolumeComponent, VolumetricFogSettingsComponent,
 };
-use helio_core::{CommandRecorder, GpuCameraUniforms, SceneBufferProjection, SceneInput};
 use helio_pass_volumetric_fog::VolumetricFogPass;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;

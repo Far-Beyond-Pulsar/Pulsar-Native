@@ -48,7 +48,11 @@ pub fn new_scene_db_with_gpu_mirror_and(
         max_cells_metadata: 0,
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
-    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
+    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        4,
+        device,
+    );
     helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,
@@ -397,7 +401,9 @@ pub fn set_camera_lens(world: &mut World, lens: LensComponent) {
 /// The deferred preset with the plugin's features (Helio's presets do not
 /// list them: the lens are a Pulsar plugin's).
 pub fn preset() -> helio_presets::PresetGraph {
-    helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
+    helio_mesh_host::presets::with(
+        helio_presets::Preset::Deferred,
+        &helio_feature_api::FeatureSet::new()
             .with(helio_pass_lens::LensFeature)
             .with(helio_pass_flare::LensFlareFeature)
             // The camera's lens and grading settings are a post-process

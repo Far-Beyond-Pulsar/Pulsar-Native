@@ -129,9 +129,7 @@ fn objects_keep_their_material_while_other_objects_change_theirs() {
         scene_db_handle(&scene_db),
     )
     .with_external_device()
-    .with_pass_build_context(Box::new(
-        helio_mesh_host::presets::deferred,
-    ))
+    .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
     .build(device.clone(), queue.clone(), SIZE, SIZE, format);
     renderer.set_clear_color([0.0, 0.0, 0.0, 1.0]);
     renderer.set_feature_live(helio::AmbientLight {

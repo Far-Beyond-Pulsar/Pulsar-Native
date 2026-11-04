@@ -11,17 +11,17 @@
 
 mod common;
 
+use common::{
+    box_mesh, make_material, new_scene_db_with_gpu_mirror, plane_mesh, scene_db_handle,
+    spawn_light, spawn_material, spawn_mesh, spawn_object, sphere_mesh,
+};
+use common::{LensComponent, LensElementComponent};
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, GpuLight,
     HelioGraphicsConfig, HelioGraphicsContext, LightType, Renderer, RendererBuilder,
     RendererConfig,
 };
-use common::{LensComponent, LensElementComponent};
 use helio_pass_lens::{LensRegion, ProjectionModel};
-use common::{
-    box_mesh, make_material, new_scene_db_with_gpu_mirror, plane_mesh, scene_db_handle,
-    spawn_light, spawn_material, spawn_mesh, spawn_object, sphere_mesh,
-};
 
 use winit::{
     application::ApplicationHandler,
@@ -350,8 +350,7 @@ fn build_scene(
         .insert(helio_pass_lens::LensUser(LENS_USER_HOOK));
     let mut scene_db = new_scene_db_with_gpu_mirror(&device, &queue);
     let graph_scene_db = scene_db_handle(&scene_db);
-    let builder = RendererBuilder::new(config, graph_scene_db.clone())
-        .with_graph(common::preset());
+    let builder = RendererBuilder::new(config, graph_scene_db.clone()).with_graph(common::preset());
     let mut renderer = if let Some(graphics) = graphics {
         builder
             .build_with_graphics_context(graphics)
@@ -613,9 +612,9 @@ fn build_scene(
     );
 
     renderer.set_feature_live(helio::AmbientLight {
-            color: [0.10, 0.12, 0.18],
-            intensity: 0.04,
-        });
+        color: [0.10, 0.12, 0.18],
+        intensity: 0.04,
+    });
     renderer.set_clear_color([0.01, 0.01, 0.03, 1.0]);
     (scene_db, renderer)
 }

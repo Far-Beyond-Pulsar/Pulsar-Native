@@ -428,7 +428,12 @@ impl RenderPass for TransparentPass {
         if let Some(media) = self.media {
             reads.extend([media.grid, media.parameters]);
         }
-        reads.extend(["depth", "cluster_light_grid", "object_batch", "culled_batch"]);
+        reads.extend([
+            "depth",
+            "cluster_light_grid",
+            "object_batch",
+            "culled_batch",
+        ]);
         helio_frame_api::static_names(&reads)
     }
 
@@ -574,9 +579,9 @@ impl RenderPass for TransparentPass {
         };
         let Some(culled) = ctx
             .registry
-            .get::<helio_mesh_api::CulledBatchFrameData<'_>>(
-                helio_core::ResourceKey::new("culled_batch"),
-            )
+            .get::<helio_mesh_api::CulledBatchFrameData<'_>>(helio_core::ResourceKey::new(
+                "culled_batch",
+            ))
         else {
             return Ok(());
         };

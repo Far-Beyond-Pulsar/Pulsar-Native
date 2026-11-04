@@ -18,8 +18,8 @@
 //! established for SceneDB's `Transform` buffer) is a separate integration
 //! step, tracked apart from this crate.
 
-pub mod scene_join;
 pub mod feature;
+pub mod scene_join;
 pub use feature::ObjectBatchFeature;
 
 use bytemuck::{Pod, Zeroable};

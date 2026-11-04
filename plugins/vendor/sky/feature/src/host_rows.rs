@@ -157,8 +157,6 @@ impl AtmosphereComponent {
     }
 
     pub fn with_clouds(self, clouds: crate::CloudLayer) -> Self {
-        crate::AtmosphereRow::from(self)
-            .with_clouds(clouds)
-            .into()
+        crate::AtmosphereRow::from(self).with_clouds(clouds).into()
     }
 }

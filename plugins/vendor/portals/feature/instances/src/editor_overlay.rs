@@ -374,11 +374,21 @@ impl RenderPass for PortalEditorOverlayPass {
         if let Some(buffers) = scene.scene_buffers() {
             self.active_portal_count = Some(helio_pass_portal_cull::portal_counts(buffers).views);
             let texts = buffers.payload(&PORTAL_DEBUG_TEXTS);
-            if texts.as_deref().map_or(!self.debug_texts.is_empty(), |texts| *texts != self.debug_texts) {
+            if texts
+                .as_deref()
+                .map_or(!self.debug_texts.is_empty(), |texts| {
+                    *texts != self.debug_texts
+                })
+            {
                 self.set_debug_texts(texts.as_deref().cloned().unwrap_or_default());
             }
             let ghost = buffers.payload(&PORTAL_DEBUG_GEOMETRY);
-            if ghost.as_deref().map_or(!self.ghost_vertices.is_empty(), |ghost| *ghost != self.ghost_vertices) {
+            if ghost
+                .as_deref()
+                .map_or(!self.ghost_vertices.is_empty(), |ghost| {
+                    *ghost != self.ghost_vertices
+                })
+            {
                 self.set_ghost_vertices(ghost.as_deref().cloned().unwrap_or_default());
             }
         }

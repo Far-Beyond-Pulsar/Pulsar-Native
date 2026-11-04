@@ -66,8 +66,8 @@ fn shader_files_parse_and_validate() {
         let source = helio_core::shader::resolve_with(&source, SNIPPETS).into_owned();
         match naga::front::wgsl::parse_str(&source) {
             Ok(module) => {
-                if let Err(e) = Validator::new(ValidationFlags::all(), Capabilities::all())
-                    .validate(&module)
+                if let Err(e) =
+                    Validator::new(ValidationFlags::all(), Capabilities::all()).validate(&module)
                 {
                     failures.push(format!("{name}: {e:?}"));
                 }

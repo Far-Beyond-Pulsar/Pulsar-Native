@@ -105,7 +105,6 @@ pub const MAX_CANDIDATES_PER_TILE: u32 = 16_384;
 /// encoding on both sides of the producer/consumer contract.
 pub const MAX_BLADES_PER_TILE: u32 = 65_536;
 
-
 /// Edge length of one base foliage tile in metres.
 ///
 /// 8 m is the unit of everything downstream: the near band's tiles, the ground's chart

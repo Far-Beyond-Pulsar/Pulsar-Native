@@ -44,9 +44,7 @@ fn moving_an_object_after_idle_frames_updates_the_image() {
         scene_db_handle(&scene_db),
     )
     .with_external_device()
-    .with_pass_build_context(Box::new(
-        helio_mesh_host::presets::deferred,
-    ))
+    .with_pass_build_context(Box::new(helio_mesh_host::presets::deferred))
     .build(device.clone(), queue.clone(), SIZE, SIZE, format);
     renderer.set_clear_color([0.0, 0.0, 0.0, 1.0]);
     renderer.set_feature_live(helio::AmbientLight {

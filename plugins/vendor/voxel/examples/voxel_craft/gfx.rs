@@ -13,14 +13,14 @@ use helio::{
     Camera, HelioGraphicsConfig, HelioGraphicsContext, HelioXrInput, Renderer, RendererBuilder,
     RendererConfig,
 };
-use helio_pass_sky::host_rows::AtmosphereComponent;
-use helio_pass_foliage_place::host_rows::FoliageInteractorComponent;
 use helio_components::WorldRows;
-use helio_presets::Preset;
+use helio_pass_foliage_place::host_rows::FoliageInteractorComponent;
+use helio_pass_sky::host_rows::AtmosphereComponent;
 use helio_pass_voxel_planet::chunks::pass::ChunkPass;
 use helio_pass_voxel_planet::chunks::ResidencyConfig;
 use helio_pass_voxel_planet::engine::{PlanetFrame, TerrainAppearance, VOXEL_FRAME};
 use helio_pass_voxel_planet::Planet;
+use helio_presets::Preset;
 use pulsar_scenedb::{Entity, SceneDb};
 use std::sync::Arc;
 use winit::window::Window;
@@ -443,35 +443,48 @@ impl Gfx {
         };
         // The meadow, grown on the terrain the planet pass draws
         // (`VOXEL_CRAFT_NO_FOLIAGE`: bare turf, for A/B measurements).
-        renderer_config.features.edit::<helio_pass_foliage_place::FoliageSettings>().enabled = std::env::var_os("VOXEL_CRAFT_NO_FOLIAGE").is_none();
-        renderer_config.features.edit::<helio_pass_foliage_place::FoliageSettings>().tufts_per_m2 = Some(meadow.tufts_per_m2);
-        renderer_config.features.edit::<helio_pass_foliage_place::FoliageSettings>().blades_per_tuft = Some(meadow.blades_per_tuft);
-        renderer_config.features.edit::<helio_pass_foliage_place::FoliageSettings>().range = Some(meadow.range);
+        renderer_config
+            .features
+            .edit::<helio_pass_foliage_place::FoliageSettings>()
+            .enabled = std::env::var_os("VOXEL_CRAFT_NO_FOLIAGE").is_none();
+        renderer_config
+            .features
+            .edit::<helio_pass_foliage_place::FoliageSettings>()
+            .tufts_per_m2 = Some(meadow.tufts_per_m2);
+        renderer_config
+            .features
+            .edit::<helio_pass_foliage_place::FoliageSettings>()
+            .blades_per_tuft = Some(meadow.blades_per_tuft);
+        renderer_config
+            .features
+            .edit::<helio_pass_foliage_place::FoliageSettings>()
+            .range = Some(meadow.range);
         let renderer_config = renderer_config.with_feature(terrain);
         let handle = scene_db_handle(&scene);
-        let builder =
-            RendererBuilder::new(renderer_config.clone(), handle).with_graph(
-                // The voxel world, the leaf kinds (particles, sprites, decals,
+        let builder = RendererBuilder::new(renderer_config.clone(), handle).with_graph(
+            // The voxel world, the leaf kinds (particles, sprites, decals,
             // the lens and its flare, portals) and the media kinds (foliage,
             // water, fog, post-process volumes) and the lighting kinds (GI,
             // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
-                helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
-                        .with(helio_pass_voxel_planet::VoxelFeature)
-                        .with(helio_pass_corona::CoronaFeature)
-                        .with(helio_pass_sprite_batch::SpriteFeature)
-                        .with(helio_pass_decal::DecalFeature)
-                        .with(helio_pass_lens::LensFeature)
-                        .with(helio_pass_flare::LensFlareFeature)
-                        .with(helio_pass_portal_cull::PortalCullFeature)
-                        .with(helio_pass_portal_instances::PortalFeature)
-                        .with(helio_pass_foliage_gbuffer::FoliageFeature)
-                        .with(helio_pass_water_sim::WaterFeature)
-                        .with(helio_pass_volumetric_fog::FogFeature)
-                        .with(helio_pass_post_volumes::PostVolumesFeature)
-                        .with(helio_pass_sky::SkyFeature)
-                        .with(helio_pass_gi::GiFeature),
-                ),
-            );
+            helio_mesh_host::presets::with(
+                helio_presets::Preset::Deferred,
+                &helio_feature_api::FeatureSet::new()
+                    .with(helio_pass_voxel_planet::VoxelFeature)
+                    .with(helio_pass_corona::CoronaFeature)
+                    .with(helio_pass_sprite_batch::SpriteFeature)
+                    .with(helio_pass_decal::DecalFeature)
+                    .with(helio_pass_lens::LensFeature)
+                    .with(helio_pass_flare::LensFlareFeature)
+                    .with(helio_pass_portal_cull::PortalCullFeature)
+                    .with(helio_pass_portal_instances::PortalFeature)
+                    .with(helio_pass_foliage_gbuffer::FoliageFeature)
+                    .with(helio_pass_water_sim::WaterFeature)
+                    .with(helio_pass_volumetric_fog::FogFeature)
+                    .with(helio_pass_post_volumes::PostVolumesFeature)
+                    .with(helio_pass_sky::SkyFeature)
+                    .with(helio_pass_gi::GiFeature),
+            ),
+        );
         let (mut renderer, xr_input) = graphics
             .build_renderer(builder, renderer_config)
             .expect("Helio renderer");

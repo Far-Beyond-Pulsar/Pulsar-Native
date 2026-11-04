@@ -7,7 +7,7 @@ use glam::DVec3;
 use helio_pass_voxel_planet::terrain::material;
 use pulsar_scene_model::attachments;
 use pulsar_scene_model::components::Transform;
-use pulsar_scenedb::{component_id, Entity, World};
+use pulsar_scenedb::{Entity, World, component_id};
 use voxel_component::world::terrain_world;
 use voxel_component::{VoxelTerrainComponent, VoxelTerrainLayersComponent};
 
@@ -262,13 +262,15 @@ fn terrains_off_the_origin_are_rejected() {
             ..Default::default()
         },
     );
-    assert!(call(
-        &mut world,
-        entity,
-        "get_block",
-        vec![Box::new(0.0f64), Box::new(0.0f64), Box::new(0.0f64)]
-    )
-    .is_err());
+    assert!(
+        call(
+            &mut world,
+            entity,
+            "get_block",
+            vec![Box::new(0.0f64), Box::new(0.0f64), Box::new(0.0f64)]
+        )
+        .is_err()
+    );
 }
 
 fn call_layers(
@@ -336,13 +338,15 @@ fn scripts_shape_the_layer_stack() {
     );
     call_layers(&mut world, layers, "remove_layer", vec![Box::new(1u32)]).unwrap();
     assert!(call_layers(&mut world, layers, "remove_layer", vec![Box::new(5u32)]).is_err());
-    assert!(call_layers(
-        &mut world,
-        layers,
-        "add_layer",
-        vec![Box::new(String::from("Volcano"))]
-    )
-    .is_err());
+    assert!(
+        call_layers(
+            &mut world,
+            layers,
+            "add_layer",
+            vec![Box::new(String::from("Volcano"))]
+        )
+        .is_err()
+    );
     call_layers(
         &mut world,
         layers,
@@ -359,13 +363,15 @@ fn scripts_shape_the_layer_stack() {
             .len(),
         3
     );
-    assert!(call_layers(
-        &mut world,
-        layers,
-        "use_preset",
-        vec![Box::new(String::from("mars"))]
-    )
-    .is_err());
+    assert!(
+        call_layers(
+            &mut world,
+            layers,
+            "use_preset",
+            vec![Box::new(String::from("mars"))]
+        )
+        .is_err()
+    );
 }
 
 /// Every setting of the world is a script method, read and written: a game
@@ -454,33 +460,41 @@ fn scripts_read_and_set_every_world_setting() {
         (VoxelWorldShape::Sphere, 0.5, VoxelAir::None)
     );
     // Nonsense is refused, and changes nothing.
-    assert!(call(
-        &mut world,
-        entity,
-        "set_world_shape",
-        vec![Box::new(String::from("torus"))]
-    )
-    .is_err());
-    assert!(call(
-        &mut world,
-        entity,
-        "set_air",
-        vec![Box::new(String::from("vacuum"))]
-    )
-    .is_err());
-    assert!(call(
-        &mut world,
-        entity,
-        "set_planet_radius",
-        vec![Box::new(-1.0f64)]
-    )
-    .is_err());
-    assert!(call(
-        &mut world,
-        entity,
-        "set_air_density",
-        vec![Box::new(f64::NAN)]
-    )
-    .is_err());
+    assert!(
+        call(
+            &mut world,
+            entity,
+            "set_world_shape",
+            vec![Box::new(String::from("torus"))]
+        )
+        .is_err()
+    );
+    assert!(
+        call(
+            &mut world,
+            entity,
+            "set_air",
+            vec![Box::new(String::from("vacuum"))]
+        )
+        .is_err()
+    );
+    assert!(
+        call(
+            &mut world,
+            entity,
+            "set_planet_radius",
+            vec![Box::new(-1.0f64)]
+        )
+        .is_err()
+    );
+    assert!(
+        call(
+            &mut world,
+            entity,
+            "set_air_density",
+            vec![Box::new(f64::NAN)]
+        )
+        .is_err()
+    );
     assert_eq!(text(&mut world, "air"), "none");
 }

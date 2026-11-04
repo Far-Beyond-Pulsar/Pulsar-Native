@@ -13,20 +13,17 @@ mod tests {
                 "forward lit",
                 include_str!("../../forward/shaders/forward_lit.wgsl"),
             ),
-            (
-                "shadow",
-                include_str!("../../shadow/shaders/shadow.wgsl"),
-            ),
+            ("shadow", include_str!("../../shadow/shaders/shadow.wgsl")),
             (
                 "shadow transmittance",
                 include_str!("../../shadow/shaders/shadow_transmittance.wgsl"),
             ),
-            (
-                "transparent",
-                helio_mats::templates::TRANSPARENT_BASE,
-            ),
+            ("transparent", helio_mats::templates::TRANSPARENT_BASE),
         ];
-        let attribute = format!("@location({})", helio_mesh_api::draw_slots::DRAW_SLOT_LOCATION);
+        let attribute = format!(
+            "@location({})",
+            helio_mesh_api::draw_slots::DRAW_SLOT_LOCATION
+        );
         for (name, source) in sources {
             let code: String = source
                 .lines()

@@ -129,8 +129,7 @@ inventory::submit! {
 pub const ATMOSPHERE_CLASS: &str = "AtmosphereComponent";
 
 /// Why adding a second atmosphere is refused.
-pub const ONE_ATMOSPHERE: &str =
-    "This level already has a sky (an AtmosphereComponent); a level has one. Edit it in World Settings.";
+pub const ONE_ATMOSPHERE: &str = "This level already has a sky (an AtmosphereComponent); a level has one. Edit it in World Settings.";
 
 /// Every attached [`AtmosphereComponent`] instance, enabled or not, in
 /// level order (a level file's order).

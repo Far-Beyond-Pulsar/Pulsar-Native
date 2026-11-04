@@ -10,7 +10,7 @@ use glam::{Mat4, Vec3};
 use helio::{
     required_wgpu_features, required_wgpu_limits, Camera, RendererBuilder, RendererConfig,
 };
-use helio_components::{MaterialComponent};
+use helio_components::MaterialComponent;
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use pulsar_scenedb_derive::SceneStore;
 
@@ -136,7 +136,9 @@ fn the_decal_pass_joins_with_its_first_row() {
     let config = RendererConfig::new(64, 48, wgpu::TextureFormat::Rgba8UnormSrgb);
     let mut renderer =
         RendererBuilder::new(config.clone(), scene.world.gpu_mirror().cloned().unwrap())
-            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new().with(helio_pass_decal::DecalFeature),
+            .with_graph(helio_mesh_host::presets::with(
+                helio_presets::Preset::Deferred,
+                &helio_feature_api::FeatureSet::new().with(helio_pass_decal::DecalFeature),
             ))
             .with_external_device()
             .build(
@@ -171,15 +173,14 @@ fn the_decal_pass_joins_with_its_first_row() {
             view_formats: &[],
         })
         .create_view(&Default::default());
-    let frames =
-        |renderer: &mut helio::Renderer, scene: &mut pulsar_scenedb::SceneDb, count| {
-            for _ in 0..count {
-                scene.world.flush_gpu_mirror(&queue);
-                renderer.render(&camera, &view).unwrap();
-                // Row readbacks complete between frames.
-                device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-            }
-        };
+    let frames = |renderer: &mut helio::Renderer, scene: &mut pulsar_scenedb::SceneDb, count| {
+        for _ in 0..count {
+            scene.world.flush_gpu_mirror(&queue);
+            renderer.render(&camera, &view).unwrap();
+            // Row readbacks complete between frames.
+            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        }
+    };
 
     frames(&mut renderer, &mut scene, 4);
     assert!(
@@ -192,10 +193,9 @@ fn the_decal_pass_joins_with_its_first_row() {
     row.transform = Mat4::from_scale(Vec3::splat(2.0)).to_cols_array();
     row.color = [1.0, 0.0, 0.0, 1.0];
     let decal = scene.world.spawn();
-    scene.world.insert(
-        decal,
-        bytemuck::cast::<_, DecalRowComponent>(row),
-    );
+    scene
+        .world
+        .insert(decal, bytemuck::cast::<_, DecalRowComponent>(row));
     frames(&mut renderer, &mut scene, 4);
     assert!(
         renderer.graph_members().contains(&"DecalApply"),

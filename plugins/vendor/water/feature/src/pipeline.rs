@@ -13,10 +13,8 @@ pub const WATER_SHORE_SNIPPET: helio_core::shader::ShaderSnippet = helio_core::w
 
 /// The sky as the water sees it (`water_sky.wgsl`): one colour for the surface
 /// underside and the underwater medium.
-pub const WATER_SKY_SNIPPET: helio_core::shader::ShaderSnippet = helio_core::wgsl_snippet!(
-    "//!use water_sky",
-    "../shaders/water_sky.wgsl"
-);
+pub const WATER_SKY_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use water_sky", "../shaders/water_sky.wgsl");
 
 fn storage_read_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
@@ -807,7 +805,11 @@ impl WaterSimPass {
         });
         let fallback_sky_view_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Water No Sky View"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -1090,7 +1092,10 @@ impl WaterSimPass {
                     uniform_buffer_entry(16, 32),
                     // The atmosphere frame and sky-view LUT: the medium is
                     // lit by the same sky as the surface underside.
-                    uniform_buffer_entry(20, helio_frame_api::lighting::sky::ATMOSPHERE_FRAME_BYTES),
+                    uniform_buffer_entry(
+                        20,
+                        helio_frame_api::lighting::sky::ATMOSPHERE_FRAME_BYTES,
+                    ),
                     texture_entry(
                         21,
                         wgpu::TextureSampleType::Float { filterable: true },
