@@ -1524,10 +1524,12 @@ impl HelioRenderer {
             {
                 profiling::profile_scope!("helio_renderer_render");
                 let renderer = &mut inner.scene.renderer;
-                // The editor's animation clock: wall time while realtime,
-                // frozen otherwise.
+                // Keep temporal-filter weights deterministic across tiles.
+                // Animation time is frozen independently through the frame
+                // clock override below; Helio requires a positive delta for
+                // temporal filters even while that clock is paused.
                 renderer.set_frame_delta_override(if crop.is_some() {
-                    Some(0.0)
+                    Some(1.0 / 60.0)
                 } else {
                     self.frame_delta_override
                 });
