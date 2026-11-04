@@ -1,6 +1,7 @@
 //! Small configuration window for high-resolution viewport captures.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
@@ -19,6 +20,7 @@ pub struct HighResScreenshotWindow {
     multiplier: Entity<InputState>,
     mode: CaptureMode,
     message: Option<String>,
+    _progress_refresh: Task<()>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -53,6 +55,22 @@ impl HighResScreenshotWindow {
             input.set_value("2", window, cx);
             input
         });
+        let progress_state = state.clone();
+        let progress_refresh = cx.spawn(async move |this, cx| {
+            let mut previous = None;
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(200))
+                    .await;
+                let progress = progress_state.read().build.screenshot_progress;
+                if progress != previous {
+                    previous = progress;
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        break;
+                    }
+                }
+            }
+        });
         Self {
             state,
             width,
@@ -60,6 +78,7 @@ impl HighResScreenshotWindow {
             multiplier,
             mode: CaptureMode::Pixels,
             message: None,
+            _progress_refresh: progress_refresh,
         }
     }
 
@@ -107,9 +126,11 @@ impl HighResScreenshotWindow {
                         .max(1)
                         .min(u64::from(tile_side)) as u32;
                     let rows = height.div_ceil(band_height);
+                    let total_tiles = u64::from(columns) * u64::from(rows);
+                    state.build.screenshot_progress = Some((0, total_tiles));
                     self.message = Some(format!(
                         "Rendering {width} × {height} in {} tiles. Scene time is frozen during capture.",
-                        u64::from(columns) * u64::from(rows)
+                        total_tiles
                     ));
                 }
             }
@@ -124,6 +145,19 @@ impl HighResScreenshotWindow {
 impl Render for HighResScreenshotWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let size = self.state.read().build.viewport_size;
+        let (processing, progress) = {
+            let build = &self.state.read().build;
+            (build.screenshot_processing, build.screenshot_progress)
+        };
+        let status_message = if processing {
+            progress
+                .map(|(completed, total)| {
+                    format!("Rendering screenshot: {completed}/{total} tiles complete.")
+                })
+                .or_else(|| self.message.clone())
+        } else {
+            self.message.clone()
+        };
         let aspect = if size.1 > 0 {
             format!("{:.3}:1", size.0 as f32 / size.1 as f32)
         } else {
@@ -240,12 +274,12 @@ impl Render for HighResScreenshotWindow {
                                 this.update(cx, |this, cx| this.capture(window, cx))
                             }),
                     )
-                    .when(self.message.is_some(), |el| {
+                    .when(status_message.is_some(), |el| {
                         el.child(
                             div()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(self.message.clone().unwrap_or_default()),
+                                .child(status_message.unwrap_or_default()),
                         )
                     }),
             )
