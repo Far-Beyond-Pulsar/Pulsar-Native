@@ -98,7 +98,7 @@ mod frame_pacer;
 mod init_queue;
 mod render_thread;
 mod thumbnail;
-use thumbnail::capture_viewport_image;
+use thumbnail::capture_viewport_png_tiled;
 use thumbnail::capture_viewport_thumbnail;
 impl HelioViewport {
     pub fn new<V: 'static>(
@@ -355,8 +355,7 @@ impl Render for HelioViewport {
                             let _ = std::fs::remove_file(&temp_path);
                             this.update_in(cx, |_, window, cx| {
                                 window.push_notification(
-                                    Notification::error("Screenshot capture failed")
-                                        .message(error),
+                                    Notification::error("Screenshot capture failed").message(error),
                                     cx,
                                 );
                             })
