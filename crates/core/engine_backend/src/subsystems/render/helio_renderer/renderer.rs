@@ -14,7 +14,8 @@ use super::interaction::SceneInteraction;
 #[cfg(test)]
 use super::scene_renderer::ortho_camera;
 use super::scene_renderer::{
-    ortho_depth_range, DeviceOwner, FrameProjection, FrameView, SceneRenderer, SceneRendererOptions,
+    ortho_depth_range, DeviceOwner, FrameCrop, FrameProjection, FrameView, SceneRenderer,
+    SceneRendererOptions,
 };
 type GizmoMode = GizmoType;
 
@@ -1036,6 +1037,33 @@ impl HelioRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) -> Option<wgpu::SubmissionIndex> {
+        self.render_frame_internal(_device, _queue, view, width, height, format, None)
+    }
+
+    /// Draw one crop of a larger output while keeping scene time fixed.
+    pub fn render_capture_tile(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        crop: FrameCrop,
+    ) -> Option<wgpu::SubmissionIndex> {
+        self.render_frame_internal(device, queue, view, width, height, format, Some(crop))
+    }
+
+    fn render_frame_internal(
+        &mut self,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        crop: Option<FrameCrop>,
+    ) -> Option<wgpu::SubmissionIndex> {
         // When the Inspector capture is active, put the engine-side render
         // phases into the same bounded WGPUI timeline as Window::draw. The
         // cfg keeps the renderer usable without the optional editor UI, and
@@ -1048,7 +1076,11 @@ impl HelioRenderer {
         let frame_start = Instant::now();
         let mut phases = FramePhases::new(frame_start);
         let now = Instant::now();
-        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        let dt = if crop.is_some() {
+            0.0
+        } else {
+            now.duration_since(self.last_frame).as_secs_f32().min(0.1)
+        };
         self.last_frame = now;
         self.frame_count += 1;
         self.profiler_frame_counter += 1;
@@ -1076,7 +1108,9 @@ impl HelioRenderer {
         // `handle_left_release` already set `self.gizmo_dirty = true`
         // internally, so processing them here needs no extra plumbing to keep
         // this frame from idling out on a drag-release commit.
-        let mut pending_pointer_events = {
+        let mut pending_pointer_events = if crop.is_some() {
+            Vec::new()
+        } else {
             profiling::profile_scope!("helio_take_pending_pointer_events");
             let mut batch = std::mem::take(&mut self.pointer_events_scratch);
             if let Ok(mut events) = self.pending_pointer_events.lock() {
@@ -1133,7 +1167,9 @@ impl HelioRenderer {
         phases.mark("pointer");
 
         // ── Detect input activity BEFORE consuming ──────────────────────────────
-        let (had_input, needs_resize) = {
+        let (had_input, needs_resize) = if crop.is_some() {
+            (false, false)
+        } else {
             profiling::profile_scope!("helio_read_camera_input");
             let Ok(input) = self.camera_input.lock() else {
                 return None;
@@ -1159,7 +1195,7 @@ impl HelioRenderer {
         let _engine_frame_diagnostic = (self.frame_count, width, height);
 
         let view_kind_changed = self.apply_view_kind();
-        {
+        if crop.is_none() {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
         }
@@ -1202,7 +1238,7 @@ impl HelioRenderer {
         // background loop to skip present/publish — the compositor holds the last
         // frame on screen.
         let viewport_resized = needs_resize || self.viewport_size != (width, height);
-        let realtime = self.viewport_realtime.load(Ordering::Acquire);
+        let realtime = crop.is_none() && self.viewport_realtime.load(Ordering::Acquire);
         let (scene_revision, animated) = {
             profiling::profile_scope!("helio_scene_store_read (revision)");
             let store = self.scene_store.read();
@@ -1240,6 +1276,7 @@ impl HelioRenderer {
                 && measured_deferred_light_changed)
             || view_kind_changed
             || camera_synced
+            || crop.is_some()
             // Realtime animation: wind, particles, shader-graph `time`.
             || animated
             || self.reset_taa_next_frame;
@@ -1329,7 +1366,7 @@ impl HelioRenderer {
         let mut sync_ms = 0.0;
         // Content still settling steps too: its scene subsystems take what
         // finished off the thread (a voxel world built, a pick answered).
-        if has_pending_scene || inner.scene.content_settling() {
+        if crop.is_none() && (has_pending_scene || inner.scene.content_settling()) {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::scene_db_step");
             profiling::profile_scope!("helio_scene_db_step");
@@ -1391,7 +1428,9 @@ impl HelioRenderer {
                     eye: self.cam.position,
                     forward,
                     up: frame_up,
-                    aspect: width as f32 / height.max(1) as f32,
+                    aspect: crop.map_or(width as f32 / height.max(1) as f32, |crop| {
+                        crop.full_size[0] as f32 / crop.full_size[1].max(1) as f32
+                    }),
                     projection: if self.active_view.is_orthographic() {
                         FrameProjection::Orthographic {
                             half_height: ortho_half_height,
@@ -1403,6 +1442,7 @@ impl HelioRenderer {
                             far: 10_000.0,
                         }
                     },
+                    crop,
                 },
                 [width, height],
             )
@@ -1431,6 +1471,9 @@ impl HelioRenderer {
                 .draw_gizmo(&mut inner.scene.renderer, &store.world);
         }
 
+        if crop.is_some() {
+            self.reset_taa_next_frame = true;
+        }
         if self.reset_taa_next_frame {
             if let Some(pass) = inner
                 .scene
@@ -1483,8 +1526,16 @@ impl HelioRenderer {
                 let renderer = &mut inner.scene.renderer;
                 // The editor's animation clock: wall time while realtime,
                 // frozen otherwise.
-                renderer.set_frame_delta_override(self.frame_delta_override);
-                renderer.set_camera_jitter_override(self.camera_jitter_override);
+                renderer.set_frame_delta_override(if crop.is_some() {
+                    Some(0.0)
+                } else {
+                    self.frame_delta_override
+                });
+                renderer.set_camera_jitter_override(if crop.is_some() {
+                    Some([0.0, 0.0])
+                } else {
+                    self.camera_jitter_override
+                });
                 renderer.set_frame_clock_delta(if realtime { None } else { Some(0.0) });
                 match renderer.render(&camera, &view) {
                     Ok(()) => render_succeeded = true,
