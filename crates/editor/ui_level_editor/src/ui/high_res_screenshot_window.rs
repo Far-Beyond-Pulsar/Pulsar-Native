@@ -90,23 +90,23 @@ impl HighResScreenshotWindow {
             }
         };
         match dims {
-            Some((width, height))
-                if width > 0 && height > 0 && width <= max_dimension && height <= max_dimension =>
-            {
+            Some((width, height)) if width > 0 && height > 0 => {
                 let mut state = state.write();
                 if state.build.screenshot_processing {
                     self.message = Some("A screenshot is already processing.".into());
                 } else {
                     state.build.pending_screenshot_size = Some((width, height));
                     state.build.screenshot_processing = true;
-                    self.message = Some(format!("Processing {width} × {height}…"));
+                    let tile_side = 8192u32.min(max_dimension).max(1);
+                    let columns = width.div_ceil(tile_side);
+                    let rows = height.div_ceil(tile_side);
+                    self.message = Some(format!(
+                        "Rendering {width} × {height} in {} tiles. Scene time is frozen during capture.",
+                        u64::from(columns) * u64::from(rows)
+                    ));
                 }
             }
-            Some((width, height)) => {
-                self.message = Some(format!(
-                    "Requested {width} × {height} exceeds this GPU's {max_dimension} px texture limit."
-                ));
-            }
+            Some(_) => self.message = Some("Resolution must be greater than zero.".into()),
             None => self.message = Some("Enter a valid positive resolution or multiplier.".into()),
         }
         cx.notify();

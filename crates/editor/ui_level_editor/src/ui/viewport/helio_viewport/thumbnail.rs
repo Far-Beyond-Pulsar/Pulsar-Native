@@ -1,25 +1,94 @@
 use super::*;
 
-/// Render a one-shot image at the requested dimensions and synchronously read
-/// it back. Helio's next live frame resizes its graph back to the viewport.
-pub(super) fn capture_viewport_image(
+/// Render a high-resolution image as GPU-sized tiles, freezing scene time for
+/// the whole sequence and streaming rows to a PNG so output size is not bounded
+/// by a single texture or a full-frame CPU allocation.
+pub(super) fn capture_viewport_png_tiled(
     engine: &mut GpuRenderer,
     surface: &WgpuSurfaceHandle,
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
-) -> Option<image::RgbaImage> {
+    out_path: &std::path::Path,
+) -> Result<(), String> {
     let device = surface.device();
     let queue = surface.queue();
-    let max_dimension = device.limits().max_texture_dimension_2d;
-    if width > max_dimension || height > max_dimension {
-        tracing::warn!(
-            "High-resolution capture {width}x{height} exceeds GPU texture limit {max_dimension}"
-        );
-        return None;
+    if width == 0 || height == 0 {
+        return Err("Screenshot dimensions must be non-zero".into());
     }
+    let max_dimension = device.limits().max_texture_dimension_2d;
+    let tile_side = 8192u32.min(max_dimension).max(1);
+    // Bound assembled CPU memory while preserving reasonably sized GPU jobs.
+    const BAND_BYTES: u64 = 512 * 1024 * 1024;
+    let band_height = (BAND_BYTES / (u64::from(width) * 4))
+        .max(1)
+        .min(u64::from(tile_side)) as u32;
+
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(out_path)
+        .map_err(|e| format!("Could not create temporary PNG: {e}"))?;
+    let mut encoder = png::Encoder::new(file, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let writer = encoder
+        .write_header()
+        .map_err(|e| format!("Could not start PNG encoding: {e}"))?;
+    let mut writer = writer
+        .into_stream_writer()
+        .map_err(|e| format!("Could not stream PNG data: {e}"))?;
+
+    let mut band_y = 0;
+    while band_y < height {
+        let tile_height = band_height.min(height - band_y);
+        let mut tiles = Vec::new();
+        let mut tile_x = 0;
+        while tile_x < width {
+            let tile_width = tile_side.min(width - tile_x);
+            let pixels = capture_viewport_tile(
+                engine,
+                surface,
+                format,
+                [width, height],
+                [tile_x, band_y],
+                [tile_width, tile_height],
+            )?;
+            tiles.push((tile_width, pixels));
+            tile_x += tile_width;
+        }
+
+        let mut row = Vec::with_capacity(width as usize * 4);
+        for y in 0..tile_height as usize {
+            row.clear();
+            for (tile_width, pixels) in &tiles {
+                let row_bytes = *tile_width as usize * 4;
+                let start = y * row_bytes;
+                row.extend_from_slice(&pixels[start..start + row_bytes]);
+            }
+            std::io::Write::write_all(&mut writer, &row)
+                .map_err(|e| format!("Could not write PNG rows: {e}"))?;
+        }
+        band_y += tile_height;
+    }
+    writer
+        .finish()
+        .map_err(|e| format!("Could not finish PNG file: {e}"))
+}
+
+fn capture_viewport_tile(
+    engine: &mut GpuRenderer,
+    surface: &WgpuSurfaceHandle,
+    format: wgpu::TextureFormat,
+    full_size: [u32; 2],
+    origin: [u32; 2],
+    tile_size: [u32; 2],
+) -> Result<Vec<u8>, String> {
+    let [width, height] = tile_size;
+    let device = surface.device();
+    let queue = surface.queue();
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("high-res-screenshot"),
+        label: Some("high-res-screenshot-tile"),
         size: wgpu::Extent3d {
             width,
             height,
@@ -33,16 +102,24 @@ pub(super) fn capture_viewport_image(
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    engine.render_frame_to_surface(device, queue, &view, width, height, format)?;
-    let bytes_per_row = align_up(width * 4, 256);
+    let crop = engine_backend::subsystems::render::FrameCrop {
+        full_size,
+        origin,
+        tile_size,
+    };
+    engine
+        .render_capture_tile(device, queue, &view, width, height, format, crop)
+        .ok_or_else(|| "Helio did not submit the screenshot tile".to_string())?;
+
+    let bytes_per_row = align_up(width.checked_mul(4).ok_or("Tile row is too wide")?, 256);
     let staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("high-res-screenshot-readback"),
-        size: (bytes_per_row * height) as u64,
+        label: Some("high-res-screenshot-tile-readback"),
+        size: u64::from(bytes_per_row) * u64::from(height),
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("high-res-screenshot-copy"),
+        label: Some("high-res-screenshot-tile-copy"),
     });
     encoder.copy_texture_to_buffer(
         texture.as_image_copy(),
@@ -67,21 +144,23 @@ pub(super) fn capture_viewport_image(
         let _ = tx.send(r);
     });
     let _ = device.poll(wgpu::PollType::wait_indefinitely());
-    if !matches!(rx.recv(), Ok(Ok(()))) {
-        return None;
+    match rx.recv() {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(format!("GPU tile readback failed: {error}")),
+        Err(error) => return Err(format!("GPU tile readback callback failed: {error}")),
     }
-    let data = slice.get_mapped_range().ok()?;
-    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+    let data = slice
+        .get_mapped_range()
+        .map_err(|e| format!("Could not map screenshot tile: {e}"))?;
+    let row_bytes = width as usize * 4;
+    let mut pixels = Vec::with_capacity(row_bytes * height as usize);
     for row in 0..height {
-        let start = (row * bytes_per_row) as usize;
-        pixels.extend_from_slice(&data[start..start + (width * 4) as usize]);
+        let start = row as usize * bytes_per_row as usize;
+        pixels.extend_from_slice(&data[start..start + row_bytes]);
     }
     drop(data);
     staging.unmap();
-    // Preserve the renderer's encoded sRGB bytes in the exported PNG. The
-    // conversion used by the project-thumbnail path below compensates for the
-    // editor's composite path and would visibly darken a normal screenshot.
-    Some(image::RgbaImage::from_raw(width, height, pixels)?)
+    Ok(pixels)
 }
 
 /// Renders the current Helio scene into an offscreen texture, reads it back
