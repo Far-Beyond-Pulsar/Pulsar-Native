@@ -367,6 +367,7 @@ impl Render for HelioViewport {
                     let result = capture.await;
                     {
                         let mut state = state.write();
+                        state.build.screenshot_processing = false;
                         state.build.screenshot_progress = None;
                     }
                     let temp_path = match result {
