@@ -1383,9 +1383,9 @@ impl HelioRenderer {
                 // the camera like the grid; each rebuilds only when what it
                 // shows changed.
                 profiling::profile_scope!("helio_sync_editor_lines");
-                let editor_lines = inner
-                    .editor_lines
-                    .get_or_insert_with(|| super::render_features::editor_lines(&scene_store.world));
+                let editor_lines = inner.editor_lines.get_or_insert_with(|| {
+                    super::render_features::editor_lines(&scene_store.world)
+                });
                 for (name, lines) in editor_lines.iter_mut() {
                     if let Some(lines) = lines.poll(&scene_store.world) {
                         inner.scene.renderer.debug_set_editor_lines(name, lines);
@@ -1958,7 +1958,9 @@ impl HelioRenderer {
     /// renderer is initialized and has published one.
     pub fn postprocess_defaults(&mut self) -> Option<helio_pass_postprocess::PostProcessSettings> {
         let inner = self.inner.as_mut()?;
-        inner.applied_postprocess.map(|baseline| baseline.settings())
+        inner
+            .applied_postprocess
+            .map(|baseline| baseline.settings())
     }
 
     pub fn is_initialized(&self) -> bool {
