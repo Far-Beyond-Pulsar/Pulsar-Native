@@ -22,7 +22,7 @@ fn light() -> helio_light_api::GpuLight {
 #[ignore = "requires Vulkan hardware ray queries"]
 fn scenedb_projection_tracks_mesh_edits_transforms_removal_and_stale_frames() {
     pollster::block_on(async {
-        use helio_components::MaterialComponent;
+        use helio_mats::host_rows::MaterialComponent;
         use helio_mesh_host::{MeshComponent, StaticObjectComponent};
         use std::sync::Arc;
         let mut f = Fixture::new_rt(65, 49).await;
@@ -202,8 +202,8 @@ fn scenedb_projection_tracks_mesh_edits_transforms_removal_and_stale_frames() {
 #[ignore = "requires Vulkan hardware ray queries"]
 fn non_deforming_meshes_reuse_their_blas_until_marked_dynamic() {
     pollster::block_on(async {
-        use helio_components::MaterialComponent;
         use helio_core::Movability;
+        use helio_mats::host_rows::MaterialComponent;
         use helio_mesh_host::{MeshComponent, StaticObjectComponent};
         use std::sync::Arc;
         let mut f = Fixture::new_rt(65, 49).await;

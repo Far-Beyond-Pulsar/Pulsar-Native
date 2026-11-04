@@ -1,3 +1,4 @@
+//!use material_row
 // Mesh join: one thread per mesh-instance row. A placed instance (attached,
 // enabled, owner alive and not hidden) writes one object row and one
 // material row per section, at the section's slot in the sections pool;
@@ -7,22 +8,6 @@
 struct Handle {
     offset: u32,
     count: u32,
-}
-
-/// `helio_mats::GpuMaterial` (96 bytes).
-struct Material {
-    base_color: array<f32, 4>,
-    emissive: array<f32, 4>,
-    roughness_metallic: array<f32, 4>,
-    tex_base_color: u32,
-    tex_normal: u32,
-    tex_roughness: u32,
-    tex_emissive: u32,
-    tex_occlusion: u32,
-    workflow: u32,
-    flags: u32,
-    material_class: u32,
-    class_params: array<f32, 4>,
 }
 
 /// `helio_component::MeshSectionDraw` (128 bytes).
@@ -35,7 +20,9 @@ struct Section {
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
-    material: Material,
+    // The section's material row (the materials' `GpuMaterial`,
+    // `//!use material_row`).
+    material: GpuMaterial,
 }
 
 /// `helio_pass_gbuffer::StaticObjectComponent` (252 bytes).
@@ -86,7 +73,7 @@ struct MeshJoinUniforms {
 @group(0) @binding(11) var<storage, read> palette_handles: array<Handle>;
 @group(0) @binding(12) var<storage, read> sections: array<Section>;
 @group(0) @binding(13) var<storage, read_write> objects_out: array<StaticObjectRow>;
-@group(0) @binding(14) var<storage, read_write> materials_out: array<Material>;
+@group(0) @binding(14) var<storage, read_write> materials_out: array<GpuMaterial>;
 // Per-owner heads then per-instance links of a linked list of the placed
 // instances each owner carries (`head + 1`, 0 ends the list), rebuilt by every
 // full join so a later moved-owner join can find an owner's instances.

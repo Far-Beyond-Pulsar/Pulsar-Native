@@ -14,8 +14,7 @@ struct Params {
 }
 
 const INVALID: u32 = 0xffffffffu;
-const MATERIAL_WORDS: u32 = 24u;
-const MATERIAL_CLASS_WORD: u32 = 19u;
+// MATERIAL_WORDS, MATERIAL_CLASS_WORD: the materials' row (`//!use material_row`).
 // Linear pixel index across a 2D dispatch of 4096 workgroups of 64 per row.
 const ROW_THREADS: u32 = 262144u;
 // Shade dispatches use rows of 32768 workgroups of 64 threads.

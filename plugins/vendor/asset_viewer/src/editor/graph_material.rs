@@ -1,16 +1,45 @@
 //! Shader-graph materials in the mesh viewer.
 //!
 //! The graph is compiled by the same code the renderer uses
-//! (`helio_component::graph_preview`) and hosted in the real Radiant default
-//! template, so `radiant_eval_surface` produces the same albedo, emissive and
-//! alpha the engine would. The viewer adds only a vertex stage (position,
-//! normal, UV) and a small fragment stage that lights the surface.
+//! (`helio_component::graph_preview`) and composed into the default material
+//! class's template exactly as a drawer composes it
+//! (`RadiantTemplate::compose`), so `radiant_eval_surface` produces the same
+//! albedo, emissive and alpha the engine would. The viewer's program is a
+//! drawer's: a vertex stage (position, normal, UV) and a small fragment
+//! stage that lights the surface.
 
 use helio_component::graph_preview::GraphPreview;
 
-/// WGSL appended to the Radiant template. The uniforms live in group 3 so
-/// they cannot collide with any binding the template declares.
-const VIEWER_STAGES: &str = r#"
+/// The viewer's program. The material table's bindings are declared as every
+/// drawer declares them (group 1; the viewer binds only the textures, which
+/// is all its stages read); the uniforms live in group 3.
+const VIEWER_PROGRAM: &str = r#"
+enable wgpu_binding_array;
+//!use pbr_eval
+//!use material_row
+//!use specular_aa
+//!use material_surface
+
+// The G-buffer's `Globals` layout: graph `time` nodes read `time`.
+struct Globals {
+    frame: u32,
+    delta_time: f32,
+    light_count: u32,
+    ambient_intensity: f32,
+    ambient_color: vec4<f32>,
+    csm_splits: vec4<f32>,
+    debug_mode: u32,
+    screen_width: f32,
+    screen_height: f32,
+    time: f32, // RADIANT_GLOBALS_TIME
+}
+@group(0) @binding(1) var<uniform> globals: Globals;
+
+@group(1) @binding(0) var<storage, read> materials: array<GpuMaterial>;
+@group(1) @binding(1) var<storage, read> material_textures: array<MaterialTextureData>;
+@group(1) @binding(2) var scene_textures: binding_array<texture_2d<f32>, 256>;
+@group(1) @binding(3) var scene_samplers: binding_array<sampler, 256>;
+
 struct ViewerUniforms {
     view_proj: mat4x4<f32>,
     render_mode: vec4<u32>,
@@ -24,14 +53,19 @@ struct ViewerVertex {
     @location(2) uv: vec2<f32>,
 };
 
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) world_position: vec3<f32>,
+    @location(1) world_normal: vec3<f32>,
+    @location(2) tex_coords: vec2<f32>,
+};
+
 @vertex fn viewer_vs(v: ViewerVertex) -> VertexOutput {
     var out: VertexOutput;
     out.clip_position = viewer_uniforms.view_proj * vec4<f32>(v.position, 1.0);
     out.world_position = v.position;
     out.world_normal = v.normal;
     out.tex_coords = v.uv;
-    out.world_tangent = vec3<f32>(1.0, 0.0, 0.0);
-    out.bitangent_sign = 1.0;
     return out;
 }
 
@@ -40,14 +74,18 @@ struct ViewerVertex {
     material.base_color = vec4<f32>(1.0);
     material.roughness_metallic = vec4<f32>(0.5, 0.0, 1.5, 1.0);
     var textures: MaterialTextureData;
-    textures.base_color.texture_index = NO_TEXTURE;
-    textures.normal.texture_index = NO_TEXTURE;
-    textures.roughness_metallic.texture_index = NO_TEXTURE;
-    textures.emissive.texture_index = NO_TEXTURE;
-    textures.occlusion.texture_index = NO_TEXTURE;
-    textures.specular_color.texture_index = NO_TEXTURE;
-    textures.specular_weight.texture_index = NO_TEXTURE;
-    let surface = radiant_eval_surface(material, textures, input);
+    textures.base_color.texture_index = MATERIAL_NO_TEXTURE;
+    textures.normal.texture_index = MATERIAL_NO_TEXTURE;
+    textures.roughness_metallic.texture_index = MATERIAL_NO_TEXTURE;
+    textures.emissive.texture_index = MATERIAL_NO_TEXTURE;
+    textures.occlusion.texture_index = MATERIAL_NO_TEXTURE;
+    textures.specular_color.texture_index = MATERIAL_NO_TEXTURE;
+    textures.specular_weight.texture_index = MATERIAL_NO_TEXTURE;
+    let surface = radiant_eval_surface(material, textures, MaterialInput(
+        input.clip_position, input.world_position, input.world_normal,
+        vec3<f32>(1.0, 0.0, 0.0), 1.0, input.tex_coords,
+        vec3<f32>(0.0), globals.frame,
+    ));
 
     var rgb = surface.albedo.rgb;
     if viewer_uniforms.render_mode.x == 0u {
@@ -61,14 +99,14 @@ struct ViewerVertex {
 }
 "#;
 
-/// Byte offsets inside the default Radiant template's G-buffer `Globals`:
+/// Byte offsets inside the viewer program's `Globals` (the G-buffer's layout):
 /// `frame: u32` is first and `time: f32` follows `screen_height`.
 const GLOBALS_FRAME_OFFSET: u64 = 0;
 const GLOBALS_TIME_OFFSET: u64 = 60;
 /// Room for the whole `Globals` block.
 pub const GLOBALS_SIZE: u64 = 256;
 
-/// Layout of the `Globals` buffer the template reads at group 0, binding 1.
+/// Layout of the `Globals` buffer the program reads at group 0, binding 1.
 /// Graph `time` nodes reach the clock through it.
 pub fn globals_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -212,11 +250,10 @@ pub fn build(
     let template = template
         .get(helio_mats::MATERIAL_CLASS_DEFAULT)
         .ok_or("the default Radiant template is missing")?;
-    let mut source = helio_mats::apply_webgpu_material_bindings(
-        &template.build_shader_source(&preview.snippet, slots),
+    let source = helio_mats::apply_webgpu_material_bindings(
+        &template.compose(VIEWER_PROGRAM, &preview.snippet, slots, &[]),
         slots,
     );
-    source.push_str(VIEWER_STAGES);
 
     let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("graph material empty layout"),

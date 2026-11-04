@@ -4,7 +4,7 @@
 //! one (the block in hand).
 
 use crate::blocks::Block;
-use helio_components::MaterialComponent;
+use helio_mats::host_rows::MaterialComponent;
 use helio_pass_voxel_planet::engine::TerrainAppearance;
 use pulsar_scenedb::{Entity, World};
 use std::collections::HashMap;

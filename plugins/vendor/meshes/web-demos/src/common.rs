@@ -3,9 +3,9 @@
 //! Mirrors the `v3_demo_common` module used by the native examples.
 
 use glam::{Mat4, Vec3};
-use helio_components::MaterialComponent;
 use helio_light_api::{GpuLight, LightType};
 use helio_light_host::LightComponent;
+use helio_mats::host_rows::MaterialComponent;
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_mesh_host::StaticObjectComponent;
 use pulsar_scenedb::{Entity, World};
@@ -18,7 +18,7 @@ pub fn make_material(
     metallic: f32,
     emissive: [f32; 3],
     emissive_strength: f32,
-) -> helio_components::MaterialComponent {
+) -> helio_mats::host_rows::MaterialComponent {
     MaterialComponent::from(helio_mats::MaterialRow::new(
         base_color,
         roughness,
@@ -94,7 +94,7 @@ pub fn insert_object(
         .filter(|handle| handle.count != 0)
         .ok_or("mesh has no GPU index range")?;
     let material_component = world
-        .get::<helio_components::MaterialComponent>(material)
+        .get::<helio_mats::host_rows::MaterialComponent>(material)
         .ok_or("material entity has no MaterialComponent")?;
     let bounds = [
         transform.w_axis.x,
@@ -121,7 +121,10 @@ pub fn insert_object(
     Ok(entity)
 }
 
-pub fn spawn_material(world: &mut World, material: helio_components::MaterialComponent) -> Entity {
+pub fn spawn_material(
+    world: &mut World,
+    material: helio_mats::host_rows::MaterialComponent,
+) -> Entity {
     let entity = world.spawn();
     world.insert(entity, material);
     entity
@@ -278,7 +281,7 @@ pub fn register_columns(
     device: &std::sync::Arc<wgpu::Device>,
 ) {
     helio_mesh_host::register_columns(store, device);
-    helio_components::MaterialComponent::register_gpu_columns_growable(store, 4096, device);
+    helio_mats::host_rows::MaterialComponent::register_gpu_columns_growable(store, 4096, device);
     helio_light_host::LightComponent::register_gpu_columns_growable(
         store,
         helio_light_api::MAX_LIGHTS,
@@ -286,12 +289,12 @@ pub fn register_columns(
     );
 }
 
-/// The `HelioWasmApp` items every demo shares: the meshes' features in its
+/// The `HelioWasmApp` items every demo shares: the meshes' and materials' features in its
 /// default graph and the columns it spawns into.
 macro_rules! meshes_app {
     () => {
         fn features() -> helio_feature_api::FeatureSet {
-            helio_mesh_host::features()
+            helio_mesh_host::features().with(helio_pass_materials::MaterialsFeature)
         }
 
         fn register_columns(

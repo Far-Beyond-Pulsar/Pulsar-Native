@@ -156,22 +156,26 @@ const LEAF_PAGES: u32 = 64u;
 fn leaf_at_page(slot: u32, index: u32) -> u32 {
     return (leaf_pages[slot * LEAF_PAGES + (index >> 6u)] << 6u) | (index & 63u);
 }
-// Shading of the terrain's materials (`engine::material_table`).
-struct MaterialGpu {
-    colour: vec4<f32>,            // linear colour, roughness
-    patches: array<vec4<f32>, 3>, // linear dry/middle/lush patch colours; patches[0].w 1: varies
-    links: vec4<u32>,             // lip, fleck, speck host, fleck share
-    light: vec4<f32>,             // transmission, emission
+// The terrain's materials (`engine::material_table`): each voxel material
+// id's material, an ordinary material row (the materials' `GpuMaterial`,
+// `//!use material_row`: its base colour, roughness, emission and, for
+// two-sided foliage, the light it lets through), and how the voxel terrain
+// varies it over the land (the voxel's own: tints of the row's colour by
+// world-space patches, and the voxels' pigment and edges, `detail`).
+struct VoxelVariation {
+    tints: array<vec4<f32>, 3>, // dry/middle/lush tints of the row's base colour; tints[0].w 1: varies
 }
-struct Materials {
-    m: array<MaterialGpu, 32>,
+struct VoxelMaterials {
+    rows: array<GpuMaterial, 32>,
+    variation: array<VoxelVariation, 32>,
     detail: vec4<f32>, // patch contrast, pigment contrast, edge darkening, step softness
     shape: vec4<f32>,  // surface smoothing
 }
-@group(0) @binding(7) var<uniform> materials: Materials;
+@group(0) @binding(7) var<uniform> voxel_materials: VoxelMaterials;
 
-fn palette(m: u32) -> vec4<f32> {
-    return materials.m[min(m, 31u)].colour;
+// Voxel material `m`'s material row.
+fn slot_material(m: u32) -> GpuMaterial {
+    return voxel_materials.rows[min(m, 31u)];
 }
 @group(0) @binding(8) var<storage, read> mid_materials: array<u32>;
 // Open addressing (`drawn.rs`): the drawn nodes of the octree's cut and
@@ -1836,7 +1840,7 @@ fn store_hit(p: vec2<i32>, end: WalkEnd, dir: vec3<f32>, pixel: vec2<u32>) {
     let axis_world = select(select(c.m2.xyz, c.m1.xyz, end.axis == 1u), c.m0.xyz, end.axis == 0u);
     let normal = normalize(axis_world) * select(-1.0, 1.0, end.sign == 1u);
     let light = 0.25 + 0.75 * max(dot(normal, params.sun.xyz), 0.0);
-    var colour = palette(material).rgb;
+    var colour = slot_material(material).base_color.rgb;
     if debug_mode() == 1u {
         let uv = voxel_face_uv(c, end.cell, end.axis, dir * end.t);
         colour = textureSampleLevel(uv_reference_texture, uv_reference_sampler, uv, 0.0).rgb / light;
@@ -1904,8 +1908,9 @@ fn pixel_width(q: vec2<u32>, size: vec2<u32>, t: f32) -> f32 {
 // (6.4 m and 1.6 m, fading below a few pixels) and voxels (`blade`, in
 // [-0.5, 0.5], by `voxel`), at domain point `p` for a pixel `pixel` m wide.
 fn material_albedo(m: u32, p: vec3<i32>, blade: f32, pixel: f32, voxel: f32) -> vec3<f32> {
-    let material = materials.m[min(m, 31u)];
-    if material.patches[0].w <= 0.0 { return material.colour.rgb; }
+    let base = slot_material(m).base_color.rgb;
+    let variation = voxel_materials.variation[min(m, 31u)];
+    if variation.tints[0].w <= 0.0 { return base; }
     let broad = f32(noise(p, 15u, 0x3c6ef372u)) / f32(NOISE_ONE);
     let patches = f32(noise(p, 11u, 0xa54ff53au)) / f32(NOISE_ONE) * clamp((12.8 - pixel) / 6.4, 0.0, 1.0);
     var clumps = 0.0;
@@ -1915,8 +1920,11 @@ fn material_albedo(m: u32, p: vec3<i32>, blade: f32, pixel: f32, voxel: f32) -> 
     if pixel < 0.8 {
         clumps += 0.3 * f32(noise(p, 7u, 0x9b05688cu)) / f32(NOISE_ONE) * clamp((0.8 - pixel) / 0.4, 0.0, 1.0);
     }
-    let t = clamp(0.52 + materials.detail.x * (0.7 * broad + 0.16 * patches + clumps) + materials.detail.y * blade * voxel, 0.0, 1.0);
-    return select(mix(material.patches[1].rgb, material.patches[2].rgb, t * 2.0 - 1.0), mix(material.patches[0].rgb, material.patches[1].rgb, t * 2.0), t < 0.5);
+    let t = clamp(0.52 + voxel_materials.detail.x * (0.7 * broad + 0.16 * patches + clumps) + voxel_materials.detail.y * blade * voxel, 0.0, 1.0);
+    let dry = base * variation.tints[0].rgb;
+    let middle = base * variation.tints[1].rgb;
+    let lush = base * variation.tints[2].rgb;
+    return select(mix(middle, lush, t * 2.0 - 1.0), mix(dry, middle, t * 2.0), t < 0.5);
 }
 
 fn corner_ao(side1: bool, side2: bool, corner: bool) -> f32 {
@@ -1989,7 +1997,7 @@ fn surface_look(slot: u32, cell: vec3<i32>, axis: u32, sign: u32, hit_material: 
     let smooth_ground = 1.0 - under_refined(key, projected);
     // A smooth world fades the voxels' own look: their per-voxel pigment
     // and darkened edges.
-    let smoothing = materials.shape.x;
+    let smoothing = voxel_materials.shape.x;
     let mosaic = mosaic_weight(projected) * smooth_ground * (1.0 - 0.6 * smoothing);
     // The cell centre's noise-domain point: the same pigment from every
     // face of it.
@@ -2001,7 +2009,7 @@ fn surface_look(slot: u32, cell: vec3<i32>, axis: u32, sign: u32, hit_material: 
     let clump = f32(noise(p, 5u, 0x3a1f9e27u)) / f32(NOISE_ONE);
     let hv = hash3(p.x, p.y, p.z, 0x68bc21ebu);
     let shade = 0.6 * (f32(hv & 255u) / 255.0 - 0.5) + 0.4 * clump;
-    let pigment = 1.0 + materials.detail.y * shade * mosaic;
+    let pigment = 1.0 + voxel_materials.detail.y * shade * mosaic;
     let hue = 0.6 * (f32(hash3(p.x, p.y, p.z, 0x1b873593u) & 255u) / 255.0 - 0.5) + 0.4 * clump;
     let albedo = material_albedo(material, p, hue, pixel_m, mosaic) * pigment;
     // Occlusion: around the air cell in front of the face, where voxels
@@ -2034,7 +2042,7 @@ fn surface_look(slot: u32, cell: vec3<i32>, axis: u32, sign: u32, hit_material: 
         // Crisp voxel edges while a cell spans several pixels.
         let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
         let fade = clamp((projected - 3.0) / 6.0, 0.0, 1.0);
-        ao *= 1.0 - materials.detail.z * (1.0 - smoothing) * fade * ao_weight * (1.0 - smoothstep(0.0, 0.12, edge));
+        ao *= 1.0 - voxel_materials.detail.z * (1.0 - smoothing) * fade * ao_weight * (1.0 - smoothstep(0.0, 0.12, edge));
     }
     return Look(albedo, ao);
 }
@@ -2227,8 +2235,12 @@ fn publish(@builtin(position) pixel: vec4<f32>) -> GOut {
     let f0 = 0.03;
     var out: GOut;
     var albedo = look.albedo;
-    var roughness = palette(material).w;
-    var emissive = albedo * materials.m[min(material, 31u)].light.y;
+    let row = slot_material(material);
+    var roughness = row.roughness_metallic.x;
+    // The row's emission (its colour times its strength), varied voxel by
+    // voxel as its colour is.
+    let base = row.base_color.rgb;
+    var emissive = albedo * select(vec3<f32>(0.0), row.emissive.rgb / base, base > vec3<f32>(0.0)) * row.emissive.w;
     let level = u32(key_level(chunk_keys[v.x].x)) & 31u;
     // A pixel's footprint along the face over its width (the view's slant).
     let slant = 1.0 / max(abs(dot(normal, normalize(position))), 1.0 / 16.0);
@@ -2275,7 +2287,7 @@ fn publish(@builtin(position) pixel: vec4<f32>) -> GOut {
     // Materials that let light through are two-sided foliage: the sun from
     // behind comes through tinted by their colour (its share through the
     // leaf and those past it is the sun's visibility: `shadow_fallback`).
-    let through = materials.m[min(material, 31u)].light.x;
+    let through = material_transmission(slot_material(material));
     out.sss = vec4<f32>(select(vec3<f32>(0.0), albedo, through > 0.0), 0.0);
     out.extra = vec4<f32>(0.0, 0.0, 0.0, select(0.0, f32(SURFACE_FLAG_TWO_SIDED), through > 0.0));
     // A still volume: w 0 (helio-pass-tsr MOTION_VECTORS) leaves its
@@ -2505,9 +2517,9 @@ fn hit_face(v: vec2<u32>, ground_hint: vec3<f32>, q: vec2<u32>, size: vec2<u32>,
     let step = dot(stored, stored) > 0.0 && !solid_near(v.x, key, cell + vec3<i32>(0, 0, 1));
     // A world made smooth lights every hit by the smooth surface its voxels
     // approximate (`smooth_normal`), natural steps by their exact slope.
-    let smoothing = materials.shape.x;
+    let smoothing = voxel_materials.shape.x;
     if !step && coarse == 0.0 && smoothing <= 0.0 { return f; }
-    let w = max(max(select(0.0, materials.detail.w, step), coarse), smoothing);
+    let w = max(max(select(0.0, voxel_materials.detail.w, step), coarse), smoothing);
     // The heightfield's exact slope stored with the leaf; else, cells of a
     // pixel or less: the slope the hits around make (a few loads); larger
     // ones measure their column tops (`slope_normal`).
@@ -2530,7 +2542,7 @@ fn hit_face(v: vec2<u32>, ground_hint: vec3<f32>, q: vec2<u32>, size: vec2<u32>,
     f.shading = shading * inverseSqrt(l);
     // A sun ray passes the steps the smooth surface stands for by as far as
     // it leans from the face (none on a flat wall: no leak at its foot).
-    var skip_w = max(select(0.0, materials.detail.w, step), coarse);
+    var skip_w = max(select(0.0, voxel_materials.detail.w, step), coarse);
     if smoothing > 0.0 && !step {
         skip_w = max(skip_w, smoothing * clamp(2.0 * length(cross(ground, normal)), 0.0, 1.0));
     }
@@ -3239,7 +3251,7 @@ fn shadow(@builtin(global_invocation_id) gid: vec3<u32>) {
         // light through it (its share) where the sun reaches its far side,
         // by the sun's occlusion pages (as GI's hits: a texture read,
         // steady from frame to frame).
-        let through = materials.m[min((v.y >> 21u) & 31u, 31u)].light.x;
+        let through = material_transmission(slot_material((v.y >> 21u) & 31u));
         if dot(f.normal, sun) < 0.0 && through > 0.0 {
             let back = to_world(at_hit - f.normal * (1.5 * f.cell));
             ask_sun_pages(back, footprint);
@@ -3412,7 +3424,7 @@ fn hit_lights(q: vec2<u32>, size: vec2<u32>, slot: u32, t: f32) -> u32 {
     let at = pixel_ray(q, size) * t;
     let n = to_local(textureLoad(hit_normals, vec2<i32>(q), 0).xyz);
     let v = textureLoad(hit_visibility, vec2<i32>(q), 0).xy;
-    let transmits = materials.m[min((v.y >> 21u) & 31u, 31u)].light.x > 0.0;
+    let transmits = material_transmission(slot_material((v.y >> 21u) & 31u)) > 0.0;
     var seen = 0xffffffffu;
     var face: Face;
     var faced = false;
@@ -4150,7 +4162,7 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>, @builtin(workgroup_id) 
         if v.x != NONE {
             let n = textureLoad(hit_normals, p, 0).xyz;
             let material = (v.y >> 21u) & 31u;
-            textureStore(out_colour, p, vec4<f32>(palette(material).rgb * (0.25 + 0.75 * max(dot(n, params.sun.xyz), 0.0) * value.x), 1.0));
+            textureStore(out_colour, p, vec4<f32>(slot_material(material).base_color.rgb * (0.25 + 0.75 * max(dot(n, params.sun.xyz), 0.0) * value.x), 1.0));
         }
     }
 }
@@ -4283,7 +4295,7 @@ fn local_temporal(@builtin(global_invocation_id) id: vec3<u32>, @builtin(workgro
         let list = light_tile(id.xy, size);
         // Lights behind foliage reach it through its cells (`light_reach`).
         let hit = textureLoad(hit_visibility, vec2<i32>(id.xy), 0).xy;
-        let transmits = hit.x != NONE && materials.m[min((hit.y >> 21u) & 31u, 31u)].light.x > 0.0;
+        let transmits = hit.x != NONE && material_transmission(slot_material((hit.y >> 21u) & 31u)) > 0.0;
         var lights = array<u32, 4>(NONE, NONE, NONE, NONE);
         var slots = array<u32, 4>(0u, 0u, 0u, 0u);
         for (var i = 0u; i < list.y; i++) {
@@ -4634,7 +4646,7 @@ fn gi_shade(index: u32, ray: GiRay, end: WalkEnd) {
     let hit = ray.origin.xyz + ray.dir * end.t;
     let cell = length(c.m0.xyz);
     let towards = dot(n, gi_sun[0].xyz);
-    let through = clamp(materials.m[min(material, 31u)].light.x, 0.0, 1.0);
+    let through = material_transmission(slot_material(material));
     var sun = 0.0;
     var back = 0.0;
     if towards > 0.0 {
@@ -4642,9 +4654,9 @@ fn gi_shade(index: u32, ray: GiRay, end: WalkEnd) {
     } else if through > 0.0 && towards < 0.0 {
         back = sun_occlusion(hit - n * (1.5 * cell), vec3<f32>(0.0), cell);
     }
-    let glow = u32(clamp(materials.m[min(material, 31u)].light.y, 0.0, 15.9375) * 16.0 + 0.5);
+    let glow = u32(clamp(slot_material(material).emissive.w, 0.0, 15.9375) * 16.0 + 0.5);
     let light = 1u | (u32(through * 255.0 + 0.5) << 8u) | (u32(back * 255.0 + 0.5) << 16u) | (glow << 24u);
-    gi_hits[index] = GiHit(end.t, gi_pack_unit(n), pack4x8unorm(vec4<f32>(clamp(palette(material).rgb, vec3<f32>(0.0), vec3<f32>(1.0)), sun)), light);
+    gi_hits[index] = GiHit(end.t, gi_pack_unit(n), pack4x8unorm(vec4<f32>(clamp(slot_material(material).base_color.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), sun)), light);
 }
 
 // ---- 7. Foliage ground probes ----

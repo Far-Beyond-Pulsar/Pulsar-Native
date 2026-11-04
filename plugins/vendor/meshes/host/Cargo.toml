@@ -24,7 +24,8 @@ helio-core = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-presets = { workspace = true }
 helio-frame-api = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
+helio-pass-materials = { workspace = true }
 helio-mesh-api = { workspace = true, features = ["host-rows"] }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-gbuffer = { workspace = true }

@@ -520,10 +520,11 @@ pub struct ObjectBatchPass {
 
 impl ObjectBatchPass {
     pub fn new(device: &wgpu::Device) -> Self {
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "ObjectBatch Shader",
             helio_core::include_wgsl!("../shaders/object_batch.wgsl"),
+            &[helio_mats::MATERIAL_ROW_SNIPPET],
         );
 
         let cs = wgpu::ShaderStages::COMPUTE;

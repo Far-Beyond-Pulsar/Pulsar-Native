@@ -5,8 +5,8 @@
 
 use glam::{Mat4, Vec3};
 use helio::SceneDbHandle;
-use helio_components::MaterialComponent;
 use helio_light_api::GpuLight;
+use helio_mats::host_rows::MaterialComponent;
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
@@ -55,7 +55,7 @@ pub fn new_scene_db_with_gpu_mirror_and(
         device,
     );
     helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
-    helio_components::MaterialComponent::register_gpu_columns_growable(
+    helio_mats::host_rows::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
@@ -122,7 +122,7 @@ pub fn make_material(
     metallic: f32,
     emissive: [f32; 3],
     emissive_strength: f32,
-) -> helio_components::MaterialComponent {
+) -> helio_mats::host_rows::MaterialComponent {
     MaterialComponent::from(helio_mats::MaterialRow::new(
         base_color,
         roughness,
@@ -134,7 +134,10 @@ pub fn make_material(
 
 /// Insert a material as a normal SceneDB component row and return its entity
 /// index. The index is the value object rows store in `material_slot`.
-pub fn spawn_material(world: &mut World, material: helio_components::MaterialComponent) -> Entity {
+pub fn spawn_material(
+    world: &mut World,
+    material: helio_mats::host_rows::MaterialComponent,
+) -> Entity {
     let entity = world.spawn();
     world.insert(entity, material);
     entity
@@ -191,7 +194,7 @@ pub fn spawn_object(
         .filter(|handle| handle.count != 0)
         .ok_or("mesh has no GPU index range")?;
     let material_component = world
-        .get::<helio_components::MaterialComponent>(material)
+        .get::<helio_mats::host_rows::MaterialComponent>(material)
         .ok_or("material entity has no MaterialComponent")?;
     let bounds = [
         transform.w_axis.x,

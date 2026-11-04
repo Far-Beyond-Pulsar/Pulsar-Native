@@ -1,5 +1,5 @@
 //! Rasterize the production shadow shader and read actual depth pixels.
-use helio_components::MaterialComponent;
+use helio_mats::host_rows::MaterialComponent;
 use wgpu::util::DeviceExt;
 
 #[test]

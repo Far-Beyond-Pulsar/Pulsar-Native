@@ -1,6 +1,6 @@
 //! The sampler every scene material texture is read through.
 //!
-//! The renderer shares one sampler across material texture slots. Left alone
+//! The material texture table shares one sampler across its slots. Left alone
 //! it is wgpu's default: nearest filtering and clamp-to-edge, which makes mips
 //! pick a level by screen footprint but then read it with point sampling, and
 //! stops a texture tiling past `[0, 1]`. The engine sets a better default

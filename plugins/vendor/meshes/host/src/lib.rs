@@ -71,7 +71,7 @@ pub fn upload_scene_materials(
             let entity = world.spawn();
             world.insert(
                 entity,
-                helio_components::MaterialComponent::from(helio_mats::MaterialRow::from(
+                helio_mats::host_rows::MaterialComponent::from(helio_mats::MaterialRow::from(
                     converted.gpu,
                 )),
             );
@@ -344,27 +344,30 @@ mod bake_scene_tests {
     }
 }
 
-/// Helio's presets over the meshes' features ([`features`]) and the
-/// lights' (`helio_light_host::features`: a standalone host draws its meshes
-/// lit, as an engine with both plugins does): what a standalone host builds
-/// a renderer with to draw meshes
+/// Helio's presets over the meshes' features ([`features`]), the
+/// materials' (`helio_pass_materials::MaterialsFeature`: the texture table
+/// the drawers bind) and the lights' (`helio_light_host::features`: a
+/// standalone host draws its meshes lit, as an engine with these plugins
+/// does): what a standalone host builds a renderer with to draw meshes
 /// (`RendererBuilder::with_pass_build_context(Box::new(presets::deferred))`).
 pub mod presets {
     use helio::PassBuildContext;
     use helio_core::RenderGraph;
     use helio_presets::{Preset, PresetGraph};
 
-    /// The meshes' and the lights' features.
+    /// The meshes', the materials' and the lights' features.
     fn lit() -> helio_feature_api::FeatureSet {
-        super::features().extended(&helio_light_host::features())
+        super::features()
+            .with(helio_pass_materials::MaterialsFeature)
+            .extended(&helio_light_host::features())
     }
 
-    /// `preset` over the meshes' and the lights' features.
+    /// `preset` over the meshes', the materials' and the lights' features.
     pub fn preset(preset: Preset) -> PresetGraph {
         preset.with_features(&lit())
     }
 
-    /// `preset` over the meshes' and the lights' features and `extra`
+    /// `preset` over the meshes', the materials' and the lights' features and `extra`
     /// (another plugin's).
     pub fn with(preset: Preset, extra: &helio_feature_api::FeatureSet) -> PresetGraph {
         preset.with_features(&lit().extended(extra))

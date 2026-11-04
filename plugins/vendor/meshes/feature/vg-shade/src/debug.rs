@@ -61,7 +61,9 @@ pub(crate) struct DebugPipeline {
 /// The full `vg_debug` module source.
 pub fn debug_source() -> String {
     format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        // The material row's words (the materials' snippet).
+        helio_mats::MATERIAL_ROW_SNIPPET.source,
         helio_vg_format::WGSL,
         // Group 0, bindings 7..=13 (page pool .. asset quant); no feedback.
         helio_vg_stream::bindings_wgsl(0, 7, false),

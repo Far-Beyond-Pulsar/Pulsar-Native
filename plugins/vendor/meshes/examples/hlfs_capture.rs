@@ -240,14 +240,14 @@ pub fn run_scene_animated(
             let slot = register_checker(&device, &queue, &mut store, false);
             let materials: Vec<_> = scene_db
                 .world
-                .query::<(&helio_components::MaterialComponent,)>()
+                .query::<(&helio_mats::host_rows::MaterialComponent,)>()
                 .filter(|(_, (material,))| material.base_color[3] >= 1.0)
                 .map(|(entity, _)| entity)
                 .collect();
             for entity in materials {
                 scene_db
                     .world
-                    .get_mut::<helio_components::MaterialComponent>(entity)
+                    .get_mut::<helio_mats::host_rows::MaterialComponent>(entity)
                     .unwrap()
                     .tex_base_color = slot;
             }
@@ -964,7 +964,7 @@ pub fn enable_ray_shadows(world: &mut World) {
             .get::<helio_mesh_host::StaticObjectComponent>(id)
             .unwrap();
         let transparent = world
-            .query::<(&helio_components::MaterialComponent,)>()
+            .query::<(&helio_mats::host_rows::MaterialComponent,)>()
             .any(|(entity, (material,))| {
                 entity.index() == object.material_slot
                     && material.flags & helio_mats::FLAG_ALPHA_BLEND != 0

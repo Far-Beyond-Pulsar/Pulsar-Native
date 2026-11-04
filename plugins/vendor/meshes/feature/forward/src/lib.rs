@@ -2,7 +2,6 @@ pub mod feature;
 pub use feature::ForwardDrawers;
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
 
 use bytemuck::{Pod, Zeroable};
 use helio_core::graph::{ResourceBuilder, ResourceSize};
@@ -11,6 +10,11 @@ use helio_mats::radiant::{RadiantShaderCache, RadiantShaderKey};
 
 use helio_light_api::{GpuLight, MAX_LIGHTS, SCENE_LIGHTS};
 use pulsar_scenedb::gpu::BufferKey;
+
+/// The meshes' forward program (`shaders/forward_lit.wgsl`): the vertex
+/// layout and instance rows, lit by the lights' forward function; a
+/// template's surface function is composed after it.
+pub const FORWARD_PROGRAM: &str = include_str!("../shaders/forward_lit.wgsl");
 
 const TILE_SIZE: u32 = 16;
 
@@ -40,9 +44,13 @@ pub struct ForwardLitPass {
     material_binding: helio_mats::MaterialBindingConfig,
     pipelines: HashMap<RadiantShaderKey, wgpu::RenderPipeline>,
     shader_cache: RadiantShaderCache,
-    /// This pass's own class-0 override (never synced from the scene).
-    local_class0: helio_mats::radiant::RadiantTemplate,
-    /// User-registered custom templates (id >= 5), shared with the renderer
+    /// The built-in material classes, when the shared registry is
+    /// absent or lacks a class.
+    local_templates: helio_mats::RadiantTemplateRegistry,
+    /// The material bindings without the materials plugin (default grey
+    /// PBR), made on first use.
+    stand_in: Option<helio_mats::MaterialStandIn>,
+    /// User-registered custom templates (from `FIRST_CUSTOM_MATERIAL_CLASS` up), shared with the renderer
     /// and other passes — never deep-cloned (see `SharedTemplateRegistry`).
     shared_registry: Option<helio_mats::radiant::SharedTemplateRegistry>,
     /// Key set as of the last sync, to detect content changes cheaply.
@@ -186,43 +194,13 @@ impl ForwardLitPass {
             immediate_size: 0,
         });
 
-        let base_src_raw = include_str!("../shaders/forward_lit.wgsl");
-        let wgsl_source: &'static str = if base_src_raw.contains("//!use pbr_eval") {
-            // Insert PBR_EVAL after the `enable` directive (must come before
-            // any declarations in WGSL but after the enable line).
-            let insert_pos = base_src_raw
-                .find("enable ")
-                .and_then(|i| base_src_raw[i..].find(';').map(|j| i + j + 1))
-                .unwrap_or(0);
-            static RESOLVED: OnceLock<String> = OnceLock::new();
-            RESOLVED
-                .get_or_init(|| {
-                    let mut resolved =
-                        String::with_capacity(base_src_raw.len() + helio_mats::PBR_EVAL.len());
-                    resolved.push_str(&base_src_raw[..insert_pos]);
-                    resolved.push('\n');
-                    resolved.push_str(helio_mats::PBR_EVAL);
-                    // The lights' row and forward light function.
-                    resolved.push_str(helio_light_api::LIGHT_LIST_SNIPPET.source);
-                    resolved.push_str(helio_light_api::LIGHT_FORWARD_SNIPPET.source);
-                    resolved.push_str(&base_src_raw[insert_pos..]);
-                    resolved
-                })
-                .as_str()
-        } else {
-            base_src_raw
-        };
-        let local_class0 = helio_mats::radiant::RadiantTemplate {
-            name: std::sync::Arc::from("forward_lit"),
-            wgsl_source: std::sync::Arc::from(wgsl_source),
-        };
-
         Self {
             draw_slots: Default::default(),
             material_binding,
             pipelines: HashMap::new(),
             shader_cache: RadiantShaderCache::new(),
-            local_class0,
+            local_templates: helio_mats::RadiantTemplateRegistry::new(),
+            stand_in: None,
             shared_registry: None,
             last_shared_keys: Vec::new(),
             pipeline_layout,
@@ -252,12 +230,12 @@ impl ForwardLitPass {
         write_depth: bool,
     ) -> &wgpu::RenderPipeline {
         if !self.pipelines.contains_key(&key) {
-            // Ids >= 5 are user-registered custom templates that live in the
+            // Ids from `FIRST_CUSTOM_MATERIAL_CLASS` up are user-registered custom templates that live in the
             // shared scene-wide registry; anything else (including a miss)
             // falls back to this pass's own class-0 override. `shared_arc`
             // is a fresh local Arc clone so `guard`'s lifetime doesn't tie
             // up `self`.
-            let shared_arc = if key.template_id >= 5 {
+            let shared_arc = if key.template_id >= helio_mats::FIRST_CUSTOM_MATERIAL_CLASS {
                 self.shared_registry.clone()
             } else {
                 None
@@ -266,20 +244,27 @@ impl ForwardLitPass {
             let template = guard
                 .as_ref()
                 .and_then(|g| g.get(key.template_id))
+                .or_else(|| self.local_templates.get(key.template_id))
                 .unwrap_or_else(|| {
-                    if key.template_id >= 5 {
-                        log::debug!(
-                            "[ForwardLit] template class {} not found, falling back to class 0",
-                            key.template_id
-                        );
-                    }
-                    &self.local_class0
+                    log::debug!(
+                        "[ForwardLit] template class {} not found, falling back to class 0",
+                        key.template_id
+                    );
+                    self.local_templates
+                        .get(0)
+                        .expect("the default template (class 0)")
                 });
             let module = self.shader_cache.get_or_compile(
                 device,
                 key,
                 template,
+                FORWARD_PROGRAM,
                 graph_wgsl,
+                &[
+                    helio_mesh_api::DRAW_ROWS_SNIPPET,
+                    helio_light_api::LIGHT_LIST_SNIPPET,
+                    helio_light_api::LIGHT_FORWARD_SNIPPET,
+                ],
                 self.material_binding,
                 "ForwardLit Shader",
             );
@@ -398,7 +383,7 @@ impl RenderPass for ForwardLitPass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "material_textures",
+            helio_mats::MATERIAL_TEXTURES,
             "render_environment",
             "depth",
             "pre_aa",
@@ -517,15 +502,14 @@ impl RenderPass for ForwardLitPass {
         if max_draws == 0 {
             return Ok(());
         }
-        let Some(material_textures) = ctx
+        // The materials' texture table, or the stand-in without them.
+        let stand_in = self
+            .stand_in
+            .get_or_insert_with(|| helio_mats::MaterialStandIn::new(&ctx.device, ctx.queue));
+        let material_textures = ctx
             .registry
-            .read::<helio_mats::MaterialTextureBindings<'_>>(
-                helio_mats::material_textures(),
-                "ForwardLit",
-            )
-        else {
-            return Ok(());
-        };
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())
+            .unwrap_or_else(|| stand_in.textures());
         let Some(vertices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_vertex"))
         else {
             return Ok(());
@@ -542,7 +526,7 @@ impl RenderPass for ForwardLitPass {
         let materials_handle = ctx.scene_buffers.get(BufferKey::of("materials"));
         let materials_buf = materials_handle
             .map(|handle| &handle.buffer)
-            .unwrap_or(batch.instances);
+            .unwrap_or(stand_in.rows());
         let materials_epoch = materials_handle.map(|handle| handle.epoch).unwrap_or(0);
 
         let lights_handle = ctx

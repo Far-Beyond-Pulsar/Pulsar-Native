@@ -49,7 +49,7 @@ pub struct MeshSectionDraw {
     pub graph_hash_lo: u32,
     pub graph_hash_hi: u32,
     pub _pad: [u32; 3],
-    pub material: helio::GpuMaterial,
+    pub material: helio_mats::GpuMaterial,
 }
 
 // SAFETY: `#[repr(C)]`, every field `Pod`, no padding beyond the explicit
@@ -156,13 +156,13 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
 pub(crate) fn surface_material(
     surface: &ImportedSurfaceMaterial,
     graph_texture_slots: [u32; 5],
-) -> helio::GpuMaterial {
+) -> helio_mats::GpuMaterial {
     let alpha = surface.alpha.clamp(0.0, 1.0);
     let mut flags = 0;
     if alpha < 1.0 {
         flags |= helio_mats::FLAG_ALPHA_BLEND | helio_mats::FLAG_TRANSPARENT_ONLY;
     }
-    helio::GpuMaterial {
+    helio_mats::GpuMaterial {
         base_color: [
             surface.base_color[0],
             surface.base_color[1],

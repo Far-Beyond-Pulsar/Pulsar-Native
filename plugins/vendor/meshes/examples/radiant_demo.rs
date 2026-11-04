@@ -13,12 +13,12 @@ use std::time::Instant;
 
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use helio::{
-    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
-    GpuMaterial, Renderer, RendererBuilder, RendererConfig,
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
+    RendererBuilder, RendererConfig,
 };
-use helio_components::MaterialComponent;
+use helio_mats::host_rows::MaterialComponent;
 use helio_mats::{
-    MATERIAL_CLASS_ANISOTROPIC, MATERIAL_CLASS_CLEAR_COAT, MATERIAL_CLASS_SKIN,
+    GpuMaterial, MATERIAL_CLASS_ANISOTROPIC, MATERIAL_CLASS_CLEAR_COAT, MATERIAL_CLASS_SKIN,
     MATERIAL_CLASS_SUBSURFACE,
 };
 use pulsar_scenedb::{Entity, SceneDb};
@@ -68,6 +68,8 @@ struct AppState {
     aniso_mat_id: Entity,
     sun_light_id: Entity,
     key_light_id: Entity,
+    /// `HELIO_CAPTURE`: save a frame and exit (`v3_demo_common::SurfaceCapture`).
+    capture: v3_demo_common::SurfaceCapture,
 }
 
 impl ApplicationHandler for App {
@@ -81,6 +83,7 @@ impl ApplicationHandler for App {
             .with_inner_size(winit::dpi::PhysicalSize::new(1600, 900));
         let window = Arc::new(event_loop.create_window(attrs).unwrap());
 
+        let capture = v3_demo_common::SurfaceCapture::from_env();
         let size = window.inner_size();
         let mut graphics = pollster::block_on(helio::HelioGraphicsContext::new(
             window.clone(),
@@ -89,6 +92,7 @@ impl ApplicationHandler for App {
             helio::HelioGraphicsConfig {
                 vr_support: true,
                 application_name: "Radiant Demo".into(),
+                surface_usage: capture.usage(),
                 ..Default::default()
             },
         ))
@@ -133,7 +137,7 @@ impl ApplicationHandler for App {
             .opaque
             .write()
             .unwrap()
-            .register_partial_str("opal", opal_wgsl.to_string());
+            .register_str("opal", opal_wgsl.to_string());
         log::info!("[RADIANT] Opal template registered as class {}", opal_class);
 
         // ── Register glass template ─────────────────────────────────────────
@@ -143,7 +147,7 @@ impl ApplicationHandler for App {
             .opaque
             .write()
             .unwrap()
-            .register_partial_str("glass", glass_wgsl.to_string());
+            .register_str("glass", glass_wgsl.to_string());
         log::info!(
             "[RADIANT] Glass (gbuffer) template registered as class {}",
             glass_class
@@ -152,15 +156,10 @@ impl ApplicationHandler for App {
         // Register transparent version at the gbuffer glass class ID so the
         // transparent pass finds the glass shader instead of falling back to default.
         let glass_transparent_wgsl = helio_mats::templates::GLASS_TRANSPARENT;
-        let glass_transparent_src = templates
-            .transparent
-            .write()
-            .unwrap()
-            .compose_transparent_override(glass_transparent_wgsl);
         templates.transparent.write().unwrap().register_str_at(
             glass_class,
             "glass_transparent",
-            glass_transparent_src,
+            glass_transparent_wgsl.to_string(),
         );
         log::info!(
             "[RADIANT] Glass (transparent) template registered as class {}",
@@ -174,7 +173,7 @@ impl ApplicationHandler for App {
             .opaque
             .write()
             .unwrap()
-            .register_partial_str("water", water_wgsl.to_string());
+            .register_str("water", water_wgsl.to_string());
         log::info!(
             "[RADIANT] Water (gbuffer) template registered as class {}",
             water_class
@@ -187,10 +186,7 @@ impl ApplicationHandler for App {
             .transparent
             .write()
             .unwrap()
-            .register_transparent_partial_str(
-                "water_transparent",
-                water_transparent_wgsl.to_string(),
-            );
+            .register_str("water_transparent", water_transparent_wgsl.to_string());
         log::info!(
             "[RADIANT] Water (transparent) template registered as class {}",
             water_transparent_class
@@ -526,6 +522,7 @@ impl ApplicationHandler for App {
             aniso_mat_id: aniso2_mat,
             sun_light_id: sun_id,
             key_light_id: key_id,
+            capture,
         });
     }
 
@@ -538,7 +535,7 @@ impl ApplicationHandler for App {
                     state.surface.configure(
                         &state.device,
                         &wgpu::SurfaceConfiguration {
-                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            usage: state.capture.usage(),
                             format: state.surface_format,
                             width: new_size.width,
                             height: new_size.height,
@@ -682,7 +679,26 @@ impl ApplicationHandler for App {
                 // Upload this frame's SceneDB writes to the GPU mirror; without it they
                 // are never visible to the renderer (Helio#266).
                 v3_demo_common::flush_scene_db(&state.scene_db, state.renderer.queue());
-                if let Err(e) = state.renderer.render_window_frame(&camera, &state.surface) {
+                if std::env::var_os("HELIO_CAPTURE").is_some() {
+                    let output = match state.surface.get_current_texture() {
+                        wgpu::CurrentSurfaceTexture::Success(texture)
+                        | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+                        _ => return,
+                    };
+                    if let Err(e) = state
+                        .renderer
+                        .render(&camera, &output.texture.create_view(&Default::default()))
+                    {
+                        log::error!("render error: {:?}", e);
+                    }
+                    if state
+                        .capture
+                        .frame(&state.device, &state.queue, &output.texture)
+                    {
+                        std::process::exit(0);
+                    }
+                    state.queue.present(output);
+                } else if let Err(e) = state.renderer.render_window_frame(&camera, &state.surface) {
                     log::error!("render error: {:?}", e);
                 }
                 state.window.request_redraw();

@@ -207,7 +207,7 @@ helio-vg-stream = { workspace = true }
 helio-pass-vg-cull = { workspace = true }
 helio-pass-vg-bvh = { workspace = true }
 helio-pass-vg-raster = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
 helio-asset-compat = { workspace = true }
 helio-pass-tsr = { workspace = true }
 helio-pass-fxaa = { workspace = true }

@@ -389,7 +389,7 @@ impl RenderPass for DecalPass {
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
         builder.read("gbuffer");
         builder.read("hiz");
-        builder.read("material_textures");
+        builder.read(helio_mats::MATERIAL_TEXTURES);
     }
     fn publish<'a>(&self, _: &mut helio_core::ResourceRegistry<'a>) {}
     fn render_pass_descriptor<'a>(
@@ -439,14 +439,13 @@ impl RenderPass for DecalPass {
             Some(v) => v,
             None => return Ok(()),
         };
-        // The bindless table is published per-frame by the renderer, so it
-        // survives graph rebuilds that drop this pass's own state.
+        // The materials' texture table (a decal's textures are in it),
+        // published every frame by the materials plugin; without it no
+        // decal has a texture to draw.
         let material_textures = match ctx
             .registry
-            .read::<helio_mats::MaterialTextureBindings<'_>>(
-                helio_mats::material_textures(),
-                self.name(),
-            ) {
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())
+        {
             Some(m) => m,
             None => return Ok(()),
         };

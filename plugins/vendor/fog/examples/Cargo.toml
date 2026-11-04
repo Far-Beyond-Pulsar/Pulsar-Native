@@ -17,7 +17,7 @@ path = "volumetric_fog_demo.rs"
 helio-light-host = { workspace = true }
 helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
 bytemuck = { workspace = true }
 env_logger = "0.11"
 glam = { workspace = true }

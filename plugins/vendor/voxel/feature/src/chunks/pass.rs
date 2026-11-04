@@ -295,7 +295,7 @@ const READS: &[&str] = &[
     "gbuffer_sss",
     "gbuffer_extra",
     "gbuffer_velocity",
-    "material_textures",
+    helio_mats::MATERIAL_TEXTURES,
     // Shared coast/travel field read by the terrain scene-material swash.
     "water_shore_fields",
     "water_shore_params",

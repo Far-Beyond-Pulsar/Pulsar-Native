@@ -223,12 +223,6 @@ impl SceneRenderer {
             )
         }));
         let mut renderer = builder.build(device, queue.clone(), width, height, format);
-        // Scene materials read through trilinear, anisotropic, repeating
-        // filtering (project `streaming.texture_*` settings), not wgpu's
-        // nearest/clamp default.
-        renderer.set_feature_live(helio_mats::MaterialSampler(
-            super::material_sampler::SamplerSettings::from_project().descriptor(),
-        ));
         Self {
             renderer,
             project_settings: super::project_settings::ProjectGraphSettingsCache::new(),

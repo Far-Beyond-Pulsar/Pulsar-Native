@@ -2,10 +2,10 @@ use helio_light_host::LightComponent;
 use std::sync::Arc;
 
 use glam::Vec3;
-use helio::{
-    required_wgpu_limits, Camera, MaterialBindingConfig, MaterialBindingMode, RendererBuilder,
-    RendererConfig, BINDLESS_MATERIAL_FEATURES, EXPANDED_MATERIAL_TEXTURE_RESERVE,
-    MAX_MATERIAL_TEXTURES,
+use helio::{required_wgpu_limits, Camera, RendererBuilder, RendererConfig};
+use helio_mats::{
+    MaterialBindingConfig, MaterialBindingMode, BINDLESS_MATERIAL_FEATURES,
+    EXPANDED_MATERIAL_TEXTURE_RESERVE, MAX_MATERIAL_TEXTURES,
 };
 
 const PORTABLE_SAMPLED_TEXTURE_LIMIT: u32 = 16;
@@ -272,7 +272,7 @@ fn scene_db_with_gpu_mirror(
         },
     );
     helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut store, 64, device);
-    helio_components::MaterialComponent::register_gpu_columns_growable(&mut store, 64, device);
+    helio_mats::host_rows::MaterialComponent::register_gpu_columns_growable(&mut store, 64, device);
     helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(&mut store, 64, device);
     helio_light_host::LightComponent::register_gpu_columns_growable(
         &mut store,

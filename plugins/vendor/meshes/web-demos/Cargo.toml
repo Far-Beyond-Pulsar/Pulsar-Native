@@ -48,11 +48,12 @@ ies_demo            = []
 
 # ── dependencies ─────────────────────────────────────────────────────────────
 [dependencies]
+helio-pass-materials = { workspace = true }
 helio-light-host = { workspace = true }
 helio-light-api = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
 helio-mesh-api = { workspace = true }
 bytemuck = { workspace = true }
 helio-components = { workspace = true }

@@ -397,12 +397,13 @@ fn choose_bin(tris: u32, ic: InstCtx, cw: vec3<f32>, rw: f32) -> u32 {
     return hw_bin;
 }
 
-// `GpuMaterial::flags` of section `section` of instance `inst` (0 when out of range).
+// `GpuMaterial::flags` of section `section` of instance `inst` (0 when out of
+// range), read from the materials' table as words (`//!use material_row`).
 fn section_material_flags(inst: u32, section: u32) -> u32 {
     let row = vg_instances[inst].object_row + section;
     if row >= arrayLength(&objects) { return 0u; }
     let mslot = objects[row].material_slot;
-    let w = mslot * 24u + 18u;
+    let w = mslot * MATERIAL_WORDS + MATERIAL_FLAGS_WORD;
     if w >= arrayLength(&vgc_materials) { return 0u; }
     return vgc_materials[w];
 }
@@ -464,7 +465,7 @@ fn try_cluster(inst: u32, cs: u32, ic: InstCtx) {
         var two_sided = false;
         if cone.w < 0.9999 && (params.flags & VGC_FLAG_MASKED) != 0u {
             // A two-sided surface is visible from behind: no normal-cone test.
-            two_sided = (section_material_flags(inst, c.counts_material >> 16u) & VGC_MAT_DOUBLE_SIDED) != 0u;
+            two_sided = (section_material_flags(inst, c.counts_material >> 16u) & MATERIAL_FLAG_DOUBLE_SIDED) != 0u;
         }
         if cone.w < 0.9999 && !two_sided {
             let axis = normalize((ic.m * vec4<f32>(cone.xyz, 0.0)).xyz);
@@ -489,7 +490,7 @@ fn try_cluster(inst: u32, cs: u32, ic: InstCtx) {
     var bin = choose_bin(triangles, ic, cw, rw);
     if (params.flags & VGC_FLAG_MASKED) != 0u {
         let mflags = section_material_flags(inst, c.counts_material >> 16u);
-        if (mflags & VGC_MAT_ALPHA_TEST) != 0u { bin = masked_bin(bin); }
+        if (mflags & MATERIAL_FLAG_ALPHA_TEST) != 0u { bin = masked_bin(bin); }
     }
     emit_cluster(inst, cs, bin, triangles);
 }

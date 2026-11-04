@@ -13,7 +13,7 @@ helio-mesh-api = { workspace = true }
 helio-components = { workspace = true }
 helio = { workspace = true }
 helio-core = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
 helio-vg-stream = { workspace = true }
 helio-pass-deferred-light = { workspace = true }
 helio-pass-forward-lit = { workspace = true }

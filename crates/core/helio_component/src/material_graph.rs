@@ -203,7 +203,7 @@ fn adapt_graph_wgsl(generated: &str) -> Result<String, String> {
         .find('{')
         .map(|offset| entry + offset)
         .ok_or_else(|| "malformed PSGC fragment entry point".to_string())?;
-    let replacement = "fn pulsar_material_graph(material: GpuMaterial, input: VertexOutput) -> PulsarGraphOutput {\n    let frag_coord = input.clip_position;\n    let uv = input.tex_coords;\n    let normal = input.world_normal;\n    let world_pos = input.world_position;";
+    let replacement = "fn pulsar_material_graph(material: GpuMaterial, input: MaterialInput) -> PulsarGraphOutput {\n    let frag_coord = input.clip_position;\n    let uv = input.tex_coords;\n    let normal = input.world_normal;\n    let world_pos = input.world_position;";
     source = source.replace(
         "pulsar_material_graph(input)",
         "pulsar_material_graph(material, input)",

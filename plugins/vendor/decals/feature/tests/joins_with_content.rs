@@ -10,7 +10,7 @@ use glam::{Mat4, Vec3};
 use helio::{
     required_wgpu_features, required_wgpu_limits, Camera, RendererBuilder, RendererConfig,
 };
-use helio_components::MaterialComponent;
+use helio_mats::host_rows::MaterialComponent;
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use pulsar_scenedb_derive::SceneStore;
 

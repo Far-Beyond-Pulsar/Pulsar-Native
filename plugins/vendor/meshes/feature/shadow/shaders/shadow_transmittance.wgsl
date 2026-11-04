@@ -1,4 +1,5 @@
 struct ShadowFace { mat:mat4x4f, atlas:vec4f, policy:vec4u }
+//!use material_row
 // Coloured shadow transmittance — translucent casters (stained glass).
 //
 // Each atlas face gets an Rgba16Float layer storing the complement, so that
@@ -36,22 +37,6 @@ struct FaceIndex {
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
-}
-
-// Mirrors `helio_mats::GpuMaterial`.
-struct GpuMaterial {
-    base_color:         vec4<f32>,
-    emissive:           vec4<f32>,
-    roughness_metallic: vec4<f32>,
-    tex_base_color:     u32,
-    tex_normal:         u32,
-    tex_roughness:      u32,
-    tex_emissive:       u32,
-    tex_occlusion:      u32,
-    workflow:           u32,
-    flags:              u32,
-    material_class:     u32,
-    class_params:       vec4<f32>,
 }
 
 struct TransmitParams {
@@ -120,12 +105,6 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if in.pos.z > opaque {
         discard;
     }
-    // Beer-Lambert through tinted glass: base colour is the transmittance of a
-    // reference sheet, alpha its optical thickness (a = 0.5 transmits c, a = 0
-    // is clear). Matches the depth of colour of RT thin-sheet transmission far
-    // better than the display blend mix(1, c, a), which reads as pastel.
-    let m = materials[in.material];
-    let c = clamp(m.base_color.rgb, vec3<f32>(0.02), vec3<f32>(1.0));
-    let a = clamp(m.base_color.a, 0.0, 1.0);
-    return vec4<f32>(1.0 - pow(c, vec3<f32>(2.0 * a)), 1.0 - in.pos.z);
+    // Tinted glass by Beer-Lambert (the materials' thin-sheet transmittance).
+    return vec4<f32>(1.0 - material_sheet_transmittance(materials[in.material]), 1.0 - in.pos.z);
 }

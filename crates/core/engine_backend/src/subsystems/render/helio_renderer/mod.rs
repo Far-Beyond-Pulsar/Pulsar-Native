@@ -7,7 +7,6 @@ pub mod fly_camera;
 mod gizmo_geometry;
 mod gpu_trace;
 mod interaction;
-pub mod material_sampler;
 pub mod pipelines;
 pub mod project_settings;
 pub mod render_features;

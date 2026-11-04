@@ -24,7 +24,7 @@ path = "water_world.rs"
 helio-light-host = { workspace = true }
 helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
 helio = { workspace = true }
 helio-core = { workspace = true }
 helio-components = { workspace = true }

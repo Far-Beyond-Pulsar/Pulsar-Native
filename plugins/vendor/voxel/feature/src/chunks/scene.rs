@@ -50,7 +50,7 @@ impl VoxelMaterialMap {
 
 /// A frame's scene material resources, borrowed from the host's context.
 pub struct SceneMaterialInputs<'a> {
-    /// `GpuMaterial` rows (112 bytes each), indexed by scene material row.
+    /// `GpuMaterial` rows (the materials' table), indexed by scene material row.
     pub materials: &'a wgpu::Buffer,
     /// The descriptor-indexed texture table, `texture_capacity` long.
     pub texture_views: &'a [&'a wgpu::TextureView],
@@ -72,37 +72,15 @@ pub type SceneMaterialSource = Box<
     dyn for<'b> Fn(&helio_core::PassContext<'b>) -> Option<SceneMaterialInputs<'b>> + Send + Sync,
 >;
 
-/// Texture table entries a device's binding arrays hold, or none where it
-/// has no descriptor indexing (mirrors Helio's `MaterialBindingConfig`).
+/// Texture table entries a device's binding arrays hold (the materials'
+/// table, `helio_mats::MaterialBindingConfig`), or none where it has no
+/// descriptor indexing.
 pub fn texture_capacity(device: &wgpu::Device) -> Option<u32> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = device;
-        None
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let needed = wgpu::Features::TEXTURE_BINDING_ARRAY
-            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
-        if !device.features().contains(needed) {
-            return None;
-        }
-        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-        const PLATFORM_MAX: u32 = 16;
-        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
-        const PLATFORM_MAX: u32 = 256;
-        let limits = device.limits();
-        // The publish shader uses groups 0..=3; without four groups the
-        // textured/swash path cannot be created even if arrays are supported.
-        if limits.max_bind_groups < 4 {
-            return None;
-        }
-        Some(
-            PLATFORM_MAX
-                .min(limits.max_sampled_textures_per_shader_stage)
-                .min(limits.max_samplers_per_shader_stage),
-        )
-    }
+    let binding = helio_mats::MaterialBindingConfig::for_device(device);
+    // The publish shader uses groups 0..=3; without four groups the
+    // textured/swash path cannot be created even if arrays are supported.
+    (binding.uses_binding_arrays() && device.limits().max_bind_groups >= 4)
+        .then_some(binding.max_textures as u32)
 }
 
 /// The line of chunk_draw.wgsl the scene materials replace: no scene surface.
@@ -200,13 +178,8 @@ pub fn helio_scene_materials() -> SceneMaterialSource {
     Box::new(|ctx| {
         let textures = ctx
             .registry
-            .read::<helio_mats::MaterialTextureBindings<'_>>(
-                helio_mats::material_textures(),
-                "VoxelPlanet",
-            )?;
-        let materials = ctx
-            .scene_buffers
-            .get(helio_core::BufferKey::of("materials"))?;
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())?;
+        let materials = ctx.scene_buffers.get(helio_mats::MATERIALS.key())?;
         let water_shore_fields = ctx.registry.texture_binding("water_shore_fields");
         let water_shore_params = ctx.registry.buffer_binding("water_shore_params");
         Some(SceneMaterialInputs {

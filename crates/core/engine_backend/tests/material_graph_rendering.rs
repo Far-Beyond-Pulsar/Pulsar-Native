@@ -214,7 +214,35 @@ fn overlapping_asset_names_are_not_replaced_inside_each_other() {
     }
 }
 
+/// A drawer's program that renders the material's surface fields into a
+/// float target, one field a row; the default material class is composed
+/// into it (`RadiantTemplate::compose`), as into every drawer's.
 const PROBE: &str = r#"
+enable wgpu_binding_array;
+//!use pbr_eval
+//!use material_row
+//!use specular_aa
+//!use material_surface
+
+@group(1) @binding(0) var<storage, read> materials: array<GpuMaterial>;
+@group(1) @binding(1) var<storage, read> material_textures: array<MaterialTextureData>;
+@group(1) @binding(2) var scene_textures: binding_array<texture_2d<f32>, 256>;
+@group(1) @binding(3) var scene_samplers: binding_array<sampler, 256>;
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) world_position: vec3<f32>,
+    @location(1) world_normal: vec3<f32>,
+    @location(2) tex_coords: vec2<f32>,
+    @location(3) world_tangent: vec3<f32>,
+    @location(4) bitangent_sign: f32,
+}
+
+fn material_input(input: VertexOutput) -> MaterialInput {
+    return MaterialInput(input.clip_position, input.world_position, input.world_normal,
+        input.world_tangent, input.bitangent_sign, input.tex_coords, vec3<f32>(0.0), 0u);
+}
+
 @vertex fn probe_vertex(@builtin(vertex_index) index: u32) -> VertexOutput {
     let x = f32((index << 1u) & 2u);
     let y = f32(index & 2u);
@@ -232,14 +260,14 @@ const PROBE: &str = r#"
     material.base_color = vec4<f32>(1.0);
     material.roughness_metallic = vec4<f32>(0.5, 0.0, 1.5, 1.0);
     var textures: MaterialTextureData;
-    textures.base_color.texture_index = NO_TEXTURE;
-    textures.normal.texture_index = NO_TEXTURE;
-    textures.roughness_metallic.texture_index = NO_TEXTURE;
-    textures.emissive.texture_index = NO_TEXTURE;
-    textures.occlusion.texture_index = NO_TEXTURE;
-    textures.specular_color.texture_index = NO_TEXTURE;
-    textures.specular_weight.texture_index = NO_TEXTURE;
-    let surface = radiant_eval_surface(material, textures, input);
+    textures.base_color.texture_index = MATERIAL_NO_TEXTURE;
+    textures.normal.texture_index = MATERIAL_NO_TEXTURE;
+    textures.roughness_metallic.texture_index = MATERIAL_NO_TEXTURE;
+    textures.emissive.texture_index = MATERIAL_NO_TEXTURE;
+    textures.occlusion.texture_index = MATERIAL_NO_TEXTURE;
+    textures.specular_color.texture_index = MATERIAL_NO_TEXTURE;
+    textures.specular_weight.texture_index = MATERIAL_NO_TEXTURE;
+    let surface = radiant_eval_surface(material, textures, material_input(input));
     switch u32(input.clip_position.y) {
         case 0u: { return vec4<f32>(surface.albedo.rgb, surface.alpha); }
         case 1u: { return vec4<f32>(surface.ao, surface.roughness, surface.metallic, surface.alpha); }
@@ -296,29 +324,29 @@ impl Gpu {
         bindless: bool,
         missing_uvs: bool,
     ) -> Vec<[f32; 4]> {
-        let template = helio_mats::RadiantTemplateRegistry::new();
-        let mut source = template
-            .get(helio_mats::MATERIAL_CLASS_DEFAULT)
-            .unwrap()
-            .build_shader_source(&adapted(graph, slot), 2);
-        if !bindless {
-            source = helio_mats::apply_webgpu_material_bindings(&source, 2);
-        }
         let probe = PROBE.replace(
-            "let surface = radiant_eval_surface(material, textures, input);",
+            "let surface = radiant_eval_surface(material, textures, material_input(input));",
             &format!(
-                "{}let surface = radiant_eval_surface(material, textures, input);",
+                "{}let surface = radiant_eval_surface(material, textures, material_input(input));",
                 graph_material_assignments(graph, slot)
             ),
         );
-        source.push_str(&if missing_uvs {
+        let probe = if missing_uvs {
             probe.replace(
                 "result.tex_coords = vec2<f32>(x, y);",
                 "result.tex_coords = vec2<f32>(0.0);",
             )
         } else {
             probe
-        });
+        };
+        let template = helio_mats::RadiantTemplateRegistry::new();
+        let mut source = template
+            .get(helio_mats::MATERIAL_CLASS_DEFAULT)
+            .unwrap()
+            .compose(&probe, &adapted(graph, slot), 2, &[]);
+        if !bindless {
+            source = helio_mats::apply_webgpu_material_bindings(&source, 2);
+        }
         let device = &self.device;
         let binding_config = helio_mats::MaterialBindingConfig {
             mode: if bindless {

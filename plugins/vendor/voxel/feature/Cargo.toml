@@ -34,6 +34,7 @@ image = { workspace = true }
 miniz_oxide = { version = "0.8" }
 
 [dev-dependencies]
+helio-mats = { workspace = true, features = ["host-rows"] }
 helio-light-host = { workspace = true }
 helio-mesh-host = { workspace = true }
 pollster = "0.4"

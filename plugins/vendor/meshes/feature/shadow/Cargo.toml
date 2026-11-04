@@ -14,6 +14,7 @@ helio-core  = { workspace = true }
 helio-pass-shadow-matrix = { workspace = true }
 helio-pass-shadow-dirty = { workspace = true }
 helio-pass-gbuffer = { workspace = true }
+helio-mats = { workspace = true }
 wgpu      = { workspace = true }
 bytemuck  = { workspace = true, features = ["derive"] }
 log       = { workspace = true }
@@ -24,6 +25,6 @@ helio = { workspace = true }
 pulsar_scenedb = { workspace = true }
 helio-mesh-host = { workspace = true }
 helio-components = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
 pollster = { version = "0.4" }
 glam = { workspace = true }

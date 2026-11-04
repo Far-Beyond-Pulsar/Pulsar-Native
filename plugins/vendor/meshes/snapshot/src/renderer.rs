@@ -2,11 +2,12 @@ use std::path::Path;
 use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
-use helio::{Camera, GpuMaterial, Renderer, RendererBuilder, RendererConfig};
+use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
 use helio_asset_compat::{load_scene_file_with_config, ConvertedTextureRef, LoadConfig};
-use helio_components::MaterialComponent;
 use helio_light_api::{GpuLight, LightType};
 use helio_light_host::LightComponent;
+use helio_mats::host_rows::MaterialComponent;
+use helio_mats::GpuMaterial;
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{Entity, SceneDb, World};
@@ -177,13 +178,13 @@ fn attach_sidecar_base_color(model_path: &Path, scene: &mut helio_asset_compat::
     let rgba = decoded.to_rgba8();
     let (width, height) = rgba.dimensions();
     let texture_index = scene.textures.len();
-    scene.textures.push(helio::TextureUpload::rgba8(
+    scene.textures.push(helio_mats::TextureUpload::rgba8(
         texture_path.to_string_lossy(),
         width,
         height,
         true,
         rgba.into_raw(),
-        helio::TextureSamplerDesc::default(),
+        helio_mats::TextureSamplerDesc::default(),
     ));
     let texture = ConvertedTextureRef {
         texture_index,
@@ -359,7 +360,7 @@ fn rasterize_preview(
     image
 }
 
-fn sample_texture_rgba(texture: &helio::TextureUpload, uv: Vec2) -> [f32; 4] {
+fn sample_texture_rgba(texture: &helio_mats::TextureUpload, uv: Vec2) -> [f32; 4] {
     if texture.width == 0
         || texture.height == 0
         || !matches!(

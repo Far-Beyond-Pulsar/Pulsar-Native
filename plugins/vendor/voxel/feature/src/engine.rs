@@ -174,23 +174,29 @@ impl VolumeAnswers {
 
 pub use crate::terrain::{MaterialAppearance, TerrainAppearance, MATERIALS};
 
-/// `MaterialGpu` of chunk_draw.wgsl.
+/// `VoxelVariation` of chunk_draw.wgsl: how the voxel terrain varies a
+/// material over the land (its dry, middle and lush patch tints of the
+/// material's base colour; `tints[0][3]` 1: it varies).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct MaterialGpu {
-    colour: [f32; 4],
-    patches: [[f32; 4]; 3],
-    links: [u32; 4],
-    /// x: transmission, y: emission (`MaterialAppearance`).
-    light: [f32; 4],
+pub(crate) struct VariationGpu {
+    tints: [[f32; 4]; 3],
 }
 
-/// The shading table of `appearance` (linear colours; sRGB is public, so
-/// convert once, not per pixel), its detail weights and its shape weights
-/// (x: smoothing).
+/// The voxel materials of `appearance`: each id's material as an ordinary
+/// material row (the materials' [`helio_mats::MaterialRow`]: linear base
+/// colour, roughness, emission as the colour times its strength, and two-
+/// sided foliage for a material that lets light through), the voxel's own
+/// variation of it (patch tints), its detail weights and its shape weights
+/// (x: smoothing). sRGB is public, so colours convert once, not per pixel.
 pub(crate) fn material_table(
     appearance: &TerrainAppearance,
-) -> ([MaterialGpu; MATERIALS], [f32; 4], [f32; 4]) {
+) -> (
+    [helio_mats::MaterialRow; MATERIALS],
+    [VariationGpu; MATERIALS],
+    [f32; 4],
+    [f32; 4],
+) {
     let clean = |v: f32| {
         if v.is_finite() {
             v.clamp(0.0, 1.0)
@@ -198,51 +204,60 @@ pub(crate) fn material_table(
             0.0
         }
     };
-    let linear = |c: [f32; 4]| {
+    let linear = |c: [f32; 3]| {
         [
             clean(c[0]).powf(2.2),
             clean(c[1]).powf(2.2),
             clean(c[2]).powf(2.2),
-            clean(c[3]),
         ]
     };
-    let materials = std::array::from_fn(|id| {
+    let rows = std::array::from_fn(|id| {
         let m = &appearance.materials[id];
-        let link = |other: Option<u8>| {
-            other
-                .filter(|&o| usize::from(o) < MATERIALS)
-                .map_or(id as u32, u32::from)
+        let base = linear([m.colour[0], m.colour[1], m.colour[2]]);
+        let emission = if m.emission.is_finite() {
+            m.emission.clamp(0.0, 64.0)
+        } else {
+            0.0
         };
-        let rgb = |c: [f32; 3]| linear([c[0], c[1], c[2], 1.0]);
-        let mut patches = [[0.0; 4]; 3];
-        if let Some(p) = m.patches {
-            patches = p.map(rgb);
-            patches[0][3] = 1.0;
-        }
-        let (fleck, share) = m.fleck.map_or((None, 0.0), |(f, s)| (Some(f), clean(s)));
-        MaterialGpu {
-            colour: linear(m.colour),
-            patches,
-            links: [
-                link(m.lip),
-                link(fleck),
-                link(m.speck_host),
-                (share * 65_536.0) as u32,
-            ],
-            light: [
-                clean(m.transmission),
-                if m.emission.is_finite() {
-                    m.emission.clamp(0.0, 64.0)
-                } else {
-                    0.0
-                },
-                0.0,
-                0.0,
-            ],
+        let row = helio_mats::MaterialRow::new(
+            [base[0], base[1], base[2], 1.0],
+            clean(m.colour[3]),
+            0.0,
+            base,
+            emission,
+        );
+        let transmission = clean(m.transmission);
+        if transmission > 0.0 {
+            row.foliage(transmission)
+        } else {
+            row
         }
     });
+    let variation = std::array::from_fn(|id| {
+        let m = &appearance.materials[id];
+        let base = linear([m.colour[0], m.colour[1], m.colour[2]]);
+        let mut tints = [[0.0; 4]; 3];
+        if let Some(patches) = m.patches {
+            // A patch colour as a tint of the base colour (a channel the
+            // base lacks stays black).
+            tints = patches.map(|patch| {
+                let patch = linear(patch);
+                let tint = |c: usize| {
+                    if base[c] > 0.0 {
+                        patch[c] / base[c]
+                    } else {
+                        0.0
+                    }
+                };
+                [tint(0), tint(1), tint(2), 0.0]
+            });
+            tints[0][3] = 1.0;
+        }
+        VariationGpu { tints }
+    });
     (
-        materials,
+        rows,
+        variation,
         appearance.detail.map(clean),
         [clean(appearance.smoothing), 0.0, 0.0, 0.0],
     )

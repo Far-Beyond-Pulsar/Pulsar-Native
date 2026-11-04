@@ -4,7 +4,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use helio::{TextureSamplerDesc, TextureUpload};
+use helio_mats::{TextureSamplerDesc, TextureUpload};
 use solid_rs::scene::{
     FilterMode as SolidFilter, Image, ImageSource, Sampler, Scene, Texture, WrapMode,
 };

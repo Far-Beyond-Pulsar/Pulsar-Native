@@ -353,12 +353,13 @@ impl PortalInstancePass {
                 graph_hash,
                 feature_flags: 0,
             };
-            let module = self.shader_cache.get_or_compile_on(
+            let module = self.shader_cache.get_or_compile(
                 device,
                 key,
                 template,
                 &self.base_shader,
                 graph.as_deref().unwrap_or(""),
+                &[helio_mesh_api::DRAW_ROWS_SNIPPET],
                 self.material_binding,
                 "PortalInstance Graph Shader",
             );
@@ -369,32 +370,31 @@ impl PortalInstancePass {
     }
 }
 
-/// `gbuffer_portal.wgsl` with the meshes' rows (`mesh_draw_rows`) in, the
-/// material snippets left to the template that fills it in.
+/// The portal G-buffer program (`gbuffer_portal.wgsl`): the meshes' rows
+/// (`mesh_draw_rows`) and the materials' snippets are resolved when a
+/// material template is composed into it (`RadiantTemplate::compose`).
 fn base_shader_text() -> Cow<'static, str> {
-    helio_core::shader::resolve_with(
-        include_str!("../shaders/gbuffer_portal.wgsl"),
-        &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+    helio_core::shader::source_text(
+        "PortalInstance Shader",
+        helio_core::include_wgsl!("../shaders/gbuffer_portal.wgsl"),
     )
 }
 
+/// The program with the default material class (class 0) composed in: the
+/// pipeline materials without a graph draw with.
 fn portal_shader_source(material_binding: helio_mats::MaterialBindingConfig) -> Cow<'static, str> {
-    let source = helio_core::shader::source_text(
-        "PortalInstance Shader",
-        helio_core::include_wgsl!("../shaders/gbuffer_portal.wgsl"),
-    );
-    let source = Cow::Owned(
-        helio_core::shader::resolve_with(
-            &source,
-            &[
-                helio_mats::SPECULAR_AA_SNIPPET,
-                helio_mesh_api::DRAW_ROWS_SNIPPET,
-            ],
-        )
-        .into_owned(),
+    let registry = RadiantTemplateRegistry::new();
+    let template = registry
+        .get(0)
+        .expect("Default PBR template (class 0) missing");
+    let source = template.compose(
+        &base_shader_text(),
+        "",
+        material_binding.max_textures,
+        &[helio_mesh_api::DRAW_ROWS_SNIPPET],
     );
     if material_binding.uses_binding_arrays() {
-        source
+        Cow::Owned(source)
     } else {
         Cow::Owned(helio_mats::apply_webgpu_material_bindings(
             &source,
@@ -481,7 +481,7 @@ impl RenderPass for PortalInstancePass {
             "portal_mask",
             "object_batch",
             "culled_batch",
-            "material_textures",
+            helio_mats::MATERIAL_TEXTURES,
         ]
     }
 
@@ -639,10 +639,7 @@ impl RenderPass for PortalInstancePass {
         };
         let material_textures = ctx
             .registry
-            .read::<helio_mats::MaterialTextureBindings<'_>>(
-                helio_mats::material_textures(),
-                "PortalInstance",
-            );
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures());
         if ctx.frame_num < 3 {
             log::info!(
                 "[PortalInstance] frame={} material_textures_available={}",
@@ -950,7 +947,7 @@ mod material_tests {
     /// produces): declarations, then the body that fills the surface.
     const GRAPH: &str = "/*RADIANT_GRAPH_DECLARATIONS*/\n\
         struct PulsarGraphOutput { base_color: vec4<f32>, roughness: f32, metallic: f32, ambient_occlusion: f32, emissive_color: vec4<f32>, normal: vec3<f32>, opacity: f32 }\n\
-        fn pulsar_material_graph(material: GpuMaterial, input: VertexOutput) -> PulsarGraphOutput {\n\
+        fn pulsar_material_graph(material: GpuMaterial, input: MaterialInput) -> PulsarGraphOutput {\n\
             var o: PulsarGraphOutput;\n\
             o.base_color = vec4<f32>(input.world_normal * 0.5 + 0.5, 1.0);\n\
             o.roughness = 0.4; o.metallic = 0.0; o.ambient_occlusion = 1.0;\n\
@@ -973,14 +970,22 @@ mod material_tests {
         .unwrap_or_else(|error| panic!("{error:?}"));
     }
 
+    fn compose(template: &helio_mats::RadiantTemplate, graph: &str) -> String {
+        template.compose(
+            &super::base_shader_text(),
+            graph,
+            256,
+            &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+        )
+    }
+
     #[test]
     fn a_graph_material_compiles_into_the_portal_shader() {
         let registry = RadiantTemplateRegistry::new();
         let template = registry.get(0).expect("default template");
-        let base = &*super::base_shader_text();
-        let plain = template.build_shader_source_on(base, "", 256);
+        let plain = compose(template, "");
         validate(&plain);
-        let graph = template.build_shader_source_on(base, GRAPH, 256);
+        let graph = compose(template, GRAPH);
         assert!(graph.contains("pulsar_material_graph(material, input)"));
         assert!(!graph.contains("// RADIANT_OVERRIDE_SURFACE"));
         validate(&graph);
@@ -989,10 +994,9 @@ mod material_tests {
     #[test]
     fn the_built_in_material_classes_compile_into_the_portal_shader() {
         let registry = RadiantTemplateRegistry::new();
-        let base = &*super::base_shader_text();
         for class in registry.keys() {
             let template = registry.get(class).unwrap();
-            validate(&template.build_shader_source_on(base, "", 256));
+            validate(&compose(template, ""));
         }
     }
 }

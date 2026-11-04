@@ -150,6 +150,6 @@ fn vs_main(
 fn fs_main(input: ShadowVertex, @builtin(front_facing) front: bool) {
     // Preserve the solid-mesh front-face policy, while both faces of a leaf
     // card cast the same alpha-tested silhouette.
-    if front && (materials[input.material_id].flags & 1u) == 0u { discard; }
+    if front && (material_at(input.material_id).flags & MATERIAL_FLAG_DOUBLE_SIDED) == 0u { discard; }
     reject_cutout(input.material_id, input.uv);
 }

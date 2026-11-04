@@ -726,7 +726,7 @@ impl ApplicationHandler for App {
                 format,
             )
         };
-        renderer.set_material_sampler(&material_sampler());
+        renderer.set_feature(helio_mats::MaterialSampler(material_sampler()));
         renderer.set_feature_live(helio::AmbientLight {
             color: [1.0, 0.95, 0.85],
             intensity: 0.05,
@@ -1400,7 +1400,7 @@ impl AppState {
                                 let Some(mut row) = self
                                     .scene_db
                                     .world
-                                    .get_mut::<helio_components::MaterialComponent>(
+                                    .get_mut::<helio_mats::host_rows::MaterialComponent>(
                                     self.materials[&material],
                                 ) else {
                                     continue;

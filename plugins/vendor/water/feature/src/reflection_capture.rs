@@ -332,13 +332,12 @@ struct VertexOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2
         // The reflected render owns a separate ResourceRegistry. Propagate
         // the renderer-owned values its GBuffer and deferred-light passes
         // consume so the child view has the same material/environment state.
+        // The materials' texture table, when the materials plugin
+        // publishes one (without it the child's drawers bind their
+        // stand-in).
         let material_textures = ctx
             .registry
-            .read::<helio_mats::MaterialTextureBindings<'_>>(
-                helio_core::ResourceKey::new("material_textures"),
-                "WaterPlanarReflection",
-            )
-            .expect("renderer material-texture bindings for water reflection");
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures());
         let render_environment = ctx
             .registry
             .read::<helio_core::RenderEnvironment<'_>>(
@@ -366,11 +365,13 @@ struct VertexOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2
                     target_view,
                     "WaterPlanarReflection",
                 );
-                registry.write(
-                    helio_core::ResourceKey::new("material_textures"),
-                    material_textures,
-                    "Renderer",
-                );
+                if let Some(material_textures) = material_textures {
+                    registry.write(
+                        helio_mats::material_textures(),
+                        material_textures,
+                        "Renderer",
+                    );
+                }
                 registry.write(
                     helio_core::resource_keys::render_environment(),
                     render_environment,
@@ -477,7 +478,7 @@ fn build_secondary_graph(
     });
     let mut graph = RenderGraph::new_with_external_device_ref(device, queue);
     graph.declare_external_input("pre_aa");
-    graph.declare_external_input("material_textures");
+    graph.declare_external_input(helio_mats::MATERIAL_TEXTURES);
     graph.declare_external_input("render_environment");
     graph.add_pass(Box::new(helio_pass_object_batch::ObjectBatchPass::new(
         device,

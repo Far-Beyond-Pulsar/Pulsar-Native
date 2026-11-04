@@ -16,11 +16,20 @@
 //!
 //! # Material Bind Group
 //!
-//! Group 1 provides material texture access:
+//! Group 1 is the materials' table (`helio_mats`): the material rows, the
+//! texture metadata and the texture table the materials' feature publishes
+//! (`MATERIAL_TEXTURES`), or the stand-in without the materials plugin
+//! (`MaterialStandIn`: default grey PBR):
 //!  - binding 0: materials storage buffer
 //!  - binding 1: material_textures storage buffer (MaterialTextureData array)
 //!  - native: binding arrays for scene textures and samplers
 //!  - WebGPU: 16 fixed texture bindings followed by 16 fixed sampler bindings
+//!
+//! # Program
+//!
+//! [`GBUFFER_PROGRAM`] is the meshes' vertex layout, instance rows and
+//! G-buffer packing; a material class's template (its surface function)
+//! and graph are composed into it (`RadiantTemplate::compose`).
 //!
 //! # Vertex / Index Buffers
 //!
@@ -131,14 +140,11 @@ pub struct GBufferPass {
     /// still-pending real fix (a SceneDB-driven portal/sublevel component).
     coordinate_spaces: wgpu::Buffer,
     coordinate_spaces_prev: wgpu::Buffer,
-    /// Fallback `MaterialTextureData` storage buffer (352 bytes = one
-    /// sentinel slot) so `"material_textures"`' bind group stays valid before
-    /// SceneDB publishes a real table. Pass-owned because 352 is this
-    /// pass's own `MaterialTextureData` struct size (gbuffer.wgsl) -- a
-    /// generic Renderer has no business knowing it.
-    fallback_material_textures: wgpu::Buffer,
     /// Zeroed sentinel storage for scenes without skeletal assets.
     fallback_skeletal_storage: wgpu::Buffer,
+    /// What the material bind group holds without the materials plugin's
+    /// texture table or material rows (default grey PBR), made on first use.
+    stand_in: Option<helio_mats::MaterialStandIn>,
     /// CPU-side projection input staged by the generic graph interface and
     /// uploaded during `prepare()` with the current frame queue.
     pending_coordinate_spaces: Option<Vec<glam::Mat4>>,
@@ -149,6 +155,12 @@ pub struct GBufferPass {
     /// brought level next frame (a table that stops changing has no motion).
     coordinate_prev_stale: bool,
 }
+
+/// The meshes' G-buffer program (`shaders/gbuffer.wgsl`): the vertex
+/// layout, the instance rows (`//!use mesh_draw_rows`) and the G-buffer
+/// packing, over the materials' snippets; a template's surface function is
+/// composed after it.
+pub const GBUFFER_PROGRAM: &str = include_str!("../shaders/gbuffer.wgsl");
 
 /// Coordinate-space slots backed by GPU storage (slot 0 is the identity). An
 /// instance carries its space id in 8 bits of its flags, so 256 is the most.
@@ -349,21 +361,6 @@ impl GBufferPass {
             contents: bytemuck::cast_slice(&coordinate_space_words),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
-        // `MaterialTextureData` (gbuffer.wgsl) is 7 `MaterialTextureSlot`s
-        // (48 bytes each) + a 16-byte params vec4 = 352 bytes -- see this
-        // pass's own material bind-group-1 doc above.
-        // params.w = -1 marks the descriptor-only fallback. Shaders derive
-        // basic texture slots from SceneDB material rows instead of indexing
-        // this single row by arbitrary material IDs.
-        let mut fallback_words = [0u32; 88];
-        fallback_words[87] = (-1.0f32).to_bits();
-        let fallback_material_textures =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Fallback Material Texture Slots"),
-                contents: bytemuck::cast_slice(&fallback_words),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            });
-
         Self {
             draw_slots: DrawSlots::default(),
             timing_query: None,
@@ -397,8 +394,8 @@ impl GBufferPass {
             lightmap_atlas_regions_buf,
             coordinate_spaces,
             coordinate_spaces_prev,
-            fallback_material_textures,
             fallback_skeletal_storage,
+            stand_in: None,
             pending_coordinate_spaces: None,
             last_coordinate_words: None,
             coordinate_prev_stale: false,
@@ -447,13 +444,6 @@ impl GBufferPass {
             bytemuck::cast_slice(&words),
         );
     }
-
-    /// Fallback `"material_textures"` buffer. See
-    /// [`Self::coordinate_spaces_buffer`] for why `Renderer` reaches in
-    /// rather than owning this itself.
-    pub fn fallback_material_textures_buffer(&self) -> &wgpu::Buffer {
-        &self.fallback_material_textures
-    }
 }
 
 impl RenderPass for GBufferPass {
@@ -487,19 +477,12 @@ impl RenderPass for GBufferPass {
             unsafe { std::mem::transmute(&self.coordinate_spaces) };
         let coordinate_spaces_prev: &'a wgpu::Buffer =
             unsafe { std::mem::transmute(&self.coordinate_spaces_prev) };
-        let fallback_material_textures: &'a wgpu::Buffer =
-            unsafe { std::mem::transmute(&self.fallback_material_textures) };
         frame.write(
             helio_core::resource_keys::coordinate_spaces(),
             helio_core::CoordinateSpacesFrameData {
                 coordinate_spaces,
                 coordinate_spaces_prev,
             },
-            "GBuffer",
-        );
-        frame.write(
-            helio_core::ResourceKey::new("material_texture_fallback"),
-            fallback_material_textures,
             "GBuffer",
         );
     }
@@ -818,15 +801,14 @@ impl RenderPass for GBufferPass {
         if max_draws == 0 {
             return Ok(());
         }
-        let Some(material_textures) = ctx
+        // The materials' texture table, or the stand-in without them.
+        let stand_in = self
+            .stand_in
+            .get_or_insert_with(|| helio_mats::MaterialStandIn::new(&ctx.device, ctx.queue));
+        let material_textures = ctx
             .registry
-            .read::<helio_mats::MaterialTextureBindings<'_>>(
-                helio_mats::material_textures(),
-                "GBuffer",
-            )
-        else {
-            return Ok(());
-        };
+            .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())
+            .unwrap_or_else(|| stand_in.textures());
         let Some(vertices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_vertex"))
         else {
             return Ok(());
@@ -924,7 +906,7 @@ impl RenderPass for GBufferPass {
         let materials_handle = ctx.scene_buffers.get(BufferKey::of("materials"));
         let materials_buf = materials_handle
             .map(|handle| &handle.buffer)
-            .unwrap_or(batch.instances);
+            .unwrap_or(stand_in.rows());
         let materials_epoch = materials_handle.map(|handle| handle.epoch).unwrap_or(0);
 
         // Rebuild bind group 1 when material textures version changes.
@@ -1062,7 +1044,7 @@ impl RenderPass for GBufferPass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "material_textures",
+            helio_mats::MATERIAL_TEXTURES,
             "render_environment",
             "object_batch",
             "culled_batch",
@@ -1140,7 +1122,7 @@ impl GBufferPass {
                 graph_wgsl
             };
             // The renderer only ever hands us a shared registry when a
-            // caller actually registers custom (id >= 5) templates; nothing
+            // caller actually registers custom (from `FIRST_CUSTOM_MATERIAL_CLASS` up) templates; nothing
             // wires that up yet (see `template_registry`'s doc). Rather than
             // hard-require it for every draw -- panicking on the overwhelming
             // majority of scenes that only ever use the built-in classes
@@ -1179,7 +1161,9 @@ impl GBufferPass {
                 device,
                 key,
                 template,
+                GBUFFER_PROGRAM,
                 graph_wgsl,
+                &[helio_mesh_api::DRAW_ROWS_SNIPPET],
                 self.material_binding,
                 "GBuffer Shader",
             );

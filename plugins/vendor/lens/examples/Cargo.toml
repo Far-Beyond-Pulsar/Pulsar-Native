@@ -23,7 +23,7 @@ path = "lens_flare_demo.rs"
 helio-light-host = { workspace = true }
 helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
 # `#[derive(SceneStore)]` expands to reflection paths.
 pulsar_reflection = { workspace = true }
 bytemuck = { workspace = true }

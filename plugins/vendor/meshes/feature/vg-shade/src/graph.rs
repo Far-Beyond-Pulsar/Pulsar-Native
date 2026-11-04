@@ -194,7 +194,7 @@ impl RenderPass for VgShadePass {
             "gbuffer_extra",
             "gbuffer_velocity",
             "depth",
-            "material_textures",
+            helio_mats::MATERIAL_TEXTURES,
             "render_environment",
         ]
     }

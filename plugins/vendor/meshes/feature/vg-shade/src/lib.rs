@@ -65,8 +65,9 @@ pub fn shared_decode() -> String {
     )
 }
 
-/// The classic G-buffer shader whose material evaluator the shade pass reuses.
-const GBUFFER_WGSL: &str = helio_mats::templates::DEFAULT_PBR;
+/// The meshes' G-buffer program, whose view declarations (`Camera`,
+/// `Globals`) and motion vectors (`compute_velocity`) the shade pass shares.
+const GBUFFER_WGSL: &str = helio_pass_gbuffer::GBUFFER_PROGRAM;
 
 /// One visible cluster, produced by the cull pass: `{instance, cluster_slot}`.
 /// A vis id's cluster index (`helio_vg_format::vis_cluster`) indexes the array
@@ -135,7 +136,8 @@ pub mod shader_source {
 
     /// Material binning module (`bin_count`, `bin_scan`, `bin_scatter`).
     pub fn bin() -> String {
-        BIN_WGSL.to_string()
+        // The material row's words (the materials' snippet).
+        format!("{}\n{BIN_WGSL}", helio_mats::MATERIAL_ROW_SNIPPET.source)
     }
 
     /// Final depth module (`vs_main`, `fs_main`).
@@ -143,23 +145,20 @@ pub mod shader_source {
         DEPTH_WGSL.to_string()
     }
 
-    /// The shade module as a *template base*: the classic G-buffer shader's
-    /// declarations and material evaluator spliced around `vg_shade.wgsl`.
-    /// It declares `radiant_eval_surface` and the override markers exactly as
-    /// the G-buffer shader does, so
-    /// `RadiantTemplate::build_shader_source_on` composes any material
-    /// template into it. `textureSample` is still the classic call; see
+    /// The shade module as a drawer program: the G-buffer program's view
+    /// declarations, `vg_shade.wgsl` and the G-buffer's `compute_velocity`,
+    /// over the materials' snippets (the row, `material_surface`, specular
+    /// anti-aliasing). A material template's surface function is composed
+    /// after it (`RadiantTemplate::compose`), as into the G-buffer's;
+    /// `textureSample` is still the materials' implicit call, see
     /// [`gradient_sampling`].
-    pub fn shade_base(decode: &str) -> String {
+    pub fn shade_program(decode: &str) -> String {
         let gbuffer = GBUFFER_WGSL.replace("\r\n", "\n");
-        // Camera, Globals, GpuMaterial, flag constants, MaterialTexture*.
-        let declarations = between(&gbuffer, "struct Camera {", "/// Per-instance data");
-        // SurfaceData .. radiant_eval_surface, compute_velocity, material_texture_data.
-        let evaluator = between(&gbuffer, "struct SurfaceData {", "@fragment");
-        // The evaluator widens roughness by the normals a pixel covers, as the
-        // G-buffer's does (its marker, outside the slices, opts in).
+        // Camera, Globals.
+        let declarations = between(&gbuffer, "struct Camera {", "struct SkinVertex {");
+        let velocity = between(&gbuffer, "fn compute_velocity", "@fragment");
         format!(
-            "enable wgpu_binding_array;\n{}\n{}\n{COMMON_WGSL}\n{decode}\n{declarations}\n{SHADE_WGSL}\n{evaluator}",
+            "enable wgpu_binding_array;\n{}\n//!use pbr_eval\n//!use material_row\n//!use material_surface\n{}\n{COMMON_WGSL}\n{decode}\n{declarations}\n{SHADE_WGSL}\n{velocity}",
             helio_mats::SPECULAR_AA_MARKER,
             helio_vg_format::WGSL
         )
@@ -200,8 +199,7 @@ pub mod shader_source {
         binding: helio_mats::MaterialBindingConfig,
         decode: &str,
     ) -> String {
-        let composed =
-            template.build_shader_source_on(&shade_base(decode), "", binding.max_textures);
+        let composed = template.compose(&shade_program(decode), "", binding.max_textures, &[]);
         let bindless = binding.uses_binding_arrays();
         let composed = if bindless {
             composed
@@ -1402,11 +1400,14 @@ mod tests {
     }
 
     #[test]
-    fn shade_base_declares_the_template_override_point() {
-        let base = shader_source::shade_base(&shared_decode());
-        assert!(base.contains("fn radiant_eval_surface"));
-        assert!(base.contains("// RADIANT_OVERRIDE_SURFACE"));
-        assert!(base.contains("binding_array<texture_2d<f32>, 256>"));
+    fn the_shade_program_takes_a_template_and_the_material_table() {
+        let program = shader_source::shade_program(&shared_decode());
+        assert!(!program.contains("fn radiant_eval_surface"));
+        assert!(program.contains("binding_array<texture_2d<f32>, 256>"));
+        let registry = helio_mats::RadiantTemplateRegistry::new();
+        let composed = registry.get(0).unwrap().compose(&program, "", 256, &[]);
+        assert!(composed.contains("fn radiant_eval_surface"));
+        assert!(composed.contains("fn default_pbr_surface"));
     }
 
     #[test]

@@ -1,0 +1,30 @@
+[package]
+name = "materials_component"
+version = "0.1.0"
+edition = "2024"
+description = "Materials (pulsar.materials): the registrations of the plugin's Helio feature (the material texture table) and of its settings (the material sampler, from the project's texture streaming settings)"
+
+# Hosts (the editor through the plugin crate, the game) link it; the render
+# feature and its settings register through `inventory` once the crate is
+# linked.
+[lib]
+name = "materials_component"
+
+[dependencies]
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+engine_state = { workspace = true }
+inventory = { workspace = true }
+wgpu = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-mats = { workspace = true }
+helio-pass-materials = { workspace = true }
+
+[dev-dependencies]
+pollster = "=0.4.0"
+
+[lints]
+workspace = true

@@ -1,37 +1,17 @@
-// Voxel materials drawn with the host's scene materials: Helio's material
-// rows (`GpuMaterial`) and its descriptor-indexed texture table, bound as
-// the publish pipeline's group 2 (`chunks::scene`). Spliced over the
-// `SCENE_MATERIALS` line of chunk_draw.wgsl when the device has binding
-// arrays.
-
-struct SceneGpuMaterial {
-    base_color:         vec4<f32>,
-    emissive:           vec4<f32>,
-    roughness_metallic: vec4<f32>,
-    tex_base_color:     u32,
-    tex_normal:         u32,
-    tex_roughness:      u32,
-    tex_emissive:       u32,
-    tex_occlusion:      u32,
-    workflow:           u32,
-    flags:              u32,
-    material_class:     u32,
-    class_params:       vec4<f32>,
-}
-
-const SCENE_NO_TEXTURE: u32 = 0xffffffffu;
-// `GpuMaterial::flags`: the normal texture is a normal map
-// (`helio_mats::FLAG_HAS_NORMAL_MAP`).
-const SCENE_HAS_NORMAL_MAP: u32 = 1u << 3u;
+// Voxel materials drawn with the host's scene materials: the materials'
+// rows (`GpuMaterial`, `//!use material_row`, which chunk_draw.wgsl is
+// composed with) and their descriptor-indexed texture table, bound as the
+// publish pipeline's group 2 (`chunks::scene`). Spliced over the stub
+// `scene_surface` of chunk_draw.wgsl when the device has binding arrays.
 
 // Per voxel material: the scene material rows of its top, side and bottom
-// faces (x, y, z; SCENE_NO_TEXTURE: none).
+// faces (x, y, z; MATERIAL_NO_TEXTURE: none).
 struct SceneMap {
     faces: array<vec4<u32>, 32>,
 }
 
 @group(2) @binding(0) var<storage, read> scene_map: SceneMap;
-@group(2) @binding(1) var<storage, read> scene_materials: array<SceneGpuMaterial>;
+@group(2) @binding(1) var<storage, read> scene_materials: array<GpuMaterial>;
 @group(2) @binding(2) var scene_textures: binding_array<texture_2d<f32>, MATERIAL_TEXTURES>;
 @group(2) @binding(3) var scene_samplers: binding_array<sampler, MATERIAL_TEXTURES>;
 // Shared with WaterSim. Layer 0 holds terrain height/coast distance/coast
@@ -153,7 +133,7 @@ fn scene_surface(m: u32, axis: u32, sign: u32, level: u32, cell: vec3<i32>, in_c
     if axis == 2u {
         row = select(faces.z, faces.x, sign == 1u);
     }
-    if row == SCENE_NO_TEXTURE || row >= arrayLength(&scene_materials) {
+    if row == MATERIAL_NO_TEXTURE || row >= arrayLength(&scene_materials) {
         return none;
     }
     let material = scene_materials[row];
@@ -174,23 +154,23 @@ fn scene_surface(m: u32, axis: u32, sign: u32, level: u32, cell: vec3<i32>, in_c
     let tile_px = f32(tile) * params.planet.y / max(pixel_m, 1e-6);
     var colour = material.base_color.rgb;
     var texel = vec3<f32>(1.0);
-    if material.tex_base_color != SCENE_NO_TEXTURE && material.tex_base_color < MATERIAL_TEXTURES {
+    if material.tex_base_color != MATERIAL_NO_TEXTURE && material.tex_base_color < MATERIAL_TEXTURES {
         texel = scene_sample(material.tex_base_color, uv, tile_px).rgb;
         colour *= texel;
     }
     var roughness = material.roughness_metallic.x;
     var occlusion = 1.0;
-    if material.tex_roughness != SCENE_NO_TEXTURE && material.tex_roughness < MATERIAL_TEXTURES {
+    if material.tex_roughness != MATERIAL_NO_TEXTURE && material.tex_roughness < MATERIAL_TEXTURES {
         // Occlusion-roughness-metallic packing: roughness is green.
         let orm = scene_sample(material.tex_roughness, uv, tile_px);
         roughness *= orm.g;
         if material.tex_occlusion == material.tex_roughness { occlusion = orm.r; }
     }
-    if material.tex_occlusion != SCENE_NO_TEXTURE && material.tex_occlusion < MATERIAL_TEXTURES && material.tex_occlusion != material.tex_roughness {
+    if material.tex_occlusion != MATERIAL_NO_TEXTURE && material.tex_occlusion < MATERIAL_TEXTURES && material.tex_occlusion != material.tex_roughness {
         occlusion = scene_sample(material.tex_occlusion, uv, tile_px).r;
     }
     var normal = vec3<f32>(0.0, 0.0, 1.0);
-    if (material.flags & SCENE_HAS_NORMAL_MAP) != 0u && material.tex_normal != SCENE_NO_TEXTURE && material.tex_normal < MATERIAL_TEXTURES {
+    if (material.flags & MATERIAL_FLAG_HAS_NORMAL_MAP) != 0u && material.tex_normal != MATERIAL_NO_TEXTURE && material.tex_normal < MATERIAL_TEXTURES {
         let slot = material.tex_normal;
         let n = scene_sample(slot, uv, tile_px).rgb * 2.0 - 1.0;
         normal = n / max(length(n), 1e-4);

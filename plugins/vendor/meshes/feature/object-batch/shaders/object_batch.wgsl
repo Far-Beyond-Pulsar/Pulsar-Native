@@ -1,3 +1,4 @@
+//!use material_row
 //! GPU-driven object sort/group/batch pipeline.
 //!
 //! Turns every live `StaticObjectComponent` SceneDB row into the exact same
@@ -554,24 +555,8 @@ struct DrawIndexedIndirectArgsOut {
     first_instance: u32,
 }
 
-/// Mirrors `libhelio::GpuMaterial` byte-for-byte (same struct every other
-/// pass reading the shared `materials` buffer mirrors, e.g.
-/// `forward_lit.wgsl`'s own `GpuMaterial`) -- only `.flags` is actually used
-/// here, but the full struct must still match so its byte offset is right.
-struct GpuMaterial {
-    base_color: vec4<f32>,
-    emissive: vec4<f32>,
-    roughness_metallic: vec4<f32>,
-    tex_base_color: u32,
-    tex_normal: u32,
-    tex_roughness: u32,
-    tex_emissive: u32,
-    tex_occlusion: u32,
-    workflow: u32,
-    flags: u32,
-    material_class: u32,
-    class_params: vec4<f32>,
-}
+// `GpuMaterial` and its flags: the materials' row (`//!use material_row`);
+// only `.flags` is read here.
 
 @group(0) @binding(0) var<storage, read> group_count_bdc: array<u32>;
 @group(0) @binding(1) var<storage, read> group_starts_bdc: array<u32>;
@@ -585,8 +570,6 @@ struct GpuMaterial {
 @group(0) @binding(9) var<storage, read> materials_bdc: array<GpuMaterial>;
 @group(0) @binding(10) var<storage, read_write> indirect_out: array<DrawIndexedIndirectArgsOut>;
 
-const MATERIAL_FLAG_TRANSPARENT_ONLY: u32 = 1u << 8u; // mirrors libhelio::material::FLAG_TRANSPARENT_ONLY
-const MATERIAL_FLAG_FORWARD_SHADING: u32 = 1u << 9u;  // mirrors libhelio::material::FLAG_FORWARD_SHADING
 
 @compute @workgroup_size(WG)
 fn cs_build_draw_calls(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -615,7 +598,7 @@ fn cs_build_draw_calls(@builtin(global_invocation_id) gid: vec3<u32>) {
     );
     // Range/segment key: low 16 bits are the template class; upper bits
     // carry raster state. Double-sided cards must not share an opaque PSO.
-    group_material_class[g] = row.material_class | ((materials_bdc[row.material_slot].flags & 5u) << 16u);
+    group_material_class[g] = row.material_class | ((materials_bdc[row.material_slot].flags & (MATERIAL_FLAG_DOUBLE_SIDED | MATERIAL_FLAG_ALPHA_TEST)) << 16u);
     group_graph_hash_lo[g] = row.graph_hash_lo;
     group_graph_hash_hi[g] = row.graph_hash_hi;
 

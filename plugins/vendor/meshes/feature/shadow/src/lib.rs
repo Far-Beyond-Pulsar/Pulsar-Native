@@ -556,7 +556,7 @@ impl RenderPass for ShadowPass {
         builder.read("object_batch");
         builder.read(helio_light_api::SHADOW_MATRICES);
         builder.read("shadow_dirty");
-        builder.read("material_textures");
+        builder.read(helio_mats::MATERIAL_TEXTURES);
         // Pass-owned (it caches with the static atlas): declared for ordering,
         // routed in `publish`.
         builder.write_buffer(TRANSMITTANCE_KEY);

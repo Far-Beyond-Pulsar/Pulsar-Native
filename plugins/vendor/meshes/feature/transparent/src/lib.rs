@@ -1,11 +1,14 @@
 //! Transparent geometry pass with SrcAlpha / OneMinusSrcAlpha blending,
 //! read-only depth, and Radiant template support.
 //!
-//! Templates are composed with `transparent_base.wgsl` (shared in the `helio`
-//! crate). The materials' transparent registry
-//! (`helio_mats::MaterialTemplates::transparent`) does not reach this pass
-//! yet: it draws with its built-in templates.
-//! The default template (class 0) reads SceneDB material tint, alpha and PBR properties.
+//! The pass's program ([`TRANSPARENT_PROGRAM`]: the meshes' vertex layout and
+//! instance rows, lit by the lights' forward function, each fragment through
+//! the frame's media) hosts a material's transparent template
+//! (`radiant_eval_transparent`, `RadiantTemplate::compose`). The materials'
+//! transparent registry (`helio_mats::MaterialTemplates::transparent`) does
+//! not reach this pass yet: it draws with the built-in default template
+//! (`helio_mats::templates::TRANSPARENT_DEFAULT`), which reads the material's
+//! tint, alpha and emission.
 
 pub mod feature;
 pub use feature::TransparentDrawers;
@@ -18,6 +21,11 @@ use helio_core::graph::ResourceBuilder;
 use helio_core::{PassContext, PrepareContext, RenderPass, Result as HelioResult};
 use helio_mats::radiant::{RadiantShaderCache, RadiantShaderKey};
 use pulsar_scenedb::gpu::{world_mirror::DEFAULT_AUTO_REGISTER_CAPACITY, BufferKey};
+
+/// The meshes' transparent program (`shaders/transparent.wgsl`): a
+/// material's transparent template (its `radiant_eval_transparent`) is
+/// composed after it.
+pub const TRANSPARENT_PROGRAM: &str = include_str!("../shaders/transparent.wgsl");
 
 /// Fixed capacity for the `"scene_lights"` SceneDB buffer, kept equal to
 /// `helio_light_api::MAX_LIGHTS`/`helio_light_api::MAX_LIGHTS`
@@ -63,8 +71,11 @@ pub struct TransparentPass {
     shader_cache: RadiantShaderCache,
     /// This pass's own class-0 override (the transparent base — never
     /// synced from the scene).
-    local_class0: helio_mats::radiant::RadiantTemplate,
-    /// User-registered custom templates (id >= 5), shared with the renderer
+    /// [`TRANSPARENT_PROGRAM`] with the media composite.
+    program: &'static str,
+    /// The built-in transparent template (class 0).
+    local_templates: helio_mats::RadiantTemplateRegistry,
+    /// User-registered custom templates (from `FIRST_CUSTOM_MATERIAL_CLASS` up), shared with the renderer
     /// and other passes — never deep-cloned (see `SharedTemplateRegistry`).
     shared_registry: Option<helio_mats::radiant::SharedTemplateRegistry>,
     /// Key set as of the last sync, to detect content changes cheaply.
@@ -299,36 +310,17 @@ impl TransparentPass {
             immediate_size: 0,
         });
 
-        // Just the transparent base shader at class 0 — NOT
-        // RadiantTemplateRegistry::new(), which populates classes 0-4 with
-        // gbuffer templates that have incompatible bind group layouts.
-        let base_src = helio_mats::templates::TRANSPARENT_BASE;
-        let resolved_src: &'static str = if base_src.contains("//!use pbr_eval") {
-            static RESOLVED: OnceLock<String> = OnceLock::new();
-            RESOLVED
-                .get_or_init(|| {
-                    let mut resolved =
-                        String::with_capacity(base_src.len() + helio_mats::PBR_EVAL.len());
-                    resolved.push_str(helio_mats::PBR_EVAL);
-                    resolved.push('\n');
-                    // The lights' row and forward light function.
-                    resolved.push_str(helio_light_api::LIGHT_LIST_SNIPPET.source);
-                    resolved.push_str(helio_light_api::LIGHT_FORWARD_SNIPPET.source);
-                    resolved.push_str(&base_src.replace(
-                        "// HELIO_VIEW_SURFACE_EFFECT",
-                        "surface = apply_medium(surface, input.world_position);",
-                    ));
-                    resolved.push_str(include_str!("../shaders/medium.wgsl"));
-                    resolved
-                })
-                .as_str()
-        } else {
-            base_src
-        };
-        let local_class0 = helio_mats::radiant::RadiantTemplate {
-            name: std::sync::Arc::from("transparent_base"),
-            wgsl_source: std::sync::Arc::from(resolved_src),
-        };
+        // The program with each fragment composited through the frame's
+        // media at its own depth.
+        static PROGRAM: OnceLock<String> = OnceLock::new();
+        let program: &'static str = PROGRAM
+            .get_or_init(|| {
+                TRANSPARENT_PROGRAM.replace(
+                    "// HELIO_VIEW_SURFACE_EFFECT",
+                    "surface = apply_medium(surface, input.world_position);",
+                ) + include_str!("../shaders/medium.wgsl")
+            })
+            .as_str();
 
         Self {
             media: None,
@@ -340,7 +332,8 @@ impl TransparentPass {
             medium_sampler,
             pipelines: HashMap::new(),
             shader_cache: RadiantShaderCache::new(),
-            local_class0,
+            program,
+            local_templates: helio_mats::RadiantTemplateRegistry::new_transparent(),
             shared_registry: None,
             last_shared_keys: Vec::new(),
             pipeline_layout,
@@ -812,11 +805,11 @@ impl TransparentPass {
         graph_wgsl: &str,
     ) -> &wgpu::RenderPipeline {
         if !self.pipelines.contains_key(&key) {
-            // Ids >= 5 are user-registered custom templates that live in the
+            // Ids from `FIRST_CUSTOM_MATERIAL_CLASS` up are user-registered custom templates that live in the
             // shared scene-wide registry; class 0 is this pass's own
             // transparent base. `shared_arc` is a fresh local Arc clone so
             // `guard`'s lifetime doesn't tie up `self`.
-            let shared_arc = if key.template_id >= 5 {
+            let shared_arc = if key.template_id >= helio_mats::FIRST_CUSTOM_MATERIAL_CLASS {
                 self.shared_registry.clone()
             } else {
                 None
@@ -826,44 +819,28 @@ impl TransparentPass {
                 .as_ref()
                 .and_then(|g| g.get(key.template_id))
                 .unwrap_or_else(|| {
-                    if key.template_id >= 5 {
+                    if key.template_id >= helio_mats::FIRST_CUSTOM_MATERIAL_CLASS {
                         log::debug!(
                             "[Transparent] template class {} not found, falling back to class 0",
                             key.template_id
                         );
                     }
-                    &self.local_class0
+                    self.local_templates
+                        .get(0)
+                        .expect("the default transparent template (class 0)")
                 });
-            // A custom template is the transparent base with its own
-            // surface: it takes the same snippets the base does.
-            let composed;
-            let template = if std::ptr::eq(template, &self.local_class0) {
-                template
-            } else {
-                composed = helio_mats::radiant::RadiantTemplate {
-                    name: template.name.clone(),
-                    wgsl_source: std::sync::Arc::from(
-                        helio_core::shader::resolve_with(
-                            &template.wgsl_source,
-                            &[
-                                helio_mats::PBR_EVAL_SNIPPET,
-                                helio_light_api::LIGHT_LIST_SNIPPET,
-                                helio_light_api::LIGHT_FORWARD_SNIPPET,
-                            ],
-                        )
-                        .as_ref(),
-                    ),
-                };
-                &composed
-            };
-            let supports_reactivity = template
-                .wgsl_source
-                .contains("HELIO_TRANSPARENT_REACTIVITY");
+            let supports_reactivity = self.program.contains("HELIO_TRANSPARENT_REACTIVITY");
             let module = self.shader_cache.get_or_compile(
                 device,
                 key,
                 template,
+                self.program,
                 graph_wgsl,
+                &[
+                    helio_mesh_api::DRAW_ROWS_SNIPPET,
+                    helio_light_api::LIGHT_LIST_SNIPPET,
+                    helio_light_api::LIGHT_FORWARD_SNIPPET,
+                ],
                 helio_mats::MaterialBindingConfig::for_device(device),
                 "Transparent Shader",
             );

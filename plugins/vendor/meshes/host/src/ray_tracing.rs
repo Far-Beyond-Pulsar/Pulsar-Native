@@ -20,8 +20,8 @@
 //! glass or as opaque) still refuses them.
 use crate::ray_proxies::{Lookup, VgRayProxies, VgRayStats};
 use crate::{MeshComponent, RenderGroupComponent, StaticObjectComponent};
-use helio_components::MaterialComponent;
 use helio_core::{BlasGeometry, BlasManager, Movability, TlasInstanceInput, TlasManager};
+use helio_mats::host_rows::MaterialComponent;
 use helio_mesh_api::{
     RayInstance, RAY_INSTANCE_MASKED, RAY_INSTANCE_PROXY, RAY_INSTANCE_TWO_SIDED,
 };

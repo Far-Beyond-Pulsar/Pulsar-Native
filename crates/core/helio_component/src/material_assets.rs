@@ -405,7 +405,7 @@ pub fn resolve_material(
         }),
         material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
         graph_hash: 0,
-        graph_texture_slots: [helio::GpuMaterial::NO_TEXTURE; 5],
+        graph_texture_slots: [helio_mats::GpuMaterial::NO_TEXTURE; 5],
     };
     let Some(slot) = slot else {
         return imported();
@@ -415,7 +415,7 @@ pub fn resolve_material(
             surface,
             material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
             graph_hash: 0,
-            graph_texture_slots: [helio::GpuMaterial::NO_TEXTURE; 5],
+            graph_texture_slots: [helio_mats::GpuMaterial::NO_TEXTURE; 5],
         };
     }
     match bound {
@@ -423,7 +423,7 @@ pub fn resolve_material(
             surface: *surface,
             material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
             graph_hash: 0,
-            graph_texture_slots: [helio::GpuMaterial::NO_TEXTURE; 5],
+            graph_texture_slots: [helio_mats::GpuMaterial::NO_TEXTURE; 5],
         },
         Some((id, version, LoadedMaterial::Graph(graph))) => {
             let Some(mirror) = mirror else {
@@ -478,7 +478,7 @@ fn compiled_graph(
         .enumerate()
         .map(|(ordinal, asset)| (asset.clone(), ordinal as u32))
         .collect();
-    let mut slots = [helio::GpuMaterial::NO_TEXTURE; 5];
+    let mut slots = [helio_mats::GpuMaterial::NO_TEXTURE; 5];
     // What each image is for decides its format: a colour is stored as sRGB and
     // a roughness or normal map is not.
     let uses = crate::material_graph::texture_uses(&graph.graph);

@@ -34,6 +34,8 @@ use sky_plugin as _;
 // The meshes (Phase B batch 4).
 use lights_plugin as _;
 use meshes_plugin as _;
+// The materials (Phase B batch 6).
+use materials_plugin as _;
 
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");

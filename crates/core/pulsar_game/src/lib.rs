@@ -104,6 +104,8 @@ extern crate sky_component;
 // The meshes (Phase B batch 4).
 extern crate lights_component;
 extern crate meshes_component;
+// The materials (Phase B batch 6).
+extern crate materials_component;
 
 // Compile-time drift guard: exported actors must match the pinned crates
 #[cfg(test)]

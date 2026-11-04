@@ -46,7 +46,7 @@ pub const HANDLE_ROW_BYTES: u64 = 8;
 /// A mesh instance's object-row flags (`u32`).
 pub const MESH_FLAGS_ROW_BYTES: u64 = 4;
 /// One mesh section: draw range, material class and graph hash, then a
-/// `helio_mats::GpuMaterial`.
+/// `helio_mats::GpuMaterial` (the materials' row).
 pub const MESH_SECTION_ROW_BYTES: u64 = 128;
 
 const OBJECT_ROW_BYTES: u64 = 252;
@@ -55,7 +55,14 @@ const WORKGROUP: u32 = 64;
 
 /// The mesh join's shader as compiled (shader validation without a device).
 pub fn mesh_join_source() -> String {
-    join_source(include_str!("../shaders/scene_join_meshes.wgsl"))
+    join_wgsl(include_str!("../shaders/scene_join_meshes.wgsl"))
+}
+
+/// A join shader as compiled: the shared join declarations and the
+/// materials' row (`//!use material_row`: the sections carry it).
+fn join_wgsl(source: &str) -> String {
+    helio_core::shader::resolve_with(&join_source(source), &[helio_mats::MATERIAL_ROW_SNIPPET])
+        .into_owned()
 }
 
 /// Where the frontend's authored rows live. See the module doc for what
@@ -414,7 +421,7 @@ impl SceneJoin {
         let pipeline = |label: &str, source: &str, entry: &str| {
             let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(join_source(source).into()),
+                source: wgpu::ShaderSource::Wgsl(join_wgsl(source).into()),
             });
             helio_core::shader::create_compute_pipeline(
                 &device,

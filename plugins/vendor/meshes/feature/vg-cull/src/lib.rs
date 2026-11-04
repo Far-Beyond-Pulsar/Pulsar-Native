@@ -433,10 +433,6 @@ pub fn wgsl_constants() -> String {
     u("VGC_FLAG_MASKED", FLAG_MASKED);
     u("VGC_FLAG_SW_MASKED", FLAG_SW_MASKED);
     u("VGC_FLAG_NO_ROOT_SHORTCUT", FLAG_NO_ROOT_SHORTCUT);
-    u("VGC_MAT_ALPHA_TEST", helio_mats::FLAG_ALPHA_TEST);
-    u("VGC_MAT_DOUBLE_SIDED", helio_mats::FLAG_DOUBLE_SIDED);
-    u("VGC_MAT_ALPHA_BLEND", helio_mats::FLAG_ALPHA_BLEND);
-    u("VGC_MAT_CUSTOM", helio_mats::FLAG_HAS_CUSTOM_SHADER);
     u("VGC_CLUSTER_FLAG_LEAF", GpuCluster::FLAG_LEAF);
     for (name, v) in [
         ("JOBS", stats::JOBS),
@@ -475,8 +471,11 @@ pub fn shader_source() -> String {
 {}
 {}
 {}
+{}
 {}",
         wgsl_constants(),
+        // The material row's words and flags (the materials' snippet).
+        helio_mats::MATERIAL_ROW_SNIPPET.source,
         helio_vg_format::WGSL,
         helio_vg_stream::bindings_wgsl(0, 4, true),
         helio_vg_stream::WGSL,

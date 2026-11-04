@@ -105,7 +105,7 @@ struct Section {
     graph_hash_lo: u32,
     graph_hash_hi: u32,
     pad: [u32; 3],
-    material: helio::GpuMaterial,
+    material: helio_mats::GpuMaterial,
 }
 
 struct Scene {
@@ -209,8 +209,8 @@ fn run_at(
     projection
 }
 
-fn material(base: f32) -> helio::GpuMaterial {
-    helio::GpuMaterial {
+fn material(base: f32) -> helio_mats::GpuMaterial {
+    helio_mats::GpuMaterial {
         base_color: [base, 0.5, 0.25, 1.0],
         emissive: [0.0; 4],
         roughness_metallic: [0.5, 0.0, 1.5, 0.5],
@@ -366,7 +366,7 @@ fn placed_instances_are_joined_with_their_owner_and_nothing_else_is() {
         &queue,
         &out.get(BufferKey::of("static_objects")).unwrap().buffer,
     );
-    let materials: Vec<helio::GpuMaterial> = read(
+    let materials: Vec<helio_mats::GpuMaterial> = read(
         &device,
         &queue,
         &out.get(BufferKey::of("materials")).unwrap().buffer,

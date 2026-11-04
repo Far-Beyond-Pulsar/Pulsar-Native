@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use helio::TextureUpload;
+use helio_mats::TextureUpload;
 use helio_mesh_api::PackedVertex;
 use solid_rs::Scene;
 
@@ -16,7 +16,7 @@ use crate::{camera_converter, light_converter, mesh_converter, CameraData, Resul
 ///   • Normal map encodes the curved depression geometry
 ///   • Light tiles ~195 (metallic silver), ±3 noise
 ///   • Dark tiles ~55 (graphite), ±15 fine grain noise
-fn fallback_texture(semantic: TextureSemantic) -> helio::TextureUpload {
+fn fallback_texture(semantic: TextureSemantic) -> helio_mats::TextureUpload {
     let srgb = semantic.is_srgb();
 
     // Flat neutral for channels that don't need a visual pattern.
@@ -24,13 +24,13 @@ fn fallback_texture(semantic: TextureSemantic) -> helio::TextureUpload {
         TextureSemantic::MetallicRoughness
         | TextureSemantic::Occlusion
         | TextureSemantic::SpecularWeight => {
-            return helio::TextureUpload::rgba8(
+            return helio_mats::TextureUpload::rgba8(
                 format!("fallback-{}", semantic.suffix()),
                 1,
                 1,
                 false,
                 vec![255, 255, 255, 255],
-                helio::TextureSamplerDesc::default(),
+                helio_mats::TextureSamplerDesc::default(),
             );
         }
         _ => {}
@@ -135,13 +135,13 @@ fn fallback_texture(semantic: TextureSemantic) -> helio::TextureUpload {
         }
     }
 
-    helio::TextureUpload::rgba8(
+    helio_mats::TextureUpload::rgba8(
         format!("fallback-{}", semantic.suffix()),
         SIZE,
         SIZE,
         srgb,
         data,
-        helio::TextureSamplerDesc::default(),
+        helio_mats::TextureSamplerDesc::default(),
     )
 }
 

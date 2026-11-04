@@ -91,11 +91,13 @@ gi_component = { workspace = true }
 sky_component = { workspace = true }
 meshes_component = { workspace = true }
 lights_component = { workspace = true }
+materials_component = { workspace = true }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+helio-mats = { workspace = true }
 # The plugin pass lists test (tests/plugin_pass_lists.rs) builds Helio's
 # presets with the linked plugins' features, as the engine does.
 helio-core = { workspace = true }

@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 helio-light-api = { workspace = true }
 helio-core = { workspace = true }
 helio-mats = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
 helio-vg-format = { workspace = true }
 helio-vg-stream = { workspace = true }
 helio-pass-vg-cull = { workspace = true }

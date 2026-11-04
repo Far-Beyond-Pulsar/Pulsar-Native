@@ -1056,7 +1056,7 @@ impl RenderPass for SpriteBatchPass {
 
     fn declare_resources(&self, builder: &mut helio_core::graph::ResourceBuilder) {
         if self.scene_overlay.is_some() {
-            builder.read("material_textures");
+            builder.read(helio_mats::MATERIAL_TEXTURES);
         }
     }
 
@@ -1188,10 +1188,7 @@ impl RenderPass for SpriteBatchPass {
             // The scene's texture table, published per frame by the renderer.
             let Some(textures) = ctx
                 .registry
-                .read::<helio_mats::MaterialTextureBindings<'_>>(
-                    helio_mats::material_textures(),
-                    "SpriteBatch",
-                )
+                .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())
             else {
                 return Ok(());
             };

@@ -499,7 +499,7 @@ fn enable_ray_shadows(world: &mut World, objects: &[Entity]) {
             .unwrap()
             .material_slot;
         let blended = world
-            .query::<(&helio_components::MaterialComponent,)>()
+            .query::<(&helio_mats::host_rows::MaterialComponent,)>()
             .find(|(entity, _)| entity.index() == material_slot)
             .is_some_and(|(entity, (m,))| {
                 m.flags & helio_mats::FLAG_ALPHA_BLEND != 0

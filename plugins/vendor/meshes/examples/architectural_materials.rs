@@ -1,5 +1,5 @@
 //! Shared, embedded CC0 architectural materials for interactive and capture paths.
-use helio_components::MaterialComponent;
+use helio_mats::host_rows::MaterialComponent;
 use helio_mats::texture_mips::{mip_chain, TexelKind};
 use pulsar_scenedb::{gpu::TextureStore, Entity, World};
 use std::sync::{Arc, RwLock};
@@ -14,7 +14,7 @@ pub struct FloorMaterial;
 pub struct WoodMaterial;
 
 pub fn configure_sampler(renderer: &mut helio::Renderer) {
-    renderer.set_feature_live(helio_mats::MaterialSampler(wgpu::SamplerDescriptor {
+    renderer.set_feature(helio_mats::MaterialSampler(wgpu::SamplerDescriptor {
         label: Some("Architectural repeat trilinear sampler"),
         address_mode_u: wgpu::AddressMode::Repeat,
         address_mode_v: wgpu::AddressMode::Repeat,

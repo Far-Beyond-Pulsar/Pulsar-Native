@@ -8,7 +8,7 @@ mod tests {
     #[test]
     fn gpu_driven_vertex_shaders_read_the_slot_attribute() {
         let sources = [
-            ("gbuffer", helio_mats::templates::DEFAULT_PBR),
+            ("gbuffer", helio_pass_gbuffer::GBUFFER_PROGRAM),
             (
                 "forward lit",
                 include_str!("../../forward/shaders/forward_lit.wgsl"),
@@ -18,7 +18,10 @@ mod tests {
                 "shadow transmittance",
                 include_str!("../../shadow/shaders/shadow_transmittance.wgsl"),
             ),
-            ("transparent", helio_mats::templates::TRANSPARENT_BASE),
+            (
+                "transparent",
+                include_str!("../../transparent/shaders/transparent.wgsl"),
+            ),
         ];
         let attribute = format!(
             "@location({})",

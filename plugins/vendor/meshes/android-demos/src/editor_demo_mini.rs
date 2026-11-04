@@ -238,7 +238,7 @@ pub struct Demo {
 
 impl HelioWasmApp for Demo {
     fn features() -> helio_feature_api::FeatureSet {
-        helio_mesh_host::features()
+        helio_mesh_host::features().with(helio_pass_materials::MaterialsFeature)
     }
 
     fn register_columns(

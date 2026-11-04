@@ -125,7 +125,7 @@ fn chunk_pass_builds_settles_and_resizes_in_the_deferred_graph() {
             &device,
         );
         helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
-        helio_components::MaterialComponent::register_gpu_columns_growable(
+        helio_mats::host_rows::MaterialComponent::register_gpu_columns_growable(
             &mut gpu_store,
             16,
             &device,
@@ -421,7 +421,11 @@ fn editor(width: u32, height: u32) -> Option<Editor> {
         &device,
     );
     helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
-    helio_components::MaterialComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    helio_mats::host_rows::MaterialComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        16,
+        &device,
+    );
     helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
         &mut gpu_store,
         16,

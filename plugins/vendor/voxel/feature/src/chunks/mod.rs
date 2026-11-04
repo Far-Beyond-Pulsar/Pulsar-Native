@@ -840,11 +840,13 @@ pub struct GiRays<'a> {
     pub sun: &'a wgpu::Buffer,
 }
 
-/// `Materials` of chunk_draw.wgsl.
+/// `VoxelMaterials` of chunk_draw.wgsl: each voxel material id's material
+/// row and the voxel's variation of it (`engine::material_table`).
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct ChunkMaterials {
-    materials: [crate::engine::MaterialGpu; crate::engine::MATERIALS],
+    rows: [helio_mats::MaterialRow; crate::engine::MATERIALS],
+    variation: [crate::engine::VariationGpu; crate::engine::MATERIALS],
     detail: [f32; 4],
     shape: [f32; 4],
 }
@@ -3033,7 +3035,7 @@ fn draw_source(plane: bool, counting: bool) -> String {
     let source = |rel: &str, embedded: &'static str| {
         helio_core::shader::hot::source_text(env!("CARGO_MANIFEST_DIR"), rel, embedded)
     };
-    (format!("const DOMAIN_UNIT: f32 = {};\n", crate::grid::DOMAIN_UNIT) + &helio_core::shader::hot::source_text(helio_voxel_world::wgsl::DIR, helio_voxel_world::wgsl::NOISE_PATH, helio_voxel_world::wgsl::NOISE) + helio_gi_api::GI_COMMON_SNIPPET.source + helio_light_api::SUN_OCCLUSION_SNIPPET.source + helio_light_api::LIGHT_LIST_SNIPPET.source + &walk_templates(&source("shaders/chunk_draw.wgsl", include_str!("../../shaders/chunk_draw.wgsl"))))
+    (format!("const DOMAIN_UNIT: f32 = {};\n", crate::grid::DOMAIN_UNIT) + &helio_core::shader::hot::source_text(helio_voxel_world::wgsl::DIR, helio_voxel_world::wgsl::NOISE_PATH, helio_voxel_world::wgsl::NOISE) + helio_gi_api::GI_COMMON_SNIPPET.source + helio_light_api::SUN_OCCLUSION_SNIPPET.source + helio_light_api::LIGHT_LIST_SNIPPET.source + helio_mats::MATERIAL_ROW_SNIPPET.source + &walk_templates(&source("shaders/chunk_draw.wgsl", include_str!("../../shaders/chunk_draw.wgsl"))))
         .replace("COUNTERS", if counting { "@group(0) @binding(9) var<storage, read_write> counters: array<atomic<u32>, 256>;" } else { "" })
         .replace("WCOUNT(1)", &wcount(1))
         .replace("WCOUNT(3)", &wcount(3))
@@ -8531,12 +8533,13 @@ impl ChunkWorld {
     /// detail).
     pub fn set_appearance(&mut self, id: VolumeId, appearance: &crate::engine::TerrainAppearance) {
         let Some(vol) = self.volume(id) else { return };
-        let (materials, detail, shape) = crate::engine::material_table(appearance);
+        let (rows, variation, detail, shape) = crate::engine::material_table(appearance);
         self.queue.write_buffer(
             &vol.materials,
             0,
             bytemuck::bytes_of(&ChunkMaterials {
-                materials,
+                rows,
+                variation,
                 detail,
                 shape,
             }),

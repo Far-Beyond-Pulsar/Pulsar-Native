@@ -12,7 +12,7 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
     RendererBuilder, RendererConfig,
 };
-use helio_components::MaterialComponent;
+use helio_mats::host_rows::MaterialComponent;
 use helio_mesh_host::ray_tracing::SceneDbRayTracing;
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_gi::{GiMeshTracePass, GiPass, PROBES, PROBE_WORDS};

@@ -5352,7 +5352,6 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
- "helio-mats",
  "helio-pass-postprocess",
  "helio-pass-tsr",
  "helio-settings",
@@ -5382,6 +5381,7 @@ dependencies = [
  "helio-light-api",
  "helio-mesh-api",
  "helio-mesh-host",
+ "helio-pass-materials",
  "helio-presets",
  "helio-wasm",
  "log",
@@ -5447,7 +5447,6 @@ dependencies = [
  "helio",
  "helio-bake",
  "helio-core",
- "helio-mats",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -5588,9 +5587,15 @@ name = "helio-mats"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "helio-components",
  "helio-core",
+ "image",
  "log",
+ "naga",
+ "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
  "wgpu",
 ]
 
@@ -5631,6 +5636,7 @@ dependencies = [
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-hlfs",
+ "helio-pass-materials",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-shadow",
@@ -5948,6 +5954,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-materials"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mats",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-object-batch"
 version = "0.1.0"
 dependencies = [
@@ -5959,6 +5979,7 @@ dependencies = [
  "helio-feature-api",
  "helio-frame-api",
  "helio-light-api",
+ "helio-mats",
  "helio-mesh-api",
  "helio-mesh-host",
  "helio-pass-light-cull",
@@ -6279,6 +6300,7 @@ dependencies = [
  "helio-feature-api",
  "helio-frame-api",
  "helio-light-host",
+ "helio-mats",
  "helio-mesh-host",
  "helio-pass-vg-bvh",
  "helio-pass-vg-cull",
@@ -6369,6 +6391,7 @@ dependencies = [
  "helio-core",
  "helio-light-api",
  "helio-mats",
+ "helio-pass-gbuffer",
  "helio-pass-shadow-matrix",
  "helio-pass-vg-cull",
  "helio-pass-vg-dense",
@@ -6513,7 +6536,6 @@ dependencies = [
  "helio",
  "helio-core",
  "helio-frame-api",
- "helio-mats",
  "helio-scene-join",
  "log",
  "pollster 0.4.0",
@@ -6722,6 +6744,7 @@ dependencies = [
  "helio-mesh-api",
  "helio-mesh-host",
  "helio-pass-fxaa",
+ "helio-pass-materials",
  "helio-pass-postprocess",
  "helio-pass-sdf",
  "helio-presets",
@@ -8300,6 +8323,29 @@ name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
+name = "materials_component"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_state",
+ "helio",
+ "helio-feature-api",
+ "helio-mats",
+ "helio-pass-materials",
+ "inventory",
+ "pollster 0.4.0",
+ "wgpu",
+]
+
+[[package]]
+name = "materials_plugin"
+version = "0.1.0"
+dependencies = [
+ "materials_component",
+ "plugin_editor_api",
+]
 
 [[package]]
 name = "mathjax-svg-rs"
@@ -11805,6 +11851,7 @@ dependencies = [
  "graphy-blueprint",
  "helio",
  "helio-core",
+ "helio-mats",
  "helio-pass-foliage-place",
  "helio-pass-gi",
  "helio-pass-portal-cull",
@@ -11816,6 +11863,7 @@ dependencies = [
  "lens_component",
  "libloading 0.9.0",
  "lights_component",
+ "materials_component",
  "meshes_component",
  "parking_lot",
  "particles_component",
@@ -16687,6 +16735,7 @@ dependencies = [
  "input_plugin",
  "lens_plugin",
  "lights_plugin",
+ "materials_plugin",
  "meshes_plugin",
  "particles_plugin",
  "physics_plugin",

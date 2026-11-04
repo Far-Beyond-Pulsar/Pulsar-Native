@@ -1,12 +1,11 @@
 // vg_shade: material evaluation of resolved virtual-geometry pixels, writing
 // the classic G-buffer layout. This file is the MIDDLE of the shader module;
-// `lib.rs::shade_base_source` splices, around it,
-//   - the classic G-buffer shader's Camera/Globals/GpuMaterial/MaterialTexture*
-//     declarations (before), and
-//   - its SurfaceData, texture sampling, default_pbr_surface,
-//     radiant_eval_surface, compute_velocity and material_texture_data
-//     (after, unmodified apart from the gradient sampling substitution),
-// so the material evaluator IS the classic one, template overrides included.
+// `lib.rs::shade_program` splices, around it, the G-buffer program's
+// Camera/Globals (before) and compute_velocity (after), over the materials'
+// snippets (the row, the texture table, default_pbr_surface), and the
+// material's template is composed after it (its radiant_eval_surface,
+// unmodified apart from the gradient sampling substitution), so the material
+// evaluator IS the classic one, template overrides included.
 
 struct Params {
     width: u32,
@@ -184,9 +183,13 @@ fn vg_shade(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_inde
         || any(space_prev[2] != space[2]) || any(space_prev[3] != space[3]);
     input.moving = select(0u, 1u, moved);
 
-    let material = materials[input.material_id];
+    let material = material_at(input.material_id);
     let material_tex = material_texture_data(material, input.material_id);
-    let surface = radiant_eval_surface(material, material_tex, input);
+    let surface = radiant_eval_surface(material, material_tex, MaterialInput(
+        input.clip_position, input.world_position, input.world_normal,
+        input.world_tangent, input.bitangent_sign, input.tex_coords,
+        cameras[0].position_near.xyz, globals.frame,
+    ));
 
     // Debug views (cluster/triangle ids included) are written by `vg_debug.wgsl`
     // after this pass, only while one is selected.

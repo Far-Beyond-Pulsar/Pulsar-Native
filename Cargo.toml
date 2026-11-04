@@ -115,6 +115,10 @@ members = [
     # views, deferred lighting, light-field shading, billboards), the
     # standalone hosts' features and rows, the component crate (Light,
     # ReflectionCapture, the registrations), the editor crate and examples.
+    "plugins/vendor/materials/api",
+    "plugins/vendor/materials/feature",
+    "plugins/vendor/materials/component",
+    "plugins/vendor/materials/editor",
     "plugins/vendor/lights/api",
     "plugins/vendor/lights/feature/*",
     "plugins/vendor/lights/host",
@@ -287,6 +291,8 @@ sky_component                      = { path = "plugins/vendor/sky/component" }
 sky_plugin                         = { path = "plugins/vendor/sky/editor", features = ["builtin"] }
 meshes_component                   = { path = "plugins/vendor/meshes/component" }
 meshes_plugin                      = { path = "plugins/vendor/meshes/editor", features = ["builtin"] }
+materials_component                = { path = "plugins/vendor/materials/component" }
+materials_plugin                   = { path = "plugins/vendor/materials/editor", features = ["builtin"] }
 lights_component                   = { path = "plugins/vendor/lights/component" }
 lights_plugin                      = { path = "plugins/vendor/lights/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
@@ -334,7 +340,8 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
 helio_component       = { path = "crates/core/helio_component" }
-helio-mats            = { path = "crates/renderer/helio/crates/helio-mats" }
+helio-mats            = { path = "plugins/vendor/materials/api" }
+helio-pass-materials  = { path = "plugins/vendor/materials/feature" }
 psgc                  = { path = "crates/third-party/psgc/crates/psgc" }
 
 

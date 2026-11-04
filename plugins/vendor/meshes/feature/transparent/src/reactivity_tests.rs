@@ -123,13 +123,13 @@ fn production_pipelines_accept_coverage_and_legacy_templates() {
                 let mut pass = TransparentPass::new(&device, wgpu::TextureFormat::Rgba16Float);
                 pass.reactive_mask = coverage;
                 if legacy {
-                    // A registered template written before coverage support has
-                    // one color output and must remain usable with either graph.
-                    let source = pass.local_class0.wgsl_source
+                    // A program without coverage support has one color
+                    // output and must remain usable with either graph.
+                    let source = pass.program
                         .replace("HELIO_TRANSPARENT_REACTIVITY", "LEGACY_TEMPLATE")
                         .replace("-> TransparentOutput", "-> @location(0) vec4<f32>")
                         .replace("return TransparentOutput(surface, vec4<f32>(clamp(surface.a, 0.0, 1.0)));", "return surface;");
-                    pass.local_class0.wgsl_source = source.into();
+                    pass.program = Box::leak(source.into_boxed_str());
                 }
                 pass.get_or_create_pipeline(
                     &device,

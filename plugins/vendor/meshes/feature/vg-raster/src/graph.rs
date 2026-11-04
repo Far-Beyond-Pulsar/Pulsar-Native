@@ -276,7 +276,7 @@ impl RenderPass for VgRasterEarlyPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["material_textures"]
+        &[helio_mats::MATERIAL_TEXTURES]
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
@@ -330,7 +330,7 @@ impl RenderPass for VgRasterLatePass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["material_textures"]
+        &[helio_mats::MATERIAL_TEXTURES]
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {

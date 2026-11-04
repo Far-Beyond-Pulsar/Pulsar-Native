@@ -62,8 +62,6 @@ const DBG_RVR_DENSE: vec3<f32> = vec3<f32>(0.90, 0.10, 0.10); // dense-tile dept
 const DBG_RVR_RT: vec3<f32> = vec3<f32>(0.30, 0.40, 1.00);    // ray query
 
 const DBG_TILE: u32 = 16u;
-const DBG_MATERIAL_WORDS: u32 = 24u;
-const DBG_MATERIAL_CLASS_WORD: u32 = 19u;
 const DBG_BIN_COUNT: u32 = 16u;
 const DBG_CLUSTER_FLAG_LEAF: u32 = 2u;
 const DBG_INF_ERR: f32 = 1.0e30;
@@ -344,7 +342,7 @@ fn vg_debug(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
         case VGDBG_MATERIAL: {
             let material_row = static_objects[row_word + VGS_OBJ_MATERIAL_SLOT];
-            let mclass = materials[material_row * DBG_MATERIAL_WORDS + DBG_MATERIAL_CLASS_WORD];
+            let mclass = materials[material_row * MATERIAL_WORDS + MATERIAL_CLASS_WORD];
             col = dbg_hash_colour(min(mclass, DBG_BIN_COUNT - 1u) * 977u + 3u);
         }
         default: {
