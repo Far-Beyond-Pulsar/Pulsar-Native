@@ -322,6 +322,7 @@ impl Render for HelioViewport {
             if let Some(surface) = self.surface.clone() {
                 let engine = self.gpu_engine.clone();
                 let state = self.shared_state.clone();
+                let progress_state = state.clone();
                 let temp_path = std::env::temp_dir().join(format!(
                     "pulsar-screenshot-{}-{}.png",
                     std::process::id(),
@@ -346,6 +347,10 @@ impl Render for HelioViewport {
                             height,
                             format,
                             &output_path,
+                            move |completed, total| {
+                                progress_state.write().build.screenshot_progress =
+                                    Some((completed, total));
+                            },
                         )
                     }))
                     .map_err(|payload| {
@@ -360,7 +365,10 @@ impl Render for HelioViewport {
                 });
                 cx.spawn_in(window, async move |this, cx| {
                     let result = capture.await;
-                    state.write().build.screenshot_processing = false;
+                    {
+                        let mut state = state.write();
+                        state.build.screenshot_progress = None;
+                    }
                     let temp_path = match result {
                         Ok(path) => path,
                         Err(error) => {
@@ -402,7 +410,9 @@ impl Render for HelioViewport {
                 })
                 .detach();
             } else {
-                self.shared_state.write().build.screenshot_processing = false;
+                let mut state = self.shared_state.write();
+                state.build.screenshot_processing = false;
+                state.build.screenshot_progress = None;
             }
         }
 

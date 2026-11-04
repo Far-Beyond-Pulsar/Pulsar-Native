@@ -20,4 +20,6 @@ pub struct BuildDomain {
     pub max_texture_dimension_2d: u32,
     /// True while the viewport is rendering and reading back a screenshot.
     pub screenshot_processing: bool,
+    /// Completed screenshot tiles and total tile count while capture runs.
+    pub screenshot_progress: Option<(u64, u64)>,
 }

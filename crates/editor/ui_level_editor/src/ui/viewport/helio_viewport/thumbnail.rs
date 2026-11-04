@@ -10,6 +10,7 @@ pub(super) fn capture_viewport_png_tiled(
     height: u32,
     format: wgpu::TextureFormat,
     out_path: &std::path::Path,
+    mut on_tile_complete: impl FnMut(u64, u64),
 ) -> Result<(), String> {
     let device = surface.device();
     let queue = surface.queue();
@@ -23,6 +24,10 @@ pub(super) fn capture_viewport_png_tiled(
     let band_height = (BAND_BYTES / (u64::from(width) * 4))
         .max(1)
         .min(u64::from(tile_side)) as u32;
+    let columns = width.div_ceil(tile_side);
+    let rows = height.div_ceil(band_height);
+    let total_tiles = u64::from(columns) * u64::from(rows);
+    let mut completed_tiles = 0;
 
     let file = std::fs::OpenOptions::new()
         .write(true)
@@ -60,6 +65,8 @@ pub(super) fn capture_viewport_png_tiled(
                 )
             })?;
             tiles.push((tile_width, pixels));
+            completed_tiles += 1;
+            on_tile_complete(completed_tiles, total_tiles);
             tile_x += tile_width;
         }
 
