@@ -135,6 +135,7 @@ impl RenderCamera {
                     far: self.far,
                 },
             },
+            crop: None,
         }
     }
 }

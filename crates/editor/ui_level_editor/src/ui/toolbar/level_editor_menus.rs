@@ -12,7 +12,8 @@ use rust_i18n::t;
 
 use crate::ui::actions::{
     AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, NewScene, OpenEnvironmentConfig,
-    OpenScene, SaveScene, SaveSceneAs, ToggleCameraModeSelector, ToggleGrid, ToggleViewportOptions,
+    OpenHighResScreenshot, OpenScene, SaveScene, SaveSceneAs, ToggleCameraModeSelector, ToggleGrid,
+    ToggleViewportOptions,
 };
 use crate::LevelEditorState;
 
@@ -34,10 +35,17 @@ impl LevelEditorMenus {
                     .action_if(t!("LevelEditor.Menu.Delete"), DeleteObject, selected),
             )
             .menu(Self::create_menu())
-            .menu(EditorMenu::new(t!("LevelEditor.Menu.Tools")).action(
-                t!("LevelEditor.Menu.EnvironmentConfig"),
-                OpenEnvironmentConfig,
-            ))
+            .menu(
+                EditorMenu::new(t!("LevelEditor.Menu.Tools"))
+                    .action(
+                        t!("LevelEditor.Menu.EnvironmentConfig"),
+                        OpenEnvironmentConfig,
+                    )
+                    .action(
+                        t!("LevelEditor.Menu.HighResScreenshot"),
+                        OpenHighResScreenshot,
+                    ),
+            )
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.View"))
                     .action(t!("LevelEditor.Menu.ToggleGrid"), ToggleGrid)

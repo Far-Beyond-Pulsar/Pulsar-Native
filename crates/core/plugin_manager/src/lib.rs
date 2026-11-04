@@ -305,7 +305,9 @@ pub struct PluginDetails {
     pub file_types: Vec<String>,
     pub editors: Vec<String>,
     pub components: Vec<String>,
-    pub statusbar_buttons: usize,
+    pub statusbar_buttons: Vec<String>,
+    pub ai_tools: Vec<String>,
+    pub subsystems: Vec<String>,
 }
 
 struct LoadedPlugin {
@@ -329,6 +331,9 @@ struct LoadedPlugin {
 
     /// Editor factories registered by this plugin (populated at load time).
     editor_factories: EditorFactoryRegistry,
+    /// Subsystem ids submitted by this plugin before they are injected into
+    /// the engine backend.
+    subsystem_ids: Vec<String>,
 }
 
 // ============================================================================
@@ -904,6 +909,7 @@ impl PluginManager {
 
         // Collect plugin subsystems
         let subsystems = plugin.subsystems();
+        let subsystem_ids: Vec<String> = subsystems.iter().map(|ss| ss.id().to_string()).collect();
         if !subsystems.is_empty() {
             tracing::debug!(
                 "  🧩 Registering {} subsystem(s) from plugin",
@@ -978,6 +984,7 @@ impl PluginManager {
             library,
             metadata: metadata.clone(),
             editor_factories,
+            subsystem_ids,
         };
 
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
@@ -1057,7 +1064,17 @@ impl PluginManager {
                         .into_iter()
                         .map(|c| c.display_name)
                         .collect(),
-                    statusbar_buttons: plugin.statusbar_buttons().len(),
+                    statusbar_buttons: plugin
+                        .statusbar_buttons()
+                        .into_iter()
+                        .map(|button| button.tooltip)
+                        .collect(),
+                    ai_tools: plugin
+                        .ai_tools()
+                        .into_iter()
+                        .map(|tool| tool.name)
+                        .collect(),
+                    subsystems: loaded.subsystem_ids.clone(),
                 }
             })
             .collect();
@@ -1091,7 +1108,9 @@ impl PluginManager {
                     .map(|e| e.display_name)
                     .collect(),
                 components: Vec::new(),
-                statusbar_buttons: 0,
+                statusbar_buttons: Vec::new(),
+                ai_tools: Vec::new(),
+                subsystems: Vec::new(),
             }
         }));
         details

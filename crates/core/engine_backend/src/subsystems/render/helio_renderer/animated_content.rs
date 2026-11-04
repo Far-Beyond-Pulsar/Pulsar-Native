@@ -126,7 +126,10 @@ mod tests {
         // An edit of a component the answer reads checks again.
         pulsar_world_registry::attach_value(&mut world, object, StaticMeshComponent::default())
             .unwrap();
-        assert!(!content.live(&world), "a mesh without a timed graph is still");
+        assert!(
+            !content.live(&world),
+            "a mesh without a timed graph is still"
+        );
         assert_eq!(content.checks, 2);
 
         // A new world is checked from scratch.

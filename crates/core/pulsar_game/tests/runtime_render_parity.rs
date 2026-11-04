@@ -118,6 +118,7 @@ fn look_at(eye: glam::Vec3, target: glam::Vec3, far: f32) -> FrameView {
             near: 0.1,
             far,
         },
+        crop: None,
     }
 }
 

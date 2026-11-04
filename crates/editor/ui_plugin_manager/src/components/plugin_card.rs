@@ -1,147 +1,157 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use plugin_manager::{DependencyState, PluginDetails};
-use ui::{
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, StyledExt,
-};
+use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
 
 pub fn render_plugin_item(
     details: &PluginDetails,
+    selected: bool,
     cx: &mut Context<crate::screen::PluginManagerWindow>,
 ) -> impl IntoElement {
     let plugin = &details.metadata;
-    let is_builtin = details.builtin;
     let plugin_id = plugin.id.clone();
-    let plugin_name = plugin.name.clone();
-    let plugin_version = plugin.version.clone();
-    let plugin_author = plugin.author.clone();
-    let required = details.dependencies.iter().filter(|d| !d.optional).count();
-    let unmet = details
+    let title = plugin.name.clone();
+    let author = plugin.author.clone();
+    let contributions = [
+        (details.file_types.len(), "files"),
+        (details.editors.len(), "editors"),
+        (details.components.len(), "components"),
+        (details.statusbar_buttons.len(), "statusbar widgets"),
+        (details.ai_tools.len(), "AI tools"),
+        (details.subsystems.len(), "subsystems"),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, label)| format!("{count} {label}"))
+    .collect::<Vec<_>>()
+    .join(" · ");
+    let dependency_count = details
         .dependencies
         .iter()
-        .filter(|d| !d.optional && !matches!(d.state, DependencyState::Satisfied { .. }))
+        .filter(|dep| !dep.optional)
         .count();
+    let has_unmet_dependencies = details
+        .dependencies
+        .iter()
+        .any(|dep| !dep.optional && !matches!(dep.state, DependencyState::Satisfied { .. }));
+    let source = if details.builtin {
+        "Built-in".to_string()
+    } else if plugin.version.is_empty() {
+        "Loaded extension".to_string()
+    } else {
+        format!("v{}", plugin.version)
+    };
     let open_id = plugin_id.clone();
 
-    let action = if is_builtin {
-        h_flex()
-            .items_center()
-            .gap_1()
-            .px_2()
-            .py_1()
-            .rounded_md()
-            .bg(cx.theme().success.opacity(0.14))
-            .text_xs()
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(cx.theme().success)
-            .child(Icon::new(IconName::Check).size_3())
-            .child("Built-in")
-            .into_any_element()
-    } else {
-        // A plugin's library is never unloaded (see the permanent library
-        // pattern in `.agents/PLUGIN_SYSTEM.md`): its types and vtables may be
-        // held anywhere in the editor. The button says so instead of acting.
-        Button::new(SharedString::from(format!("unload-{}", plugin_id)))
-            .label("Unload")
-            .icon(IconName::Trash)
-            .danger()
-            .disabled(true)
-            .tooltip("Plugins stay loaded until the editor restarts")
-            .into_any_element()
-    };
-
     h_flex()
-        .id(SharedString::from(format!("plugin-{}", plugin_id)))
+        .id(SharedString::from(format!("plugin-{plugin_id}")))
+        .w_full()
+        .h(px(62.))
+        .px_2()
+        .gap_2()
+        .items_center()
+        .justify_start()
+        .rounded_md()
+        .border_1()
+        .border_color(if selected {
+            cx.theme().border
+        } else {
+            cx.theme().transparent
+        })
+        .bg(if selected {
+            cx.theme().secondary.opacity(0.55)
+        } else {
+            cx.theme().transparent
+        })
         .cursor_pointer()
-        .on_click(cx.listener(move |this, _, _window, cx| {
+        .hover(|style| style.bg(cx.theme().secondary.opacity(0.4)))
+        .on_click(cx.listener(move |this, _, _, cx| {
             this.select(Some(open_id.clone()), cx);
         }))
-        .items_start()
-        .w_full()
-        .p_5()
-        .gap_4()
-        .rounded_xl()
-        .border_1()
-        .border_color(cx.theme().border.opacity(0.65))
-        .bg(cx.theme().sidebar.opacity(0.7))
-        .hover(|style| style.bg(cx.theme().sidebar).border_color(cx.theme().border))
         .child(
             div()
+                .size(px(30.))
                 .flex_shrink_0()
-                .size(px(48.))
-                .rounded_lg()
-                .bg(cx.theme().primary.opacity(0.1))
+                .rounded_md()
                 .border_1()
-                .border_color(cx.theme().primary.opacity(0.3))
+                .border_color(cx.theme().border)
+                .bg(cx.theme().background)
                 .flex()
                 .items_center()
                 .justify_center()
                 .child(
                     Icon::new(IconName::Puzzle)
-                        .size(px(24.))
-                        .text_color(cx.theme().primary),
+                        .size_4()
+                        .text_color(cx.theme().muted_foreground),
                 ),
         )
         .child(
             v_flex()
                 .flex_1()
-                .gap_1()
+                .min_w_0()
+                .gap_0p5()
                 .child(
                     h_flex()
                         .items_center()
                         .gap_2()
                         .child(
                             div()
-                                .text_base()
+                                .flex_1()
+                                .min_w_0()
+                                .text_ellipsis()
+                                .text_sm()
                                 .font_semibold()
                                 .text_color(cx.theme().foreground)
-                                .child(plugin_name),
+                                .child(title),
                         )
-                        .when(required > 0, |this| {
+                        .when(dependency_count > 0, |this| {
                             this.child(
-                                div()
-                                    .text_xs()
-                                    .text_color(if unmet > 0 {
-                                        cx.theme().danger
+                                Icon::new(if has_unmet_dependencies {
+                                    IconName::TriangleAlert
+                                } else {
+                                    IconName::Check
+                                })
+                                .size_3()
+                                .text_color(
+                                    if has_unmet_dependencies {
+                                        cx.theme().warning
                                     } else {
-                                        cx.theme().muted_foreground
-                                    })
-                                    .child(if unmet > 0 {
-                                        format!("{unmet} of {required} dependencies unmet")
-                                    } else {
-                                        format!("{required} dependencies")
-                                    }),
-                            )
-                        })
-                        .when(!is_builtin, |this| {
-                            this.child(
-                                div()
-                                    .px_2()
-                                    .py_px()
-                                    .rounded(px(4.))
-                                    .bg(cx.theme().muted.opacity(0.3))
-                                    .text_xs()
-                                    .font_family("monospace")
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(plugin_version),
+                                        cx.theme().success
+                                    },
+                                ),
                             )
                         }),
                 )
                 .child(
                     div()
-                        .text_sm()
+                        .min_w_0()
+                        .text_ellipsis()
+                        .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(format!("by {}", plugin_author)),
-                )
-                .when(!plugin.description.is_empty(), |this| {
-                    this.child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground.opacity(0.8))
-                            .child(plugin.description.clone()),
-                    )
-                }),
+                        .child(if contributions.is_empty() {
+                            format!("by {author} · no contributions reported")
+                        } else {
+                            format!("by {author} · {contributions}")
+                        }),
+                ),
         )
-        .child(v_flex().flex_shrink_0().justify_center().child(action))
+        .child(
+            div()
+                .flex_shrink_0()
+                .px_1p5()
+                .py_px()
+                .rounded_sm()
+                .bg(if details.builtin {
+                    cx.theme().success.opacity(0.12)
+                } else {
+                    cx.theme().secondary.opacity(0.55)
+                })
+                .text_xs()
+                .text_color(if details.builtin {
+                    cx.theme().success
+                } else {
+                    cx.theme().muted_foreground
+                })
+                .child(source),
+        )
 }

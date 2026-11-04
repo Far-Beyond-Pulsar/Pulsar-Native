@@ -6,7 +6,7 @@ pub mod helio_renderer;
 pub use handle_utils::{handle_to_usize, usize_to_handle};
 pub use helio_renderer::{
     altitude_speed_scale, AnimatedContentRegistration, CameraGround, CameraInput, CameraSync,
-    DeviceOwner, EditorCameraState, EditorLines, EditorLinesRegistration, FlyCamera,
+    DeviceOwner, EditorCameraState, EditorLines, EditorLinesRegistration, FlyCamera, FrameCrop,
     FrameProjection, FrameView, GpuProfilerAvailability, GpuProfilerData, HelioEditorMailbox,
     HelioRenderer, PendingPointerEvent, PreparedFrame, RenderFeatureRegistration, RenderMetrics,
     RenderSpikeLogConfig, SceneRenderer, SceneRendererOptions, StaticDragWarning, ToolRay,

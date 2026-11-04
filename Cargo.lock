@@ -16834,6 +16834,7 @@ dependencies = [
  "particles_component",
  "plugin_editor_api",
  "plugin_manager",
+ "png",
  "pollster 0.4.0",
  "portals_component",
  "post_component",
@@ -16975,6 +16976,7 @@ dependencies = [
 name = "ui_plugin_manager"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
  "gpui-ce",
  "inventory",
  "plugin_editor_api",
