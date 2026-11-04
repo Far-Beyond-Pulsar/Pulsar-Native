@@ -78,11 +78,11 @@ impl Harness {
             helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
                 &mut store, 4, &device,
             );
-            helio_components::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);
+            helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);
             helio_components::MaterialComponent::register_gpu_columns_growable(
                 &mut store, 16, &device,
             );
-            helio_components::StaticObjectComponent::register_gpu_columns_growable(
+            helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
                 &mut store, 16, &device,
             );
             helio_components::LightComponent::register_gpu_columns_growable(
@@ -132,7 +132,7 @@ impl Harness {
             let mirror = scene.world.gpu_mirror().cloned().unwrap();
             let renderer = RendererBuilder::new(config.clone(), mirror)
                 .with_external_device()
-                .with_graph(Preset::Deferred.with_features(&voxel_features()))
+                .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &voxel_features()))
                 .build(
                     device.clone(),
                     queue.clone(),

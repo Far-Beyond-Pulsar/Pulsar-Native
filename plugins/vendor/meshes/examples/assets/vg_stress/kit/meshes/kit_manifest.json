@@ -1,0 +1,454 @@
+{
+  "doric_column": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 9116,
+    "bounds_blender": [
+      -0.67,
+      -0.67,
+      0.0,
+      0.67,
+      0.67,
+      6.2
+    ]
+  },
+  "ionic_column": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 13772,
+    "bounds_blender": [
+      -0.56,
+      -0.5,
+      0.0,
+      0.56,
+      0.5,
+      5.2
+    ]
+  },
+  "corinthian_column": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 18658,
+    "bounds_blender": [
+      -0.6862,
+      -0.6862,
+      0.0,
+      0.6862,
+      0.6862,
+      6.2
+    ]
+  },
+  "doric_entablature_mid": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 5534,
+    "bounds_blender": [
+      -1.6617,
+      -1.27,
+      0.0,
+      1.6617,
+      0.7,
+      2.25
+    ]
+  },
+  "doric_entablature_end_l": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 3544,
+    "bounds_blender": [
+      -0.8467,
+      -1.27,
+      0.0,
+      1.6617,
+      0.7,
+      2.25
+    ]
+  },
+  "doric_entablature_end_r": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 3796,
+    "bounds_blender": [
+      -1.6617,
+      -1.27,
+      0.0,
+      0.8467,
+      0.7,
+      2.25
+    ]
+  },
+  "ionic_entablature": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 13624,
+    "bounds_blender": [
+      -1.596,
+      -0.68,
+      0.0,
+      1.596,
+      0.68,
+      1.15
+    ]
+  },
+  "pediment": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 6956,
+    "bounds_blender": [
+      -9.403,
+      -1.27,
+      -0.1629,
+      9.403,
+      0.7,
+      3.2026
+    ]
+  },
+  "acroterion": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 470,
+    "bounds_blender": [
+      -0.538,
+      -0.16,
+      0.0,
+      0.538,
+      0.16,
+      0.924
+    ]
+  },
+  "acroterion_small": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 458,
+    "bounds_blender": [
+      -0.3424,
+      -0.16,
+      0.0,
+      0.3424,
+      0.16,
+      0.588
+    ]
+  },
+  "antefix": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 48,
+    "bounds_blender": [
+      -0.1473,
+      -0.08,
+      0.0,
+      0.1473,
+      0.08,
+      0.28
+    ]
+  },
+  "pedestal_small": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 280,
+    "bounds_blender": [
+      -0.55,
+      -0.55,
+      0.0,
+      0.55,
+      0.55,
+      1.1
+    ]
+  },
+  "pedestal_medium": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 280,
+    "bounds_blender": [
+      -0.8,
+      -0.8,
+      0.0,
+      0.8,
+      0.8,
+      0.9
+    ]
+  },
+  "pedestal_large": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 120,
+    "bounds_blender": [
+      -1.45,
+      -1.45,
+      0.0,
+      1.45,
+      1.45,
+      0.8
+    ]
+  },
+  "pedestal_tall": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 280,
+    "bounds_blender": [
+      -0.7,
+      -0.7,
+      0.0,
+      0.7,
+      0.7,
+      1.7
+    ]
+  },
+  "pedestal_round": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 2976,
+    "bounds_blender": [
+      -1.121,
+      -1.121,
+      0.0,
+      1.121,
+      1.121,
+      1.0
+    ]
+  },
+  "bench": {
+    "slots": [
+      "marble"
+    ],
+    "triangles": 796,
+    "bounds_blender": [
+      -0.95,
+      -0.395,
+      -0.0113,
+      0.95,
+      0.395,
+      0.5
+    ]
+  },
+  "brazier": {
+    "slots": [
+      "bronze",
+      "basalt"
+    ],
+    "triangles": 2376,
+    "bounds_blender": [
+      -0.35,
+      -0.4181,
+      0.0,
+      0.413,
+      0.35,
+      1.26
+    ]
+  },
+  "flame": {
+    "slots": [
+      "flame"
+    ],
+    "triangles": 560,
+    "bounds_blender": [
+      -0.1551,
+      -0.1904,
+      0.0,
+      0.201,
+      0.1777,
+      0.5
+    ]
+  },
+  "banner": {
+    "slots": [
+      "cloth_red",
+      "bronze",
+      "gold"
+    ],
+    "triangles": 4824,
+    "bounds_blender": [
+      -1.03,
+      -0.095,
+      -3.6,
+      1.03,
+      0.05,
+      0.05
+    ]
+  },
+  "urn": {
+    "slots": [
+      "terracotta"
+    ],
+    "triangles": 2080,
+    "bounds_blender": [
+      -0.4698,
+      -0.364,
+      0.0,
+      0.4698,
+      0.364,
+      1.38
+    ]
+  },
+  "cypress": {
+    "slots": [
+      "foliage",
+      "trunk"
+    ],
+    "triangles": 5256,
+    "bounds_blender": [
+      -1.239,
+      -1.2502,
+      0.0,
+      1.1192,
+      1.1085,
+      7.5
+    ]
+  },
+  "stele": {
+    "slots": [
+      "marble",
+      "bronze"
+    ],
+    "triangles": 116,
+    "bounds_blender": [
+      -0.95,
+      -0.32,
+      0.0,
+      0.95,
+      0.32,
+      3.0
+    ]
+  },
+  "crepidoma": {
+    "slots": [
+      "marble",
+      "marble_alt"
+    ],
+    "triangles": 2292,
+    "bounds_blender": [
+      -10.64,
+      -21.84,
+      0.0,
+      10.64,
+      21.84,
+      0.9
+    ]
+  },
+  "floor": {
+    "slots": [
+      "marble",
+      "marble_green",
+      "basalt",
+      "bronze",
+      "marble_alt"
+    ],
+    "triangles": 8600,
+    "bounds_blender": [
+      -9.397,
+      -20.597,
+      0.88,
+      9.397,
+      20.597,
+      0.934
+    ]
+  },
+  "cella_walls": {
+    "slots": [
+      "marble",
+      "marble_alt",
+      "bronze",
+      "basalt"
+    ],
+    "triangles": 23040,
+    "bounds_blender": [
+      -5.256,
+      -13.37,
+      0.93,
+      5.256,
+      13.2559,
+      12.178
+    ]
+  },
+  "ceilings": {
+    "slots": [
+      "marble",
+      "gold"
+    ],
+    "triangles": 226044,
+    "bounds_blender": [
+      -8.0,
+      -19.2,
+      7.11,
+      8.0,
+      19.2,
+      7.85
+    ]
+  },
+  "roof": {
+    "slots": [
+      "terracotta",
+      "marble"
+    ],
+    "triangles": 29328,
+    "bounds_blender": [
+      -9.3528,
+      -20.45,
+      9.1396,
+      9.3528,
+      20.515,
+      12.3902
+    ]
+  },
+  "impluvium": {
+    "slots": [
+      "marble",
+      "water"
+    ],
+    "triangles": 1362,
+    "bounds_blender": [
+      -2.43,
+      -3.53,
+      0.93,
+      2.43,
+      5.13,
+      1.9
+    ]
+  },
+  "plaza": {
+    "slots": [
+      "limestone",
+      "marble",
+      "basalt"
+    ],
+    "triangles": 9980,
+    "bounds_blender": [
+      -21.994,
+      -61.994,
+      -0.2,
+      21.994,
+      24.454,
+      0.003
+    ]
+  },
+  "ground": {
+    "slots": [
+      "ground"
+    ],
+    "triangles": 128,
+    "bounds_blender": [
+      -160.0,
+      -160.0,
+      -0.25,
+      160.0,
+      160.0,
+      -0.25
+    ]
+  }
+}

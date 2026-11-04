@@ -180,7 +180,7 @@ impl ApplicationHandler for App {
         let mut scene_db = new_scene_db_with_gpu_mirror(&device, &queue);
         let mut renderer = RendererBuilder::new(config, scene_db_handle(&scene_db))
             .with_editor_mode(true)
-            .with_graph(helio_presets::Preset::HlfsFxaa.with_features(&common::features()))
+            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::HlfsFxaa, &common::features()))
             .build_with_graphics_context(&mut graphics)
             .expect("Helio renderer");
         let surface = graphics.surface;
@@ -600,7 +600,7 @@ impl ApplicationHandler for App {
         // first, or there is nothing to bake (Helio#256).
         helio_components::bake(
             &mut renderer,
-            helio_components::bake_scene_from_world(&scene_db.world),
+            helio_mesh_host::bake_scene_from_world(&scene_db.world),
             BakeConfig::fast("indoor_cathedral"),
         )
         .expect("bake the cathedral");

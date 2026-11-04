@@ -455,8 +455,7 @@ impl Gfx {
             // the lens and its flare, portals) and the media kinds (foliage,
             // water, fog, post-process volumes) and the lighting kinds (GI,
             // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
-                Preset::Deferred.with_features(
-                    &helio_feature_api::FeatureSet::new()
+                helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
                         .with(helio_pass_voxel_planet::VoxelFeature)
                         .with(helio_pass_corona::CoronaFeature)
                         .with(helio_pass_sprite_batch::SpriteFeature)

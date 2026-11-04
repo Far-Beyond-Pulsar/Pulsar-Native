@@ -6,7 +6,8 @@
 use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType, Renderer, SceneDbHandle};
 use helio_mesh_api::{MeshUpload, PackedVertex};
-use helio_components::{LightComponent, MaterialComponent, MeshComponent, StaticObjectComponent};
+use helio_components::{LightComponent, MaterialComponent};
+use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
 
@@ -49,20 +50,20 @@ pub fn new_scene_db_with_gpu_mirror_and(
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
     helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
-    helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
+    helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
-    helio_components::StaticObjectComponent::register_gpu_columns_growable(
+    helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
     helio_components::LightComponent::register_gpu_columns_growable(
         &mut gpu_store,
-        helio_pass_forward_lit::MAX_LIGHTS,
+        helio_pass_light_cull::MAX_LIGHTS,
         device,
     );
     helio_pass_post_volumes::host_rows::CameraPostProcessComponent::register_gpu_columns_growable(
@@ -120,7 +121,7 @@ pub fn flush_scene_db(
 /// masked or blended materials, ...) is left out, so the probes see past it.
 /// `HELIO_SCENE_RAYS=off` publishes none (for A/B: no mesh GI).
 pub struct SceneRays {
-    projection: Option<helio_components::ray_tracing::SceneDbRayTracing>,
+    projection: Option<helio_mesh_host::ray_tracing::SceneDbRayTracing>,
     failed: bool,
 }
 
@@ -132,7 +133,7 @@ impl SceneRays {
             .then_some(())
             .filter(|_| std::env::var("HELIO_SCENE_RAYS").as_deref() != Ok("off"))
             .map(|_| {
-                helio_components::ray_tracing::SceneDbRayTracing::partial(
+                helio_mesh_host::ray_tracing::SceneDbRayTracing::partial(
                     device.clone(),
                     queue.clone(),
                 )
@@ -150,7 +151,7 @@ impl SceneRays {
             return;
         };
         match projection.prepare(world) {
-            Ok(_) => renderer.set_ray_tracing_frame(projection.frame()),
+            Ok(_) => projection.publish(renderer),
             Err(error) => {
                 if !std::mem::replace(&mut self.failed, true) {
                     log::warn!("scene rays: {error}");
@@ -177,7 +178,7 @@ pub fn make_material(
     emissive: [f32; 3],
     emissive_strength: f32,
 ) -> helio_components::MaterialComponent {
-    MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+    MaterialComponent::from(helio_mats::MaterialRow::new(
         base_color,
         roughness,
         metallic,
@@ -352,7 +353,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
     let entity = world.spawn();
     world.insert(
         entity,
-        LightComponent::from(helio_pass_forward_lit::LightRow::from(light)),
+        LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
     );
     entity
 }
@@ -362,7 +363,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
 /// resubmission step exists to call anymore.
 pub fn update_light(world: &mut World, entity: Entity, light: GpuLight) {
     if let Some(mut existing) = world.get_mut::<LightComponent>(entity) {
-        *existing = LightComponent::from(helio_pass_forward_lit::LightRow::from(light));
+        *existing = LightComponent::from(helio_pass_light_cull::LightRow::from(light));
     }
 }
 

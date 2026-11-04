@@ -45,6 +45,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 
 [[package]]
+name = "accesskit"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3b7f7f85a7e5f68090000ed7622545829afd484d210358702ae4cb97dd0c320"
+dependencies = [
+ "uuid",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -312,13 +321,12 @@ checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
 name = "annotate-snippets"
-version = "0.12.16"
+version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f211a51805bc641f3ad5b7664c77d2547af685cc33b4cd8d31964027a46f13f1"
+checksum = "96401ca08501972288ecbcde33902fce858bf73fbcbdf91dab8c3a9544e106bb"
 dependencies = [
  "anstyle",
- "memchr",
- "unicode-width",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -457,6 +465,12 @@ name = "as-raw-xcb-connection"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
+
+[[package]]
+name = "ascii"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d92bec98840b8f03a5ff5413de5293bfcd8bf96467cf5452609f939ec6f5de16"
 
 [[package]]
 name = "ash"
@@ -1055,6 +1069,12 @@ dependencies = [
 
 [[package]]
 name = "bit-vec"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
+
+[[package]]
+name = "bit-vec"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
@@ -1521,6 +1541,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cassowary"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df8670b8c7b9dae1793364eafadf7239c40d669904660c5960d74cfd80b46a53"
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1607,6 +1633,12 @@ dependencies = [
  "wasm-bindgen",
  "windows-link 0.2.1",
 ]
+
+[[package]]
+name = "chunked_transfer"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
 
 [[package]]
 name = "ciborium"
@@ -1733,7 +1765,16 @@ checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width",
+ "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "color"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ec7c5eb7a16992b1904d76c517d170ab353b0e0b3d5a0c81a8a0cd1037893cf"
+dependencies = [
+ "bytemuck",
 ]
 
 [[package]]
@@ -1785,6 +1826,20 @@ checksum = "1b60b5124979fccd9addd89d8b97a1d6eebb4950694520c75ddd722535ea443f"
 dependencies = [
  "nix 0.31.3",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "compact_str"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fd622ebbb56a5b2ccb651b32b911cdeb2a9b4b11776b2473bf26a26a286244e"
+dependencies = [
+ "castaway",
+ "cfg-if",
+ "itoa",
+ "rustversion",
+ "ryu",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1857,8 +1912,28 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
- "unicode-width",
+ "unicode-width 0.2.0",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "console_log"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86919cef3e37b9356ccf54d4421208c17ecfda01beae61393e7ffd72916c0ef1"
+dependencies = [
+ "log",
+ "web-sys",
 ]
 
 [[package]]
@@ -2082,7 +2157,7 @@ checksum = "bbe782a9e7520cc7de2232c957a47f99d3a35e855552677d07a557bc1a3b66ed"
 dependencies = [
  "bitflags 2.13.1",
  "fontdb",
- "harfrust",
+ "harfrust 0.5.2",
  "linebender_resource_handle",
  "log",
  "rangemap",
@@ -2209,6 +2284,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e71406cd8807725f7ac2f999a4cdd32e98f829fdf65f528343cebf945e41df1e"
+dependencies = [
+ "crossbeam-channel",
+ "crossbeam-deque",
+ "crossbeam-epoch",
+ "crossbeam-queue",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2250,6 +2338,31 @@ name = "crossbeam-utils"
 version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
+
+[[package]]
+name = "crossterm"
+version = "0.28.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
+dependencies = [
+ "bitflags 2.13.1",
+ "crossterm_winapi",
+ "mio 1.2.2",
+ "parking_lot",
+ "rustix 0.38.44",
+ "signal-hook",
+ "signal-hook-mio",
+ "winapi",
+]
+
+[[package]]
+name = "crossterm_winapi"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acdd7c62a3665c7f6830a51635d9ac9b23ed385797f70a83bb8bafe9c572ab2b"
+dependencies = [
+ "winapi",
+]
 
 [[package]]
 name = "crunchy"
@@ -2393,8 +2506,18 @@ version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
 dependencies = [
- "darling_core",
- "darling_macro",
+ "darling_core 0.23.0",
+ "darling_macro 0.23.0",
+]
+
+[[package]]
+name = "darling"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed17f5901b6630b993ca003def43f2f8ef4014fc13b047b57aad617ff32bc2ec"
+dependencies = [
+ "darling_core 0.24.1",
+ "darling_macro 0.24.1",
 ]
 
 [[package]]
@@ -2411,14 +2534,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling_core"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6837e2cf7485aaae18f86181d2f0e9a7ed297a025e220aeabf63fdebd3a2ddff"
+dependencies = [
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 3.0.4",
+]
+
+[[package]]
 name = "darling_macro"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac3984ec7bd6cfa798e62b4a642426a5be0e68f9401cfc2a01e3fa9ea2fcdb8d"
 dependencies = [
- "darling_core",
+ "darling_core 0.23.0",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ac7135c3ef02b2f7833bbeb1be5ba7f966dcde8a87c6b87f65a778d71a02785"
+dependencies = [
+ "darling_core 0.24.1",
+ "quote",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -2464,12 +2611,15 @@ dependencies = [
  "helio-bake",
  "helio-components",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-debug-overlay",
  "helio-pass-decal",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-perf-overlay",
  "helio-pass-shadow-matrix",
  "helio-pass-sky",
@@ -2985,6 +3135,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecolor"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0656a7530b9e2841ee7a5f983965bdd9840c32f4012f759cfd44b912cced6b34"
+dependencies = [
+ "bytemuck",
+ "emath",
+]
+
+[[package]]
 name = "ed25519"
 version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3076,6 +3236,61 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12a0bb14ac04a9fcf170d0bbbef949b44cc492f4452bd20c095636956f653642"
 
 [[package]]
+name = "egui"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc938cc27cd911415e1e4d151bc56ff9df063d8db081374e87aeb805ea74b2ba"
+dependencies = [
+ "accesskit",
+ "ahash 0.8.12",
+ "bitflags 2.13.1",
+ "emath",
+ "epaint",
+ "itertools 0.15.0",
+ "log",
+ "nohash-hasher",
+ "profiling 1.0.18",
+ "smallvec",
+ "unicode-segmentation",
+ "web-sys",
+]
+
+[[package]]
+name = "egui-wgpu"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cef1f6d1bba40b09a4d0d62cb822b81030922cfbf65c5373398c3a3caafc5bd"
+dependencies = [
+ "ahash 0.8.12",
+ "bytemuck",
+ "document-features",
+ "epaint",
+ "log",
+ "profiling 1.0.18",
+ "thiserror 2.0.20",
+ "type-map",
+ "web-time",
+ "wgpu",
+]
+
+[[package]]
+name = "egui-winit"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98466000559d66ba4db786a30448b01483946add4188e7f10f522a27b4fb89cc"
+dependencies = [
+ "egui",
+ "log",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
+ "objc2-ui-kit 0.3.2",
+ "profiling 1.0.18",
+ "raw-window-handle",
+ "web-time",
+ "winit",
+]
+
+[[package]]
 name = "either"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3103,6 +3318,15 @@ dependencies = [
  "sec1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "emath"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52c8d4141cf0f60fb2f7aefaf352d3ffa5171ef0ab09731c64391801e95e48f1"
+dependencies = [
+ "bytemuck",
 ]
 
 [[package]]
@@ -3178,6 +3402,7 @@ dependencies = [
  "helio-pass-object-batch",
  "helio-pass-postprocess",
  "helio-pass-tsr",
+ "helio-pass-vg",
  "helio-presets",
  "helio-scene-derivations",
  "helio-scene-join",
@@ -3204,7 +3429,7 @@ dependencies = [
  "pulsar_script_object_model",
  "pulsar_settings",
  "pulsar_world_registry",
- "rapier3d",
+ "rapier3d 0.35.3",
  "reqwest 0.13.4",
  "ropey 2.0.0-beta.1",
  "rust-embed",
@@ -3274,7 +3499,7 @@ dependencies = [
  "tool_registry_macros",
  "tracing",
  "ui_types_common",
- "ureq",
+ "ureq 3.4.0",
  "urlencoding",
  "uuid",
  "walkdir",
@@ -3379,6 +3604,37 @@ dependencies = [
  "jiff",
  "log",
 ]
+
+[[package]]
+name = "epaint"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0ec0308dc23130fc1a7d4623a8534c2ed069c6dc84e258ee4f3de99615aa1a3"
+dependencies = [
+ "ahash 0.8.12",
+ "bytemuck",
+ "ecolor",
+ "emath",
+ "epaint_default_fonts",
+ "font-types 0.12.4",
+ "harfrust 0.12.0",
+ "log",
+ "nohash-hasher",
+ "parking_lot",
+ "profiling 1.0.18",
+ "self_cell",
+ "skrifa 0.44.0",
+ "smallvec",
+ "unicode-general-category",
+ "unicode-segmentation",
+ "vello_cpu",
+]
+
+[[package]]
+name = "epaint_default_fonts"
+version = "0.36.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "773fa9c96dd0dbef887e39d0ed6177f141cce4d68e6041df77570aa3702dfa13"
 
 [[package]]
 name = "equator"
@@ -3567,6 +3823,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fearless_simd"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3739,10 +4001,13 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-object-batch",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
@@ -3821,12 +4086,15 @@ dependencies = [
  "helio",
  "helio-components",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-sky",
  "helio-presets",
  "log",
@@ -4235,6 +4503,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "generational-arena"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "877e94aff08e743b651baaea359664321055749b398adff8740a7399af7796e7"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "generator"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4276,7 +4553,7 @@ version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfe4fbac503b8d1f88e6676011885f34b7174f46e59956bba534ba83abded4df"
 dependencies = [
- "unicode-width",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -4331,11 +4608,14 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-debug-overlay",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-perf-overlay",
  "helio-pass-shadow-matrix",
  "helio-pass-sky",
@@ -4502,9 +4782,25 @@ checksum = "9847f980afb0628849bcd6a406cdffd29eb9d53fca83e1646005901a9acd4c5c"
 dependencies = [
  "approx",
  "glam 0.33.5",
- "nalgebra",
+ "nalgebra 0.35.0",
  "num-traits",
- "simba",
+ "simba 0.10.2",
+]
+
+[[package]]
+name = "glifo"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed4a1bb24121291d27230c1b1b44e07d6a9b28cefdb32fe1581dfb84e14f940a"
+dependencies = [
+ "bytemuck",
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
+ "log",
+ "peniko",
+ "skrifa 0.44.0",
+ "smallvec",
+ "vello_common",
 ]
 
 [[package]]
@@ -4651,7 +4947,7 @@ dependencies = [
  "smol_str 0.3.6",
  "spin 0.10.1",
  "stacksafe",
- "strum",
+ "strum 0.28.0",
  "sys-locale",
  "taffy",
  "thiserror 2.0.20",
@@ -4895,6 +5191,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "guillotiere"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b17e70c989c36bad147b27a58d148c0741c51448aa5653436547323e524d0ab"
+dependencies = [
+ "euclid",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4936,6 +5241,18 @@ dependencies = [
  "bytemuck",
  "core_maths",
  "read-fonts 0.37.0",
+ "smallvec",
+]
+
+[[package]]
+name = "harfrust"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c03d949a14aa089bbb282f7dd76a498a7f684428e4257202efc119ec010376f9"
+dependencies = [
+ "bitflags 2.13.1",
+ "bytemuck",
+ "read-fonts 0.41.0",
  "smallvec",
 ]
 
@@ -5045,9 +5362,7 @@ dependencies = [
  "helio-frame-api",
  "helio-mats",
  "helio-pass-deferred-light",
- "helio-pass-forward-lit",
- "helio-pass-gbuffer",
- "helio-pass-object-batch",
+ "helio-pass-light-cull",
  "helio-pass-postprocess",
  "helio-pass-shadow-matrix",
  "helio-pass-tsr",
@@ -5065,6 +5380,24 @@ dependencies = [
  "web-time",
  "wgpu",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "helio-android-demos"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-feature-api",
+ "helio-mesh-api",
+ "helio-mesh-host",
+ "helio-presets",
+ "helio-wasm",
+ "log",
+ "pulsar_scenedb",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -5102,7 +5435,6 @@ dependencies = [
  "half",
  "helio-bake-types",
  "helio-core",
- "helio-mesh-api",
  "log",
  "nebula",
  "pollster 0.4.0",
@@ -5123,26 +5455,26 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio",
- "helio-asset-compat",
  "helio-bake",
  "helio-core",
  "helio-mats",
- "helio-mesh-api",
  "helio-pass-billboard",
  "helio-pass-deferred-light",
- "helio-pass-forward-lit",
- "helio-pass-gbuffer",
- "helio-pass-object-batch",
- "helio-pass-postprocess",
- "helio-scene-derivations",
- "helio-vg-stream",
+ "helio-pass-light-cull",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
  "serde_json",
- "twox-hash",
  "wgpu",
+]
+
+[[package]]
+name = "helio-controls"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.5",
+ "winit",
 ]
 
 [[package]]
@@ -5234,6 +5566,7 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "log",
+ "pulsar_scenedb",
  "wgpu",
 ]
 
@@ -5243,6 +5576,47 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "pulsar_scenedb",
+]
+
+[[package]]
+name = "helio-mesh-host"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "half",
+ "helio",
+ "helio-asset-compat",
+ "helio-bake",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mats",
+ "helio-mesh-api",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-hlfs",
+ "helio-pass-light-cull",
+ "helio-pass-object-batch",
+ "helio-pass-occlusion-cull",
+ "helio-pass-shadow",
+ "helio-pass-shadow-matrix",
+ "helio-pass-transparent",
+ "helio-pass-vg",
+ "helio-presets",
+ "helio-scene-derivations",
+ "helio-vg-stream",
+ "image",
+ "log",
+ "naga",
+ "pollster 0.4.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
+ "twox-hash",
+ "wgpu",
 ]
 
 [[package]]
@@ -5307,6 +5681,7 @@ dependencies = [
  "helio-frame-api",
  "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-gbuffer",
  "helio-presets",
  "helio-scene-join",
@@ -5417,6 +5792,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
@@ -5425,8 +5801,10 @@ dependencies = [
  "helio-pass-shadow-matrix",
  "image",
  "log",
+ "naga",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -5445,8 +5823,10 @@ dependencies = [
  "helio-gi-api",
  "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-light-cull",
  "helio-pass-object-batch",
  "helio-pass-shadow-matrix",
  "helio-presets",
@@ -5479,8 +5859,6 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
- "helio-mesh-api",
- "helio-pass-gbuffer",
  "helio-pass-shadow-matrix",
  "wgpu",
 ]
@@ -5531,10 +5909,18 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio",
+ "helio-components",
  "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mesh-host",
  "helio-pass-gbuffer",
+ "helio-pass-light-cull",
  "helio-scene-join",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -5544,10 +5930,16 @@ name = "helio-pass-occlusion-cull"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-bake-types",
  "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
  "helio-pass-gbuffer",
+ "helio-pass-hiz",
  "helio-pass-indirect-dispatch",
+ "helio-pass-object-batch",
+ "pollster 0.4.0",
  "wgpu",
 ]
 
@@ -5652,18 +6044,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-sdf"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "log",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-shadow"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-gbuffer",
+ "helio-pass-light-cull",
  "helio-pass-shadow-dirty",
  "helio-pass-shadow-matrix",
  "log",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
  "wgpu",
 ]
 
@@ -5785,6 +6196,7 @@ dependencies = [
  "helio-pass-light-cull",
  "helio-pass-occlusion-cull",
  "log",
+ "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -5804,9 +6216,13 @@ dependencies = [
 name = "helio-pass-vg"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.5",
+ "helio",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-mesh-host",
  "helio-pass-vg-bvh",
  "helio-pass-vg-cull",
  "helio-pass-vg-dense",
@@ -5815,6 +6231,8 @@ dependencies = [
  "helio-vg-format",
  "helio-vg-stream",
  "log",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
  "wgpu",
 ]
 
@@ -5827,6 +6245,8 @@ dependencies = [
  "helio-pass-gbuffer",
  "helio-vg-format",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -5836,12 +6256,17 @@ name = "helio-pass-vg-cull"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "helio-mats",
+ "helio-pass-gbuffer",
  "helio-pass-vg-bvh",
+ "helio-vg-build",
  "helio-vg-format",
  "helio-vg-stream",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "wgpu",
 ]
 
@@ -5850,6 +6275,7 @@ name = "helio-pass-vg-dense"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "helio-mats",
  "helio-pass-vg-cull",
@@ -5857,6 +6283,8 @@ dependencies = [
  "helio-vg-format",
  "helio-vg-stream",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "wgpu",
 ]
 
@@ -5865,11 +6293,14 @@ name = "helio-pass-vg-raster"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "helio-mats",
  "helio-pass-vg-cull",
  "helio-vg-format",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "wgpu",
 ]
 
@@ -5888,6 +6319,8 @@ dependencies = [
  "helio-vg-format",
  "helio-vg-stream",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "wgpu",
 ]
 
@@ -5929,10 +6362,12 @@ dependencies = [
  "helio-frame-api",
  "helio-gi-api",
  "helio-mats",
+ "helio-mesh-host",
  "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-post-volumes",
  "helio-pass-shadow-matrix",
  "helio-pass-sky",
@@ -5994,34 +6429,22 @@ dependencies = [
  "helio-feature-api",
  "helio-frame-api",
  "helio-graph-asset",
- "helio-mesh-api",
  "helio-pass-billboard",
  "helio-pass-buffer-view",
  "helio-pass-debug-overlay",
  "helio-pass-deferred-light",
- "helio-pass-forward-lit",
  "helio-pass-fxaa",
- "helio-pass-gbuffer",
  "helio-pass-hiz",
  "helio-pass-hlfs",
- "helio-pass-indirect-dispatch",
  "helio-pass-light-cull",
- "helio-pass-object-batch",
- "helio-pass-occlusion-cull",
  "helio-pass-perf-overlay",
  "helio-pass-planar-reflection",
  "helio-pass-postprocess",
- "helio-pass-shadow",
- "helio-pass-shadow-dirty",
  "helio-pass-shadow-matrix",
  "helio-pass-simple-cube",
  "helio-pass-ssr",
- "helio-pass-transparent",
  "helio-pass-tsr",
- "helio-pass-vg",
  "helio-spine",
- "helio-vg-format",
- "helio-vg-stream",
  "image",
  "serde_json",
  "wgpu",
@@ -6037,9 +6460,7 @@ dependencies = [
  "helio-core",
  "helio-frame-api",
  "helio-mats",
- "helio-mesh-api",
  "helio-pass-light-cull",
- "helio-pass-object-batch",
  "helio-scene-join",
  "log",
  "pollster 0.4.0",
@@ -6066,13 +6487,16 @@ name = "helio-snapshot"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "env_logger",
  "futures-channel",
  "glam 0.33.5",
  "helio",
  "helio-asset-compat",
  "helio-components",
- "helio-pass-forward-lit",
+ "helio-mats",
+ "helio-mesh-host",
  "helio-pass-gbuffer",
+ "helio-pass-light-cull",
  "helio-presets",
  "image",
  "log",
@@ -6091,12 +6515,8 @@ dependencies = [
  "helio-frame-api",
  "helio-pass-deferred-light",
  "helio-pass-hiz",
- "helio-pass-indirect-dispatch",
  "helio-pass-light-cull",
- "helio-pass-object-batch",
- "helio-pass-occlusion-cull",
  "helio-pass-postprocess",
- "helio-pass-shadow-dirty",
  "helio-pass-shadow-matrix",
  "helio-pass-tsr",
  "pulsar_scenedb",
@@ -6109,8 +6529,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-vg-format",
+ "image",
  "meshopt",
  "rayon",
+ "serde_json",
 ]
 
 [[package]]
@@ -6118,6 +6540,7 @@ name = "helio-vg-format"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "naga",
 ]
 
 [[package]]
@@ -6125,8 +6548,12 @@ name = "helio-vg-stream"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "helio-core",
+ "helio-vg-build",
  "helio-vg-format",
  "log",
+ "naga",
+ "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -6149,7 +6576,9 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-corona",
  "helio-pass-decal",
  "helio-pass-flare",
@@ -6159,6 +6588,7 @@ dependencies = [
  "helio-pass-gbuffer",
  "helio-pass-gi",
  "helio-pass-lens",
+ "helio-pass-light-cull",
  "helio-pass-object-batch",
  "helio-pass-portal-cull",
  "helio-pass-portal-instances",
@@ -6197,8 +6627,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-wasm"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "glam 0.33.5",
+ "helio",
+ "helio-feature-api",
+ "helio-presets",
+ "js-sys",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "helio-water-api"
 version = "0.1.0"
+
+[[package]]
+name = "helio-web-demos"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "crossterm",
+ "env_logger",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "glam 0.33.5",
+ "helio",
+ "helio-asset-compat",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-mats",
+ "helio-mesh-api",
+ "helio-mesh-host",
+ "helio-pass-fxaa",
+ "helio-pass-gbuffer",
+ "helio-pass-light-cull",
+ "helio-pass-postprocess",
+ "helio-pass-sdf",
+ "helio-presets",
+ "helio-wasm",
+ "log",
+ "pulsar_scenedb",
+ "ratatui",
+ "tiny_http",
+ "wasm-bindgen",
+ "wgpu",
+]
 
 [[package]]
 name = "helio-xr"
@@ -6230,6 +6715,7 @@ dependencies = [
  "helio-core",
  "helio-mats",
  "helio-mesh-api",
+ "helio-pass-object-batch",
  "helio-pass-postprocess",
  "helio-vg-build",
  "helio-vg-format",
@@ -6706,7 +7192,7 @@ dependencies = [
  "console",
  "number_prefix",
  "portable-atomic",
- "unicode-width",
+ "unicode-width 0.2.0",
  "web-time",
 ]
 
@@ -6769,6 +7255,19 @@ dependencies = [
  "tracing",
  "ui",
  "uuid",
+]
+
+[[package]]
+name = "instability"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c3b5acc1e2fd9375041a388da33d1eb8aed5f7a8c0dd3543e3ea2805adfbe20"
+dependencies = [
+ "darling 0.24.1",
+ "indoc",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -6904,6 +7403,15 @@ name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -7197,12 +7705,15 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-flare",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
  "helio-pass-lens",
+ "helio-pass-light-cull",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-pass-sky",
@@ -7454,6 +7965,9 @@ name = "lru"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
+dependencies = [
+ "hashbrown 0.15.5",
+]
 
 [[package]]
 name = "lru-slab"
@@ -7746,6 +8260,94 @@ dependencies = [
 ]
 
 [[package]]
+name = "meshes-examples"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
+ "env_logger",
+ "flate2",
+ "glam 0.33.5",
+ "half",
+ "helio",
+ "helio-asset-compat",
+ "helio-bake",
+ "helio-components",
+ "helio-controls",
+ "helio-core",
+ "helio-mats",
+ "helio-mesh-api",
+ "helio-mesh-host",
+ "helio-pass-billboard",
+ "helio-pass-debug-overlay",
+ "helio-pass-deferred-light",
+ "helio-pass-forward-lit",
+ "helio-pass-fxaa",
+ "helio-pass-gbuffer",
+ "helio-pass-hlfs",
+ "helio-pass-light-cull",
+ "helio-pass-object-batch",
+ "helio-pass-perf-overlay",
+ "helio-pass-postprocess",
+ "helio-pass-shadow-matrix",
+ "helio-pass-transparent",
+ "helio-pass-tsr",
+ "helio-pass-vg",
+ "helio-pass-vg-bvh",
+ "helio-pass-vg-cull",
+ "helio-pass-vg-raster",
+ "helio-presets",
+ "helio-scene-derivations",
+ "helio-vg-build",
+ "helio-vg-format",
+ "helio-vg-stream",
+ "image",
+ "log",
+ "microfont",
+ "openxr",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "rapier3d 0.24.0",
+ "rayon",
+ "rusqlite",
+ "salva3d",
+ "scenedb-inspector-agent",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "ureq 2.12.1",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "meshes_component"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "helio",
+ "helio-feature-api",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-object-batch",
+ "helio-pass-occlusion-cull",
+ "helio-pass-shadow",
+ "helio-pass-transparent",
+ "helio-pass-vg",
+ "inventory",
+]
+
+[[package]]
+name = "meshes_plugin"
+version = "0.1.0"
+dependencies = [
+ "meshes_component",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "meshopt"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7756,6 +8358,12 @@ dependencies = [
  "float-cmp 0.10.0",
  "thiserror 2.0.20",
 ]
+
+[[package]]
+name = "microfont"
+version = "3.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d786ec822fab021ce84b0ff3038c569942883bb6b4ff2be2de71ef3256d808f3"
 
 [[package]]
 name = "mime"
@@ -7988,7 +8596,7 @@ version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4db8a44120571277accfaa3f3d91e7d3989d601d817c2fc01a9391b86135666"
 dependencies = [
- "darling",
+ "darling 0.23.0",
  "heck",
  "manyhow",
  "num-bigint 0.4.8",
@@ -8065,6 +8673,38 @@ dependencies = [
 
 [[package]]
 name = "nalgebra"
+version = "0.32.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5c17de023a86f59ed79891b2e5d5a94c705dbe904a5b5c9c952ea6221b03e4"
+dependencies = [
+ "approx",
+ "matrixmultiply",
+ "nalgebra-macros 0.2.2",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "simba 0.8.1",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra"
+version = "0.33.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d43ddcacf343185dfd6de2ee786d9e8b1c2301622afab66b6c73baf9882abfd"
+dependencies = [
+ "approx",
+ "matrixmultiply",
+ "nalgebra-macros 0.2.2",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "simba 0.9.1",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra"
 version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adc43a60c217b0c6ff46e47f26911015ad8d2e5a8be1af668c67e370d99a4346"
@@ -8075,12 +8715,23 @@ dependencies = [
  "glam 0.32.1",
  "glam 0.33.5",
  "matrixmultiply",
- "nalgebra-macros",
+ "nalgebra-macros 0.3.0",
  "num-complex",
  "num-rational",
  "num-traits",
- "simba",
+ "simba 0.10.2",
  "typenum",
+]
+
+[[package]]
+name = "nalgebra-macros"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "254a5372af8fc138e36684761d3c0cdb758a4410e938babcff1c860ce14ddbfc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -9342,7 +9993,7 @@ dependencies = [
  "smallvec",
  "textwrap",
  "unicode-segmentation",
- "unicode-width",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -9424,7 +10075,7 @@ version = "0.152.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f32dae5b09cc262867e383533cdc822c40bccb09d84bbdc889716c99265197a1"
 dependencies = [
- "compact_str",
+ "compact_str 0.10.0",
  "oxc_allocator",
  "oxc_ast_macros",
  "oxc_estree",
@@ -9437,7 +10088,7 @@ version = "0.152.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49552c2eeb7cbfa118d55485fb38c6689be5ce1b313af7e0116e5d8da0dc22e0"
 dependencies = [
- "compact_str",
+ "compact_str 0.10.0",
  "hashbrown 0.17.1",
  "oxc_allocator",
  "oxc_estree",
@@ -9530,6 +10181,52 @@ dependencies = [
 
 [[package]]
 name = "parry3d"
+version = "0.13.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d27f5ab3d42400056b5b6a6306dbaa91fc3033d8628146dca0d8ed7fbc20730"
+dependencies = [
+ "approx",
+ "arrayvec",
+ "bitflags 1.3.2",
+ "downcast-rs 1.2.1",
+ "either",
+ "nalgebra 0.32.6",
+ "num-derive",
+ "num-traits",
+ "rustc-hash 1.1.0",
+ "simba 0.8.1",
+ "slab",
+ "smallvec",
+ "spade",
+]
+
+[[package]]
+name = "parry3d"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a50f0d5730859f8326b26c8057aae09b790804f3e6c9dec38f4b2a1b91664529"
+dependencies = [
+ "approx",
+ "arrayvec",
+ "bitflags 2.13.1",
+ "downcast-rs 2.0.2",
+ "either",
+ "ena",
+ "hashbrown 0.15.5",
+ "log",
+ "nalgebra 0.33.3",
+ "num-derive",
+ "num-traits",
+ "ordered-float",
+ "rstar 0.12.2",
+ "simba 0.9.1",
+ "slab",
+ "spade",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "parry3d"
 version = "0.30.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01b00bf3ea4e0961a3f44aeb666b7dc3b0e87027b629561bd8283a7f6b2e2ed1"
@@ -9548,7 +10245,7 @@ dependencies = [
  "num-traits",
  "ordered-float",
  "rstar 0.13.0",
- "simba",
+ "simba 0.10.2",
  "slab",
  "smallvec",
  "spade",
@@ -9567,11 +10264,14 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-corona",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-sky",
  "helio-presets",
  "image",
@@ -9670,6 +10370,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
 dependencies = [
  "base64ct",
+]
+
+[[package]]
+name = "peniko"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "839c8299360d2e998bdb106dc0a6cd71dcc5f4df51df1b620361bf50e283cca6"
+dependencies = [
+ "bytemuck",
+ "color",
+ "kurbo",
+ "linebender_resource_handle",
+ "smallvec",
 ]
 
 [[package]]
@@ -9945,7 +10658,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
- "rapier3d",
+ "rapier3d 0.35.3",
  "serde",
  "serde_json",
  "skeletal_assets",
@@ -10250,10 +10963,13 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-object-batch",
  "helio-pass-portal-cull",
  "helio-pass-portal-instances",
@@ -10318,11 +11034,14 @@ dependencies = [
  "helio-bake",
  "helio-components",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-debug-overlay",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-perf-overlay",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
@@ -10976,6 +11695,7 @@ dependencies = [
  "inventory",
  "lens_component",
  "libloading 0.9.0",
+ "meshes_component",
  "parking_lot",
  "particles_component",
  "pollster 1.0.1",
@@ -11588,6 +12308,50 @@ checksum = "a611d15b50743feb4c76b7d03edcb0e64f399c26961e4efe6975bc398be6aa3d"
 
 [[package]]
 name = "rapier3d"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92d07a833e0aa3bc57010caaa50bf75fa78afc03a74207607db740da4e4579a1"
+dependencies = [
+ "approx",
+ "arrayvec",
+ "bit-vec 0.6.3",
+ "bitflags 1.3.2",
+ "crossbeam",
+ "downcast-rs 1.2.1",
+ "nalgebra 0.32.6",
+ "num-derive",
+ "num-traits",
+ "parry3d 0.13.8",
+ "rustc-hash 1.1.0",
+ "simba 0.8.1",
+]
+
+[[package]]
+name = "rapier3d"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106edf55a415c64d2dccbb79faa2085e2bd02ded26b41b399b04b90219484c7e"
+dependencies = [
+ "approx",
+ "arrayvec",
+ "bit-vec 0.8.0",
+ "bitflags 2.13.1",
+ "crossbeam",
+ "downcast-rs 2.0.2",
+ "log",
+ "nalgebra 0.33.3",
+ "num-derive",
+ "num-traits",
+ "ordered-float",
+ "parry3d 0.19.0",
+ "profiling 1.0.18",
+ "rustc-hash 2.1.3",
+ "simba 0.9.1",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "rapier3d"
 version = "0.35.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b14829af0960a134e2c39605bd6617a5c70e9837ce1b7c3c738efedc6fd8610"
@@ -11597,15 +12361,36 @@ dependencies = [
  "bitflags 2.13.1",
  "glamx",
  "log",
- "nalgebra",
+ "nalgebra 0.35.0",
  "num-traits",
- "parry3d",
+ "parry3d 0.30.2",
  "profiling 1.0.18",
  "serde",
- "simba",
+ "simba 0.10.2",
  "static_assertions",
  "thiserror 2.0.20",
- "wide",
+ "wide 1.6.1",
+]
+
+[[package]]
+name = "ratatui"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eabd94c2f37801c20583fc49dd5cd6b0ba68c716787c2dd6ed18571e1e63117b"
+dependencies = [
+ "bitflags 2.13.1",
+ "cassowary",
+ "compact_str 0.8.2",
+ "crossterm",
+ "indoc",
+ "instability",
+ "itertools 0.13.0",
+ "lru",
+ "paste",
+ "strum 0.26.3",
+ "unicode-segmentation",
+ "unicode-truncate",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -12485,11 +13270,37 @@ checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
 
 [[package]]
 name = "safe_arch"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96b02de82ddbe1b636e6170c21be622223aea188ef2e139be0a5b219ec215323"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
+name = "safe_arch"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42c6efa15875e6ecb39ca61fb0b0c1a40b84fac5a5ffe71eef7d1000c8eb3f5f"
 dependencies = [
  "bytemuck",
+]
+
+[[package]]
+name = "salva3d"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c393ff4c8f21ba5a0c8f245cacbffccdf1761955632567b6edb305f567286d1f"
+dependencies = [
+ "approx",
+ "fnv",
+ "generational-arena",
+ "instant",
+ "itertools 0.12.1",
+ "nalgebra 0.32.6",
+ "num-traits",
+ "parry3d 0.13.8",
+ "rapier3d 0.18.0",
 ]
 
 [[package]]
@@ -13043,6 +13854,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "signal-hook"
+version = "0.3.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
+name = "signal-hook-mio"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
+dependencies = [
+ "libc",
+ "mio 1.2.2",
+ "signal-hook",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13073,6 +13905,32 @@ dependencies = [
 
 [[package]]
 name = "simba"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "061507c94fc6ab4ba1c9a0305018408e312e17c041eb63bef8aa726fa33aceae"
+dependencies = [
+ "approx",
+ "num-complex",
+ "num-traits",
+ "paste",
+ "wide 0.7.33",
+]
+
+[[package]]
+name = "simba"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c99284beb21666094ba2b75bbceda012e610f5479dfcc2d6e2426f53197ffd95"
+dependencies = [
+ "approx",
+ "num-complex",
+ "num-traits",
+ "paste",
+ "wide 0.7.33",
+]
+
+[[package]]
+name = "simba"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1a7200d82ff1c7b4235efd12f11e2537a402c91cf83a5cb97ce80eef787fde7"
@@ -13080,7 +13938,7 @@ dependencies = [
  "approx",
  "num-complex",
  "num-traits",
- "wide",
+ "wide 1.6.1",
 ]
 
 [[package]]
@@ -13219,11 +14077,14 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-debug-overlay",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-perf-overlay",
  "helio-pass-shadow-matrix",
  "helio-pass-sky",
@@ -13571,6 +14432,7 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mesh-host",
  "helio-pass-gi",
  "helio-pass-radiance-cascades-2d",
  "helio-pass-sky",
@@ -13945,11 +14807,33 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
+version = "0.26.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
+dependencies = [
+ "strum_macros 0.26.4",
+]
+
+[[package]]
+name = "strum"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.28.0",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.26.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -14338,7 +15222,7 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 dependencies = [
  "smawk",
  "unicode-linebreak",
- "unicode-width",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -14506,6 +15390,18 @@ dependencies = [
  "arrayref",
  "bytemuck",
  "strict-num",
+]
+
+[[package]]
+name = "tiny_http"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "389915df6413a2e74fb181895f933386023c71110878cd0825588928e64cdc82"
+dependencies = [
+ "ascii",
+ "chunked_transfer",
+ "httpdate",
+ "log",
 ]
 
 [[package]]
@@ -15418,6 +16314,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8464ec13c3691491391d9fce00f6416c9a48e46972f72d7865688be2080192c9"
 
 [[package]]
+name = "type-map"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
+dependencies = [
+ "rustc-hash 2.1.3",
+]
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15661,6 +16566,7 @@ dependencies = [
  "image",
  "input_plugin",
  "lens_plugin",
+ "meshes_plugin",
  "particles_plugin",
  "physics_plugin",
  "plugin_editor_api",
@@ -15916,9 +16822,11 @@ dependencies = [
  "helio-pass-buffer-view",
  "helio-pass-water-sim",
  "helio-presets",
+ "helio-vg-format",
  "helio_component",
  "image",
  "lens_component",
+ "meshes_component",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
@@ -16160,6 +17068,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce61d488bcdc9bc8b5d1772c404828b17fc481c0a582b5581e95fb233aef503e"
 
 [[package]]
+name = "unicode-general-category"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f"
+
+[[package]]
 name = "unicode-id"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -16211,6 +17125,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
+name = "unicode-truncate"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3644627a5af5fa321c95b9b235a72fd24cd29c648c2c379431e6628655627bf"
+dependencies = [
+ "itertools 0.13.0",
+ "unicode-segmentation",
+ "unicode-width 0.1.14",
+]
+
+[[package]]
 name = "unicode-vo"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -16218,9 +17143,15 @@ checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
 
 [[package]]
 name = "unicode-width"
-version = "0.2.2"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "unicode-xid"
@@ -16239,6 +17170,21 @@ name = "unty"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
+name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64 0.22.1",
+ "log",
+ "once_cell",
+ "rustls",
+ "rustls-pki-types",
+ "url",
+ "webpki-roots 0.26.11",
+]
 
 [[package]]
 name = "ureq"
@@ -16415,6 +17361,33 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
+
+[[package]]
+name = "vello_common"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2e9aed918117e8152c9eddfd8362d73c465c23f26c44786aa331707b8a64fa2"
+dependencies = [
+ "bytemuck",
+ "fearless_simd",
+ "guillotiere",
+ "log",
+ "peniko",
+ "smallvec",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "vello_cpu"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac7349e1f55f6b801c7c277958df4ea53e7f20f21e8014910ad888b2ecda93ea"
+dependencies = [
+ "bytemuck",
+ "glifo",
+ "hashbrown 0.17.1",
+ "vello_common",
+]
 
 [[package]]
 name = "version_check"
@@ -16630,11 +17603,14 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-mats",
  "helio-mesh-api",
+ "helio-mesh-host",
  "helio-pass-debug-overlay",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-gi",
+ "helio-pass-light-cull",
  "helio-pass-object-batch",
  "helio-pass-perf-overlay",
  "helio-pass-shadow-matrix",
@@ -17120,12 +18096,22 @@ dependencies = [
 
 [[package]]
 name = "wide"
+version = "0.7.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce5da8ecb62bcd8ec8b7ea19f69a51275e91299be594ea5cc6ef7819e16cd03"
+dependencies = [
+ "bytemuck",
+ "safe_arch 0.7.4",
+]
+
+[[package]]
+name = "wide"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de2aaf408e58689c2096682331b1f42bb2d9f2ed6b11560407d023cd0a6c634e"
 dependencies = [
  "bytemuck",
- "safe_arch",
+ "safe_arch 1.2.0",
 ]
 
 [[package]]

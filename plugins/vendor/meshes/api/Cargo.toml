@@ -1,0 +1,10 @@
+[package]
+name = "helio-mesh-api"
+version = "0.1.0"
+edition = "2021"
+description = "The meshes' public contract: the vertex and mesh upload layouts their components author, and the ray-instance rows their acceleration publishes."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bytemuck = { workspace = true, features = ["derive"] }
+pulsar_scenedb = { workspace = true }

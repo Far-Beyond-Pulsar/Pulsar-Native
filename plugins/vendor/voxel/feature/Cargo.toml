@@ -33,6 +33,8 @@ image = { workspace = true }
 miniz_oxide = { version = "0.8" }
 
 [dev-dependencies]
+helio-mesh-host = { workspace = true }
+helio-pass-light-cull = { workspace = true }
 pollster = "0.4"
 # examples/shader_stats.rs: driver statistics of the compute pipelines.
 ash = "0.38"

@@ -14,7 +14,7 @@ pub use components::DECALS;
 pub use gpu_types::*;
 
 /// Fixed capacity for the `"decals"` SceneDB buffer, matching
-/// `helio_pass_forward_lit::MAX_LIGHTS`'s reasoning exactly: kept equal to
+/// `helio_pass_light_cull::MAX_LIGHTS`'s reasoning exactly: kept equal to
 /// the packed-layout auto-register capacity so every entity within it is
 /// covered, not just an arbitrary prefix. A row with no live entity behind
 /// it is `Zeroable`-default -- `decal_collect.wgsl`'s `opa <= 0.0` gate

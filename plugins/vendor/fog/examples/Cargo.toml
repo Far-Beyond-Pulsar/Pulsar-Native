@@ -14,6 +14,9 @@ name = "volumetric_fog_demo"
 path = "volumetric_fog_demo.rs"
 
 [dependencies]
+helio-mesh-host = { workspace = true }
+helio-pass-light-cull = { workspace = true }
+helio-mats = { workspace = true }
 bytemuck = { workspace = true }
 env_logger = "0.11"
 glam = { workspace = true }

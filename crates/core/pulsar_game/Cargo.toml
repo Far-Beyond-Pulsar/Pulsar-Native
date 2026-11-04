@@ -89,6 +89,7 @@ water_component = { workspace = true }
 foliage_component = { workspace = true }
 gi_component = { workspace = true }
 sky_component = { workspace = true }
+meshes_component = { workspace = true }
 
 [lints]
 workspace = true

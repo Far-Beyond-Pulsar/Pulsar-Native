@@ -22,6 +22,7 @@ log = { workspace = true }
 pulsar_scenedb = { workspace = true }
 
 [dev-dependencies]
+helio-mesh-host = { workspace = true }
 # The decal drawer over Helio's default graph (tests/joins_with_content.rs).
 helio = { workspace = true }
 helio-presets = { workspace = true }

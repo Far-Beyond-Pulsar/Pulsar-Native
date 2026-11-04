@@ -151,9 +151,9 @@ impl Showcase {
         helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
             &mut store, 4, &device,
         );
-        helio_components::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);
+        helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);
         helio_components::MaterialComponent::register_gpu_columns_growable(&mut store, 16, &device);
-        helio_components::StaticObjectComponent::register_gpu_columns_growable(
+        helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
             &mut store, 16, &device,
         );
         helio_components::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
@@ -207,7 +207,7 @@ impl Showcase {
         let sun_entity = scene.world.spawn();
         scene.world.insert(
             sun_entity,
-            LightComponent::from(helio_pass_forward_lit::LightRow::from(directional_sun(
+            LightComponent::from(helio_pass_light_cull::LightRow::from(directional_sun(
                 preset_sun("coast").0,
                 preset_sun("coast").1,
             ))),
@@ -320,8 +320,7 @@ impl Showcase {
             // the lens and its flare, portals) and the media kinds (foliage,
             // water, fog, post-process volumes) and the lighting kinds (GI,
             // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
-            .with_graph(Preset::Deferred.with_features(
-                &helio_feature_api::FeatureSet::new()
+            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
                     .with(helio_pass_corona::CoronaFeature)
                     .with(helio_pass_sprite_batch::SpriteFeature)
@@ -513,7 +512,7 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> 
                 .world
                 .get_mut::<helio_components::LightComponent>(self.sun_entity)
                 .expect("sun light component") = LightComponent::from(
-                helio_pass_forward_lit::LightRow::from(directional_sun(azimuth, elevation)),
+                helio_pass_light_cull::LightRow::from(directional_sun(azimuth, elevation)),
             );
             let sun = sun_direction(azimuth, elevation);
             self.water_row.sun_direction = [sun.x, sun.y, sun.z, 1.0];

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.helio.editor_demo_mini"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <!-- Allow the app to use Vulkan (primary) or OpenGL ES (fallback) -->
+    <uses-feature android:glEsVersion="0x00030002" android:required="false" />
+    <uses-feature android:name="android.hardware.vulkan.level" android:required="false" />
+
+    <application
+        android:label="Helio Editor Demo Mini"
+        android:allowBackup="false"
+        android:hasCode="false">
+
+        <activity
+            android:name="android.app.NativeActivity"
+            android:label="Helio Editor Demo Mini"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
+            android:screenOrientation="user"
+            android:exported="true">
+            <meta-data android:name="android.app.lib_name" android:value="editor_demo_mini" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -33,7 +33,7 @@ use crate::mesh_cache::{ImportedSurfaceMaterial, MeshSection};
 pub const MESH_SECTIONS_BUFFER: &str = "static_mesh_draw_sections";
 /// Per instance: local bounding sphere, `[center.xyz, radius]`.
 pub const MESH_BOUNDS_BUFFER: &str = "static_mesh_draw_bounds";
-/// Per instance: object-row flags (`helio::INSTANCE_FLAG_MOVABLE`).
+/// Per instance: object-row flags (`helio_pass_object_batch::INSTANCE_FLAG_MOVABLE`).
 pub const MESH_FLAGS_BUFFER: &str = "static_mesh_draw_flags";
 
 /// One drawable section of a mesh instance: an index range of the mesh's
@@ -111,7 +111,7 @@ impl StaticMeshDraw {
         Self {
             bounds_local: mesh.bounds_local,
             flags: if helio::Movability::from(mesh.movability).can_move() {
-                helio::INSTANCE_FLAG_MOVABLE
+                helio_pass_object_batch::INSTANCE_FLAG_MOVABLE
             } else {
                 0
             },

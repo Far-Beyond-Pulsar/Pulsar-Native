@@ -14,6 +14,9 @@ name = "render_v2_sky"
 path = "render_v2_sky.rs"
 
 [dependencies]
+helio-mesh-host = { workspace = true }
+helio-pass-light-cull = { workspace = true }
+helio-mats = { workspace = true }
 env_logger = "0.11"
 glam = { workspace = true }
 helio = { workspace = true }

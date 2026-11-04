@@ -1,0 +1,17 @@
+[
+  {
+    "map": "Diffuse",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fine_grained_wood/fine_grained_wood_col_2k.jpg",
+    "sha256": "D97B1AB2C5206AC43BC0C42F21878DA14F4D02497FD21396399406C03F3755A9"
+  },
+  {
+    "map": "nor_gl",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fine_grained_wood/fine_grained_wood_nor_gl_2k.jpg",
+    "sha256": "C76FCD29434978227DB5A35B5B0238DA1BEE0FB5FA8CDFC6819A76C7EF723F3C"
+  },
+  {
+    "map": "arm",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/fine_grained_wood/fine_grained_wood_arm_2k.jpg",
+    "sha256": "69FA4899A24FE3383BD8573C3068B107B387A576AB44ADCC6B3BDA2BAC1DD43F"
+  }
+]

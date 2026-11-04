@@ -1,0 +1,407 @@
+{
+ "_comment": "Sizes and MD5s of the Poly Haven files the museum uses, captured from https://api.polyhaven.com/files/<id> on 2026-10-22 (CC0). Used to detect upstream changes; the API response stays authoritative.",
+ "assets": {
+  "pine_tree_01": {
+   "res": "2k",
+   "files": {
+    "pine_tree_01_2k.gltf": {
+     "size": 30596,
+     "md5": "001c1a0eb6748333f000d3fa0db5e278"
+    },
+    "textures/pine_tree_01_bark_nor_gl_2k.jpg": {
+     "size": 3373886,
+     "md5": "da6eb7bc3c4eafea4e8ed696f7891a73"
+    },
+    "textures/pine_tree_01_bark_diff_2k.jpg": {
+     "size": 2700448,
+     "md5": "f420cb9ca2e845cd988f3bcf03c41a85"
+    },
+    "textures/pine_tree_01_bark_arm_2k.jpg": {
+     "size": 2941366,
+     "md5": "218f22567f42e7918afc25c7e3450be8"
+    },
+    "textures/pine_tree_01_trunk_a_nor_gl_2k.jpg": {
+     "size": 3642074,
+     "md5": "97ce92fcba67201ace1c4ed3d6e154f6"
+    },
+    "textures/pine_tree_01_trunk_a_diff_2k.jpg": {
+     "size": 3028704,
+     "md5": "44fd71883c0e29551243c8937c47b65c"
+    },
+    "textures/pine_tree_01_trunk_a_arm_2k.jpg": {
+     "size": 2974686,
+     "md5": "c27af4b3374a4f36780b316b3a10bfd5"
+    },
+    "textures/pine_tree_01_twig_nor_gl_2k.jpg": {
+     "size": 2924424,
+     "md5": "843dd3359c958c7a8bfd60f55fb4fb80"
+    },
+    "textures/pine_tree_01_twig_diff_2k.jpg": {
+     "size": 1623201,
+     "md5": "45d577b1b780711976147d66234a1f4c"
+    },
+    "textures/pine_tree_01_twig_arm_2k.jpg": {
+     "size": 1524195,
+     "md5": "d9110a0de287f6abacb7abe4c50ae9b3"
+    },
+    "textures/pine_tree_01_trunk_b_nor_gl_2k.jpg": {
+     "size": 3269280,
+     "md5": "007dee669d056d81043ed0d171a731c2"
+    },
+    "textures/pine_tree_01_trunk_b_diff_2k.jpg": {
+     "size": 2548347,
+     "md5": "cba156ed09519ca12bea8c7ff90585ee"
+    },
+    "textures/pine_tree_01_trunk_b_arm_2k.jpg": {
+     "size": 2718246,
+     "md5": "36a7440fbb145fc68e99c1b6a5f20047"
+    },
+    "pine_tree_01.bin": {
+     "size": 948849556,
+     "md5": "3079e56cc48c57d8ba530d005e86bae6"
+    }
+   }
+  },
+  "fir_tree_01": {
+   "res": "2k",
+   "files": {
+    "fir_tree_01_2k.gltf": {
+     "size": 30279,
+     "md5": "937cc3176a17f40d47d655c54571dbd7"
+    },
+    "textures/fir_tree_01_bark_nor_gl_2k.jpg": {
+     "size": 3920997,
+     "md5": "5fa93c73d145cacdb258a29e3860a1ae"
+    },
+    "textures/fir_tree_01_bark_diff_2k.jpg": {
+     "size": 2839282,
+     "md5": "e9375177560503904ece137474cfde0b"
+    },
+    "textures/fir_tree_01_bark_arm_2k.jpg": {
+     "size": 2783615,
+     "md5": "1ffec60c862633f2bb5c47f2102651cf"
+    },
+    "textures/fir_tree_01_trunk_a_nor_gl_2k.jpg": {
+     "size": 3642074,
+     "md5": "97ce92fcba67201ace1c4ed3d6e154f6"
+    },
+    "textures/fir_tree_01_trunk_a_diff_2k.jpg": {
+     "size": 3028704,
+     "md5": "44fd71883c0e29551243c8937c47b65c"
+    },
+    "textures/fir_tree_01_trunk_a_arm_2k.jpg": {
+     "size": 2974686,
+     "md5": "7f6bfdfd4987848b09b119cc1294e177"
+    },
+    "textures/fir_tree_01_twig_nor_gl_2k.jpg": {
+     "size": 1611490,
+     "md5": "2072f6b164184f0ca9b41f8623bfec06"
+    },
+    "textures/fir_tree_01_twig_diff_2k.jpg": {
+     "size": 1141996,
+     "md5": "6d023f52dab632b031a2ab8e5a27541f"
+    },
+    "textures/fir_tree_01_twig_arm_2k.jpg": {
+     "size": 1271524,
+     "md5": "2fcac76cebb4f5fdc7fba2f31e02a490"
+    },
+    "textures/fir_tree_01_trunk_b_nor_gl_2k.jpg": {
+     "size": 3269280,
+     "md5": "007dee669d056d81043ed0d171a731c2"
+    },
+    "textures/fir_tree_01_trunk_b_diff_2k.jpg": {
+     "size": 2548347,
+     "md5": "cba156ed09519ca12bea8c7ff90585ee"
+    },
+    "textures/fir_tree_01_trunk_b_arm_2k.jpg": {
+     "size": 2718246,
+     "md5": "3d0e1b965f2ac48b894d259e4ec5f10c"
+    },
+    "fir_tree_01.bin": {
+     "size": 478462204,
+     "md5": "26d2bf6d4d2e32d3524e8fa3760f643f"
+    }
+   }
+  },
+  "island_tree_01": {
+   "res": "2k",
+   "files": {
+    "island_tree_01_2k.gltf": {
+     "size": 8576,
+     "md5": "5facbb0c10b6bce8956bba1c179bfdad"
+    },
+    "textures/island_tree_01_nor_gl_2k.jpg": {
+     "size": 4527774,
+     "md5": "1a4aa5c3c599fa9e69d27636680d03f1"
+    },
+    "textures/island_tree_01_diff_2k.jpg": {
+     "size": 2954942,
+     "md5": "06808aa5ccbfbc2a7e2f99a23f412c17"
+    },
+    "textures/island_tree_01_arm_2k.jpg": {
+     "size": 2460274,
+     "md5": "d6429928be150750d4cb51ef2bc4232f"
+    },
+    "textures/island_tree_01_leaves_nor_gl_2k.jpg": {
+     "size": 1378585,
+     "md5": "b7d1e6306288a64119e1d17dae3c272d"
+    },
+    "textures/island_tree_01_leaves_diff_2k.jpg": {
+     "size": 661175,
+     "md5": "9898a7bf79fe6214f7ca8c3b139c4116"
+    },
+    "textures/island_tree_01_leaves_arm_2k.jpg": {
+     "size": 1645169,
+     "md5": "a03c8dd6852becfbc0fbec70a4f0b30f"
+    },
+    "textures/island_tree_01_branches_nor_gl_2k.jpg": {
+     "size": 2437750,
+     "md5": "0b598c975ce1515ea0d51fb0d5696ea3"
+    },
+    "textures/island_tree_01_branches_diff_2k.jpg": {
+     "size": 1476655,
+     "md5": "3210126439a8423b3caba28de0f3c25f"
+    },
+    "textures/island_tree_01_branches_arm_2k.jpg": {
+     "size": 1523257,
+     "md5": "969af8206d91a37edfefaf65a668470e"
+    },
+    "island_tree_01.bin": {
+     "size": 60709812,
+     "md5": "8271f2d12c2727bd647ce0c242acdcec"
+    }
+   }
+  },
+  "island_tree_02": {
+   "res": "2k",
+   "files": {
+    "island_tree_02_2k.gltf": {
+     "size": 8545,
+     "md5": "8f26ebaa1648086a1958ce67a8154e64"
+    },
+    "textures/island_tree_02_nor_gl_2k.jpg": {
+     "size": 4339456,
+     "md5": "e5e741ee0d2b5299893ddef2952e4c55"
+    },
+    "textures/island_tree_02_diff_2k.jpg": {
+     "size": 2684467,
+     "md5": "1593cf55910abff0a418b2799870471a"
+    },
+    "textures/island_tree_02_arm_2k.jpg": {
+     "size": 2347246,
+     "md5": "661a0b08c23989c081904d53d1bb1433"
+    },
+    "textures/island_tree_02_leaves_nor_gl_2k.jpg": {
+     "size": 1378585,
+     "md5": "b7d1e6306288a64119e1d17dae3c272d"
+    },
+    "textures/island_tree_02_leaves_diff_2k.jpg": {
+     "size": 661175,
+     "md5": "9898a7bf79fe6214f7ca8c3b139c4116"
+    },
+    "textures/island_tree_02_leaves_arm_2k.jpg": {
+     "size": 1645169,
+     "md5": "a03c8dd6852becfbc0fbec70a4f0b30f"
+    },
+    "textures/island_tree_02_branches_nor_gl_2k.jpg": {
+     "size": 2437750,
+     "md5": "0b598c975ce1515ea0d51fb0d5696ea3"
+    },
+    "textures/island_tree_02_branches_diff_2k.jpg": {
+     "size": 1476655,
+     "md5": "3210126439a8423b3caba28de0f3c25f"
+    },
+    "textures/island_tree_02_branches_arm_2k.jpg": {
+     "size": 1523257,
+     "md5": "969af8206d91a37edfefaf65a668470e"
+    },
+    "island_tree_02.bin": {
+     "size": 40686576,
+     "md5": "7fa9d6ee752b670cabb65053a5c6395b"
+    }
+   }
+  },
+  "island_tree_03": {
+   "res": "2k",
+   "files": {
+    "island_tree_03_2k.gltf": {
+     "size": 8557,
+     "md5": "9b20befb448eee719f97bd29e2c8fae3"
+    },
+    "textures/island_tree_03_nor_gl_2k.jpg": {
+     "size": 4097801,
+     "md5": "703e90a3d735b01f28422265c67dd1ab"
+    },
+    "textures/island_tree_03_diff_2k.jpg": {
+     "size": 2751789,
+     "md5": "91582e78a04764cdd32082dff1a700f2"
+    },
+    "textures/island_tree_03_arm_2k.jpg": {
+     "size": 2054971,
+     "md5": "75a1e9ca61365bcfa6214b68ad8610ea"
+    },
+    "textures/island_tree_03_leaves_nor_gl_2k.jpg": {
+     "size": 1378585,
+     "md5": "b7d1e6306288a64119e1d17dae3c272d"
+    },
+    "textures/island_tree_03_leaves_diff_2k.jpg": {
+     "size": 661175,
+     "md5": "9898a7bf79fe6214f7ca8c3b139c4116"
+    },
+    "textures/island_tree_03_leaves_arm_2k.jpg": {
+     "size": 1645169,
+     "md5": "a03c8dd6852becfbc0fbec70a4f0b30f"
+    },
+    "textures/island_tree_03_branches_nor_gl_2k.jpg": {
+     "size": 2437750,
+     "md5": "0b598c975ce1515ea0d51fb0d5696ea3"
+    },
+    "textures/island_tree_03_branches_diff_2k.jpg": {
+     "size": 1476655,
+     "md5": "3210126439a8423b3caba28de0f3c25f"
+    },
+    "textures/island_tree_03_branches_arm_2k.jpg": {
+     "size": 1523257,
+     "md5": "969af8206d91a37edfefaf65a668470e"
+    },
+    "island_tree_03.bin": {
+     "size": 79562548,
+     "md5": "fc2c29ce9665baa6964ea137d1f25ec7"
+    }
+   }
+  },
+  "tree_small_02": {
+   "res": "2k",
+   "files": {
+    "tree_small_02_2k.gltf": {
+     "size": 9075,
+     "md5": "7b77f2ca02edf5d7964ca3514e66c6b7"
+    },
+    "textures/tree_small_02_branch_nor_gl_2k.jpg": {
+     "size": 1781975,
+     "md5": "12286d5b329b4fb4203fc155a01b0a04"
+    },
+    "textures/tree_small_02_branch_diff_2k.jpg": {
+     "size": 1425692,
+     "md5": "5ba327fc166360fcbb44f2eb04fbd8d8"
+    },
+    "textures/tree_small_02_branch_arm_2k.jpg": {
+     "size": 1147503,
+     "md5": "d6a0921ec6dbeaaf22a4b91d68fe16d1"
+    },
+    "textures/tree_small_02_leaves_nor_gl_2k.jpg": {
+     "size": 2395771,
+     "md5": "ab509e55b5d763f68195e0eb257bb5e3"
+    },
+    "textures/tree_small_02_leaves_diff_2k.jpg": {
+     "size": 961870,
+     "md5": "021ddc0cf1d94b99716a106cede576c7"
+    },
+    "textures/tree_small_02_leaves_arm_2k.jpg": {
+     "size": 2191542,
+     "md5": "4b88d67947fe214f2afc65beb83bee02"
+    },
+    "textures/tree_small_02_nor_gl_2k.jpg": {
+     "size": 4555311,
+     "md5": "064c3e1d08f010c732e7af6395a66769"
+    },
+    "textures/tree_small_02_diff_2k.jpg": {
+     "size": 3170612,
+     "md5": "ff4d82640b7e0daaec0b71bfc1cef76c"
+    },
+    "textures/tree_small_02_arm_2k.jpg": {
+     "size": 2586815,
+     "md5": "038ad0c1968be6802b20d084cdf30603"
+    },
+    "tree_small_02.bin": {
+     "size": 95102324,
+     "md5": "7a7019a87e6fe0d7475c0fa2e08d8962"
+    }
+   }
+  },
+  "grey_cartago_01": {
+   "res": "8k",
+   "files": {
+    "grey_cartago_01_diff_8k.jpg": {
+     "size": 38451920,
+     "md5": "3fe23ee6c48a46dcd9665b4d5f499d64"
+    },
+    "grey_cartago_01_nor_gl_8k.jpg": {
+     "size": 9543413,
+     "md5": "94f5c07631d7f32ab32eb6c9646fc19a"
+    },
+    "grey_cartago_01_arm_8k.jpg": {
+     "size": 30495320,
+     "md5": "a3f7376766ad800f87601cd9b13541bf"
+    },
+    "grey_cartago_01_disp_8k.jpg": {
+     "size": 10807616,
+     "md5": "1526caa6e1846a65f807e6ffe2b94dec"
+    }
+   }
+  },
+  "grey_cartago_03": {
+   "res": "8k",
+   "files": {
+    "grey_cartago_03_diff_8k.jpg": {
+     "size": 31183046,
+     "md5": "a1f4c8fcc26f5c7ceb9d64acd3bd4a1e"
+    },
+    "grey_cartago_03_nor_gl_8k.jpg": {
+     "size": 30030530,
+     "md5": "233c999ba8dc08ee26a9c76befc3933c"
+    },
+    "grey_cartago_03_arm_8k.jpg": {
+     "size": 23730398,
+     "md5": "49fb3b7939ea74891a43f7991cfdcce5"
+    },
+    "grey_cartago_03_disp_8k.jpg": {
+     "size": 14893641,
+     "md5": "98f76f5b8e1784f63eeca84ed02d0443"
+    }
+   }
+  },
+  "marble_01": {
+   "res": "8k",
+   "files": {
+    "marble_01_diff_8k.jpg": {
+     "size": 17078773,
+     "md5": "f140d2527f16f2c9854a6b171ea9bf54"
+    },
+    "marble_01_nor_gl_8k.jpg": {
+     "size": 3598940,
+     "md5": "def438c518eeff98c2e0872882e692cc"
+    },
+    "marble_01_arm_8k.jpg": {
+     "size": 4991134,
+     "md5": "20cb6393200845e6151c1f6077e37bed"
+    },
+    "marble_01_disp_8k.jpg": {
+     "size": 1715321,
+     "md5": "0c9bc371236c6efdbbea71e357516c81"
+    }
+   }
+  },
+  "marble_mosaic_tiles": {
+   "res": "8k",
+   "files": {
+    "marble_mosaic_tiles_diff_8k.jpg": {
+     "size": 50169609,
+     "md5": "0b8ebf9f8ddc91906e42f54c1093df8d"
+    },
+    "marble_mosaic_tiles_nor_gl_8k.jpg": {
+     "size": 48432248,
+     "md5": "638c7e6c87b1fcaef559370eb7a8c702"
+    },
+    "marble_mosaic_tiles_arm_8k.jpg": {
+     "size": 50885634,
+     "md5": "b65b575d588dfcc550523973139bc541"
+    },
+    "marble_mosaic_tiles_disp_8k.jpg": {
+     "size": 14505158,
+     "md5": "d22b94124a8c2a6d864ccda50510151b"
+    }
+   }
+  }
+ }
+}

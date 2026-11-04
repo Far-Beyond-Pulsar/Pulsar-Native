@@ -1,0 +1,29 @@
+[package]
+name = "meshes_component"
+version = "0.1.0"
+edition = "2024"
+description = "Meshes (pulsar.meshes): the registrations of the plugin's Helio features (the object batch, its culling, the G-buffer, shadow-caster, forward and transparent drawers, virtual geometry)."
+
+# Hosts (the editor through the plugin crate, the game) link it; the render
+# features register through `inventory` once the crate is linked.
+[lib]
+name = "meshes_component"
+
+[dependencies]
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+inventory = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+helio-pass-object-batch = { workspace = true }
+helio-pass-occlusion-cull = { workspace = true }
+helio-pass-shadow = { workspace = true }
+helio-pass-transparent = { workspace = true }
+helio-pass-vg = { workspace = true }
+
+[lints]
+workspace = true

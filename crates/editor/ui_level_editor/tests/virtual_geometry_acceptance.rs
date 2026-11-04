@@ -19,6 +19,8 @@
 //! Run with `--nocapture` to see the measured differences; set
 //! `RENDER_ACCEPTANCE_DUMP_DIR` to write the frames as PNGs.
 
+// The meshes' features register with the renderer as in the editor.
+use meshes_component as _;
 use std::time::{Duration, Instant};
 
 use engine_backend::scene::SceneWorldExt;
@@ -634,7 +636,7 @@ fn colour_stats(frame: &Frame) -> (usize, f32) {
 
 #[test]
 fn virtual_geometry_debug_views_register_and_render() {
-    use helio_presets::vg_debug_view::{VgDebugView as D, ALL};
+    use helio_vg_format::debug_view::{VgDebugView as D, ALL};
     let Some(harness) = setup() else { return };
     let (state, _) = scene(Some(VirtualGeometryComponent::default()));
     let mut renderer = harness.renderer(&state);

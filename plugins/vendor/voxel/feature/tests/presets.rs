@@ -42,9 +42,9 @@ fn mirror(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> GpuMirrorHand
         },
     );
     helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
-    helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 16, device);
+    helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 16, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(&mut gpu_store, 16, device);
-    helio_components::StaticObjectComponent::register_gpu_columns_growable(
+    helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
         &mut gpu_store,
         16,
         device,
@@ -108,11 +108,11 @@ impl Fixtures {
         }
     }
 
-    /// `preset` with the voxel, media and lighting features (as the engine adds
-    /// them), built.
+    /// `preset` with the meshes', voxel, media and lighting features (as the
+    /// engine adds them), built.
     fn build(&self, preset: Preset) -> helio_core::RenderGraph {
-        preset
-            .with_features(
+        helio_mesh_host::presets::with(
+                preset,
                 &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
                     .with(helio_pass_foliage_gbuffer::FoliageFeature)
@@ -171,8 +171,7 @@ fn voxel_terrain_joins_every_preset_with_a_gbuffer() {
         .find_pass::<ChunkPass>()
         .is_none());
     // Without the voxel feature, no preset knows the terrain.
-    assert!(Preset::Deferred
-        .build(fixtures.context())
+    assert!(helio_mesh_host::presets::preset(helio_presets::Preset::Deferred).build(fixtures.context())
         .find_pass::<ChunkPass>()
         .is_none());
 }

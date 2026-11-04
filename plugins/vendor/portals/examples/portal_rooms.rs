@@ -711,7 +711,7 @@ fn insert_box_panel(
         // Debug mode: keep every target mesh in the portal scene alive
         // through frustum and Hi-Z culling so portal failures are not
         // confused with ordinary scene culling failures.
-        if let Some(mut object) = world.get_mut::<helio_components::StaticObjectComponent>(entity) {
+        if let Some(mut object) = world.get_mut::<helio_mesh_host::StaticObjectComponent>(entity) {
             object.flags |= helio_pass_object_batch::INSTANCE_FLAG_ALWAYS_VISIBLE;
         }
     }

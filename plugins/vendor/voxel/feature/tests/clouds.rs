@@ -74,9 +74,9 @@ fn view(width: u32, height: u32, ground: bool) -> Option<View> {
         },
     );
     AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, &device);
-    helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     helio_components::MaterialComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
-    helio_components::StaticObjectComponent::register_gpu_columns_growable(
+    helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
         &mut gpu_store,
         16,
         &device,
@@ -99,7 +99,7 @@ fn view(width: u32, height: u32, ground: bool) -> Option<View> {
             intensity: 0.0,
         })
         .with_external_device()
-        .with_graph(Preset::Deferred.with_features(&voxel_features()))
+        .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &voxel_features()))
         .build(
             Arc::clone(&device),
             Arc::clone(&queue),
@@ -142,7 +142,7 @@ impl View {
     fn set_sky(&mut self, towards: Vec3, air: AtmosphereComponent) {
         self.scene.world.insert(
             self.sun,
-            LightComponent::from(helio_pass_forward_lit::LightRow::from(helio::GpuLight {
+            LightComponent::from(helio_pass_light_cull::LightRow::from(helio::GpuLight {
                 position_range: [0.0, 0.0, 0.0, f32::MAX],
                 direction_outer: [-towards.x, -towards.y, -towards.z, 0.0],
                 color_intensity: [1.0, 1.0, 1.0, 3.0],

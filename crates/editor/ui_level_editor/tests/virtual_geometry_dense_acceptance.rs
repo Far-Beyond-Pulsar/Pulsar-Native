@@ -17,6 +17,8 @@
 //! `RENDER_ACCEPTANCE_DUMP_DIR` writes the frames as PNGs; `--nocapture`
 //! prints the measured numbers.
 
+// The meshes' features register with the renderer as in the editor.
+use meshes_component as _;
 use std::time::{Duration, Instant};
 
 use engine_backend::scene::SceneWorldExt;
@@ -488,7 +490,7 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     // Streaming refines the crowd over many frames; tiles go dense once enough
     // fine pages are resident, so wait for the mask rather than a frame count.
     mailbox
-        .set_viewport_debug_mode(helio_presets::vg_debug_view::VgDebugView::DenseMask.id());
+        .set_viewport_debug_mode(helio_vg_format::debug_view::VgDebugView::DenseMask.id());
     let start = Instant::now();
     let mask_view = loop {
         let frame = harness.frames(&mut renderer, 3);
@@ -607,7 +609,7 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
 
     // The debug tier view paints ray-traced pixels magenta.
     mailbox
-        .set_viewport_debug_mode(helio_presets::vg_debug_view::VgDebugView::RasterTier.id());
+        .set_viewport_debug_mode(helio_vg_format::debug_view::VgDebugView::RasterTier.id());
     let tier_view = harness.frames(&mut renderer, 9);
     tier_view.dump("tier");
     mailbox.set_viewport_debug_mode(0);
@@ -718,7 +720,7 @@ fn dense_mask_is_stable_on_a_static_scene_and_the_peel_drops_nothing() {
 
     // Streaming refines the crowd; wait for the dense mask (raster classification).
     mailbox
-        .set_viewport_debug_mode(helio_presets::vg_debug_view::VgDebugView::DenseMask.id());
+        .set_viewport_debug_mode(helio_vg_format::debug_view::VgDebugView::DenseMask.id());
     let start = Instant::now();
     loop {
         let f = harness.frames(&mut renderer, 3);
@@ -787,7 +789,7 @@ fn tier_view_paints_resolved_dense_tiles() {
     harness.until_ready(&mut renderer);
     let mailbox = renderer.editor_mailbox();
     mailbox
-        .set_viewport_debug_mode(helio_presets::vg_debug_view::VgDebugView::DenseMask.id());
+        .set_viewport_debug_mode(helio_vg_format::debug_view::VgDebugView::DenseMask.id());
     let start = Instant::now();
     loop {
         let f = harness.frames(&mut renderer, 3);
@@ -796,7 +798,7 @@ fn tier_view_paints_resolved_dense_tiles() {
         }
     }
     mailbox
-        .set_viewport_debug_mode(helio_presets::vg_debug_view::VgDebugView::RasterTier.id());
+        .set_viewport_debug_mode(helio_vg_format::debug_view::VgDebugView::RasterTier.id());
     let tier = harness.frames(&mut renderer, 6);
     tier.dump("tier_nonrt");
     mailbox.set_viewport_debug_mode(0);

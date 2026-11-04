@@ -1,0 +1,20 @@
+[package]
+name = "meshes_plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Meshes (pulsar.meshes): the editor plugin -- its metadata, over the plugin's component crate"
+
+[lib]
+name = "meshes_plugin"
+
+[features]
+# Statically linked hosts (the editor) use the Rust API; the component crate
+# (with everything it registers) comes with this crate.
+builtin = []
+
+[dependencies]
+meshes_component = { workspace = true }
+plugin_editor_api = { workspace = true }
+
+[lints]
+workspace = true

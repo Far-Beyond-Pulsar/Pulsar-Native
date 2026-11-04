@@ -1801,7 +1801,7 @@ fn skeletal_mesh_draw_dispatch(
         .collect::<Vec<_>>();
     let draw = StaticMeshDraw {
         bounds_local: component.bounds_local,
-        flags: helio::INSTANCE_FLAG_MOVABLE,
+        flags: helio_pass_object_batch::INSTANCE_FLAG_MOVABLE,
         sections,
     };
     pulsar_scenedb::gpu::write_derived_row(mirror, row, &draw, is_new_insert);

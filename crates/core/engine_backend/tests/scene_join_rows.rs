@@ -208,7 +208,7 @@ fn the_join_follows_the_engines_authored_rows() {
     assert_eq!(rows.len(), 2, "one object row per section");
     assert!(
         rows.iter()
-            .all(|row| row.flags & helio::INSTANCE_FLAG_MOVABLE == 0),
+            .all(|row| row.flags & helio_pass_object_batch::INSTANCE_FLAG_MOVABLE == 0),
         "static"
     );
     assert_eq!(
@@ -238,7 +238,7 @@ fn the_join_follows_the_engines_authored_rows() {
     assert_eq!(rows.len(), 2);
     assert!(
         rows.iter()
-            .all(|row| row.flags & helio::INSTANCE_FLAG_MOVABLE != 0),
+            .all(|row| row.flags & helio_pass_object_batch::INSTANCE_FLAG_MOVABLE != 0),
         "movable"
     );
 

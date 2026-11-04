@@ -561,7 +561,7 @@ impl ApplicationHandler for App {
         // first, or there is nothing to bake (Helio#256).
         helio_components::bake(
             &mut renderer,
-            helio_components::bake_scene_from_world(&scene_db.world),
+            helio_mesh_host::bake_scene_from_world(&scene_db.world),
             BakeConfig::fast("indoor_cathedral"),
         )
         .expect("bake the cathedral");

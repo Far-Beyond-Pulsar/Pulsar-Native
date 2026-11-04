@@ -1,0 +1,37 @@
+[package]
+name = "helio-asset-compat"
+version = "0.1.0"
+edition = "2021"
+description = "SolidRS integration layer for Helio renderer - asset loading and conversion"
+
+[dependencies]
+helio-mesh-api = { workspace = true }
+# Helio renderer facade
+helio = { workspace = true }
+helio-mats = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+
+# SceneDB: material rows spawned by `upload_scene_materials` are plain
+# `helio_pass_gbuffer::MaterialComponent` rows now, same as everywhere else.
+pulsar_scenedb = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+
+# SolidRS - 3D asset loading
+solid-rs = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "61b6638ab5495705117f41401ae2b9c53c3297ed", features = ["configurator"] }
+solid-gltf = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "61b6638ab5495705117f41401ae2b9c53c3297ed", features = ["configurator"] }
+solid-fbx = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "61b6638ab5495705117f41401ae2b9c53c3297ed", features = ["configurator"] }
+solid-obj = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "61b6638ab5495705117f41401ae2b9c53c3297ed", features = ["configurator"] }
+solid-usd = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "61b6638ab5495705117f41401ae2b9c53c3297ed", features = ["configurator"] }
+solid-unreal = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "61b6638ab5495705117f41401ae2b9c53c3297ed" }
+
+# Math and utilities
+glam.workspace = true
+log.workspace = true
+thiserror = { workspace = true }
+
+# GPU
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+
+# Image decoding
+image = { workspace = true, features = ["png", "jpeg"] }

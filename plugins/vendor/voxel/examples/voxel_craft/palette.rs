@@ -39,7 +39,7 @@ pub fn load(world: &mut World) -> Palette {
             let entity = world.spawn();
             world.insert(
                 entity,
-                MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+                MaterialComponent::from(helio_mats::MaterialRow::new(
                     [r, g, b, 1.0],
                     block.roughness(),
                     0.0,

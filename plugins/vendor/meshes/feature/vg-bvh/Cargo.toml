@@ -1,0 +1,19 @@
+[package]
+name = "helio-pass-vg-bvh"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual geometry: GPU Morton LBVH (GCBVH top level) over VG instances, with batch leaves and refit-only updates"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-core = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+helio-vg-format = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+log = { workspace = true }
+pulsar_scenedb = { workspace = true }
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }
+pollster = "0.4"

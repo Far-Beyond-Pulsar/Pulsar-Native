@@ -1,0 +1,35 @@
+[package]
+name = "helio-pass-gbuffer"
+version = "0.1.0"
+edition = "2021"
+description = "Helio render pass: helio-pass-gbuffer"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["gpu"]
+gpu = []
+# Row components for standalone hosts (`host_rows`, re-exported by
+# `helio-mesh-host`): examples and tests enable it; engines derive the rows
+# from their own components.
+host-rows = ["dep:helio-components", "dep:pulsar_scenedb_derive"]
+
+[dependencies]
+helio-components = { workspace = true, optional = true }
+pulsar_scenedb_derive = { workspace = true, optional = true }
+helio-mesh-api = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-feature-api = { workspace = true }
+pulsar_reflection = { workspace = true }
+helio-core  = { workspace = true }
+helio-mats  = { workspace = true }
+helio-pass-shadow-matrix = { workspace = true }
+glam      = { workspace = true }
+wgpu      = { workspace = true }
+bytemuck  = { workspace = true, features = ["derive"] }
+log       = { workspace = true }
+pulsar_scenedb = { workspace = true }
+serde_json = { workspace = true }
+image = { workspace = true }
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }

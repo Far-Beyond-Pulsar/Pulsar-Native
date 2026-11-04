@@ -595,7 +595,7 @@ pub fn first_fixed_in_group(
 // ── Virtual geometry ────────────────────────────────────────────────────────
 //
 // Plan: `.agents/plans/virtual-geometry.md`. A host owns one
-// [`VirtualGeometryHost`]; it hands its runtime to `helio_presets::with_virtual_geometry`
+// [`VirtualGeometryHost`]; it hands its runtime to `helio_pass_vg::with_virtual_geometry`
 // (the graph passes), installs the two derivations below between the scene
 // join and the authored-LOD selection, and calls [`sync_virtual_geometry`]
 // every frame.

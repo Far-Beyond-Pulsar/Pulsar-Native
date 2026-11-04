@@ -17,8 +17,9 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
     RendererBuilder, RendererConfig,
 };
-use helio_components::ray_tracing::SceneDbRayTracing;
-use helio_components::{MaterialComponent, MeshComponent, StaticObjectComponent};
+use helio_mesh_host::ray_tracing::SceneDbRayTracing;
+use helio_components::{MaterialComponent};
+use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_gi::{Clipmap, GiPass, LEVEL_PROBES, PROBE_WORDS};
 use helio_vg_stream::{content_words, VgRuntime, VgeoBytes, VgeoSource};
 use pulsar_scenedb::{Entity, World};
@@ -39,7 +40,7 @@ fn scene_db(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> pulsar_scen
     StaticObjectComponent::register_gpu_columns_growable(&mut store, 64, device);
     helio_components::LightComponent::register_gpu_columns_growable(
         &mut store,
-        helio_pass_forward_lit::MAX_LIGHTS,
+        helio_pass_light_cull::MAX_LIGHTS,
         device,
     );
     let textures = Arc::new(RwLock::new(pulsar_scenedb::gpu::TextureStore::new(64)));
@@ -92,7 +93,7 @@ fn box_faces(half: Vec3, n: u32) -> (Vec<Vec3>, Vec<Vec3>, Vec<u32>) {
 
 fn material(world: &mut World, colour: [f32; 3], emissive: f32) -> (Entity, MaterialComponent) {
     let entity = world.spawn();
-    let row = MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+    let row = MaterialComponent::from(helio_mats::MaterialRow::new(
         [colour[0], colour[1], colour[2], 1.0],
         0.8,
         0.0,
@@ -270,8 +271,8 @@ fn room(world: &mut World, light: bool) {
         let entity = world.spawn();
         world.insert(
             entity,
-            LightComponent::from(helio_pass_forward_lit::LightRow::from(
-                helio_pass_forward_lit::GpuLight {
+            LightComponent::from(helio_pass_light_cull::LightRow::from(
+                helio_pass_light_cull::GpuLight {
                     position_range: [0.0, 2.5, -2.5, 12.0],
                     color_intensity: [1.0, 0.9, 0.8, 20.0],
                     shadow_index: u32::MAX,
@@ -422,8 +423,7 @@ impl Harness {
         let config = RendererConfig::new(64, 64, wgpu::TextureFormat::Rgba8Unorm);
         let renderer =
             RendererBuilder::new(config.clone(), scene.world.gpu_mirror().cloned().unwrap())
-                .with_graph(helio_presets::Preset::Deferred.with_features(
-                &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
+                .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
             ))
                 .with_external_device()
                 .build(
@@ -504,7 +504,7 @@ impl Harness {
             .register_mips(&self.device, &self.queue, &descriptor, &[&texels])
             .unwrap();
         let entity = self.scene.world.spawn();
-        let mut row = MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+        let mut row = MaterialComponent::from(helio_mats::MaterialRow::new(
             [0.7, 0.7, 0.7, 1.0],
             0.8,
             0.0,
@@ -519,7 +519,7 @@ impl Harness {
 
     fn frame(&mut self) {
         self.prepare();
-        self.renderer.set_ray_tracing_frame(self.rays.frame());
+        self.rays.publish(&mut self.renderer);
         self.renderer.render(&self.camera, &self.view).unwrap();
     }
 

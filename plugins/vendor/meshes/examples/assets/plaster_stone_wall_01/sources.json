@@ -1,0 +1,17 @@
+[
+  {
+    "map": "Diffuse",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/plaster_stone_wall_01/plaster_stone_wall_01_diff_2k.jpg",
+    "sha256": "D2DFED68CAE9E78A1D5E2B5BBE2F311A7A648981C1D177244EDF1A4F24CB6DB7"
+  },
+  {
+    "map": "nor_gl",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/plaster_stone_wall_01/plaster_stone_wall_01_nor_gl_2k.jpg",
+    "sha256": "4B245A8B02AC93EDA5520BBFB311EB468ED569E6D279351F89FEEE0CF25D04D4"
+  },
+  {
+    "map": "arm",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/plaster_stone_wall_01/plaster_stone_wall_01_arm_2k.jpg",
+    "sha256": "0D80FF8CF7C8E87677CEEDD53DE7B95E2BE336AD50AA6F94E7BCCAE4A8A4C91C"
+  }
+]

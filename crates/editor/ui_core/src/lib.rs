@@ -31,6 +31,8 @@ use water_plugin as _;
 // The lighting plugins (Phase B batch 3).
 use gi_plugin as _;
 use sky_plugin as _;
+// The meshes (Phase B batch 4).
+use meshes_plugin as _;
 
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");

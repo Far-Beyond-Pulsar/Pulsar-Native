@@ -12,8 +12,9 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
     RendererBuilder, RendererConfig,
 };
-use helio_components::ray_tracing::SceneDbRayTracing;
-use helio_components::{MaterialComponent, MeshComponent, StaticObjectComponent};
+use helio_mesh_host::ray_tracing::SceneDbRayTracing;
+use helio_components::{MaterialComponent};
+use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_gi::{GiMeshTracePass, GiPass, PROBES, PROBE_WORDS};
 
 fn scene_db(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> pulsar_scenedb::SceneDb {
@@ -32,7 +33,7 @@ fn scene_db(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> pulsar_scen
     StaticObjectComponent::register_gpu_columns_growable(&mut store, 64, device);
     helio_components::LightComponent::register_gpu_columns_growable(
         &mut store,
-        helio_pass_forward_lit::MAX_LIGHTS,
+        helio_pass_light_cull::MAX_LIGHTS,
         device,
     );
     scene_db
@@ -73,7 +74,7 @@ fn spawn_box(world: &mut pulsar_scenedb::World, centre: Vec3, half: Vec3, colour
     let mesh = world.spawn();
     world.insert(mesh, MeshComponent { vertices, indices });
     let material = world.spawn();
-    let row = MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+    let row = MaterialComponent::from(helio_mats::MaterialRow::new(
         [colour[0], colour[1], colour[2], 1.0],
         0.8,
         0.0,
@@ -108,8 +109,8 @@ fn room(world: &mut pulsar_scenedb::World) {
     let light = world.spawn();
     world.insert(
         light,
-        LightComponent::from(helio_pass_forward_lit::LightRow::from(
-            helio_pass_forward_lit::GpuLight {
+        LightComponent::from(helio_pass_light_cull::LightRow::from(
+            helio_pass_light_cull::GpuLight {
                 position_range: [0.0, 2.5, 0.0, 12.0],
                 color_intensity: [1.0, 0.9, 0.8, 20.0],
                 shadow_index: u32::MAX,
@@ -229,8 +230,7 @@ fn a_mesh_scene_s_probes_trace_its_meshes_on_frames_with_a_tlas() {
     let config = RendererConfig::new(64, 64, wgpu::TextureFormat::Rgba8Unorm);
     let mut renderer =
         RendererBuilder::new(config.clone(), scene.world.gpu_mirror().cloned().unwrap())
-            .with_graph(helio_presets::Preset::Deferred.with_features(
-                &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
+            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
             ))
             .with_external_device()
             .build(
@@ -289,7 +289,7 @@ fn a_mesh_scene_s_probes_trace_its_meshes_on_frames_with_a_tlas() {
     for _ in 0..40 {
         scene.world.flush_gpu_mirror(&queue);
         rays.prepare(&scene.world).unwrap();
-        renderer.set_ray_tracing_frame(rays.frame());
+        rays.publish(&mut renderer);
         renderer.render(&camera, &view).unwrap();
     }
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
@@ -321,8 +321,7 @@ fn without_ray_queries_a_mesh_scene_has_no_gi() {
     let config = RendererConfig::new(32, 32, wgpu::TextureFormat::Rgba8Unorm);
     let mut renderer =
         RendererBuilder::new(config.clone(), scene.world.gpu_mirror().cloned().unwrap())
-            .with_graph(helio_presets::Preset::Deferred.with_features(
-                &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
+            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new().with(helio_pass_gi::GiFeature),
             ))
             .with_external_device()
             .build(

@@ -50,20 +50,20 @@ pub fn new_scene_db_with_gpu_mirror_and(
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
     helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
-    helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
+    helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
-    helio_components::StaticObjectComponent::register_gpu_columns_growable(
+    helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
     helio_components::LightComponent::register_gpu_columns_growable(
         &mut gpu_store,
-        helio_pass_forward_lit::MAX_LIGHTS,
+        helio_pass_light_cull::MAX_LIGHTS,
         device,
     );
     register_extra(&mut gpu_store);
@@ -112,7 +112,7 @@ pub fn make_material(
     emissive: [f32; 3],
     emissive_strength: f32,
 ) -> helio_components::MaterialComponent {
-    MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+    MaterialComponent::from(helio_mats::MaterialRow::new(
         base_color,
         roughness,
         metallic,
@@ -154,7 +154,7 @@ pub fn point_light(position: [f32; 3], color: [f32; 3], intensity: f32, range: f
 // ── SceneDB-owned scene content ─────────────────────────────────────────────
 //
 // A demo's placed objects and lights are authored as *pass-owned* SceneDB
-// components — `helio_components::StaticObjectComponent` and
+// components — `helio_mesh_host::StaticObjectComponent` and
 // `helio_components::LightComponent` — not as example-local structs or
 // entries in a Helio-owned `Vec`/arena. Each is `#[derive(SceneStore)]` +
 // `#[gpu(layout = packed, ...)]`, exactly like the already-shipped
@@ -167,7 +167,7 @@ pub fn point_light(position: [f32; 3], color: [f32; 3], intensity: f32, range: f
 // exclusively in the World row.
 
 pub use helio_components::LightComponent;
-pub use helio_components::{MeshComponent, StaticObjectComponent};
+pub use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 
 /// Insert the scene's atmosphere: Earth's air, its Rayleigh scattering
 /// tinted towards `tint` (each channel scaled by `tint` over its largest
@@ -288,7 +288,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
     let entity = world.spawn();
     world.insert(
         entity,
-        LightComponent::from(helio_pass_forward_lit::LightRow::from(light)),
+        LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
     );
     entity
 }
@@ -298,7 +298,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
 /// resubmission step exists to call anymore.
 pub fn update_light(world: &mut World, entity: Entity, light: GpuLight) {
     if let Some(mut existing) = world.get_mut::<LightComponent>(entity) {
-        *existing = LightComponent::from(helio_pass_forward_lit::LightRow::from(light));
+        *existing = LightComponent::from(helio_pass_light_cull::LightRow::from(light));
     }
 }
 
@@ -385,9 +385,7 @@ pub fn plane_mesh(center: [f32; 3], half_extent: f32) -> MeshUpload {
 /// The deferred preset with the plugin's features (Helio's presets do not
 /// list them: the decals are a Pulsar plugin's).
 pub fn preset() -> helio_presets::PresetGraph {
-    helio_presets::Preset::Deferred
-        .with_features(
-            &helio_feature_api::FeatureSet::new()
+    helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
                 .with(helio_pass_decal::DecalFeature)
                 // The lighting plugins' (Helio's presets list neither).
                 .with(helio_pass_sky::SkyFeature)

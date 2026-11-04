@@ -2,8 +2,8 @@
 //! presets built the way the engine builds them (its plugins' features
 //! added, their settings applied) list the same passes as before the leaf
 //! kinds (batch 1), the media and placement kinds (batch 2: fog,
-//! post-process volumes, water, foliage) and the lighting kinds (batch 3:
-//! GI, the sky) left Helio. Dumps every preset's pass declarations for four
+//! post-process volumes, water, foliage), the lighting kinds (batch 3:
+//! GI, the sky) and the meshes (batch 4) left Helio. Dumps every preset's pass declarations for four
 //! configs into `PRESET_SNAPSHOT_OUT` (the format of Helio's preset
 //! snapshot), to diff against a snapshot of the presets from before the
 //! move; skips without the variable. Also checks, always, that the plugins'
@@ -30,6 +30,7 @@ use sky_component as _;
 use splines_component as _;
 use sprites_component as _;
 use water_component as _;
+use meshes_component as _;
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     pollster::block_on(async {
@@ -150,6 +151,13 @@ fn the_engines_presets_carry_the_plugins_passes() {
                     "Atmosphere",
                     "CloudTrace",
                     "AtmosphereComposite",
+                    "ObjectBatch",
+                    "ShadowDirty",
+                    "Shadow",
+                    "IndirectDispatch",
+                    "OcclusionCull",
+                    "GBuffer",
+                    "TransparentPass",
                 ] {
                     assert!(
                         passes.iter().any(|(pass, _)| pass.pass == name),

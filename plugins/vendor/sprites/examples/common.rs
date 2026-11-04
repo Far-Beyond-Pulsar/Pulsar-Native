@@ -6,7 +6,7 @@
 // ── SceneDB-owned scene content ─────────────────────────────────────────────
 //
 // A demo's placed objects and lights are authored as *pass-owned* SceneDB
-// components — `helio_components::StaticObjectComponent` and
+// components — `helio_mesh_host::StaticObjectComponent` and
 // `helio_components::LightComponent` — not as example-local structs or
 // entries in a Helio-owned `Vec`/arena. Each is `#[derive(SceneStore)]` +
 // `#[gpu(layout = packed, ...)]`, exactly like the already-shipped
@@ -33,8 +33,7 @@
 /// The deferred preset with the plugin's features (Helio's presets do not
 /// list them: the sprites are a Pulsar plugin's).
 pub fn preset() -> helio_presets::PresetGraph {
-    helio_presets::Preset::Deferred.with_features(
-        &helio_feature_api::FeatureSet::new()
+    helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
             .with(helio_pass_sprite_batch::SpriteFeature)
             // The lighting plugins' (Helio's presets list neither).
             .with(helio_pass_sky::SkyFeature)

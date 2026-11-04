@@ -455,9 +455,9 @@ impl RenderPass for GiMeshTracePass {
             GI_SUN,
             GI_LIGHT,
             "render_environment",
-            helio_core::RAY_INSTANCES,
-            helio_core::RAY_PROXY_VERTICES,
-            helio_core::RAY_PROXY_INDICES,
+            helio_mesh_api::RAY_INSTANCES,
+            helio_mesh_api::RAY_PROXY_VERTICES,
+            helio_mesh_api::RAY_PROXY_INDICES,
             SUN_OCCLUSION_MAPS,
             SUN_OCCLUSION_PAGES,
             SUN_OCCLUSION_FRAME,
@@ -508,7 +508,7 @@ impl RenderPass for GiMeshTracePass {
         };
         let Some(instances) = ctx
             .registry
-            .get::<&wgpu::Buffer>(ResourceKey::new(helio_core::RAY_INSTANCES))
+            .get::<&wgpu::Buffer>(ResourceKey::new(helio_mesh_api::RAY_INSTANCES))
         else {
             return Ok(());
         };
@@ -525,7 +525,7 @@ impl RenderPass for GiMeshTracePass {
         let lights = pool("scene_lights");
         let proxy = |name: &'static str| ctx.registry.get::<&wgpu::Buffer>(ResourceKey::new(name));
         let proxies =
-            proxy(helio_core::RAY_PROXY_VERTICES).zip(proxy(helio_core::RAY_PROXY_INDICES));
+            proxy(helio_mesh_api::RAY_PROXY_VERTICES).zip(proxy(helio_mesh_api::RAY_PROXY_INDICES));
         // The material table, its bind group kept while it stays the same.
         let rows = pool("materials");
         let textures = ctx.registry.get::<helio_mats::MaterialTextureBindings<'_>>(

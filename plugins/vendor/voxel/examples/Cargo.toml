@@ -21,6 +21,9 @@ name = "water_world"
 path = "water_world.rs"
 
 [dependencies]
+helio-mesh-host = { workspace = true }
+helio-pass-light-cull = { workspace = true }
+helio-mats = { workspace = true }
 helio = { workspace = true }
 helio-core = { workspace = true }
 helio-components = { workspace = true }

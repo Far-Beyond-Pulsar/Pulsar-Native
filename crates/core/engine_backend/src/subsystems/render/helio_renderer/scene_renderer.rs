@@ -145,7 +145,7 @@ impl SceneRenderer {
             )
         };
         let mut virtual_geometry = VirtualGeometryHost::new();
-        let mut config = helio_presets::with_virtual_geometry(
+        let mut config = helio_pass_vg::with_virtual_geometry(
             super::project_settings::renderer_config(width, height, format, &settings),
             virtual_geometry.runtime(),
         );

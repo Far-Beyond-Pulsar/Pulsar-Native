@@ -5,9 +5,8 @@
 use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType, Renderer, RendererBuilder, RendererConfig, SceneDbHandle};
 #[allow(unused_imports)]
-use helio_components::{
-    LightComponent, MaterialComponent, MeshComponent, StaticObjectComponent,
-};
+use helio_components::{LightComponent, MaterialComponent};
+use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use helio_pass_sky::host_rows::AtmosphereComponent;
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use pulsar_scenedb::{Entity, World};
@@ -52,20 +51,20 @@ pub fn new_scene_db_with_gpu_mirror_and(
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
     helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
-    helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
+    helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
-    helio_components::StaticObjectComponent::register_gpu_columns_growable(
+    helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4096,
         device,
     );
     helio_components::LightComponent::register_gpu_columns_growable(
         &mut gpu_store,
-        helio_pass_forward_lit::MAX_LIGHTS,
+        helio_pass_light_cull::MAX_LIGHTS,
         device,
     );
     register_extra(&mut gpu_store);
@@ -114,7 +113,7 @@ pub fn make_material(
     emissive: [f32; 3],
     emissive_strength: f32,
 ) -> helio_components::MaterialComponent {
-    MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+    MaterialComponent::from(helio_mats::MaterialRow::new(
         base_color,
         roughness,
         metallic,
@@ -249,7 +248,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
     let entity = world.spawn();
     world.insert(
         entity,
-        LightComponent::from(helio_pass_forward_lit::LightRow::from(light)),
+        LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
     );
     entity
 }
@@ -336,5 +335,5 @@ pub fn features() -> helio_feature_api::FeatureSet {
 
 /// The deferred preset with the plugin's features.
 pub fn preset() -> helio_presets::PresetGraph {
-    helio_presets::Preset::Deferred.with_features(&features())
+    helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &features())
 }

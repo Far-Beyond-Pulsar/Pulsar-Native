@@ -10,7 +10,8 @@ use glam::{Mat4, Vec3};
 use helio::{
     required_wgpu_features, required_wgpu_limits, Camera, RendererBuilder, RendererConfig,
 };
-use helio_components::{MaterialComponent, MeshComponent, StaticObjectComponent};
+use helio_components::{MaterialComponent};
+use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use pulsar_scenedb_derive::SceneStore;
 
 /// A decal pass row as a SceneDB component, as the plugin's join writes it.
@@ -82,7 +83,7 @@ fn floor(world: &mut pulsar_scenedb::World) {
         },
     );
     let material = world.spawn();
-    let row = MaterialComponent::from(helio_pass_gbuffer::MaterialRow::new(
+    let row = MaterialComponent::from(helio_mats::MaterialRow::new(
         [0.7, 0.7, 0.7, 1.0],
         0.8,
         0.0,
@@ -135,8 +136,7 @@ fn the_decal_pass_joins_with_its_first_row() {
     let config = RendererConfig::new(64, 48, wgpu::TextureFormat::Rgba8UnormSrgb);
     let mut renderer =
         RendererBuilder::new(config.clone(), scene.world.gpu_mirror().cloned().unwrap())
-            .with_graph(helio_presets::Preset::Deferred.with_features(
-                &helio_feature_api::FeatureSet::new().with(helio_pass_decal::DecalFeature),
+            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new().with(helio_pass_decal::DecalFeature),
             ))
             .with_external_device()
             .build(

@@ -161,9 +161,9 @@ impl Flight {
         helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
             &mut store, 4, &device,
         );
-        helio_components::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);
+        helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);
         helio_components::MaterialComponent::register_gpu_columns_growable(&mut store, 16, &device);
-        helio_components::StaticObjectComponent::register_gpu_columns_growable(
+        helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
             &mut store, 16, &device,
         );
         helio_components::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
@@ -184,7 +184,7 @@ impl Flight {
         let sky = preset.sky(planet.grid().radius());
         scene.world.insert(
             light,
-            LightComponent::from(helio_pass_forward_lit::LightRow::from(helio::GpuLight {
+            LightComponent::from(helio_pass_light_cull::LightRow::from(helio::GpuLight {
                 position_range: [0.0, 0.0, 0.0, f32::MAX],
                 direction_outer: [-sun_dir.x, -sun_dir.y, -sun_dir.z, 0.0],
                 // The sun above the air: the atmosphere colours it.
@@ -266,8 +266,7 @@ impl Flight {
             // the lens and its flare, portals) and the media kinds (foliage,
             // water, fog, post-process volumes) and the lighting kinds (GI,
             // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
-            .with_graph(Preset::Deferred.with_features(
-                &helio_feature_api::FeatureSet::new()
+            .with_graph(helio_mesh_host::presets::with(helio_presets::Preset::Deferred, &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
                     .with(helio_pass_corona::CoronaFeature)
                     .with(helio_pass_sprite_batch::SpriteFeature)

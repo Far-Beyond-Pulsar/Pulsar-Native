@@ -20,6 +20,9 @@ name = "lens_flare_demo"
 path = "lens_flare_demo.rs"
 
 [dependencies]
+helio-mesh-host = { workspace = true }
+helio-pass-light-cull = { workspace = true }
+helio-mats = { workspace = true }
 # `#[derive(SceneStore)]` expands to reflection paths.
 pulsar_reflection = { workspace = true }
 bytemuck = { workspace = true }
