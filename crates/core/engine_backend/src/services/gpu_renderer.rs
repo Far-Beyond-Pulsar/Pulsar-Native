@@ -8,7 +8,7 @@
 //! cannot hold up a surface reconfiguration.
 
 use crate::subsystems::render::{
-    EditorCameraState, HelioRenderer, RenderMetrics, RenderSpikeLogConfig,
+    EditorCameraState, FrameCrop, HelioRenderer, RenderMetrics, RenderSpikeLogConfig,
 };
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -106,9 +106,40 @@ impl GpuRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) -> Option<wgpu::SubmissionIndex> {
+        self.render_frame_to_surface_inner(device, queue, view, width, height, format, None)
+    }
+
+    /// Render one frozen time-slice tile for an oversized screenshot.
+    pub fn render_capture_tile(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        crop: FrameCrop,
+    ) -> Option<wgpu::SubmissionIndex> {
+        self.render_frame_to_surface_inner(device, queue, view, width, height, format, Some(crop))
+    }
+
+    fn render_frame_to_surface_inner(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        crop: Option<FrameCrop>,
+    ) -> Option<wgpu::SubmissionIndex> {
         profiling::profile_scope!("GpuRenderer::render_frame_to_surface");
         let result = if let Some(ref mut r) = self.helio_renderer {
-            r.render_frame(device, queue, view, width, height, format)
+            if let Some(crop) = crop {
+                r.render_capture_tile(device, queue, view, width, height, format, crop)
+            } else {
+                r.render_frame(device, queue, view, width, height, format)
+            }
         } else {
             None
         };

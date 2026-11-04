@@ -71,6 +71,17 @@ pub struct FrameView {
     /// Width over height.
     pub aspect: f32,
     pub projection: FrameProjection,
+    /// Optional crop into the full output. `aspect` describes `full_size`,
+    /// while the actual render target can be as small as one GPU texture.
+    pub crop: Option<FrameCrop>,
+}
+
+/// One tile of a full-resolution image being rendered by `SceneRenderer`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameCrop {
+    pub full_size: [u32; 2],
+    pub origin: [u32; 2],
+    pub tile_size: [u32; 2],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -402,6 +413,9 @@ impl SceneRenderer {
             view.aspect,
         );
         let camera = camera.with_overscan(overscan);
+        let camera = view.crop.map_or(camera.clone(), |crop| {
+            camera.with_pixel_crop(crop.full_size, crop.origin, crop.tile_size)
+        });
         // Rigid frames: one matrix each, relative to the same origin. Their
         // members' rows never change when a frame moves; this table does.
         // Producers (portal projections) build only what this camera sees,

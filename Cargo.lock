@@ -15926,6 +15926,7 @@ dependencies = [
  "particles_component",
  "plugin_editor_api",
  "plugin_manager",
+ "png",
  "pollster 0.4.0",
  "portals_component",
  "post_component",

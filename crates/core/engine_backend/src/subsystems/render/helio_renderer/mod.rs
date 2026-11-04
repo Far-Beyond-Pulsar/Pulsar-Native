@@ -30,5 +30,6 @@ pub use renderer::{
     ViewportDebugLegend, ViewportDebugView, CAMERA_PIVOT_DISTANCE,
 };
 pub use scene_renderer::{
-    DeviceOwner, FrameProjection, FrameView, PreparedFrame, SceneRenderer, SceneRendererOptions,
+    DeviceOwner, FrameCrop, FrameProjection, FrameView, PreparedFrame, SceneRenderer,
+    SceneRendererOptions,
 };
