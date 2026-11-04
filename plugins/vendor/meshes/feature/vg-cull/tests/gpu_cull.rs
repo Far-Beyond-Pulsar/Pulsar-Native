@@ -21,7 +21,7 @@ use helio_vg_stream::{VgStreamBuffers, PAGE_NOT_RESIDENT};
 
 const W: u32 = 1920;
 const H: u32 = 1080;
-const FOV: f32 = 1.0471976; // 60 degrees
+const FOV: f32 = std::f32::consts::FRAC_PI_3; // 60 degrees
 
 struct Gpu {
     device: wgpu::Device,

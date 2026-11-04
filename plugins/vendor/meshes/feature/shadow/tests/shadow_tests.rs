@@ -248,8 +248,7 @@ fn atlas_total_texels() {
 #[test]
 fn all_face_indices_fit_in_u32() {
     // Each face-index entry is a u32 encoding the face number (0..255).
-    // Verify the maximum face index does not overflow u32.
-    let max: u32 = (MAX_SHADOW_FACES - 1) as u32;
-    assert!(max <= u32::MAX);
+    // Verify the maximum face index converts to u32 without truncating.
+    let max = u32::try_from(MAX_SHADOW_FACES - 1).expect("face index fits a u32");
     assert_eq!(max, 255);
 }

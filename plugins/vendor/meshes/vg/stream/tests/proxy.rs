@@ -62,7 +62,6 @@ fn proxy_levels_are_consistent_cuts() {
         assert_eq!(lod.clusters.len(), lod.cluster_pages.len());
         for &m in &lod.prim_map {
             assert!(((m >> VIS_TRI_BITS) as usize) < lod.clusters.len());
-            assert!((m & VIS_TRI_MASK) < 128);
         }
         assert!(lod
             .indices

@@ -159,7 +159,10 @@ pub fn peel_tile(tris: &[RefTri], origin: [f32; 2], p: &PeelParams) -> TileResul
     let mut id = vec![0u32; n];
     let (mut layers, mut clamped, mut clamped_tris) = (0, false, 0);
     let (mut b0, mut consumed) = (0usize, 0u32);
-    while total != 0 {
+    loop {
+        if total == 0 {
+            break;
+        }
         let (mut acc, mut b) = (0u32, b0);
         while b < nb {
             acc += hist[b];
