@@ -289,7 +289,7 @@ transient buffer. `Missing` entries are blockers, not compatibility exemptions.
 
 | Former object/API family | Required SceneDB owner | GPU projection or transient classification | Status |
 |---|---|---|---|
-| `SceneActor::Sky` | `helio-pass-sky::AtmosphereComponent` (authored as `helio_component::AtmosphereComponent`) | Packed `atmospheres` row derived through the environment join; LUTs are frame-local | Done: the procedural `SkyComponent`/`SkyPass` are retired (#1057); a level has one sky, edited in World Settings |
+| `SceneActor::Sky` | `helio-pass-sky::AtmosphereRow` (authored as the sky plugin's `sky_component::AtmosphereComponent`) | Packed `atmospheres` row derived through the environment join; LUTs are frame-local | Done: the procedural `SkyComponent`/`SkyPass` are retired (#1057); a level has one sky, edited in World Settings |
 | `Mesh`, `insert_mesh`, `insert_object` | `helio-component::StaticMeshComponent` + `engine_backend::scene::{SectionedMeshComponent,MeshObjectComponent}` + `Transform` + material component | Generated mesh pools/transforms; transient draw instances | Partial: parent bridge exists; section/object state now has typed SceneDB equivalents |
 | `Light`, `insert_light*` | `helio-component::LightComponent` | Generated fields; transient compact light list | Partial: parent projection exists; Helio APIs remain |
 | `VirtualMesh`, `insert_virtual_mesh` | removed with the old virtual-geometry pass (T0); see `.agents/plans/virtual-geometry.md` | `VirtualGeometryComponent` on a static mesh | Done: no legacy VG registry |

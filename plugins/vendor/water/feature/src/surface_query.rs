@@ -162,7 +162,7 @@ impl WaterSurfaceQueries {
             &[
                 helio_pass_hiz::HIZ_SNIPPET,
                 crate::pipeline::WATER_SHORE_SNIPPET,
-                helio_sky_api::ATMOSPHERE_SNIPPET,
+                helio_frame_api::lighting::sky::ATMOSPHERE_SNIPPET,
                 crate::pipeline::WATER_SKY_SNIPPET,
                 WATER_QUERY_SNIPPET,
             ],

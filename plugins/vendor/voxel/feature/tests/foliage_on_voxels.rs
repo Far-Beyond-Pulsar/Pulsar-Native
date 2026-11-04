@@ -30,6 +30,8 @@ fn voxel_features() -> helio_feature_api::FeatureSet {
         .with(helio_pass_water_sim::WaterFeature)
         .with(helio_pass_volumetric_fog::FogFeature)
         .with(helio_pass_post_volumes::PostVolumesFeature)
+        .with(helio_pass_sky::SkyFeature)
+        .with(helio_pass_gi::GiFeature)
 }
 
 const SIZE: [u32; 2] = [640, 360];
@@ -73,7 +75,7 @@ impl Harness {
                     max_cells_metadata: 0,
                 },
             );
-            helio_components::AtmosphereComponent::register_gpu_columns_growable(
+            helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
                 &mut store, 4, &device,
             );
             helio_components::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);

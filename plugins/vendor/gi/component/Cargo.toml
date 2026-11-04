@@ -1,0 +1,28 @@
+[package]
+name = "gi_component"
+version = "0.1.0"
+edition = "2024"
+description = "GI (pulsar.gi): the registrations of the plugin's Helio feature (the probe clipmap) and its settings. GI has no SceneDB component: a scene's tracers (meshes, a voxel terrain) feed it."
+
+# Hosts (the editor through the plugin crate, the game) link it; the render
+# feature and its settings register through `inventory` once the crate is
+# linked.
+[lib]
+name = "gi_component"
+
+[dependencies]
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+inventory = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-pass-gi = { workspace = true }
+pulsar_settings = { workspace = true }
+
+[dev-dependencies]
+wgpu = { workspace = true }
+
+[lints]
+workspace = true

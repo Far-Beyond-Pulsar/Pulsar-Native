@@ -36,6 +36,8 @@ helio-pass-gbuffer = { workspace = true }
 helio-pass-lens = { workspace = true }
 helio-pass-post-volumes = { workspace = true, features = ["host-rows"] }
 helio-pass-postprocess = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
 log = { workspace = true }

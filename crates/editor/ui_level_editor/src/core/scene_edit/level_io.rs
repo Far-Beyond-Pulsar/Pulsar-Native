@@ -684,11 +684,11 @@ mod voxel_example_tests {
         .collect();
         // The planet's air, centred on the planet's object.
         let air: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            helio_component::AtmosphereComponent,
+            sky_component::AtmosphereComponent,
         >(&world)
         .map(|(_, _, a)| a.placement)
         .collect();
-        assert_eq!(air, [helio_component::AtmospherePlacement::PlanetAtOwner]);
+        assert_eq!(air, [sky_component::AtmospherePlacement::PlanetAtOwner]);
         assert_eq!(volumes.len(), 1);
         assert!(
             volumes[0].unbound

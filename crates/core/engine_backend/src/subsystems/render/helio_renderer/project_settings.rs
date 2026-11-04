@@ -29,19 +29,15 @@ pub fn renderer() -> Resolved {
     resolved(&helio_settings::RENDERER)
 }
 
-/// A renderer config with the project's settings: the renderer's own and
-/// Helio's default features' (GI), which `RendererConfig::with_settings`
-/// alone does not know.
+/// A renderer config with the project's renderer settings (`settings`);
+/// plugins add their features' ([`super::render_features::configure`]).
 pub fn renderer_config(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
     settings: &Resolved,
 ) -> helio::RendererConfig {
-    helio_presets::config_with_host_settings(
-        helio::RendererConfig::new(width, height, format),
-        settings,
-    )
+    helio::RendererConfig::new(width, height, format).with_settings(settings)
 }
 
 /// The TSR preset to render with: the project's, or with "Automatic" the

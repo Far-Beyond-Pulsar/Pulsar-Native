@@ -34,7 +34,11 @@
 /// list them: the sprites are a Pulsar plugin's).
 pub fn preset() -> helio_presets::PresetGraph {
     helio_presets::Preset::Deferred.with_features(
-        &helio_feature_api::FeatureSet::new().with(helio_pass_sprite_batch::SpriteFeature),
+        &helio_feature_api::FeatureSet::new()
+            .with(helio_pass_sprite_batch::SpriteFeature)
+            // The lighting plugins' (Helio's presets list neither).
+            .with(helio_pass_sky::SkyFeature)
+            .with(helio_pass_gi::GiFeature),
     )
 }
 

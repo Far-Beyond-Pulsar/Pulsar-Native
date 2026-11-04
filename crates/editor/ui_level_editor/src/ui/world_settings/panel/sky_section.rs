@@ -25,7 +25,7 @@ use crate::commands::{execute_command, SceneCommand};
 use crate::scene_edit::sky::{self, LevelSky};
 use crate::WorldSettingsPanel;
 
-const ATMOSPHERE_CLASS: &str = engine_backend::scene::level_rules::ATMOSPHERE_CLASS;
+const ATMOSPHERE_CLASS: &str = sky_component::ATMOSPHERE_CLASS;
 
 /// A component class's reflected properties, read once.
 pub(super) struct ClassProperties {

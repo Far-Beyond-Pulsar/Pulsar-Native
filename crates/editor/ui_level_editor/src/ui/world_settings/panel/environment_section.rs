@@ -235,7 +235,7 @@ impl super::WorldSettingsPanelImpl {
         let mut items = Vec::new();
         for (class_name, title, missing_label) in [
             (
-                engine_backend::scene::level_rules::ATMOSPHERE_CLASS,
+                sky_component::ATMOSPHERE_CLASS,
                 "Sky and Atmosphere",
                 "Missing · creates a sky",
             ),
@@ -398,7 +398,7 @@ impl super::WorldSettingsPanelImpl {
                 class_name,
                 component_index,
             }) => {
-                if class_name == engine_backend::scene::level_rules::ATMOSPHERE_CLASS {
+                if class_name == sky_component::ATMOSPHERE_CLASS {
                     return self.render_sky_section(window, cx);
                 }
                 if class_name == foliage_component::WIND_CLASS_NAME {

@@ -1,8 +1,8 @@
-//! Helio's environment join over this engine's own rows (Pulsar-Native#1035,
-//! Phase 4): atmospheres, authored as component instances, reach the rows
-//! the sky reads. Placement and gating are read back from the join's
-//! outputs. (Every plugin's kind tests its own join.) Needs a GPU adapter
-//! (lavapipe works); skips without one.
+//! The sky plugin's join over the engine's rows (moved from engine_backend's
+//! environment join test): atmospheres, authored as component instances,
+//! reach the rows the sky reads. Placement and gating are read back from
+//! the join's outputs. Needs a GPU adapter (lavapipe works); skips without
+//! one.
 
 use std::sync::Arc;
 
@@ -35,8 +35,8 @@ impl Join {
         self.run_after(scene, None)
     }
 
-    /// Run the join after `before` (the scene join, whose lights the water
-    /// rows read), as the renderer orders them.
+    /// Run the join after `before` (the scene join, whose lights some
+    /// kinds' rows read), as the renderer orders them.
     fn run_after(
         &mut self,
         scene: &mut SceneDb,
@@ -141,7 +141,7 @@ type AtmosphereRow = helio_pass_sky::AtmosphereRow;
 
 #[test]
 fn atmospheres_follow_their_owner_and_their_enabled_state() {
-    use helio_component::components::{AtmosphereComponent, AtmospherePlacement};
+    use sky_component::{AtmosphereComponent, AtmospherePlacement};
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return;

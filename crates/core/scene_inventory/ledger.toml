@@ -33,10 +33,10 @@ name = "AtmosphereComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::atmosphere_component"
-disposition = "render, Phase 4. Its derived AtmosphereSourceRow is written on every insert, write, removal and replay; the environment join gates it on the instance and its owner and places it into atmospheres (a planet at its owner centred on the owner), which the atmosphere pass reads. It is the level's one sky: a second is refused when added, and extras in a level file are disabled on load (#1057)"
+owner = "sky_component::component"
+disposition = "render, Phase 4. Its derived AtmosphereSourceRow is written on every insert, write, removal and replay; the sky plugin's row join gates it on the instance and its owner and places it into atmospheres (a planet at its owner centred on the owner), which the atmosphere pass reads. It is the level's one sky: a second is refused when added, and extras in a level file are disabled on load (#1057)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+test = "plugins/vendor/sky/component/tests/scene_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
 
 [[class]]
@@ -91,7 +91,7 @@ own_gpu_columns = true
 owner = "post_component::camera"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into camera_postprocess, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[class]]
@@ -135,7 +135,7 @@ own_gpu_columns = true
 owner = "foliage_component::foliage"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Blades sway in the level's global wind (WindComponent) by their per-band response, on the renderer's frame clock (#1123, #1109); a component may opt out for its own wind (use_global_wind), and a level without a global wind uses the components' own. Grass grows on flat ground at Y 0, no terrain capture in the editor (#1064). Limits, each tracked: types share layers and one wind applies to all foliage (#1123), and the interactor and material colour fields have no consumer (#1063)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame, foliage_sways_in_the_global_wind_on_the_frame_clock)"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame, foliage_sways_in_the_global_wind_on_the_frame_clock)"
 status = "verified"
 
 [[class]]
@@ -146,7 +146,7 @@ own_gpu_columns = true
 owner = "fog_component::component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into global_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[class]]
@@ -191,7 +191,7 @@ own_gpu_columns = true
 owner = "fog_component::component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into local_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[class]]
@@ -236,7 +236,7 @@ own_gpu_columns = true
 owner = "post_component::volume"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into post_process_volumes, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[class]]
@@ -774,7 +774,7 @@ writer = "helio-scene-derivations environment join from FoliageComponent's sourc
 owner = "helio_pass_foliage_place::components"
 disposition = "keep as the pass row layout of foliage_layers; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -788,7 +788,7 @@ writer = "helio-scene-derivations environment join from FoliageComponent's sourc
 owner = "helio_pass_foliage_place::components"
 disposition = "keep as the pass row layout of foliage_types; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -802,7 +802,7 @@ writer = "helio-scene-derivations environment join from FoliageComponent's sourc
 owner = "helio_pass_foliage_place::components"
 disposition = "keep as the pass row layout of foliage_wind; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -1012,7 +1012,7 @@ writer = "helio-scene-derivations environment join from CameraPostProcessCompone
 owner = "helio_pass_postprocess::components"
 disposition = "keep as the pass row layout of camera_postprocess; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -1026,7 +1026,7 @@ writer = "helio-scene-derivations environment join from PostProcessVolumeCompone
 owner = "helio_pass_postprocess::components"
 disposition = "keep as the pass row layout of post_process_volumes; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -1143,30 +1143,30 @@ status = "verified"
 
 [[schema]]
 type = "AtmosphereComponent"
-path = "helio_component::components::atmosphere_component::AtmosphereComponent"
+path = "sky_component::component::AtmosphereComponent"
 buffers = ["atmospheres"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
 writer = "the authored value's SceneDB GPU dispatch is its derived AtmosphereSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
-owner = "helio_component::components::atmosphere_component"
+owner = "sky_component::component"
 disposition = "keep: the authored type's GPU row is AtmosphereSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+test = "plugins/vendor/sky/component/tests/scene_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
 
 [[schema]]
 type = "AtmosphereSourceRow"
-path = "helio_component::components::environment_rows::AtmosphereSourceRow"
+path = "sky_component::AtmosphereSourceRow"
 buffers = ["atmosphere_sources"]
 clears_on_remove = true
 releases_var_len = false
 registered = true
 writer = "AtmosphereComponent's derived GPU registration (the pass row in the owner's space, enabled from the authored flag), on every insert, write, removal and replay"
-owner = "helio_component::components::environment_rows"
+owner = "sky_component"
 disposition = "keep: the environment join's atmospheres input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+test = "plugins/vendor/sky/component/tests/scene_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
 
 [[schema]]
@@ -1180,7 +1180,7 @@ writer = "helio-scene-derivations environment join from AtmosphereComponent's so
 owner = "helio_pass_sky::atmosphere"
 disposition = "keep as the pass row layout of atmospheres; produced by the join, not registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+test = "plugins/vendor/sky/component/tests/scene_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
 
 [[schema]]
@@ -1208,7 +1208,7 @@ writer = "helio-scene-derivations environment join from GlobalFogComponent's sou
 owner = "helio_pass_volumetric_fog::components"
 disposition = "keep as the pass row layout of global_fog_media; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -1222,7 +1222,7 @@ writer = "helio-scene-derivations environment join from LocalFogVolumeComponent'
 owner = "helio_pass_volumetric_fog::components"
 disposition = "keep as the pass row layout of local_fog_media; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -1264,7 +1264,7 @@ writer = "helio-scene-derivations environment join from WaterVolumeComponent's s
 owner = "helio_pass_water_sim::components"
 disposition = "keep as the pass row layout of water_volumes; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/water/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[schema]]
@@ -1334,7 +1334,7 @@ writer = "scene object transform writes (World::insert/get_mut on Transform)"
 owner = "pulsar_scene_model::components"
 disposition = "keep: the owner transform column; the scene and environment joins read it by owner entity"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer) (moved mesh); crates/core/engine_backend/tests/environment_join_rows.rs (moving an owner)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer) (moved mesh); plugins/vendor/*/component/tests/scene_rows.rs (each kind's join) (moving an owner)"
 status = "verified"
 
 # ── Lifecycle call sites ─────────────────────────────────────────────────
@@ -1626,7 +1626,7 @@ writer = "the authored value's SceneDB GPU dispatch is its derived CameraPostPro
 owner = "post_component::camera"
 disposition = "keep: the authored type's GPU row is CameraPostProcessSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1640,7 +1640,7 @@ writer = "the authored value's SceneDB GPU dispatch is its derived GlobalFogSour
 owner = "fog_component::component"
 disposition = "keep: the authored type's GPU row is GlobalFogSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1654,7 +1654,7 @@ writer = "the authored value's SceneDB GPU dispatch is its derived LocalFogSourc
 owner = "fog_component::component"
 disposition = "keep: the authored type's GPU row is LocalFogSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1668,7 +1668,7 @@ writer = "the authored value's SceneDB GPU dispatch is its derived FoliageSource
 owner = "foliage_component::foliage::component"
 disposition = "keep: the authored type's GPU row is FoliageSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1696,7 +1696,7 @@ writer = "the authored value's SceneDB GPU dispatch is its derived PostProcessVo
 owner = "post_component::volume"
 disposition = "keep: the authored type's GPU row is PostProcessVolumeSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1710,7 +1710,7 @@ writer = "GlobalFogComponent's derived GPU registration (the pass GlobalFogCompo
 owner = "fog_component"
 disposition = "keep: the environment join's global_fog_media input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1724,7 +1724,7 @@ writer = "LocalFogVolumeComponent's derived GPU registration (the local box size
 owner = "fog_component"
 disposition = "keep: the environment join's local_fog_media input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1738,7 +1738,7 @@ writer = "PostProcessVolumeComponent's derived GPU registration (the volume size
 owner = "post_component"
 disposition = "keep: the environment join's post_process_volumes input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1766,7 +1766,7 @@ writer = "CameraPostProcessComponent's derived GPU registration (the pass camera
 owner = "post_component"
 disposition = "keep: the environment join's camera_postprocess input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1780,7 +1780,7 @@ writer = "WaterVolumeComponent's derived GPU registration (local size and surfac
 owner = "water_component"
 disposition = "keep: the environment join's water_volumes input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/water/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1794,7 +1794,7 @@ writer = "SceneDB write path of the authored value itself, through its derived W
 owner = "water_component::component"
 disposition = "keep: the authored type's GPU dispatch is the derived source row; the scanner attributes water_volumes to it by name, but the row it writes is water_volume_sources"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/water/component/tests/scene_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1808,7 +1808,7 @@ writer = "FoliageComponent's derived GPU registration (type row, layer, wind row
 owner = "foliage_component"
 disposition = "keep: the environment join's foliage input (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2058,7 +2058,7 @@ consumers = ["helio-presets", "helio-pass-postprocess"]
 owner = "helio-scene-derivations environment join (execution output, one row per component instance)"
 disposition = "keep: the join copies each placed, enabled CameraPostProcessComponent row; the editor baseline is the resolver's defaults (EditorPostProcess), not a scene row"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/editor_bloom_toggle.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/editor_bloom_toggle.rs"
 status = "verified"
 
 [[buffer]]
@@ -2138,7 +2138,7 @@ consumers = ["helio-presets", "helio-pass-foliage-place"]
 owner = "helio-scene-derivations environment join (execution output, placed foliage packed into the leading rows in instance order)"
 disposition = "keep: a world-aligned square centred on the owner, spanning the authored altitudes; tiles re-place when the layers change, with the type table's seed; types are not yet bound to their own layers (#1062)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
 status = "verified"
 
 [[buffer]]
@@ -2148,7 +2148,7 @@ consumers = ["helio-presets", "helio-pass-foliage-gbuffer", "helio-pass-foliage-
 owner = "helio-scene-derivations environment join (execution output, placed foliage packed into the leading rows in instance order)"
 disposition = "keep: placement draws types from the live leading rows; both foliage passes run only while a row has a density (async liveness)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
 status = "verified"
 
 [[buffer]]
@@ -2158,7 +2158,7 @@ consumers = ["helio-presets", "helio-pass-foliage-gbuffer"]
 owner = "helio-scene-derivations environment join (execution output, placed foliage packed into the leading rows in instance order)"
 disposition = "keep: one wind row for all foliage: the first placed foliage component that opts out of the global wind, else the level's global wind (WindComponent), else the first placed component's own wind (#1123). Its clock words are unused: the foliage passes read the renderer's frame clock (#1109)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (foliage_types_layers_and_wind_are_packed, foliage_sways_in_the_global_wind_unless_it_opts_out); crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock)"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs (foliage_types_layers_and_wind_are_packed, foliage_sways_in_the_global_wind_unless_it_opts_out); crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock)"
 status = "verified"
 
 [[buffer]]
@@ -2168,7 +2168,7 @@ consumers = ["helio-presets"]
 owner = "helio-scene-derivations environment join (execution output, one row per component instance)"
 disposition = "keep: helio-pass-volumetric-fog and helio-pass-postprocess (fog composite) read it through key-string helpers the source scan does not list as consumers; the join gates on owner, generation and visibility"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[buffer]]
@@ -2178,7 +2178,7 @@ consumers = ["helio-presets"]
 owner = "helio-scene-derivations environment join (execution output, one row per component instance)"
 disposition = "keep: helio-pass-volumetric-fog and helio-pass-postprocess (fog composite) read it through key-string helpers the source scan does not list as consumers; the join places the box from the owner's transform"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[buffer]]
@@ -2228,7 +2228,7 @@ consumers = ["helio-presets", "helio-pass-postprocess", "helio-pass-volumetric-f
 owner = "helio-scene-derivations environment join (execution output, one row per component instance)"
 disposition = "keep: the join places each volume from its owner's transform; the post-process resolver and volumetric fog read it"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 [[buffer]]
@@ -2328,7 +2328,7 @@ consumers = ["helio-presets", "helio-pass-deferred-light", "helio-pass-water-sim
 owner = "helio-scene-derivations environment join (execution output, placed volumes packed into MAX_WATER_VOLUMES leading rows in instance order)"
 disposition = "keep: the water passes read a fixed number of leading rows (deferred lighting reads row 0), so the join packs placed volumes rather than keeping the instance row"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "plugins/vendor/water/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
 
 # ── Render pass crates ───────────────────────────────────────────────────
@@ -2342,7 +2342,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: GlobalFogComponent in its owner's space, derived on every write; the environment join reads it into global_fog_media"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2352,7 +2352,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: LocalFogVolumeComponent in its owner's space, derived on every write; the environment join reads it into local_fog_media"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2362,7 +2362,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: PostProcessVolumeComponent in its owner's space, derived on every write; the environment join reads it into post_process_volumes"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2379,20 +2379,20 @@ status = "verified"
 key = "atmosphere_sources"
 producers = ["AtmosphereSourceRow"]
 consumers = []
-owner = "helio_component::components::environment_rows"
-disposition = "keep: AtmosphereComponent in its owner's space, derived on every write; the environment join reads it into atmospheres"
+owner = "sky_component"
+disposition = "keep: AtmosphereComponent in its owner's space, derived on every write; the sky plugin's row join reads it into atmospheres"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+test = "plugins/vendor/sky/component/tests/scene_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
 
 [[buffer]]
 key = "atmospheres"
 producers = ["AtmosphereComponent"]
-consumers = ["helio-presets", "helio-pass-sky"]
-owner = "helio-scene-derivations environment join (execution output, one row per component instance)"
+consumers = ["helio-pass-sky"]
+owner = "the sky plugin's row join (helio_pass_sky::scene_rows; execution output, one row per component instance)"
 disposition = "keep: the join copies each placed, enabled AtmosphereComponent row and centres a planet placed at its owner on the owner's position; the atmosphere pass uses the first enabled row"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+test = "plugins/vendor/sky/component/tests/scene_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
 
 [[buffer]]
@@ -2412,7 +2412,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: CameraPostProcessComponent in its owner's space, derived on every write; the environment join reads it into camera_postprocess"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/fog/component/tests/scene_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2422,7 +2422,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: WaterVolumeComponent in its owner's space, derived on every write; the environment join packs it into water_volumes"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/water/component/tests/scene_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2432,7 +2432,7 @@ consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: FoliageComponent's type, layer and wind, derived on every write; the environment join packs them into foliage_types, foliage_layers and foliage_wind"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+test = "plugins/vendor/foliage/component/tests/scene_rows.rs"
 status = "verified"
 
 [[pass]]
@@ -2532,7 +2532,7 @@ reads = ["reflection_captures", "scene_lights", "water_volumes"]
 owner = "helio-presets (mapping); helio-pass-deferred-light (algorithm)"
 disposition = "keep: reads scene_lights (joined from LightSourceRow) and water_volumes (joined from WaterVolumeSourceRow); reflection_captures has no authored producer yet (#1054)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); plugins/vendor/water/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[pass]]
@@ -2723,7 +2723,7 @@ reads = ["camera_postprocess", "post_process_volumes"]
 owner = "helio-presets (mapping); helio-pass-postprocess (algorithm)"
 disposition = "keep: reads the environment join's fog / post-process outputs, derived from authored components (Phase 4)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[pass]]
@@ -2893,7 +2893,7 @@ reads = ["post_process_volumes", "scene_lights"]
 owner = "helio-presets (mapping); helio-pass-volumetric-fog (algorithm)"
 disposition = "keep: reads the environment join's fog / post-process outputs, derived from authored components (Phase 4)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[pass]]
@@ -2913,7 +2913,7 @@ reads = ["water_hitboxes", "water_volumes"]
 owner = "helio-presets (mapping); helio-pass-water-sim (algorithm)"
 disposition = "keep: reads water_volumes (joined from WaterVolumeComponent, Phase 4) and water_hitboxes (joined from PhysicsComponents on the WaterSim channel, #1080)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "plugins/vendor/water/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[site]]

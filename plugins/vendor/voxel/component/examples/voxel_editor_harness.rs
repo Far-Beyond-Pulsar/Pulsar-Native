@@ -479,7 +479,8 @@ fn main() {
     // examples).
     {
         use fog_component::GlobalFogComponent;
-        use helio_component::components::{AtmosphereComponent, LightComponent};
+        use helio_component::components::LightComponent;
+        use sky_component::AtmosphereComponent;
         use post_component::{CameraPostProcessComponent, PostProcessVolumeComponent};
         let world = &scene.read().world;
         for (_, light) in world.query::<&LightComponent>() {

@@ -6,8 +6,9 @@ use glam::{Mat4, Vec3};
 use helio::{GpuLight, LightType, Renderer, RendererBuilder, RendererConfig, SceneDbHandle};
 #[allow(unused_imports)]
 use helio_components::{
-    AtmosphereComponent, LightComponent, MaterialComponent, MeshComponent, StaticObjectComponent,
+    LightComponent, MaterialComponent, MeshComponent, StaticObjectComponent,
 };
+use helio_pass_sky::host_rows::AtmosphereComponent;
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
@@ -50,7 +51,7 @@ pub fn new_scene_db_with_gpu_mirror_and(
         max_cells_metadata: 0,
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
-    helio_components::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
+    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
     helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,
@@ -529,6 +530,9 @@ pub fn features() -> helio_feature_api::FeatureSet {
     helio_feature_api::FeatureSet::new()
         .with(helio_pass_volumetric_fog::FogFeature)
         .with(helio_pass_post_volumes::PostVolumesFeature)
+        // The lighting plugins' (Helio's presets list neither).
+        .with(helio_pass_sky::SkyFeature)
+        .with(helio_pass_gi::GiFeature)
 }
 
 /// The deferred preset with the plugin's features.

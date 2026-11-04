@@ -33,6 +33,7 @@ extern crate splines_component;
 extern crate sprites_component;
 extern crate fog_component;
 extern crate foliage_component;
+extern crate sky_component;
 extern crate post_component;
 extern crate water_component;
 

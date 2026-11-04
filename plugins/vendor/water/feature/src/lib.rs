@@ -870,9 +870,9 @@ impl RenderPass for WaterSimPass {
             // by HiZBuildPass from `depth` alone, so it is available here.
             "hiz_nearest",
             // The sky the sea reflects and scatters.
-            helio_sky_api::ATMOSPHERE_FRAME,
-            helio_sky_api::ATMOSPHERE_SKY_TABLE,
-            helio_sky_api::ATMOSPHERE_SKY_VIEW,
+            helio_frame_api::lighting::sky::ATMOSPHERE_FRAME,
+            helio_frame_api::lighting::sky::ATMOSPHERE_SKY_TABLE,
+            helio_frame_api::lighting::sky::ATMOSPHERE_SKY_VIEW,
         ]
     }
     fn writes(&self) -> &'static [&'static str] {
@@ -1935,20 +1935,20 @@ impl RenderPass for WaterSimPass {
                 let atmosphere_buf = ctx
                     .registry
                     .get::<&wgpu::Buffer>(helio_core::ResourceKey::new(
-                        helio_sky_api::ATMOSPHERE_FRAME,
+                        helio_frame_api::lighting::sky::ATMOSPHERE_FRAME,
                     ))
                     .unwrap_or(&self.fallback_atmosphere);
                 let sky_table_buf = ctx
                     .registry
                     .get::<&wgpu::Buffer>(helio_core::ResourceKey::new(
-                        helio_sky_api::ATMOSPHERE_SKY_TABLE,
+                        helio_frame_api::lighting::sky::ATMOSPHERE_SKY_TABLE,
                     ))
                     .unwrap_or(&self.fallback_sky_table);
 
                 let sky_view_tex = ctx
                     .registry
                     .get::<&wgpu::TextureView>(helio_core::ResourceKey::new(
-                        helio_sky_api::ATMOSPHERE_SKY_VIEW,
+                        helio_frame_api::lighting::sky::ATMOSPHERE_SKY_VIEW,
                     ))
                     .unwrap_or(&self.fallback_sky_view);
 
@@ -2376,13 +2376,13 @@ impl RenderPass for WaterSimPass {
                     let tint_atmosphere = ctx
                         .registry
                         .get::<&wgpu::Buffer>(helio_core::ResourceKey::new(
-                            helio_sky_api::ATMOSPHERE_FRAME,
+                            helio_frame_api::lighting::sky::ATMOSPHERE_FRAME,
                         ))
                         .unwrap_or(&self.fallback_atmosphere);
                     let tint_sky_view = ctx
                         .registry
                         .get::<&wgpu::TextureView>(helio_core::ResourceKey::new(
-                            helio_sky_api::ATMOSPHERE_SKY_VIEW,
+                            helio_frame_api::lighting::sky::ATMOSPHERE_SKY_VIEW,
                         ))
                         .unwrap_or(&self.fallback_sky_view);
 

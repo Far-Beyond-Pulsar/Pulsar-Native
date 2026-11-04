@@ -10,18 +10,16 @@
 //! subscription, material table or per-frame input assembly
 //! (Pulsar-Native#1035, Phase 2). Every other kind's row join
 //! ([`environment_join`]) does the same for its rows (Phase 4); each kind's
-//! join is its feature crate's (`scene_rows`). The kind still in the
-//! engine (atmospheres) is grouped here until its plugin installs its own;
-//! a plugin's kind registers its source rows and its join
+//! join is its feature crate's (`scene_rows`). The engine runs them and
+//! knows none: a plugin's kind registers its source rows and its join
 //! ([`SceneRowsRegistration`]), and the spaces it puts in the frame's table
 //! ([`SpaceProducerRegistration`]).
 use std::sync::Arc;
 
 use helio_component::components::{
-    AtmosphereSourceRow, LODComponent, LightSourceRow, SkeletalMeshComponent,
-    StaticMeshComponent, StaticMeshDraw, VirtualGeometryComponent, ATMOSPHERE_SOURCES_BUFFER,
-    LIGHT_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
-    SKELETAL_PALETTE_HANDLES_BUFFER, SKELETAL_SKIN_HANDLES_BUFFER,
+    LODComponent, LightSourceRow, SkeletalMeshComponent, StaticMeshComponent, StaticMeshDraw,
+    VirtualGeometryComponent, LIGHT_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER,
+    MESH_SECTIONS_BUFFER, SKELETAL_PALETTE_HANDLES_BUFFER, SKELETAL_SKIN_HANDLES_BUFFER,
 };
 use helio_pass_light_cull::scene_rows::{LightJoin, LightJoinKeys};
 use helio_pass_object_batch::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
@@ -145,9 +143,9 @@ pub fn row_join_keys() -> RowJoinKeys {
 /// A plugin's kind of scene rows: the source rows its components derive
 /// (SceneDB columns, registered with the GPU mirror by
 /// [`ensure_gpu_mirror`]) and the derivation that turns them into the rows
-/// its passes read ([`environment_join`] runs it, after the engine's own
-/// kinds). The engine knows neither: the plugin's component crate submits
-/// one with `inventory::submit!`.
+/// its passes read ([`environment_join`] runs it). The engine knows
+/// neither: the plugin's component crate submits one with
+/// `inventory::submit!`.
 pub struct SceneRowsRegistration {
     /// Registers the kind's source-row columns (initial capacities; they
     /// grow).
@@ -161,21 +159,13 @@ inventory::collect!(SceneRowsRegistration);
 /// Every other kind's row join over this engine's rows (each kind's
 /// feature crate's `scene_rows`), for `RendererBuilder::with_scene_derivation`,
 /// after [`scene_join`] (a kind may read the lights' directional light):
-/// atmospheres, then every plugin's kind ([`SceneRowsRegistration`]).
+/// every plugin's kind ([`SceneRowsRegistration`]).
 pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
     let keys = row_join_keys();
-    let mut joins: Vec<Box<dyn SceneDerivation>> = vec![Box::new(
-        helio_pass_sky::scene_rows::scene_rows(
-            device,
-            keys,
-            BufferKey::of(ATMOSPHERE_SOURCES_BUFFER),
-        ),
-    )];
-    joins.extend(
-        inventory::iter::<SceneRowsRegistration>
-            .into_iter()
-            .map(|registration| (registration.derivation)(device, keys)),
-    );
+    let joins: Vec<Box<dyn SceneDerivation>> = inventory::iter::<SceneRowsRegistration>
+        .into_iter()
+        .map(|registration| (registration.derivation)(device, keys))
+        .collect();
     Box::new(DerivationGroup::new("EnvironmentJoins", joins))
 }
 
@@ -243,9 +233,6 @@ pub fn ensure_gpu_mirror(
     // Which objects are rigid frames, and their slot in the coordinate-space table.
     ObjectFrame::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     TransformRow::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    // The kinds' row joins' inputs (see `environment_join`); the
-    // atmosphere rows the sky reads are its outputs.
-    AtmosphereSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
     // Bodies that push simulated water (physics derives their rows under
     // water's api, `helio_water_api::WATER_HITBOX_SOURCES_BUFFER`); the
     // water plugin's join bounds them by their owners' meshes.
@@ -402,15 +389,6 @@ mod tests {
         );
         assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
         assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);
-    }
-
-    #[test]
-    fn the_rows_the_environment_join_reads_have_its_layouts() {
-        use std::mem::size_of;
-        assert_eq!(
-            size_of::<AtmosphereSourceRow>() as u64,
-            helio_pass_sky::scene_rows::ATMOSPHERE_SOURCE_ROW_BYTES
-        );
     }
 }
 

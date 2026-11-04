@@ -19,6 +19,8 @@
 use std::collections::HashMap;
 
 use engine_backend::scene::SceneWorldExt;
+// GI's feature registers with the renderer as in the editor.
+use gi_component as _;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::{
     LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent,

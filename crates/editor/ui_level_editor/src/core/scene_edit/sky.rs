@@ -1,11 +1,10 @@
 //! The level's sky (#1057) as the World Settings panel edits it.
 //!
-//! A level has one sky: its `AtmosphereComponent`
-//! ([`engine_backend::scene::level_rules`]). Without one the sky renders
+//! A level has one sky: its `AtmosphereComponent`, the sky plugin's
+//! ([`sky_component::level_atmosphere`]). Without one the sky renders
 //! black. The panel shows the sky's properties when the level has one and
 //! a button that creates it when it does not ([`create_sky`]).
 
-use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::World;
 
@@ -29,7 +28,7 @@ pub struct LevelSky {
 
 /// The level's sky, if it has one.
 pub fn level_sky(world: &World) -> Option<LevelSky> {
-    let (instance, owner) = level_rules::level_atmosphere(world)?;
+    let (instance, owner) = sky_component::level_atmosphere(world)?;
     let object_id = world.stable_id_of(owner)?.to_string();
     let component_index = engine_backend::scene::attachments::instances(world, owner)
         .iter()
@@ -67,7 +66,7 @@ pub fn create_sky(state: &mut LevelEditorState) -> CommandResult {
             },
             parent_id: None,
             components: vec![TypedComponent::new(
-                helio_component::AtmosphereComponent::default(),
+                sky_component::AtmosphereComponent::default(),
             )],
         },
     )

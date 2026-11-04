@@ -2,7 +2,8 @@
 //! sky (#1057), one global wind (#1123) and one directional light.
 
 use engine_backend::scene::level_rules;
-use helio_component::components::{AtmosphereComponent, LightComponent, LightType};
+use helio_component::components::{LightComponent, LightType};
+use sky_component::AtmosphereComponent;
 
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{components, objects, sky, wind, ObjectType, SceneObjectData, Transform};
@@ -37,7 +38,7 @@ fn add_object(state: &mut LevelEditorState, name: &str) -> String {
 }
 
 fn atmosphere_count(state: &LevelEditorState) -> usize {
-    level_rules::atmospheres(&state.scene.world()).len()
+    sky_component::atmospheres(&state.scene.world()).len()
 }
 
 #[test]
@@ -91,7 +92,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
     // The Create Sky button, again.
     let again = sky::create_sky(&mut state);
     assert!(!again.changed);
-    assert_eq!(again.no_op_reason, level_rules::ONE_ATMOSPHERE);
+    assert_eq!(again.no_op_reason, sky_component::ONE_ATMOSPHERE);
 
     // Add Component on another object (class default and a typed value).
     for value in [
@@ -107,7 +108,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
             },
         );
         assert!(!result.changed);
-        assert_eq!(result.no_op_reason, level_rules::ONE_ATMOSPHERE);
+        assert_eq!(result.no_op_reason, sky_component::ONE_ATMOSPHERE);
     }
 
     // A new object carrying one.
@@ -120,7 +121,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
         },
     );
     assert!(!result.changed);
-    assert_eq!(result.no_op_reason, level_rules::ONE_ATMOSPHERE);
+    assert_eq!(result.no_op_reason, sky_component::ONE_ATMOSPHERE);
 
     // Duplicating the sky component, or its object.
     let sky_object = sky::level_sky(&state.scene.world()).unwrap().object_id;
@@ -132,7 +133,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
         },
     );
     assert!(!result.changed);
-    assert_eq!(result.no_op_reason, level_rules::ONE_ATMOSPHERE);
+    assert_eq!(result.no_op_reason, sky_component::ONE_ATMOSPHERE);
     let copy = objects::duplicate_object(&mut state.scene.world_mut(), &sky_object)
         .expect("the object is copied");
     assert_eq!(components::component_count(&state.scene.world(), &copy), 0);
@@ -203,7 +204,7 @@ fn a_level_file_with_two_skies_loads_with_the_first_one_enabled() {
 
     let mut loaded = engine_backend::scene::new_scene();
     crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
-    let skies = level_rules::atmospheres(&loaded.world);
+    let skies = sky_component::atmospheres(&loaded.world);
     assert_eq!(skies.len(), 2, "both are kept");
     let enabled: Vec<bool> = skies
         .iter()

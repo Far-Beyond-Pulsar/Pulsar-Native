@@ -37,7 +37,7 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
     let mut object_type = ObjectType::Empty;
     let components = match class_name {
         "AtmosphereComponent" => vec![TypedComponent::new(
-            helio_component::AtmosphereComponent::default(),
+            sky_component::AtmosphereComponent::default(),
         )],
         "WindComponent" => vec![TypedComponent::new(
             foliage_component::WindComponent::default(),

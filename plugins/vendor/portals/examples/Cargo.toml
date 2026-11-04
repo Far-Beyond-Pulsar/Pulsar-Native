@@ -43,6 +43,8 @@ helio-pass-gbuffer = { workspace = true }
 helio-pass-object-batch = { workspace = true }
 helio-pass-portal-cull = { workspace = true }
 helio-pass-portal-instances = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
 log = { workspace = true }

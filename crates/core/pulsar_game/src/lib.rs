@@ -97,6 +97,9 @@ extern crate fog_component;
 extern crate foliage_component;
 extern crate post_component;
 extern crate water_component;
+// The lighting plugins (Phase B batch 3).
+extern crate gi_component;
+extern crate sky_component;
 
 // Compile-time drift guard: exported actors must match the pinned crates
 #[cfg(test)]

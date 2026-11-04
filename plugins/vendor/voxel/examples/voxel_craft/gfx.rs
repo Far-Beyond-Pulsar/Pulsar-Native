@@ -13,7 +13,7 @@ use helio::{
     Camera, HelioGraphicsConfig, HelioGraphicsContext, HelioXrInput, Renderer, RendererBuilder,
     RendererConfig,
 };
-use helio_components::AtmosphereComponent;
+use helio_pass_sky::host_rows::AtmosphereComponent;
 use helio_pass_foliage_place::host_rows::FoliageInteractorComponent;
 use helio_components::WorldRows;
 use helio_presets::Preset;
@@ -453,8 +453,8 @@ impl Gfx {
             RendererBuilder::new(renderer_config.clone(), handle).with_graph(
                 // The voxel world, the leaf kinds (particles, sprites, decals,
             // the lens and its flare, portals) and the media kinds (foliage,
-            // water, fog, post-process volumes) are features Helio's presets
-            // do not list: their plugins', which a host adds as the engine does.
+            // water, fog, post-process volumes) and the lighting kinds (GI,
+            // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
                 Preset::Deferred.with_features(
                     &helio_feature_api::FeatureSet::new()
                         .with(helio_pass_voxel_planet::VoxelFeature)
@@ -468,7 +468,9 @@ impl Gfx {
                         .with(helio_pass_foliage_gbuffer::FoliageFeature)
                         .with(helio_pass_water_sim::WaterFeature)
                         .with(helio_pass_volumetric_fog::FogFeature)
-                        .with(helio_pass_post_volumes::PostVolumesFeature),
+                        .with(helio_pass_post_volumes::PostVolumesFeature)
+                        .with(helio_pass_sky::SkyFeature)
+                        .with(helio_pass_gi::GiFeature),
                 ),
             );
         let (mut renderer, xr_input) = graphics

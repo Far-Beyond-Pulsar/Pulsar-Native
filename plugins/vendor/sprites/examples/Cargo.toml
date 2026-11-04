@@ -42,6 +42,8 @@ helio-pass-radiance-cascades-2d = { workspace = true }
 helio-pass-sprite-batch = { workspace = true }
 helio-pass-sprite-cull = { workspace = true }
 helio-pass-sprite-simulate = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
 log = { workspace = true }

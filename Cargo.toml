@@ -81,6 +81,19 @@ members = [
     "plugins/vendor/foliage/feature/*",
     "plugins/vendor/foliage/editor",
     "plugins/vendor/foliage/examples",
+    # The lighting plugins (phase B, batch 3): GI (its api crate is the
+    # probes' contract the voxel terrain traces; no SceneDB component, its
+    # component crate holds its registrations) and the sky (atmosphere and
+    # clouds; what others read of it is the frame's).
+    "plugins/vendor/gi/api",
+    "plugins/vendor/gi/component",
+    "plugins/vendor/gi/feature",
+    "plugins/vendor/gi/editor",
+    "plugins/vendor/gi/examples",
+    "plugins/vendor/sky/component",
+    "plugins/vendor/sky/feature",
+    "plugins/vendor/sky/editor",
+    "plugins/vendor/sky/examples",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -240,6 +253,11 @@ water_component                    = { path = "plugins/vendor/water/component" }
 water_plugin                       = { path = "plugins/vendor/water/editor", features = ["builtin"] }
 foliage_component                  = { path = "plugins/vendor/foliage/component" }
 foliage_plugin                     = { path = "plugins/vendor/foliage/editor", features = ["builtin"] }
+# The lighting plugins, the same way.
+gi_component                       = { path = "plugins/vendor/gi/component" }
+gi_plugin                          = { path = "plugins/vendor/gi/editor", features = ["builtin"] }
+sky_component                      = { path = "plugins/vendor/sky/component" }
+sky_plugin                         = { path = "plugins/vendor/sky/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -353,7 +371,10 @@ helio-pass-water-sim = { path = "plugins/vendor/water/feature" }
 helio-foliage-api = { path = "plugins/vendor/foliage/api" }
 helio-pass-foliage-place = { path = "plugins/vendor/foliage/feature/place" }
 helio-pass-foliage-gbuffer = { path = "plugins/vendor/foliage/feature/gbuffer" }
-helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }
+# The lighting plugins' api and feature crates (voxel traces GI's probes).
+helio-gi-api = { path = "plugins/vendor/gi/api" }
+helio-pass-gi = { path = "plugins/vendor/gi/feature" }
+helio-pass-sky = { path = "plugins/vendor/sky/feature" }
 helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
 helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
@@ -379,10 +400,8 @@ helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/hel
 # Helio crates the voxel plugin's feature and hosts use.
 helio-xr = { path = "crates/renderer/helio/crates/helio-xr" }
 helio-components = { path = "crates/renderer/helio/crates/helio-components" }
-helio-gi-api = { path = "crates/renderer/helio/crates/api/helio-gi-api" }
 helio-pass-shadow-matrix = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-shadow-matrix" }
 # Helio crates the media plugins' features read.
-helio-sky-api = { path = "crates/renderer/helio/crates/api/helio-sky-api" }
 helio-pass-hiz = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-hiz" }
 helio-pass-indirect-dispatch = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-indirect-dispatch" }
 helio-pass-occlusion-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-occlusion-cull" }

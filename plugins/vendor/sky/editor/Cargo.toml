@@ -1,0 +1,20 @@
+[package]
+name = "sky_plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Sky (pulsar.sky): the editor plugin -- its metadata, over the plugin's component crate"
+
+[lib]
+name = "sky_plugin"
+
+[features]
+# Statically linked hosts (the editor) use the Rust API; the component crate
+# (with everything it registers) comes with this crate.
+builtin = []
+
+[dependencies]
+sky_component = { workspace = true }
+plugin_editor_api = { workspace = true }
+
+[lints]
+workspace = true

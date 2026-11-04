@@ -158,7 +158,7 @@ impl Flight {
                 max_cells_metadata: 0,
             },
         );
-        helio_components::AtmosphereComponent::register_gpu_columns_growable(
+        helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
             &mut store, 4, &device,
         );
         helio_components::MeshComponent::register_gpu_columns_growable(&mut store, 16, &device);
@@ -264,8 +264,8 @@ impl Flight {
             .with_external_device()
             // The voxel world, the leaf kinds (particles, sprites, decals,
             // the lens and its flare, portals) and the media kinds (foliage,
-            // water, fog, post-process volumes) are features Helio's presets
-            // do not list: their plugins', which a host adds as the engine does.
+            // water, fog, post-process volumes) and the lighting kinds (GI,
+            // the sky) are features Helio's presets do not list: their plugins', which a host adds as the engine does.
             .with_graph(Preset::Deferred.with_features(
                 &helio_feature_api::FeatureSet::new()
                     .with(helio_pass_voxel_planet::VoxelFeature)
@@ -279,7 +279,9 @@ impl Flight {
                     .with(helio_pass_foliage_gbuffer::FoliageFeature)
                     .with(helio_pass_water_sim::WaterFeature)
                     .with(helio_pass_volumetric_fog::FogFeature)
-                    .with(helio_pass_post_volumes::PostVolumesFeature),
+                    .with(helio_pass_post_volumes::PostVolumesFeature)
+                    .with(helio_pass_sky::SkyFeature)
+                    .with(helio_pass_gi::GiFeature),
             ))
             .build(
                 device.clone(),

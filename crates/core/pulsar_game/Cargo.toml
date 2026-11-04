@@ -87,6 +87,8 @@ fog_component = { workspace = true }
 post_component = { workspace = true }
 water_component = { workspace = true }
 foliage_component = { workspace = true }
+gi_component = { workspace = true }
+sky_component = { workspace = true }
 
 [lints]
 workspace = true
@@ -98,6 +100,7 @@ helio-core = { workspace = true }
 helio-presets = { workspace = true }
 helio-pass-portal-cull = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
+helio-pass-gi = { workspace = true }
 # Drift guard (#652): the reference actor mirrors the exporter's emitted shape and
 # must keep compiling against the pinned crates; tempfile serves the
 # end-to-end generated-project cargo check (tests/generated_project_compiles).

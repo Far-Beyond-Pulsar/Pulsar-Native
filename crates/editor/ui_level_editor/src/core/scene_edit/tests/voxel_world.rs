@@ -44,7 +44,7 @@ fn a_voxel_world_is_one_undo_step_that_selects_its_terrain_and_moves_the_camera(
     assert!(camera.position[1] > 6_371_000.0);
     {
         let world = state.scene.world();
-        assert_eq!(level_rules::atmospheres(&world).len(), 1);
+        assert_eq!(sky_component::atmospheres(&world).len(), 1);
         assert_eq!(foliage_component::winds(&world).len(), 1);
         assert_eq!(level_rules::directional_lights(&world).len(), 1);
     }
@@ -53,11 +53,11 @@ fn a_voxel_world_is_one_undo_step_that_selects_its_terrain_and_moves_the_camera(
     assert!(terrains(&state).is_empty(), "one undo removes the world");
     assert_eq!(state.scene.world().children_of(None).len(), before);
     assert_eq!(
-        level_rules::atmospheres(&state.scene.world()).len(),
+        sky_component::atmospheres(&state.scene.world()).len(),
         1,
         "the level's sky is back"
     );
     assert!(state.scene.redo());
     assert_eq!(terrains(&state).len(), 1);
-    assert_eq!(level_rules::atmospheres(&state.scene.world()).len(), 1);
+    assert_eq!(sky_component::atmospheres(&state.scene.world()).len(), 1);
 }

@@ -49,6 +49,7 @@ pub const FOG_ACCUM: &str = "fog_accum";
 pub const FOG_PARAMETERS: &str = "fog_parameters";
 
 use bytemuck::{Pod, Zeroable};
+use helio_frame_api::lighting::sun_transmittance::{self, SunTransmittance};
 use helio_core::{PassContext, PrepareContext, RenderPass, Result as HelioResult};
 
 pub mod components;
@@ -97,13 +98,13 @@ pub fn shader_source() -> String {
     let source = include_str!("../shaders/volumetric_fog.wgsl")
         .replace("__PP_HEAD_VEC4__", &head.to_string())
         .replace("__PP_TAIL_VEC4__", &tail.to_string());
-    // The terrain's sun occlusion (`//!use sun_occlusion`) and the clouds'
-    // shadow (`//!use cloud_shadow`) ahead of it; the prelude is the
-    // module's to resolve.
+    // The terrain's sun occlusion (`//!use sun_occlusion`) and the frame's
+    // sun transmittance (`//!use sun_transmittance`) ahead of it; the
+    // prelude is the module's to resolve.
     format!(
         "{}\n{}\n{source}",
         helio_pass_shadow_matrix::SUN_OCCLUSION_SNIPPET.source,
-        helio_sky_api::CLOUD_SHADOW_SNIPPET.source
+        helio_frame_api::lighting::sun_transmittance::SNIPPET.source
     )
 }
 
@@ -200,7 +201,10 @@ pub struct VolumetricFogPass {
     /// No terrain's sun occlusion: an empty atlas, a frame of none and an
     /// empty page table.
     fallback_sun_occlusion: (wgpu::TextureView, wgpu::Buffer, wgpu::Buffer),
-    fallback_cloud_shadow: (wgpu::TextureView, wgpu::Buffer),
+    /// The sun's transmittance a medium published when this pass was built
+    /// (the clouds' shadow), if any; and what stands in for none.
+    sun_transmittance: Option<SunTransmittance>,
+    fallback_sun_transmittance: (wgpu::TextureView, wgpu::Buffer),
 
     /// Ping-ponged scattering grids: one is read as history while the other is
     /// written. Sampling and storing to one texture in a single dispatch is a
@@ -264,6 +268,13 @@ fn make_grid(
 }
 
 impl VolumetricFogPass {
+    /// Lights the medium through the sun's transmittance `sun` published
+    /// (none: the sun reaches every froxel).
+    pub fn with_sun_transmittance(mut self, sun: Option<SunTransmittance>) -> Self {
+        self.sun_transmittance = sun;
+        self
+    }
+
     pub fn new(device: &wgpu::Device) -> Self {
         let shader = helio_core::shader::module(device, "Volumetric Fog Shader", &shader_source());
 
@@ -711,7 +722,8 @@ impl VolumetricFogPass {
                     mapped_at_creation: false,
                 }),
             ),
-            fallback_cloud_shadow: helio_sky_api::cloud_shadow_fallback(device),
+            sun_transmittance: None,
+            fallback_sun_transmittance: sun_transmittance::stand_in(device),
             inject_pipeline,
             integrate_pipeline,
             inject_bgl,
@@ -801,7 +813,7 @@ impl RenderPass for VolumetricFogPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &[
+        let mut reads = vec![
             "shadow_atlas",
             "static_shadow_atlas",
             "shadow_transmittance",
@@ -810,9 +822,11 @@ impl RenderPass for VolumetricFogPass {
             helio_pass_shadow_matrix::SUN_OCCLUSION_MAPS,
             helio_pass_shadow_matrix::SUN_OCCLUSION_PAGES,
             helio_pass_shadow_matrix::SUN_OCCLUSION_FRAME,
-            helio_sky_api::CLOUD_SHADOW_MAP,
-            helio_sky_api::CLOUD_SHADOW_FRAME,
-        ]
+        ];
+        if let Some(sun) = self.sun_transmittance {
+            reads.extend([sun.map, sun.frame]);
+        }
+        helio_frame_api::static_names(&reads)
     }
 
     fn publish<'a>(&self, frame: &mut helio_core::ResourceRegistry<'a>) {
@@ -993,14 +1007,17 @@ impl RenderPass for VolumetricFogPass {
                 &self.fallback_sun_occlusion.2,
             ),
         };
-        let cloud_shadow = ctx
-            .registry
-            .texture_binding(helio_sky_api::CLOUD_SHADOW_MAP)
-            .zip(
+        let cloud_shadow = self
+            .sun_transmittance
+            .and_then(|sun| {
                 ctx.registry
-                    .buffer_binding(helio_sky_api::CLOUD_SHADOW_FRAME),
-            )
-            .unwrap_or((&self.fallback_cloud_shadow.0, &self.fallback_cloud_shadow.1));
+                    .texture_binding(sun.map)
+                    .zip(ctx.registry.buffer_binding(sun.frame))
+            })
+            .unwrap_or((
+                &self.fallback_sun_transmittance.0,
+                &self.fallback_sun_transmittance.1,
+            ));
 
         let camera_buf = ctx.camera;
         let lights_buf = ctx

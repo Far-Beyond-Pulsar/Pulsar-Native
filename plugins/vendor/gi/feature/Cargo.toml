@@ -1,0 +1,34 @@
+[package]
+name = "helio-pass-gi"
+version = "0.1.0"
+edition = "2021"
+description = "Helio world-space diffuse global illumination: a probe clipmap traced by the scene's tracers"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-mesh-api = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-core = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-gi-api = { workspace = true }
+helio-pass-shadow-matrix = { workspace = true }
+helio-mats = { workspace = true }
+helio-settings = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+glam = { workspace = true }
+
+[dev-dependencies]
+pollster = "=0.4.0"
+# The graph tests (moved from helio-presets): mesh scenes over Helio's
+# presets plus this feature, their rows as Helio's host components.
+helio = { workspace = true }
+helio-components = { workspace = true }
+helio-presets = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+helio-pass-object-batch = { workspace = true }
+helio-vg-build = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-vg-stream = { workspace = true }
+pulsar_scenedb = { workspace = true }

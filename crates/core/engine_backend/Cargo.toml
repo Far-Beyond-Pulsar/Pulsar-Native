@@ -102,7 +102,6 @@ helio-graph-asset = { workspace = true, optional = true }
 pollster = { version = "=0.4.0", optional = true }
 # The features plugins add to the renderer (`RenderFeatureRegistration`).
 helio-feature-api = { workspace = true, optional = true }
-helio-pass-sky = { workspace = true, optional = true }
 helio-pass-tsr = { workspace = true, optional = true }
 # Opt-in live SceneDB inspector bridge; inert unless launched by scenedb_inspector.
 scenedb-inspector-agent = { workspace = true, optional = true }
@@ -138,7 +137,7 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-asset-compat", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-postprocess", "dep:helio-pass-object-batch", "dep:helio-pass-light-cull", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-mats", "dep:psgc", "dep:image"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-asset-compat", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-postprocess", "dep:helio-pass-object-batch", "dep:helio-pass-light-cull", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-pass-tsr", "dep:helio-mats", "dep:psgc", "dep:image"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]

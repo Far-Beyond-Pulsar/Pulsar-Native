@@ -57,6 +57,7 @@ fog_component.workspace = true
 post_component.workspace = true
 water_component.workspace = true
 foliage_component.workspace = true
+sky_component.workspace = true
 helio-pass-buffer-view.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
@@ -105,6 +106,8 @@ winapi = { workspace = true, features = ["winuser", "shellapi"] }
 decals_component.workspace = true
 particles_component.workspace = true
 lens_component.workspace = true
+# GI's feature, as the editor links it (ui_core links its plugin).
+gi_component.workspace = true
 helio-presets.workspace = true
 tempfile = { workspace = true }
 # Headless `TestAppContext` window for the properties-panel layout budget test

@@ -48,7 +48,7 @@ pub fn new_scene_db_with_gpu_mirror_and(
         max_cells_metadata: 0,
     };
     let mut gpu_store = pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_cfg);
-    helio_components::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
+    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
     helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(
         &mut gpu_store,

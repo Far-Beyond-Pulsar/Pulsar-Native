@@ -58,7 +58,6 @@ intel_tex_2 = "0.5"
 helio-asset-compat = { workspace = true }
 skeletal_assets.workspace = true
 helio-pass-postprocess = { workspace = true }
-helio-pass-sky = { workspace = true }
 thiserror.workspace = true
 wgpu.workspace = true
 gpui-ce.workspace = true

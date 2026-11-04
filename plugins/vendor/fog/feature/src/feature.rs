@@ -5,6 +5,7 @@
 //! fog is possible (`color::advance_aliasing`).
 
 use helio_feature_api::{pass_node, Feature, FeatureRegistrar};
+use helio_frame_api::lighting::sun_transmittance;
 use helio_frame_api::{color, media, FrameNode, Slot};
 
 use crate::{FogCompositePass, VolumetricFogPass, FOGGED_HDR, FOG_ACCUM, FOG_PARAMETERS};
@@ -25,7 +26,8 @@ impl Feature for FogFeature {
                 "Passes: Post",
                 "Accumulates volumetric fog lit by the shadowed lights.",
                 |build| {
-                    let pass = VolumetricFogPass::new(build.env.device);
+                    let pass = VolumetricFogPass::new(build.env.device)
+                        .with_sun_transmittance(sun_transmittance::current(build.env));
                     build.graph.add_pass(Box::new(pass));
                     media::publish(
                         build.env,

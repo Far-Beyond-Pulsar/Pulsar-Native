@@ -29,6 +29,7 @@ helio_component = { workspace = true }
 fog_component = { workspace = true }
 post_component = { workspace = true }
 foliage_component = { workspace = true }
+sky_component = { workspace = true }
 # Ready-made worlds are levels (`presets`); the renderer takes the plugin's
 # feature through its registrations. The game's slim feature set (as
 # pulsar_game): linking the plugin must not pull the editor's features into a

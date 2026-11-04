@@ -3,8 +3,8 @@
 //! planet (centred on the owner) or flat ground at the world's origin. The
 //! sun is the scene's first directional light.
 //!
-//! SceneDB derives an `AtmosphereSourceRow` (`environment_rows`) from the
-//! authored value; the environment join places it as the sky pass's
+//! SceneDB derives an [`crate::AtmosphereSourceRow`] from the authored
+//! value; the sky's row join places it as the sky pass's
 //! `helio_pass_sky::AtmosphereRow` row in `"atmospheres"`.
 use engine_class_derive::{engine_class, register_world_component};
 use helio_pass_sky::AtmosphereRow;
@@ -257,7 +257,7 @@ impl AtmosphereComponent {
 
     /// The pass row in the owner's space: a planet placed at its owner has
     /// a zero centre, which the environment join moves to the owner's world
-    /// position (`AtmosphereSourceRow`).
+    /// position ([`crate::AtmosphereSourceRow`]).
     pub fn to_row(&self) -> AtmosphereRow {
         let bottom = self.planet_radius_km.max(0.001);
         let placement = match self.placement {

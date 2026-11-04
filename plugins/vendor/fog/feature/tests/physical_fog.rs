@@ -703,8 +703,9 @@ fn point_shadow_cube_matches_real_matrix_producer_and_shadow_strength_adapter() 
         binding: 26,
         resource: no_pages.as_entire_binding(),
     });
-    // No clouds' shadow.
-    let (no_clouds, no_cloud_frame) = helio_sky_api::cloud_shadow_fallback(&device);
+    // No sun transmittance (no clouds).
+    let (no_clouds, no_cloud_frame) =
+        helio_frame_api::lighting::sun_transmittance::stand_in(&device);
     entries.push(wgpu::BindGroupEntry {
         binding: 24,
         resource: wgpu::BindingResource::TextureView(&no_clouds),

@@ -9,7 +9,7 @@ use pulsar_scenedb::{Entity, World};
 use crate::world::{WorldSource, entity_source};
 use crate::{VoxelAir, VoxelTerrainComponent, VoxelTerrainLayersComponent, VoxelWorldShape};
 use fog_component::GlobalFogComponent;
-use helio_component::{AtmosphereComponent, AtmospherePlacement};
+use sky_component::{AtmosphereComponent, AtmospherePlacement};
 use helio_pass_voxel_planet::grid::Shape;
 
 /// Edits belong to the terrain they were made on: a terrain whose form,
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn a_terrains_sky_follows_its_size_and_shape() {
-        use helio_component::{AtmosphereComponent, AtmospherePlacement};
+        use sky_component::{AtmosphereComponent, AtmospherePlacement};
         let mut world = World::new();
         let object = world.spawn();
         let terrain = pulsar_world_registry::attach_value(
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn a_worlds_air_preset_makes_its_sky() {
         use crate::VoxelAir;
-        use helio_component::AtmosphereComponent;
+        use sky_component::AtmosphereComponent;
         let mut world = World::new();
         let object = world.spawn();
         let terrain = pulsar_world_registry::attach_value(
@@ -711,7 +711,7 @@ mod tests {
     /// as authored.
     #[test]
     fn a_worlds_air_derives_its_sky() {
-        use helio_component::{AtmosphereComponent, AtmospherePlacement};
+        use sky_component::{AtmosphereComponent, AtmospherePlacement};
         use helio_pass_sky::AtmosphereRow;
         let sky = AtmosphereComponent {
             placement: AtmospherePlacement::PlanetAtOwner,

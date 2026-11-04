@@ -114,7 +114,7 @@ impl Plan {
             .query::<&VoxelTerrainComponent>()
             .filter_map(|(instance, _)| attachments::owner_of(world, instance))
             .min_by_key(|owner| world.stable_id_of(*owner).map(str::to_string));
-        let mut replaced = level_rules::atmospheres(world);
+        let mut replaced = sky_component::atmospheres(world);
         replaced.extend(foliage_component::winds(world));
         replaced.extend(attached::<GlobalFogComponent>(world, |_| true));
         // Ground cover belongs to the voxel world it grows on.
@@ -351,7 +351,7 @@ fn set_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helio_component::AtmosphereComponent;
+    use sky_component::AtmosphereComponent;
 
     fn level_of(world: &World) -> Vec<(String, Vec<String>)> {
         let mut objects: Vec<_> = world
@@ -399,7 +399,7 @@ mod tests {
                 attachments::enabled_components_of::<VoxelTerrainComponent>(&world, terrain).len(),
                 1
             );
-            assert!(level_rules::atmospheres(&world).len() <= 1);
+            assert!(sky_component::atmospheres(&world).len() <= 1);
             assert!(foliage_component::winds(&world).len() <= 1);
             assert_eq!(level_rules::directional_lights(&world).len(), 1);
         }
@@ -419,7 +419,7 @@ mod tests {
         // The meadow went with Earth.
         assert_eq!(world.children_of(None).len(), objects - 1);
         assert_eq!(world.query::<&FoliageComponent>().count(), 0);
-        assert_eq!(level_rules::atmospheres(&world).len(), 1);
+        assert_eq!(sky_component::atmospheres(&world).len(), 1);
         assert_eq!(foliage_component::winds(&world).len(), 0);
         assert_eq!(level_rules::directional_lights(&world).len(), 1);
         assert_eq!(world.query::<&VoxelTerrainComponent>().count(), 1);
@@ -444,7 +444,7 @@ mod tests {
         add_voxel_world(&mut sky_only, VoxelWorldPreset::Earth).unwrap();
         assert!(!sky_only.is_alive(sky), "the bare sky object is removed");
         assert!(sky_only.is_alive(lamp));
-        assert_eq!(level_rules::atmospheres(&sky_only).len(), 1);
+        assert_eq!(sky_component::atmospheres(&sky_only).len(), 1);
     }
 
     /// A world replacing a terrain on a moved object sits, with its camera,

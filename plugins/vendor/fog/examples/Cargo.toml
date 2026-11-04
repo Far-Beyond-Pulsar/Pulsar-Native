@@ -29,6 +29,8 @@ helio-pass-post-volumes = { workspace = true, features = ["host-rows"] }
 helio-pass-postprocess = { workspace = true }
 helio-pass-shadow-matrix = { workspace = true }
 helio-pass-volumetric-fog = { workspace = true, features = ["host-rows"] }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
 log = { workspace = true }

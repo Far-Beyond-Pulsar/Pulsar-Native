@@ -41,7 +41,7 @@ fn mirror(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> GpuMirrorHand
             max_cells_metadata: 0,
         },
     );
-    helio_components::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
+    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, device);
     helio_components::MeshComponent::register_gpu_columns_growable(&mut gpu_store, 16, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(&mut gpu_store, 16, device);
     helio_components::StaticObjectComponent::register_gpu_columns_growable(
@@ -108,7 +108,8 @@ impl Fixtures {
         }
     }
 
-    /// `preset` with the voxel and media features (as the engine adds them), built.
+    /// `preset` with the voxel, media and lighting features (as the engine adds
+    /// them), built.
     fn build(&self, preset: Preset) -> helio_core::RenderGraph {
         preset
             .with_features(
@@ -117,7 +118,9 @@ impl Fixtures {
                     .with(helio_pass_foliage_gbuffer::FoliageFeature)
                     .with(helio_pass_water_sim::WaterFeature)
                     .with(helio_pass_volumetric_fog::FogFeature)
-                    .with(helio_pass_post_volumes::PostVolumesFeature),
+                    .with(helio_pass_post_volumes::PostVolumesFeature)
+                    .with(helio_pass_sky::SkyFeature)
+                    .with(helio_pass_gi::GiFeature),
             )
             .build(self.context())
     }

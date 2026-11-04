@@ -1,6 +1,7 @@
 //! The voxel planet pass inside the default deferred graph: pipeline and
 //! attachment compatibility, residency settling, source removal and resize.
-use helio_components::{AtmosphereComponent, LightComponent};
+use helio_components::LightComponent;
+use helio_pass_sky::host_rows::AtmosphereComponent;
 use std::sync::{Arc, Mutex};
 
 use glam::Vec3;
@@ -26,6 +27,8 @@ fn voxel_features() -> helio_feature_api::FeatureSet {
         .with(helio_pass_water_sim::WaterFeature)
         .with(helio_pass_volumetric_fog::FogFeature)
         .with(helio_pass_post_volumes::PostVolumesFeature)
+        .with(helio_pass_sky::SkyFeature)
+        .with(helio_pass_gi::GiFeature)
 }
 
 struct FinalResourceConsumer {
@@ -116,7 +119,7 @@ fn chunk_pass_builds_settles_and_resizes_in_the_deferred_graph() {
                 max_cells_metadata: 0,
             },
         );
-        helio_components::AtmosphereComponent::register_gpu_columns_growable(
+        helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
             &mut gpu_store,
             4,
             &device,
@@ -412,7 +415,7 @@ fn editor(width: u32, height: u32) -> Option<Editor> {
             max_cells_metadata: 0,
         },
     );
-    helio_components::AtmosphereComponent::register_gpu_columns_growable(
+    helio_pass_sky::host_rows::AtmosphereComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4,
         &device,
@@ -477,7 +480,7 @@ fn editor(width: u32, height: u32) -> Option<Editor> {
 impl Editor {
     /// A directional sun shining from `towards`, and the scene's atmosphere
     /// row (`None` removes it).
-    fn set_sky(&mut self, towards: Vec3, air: Option<helio_components::AtmosphereComponent>) {
+    fn set_sky(&mut self, towards: Vec3, air: Option<helio_pass_sky::host_rows::AtmosphereComponent>) {
         let sun = *self.sun.get_or_insert_with(|| self.scene.world.spawn());
         self.scene.world.insert(
             sun,
@@ -496,7 +499,7 @@ impl Editor {
             None => {
                 self.scene
                     .world
-                    .remove::<helio_components::AtmosphereComponent>(entity);
+                    .remove::<helio_pass_sky::host_rows::AtmosphereComponent>(entity);
             }
         }
         self.scene.world.flush_gpu_mirror(&self.queue);
@@ -642,7 +645,7 @@ const EARTH_RADIUS: f64 = 6_360_000.0;
 /// Earth's atmosphere preset: 100 km of air.
 const AIR_THICKNESS: f64 = 100_000.0;
 
-fn earth_air() -> helio_components::AtmosphereComponent {
+fn earth_air() -> helio_pass_sky::host_rows::AtmosphereComponent {
     AtmosphereComponent::from(
         helio_pass_sky::AtmosphereRow::earth().around_planet([0.0; 3], EARTH_RADIUS),
     )

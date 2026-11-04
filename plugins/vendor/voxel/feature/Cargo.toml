@@ -49,5 +49,6 @@ helio-pass-water-sim = { workspace = true }
 helio-pass-volumetric-fog = { workspace = true }
 helio-pass-post-volumes = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
-helio-pass-sky = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
 pulsar_scenedb = { workspace = true }

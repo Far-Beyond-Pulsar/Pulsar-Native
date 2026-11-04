@@ -3,6 +3,7 @@
 //! the overlay phase (over the lit scene, before media).
 
 use helio_feature_api::{pass_node, Feature, FeatureRegistrar};
+use helio_frame_api::lighting::{inputs_order, InputsOrder};
 use helio_frame_api::{FrameNode, Phase, Slot};
 
 use crate::transmission::WaterTransmissionPass;
@@ -22,10 +23,12 @@ impl Feature for WaterFeature {
                 "water_transmission",
                 "Water: Caustics",
                 "Passes: Lighting",
-                "The light water focuses onto what lies under it, which lighting adds.",
+                "The light water focuses onto what lies under it, which lighting adds.                  Builds nothing where the lighting ran before it (forward).",
                 |build| {
-                    let pass = WaterTransmissionPass::new(build.env.device);
-                    build.graph.add_pass(Box::new(pass));
+                    if inputs_order(build.env) == InputsOrder::BeforeLighting {
+                        let pass = WaterTransmissionPass::new(build.env.device);
+                        build.graph.add_pass(Box::new(pass));
+                    }
                     Ok(())
                 },
             )

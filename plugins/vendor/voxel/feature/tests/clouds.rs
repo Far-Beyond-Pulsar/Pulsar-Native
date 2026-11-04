@@ -10,7 +10,7 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
     RendererBuilder, RendererConfig,
 };
-use helio_components::AtmosphereComponent;
+use helio_pass_sky::host_rows::AtmosphereComponent;
 use helio_pass_sky::{CloudLayer, PlanetWeather};
 use helio_pass_voxel_planet::chunks::pass::ChunkPass;
 use helio_pass_voxel_planet::engine::{PlanetFrame, VOXEL_FRAME};
@@ -27,6 +27,8 @@ fn voxel_features() -> helio_feature_api::FeatureSet {
         .with(helio_pass_water_sim::WaterFeature)
         .with(helio_pass_volumetric_fog::FogFeature)
         .with(helio_pass_post_volumes::PostVolumesFeature)
+        .with(helio_pass_sky::SkyFeature)
+        .with(helio_pass_gi::GiFeature)
 }
 
 struct View {

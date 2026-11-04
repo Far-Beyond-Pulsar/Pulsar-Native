@@ -1,0 +1,33 @@
+[package]
+name = "helio-pass-sky"
+version = "0.1.0"
+edition = "2021"
+description = "Helio atmosphere (sky) passes"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["gpu"]
+gpu = []
+# Row components for standalone hosts (`host_rows`): examples and tests
+# enable it; engines derive the rows from their own components.
+host-rows = ["dep:helio-components", "dep:pulsar_scenedb_derive"]
+
+[dependencies]
+helio-components = { workspace = true, optional = true }
+pulsar_scenedb_derive = { workspace = true, optional = true }
+helio-scene-join = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-feature-api = { workspace = true }
+pulsar_reflection = { workspace = true }
+helio-core = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+pulsar_scenedb = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# The tests author atmospheres as host rows.
+helio-pass-sky = { path = ".", features = ["host-rows"] }
+helio-components = { workspace = true }
+pollster = "=0.4.0"
+naga = { version = "30", features = ["wgsl-in"] }
