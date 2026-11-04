@@ -310,9 +310,8 @@ impl Render for HelioViewport {
             }
         }
 
-        // A high-resolution capture shares the renderer mutex with the frame
-        // thread, so no live frame can race the temporary render size. The next
-        // frame restores the graph to the current surface dimensions.
+        // Keep exclusive access to Helio across every tile so the projection,
+        // scene state and frozen scene clock stay consistent until assembly ends.
         let screenshot_size = self
             .shared_state
             .write()
@@ -323,35 +322,69 @@ impl Render for HelioViewport {
             if let Some(surface) = self.surface.clone() {
                 let engine = self.gpu_engine.clone();
                 let state = self.shared_state.clone();
+                let temp_path = std::env::temp_dir().join(format!(
+                    "pulsar-screenshot-{}-{}.png",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_nanos()
+                ));
+                let output_path = temp_path.clone();
                 let capture = cx.background_executor().spawn(async move {
-                    engine.lock().ok().and_then(|mut engine| {
-                        capture_viewport_image(&mut engine, &surface, width, height, format)
-                    })
+                    let mut engine = engine
+                        .lock()
+                        .map_err(|_| "Helio renderer lock was poisoned".to_string())?;
+                    capture_viewport_png_tiled(
+                        &mut engine,
+                        &surface,
+                        width,
+                        height,
+                        format,
+                        &output_path,
+                    )?;
+                    Ok::<_, String>(output_path)
                 });
                 cx.spawn_in(window, async move |this, cx| {
-                    let image = capture.await;
+                    let result = capture.await;
                     state.write().build.screenshot_processing = false;
-                    let Some(image) = image else {
-                        tracing::warn!("High-resolution screenshot capture failed");
-                        this.update_in(cx, |_, window, cx| {
-                            window.push_notification(
-                                Notification::error("Screenshot capture failed").message(
-                                    "The requested image size may exceed this GPU's texture limit.",
-                                ),
-                                cx,
-                            );
-                        })
-                        .ok();
-                        return;
+                    let temp_path = match result {
+                        Ok(path) => path,
+                        Err(error) => {
+                            tracing::warn!("High-resolution screenshot capture failed: {error}");
+                            let _ = std::fs::remove_file(&temp_path);
+                            this.update_in(cx, |_, window, cx| {
+                                window.push_notification(
+                                    Notification::error("Screenshot capture failed")
+                                        .message(error),
+                                    cx,
+                                );
+                            })
+                            .ok();
+                            return;
+                        }
                     };
                     let dialog = rfd::AsyncFileDialog::new()
                         .set_title("Save High Res Screenshot")
                         .add_filter("PNG image", &["png"])
                         .set_file_name("screenshot.png");
                     if let Some(file) = dialog.save_file().await {
-                        let result = image.save(file.path());
-                        if let Err(error) = result {
+                        let path = file.path().to_path_buf();
+                        if let Err(error) = std::fs::copy(&temp_path, &path) {
                             tracing::warn!("Failed to save high-resolution screenshot: {error}");
+                            this.update_in(cx, |_, window, cx| {
+                                window.push_notification(
+                                    Notification::error("Could not save screenshot")
+                                        .message(error.to_string()),
+                                    cx,
+                                );
+                            })
+                            .ok();
+                        }
+                    }
+                    if let Err(error) = std::fs::remove_file(&temp_path) {
+                        if error.kind() != std::io::ErrorKind::NotFound {
+                            tracing::warn!("Could not remove temporary screenshot: {error}");
                         }
                     }
                 })
