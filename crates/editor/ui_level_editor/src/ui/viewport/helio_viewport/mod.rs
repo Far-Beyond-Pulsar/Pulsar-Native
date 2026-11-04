@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
-use gpui::*;
+use gpui::{prelude::FluentBuilder as _, *};
 use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
 use ui::{notification::Notification, ActiveTheme as _, ContextModal};
@@ -67,6 +67,7 @@ pub struct HelioViewport {
     /// Loading state seen by the frame pump; changes repaint the shared
     /// initialization overlay even before Helio has produced its first frame.
     last_loading_snapshot: Option<crate::state::EditorLoadingTaskSnapshot>,
+    last_screenshot_processing: bool,
     /// A repaint has been requested but `render()` has not run yet. Keeps the
     /// pump from stacking up notifies for a viewport that isn't being rendered.
     awaiting_render: bool,
@@ -97,6 +98,7 @@ mod frame_pacer;
 mod init_queue;
 mod render_thread;
 mod thumbnail;
+use thumbnail::capture_viewport_image;
 use thumbnail::capture_viewport_thumbnail;
 impl HelioViewport {
     pub fn new<V: 'static>(
@@ -119,6 +121,7 @@ impl HelioViewport {
             last_display_refresh_sample: Instant::now(),
             last_published_frame: 0,
             last_loading_snapshot: None,
+            last_screenshot_processing: false,
             awaiting_render: false,
             last_full_render: Instant::now(),
             viewport_size_at_last_full_render: None,
@@ -307,8 +310,66 @@ impl Render for HelioViewport {
             }
         }
 
+        // A high-resolution capture shares the renderer mutex with the frame
+        // thread, so no live frame can race the temporary render size. The next
+        // frame restores the graph to the current surface dimensions.
+        let screenshot_size = self
+            .shared_state
+            .write()
+            .build
+            .pending_screenshot_size
+            .take();
+        if let Some((width, height)) = screenshot_size {
+            if let Some(surface) = self.surface.clone() {
+                let engine = self.gpu_engine.clone();
+                let state = self.shared_state.clone();
+                let capture = cx.background_executor().spawn(async move {
+                    engine.lock().ok().and_then(|mut engine| {
+                        capture_viewport_image(&mut engine, &surface, width, height, format)
+                    })
+                });
+                cx.spawn_in(window, async move |this, cx| {
+                    let image = capture.await;
+                    state.write().build.screenshot_processing = false;
+                    let Some(image) = image else {
+                        tracing::warn!("High-resolution screenshot capture failed");
+                        this.update_in(cx, |_, window, cx| {
+                            window.push_notification(
+                                Notification::error("Screenshot capture failed").message(
+                                    "The requested image size may exceed this GPU's texture limit.",
+                                ),
+                                cx,
+                            );
+                        })
+                        .ok();
+                        return;
+                    };
+                    let dialog = rfd::AsyncFileDialog::new()
+                        .set_title("Save High Res Screenshot")
+                        .add_filter("PNG image", &["png"])
+                        .set_file_name("screenshot.png");
+                    if let Some(file) = dialog.save_file().await {
+                        let result = image.save(file.path());
+                        if let Err(error) = result {
+                            tracing::warn!("Failed to save high-resolution screenshot: {error}");
+                        }
+                    }
+                })
+                .detach();
+            } else {
+                self.shared_state.write().build.screenshot_processing = false;
+            }
+        }
+
         // Build the viewport element
         let viewport_element = if let Some(surface) = self.surface.clone() {
+            let (width, height) = surface.size();
+            {
+                let mut state = self.shared_state.write();
+                state.build.viewport_size = (width, height);
+                state.build.max_texture_dimension_2d =
+                    surface.device().limits().max_texture_dimension_2d;
+            }
             // Repaint this view whenever the render thread publishes a new frame,
             // so the compositor promotes `ready` -> `display` and
             // `WgpuSurface::prepaint` keeps observing the element's bounds (which
@@ -395,6 +456,19 @@ impl Render for HelioViewport {
                 }
             })
             .child(viewport_element)
+            .when(self.shared_state.read().build.screenshot_processing, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(rgba(0x00000099))
+                        .text_color(rgb(0xffffff))
+                        .child("High resolution screenshot is processing…"),
+                )
+            })
             .into_any_element()
     }
 }

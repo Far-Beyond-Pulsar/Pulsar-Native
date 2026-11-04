@@ -33,6 +33,7 @@ actions!(
         ToggleCameraModeSelector,
         ToggleViewportOptions,
         OpenEnvironmentConfig,
+        OpenHighResScreenshot,
         Toggle3DRenderer,
         ToggleGpuRenderer,
         ToggleFpsGraphType,

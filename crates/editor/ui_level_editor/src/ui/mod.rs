@@ -1,5 +1,6 @@
 mod actions;
 mod environment_config_window;
+mod high_res_screenshot_window;
 pub(crate) mod frame_pump;
 pub(crate) mod hierarchy;
 pub(crate) mod mode_widgets;
