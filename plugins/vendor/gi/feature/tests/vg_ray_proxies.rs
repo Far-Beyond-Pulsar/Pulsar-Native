@@ -518,22 +518,34 @@ impl Harness {
     }
 
     fn frame(&mut self) {
-        self.scene.world.flush_gpu_mirror(&self.queue);
-        self.rays.prepare(&self.scene.world).unwrap();
+        self.prepare();
         self.renderer.set_ray_tracing_frame(self.rays.frame());
         self.renderer.render(&self.camera, &self.view).unwrap();
     }
 
-    /// Frames until the wall's proxy is in the TLAS (built off-thread).
+    /// The scene's rows and its ray-tracing projection for the next frame.
+    fn prepare(&mut self) {
+        self.scene.world.flush_gpu_mirror(&self.queue);
+        self.rays.prepare(&self.scene.world).unwrap();
+    }
+
+    /// Until the wall's proxy is in the TLAS (built off-thread) and no build
+    /// is left. No frame is rendered meanwhile: the probes blend every update
+    /// into their history, so frames traced before the proxy arrived (the
+    /// wall left out) would leave light behind it for as long as the build
+    /// took, which is what made the measurements depend on the build's speed.
     fn wait_for_proxy(&mut self) {
         let start = std::time::Instant::now();
-        while self.rays.vg_stats().proxies == 0 {
+        loop {
+            let stats = self.rays.vg_stats();
+            if stats.proxies > 0 && stats.pending == 0 {
+                break;
+            }
             assert!(
-                start.elapsed().as_secs() < 60,
-                "the wall's proxy never arrived: {:?}",
-                self.rays.vg_stats()
+                stats.failed == 0 && start.elapsed().as_secs() < 60,
+                "the wall's proxy never arrived: {stats:?}"
             );
-            self.frame();
+            self.prepare();
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
