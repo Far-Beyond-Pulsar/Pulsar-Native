@@ -312,7 +312,7 @@ impl RenderPass for IndirectDispatchPass {
     fn prepare(&mut self, ctx: &PrepareContext) -> HelioResult<()> {
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -336,7 +336,7 @@ impl RenderPass for IndirectDispatchPass {
     fn execute(&mut self, ctx: &mut PassContext) -> HelioResult<()> {
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -344,7 +344,7 @@ impl RenderPass for IndirectDispatchPass {
         };
         let Some(coord_data) = ctx
             .registry
-            .get::<helio_pass_gbuffer::CoordinateSpacesFrameData<'_>>(
+            .get::<helio_core::CoordinateSpacesFrameData<'_>>(
                 helio_core::resource_keys::coordinate_spaces(),
             )
         else {

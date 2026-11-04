@@ -45,7 +45,6 @@ helio-pass-corona = { workspace = true }
 glam = { workspace = true }
 helio-core = { workspace = true }
 pollster = "=0.4.0"
-helio-pass-object-batch = { workspace = true }
 
 [lints]
 workspace = true

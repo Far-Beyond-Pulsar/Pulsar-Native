@@ -1030,6 +1030,7 @@ mod shader_tests {
                     GI_COMMON_SNIPPET,
                     helio_pass_shadow_matrix::SUN_OCCLUSION_SNIPPET,
                     sun_transmittance::SNIPPET,
+                    helio_mesh_api::RAY_SURFACE_SNIPPET,
                 ],
             );
         }

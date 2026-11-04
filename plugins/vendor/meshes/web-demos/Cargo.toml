@@ -60,7 +60,6 @@ helio-core          = { workspace = true }
 helio-presets = { workspace = true }
 helio-asset-compat  = { workspace = true }
 pulsar_scenedb      = { workspace = true }
-helio-pass-gbuffer  = { workspace = true }
 helio-pass-light-cull = { workspace = true }
 helio-pass-sdf      = { workspace = true, optional = true }
 helio-pass-fxaa     = { workspace = true, optional = true }

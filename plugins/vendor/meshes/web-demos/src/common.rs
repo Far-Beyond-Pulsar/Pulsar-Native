@@ -101,7 +101,7 @@ pub fn insert_object(
         transform.w_axis.z,
         radius,
     ];
-    let object = StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+    let object = StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
         mesh.index(),
         mesh.generation().wrapping_add(1),
         material.index(),

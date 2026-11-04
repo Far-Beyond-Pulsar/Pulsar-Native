@@ -2,7 +2,7 @@
 //! packed per material key.
 //!
 //! The G-buffer draws one segment per `(material_class, graph_hash)` with that
-//! key's pipeline (`helio_pass_gbuffer::DrawSegments`). A portal duplicate must
+//! key's pipeline (`helio_mesh_api::DrawSegments`). A portal duplicate must
 //! be shaded by its own material the same way, so after the cull this runs the
 //! occlusion cull's range compaction over `portal_indirect`, into buffers of the
 //! portal pass's own laid out by the G-buffer's segment table (the same key
@@ -156,7 +156,7 @@ impl PortalCompaction {
     fn size_to(
         &mut self,
         device: &wgpu::Device,
-        culled: &helio_pass_gbuffer::DrawSegments<'_>,
+        culled: &helio_mesh_api::DrawSegments<'_>,
         groups: u32,
         range_slots: u32,
     ) {
@@ -199,8 +199,8 @@ impl PortalCompaction {
     pub(crate) fn record(
         &mut self,
         ctx: &mut PassContext,
-        batch: &helio_pass_gbuffer::ObjectBatchFrameData<'_>,
-        culled: &helio_pass_gbuffer::DrawSegments<'_>,
+        batch: &helio_mesh_api::ObjectBatchFrameData<'_>,
+        culled: &helio_mesh_api::DrawSegments<'_>,
         portal_indirect: &wgpu::Buffer,
     ) {
         let slots = batch.range_slot_capacity;
@@ -213,7 +213,7 @@ impl PortalCompaction {
             0,
             bytemuck::bytes_of(&Params {
                 slots,
-                bucket: helio_pass_gbuffer::ShadingBucket::Opaque as u32,
+                bucket: helio_mesh_api::ShadingBucket::Opaque as u32,
                 segment_count: culled.segments.len() as u32,
                 _pad: 0,
             }),

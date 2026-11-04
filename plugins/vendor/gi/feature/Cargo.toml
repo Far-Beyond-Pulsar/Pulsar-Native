@@ -28,8 +28,6 @@ helio = { workspace = true }
 helio-components = { workspace = true }
 helio-presets = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
-helio-pass-object-batch = { workspace = true }
 helio-vg-build = { workspace = true }
 helio-vg-format = { workspace = true }
 helio-vg-stream = { workspace = true }

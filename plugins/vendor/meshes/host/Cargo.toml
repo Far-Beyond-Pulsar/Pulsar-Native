@@ -23,9 +23,9 @@ helio-feature-api = { workspace = true }
 helio-presets = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-mats = { workspace = true }
-helio-mesh-api = { workspace = true }
+helio-mesh-api = { workspace = true, features = ["host-rows"] }
 helio-pass-forward-lit = { workspace = true }
-helio-pass-gbuffer = { workspace = true, features = ["host-rows"] }
+helio-pass-gbuffer = { workspace = true }
 helio-pass-light-cull = { workspace = true }
 helio-pass-object-batch = { workspace = true }
 helio-pass-occlusion-cull = { workspace = true }

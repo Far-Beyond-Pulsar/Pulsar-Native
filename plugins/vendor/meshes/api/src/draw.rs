@@ -1,11 +1,6 @@
-//! GPU instance/draw-call/object-batch shapes.
-//!
-//! Owned by `helio-pass-object-batch`, the pass that actually assembles the
-//! sorted instance/draw-call/range/shadow-partition data every
-//! geometry-drawing pass reads (see [`ObjectBatchFrameData`]'s own doc).
-//! Consumers depend on this crate for the shape rather than it being a
-//! central-crate-known "generic" type — the shape is real content this pass
-//! produces every frame, not a graph/registry mechanism.
+//! GPU instance/draw-call/object-batch shapes: what `helio-pass-object-batch`
+//! assembles every frame (see [`crate::ObjectBatchFrameData`]). Their WGSL is
+//! [`crate::DRAW_ROWS_WGSL`].
 
 use bytemuck::{Pod, Zeroable};
 

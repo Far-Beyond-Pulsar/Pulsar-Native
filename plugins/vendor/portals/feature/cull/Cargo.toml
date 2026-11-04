@@ -9,6 +9,7 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+helio-mesh-api = { workspace = true }
 # Host settings (`settings::PORTALS`).
 helio-settings = { workspace = true }
 helio-frame-api = { workspace = true }
@@ -16,8 +17,10 @@ helio-feature-api = { workspace = true }
 pulsar_reflection = { workspace = true }
 glam = { workspace = true }
 helio-core = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 pulsar_scenedb = { workspace = true }
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }

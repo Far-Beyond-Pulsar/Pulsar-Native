@@ -1,14 +1,61 @@
-//! The meshes' public contract: what their components author (the packed
-//! vertex layout and mesh uploads) and the buffers their ray-tracing
-//! projection publishes beside the frame's TLAS
-//! (`helio_frame_api::rays::SceneRays`): the instance rows
-//! ([`RAY_INSTANCES`]) and the proxy pool ([`RAY_PROXY_VERTICES`],
-//! [`RAY_PROXY_INDICES`]). No state; a feature that reads meshes depends on
-//! this crate, never on the meshes' passes.
+//! The meshes' public contract, the one place another kind reads a mesh
+//! concept from:
+//! - what their components author: the packed vertex layout, mesh uploads,
+//!   the object, render-group and sublevel rows ([`rows`]), the mesh pools;
+//! - what their batch publishes each frame for the passes that draw or cull
+//!   mesh content: the instance and draw rows ([`draw`]), the object batch's
+//!   and the culled batch's frame data, draw segments, draw slots and the
+//!   multi-draw they are issued with; in WGSL, [`DRAW_ROWS_SNIPPET`];
+//! - the buffers their ray-tracing projection publishes beside the frame's
+//!   TLAS (`helio_frame_api::rays::SceneRays`): the instance rows
+//!   ([`RAY_INSTANCES`]) and the proxy pool ([`RAY_PROXY_VERTICES`],
+//!   [`RAY_PROXY_INDICES`]); in WGSL, [`RAY_SURFACE_SNIPPET`].
+//!
+//! No passes: a kind that reads meshes depends on this crate, never on the
+//! meshes' feature crates. With `host-rows`, the rows as SceneDB components
+//! for standalone hosts ([`host_rows`]).
 
 mod asset_types;
+mod culled_batch_frame_data;
+pub mod draw;
+mod draw_segments;
+pub mod draw_slots;
+#[cfg(feature = "host-rows")]
+pub mod host_rows;
+mod indirect_draw;
+mod object_batch_frame_data;
+pub mod rows;
 
 pub use asset_types::{MeshUpload, PackedVertex, SectionedMeshUpload};
+pub use culled_batch_frame_data::CulledBatchFrameData;
+pub use draw::*;
+pub use draw_segments::{DrawSegment, DrawSegments, ShadingBucket};
+pub use draw_slots::{DrawSlots, DRAW_SLOT_LAYOUT, DRAW_SLOT_LOCATION};
+pub use indirect_draw::{multi_draw_indexed_indirect, GpuDrawCount, DRAW_INDEXED_INDIRECT_STRIDE};
+pub use object_batch_frame_data::{IndirectDispatchArgs, ObjectBatchFrameData};
+pub use rows::{
+    RenderGroupRow, StaticObjectRow, SubLevelActorRow, SubLevelIndex, DEFAULT_SUBLEVEL_INDEX,
+    MESH_INDICES, MESH_VERTICES, RENDER_GROUPS, STATIC_OBJECTS,
+};
+
+/// The meshes' surfaces as rays see them, for a tracer's WGSL
+/// (`//!use mesh_ray_surface`): the [`RayInstance`] row and its flags, the
+/// mesh pools' vertex decode, the proxy pool's, and `ray_triangle`, which
+/// fetches a hit's triangle by instance and primitive. The reader declares
+/// the storage it reads under these names: `instances: array<RayInstance>`
+/// ([`RAY_INSTANCES`]), `vertices: array<u32>` and `indices: array<u32>`
+/// (the mesh pools, [`MESH_VERTICES`] / [`MESH_INDICES`]),
+/// `proxy_vertices: array<f32>` and `proxy_indices: array<u32>`
+/// ([`RAY_PROXY_VERTICES`] / [`RAY_PROXY_INDICES`]).
+pub const RAY_SURFACE_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use mesh_ray_surface", "shaders/ray_surface.wgsl");
+
+/// The object batch's rows in WGSL (`//!use mesh_draw_rows`):
+/// [`GpuInstanceData`], [`GpuDrawCall`], [`DrawIndexedIndirectArgs`] (as
+/// `DrawIndexedIndirect`), the `INSTANCE_FLAG_*` bits and
+/// `instance_coordinate_space`, for what reads the batch on the GPU.
+pub const DRAW_ROWS_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use mesh_draw_rows", "shaders/draw_rows.wgsl");
 
 /// Graph key of the rows that follow the frame's TLAS instance order, a
 /// [`RayInstance`] an instance.

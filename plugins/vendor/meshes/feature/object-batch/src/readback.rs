@@ -4,7 +4,7 @@
 //! Draw passes pick a pipeline per `(material_class, graph_hash)`, so the
 //! CPU has to know which material keys exist. This table tells
 //! `helio-pass-occlusion-cull` which keys to give a draw segment (see
-//! `helio_pass_gbuffer::DrawSegments`); the draws themselves use the GPU's
+//! `helio_mesh_api::DrawSegments`); the draws themselves use the GPU's
 //! current tables, so the range `start`/`count` read back here are never used
 //! as draw offsets. Every OTHER byte this pipeline produces
 //! (`instances`/`aabbs`/`draw_calls`/the shadow-partitioned indirect lists)

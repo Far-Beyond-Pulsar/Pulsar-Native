@@ -46,7 +46,6 @@ helio-pass-post-volumes = { workspace = true }
 pollster = "=0.4.0"
 glam = { workspace = true }
 helio-core = { workspace = true }
-helio-pass-object-batch = { workspace = true }
 
 [lints]
 workspace = true

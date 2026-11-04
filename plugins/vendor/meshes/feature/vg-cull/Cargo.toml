@@ -20,4 +20,3 @@ naga = { version = "30", features = ["wgsl-in"] }
 pollster = { version = "0.4" }
 glam = { workspace = true }
 helio-vg-build = { workspace = true }
-helio-pass-gbuffer = { workspace = true }

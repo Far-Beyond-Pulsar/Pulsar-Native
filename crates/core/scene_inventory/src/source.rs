@@ -501,7 +501,7 @@ pub fn editor_packages(root: &Path) -> BTreeSet<String> {
 /// (`T::register_gpu_columns*(…)` in a package of `linked`). Writes to an
 /// unregistered column are dropped by SceneDB, so a schema missing here
 /// never reaches the GPU. Each entry is the path as written at the call
-/// site, e.g. `helio_pass_gbuffer::StaticObjectRow`.
+/// site, e.g. `helio_mesh_api::StaticObjectRow`.
 pub fn registered_gpu_schemas(root: &Path, linked: &BTreeSet<String>) -> BTreeSet<String> {
     let call = Regex::new(r"([A-Za-z_][\w:]*)::register_gpu_columns\w*\s*\(").unwrap();
     let mut out = BTreeSet::new();

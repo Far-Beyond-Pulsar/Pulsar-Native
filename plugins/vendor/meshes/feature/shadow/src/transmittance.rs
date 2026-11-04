@@ -149,7 +149,7 @@ impl Transmittance {
                                 shader_location: 0,
                             }],
                         }),
-                        Some(helio_pass_gbuffer::DRAW_SLOT_LAYOUT),
+                        Some(helio_mesh_api::DRAW_SLOT_LAYOUT),
                     ],
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -279,7 +279,7 @@ impl Transmittance {
         static_depth: &wgpu::TextureView,
         indirect: &wgpu::Buffer,
         draw_count: u32,
-        gpu_count: Option<helio_pass_gbuffer::GpuDrawCount<'_>>,
+        gpu_count: Option<helio_mesh_api::GpuDrawCount<'_>>,
         vertices: &wgpu::Buffer,
         slots: &wgpu::Buffer,
         indices: &wgpu::Buffer,
@@ -349,7 +349,7 @@ impl Transmittance {
         pass.set_vertex_buffer(0, vertices.slice(..));
         pass.set_vertex_buffer(1, slots.slice(..));
         pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        helio_pass_gbuffer::multi_draw_indexed_indirect(
+        helio_mesh_api::multi_draw_indexed_indirect(
             &mut pass, indirect, 0, draw_count, gpu_count,
         );
     }

@@ -188,7 +188,7 @@ fn decode_snorm8x4(packed: u32) -> vec3<f32> {
 }
 
 // `slot` is per-instance vertex data, which every backend offsets by the
-// indirect draw's `first_instance` (`helio_pass_gbuffer::draw_slots`).
+// indirect draw's `first_instance` (`helio_mesh_api::draw_slots`).
 @vertex
 fn vs_main(v: Vertex, @location(15) slot: u32, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     let inst       = instance_data[compacted_indices[slot]];

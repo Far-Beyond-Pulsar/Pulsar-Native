@@ -16,9 +16,9 @@
 
 pub mod ray_proxies;
 pub mod ray_tracing;
-/// The meshes' row components (the G-buffer crate's `host_rows`, where
+/// The meshes' row components (helio-mesh-api's `host_rows`, where
 /// their rows are defined).
-pub use helio_pass_gbuffer::host_rows::{MeshComponent, RenderGroupComponent, StaticObjectComponent};
+pub use helio_mesh_api::host_rows::{MeshComponent, RenderGroupComponent, StaticObjectComponent};
 
 /// The meshes' Helio features: the object batch, its culling, the drawers
 /// (G-buffer, shadow casters, forward, transparent) and virtual geometry.
@@ -259,7 +259,7 @@ mod bake_scene_tests {
     use helio_pass_light_cull::{GpuLight, LightType};
     use helio_bake::LightSourceKind;
     use helio_pass_light_cull::LightRow;
-    use helio_pass_gbuffer::StaticObjectRow;
+    use helio_mesh_api::StaticObjectRow;
 
     fn vertex(position: [f32; 3]) -> PackedVertex {
         PackedVertex {

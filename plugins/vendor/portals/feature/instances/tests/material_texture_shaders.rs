@@ -7,7 +7,11 @@ fn the_portal_draw_validates_with_scene_owned_slot_defaults() {
     let source = include_str!("../shaders/gbuffer_portal.wgsl");
     let resolved = helio_core::shader::resolve_with(
         source,
-        &[helio_mats::PBR_EVAL_SNIPPET, helio_mats::SPECULAR_AA_SNIPPET],
+        &[
+            helio_mats::PBR_EVAL_SNIPPET,
+            helio_mats::SPECULAR_AA_SNIPPET,
+            helio_mesh_api::DRAW_ROWS_SNIPPET,
+        ],
     );
     let module = naga::front::wgsl::parse_str(&resolved)
         .unwrap_or_else(|error| panic!("{}", error.emit_to_string(&resolved)));

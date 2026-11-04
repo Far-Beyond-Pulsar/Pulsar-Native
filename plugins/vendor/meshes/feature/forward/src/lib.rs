@@ -43,8 +43,8 @@ struct ForwardLitGlobals {
 }
 
 pub struct ForwardLitPass {
-    /// The draw slots the vertex shader reads (see `helio_pass_gbuffer::DrawSlots`).
-    draw_slots: helio_pass_gbuffer::DrawSlots,
+    /// The draw slots the vertex shader reads (see `helio_mesh_api::DrawSlots`).
+    draw_slots: helio_mesh_api::DrawSlots,
     material_binding: helio_mats::MaterialBindingConfig,
     pipelines: HashMap<RadiantShaderKey, wgpu::RenderPipeline>,
     shader_cache: RadiantShaderCache,
@@ -348,7 +348,7 @@ impl ForwardLitPass {
                                     },
                                 ],
                             }),
-                            Some(helio_pass_gbuffer::DRAW_SLOT_LAYOUT),
+                            Some(helio_mesh_api::DRAW_SLOT_LAYOUT),
                         ],
                     },
                     fragment: Some(wgpu::FragmentState {
@@ -523,7 +523,7 @@ impl RenderPass for ForwardLitPass {
     fn execute(&mut self, ctx: &mut PassContext) -> HelioResult<()> {
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -531,7 +531,7 @@ impl RenderPass for ForwardLitPass {
         };
         let Some(culled) = ctx
             .registry
-            .get::<helio_pass_gbuffer::CulledBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::CulledBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "culled_batch",
             ))
         else {
@@ -723,7 +723,7 @@ impl RenderPass for ForwardLitPass {
             .draw_slots
             .buffer(
                 &ctx.device,
-                helio_pass_gbuffer::DrawSlots::len_of(culled.compacted_indices.size(), 4),
+                helio_mesh_api::DrawSlots::len_of(culled.compacted_indices.size(), 4),
             )
             .clone();
         let mut pass = ctx.render_cmds().unwrap();
@@ -737,9 +737,9 @@ impl RenderPass for ForwardLitPass {
         // `DrawSegments`).
         let segments = culled.segments;
         let bucket = if self.render_all_opaque {
-            helio_pass_gbuffer::ShadingBucket::Opaque
+            helio_mesh_api::ShadingBucket::Opaque
         } else {
-            helio_pass_gbuffer::ShadingBucket::Forward
+            helio_mesh_api::ShadingBucket::Forward
         };
         if segments.is_empty() {
             // No material key read back yet (the first frames): draw every
@@ -752,7 +752,7 @@ impl RenderPass for ForwardLitPass {
             let pipeline =
                 self.get_or_create_pipeline(&ctx.device, key, "", self.render_all_opaque);
             pass.set_pipeline(pipeline);
-            helio_pass_gbuffer::multi_draw_indexed_indirect(
+            helio_mesh_api::multi_draw_indexed_indirect(
                 &mut pass, indirect, 0, max_draws, draw_count,
             );
         } else {

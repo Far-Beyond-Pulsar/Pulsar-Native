@@ -11,14 +11,8 @@
 //! forward-lit`, `helio-pass-portal-cull`/
 //! `-instances`).
 //!
-//! Defined here rather than in `helio-pass-object-batch` itself because that
-//! crate already depends on `helio-pass-gbuffer` for [`crate::
-//! StaticObjectRow`]'s schema; putting the frame-data type in the
-//! opposite direction would be a dependency cycle. `helio-pass-gbuffer`
-//! already plays this "shared contract" role for other cross-pass shapes
-//! (`helio-pass-transparent`, `helio-pass-object-batch`, and `helio-pass-
-//! portal-instances` all already depend on it), so this is consistent with
-//! the existing shape rather than a new pattern.
+//! The meshes' contract (this crate), not their passes': other kinds that
+//! draw or cull mesh content (portals, particles' draw slots) read it here.
 //!
 //! `opaque_ranges`/`transparent_ranges`/`forward_ranges` are a small,
 //! bounded, ASYNC CPU readback that trails the GPU by two or more frames (see
@@ -28,11 +22,11 @@
 //! fills in the same frame (see [`crate::DrawSegments`]).
 #[derive(Clone, Copy)]
 pub struct ObjectBatchFrameData<'a> {
-    /// Sorted-order instance data (`helio_pass_object_batch::GpuInstanceData` layout).
+    /// Sorted-order instance data (`crate::GpuInstanceData` layout).
     pub instances: &'a wgpu::Buffer,
     /// Sorted-order bounding spheres, same order as `instances`.
     pub aabbs: &'a wgpu::Buffer,
-    /// One entry per draw-call group (`helio_pass_object_batch::GpuDrawCall`
+    /// One entry per draw-call group (`helio_mesh_api::GpuDrawCall`
     /// layout) -- used by culling passes that need
     /// `index_count`/`first_index`/`vertex_offset` directly, not just the
     /// hardware indirect-draw ABI.

@@ -46,7 +46,6 @@ helio-pass-water-sim = { workspace = true }
 pollster = "=0.4.0"
 glam = { workspace = true }
 helio-core = { workspace = true }
-helio-pass-object-batch = { workspace = true }
 foliage_component = { workspace = true }
 pulsar_physics = { workspace = true }
 

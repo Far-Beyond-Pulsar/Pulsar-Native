@@ -69,8 +69,8 @@ pub struct PortalInstancePass {
     /// Live portal chains in the host's projection (`PORTAL_COUNTS`); the
     /// pass is a graph member only while there are some.
     active_chain_count: Option<u32>,
-    /// The draw slots the vertex shader reads (see `helio_pass_gbuffer::DrawSlots`).
-    draw_slots: helio_pass_gbuffer::DrawSlots,
+    /// The draw slots the vertex shader reads (see `helio_mesh_api::DrawSlots`).
+    draw_slots: helio_mesh_api::DrawSlots,
     material_binding: helio_mats::MaterialBindingConfig,
     /// Draws materials without a graph (and every group until the segments exist).
     pipeline: wgpu::RenderPipeline,
@@ -118,8 +118,7 @@ impl PortalInstancePass {
         let shader = helio_core::shader::module(device, "PortalInstance Shader", &*shader_source);
         // The raw text, for filling in material graphs (the registered, hot-reloadable
         // module above is the default pipeline's).
-        let base_shader: Cow<'static, str> =
-            Cow::Borrowed(include_str!("../shaders/gbuffer_portal.wgsl"));
+        let base_shader = base_shader_text();
 
         let screen_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("PortalInstance/ScreenSize"),
@@ -253,7 +252,7 @@ impl PortalInstancePass {
                                 },
                             ],
                         }),
-                        Some(helio_pass_gbuffer::DRAW_SLOT_LAYOUT),
+                        Some(helio_mesh_api::DRAW_SLOT_LAYOUT),
                     ],
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -370,13 +369,26 @@ impl PortalInstancePass {
     }
 }
 
+/// `gbuffer_portal.wgsl` with the meshes' rows (`mesh_draw_rows`) in, the
+/// material snippets left to the template that fills it in.
+fn base_shader_text() -> Cow<'static, str> {
+    helio_core::shader::resolve_with(
+        include_str!("../shaders/gbuffer_portal.wgsl"),
+        &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+    )
+}
+
 fn portal_shader_source(material_binding: helio_mats::MaterialBindingConfig) -> Cow<'static, str> {
     let source = helio_core::shader::source_text(
         "PortalInstance Shader",
         helio_core::include_wgsl!("../shaders/gbuffer_portal.wgsl"),
     );
     let source = Cow::Owned(
-        helio_core::shader::resolve_with(&source, &[helio_mats::SPECULAR_AA_SNIPPET]).into_owned(),
+        helio_core::shader::resolve_with(
+            &source,
+            &[helio_mats::SPECULAR_AA_SNIPPET, helio_mesh_api::DRAW_ROWS_SNIPPET],
+        )
+        .into_owned(),
     );
     if material_binding.uses_binding_arrays() {
         source
@@ -580,7 +592,7 @@ impl RenderPass for PortalInstancePass {
         // frame's live count (see `execute`).
         self.draw_count = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
             .map(|b| b.all_draws().0)
@@ -646,7 +658,7 @@ impl RenderPass for PortalInstancePass {
 
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -654,7 +666,7 @@ impl RenderPass for PortalInstancePass {
         };
         let Some(coord_data) = ctx
             .registry
-            .get::<helio_pass_gbuffer::CoordinateSpacesFrameData<'_>>(
+            .get::<helio_core::CoordinateSpacesFrameData<'_>>(
                 helio_core::resource_keys::coordinate_spaces(),
             )
         else {
@@ -816,7 +828,7 @@ impl RenderPass for PortalInstancePass {
             .draw_slots
             .buffer(
                 &ctx.device,
-                helio_pass_gbuffer::DrawSlots::len_of(self.portal_compacted_indices_buf.size(), 4),
+                helio_mesh_api::DrawSlots::len_of(self.portal_compacted_indices_buf.size(), 4),
             )
             .clone();
         pass.set_pipeline(&self.pipeline);
@@ -826,7 +838,7 @@ impl RenderPass for PortalInstancePass {
         pass.set_bind_group(0, self.bind_group_0.as_ref().unwrap(), &[]);
         pass.set_bind_group(1, self.bind_group_1.as_ref().unwrap(), &[]);
 
-        let culled: Option<helio_pass_gbuffer::CulledBatchFrameData<'_>> = ctx
+        let culled: Option<helio_mesh_api::CulledBatchFrameData<'_>> = ctx
             .registry
             .get(helio_core::ResourceKey::new("culled_batch"));
         // The packed records exist once the cull has laid them out like the
@@ -852,17 +864,17 @@ impl RenderPass for PortalInstancePass {
             let shared = segments.lock().unwrap_or_else(|p| p.into_inner());
             for (index, segment) in culled
                 .segments
-                .in_bucket(helio_pass_gbuffer::ShadingBucket::Opaque)
+                .in_bucket(helio_mesh_api::ShadingBucket::Opaque)
             {
                 pass.set_pipeline(self.pipeline_for(ctx.device, segment.graph_hash));
                 let count = culled
                     .segments
                     .counts
-                    .map(|_| helio_pass_gbuffer::GpuDrawCount {
+                    .map(|_| helio_mesh_api::GpuDrawCount {
                         buffer: &shared.counts,
                         offset: index as u64 * 4,
                     });
-                helio_pass_gbuffer::multi_draw_indexed_indirect(
+                helio_mesh_api::multi_draw_indexed_indirect(
                     &mut pass,
                     &shared.indirect,
                     segment.first,
@@ -881,7 +893,7 @@ impl RenderPass for PortalInstancePass {
         // clamps it to this maximum, matching the capacity clamp here.
         let (_, draw_count) = batch.all_draws();
         let indirect_draw_count = self.draw_count.min(PORTAL_DRAW_CAPACITY);
-        helio_pass_gbuffer::multi_draw_indexed_indirect(
+        helio_mesh_api::multi_draw_indexed_indirect(
             &mut pass,
             &self.portal_indirect_buf,
             0,
@@ -962,7 +974,7 @@ mod material_tests {
     fn a_graph_material_compiles_into_the_portal_shader() {
         let registry = RadiantTemplateRegistry::new();
         let template = registry.get(0).expect("default template");
-        let base = include_str!("../shaders/gbuffer_portal.wgsl");
+        let base = &*super::base_shader_text();
         let plain = template.build_shader_source_on(base, "", 256);
         validate(&plain);
         let graph = template.build_shader_source_on(base, GRAPH, 256);
@@ -974,7 +986,7 @@ mod material_tests {
     #[test]
     fn the_built_in_material_classes_compile_into_the_portal_shader() {
         let registry = RadiantTemplateRegistry::new();
-        let base = include_str!("../shaders/gbuffer_portal.wgsl");
+        let base = &*super::base_shader_text();
         for class in registry.keys() {
             let template = registry.get(class).unwrap();
             validate(&template.build_shader_source_on(base, "", 256));

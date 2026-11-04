@@ -218,7 +218,6 @@ helio-pass-vg-cull = { workspace = true }
 helio-pass-vg-bvh = { workspace = true }
 helio-pass-vg-raster = { workspace = true }
 helio-mats = { workspace = true }
-helio-pass-object-batch = { workspace = true }
 helio-pass-shadow-matrix = { workspace = true }
 helio-asset-compat = { workspace = true }
 helio-pass-tsr = { workspace = true }

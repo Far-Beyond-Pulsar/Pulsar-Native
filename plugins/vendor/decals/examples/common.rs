@@ -261,7 +261,7 @@ pub fn spawn_object(
     // `+1` keeps 0 as a true "never written" sentinel while staying
     // trivially recoverable (`stored - 1 == real generation`) if anything
     // ever needs the raw value back.
-    let component = StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+    let component = StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
         mesh.index(),
         mesh.generation().wrapping_add(1),
         material.index(),

@@ -7,10 +7,7 @@
 //! occlusion-cull`'s `OcclusionCullPass` from `helio-pass-indirect-
 //! dispatch`'s `IndirectDispatchFrameData`.
 //!
-//! Defined here for the same reason as [`crate::ObjectBatchFrameData`]:
-//! `helio-pass-occlusion-cull` already depends on `helio-pass-gbuffer` (for
-//! `ObjectBatchFrameData`), so putting this type in the opposite direction
-//! would be a dependency cycle.
+//! The meshes' contract, as [`crate::ObjectBatchFrameData`].
 #[derive(Clone, Copy)]
 pub struct CulledBatchFrameData<'a> {
     /// Per-range packed indirect args for groups with at least one surviving

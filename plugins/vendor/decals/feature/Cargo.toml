@@ -28,7 +28,6 @@ helio = { workspace = true }
 helio-presets = { workspace = true }
 helio-components = { workspace = true }
 helio-mesh-api = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 pulsar_scenedb_derive = { workspace = true }
 pulsar_reflection = { workspace = true }
 glam = { workspace = true }

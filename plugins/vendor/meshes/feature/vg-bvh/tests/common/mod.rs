@@ -1,7 +1,7 @@
 //! Scene generators shared by the reference and GPU tests.
 #![allow(dead_code)]
 
-use helio_pass_gbuffer::StaticObjectRow;
+use helio_mesh_api::StaticObjectRow;
 use helio_vg_format::{GpuVgInstance, INST_ENABLED};
 
 pub struct Rng(pub u64);

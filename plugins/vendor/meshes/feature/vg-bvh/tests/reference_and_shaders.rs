@@ -82,7 +82,7 @@ fn nodes_include_validates_standalone_and_matches_rust() {
 
 fn check(
     instances: &[helio_vg_format::GpuVgInstance],
-    objects: &[helio_pass_gbuffer::StaticObjectRow],
+    objects: &[helio_mesh_api::StaticObjectRow],
     cfg: &BvhConfig,
 ) -> helio_pass_vg_bvh::reference::RefTree {
     let tree = build(instances, objects, cfg);

@@ -16,7 +16,7 @@ use pulsar_scenedb_derive::SceneStore;
 #[derive(SceneStore, Clone, Debug)]
 pub struct MeshComponent {
     #[gpu(buffer = "builtin_mesh_vertex", mirror = Once)]
-    pub vertices: Vec<helio_mesh_api::PackedVertex>,
+    pub vertices: Vec<crate::PackedVertex>,
     #[gpu(buffer = "builtin_mesh_index", mirror = Once)]
     pub indices: Vec<u32>,
 }
@@ -106,7 +106,7 @@ pub struct StaticObjectComponent {
     pub graph_hash_lo: u32,
     #[gpu]
     pub graph_hash_hi: u32,
-    /// See `helio_pass_object_batch::GpuInstanceData::flags`.
+    /// See `crate::GpuInstanceData::flags`.
     #[gpu]
     pub flags: u32,
     /// Base vertex in the parallel four-influence skin stream (zero for rigid meshes).

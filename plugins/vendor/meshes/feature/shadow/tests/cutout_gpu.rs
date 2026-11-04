@@ -189,7 +189,7 @@ fn leaf_opacity_casts_identical_cutout_shadows_from_both_sides() {
                             },
                         ],
                     }),
-                    Some(helio_pass_gbuffer::DRAW_SLOT_LAYOUT),
+                    Some(helio_mesh_api::DRAW_SLOT_LAYOUT),
                 ],
             },
             fragment: Some(wgpu::FragmentState {

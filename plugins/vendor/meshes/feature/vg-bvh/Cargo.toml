@@ -6,8 +6,8 @@ description = "Virtual geometry: GPU Morton LBVH (GCBVH top level) over VG insta
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-mesh-api = { workspace = true }
 helio-core = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 helio-vg-format = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }

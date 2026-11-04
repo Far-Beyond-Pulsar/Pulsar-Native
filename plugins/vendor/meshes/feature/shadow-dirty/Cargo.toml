@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+helio-mesh-api = { workspace = true }
 helio-core = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 helio-pass-shadow-matrix = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }

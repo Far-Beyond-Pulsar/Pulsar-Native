@@ -4,7 +4,7 @@
 //
 // The survivors are also appended to their material key's draw segment: a
 // fixed region of `segment_indirect` the CPU assigned to that key (see
-// `helio_pass_gbuffer::DrawSegments`). Draw passes record one draw per
+// `helio_mesh_api::DrawSegments`). Draw passes record one draw per
 // segment at its fixed offset, so they never need this frame's range layout.
 
 struct Range {

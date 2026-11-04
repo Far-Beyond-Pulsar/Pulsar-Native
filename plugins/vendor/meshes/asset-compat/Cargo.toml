@@ -14,7 +14,6 @@ helio-pass-forward-lit = { workspace = true }
 # SceneDB: material rows spawned by `upload_scene_materials` are plain
 # `helio_pass_gbuffer::MaterialComponent` rows now, same as everywhere else.
 pulsar_scenedb = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 
 # SolidRS - 3D asset loading
 solid-rs = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "61b6638ab5495705117f41401ae2b9c53c3297ed", features = ["configurator"] }

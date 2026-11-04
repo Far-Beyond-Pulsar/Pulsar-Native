@@ -31,8 +31,6 @@ helio-feature-api = { workspace = true }
 helio-mesh-api = { workspace = true }
 helio-pass-debug-overlay = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
-helio-pass-object-batch = { workspace = true }
 helio-pass-perf-overlay = { workspace = true }
 helio-pass-shadow-matrix = { workspace = true }
 helio-pass-gi = { workspace = true }

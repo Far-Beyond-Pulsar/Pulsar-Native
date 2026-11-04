@@ -977,7 +977,7 @@ pub fn enable_ray_shadows(world: &mut World) {
             world
                 .get_mut::<helio_mesh_host::StaticObjectComponent>(id)
                 .unwrap()
-                .flags |= helio_pass_object_batch::INSTANCE_FLAG_CASTS_SHADOW;
+                .flags |= helio_mesh_api::INSTANCE_FLAG_CASTS_SHADOW;
         }
     }
 }

@@ -95,7 +95,7 @@ pub struct TransparentPass {
     color_alias: Option<&'static str>,
     reactive_mask: bool,
     timing_query: Option<wgpu::QuerySet>,
-    draw_slots: helio_pass_gbuffer::DrawSlots,
+    draw_slots: helio_mesh_api::DrawSlots,
 }
 
 impl TransparentPass {
@@ -566,7 +566,7 @@ impl RenderPass for TransparentPass {
     fn execute(&mut self, ctx: &mut PassContext) -> HelioResult<()> {
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -574,7 +574,7 @@ impl RenderPass for TransparentPass {
         };
         let Some(culled) = ctx
             .registry
-            .get::<helio_pass_occlusion_cull::CulledBatchFrameData<'_>>(
+            .get::<helio_mesh_api::CulledBatchFrameData<'_>>(
                 helio_core::ResourceKey::new("culled_batch"),
             )
         else {
@@ -582,7 +582,7 @@ impl RenderPass for TransparentPass {
         };
         let segments = culled.segments;
         if segments
-            .in_bucket(helio_pass_gbuffer::ShadingBucket::Transparent)
+            .in_bucket(helio_mesh_api::ShadingBucket::Transparent)
             .next()
             .is_none()
         {
@@ -765,9 +765,9 @@ impl RenderPass for TransparentPass {
             .draw_slots
             .buffer(
                 &ctx.device,
-                helio_pass_gbuffer::DrawSlots::len_of(
+                helio_mesh_api::DrawSlots::len_of(
                     batch.instances.size(),
-                    helio_pass_gbuffer::draw_slots::INSTANCE_BYTES,
+                    helio_mesh_api::draw_slots::INSTANCE_BYTES,
                 ),
             )
             .clone();
@@ -780,7 +780,7 @@ impl RenderPass for TransparentPass {
         rp.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
 
         // One draw per transparent material segment (see `DrawSegments`).
-        for (index, segment) in segments.in_bucket(helio_pass_gbuffer::ShadingBucket::Transparent) {
+        for (index, segment) in segments.in_bucket(helio_mesh_api::ShadingBucket::Transparent) {
             let key = RadiantShaderKey {
                 template_id: segment.template_class(),
                 graph_hash: segment.graph_hash,
@@ -908,7 +908,7 @@ impl TransparentPass {
                                     },
                                 ],
                             }),
-                            Some(helio_pass_gbuffer::DRAW_SLOT_LAYOUT),
+                            Some(helio_mesh_api::DRAW_SLOT_LAYOUT),
                         ],
                     },
                     fragment: Some(wgpu::FragmentState {

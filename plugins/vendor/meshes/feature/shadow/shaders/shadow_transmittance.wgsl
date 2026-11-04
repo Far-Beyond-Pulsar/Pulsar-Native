@@ -86,7 +86,7 @@ fn vs_main(
     @location(0)             position: vec3<f32>,
     @builtin(vertex_index)    vertex_index: u32,
     // Per-instance vertex data, offset by the indirect draw's `first_instance`
-    // on every backend (`helio_pass_gbuffer::draw_slots`).
+    // on every backend (`helio_mesh_api::draw_slots`).
     @location(15)            slot:     u32,
 ) -> VsOut {
     let inst  = instances[slot];

@@ -24,12 +24,10 @@ pub use feature::ObjectBatchFeature;
 
 use bytemuck::{Pod, Zeroable};
 use helio_core::{CommandRecorder, PassContext, PrepareContext, RenderPass, Result as HelioResult};
-use helio_pass_gbuffer::StaticObjectRow;
+use helio_mesh_api::StaticObjectRow;
 use pulsar_scenedb::gpu::BufferKey;
 
-pub mod gpu_types;
 mod readback;
-pub use gpu_types::*;
 
 const WG: u32 = 256;
 /// The scene join's structure marker (`crate::scene_join::
@@ -77,11 +75,11 @@ struct RangeBlockUniformGpu {
 }
 
 /// Matches `shaders/object_batch.wgsl`'s `GpuDrawCallOut` -- 20 bytes, same
-/// shape as `helio_pass_object_batch::GpuDrawCall`  /// for it since it never needs the typed version, only the byte layout for
+/// shape as `helio_mesh_api::GpuDrawCall`  /// for it since it never needs the typed version, only the byte layout for
 /// buffer sizing).
 const DRAW_CALL_BYTES: u64 = 20;
 /// Matches `shaders/object_batch.wgsl`'s `GpuInstanceDataOut` -- 224 bytes,
-/// see `helio_pass_object_batch::GpuInstanceData`'s own doc for the exact field breakdown.
+/// see `helio_mesh_api::GpuInstanceData`'s own doc for the exact field breakdown.
 const INSTANCE_BYTES: u64 = 224;
 /// Matches `shaders/object_batch.wgsl`'s `GpuInstanceAabbOut` -- 32 bytes (min, pad, max, pad),
 /// the layout `indirect_dispatch.wgsl` reads as `GpuAabb`.
@@ -92,7 +90,7 @@ const PREV_ROW_BYTES: u64 = 80;
 /// Matches `shaders/object_batch.wgsl`'s `GpuRangeOut` -- 20 bytes.
 const RANGE_BYTES: u64 = 20;
 /// Matches `shaders/object_batch.wgsl`'s `DrawIndexedIndirectArgsOut` -- 20
-/// bytes, same shape as `helio_pass_object_batch::DrawIndexedIndirectArgs`.
+/// bytes, same shape as `helio_mesh_api::DrawIndexedIndirectArgs`.
 const INDIRECT_ARGS_BYTES: u64 = 20;
 
 /// Initial `draw_counts` capacity in `u32` slots (four fixed counts plus
@@ -515,7 +513,7 @@ pub struct ObjectBatchPass {
     /// GPU copy of every draw count consumers pass to
     /// `multi_draw_indexed_indirect_count` (Helio#306); `None` when the
     /// device lacks `MULTI_DRAW_INDIRECT_COUNT`. Layout documented on
-    /// [`helio_pass_gbuffer::ObjectBatchFrameData::draw_counts`].
+    /// [`helio_mesh_api::ObjectBatchFrameData::draw_counts`].
     draw_counts: Option<wgpu::Buffer>,
     supports_multi_draw_count: bool,
 }
@@ -1300,7 +1298,7 @@ impl ObjectBatchPass {
     }
 
     /// GPU-produced, sorted-order instance buffer -- same shape as
-    /// `helio_pass_object_batch::GpuInstanceData`.
+    /// `helio_mesh_api::GpuInstanceData`.
     pub fn instances_buffer(&self) -> &wgpu::Buffer {
         &self.scratch.instances_out
     }
@@ -1538,8 +1536,8 @@ impl RenderPass for ObjectBatchPass {
         // that relationship, so the borrow checker sees an unrelated,
         // shorter lifetime here instead; matches `ResourceRegistry::
         // write_texture_binding`'s own transmute for the same reason.
-        let data: helio_pass_gbuffer::ObjectBatchFrameData<'a> = unsafe {
-            std::mem::transmute(helio_pass_gbuffer::ObjectBatchFrameData {
+        let data: helio_mesh_api::ObjectBatchFrameData<'a> = unsafe {
+            std::mem::transmute(helio_mesh_api::ObjectBatchFrameData {
                 instances: &self.scratch.instances_out,
                 aabbs: &self.scratch.aabbs_out,
                 draw_calls: &self.draw_calls_out,
@@ -1547,7 +1545,7 @@ impl RenderPass for ObjectBatchPass {
                 readback_draw_count: draw_count,
                 readback_instance_count: self.instance_count(),
                 group_capacity: self.scratch_capacity,
-                group_dispatch: helio_pass_gbuffer::IndirectDispatchArgs {
+                group_dispatch: helio_mesh_api::IndirectDispatchArgs {
                     buffer: &self.scratch.dispatch_args_groups,
                     offset: GROUP_DISPATCH_OFFSET,
                 },
@@ -1773,6 +1771,7 @@ impl RenderPass for ObjectBatchPass {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use helio_mesh_api::GpuInstanceData;
 
     #[test]
     fn static_object_component_size_matches_wgsl_mirror() {
@@ -1786,7 +1785,7 @@ mod tests {
     fn output_struct_sizes_match_wgsl() {
         assert_eq!(INSTANCE_BYTES, 224);
         assert_eq!(
-            helio_pass_gbuffer::draw_slots::INSTANCE_BYTES,
+            helio_mesh_api::draw_slots::INSTANCE_BYTES,
             std::mem::size_of::<GpuInstanceData>() as u64
         );
         assert_eq!(AABB_BYTES, 32);

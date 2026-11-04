@@ -94,7 +94,7 @@ fn floor(world: &mut pulsar_scenedb::World) {
     let store = world.gpu_mirror().cloned().unwrap();
     let vertex_range = MeshComponent::vertices_gpu_handle(store.store(), mesh.index()).unwrap();
     let index_range = MeshComponent::indices_gpu_handle(store.store(), mesh.index()).unwrap();
-    let object = StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+    let object = StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
         mesh.index(),
         mesh.generation().wrapping_add(1),
         material.index(),

@@ -43,8 +43,6 @@ helio-pass-portal-instances = { workspace = true }
 helio-pass-foliage-place = { workspace = true, features = ["host-rows"] }
 helio-pass-foliage-gbuffer = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
-helio-pass-object-batch = { workspace = true }
 helio-pass-postprocess = { workspace = true }
 helio-pass-post-volumes = { workspace = true, features = ["host-rows"] }
 helio-pass-gi = { workspace = true }

@@ -203,7 +203,7 @@ fn cs_join_meshes(@builtin(global_invocation_id) gid: vec3<u32>) {
         flags = mesh_flags[row];
     }
     // The space this object is drawn in (instance flags bits 8-15, see
-    // `helio_pass_object_batch::set_coordinate_space`): its nearest rigid frame.
+    // `helio_mesh_api::set_coordinate_space`): its nearest rigid frame.
     if owner < arrayLength(&spaces) {
         flags = (flags & ~0xFF00u) | ((spaces[owner] & 0xFFu) << 8u);
         // Static means "never moves": inside a rigid frame an object is fixed only

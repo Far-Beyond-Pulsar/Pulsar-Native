@@ -40,7 +40,6 @@ helio-scene-join = { workspace = true }
 helio-pass-decal = { workspace = true }
 
 [dev-dependencies]
-helio-pass-object-batch = { workspace = true }
 engine_state = { workspace = true }
 image = { workspace = true }
 pollster = "=0.4.0"

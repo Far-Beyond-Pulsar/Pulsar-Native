@@ -131,7 +131,7 @@ pub struct ShadowPass {
     /// False on macOS Metal, WASM, and older Vulkan/DX12.  When false the ObjectDirty path
     /// falls back to a full LoadOp::Clear + multi_draw_indexed_indirect (no per-face GPU culling).
     supports_multi_draw_count: bool,
-    draw_slots: helio_pass_gbuffer::DrawSlots,
+    draw_slots: helio_mesh_api::DrawSlots,
 }
 
 impl ShadowPass {
@@ -325,7 +325,7 @@ impl ShadowPass {
                                 },
                             ],
                         }),
-                        Some(helio_pass_gbuffer::DRAW_SLOT_LAYOUT),
+                        Some(helio_mesh_api::DRAW_SLOT_LAYOUT),
                     ],
                 },
                 // Depth-only: no colour outputs, no fragment shader.
@@ -603,7 +603,7 @@ impl RenderPass for ShadowPass {
         }
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -622,7 +622,7 @@ impl RenderPass for ShadowPass {
         };
         let Some(coords) = ctx
             .registry
-            .get::<helio_pass_gbuffer::CoordinateSpacesFrameData<'_>>(
+            .get::<helio_core::CoordinateSpacesFrameData<'_>>(
                 helio_core::resource_keys::coordinate_spaces(),
             )
         else {
@@ -750,9 +750,9 @@ impl RenderPass for ShadowPass {
             .draw_slots
             .buffer(
                 &ctx.device,
-                helio_pass_gbuffer::DrawSlots::len_of(
+                helio_mesh_api::DrawSlots::len_of(
                     batch.instances.size(),
-                    helio_pass_gbuffer::draw_slots::INSTANCE_BYTES,
+                    helio_mesh_api::draw_slots::INSTANCE_BYTES,
                 ),
             )
             .clone();
@@ -838,7 +838,7 @@ impl RenderPass for ShadowPass {
                     let r = &residency.residents[face / 6];
                     let tile = r.tiles[face % 6];
                     let dynamic_offset = face_idx_offset(face, static_dirty, is_static);
-                    let face_count = |region| helio_pass_gbuffer::GpuDrawCount {
+                    let face_count = |region| helio_mesh_api::GpuDrawCount {
                         buffer: &self.face_geom_count_buf,
                         offset: face_count_offset(region, face),
                     };
@@ -878,7 +878,7 @@ impl RenderPass for ShadowPass {
                         } else {
                             count
                         };
-                        helio_pass_gbuffer::multi_draw_indexed_indirect(
+                        helio_mesh_api::multi_draw_indexed_indirect(
                             &mut pass,
                             batch.shadow_static_indirect,
                             0,
@@ -894,7 +894,7 @@ impl RenderPass for ShadowPass {
                         } else {
                             count
                         };
-                        helio_pass_gbuffer::multi_draw_indexed_indirect(
+                        helio_mesh_api::multi_draw_indexed_indirect(
                             &mut pass,
                             batch.shadow_movable_indirect,
                             0,
@@ -920,7 +920,7 @@ impl RenderPass for ShadowPass {
                 }
                 let r = &residency.residents[face / 6];
                 let tile = r.tiles[face % 6];
-                let face_count = |region| helio_pass_gbuffer::GpuDrawCount {
+                let face_count = |region| helio_mesh_api::GpuDrawCount {
                     buffer: &self.face_geom_count_buf,
                     offset: face_count_offset(region, face),
                 };

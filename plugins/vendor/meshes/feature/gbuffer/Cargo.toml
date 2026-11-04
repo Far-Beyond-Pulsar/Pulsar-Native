@@ -8,14 +8,8 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["gpu"]
 gpu = []
-# Row components for standalone hosts (`host_rows`, re-exported by
-# `helio-mesh-host`): examples and tests enable it; engines derive the rows
-# from their own components.
-host-rows = ["dep:helio-components", "dep:pulsar_scenedb_derive"]
 
 [dependencies]
-helio-components = { workspace = true, optional = true }
-pulsar_scenedb_derive = { workspace = true, optional = true }
 helio-mesh-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-feature-api = { workspace = true }

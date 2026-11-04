@@ -1,3 +1,4 @@
+//!use mesh_draw_rows
 // Per-portal-*chain* GPU frustum culling — selects which instances get a
 // duplicate draw through each active portal chain (a sequence of up to
 // a runtime-sized portal sequence, e.g. "through P, then through P again,
@@ -53,42 +54,12 @@ struct CullUniforms {
 }
 @group(0) @binding(1) var<uniform> cull: CullUniforms;
 
-// Must match GpuInstanceData in libhelio exactly (224 bytes).
-struct GpuInstance {
-    model_0:      vec4<f32>,
-    model_1:      vec4<f32>,
-    model_2:      vec4<f32>,
-    model_3:      vec4<f32>,
-    normal_0:     vec4<f32>,
-    normal_1:     vec4<f32>,
-    normal_2:     vec4<f32>,
-    bounds:       vec4<f32>,
-    prev_model_0: vec4<f32>,
-    prev_model_1: vec4<f32>,
-    prev_model_2: vec4<f32>,
-    prev_model_3: vec4<f32>,
-    mesh_id:      u32,
-    material_id:  u32,
-    flags:        u32,
-    _pad:         u32,
-    skin_vertex_offset: u32,
-    bone_palette_offset: u32,
-    bone_palette_count: u32,
-    _skin_pad: u32,
-}
-@group(0) @binding(2) var<storage, read> instances: array<GpuInstance>;
+@group(0) @binding(2) var<storage, read> instances: array<GpuInstanceData>;
 
-struct GpuDrawCall {
-    index_count:    u32,
-    first_index:    u32,
-    vertex_offset:  i32,
-    first_instance: u32,
-    instance_count: u32,
-}
 @group(0) @binding(3) var<storage, read> draw_calls: array<GpuDrawCall>;
 
 // Coordinate-space transforms (current frame). Slot 0 = identity — see
-// `libhelio::{coordinate_space, set_coordinate_space}`.
+// `helio_mesh_api::{coordinate_space, set_coordinate_space}`.
 @group(0) @binding(4) var<storage, read> coordinate_spaces: array<mat4x4<f32>>;
 
 // One active portal's render data. Must match libhelio::GpuPortalView (144 bytes).
@@ -119,13 +90,6 @@ fn chain_portal(chain_idx: u32, stage: u32) -> u32 {
     return portal_chain_portals[handle.offset + stage];
 }
 
-struct DrawIndexedIndirect {
-    index_count:    u32,
-    instance_count: u32,
-    first_index:    u32,
-    base_vertex:    i32,
-    first_instance: u32,
-}
 // One entry per draw group (NOT per chain) — same shape as the main scene's
 // own indirect buffer.
 @group(0) @binding(6) var<storage, read_write> portal_indirect: array<DrawIndexedIndirect>;
@@ -153,8 +117,6 @@ fn live_draw_count() -> u32 {
     return min(batch_counts[0], cull.draw_capacity);
 }
 
-/// Mirrors `libhelio::INSTANCE_FLAG_ALWAYS_VISIBLE`.
-const INSTANCE_FLAG_ALWAYS_VISIBLE: u32 = 4u;
 
 fn sphere_in_frustum(center: vec3<f32>, radius: f32) -> bool {
     for (var i = 0u; i < 6u; i++) {
@@ -188,7 +150,7 @@ fn select(
         for (var i = lid.x; i < dc.instance_count; i += 64u) {
             let slot_idx = dc.first_instance + i;
             let inst = instances[slot_idx];
-            let own_space_id = (inst.flags >> 8u) & 0xFFu;
+            let own_space_id = instance_coordinate_space(inst.flags);
 
             // Skip an instance already living in one of THIS chain's own
             // portal coordinate spaces — it would duplicate onto itself.

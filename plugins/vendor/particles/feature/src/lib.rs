@@ -151,7 +151,7 @@ pub struct CoronaPass {
     compute_bg: Option<wgpu::BindGroup>,
     render_bg: Option<wgpu::BindGroup>,
     /// The particle slots `vs_main` indexes `compact_buf` with
-    /// (`helio_pass_gbuffer::draw_slots`).
+    /// (`helio_mesh_api::draw_slots`).
     draw_slots: wgpu::Buffer,
     bg_key: Option<[wgpu::Buffer; 3]>, // (particle_buf, emitter_buf, camera_buf)
 
@@ -208,7 +208,7 @@ impl ParticlePool {
                 mapped_at_creation: false,
             }),
             sort_key_buf: per_slot("Corona SortKeys", 4),
-            draw_slots: helio_pass_gbuffer::DrawSlots::default()
+            draw_slots: helio_mesh_api::DrawSlots::default()
                 .buffer(device, capacity)
                 .clone(),
         }
@@ -439,7 +439,7 @@ impl CoronaPass {
                     module: &render_shader,
                     entry_point: Some("vs_main"),
                     compilation_options: Default::default(),
-                    buffers: &[Some(helio_pass_gbuffer::DRAW_SLOT_LAYOUT)],
+                    buffers: &[Some(helio_mesh_api::DRAW_SLOT_LAYOUT)],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &render_shader,

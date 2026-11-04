@@ -5,7 +5,7 @@
 //! `shaders/vg_bvh_build.wgsl` so the two agree bit for bit on ordinary scenes.
 
 use crate::gpu_types::*;
-use helio_pass_gbuffer::StaticObjectRow;
+use helio_mesh_api::StaticObjectRow;
 use helio_vg_format::{GpuVgInstance, INST_ENABLED};
 
 const BIG: f32 = 1.0e30;

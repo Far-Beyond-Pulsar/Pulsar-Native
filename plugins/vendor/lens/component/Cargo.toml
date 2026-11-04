@@ -44,7 +44,6 @@ helio-pass-flare = { workspace = true }
 [dev-dependencies]
 pollster = "=0.4.0"
 helio-core = { workspace = true }
-helio-pass-object-batch = { workspace = true }
 glam = { workspace = true }
 
 [lints]

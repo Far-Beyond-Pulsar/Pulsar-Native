@@ -116,7 +116,7 @@ fn place(
     let vertex_range = MeshComponent::vertices_gpu_handle(store.store(), mesh.index()).unwrap();
     let index_range = MeshComponent::indices_gpu_handle(store.store(), mesh.index()).unwrap();
     let centre = transform.w_axis.truncate();
-    let object = StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+    let object = StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
         mesh.index(),
         mesh.generation().wrapping_add(1),
         material.index(),
@@ -128,7 +128,7 @@ fn place(
         vertex_range.offset as i32,
         row.material_class,
         0,
-        helio_pass_object_batch::INSTANCE_FLAG_MOVABLE,
+        helio_mesh_api::INSTANCE_FLAG_MOVABLE,
     ));
     let entity = world.spawn();
     world.insert(entity, object);

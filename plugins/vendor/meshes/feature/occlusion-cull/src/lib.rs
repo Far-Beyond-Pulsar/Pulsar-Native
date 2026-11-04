@@ -23,8 +23,8 @@ pub use feature::MeshCulling;
 use bytemuck::{Pod, Zeroable};
 use helio_core::{PassContext, PrepareContext, RenderPass, Result as HelioResult};
 
-pub use helio_pass_gbuffer::CulledBatchFrameData;
-use helio_pass_gbuffer::{DrawSegment, ShadingBucket};
+use helio_mesh_api::CulledBatchFrameData;
+use helio_mesh_api::{DrawSegment, ShadingBucket};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -185,7 +185,7 @@ impl SegmentKeys {
     }
 }
 
-/// Per-material draw segments (see `helio_pass_gbuffer::DrawSegments`): the
+/// Per-material draw segments (see `helio_mesh_api::DrawSegments`): the
 /// keys, the table's GPU copy, and the buffers range compaction fills.
 struct SegmentTable {
     keys: SegmentKeys,
@@ -224,7 +224,7 @@ impl SegmentTable {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        batch: &helio_pass_gbuffer::ObjectBatchFrameData<'_>,
+        batch: &helio_mesh_api::ObjectBatchFrameData<'_>,
     ) {
         self.counts_supported = batch.draw_counts.is_some();
         let changed = self.keys.observe([
@@ -638,7 +638,7 @@ impl OcclusionCullPass {
     fn record_range_compaction(
         &mut self,
         ctx: &mut PassContext,
-        batch: &helio_pass_gbuffer::ObjectBatchFrameData<'_>,
+        batch: &helio_mesh_api::ObjectBatchFrameData<'_>,
         source_indirect: &wgpu::Buffer,
     ) {
         let mut cmds = ctx.graphics_cmds();
@@ -860,7 +860,7 @@ impl RenderPass for OcclusionCullPass {
             crate::CulledBatchFrameData {
                 indirect,
                 compacted_indices,
-                segments: helio_pass_gbuffer::DrawSegments {
+                segments: helio_mesh_api::DrawSegments {
                     indirect: &segments.indirect_buf,
                     counts: segments.counts_supported.then_some(&segments.counts_buf),
                     segments: segments.segments(),
@@ -903,7 +903,7 @@ impl RenderPass for OcclusionCullPass {
 
         let batch = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ));
         let draw_capacity = batch.map(|b| b.group_capacity).unwrap_or(0);
@@ -951,7 +951,7 @@ impl RenderPass for OcclusionCullPass {
     fn execute(&mut self, ctx: &mut PassContext) -> HelioResult<()> {
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -966,7 +966,7 @@ impl RenderPass for OcclusionCullPass {
         };
         let Some(coord_data) = ctx
             .registry
-            .get::<helio_pass_gbuffer::CoordinateSpacesFrameData<'_>>(
+            .get::<helio_core::CoordinateSpacesFrameData<'_>>(
                 helio_core::resource_keys::coordinate_spaces(),
             )
         else {

@@ -19,7 +19,6 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
-helio-pass-object-batch = { workspace = true }
 helio-mesh-api = { workspace = true }
 engine_class_derive = { workspace = true }
 # M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here — this

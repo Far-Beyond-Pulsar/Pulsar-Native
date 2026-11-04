@@ -158,6 +158,7 @@ impl GiMeshTracePass {
                 crate::GI_COMMON_SNIPPET,
                 SUN_OCCLUSION_SNIPPET,
                 sun_transmittance::SNIPPET,
+                helio_mesh_api::RAY_SURFACE_SNIPPET,
             ],
         );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -512,22 +513,20 @@ impl RenderPass for GiMeshTracePass {
         else {
             return Ok(());
         };
-        let pool = |name: &'static str| {
-            ctx.scene_buffers
-                .get(helio_core::BufferKey::of(name))
-                .map(|h| h.buffer.clone())
-        };
-        let (Some(vertices), Some(indices)) =
-            (pool("builtin_mesh_vertex"), pool("builtin_mesh_index"))
+        let pool = |key: helio_core::BufferKey| ctx.scene_buffers.get(key).map(|h| h.buffer.clone());
+        let (Some(vertices), Some(indices)) = (
+            pool(helio_mesh_api::MESH_VERTICES.key()),
+            pool(helio_mesh_api::MESH_INDICES.key()),
+        )
         else {
             return Ok(());
         };
-        let lights = pool("scene_lights");
+        let lights = pool(helio_core::BufferKey::of("scene_lights"));
         let proxy = |name: &'static str| ctx.registry.get::<&wgpu::Buffer>(ResourceKey::new(name));
         let proxies =
             proxy(helio_mesh_api::RAY_PROXY_VERTICES).zip(proxy(helio_mesh_api::RAY_PROXY_INDICES));
         // The material table, its bind group kept while it stays the same.
-        let rows = pool("materials");
+        let rows = pool(helio_mats::MATERIALS.key());
         let textures = ctx.registry.get::<helio_mats::MaterialTextureBindings<'_>>(
             helio_mats::material_textures(),
         );

@@ -726,7 +726,7 @@ fn insert_object(
     let material_component = world
         .get::<MaterialComponent>(material)
         .ok_or_else(|| SnapshotError::Render("material entity is missing".into()))?;
-    let object = StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+    let object = StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
         mesh.index(),
         mesh.generation().wrapping_add(1),
         material.index(),

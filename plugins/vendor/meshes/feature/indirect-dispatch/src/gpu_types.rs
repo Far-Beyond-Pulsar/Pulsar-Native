@@ -10,7 +10,7 @@ pub struct IndirectDispatchFrameData<'a> {
     pub indirect: &'a wgpu::Buffer,
     /// Frustum-culling survivors, packed per draw-call group starting at
     /// that group's `first_instance` offset -- index `instances` (from
-    /// `helio_pass_gbuffer::ObjectBatchFrameData`) through this, not
+    /// `helio_mesh_api::ObjectBatchFrameData`) through this, not
     /// directly.
     pub compacted_indices: &'a wgpu::Buffer,
 }

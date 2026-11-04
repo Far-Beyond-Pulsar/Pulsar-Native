@@ -33,27 +33,12 @@ pub use feature::GBufferDrawers;
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-pub mod components;
-#[cfg(feature = "host-rows")]
-pub mod host_rows;
-mod coordinate_spaces_frame_data;
-mod culled_batch_frame_data;
 pub mod depth_material;
-mod draw_segments;
-pub mod draw_slots;
-mod indirect_draw;
-mod object_batch_frame_data;
-pub use components::{
-    RenderGroupRow, StaticObjectRow, SubLevelActorRow, SubLevelIndex, DEFAULT_SUBLEVEL_INDEX,
-    MESH_INDICES, MESH_VERTICES, RENDER_GROUPS, STATIC_OBJECTS,
+use helio_mesh_api::{
+    multi_draw_indexed_indirect, CulledBatchFrameData, DrawSlots, ObjectBatchFrameData,
+    DRAW_SLOT_LAYOUT,
 };
-pub use coordinate_spaces_frame_data::CoordinateSpacesFrameData;
-pub use culled_batch_frame_data::CulledBatchFrameData;
-pub use draw_segments::{DrawSegment, DrawSegments, ShadingBucket};
-pub use draw_slots::{DrawSlots, DRAW_SLOT_LAYOUT, DRAW_SLOT_LOCATION};
 use helio_mats::radiant::{RadiantShaderCache, RadiantShaderKey};
-pub use indirect_draw::{multi_draw_indexed_indirect, GpuDrawCount, DRAW_INDEXED_INDIRECT_STRIDE};
-pub use object_batch_frame_data::{IndirectDispatchArgs, ObjectBatchFrameData};
 
 /// Debug mode id of the wireframe view (needs `POLYGON_MODE_LINE`).
 const WIREFRAME_DEBUG_MODE: u32 = 40;
@@ -142,7 +127,7 @@ pub struct GBufferPass {
     /// both portal passes) needs `space_id 0` to always
     /// resolve to identity even when nothing authors portal/sublevel content,
     /// and `GBufferPass` is the one pass guaranteed present in every graph --
-    /// see `helio_pass_gbuffer::CoordinateSpacesFrameData`'s doc for the
+    /// see `helio_core::CoordinateSpacesFrameData`'s doc for the
     /// still-pending real fix (a SceneDB-driven portal/sublevel component).
     coordinate_spaces: wgpu::Buffer,
     coordinate_spaces_prev: wgpu::Buffer,
@@ -852,7 +837,7 @@ impl RenderPass for GBufferPass {
         let indices = &indices_handle.buffer;
 
         // Rebuild bind group 0 when camera or instances buffers change (GrowableBuffer realloc).
-        let coord_spaces = ctx.registry.get::<crate::CoordinateSpacesFrameData<'_>>(
+        let coord_spaces = ctx.registry.get::<helio_core::CoordinateSpacesFrameData<'_>>(
             helio_core::resource_keys::coordinate_spaces(),
         );
         let coordinate_spaces_buf = coord_spaces
@@ -1001,7 +986,7 @@ impl RenderPass for GBufferPass {
             pass.set_pipeline(pipeline);
             multi_draw_indexed_indirect(&mut pass, indirect, 0, max_draws, draw_count);
         } else {
-            for (index, segment) in segments.in_bucket(crate::ShadingBucket::Opaque) {
+            for (index, segment) in segments.in_bucket(helio_mesh_api::ShadingBucket::Opaque) {
                 let key = RadiantShaderKey {
                     template_id: segment.template_class(),
                     graph_hash: segment.graph_hash,

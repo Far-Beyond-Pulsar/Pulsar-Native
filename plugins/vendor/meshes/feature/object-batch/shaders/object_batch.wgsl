@@ -14,7 +14,7 @@
 //! 1. `cs_gather` — one thread per `StaticObjectComponent` row capacity slot.
 //!    Skips rows nobody has ever written (`mesh_generation == 0u`, the
 //!    `Zeroable` default -- never a real generation, see `mesh_generation`'s
-//!    field doc in `helio_pass_gbuffer::components`). Live rows compute this
+//!    field doc in `helio_mesh_api::components`). Live rows compute this
 //!    migration's packed sort key and atomically compact directly into
 //!    `keys_a`/`indices_a` -- the same buffers the sort's bit-0 pass reads
 //!    (same technique as the sprites plugin's sprite cull's `cs_cull`: a single
@@ -101,7 +101,7 @@ struct BatchUniforms {
 @group(0) @binding(0) var<uniform> batch: BatchUniforms;
 
 /// SceneDB's `StaticObjectComponent` row -- byte-for-byte identical to
-/// `helio_pass_gbuffer::components::StaticObjectComponent`'s `#[repr(C)]`
+/// `helio_mesh_api::rows::StaticObjectComponent`'s `#[repr(C)]`
 /// Rust layout (plain fixed-size arrays throughout, not `mat4x4<f32>`/
 /// `vec4<f32>`, for exactly the reason every other SceneDB-mirrored struct
 /// in this codebase avoids those: WGSL's struct-member alignment for those

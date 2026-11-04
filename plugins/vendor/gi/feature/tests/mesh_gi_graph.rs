@@ -86,7 +86,7 @@ fn spawn_box(world: &mut pulsar_scenedb::World, centre: Vec3, half: Vec3, colour
     let vertex_range = MeshComponent::vertices_gpu_handle(store.store(), mesh.index()).unwrap();
     let index_range = MeshComponent::indices_gpu_handle(store.store(), mesh.index()).unwrap();
     let transform = Mat4::from_translation(centre);
-    let object = StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+    let object = StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
         mesh.index(),
         mesh.generation().wrapping_add(1),
         material.index(),

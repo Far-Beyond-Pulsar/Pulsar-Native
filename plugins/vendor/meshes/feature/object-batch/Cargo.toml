@@ -5,12 +5,12 @@ edition = "2021"
 description = "GPU-driven sort/group/batch pipeline: turns SceneDB's StaticObjectComponent rows into instances/draw_calls/material_class_ranges with zero per-frame CPU involvement"
 
 [dependencies]
+helio-mesh-api = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-scene-join = { workspace = true }
 glam = { workspace = true }
 helio-core = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 log = { workspace = true }

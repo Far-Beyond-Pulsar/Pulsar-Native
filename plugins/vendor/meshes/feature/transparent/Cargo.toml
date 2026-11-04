@@ -6,11 +6,11 @@ description = "Helio render pass: helio-pass-transparent"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-mesh-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-core  = { workspace = true }
 helio-mats  = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 helio-pass-light-cull = { workspace = true }
 helio-pass-occlusion-cull = { workspace = true }
 wgpu      = { workspace = true }

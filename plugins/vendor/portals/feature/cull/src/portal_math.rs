@@ -106,7 +106,7 @@ impl PortalPair {
     ///
     /// Rendering-side use: content actually near B is drawn a second time
     /// through this transform (as one more coordinate space, see
-    /// `helio_pass_object_batch::coordinate_space`) to produce what's visible through A.
+    /// `helio_mesh_api::coordinate_space`) to produce what's visible through A.
     pub fn pair_map(&self) -> Mat4 {
         self.b.transform * self.a.transform.inverse()
     }

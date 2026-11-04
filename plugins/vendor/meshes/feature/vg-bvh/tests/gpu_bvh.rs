@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use helio_pass_gbuffer::StaticObjectRow;
+use helio_mesh_api::StaticObjectRow;
 use helio_pass_vg_bvh::reference::{build, header_of, refit, validate, RefTree};
 use helio_pass_vg_bvh::{BvhConfig, BvhMode, GpuBvhHeader, GpuBvhNode, VgBvhPass};
 use helio_vg_format::GpuVgInstance;

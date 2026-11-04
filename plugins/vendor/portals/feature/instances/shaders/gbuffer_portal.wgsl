@@ -1,5 +1,6 @@
 enable wgpu_binding_array;
 //!use specular_aa
+//!use mesh_draw_rows
 
 //! Portal-duplicate G-buffer write — draws the instances `helio-pass-portal-cull`
 //! selected, one duplicate per surviving (instance, chain) pair, mapped
@@ -110,23 +111,6 @@ struct MaterialTextureData {
     params:             vec4<f32>,
 }
 
-/// Must match GpuInstanceData in libhelio exactly (224 bytes).
-struct GpuInstanceData {
-    transform:      mat4x4<f32>,
-    normal_mat_0:   vec4<f32>,
-    normal_mat_1:   vec4<f32>,
-    normal_mat_2:   vec4<f32>,
-    bounds:         vec4<f32>,
-    prev_model:     mat4x4<f32>,
-    mesh_id:        u32,
-    material_id:    u32,
-    flags:          u32,
-    lightmap_index: u32,
-    skin_vertex_offset: u32,
-    bone_palette_offset: u32,
-    bone_palette_count: u32,
-    _skin_pad: u32,
-}
 
 /// Must match libhelio::GpuPortalView (144 bytes).
 struct GpuPortalView {
@@ -202,7 +186,7 @@ fn decode_snorm8x4(packed: u32) -> vec3<f32> {
 }
 
 // `instance_index` is per-instance vertex data, which every backend offsets by the
-// indirect draw's `first_instance` (`helio_pass_gbuffer::draw_slots`).
+// indirect draw's `first_instance` (`helio_mesh_api::draw_slots`).
 @vertex
 fn vs_main(v: Vertex, @location(15) instance_index: u32, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     let slot_idx = portal_compacted_indices[instance_index];
@@ -215,7 +199,7 @@ fn vs_main(v: Vertex, @location(15) instance_index: u32, @builtin(vertex_index) 
     // chain, deepest portal first — see the module doc for why. The fragment
     // shader reconstructs intermediate positions by undoing each outer map,
     // so the number of stages remains fully runtime-sized.
-    let own_space_id  = (inst.flags >> 8u) & 0xFFu;
+    let own_space_id  = instance_coordinate_space(inst.flags);
     let own_space      = coordinate_spaces[own_space_id];
     let own_space_prev = coordinate_spaces_prev[own_space_id];
 

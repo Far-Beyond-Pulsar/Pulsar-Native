@@ -100,7 +100,7 @@ struct MaterialRow {
 }
 
 fn casts_shadow(object: &StaticObjectComponent) -> bool {
-    object.flags & helio_pass_object_batch::INSTANCE_FLAG_CASTS_SHADOW != 0
+    object.flags & helio_mesh_api::INSTANCE_FLAG_CASTS_SHADOW != 0
 }
 
 /// Row-major 3x4 TLAS transform of an object's column-major world matrix.
@@ -445,7 +445,7 @@ impl SceneDbRayTracing {
             {
                 unsupported!("group visibility needs an explicit RT projection");
             }
-            if helio_pass_object_batch::coordinate_space(object.flags) != 0 {
+            if helio_mesh_api::coordinate_space(object.flags) != 0 {
                 unsupported!("non-world coordinate-space casters are unsupported");
             }
             // Resolve each material once per frame; many objects share one.
@@ -681,7 +681,7 @@ impl SceneDbRayTracing {
             .casters
             .iter()
             .map(|(_, key)| {
-                if key.flags & helio_pass_object_batch::INSTANCE_FLAG_MOVABLE != 0 {
+                if key.flags & helio_mesh_api::INSTANCE_FLAG_MOVABLE != 0 {
                     2
                 } else {
                     1

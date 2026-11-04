@@ -2,9 +2,29 @@
 name = "helio-mesh-api"
 version = "0.1.0"
 edition = "2021"
-description = "The meshes' public contract: the vertex and mesh upload layouts their components author, and the ray-instance rows their acceleration publishes."
+description = "The meshes' public contract: the rows their components author, the batch, draw and frame data their passes publish, the ray-instance rows their acceleration publishes, and their WGSL. The one crate another kind reads a mesh concept from."
 license = "MIT OR Apache-2.0"
+
+[features]
+default = ["gpu"]
+# `#[derive(SceneStore)]` checks the deriving crate's own `gpu` feature.
+gpu = []
+# Row components for standalone hosts (`host_rows`, re-exported by
+# `helio-mesh-host`): examples and tests enable it; engines derive the rows
+# from their own components.
+host-rows = ["dep:helio-components", "dep:pulsar_scenedb_derive", "dep:pulsar_reflection", "dep:serde_json"]
 
 [dependencies]
 bytemuck = { workspace = true, features = ["derive"] }
+glam = { workspace = true }
+helio-core = { workspace = true }
 pulsar_scenedb = { workspace = true }
+wgpu = { workspace = true }
+helio-components = { workspace = true, optional = true }
+pulsar_scenedb_derive = { workspace = true, optional = true }
+# `#[derive(SceneStore)]` expands to `::serde_json`, `::wgpu` and reflection paths.
+pulsar_reflection = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }

@@ -1,12 +1,11 @@
-//! SceneDB-owned visibility and coordinate-space metadata.
-//!
-//! The gbuffer/cull passes project these rows into transient instance and
-//! coordinate-space inputs. No renderer-side group registry is authoritative.
+//! The rows the meshes' components author (objects, render groups, sublevel
+//! placements) and the mesh pools they address. The object batch projects
+//! them into transient instance and coordinate-space inputs.
 
 /// Mesh vertices: a pool shared by every mesh. A [`StaticObjectRow`]'s
 /// `vertex_offset` addresses it. Engines fill it (Helio's standalone hosts use
 /// `helio_mesh_host::MeshComponent`).
-pub const MESH_VERTICES: helio_core::PoolContract<helio_mesh_api::PackedVertex> =
+pub const MESH_VERTICES: helio_core::PoolContract<crate::PackedVertex> =
     helio_core::PoolContract::new("builtin_mesh_vertex");
 
 /// Mesh indices: a pool shared by every mesh, addressed by a
@@ -139,7 +138,7 @@ pub struct StaticObjectRow {
     pub material_class: u32,
     pub graph_hash_lo: u32,
     pub graph_hash_hi: u32,
-    /// See `helio_pass_object_batch::GpuInstanceData::flags`.
+    /// See `crate::GpuInstanceData::flags`.
     pub flags: u32,
     /// Base vertex in the parallel four-influence skin stream (zero for rigid meshes).
     pub skin_vertex_offset: u32,
@@ -226,7 +225,7 @@ impl StaticObjectRow {
 }
 
 /// Inverse-transpose of `m`'s upper-left 3x3, as three padded columns
-/// (matches `helio_pass_object_batch::GpuInstanceData::normal_mat`'s layout).
+/// (matches `crate::GpuInstanceData::normal_mat`'s layout).
 fn normal_matrix_cols(m: glam::Mat4) -> [[f32; 4]; 3] {
     let m3 = glam::Mat3::from_mat4(m);
     let inv_t = m3.inverse().transpose();

@@ -12,7 +12,7 @@ use std::fmt;
 use glam::{Mat4, Vec2, Vec4};
 use pulsar_scenedb::Entity;
 
-use helio_pass_gbuffer::{SubLevelActorRow, SubLevelIndex, DEFAULT_SUBLEVEL_INDEX};
+use helio_mesh_api::{SubLevelActorRow, SubLevelIndex, DEFAULT_SUBLEVEL_INDEX};
 
 use crate::components::{PortalRow, PortalViewRow, NO_PORTAL_PEER};
 use crate::portal_math::portal_view_map;

@@ -31,7 +31,6 @@ helio-feature-api = { workspace = true }
 helio-mesh-api = { workspace = true }
 helio-pass-corona = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
-helio-pass-gbuffer = { workspace = true }
 helio-pass-gi = { workspace = true }
 helio-pass-sky = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }

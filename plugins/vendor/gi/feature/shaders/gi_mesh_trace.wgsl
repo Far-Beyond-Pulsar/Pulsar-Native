@@ -1,6 +1,7 @@
 //!use gi_common
 //!use sun_occlusion
 //!use sun_transmittance
+//!use mesh_ray_surface
 enable wgpu_ray_query;
 // The scene's meshes as a tracer of the probes' rays (README.md, "Tracers"),
 // after the others: a ray queries the TLAS up to the hit already written
@@ -27,9 +28,10 @@ enable wgpu_ray_query;
 @group(0) @binding(4) var<storage, read_write> gi_light: array<vec2<u32>>;
 @group(0) @binding(5) var<uniform> trace: MeshTrace;
 @group(0) @binding(6) var acc_struct: acceleration_structure;
+// The meshes' surfaces (`mesh_ray_surface`, helio-mesh-api): their
+// instance rows by TLAS instance, the scene's mesh pools (`PackedVertex`
+// words, mesh-local indices) and the proxy pool.
 @group(0) @binding(7) var<storage, read> instances: array<RayInstance>;
-// `PackedVertex` rows (10 words: position at 0, normal snorm8x4 at 8) and
-// mesh-local indices: the scene's mesh pools.
 @group(0) @binding(8) var<storage, read> vertices: array<u32>;
 @group(0) @binding(9) var<storage, read> indices: array<u32>;
 @group(0) @binding(10) var<storage, read> scene_lights: array<SceneLight>;
@@ -39,9 +41,6 @@ enable wgpu_ray_query;
 // The live point and spot lights (`gi_gather_lights`): their count, then
 // theirs.
 @group(0) @binding(13) var<storage, read_write> local_lights: LocalLights;
-// The proxy pool (`helio_core::RayProxies`): vertices (a position, then a
-// uv0: 5 floats) and mesh-local indices of the instances flagged
-// `RAY_INSTANCE_PROXY`.
 @group(0) @binding(14) var<storage, read> proxy_vertices: array<f32>;
 @group(0) @binding(15) var<storage, read> proxy_indices: array<u32>;
 // The sun's transmittance through the media above (the frame's
@@ -74,17 +73,6 @@ struct LocalLights {
     lights: array<LocalLight, MAX_LIGHTS>,
 }
 
-// `helio_core::RayInstance`.
-struct RayInstance {
-    first_index: u32,
-    base_vertex: u32,
-    flags: u32,
-    material: u32,
-    base_color: vec4<f32>,
-    emissive: vec4<f32>,
-    transmission: vec4<f32>,
-}
-
 // Helio's lights (`GpuLight`, 128 bytes).
 struct SceneLight {
     position_range: vec4<f32>,
@@ -98,15 +86,6 @@ struct SceneLight {
 }
 
 const PI: f32 = 3.14159265;
-const VERTEX_WORDS: u32 = 10u;
-// `helio_core::RAY_INSTANCE_PROXY`: the instance's triangles are in the proxy
-// pool, positions and UVs only (a virtual-geometry asset's coarse cut).
-const RAY_INSTANCE_PROXY: u32 = 1u;
-// `helio_core::RAY_INSTANCE_MASKED`: a cut-out, its material alpha-tested.
-const RAY_INSTANCE_MASKED: u32 = 2u;
-// `helio_core::RAY_INSTANCE_TWO_SIDED`: both faces are outside.
-const RAY_INSTANCE_TWO_SIDED: u32 = 4u;
-const PROXY_FLOATS: u32 = 5u;
 // A probe ray's cone: the width of its footprint a metre out, the side of
 // the square of one of its probe's GI_RAYS rays' solid angle
 // (sqrt(4 pi / 64)).
@@ -118,30 +97,6 @@ const MAX_CUT_OUTS: u32 = 16u;
 const MESH_TRACER: u32 = 2u;
 // Flag: a shadow ray ends at its first opaque hit.
 const FIRST_HIT: u32 = 0x04u;
-
-fn position(v: u32) -> vec3<f32> {
-    let at = v * VERTEX_WORDS;
-    return vec3<f32>(bitcast<f32>(vertices[at]), bitcast<f32>(vertices[at + 1u]), bitcast<f32>(vertices[at + 2u]));
-}
-
-fn proxy_position(v: u32) -> vec3<f32> {
-    let at = PROXY_FLOATS * v;
-    return vec3<f32>(proxy_vertices[at], proxy_vertices[at + 1u], proxy_vertices[at + 2u]);
-}
-
-fn proxy_uv(v: u32) -> vec2<f32> {
-    let at = PROXY_FLOATS * v + 3u;
-    return vec2<f32>(proxy_vertices[at], proxy_vertices[at + 1u]);
-}
-
-fn vertex_normal(v: u32) -> vec3<f32> {
-    return unpack4x8snorm(vertices[v * VERTEX_WORDS + 8u]).xyz;
-}
-
-fn vertex_uv(v: u32) -> vec2<f32> {
-    let at = v * VERTEX_WORDS + 4u;
-    return vec2<f32>(bitcast<f32>(vertices[at]), bitcast<f32>(vertices[at + 1u]));
-}
 
 // Whether instance `i` is a cut-out.
 fn is_cut_out(i: u32) -> bool {
@@ -160,28 +115,13 @@ fn is_cut_out(i: u32) -> bool {
 // single-sided cut-out is not there from behind (the raster culls it).
 fn cut_out_surface(c: RayIntersection, dir: vec3<f32>, width: f32, seed: u32) -> bool {
     let instance = instances[c.instance_index];
-    let base = instance.first_index + 3u * c.primitive_index;
-    var o: array<vec3<f32>, 3>;
-    var uv: array<vec2<f32>, 3>;
-    var v: vec3<u32>;
-    let proxy = (instance.flags & RAY_INSTANCE_PROXY) != 0u;
-    if proxy {
-        v = vec3<u32>(proxy_indices[base], proxy_indices[base + 1u], proxy_indices[base + 2u]) + instance.base_vertex;
-        o = array<vec3<f32>, 3>(proxy_position(v.x), proxy_position(v.y), proxy_position(v.z));
-        uv = array<vec2<f32>, 3>(proxy_uv(v.x), proxy_uv(v.y), proxy_uv(v.z));
-    } else {
-        v = vec3<u32>(indices[base], indices[base + 1u], indices[base + 2u]) + instance.base_vertex;
-        o = array<vec3<f32>, 3>(position(v.x), position(v.y), position(v.z));
-        uv = array<vec2<f32>, 3>(vertex_uv(v.x), vertex_uv(v.y), vertex_uv(v.z));
-    }
+    let t = ray_triangle(instance, c.primitive_index);
+    let o = t.corners;
+    let uv = t.uv;
     let b = vec3<f32>(1.0 - c.barycentrics.x - c.barycentrics.y, c.barycentrics);
     if (instance.flags & RAY_INSTANCE_TWO_SIDED) == 0u {
-        // Its outside in object space (the vertex normals'; a proxy's
-        // winding), against the ray there.
-        var outside = cross(o[1] - o[0], o[2] - o[0]);
-        if !proxy {
-            outside = vertex_normal(v.x) * b.x + vertex_normal(v.y) * b.y + vertex_normal(v.z) * b.z;
-        }
+        // Its outside in object space, against the ray there.
+        let outside = ray_triangle_outside(t, b);
         if dot(outside, c.world_to_object * vec4<f32>(dir, 0.0)) > 0.0 { return false; }
     }
     let a = vga_load(instance.material);
@@ -335,19 +275,11 @@ fn gi_mesh_trace(@builtin(global_invocation_id) id: vec3<u32>) {
         // transpose) for the side the mesh calls outside. A proxy has no
         // vertex normals: its winding says outside (its object-space face).
         let instance = instances[c.instance_index];
-        let base = instance.first_index + 3u * c.primitive_index;
-        var local: vec3<f32>;
-        var o: array<vec3<f32>, 3>;
-        if (instance.flags & RAY_INSTANCE_PROXY) != 0u {
-            let v = vec3<u32>(proxy_indices[base], proxy_indices[base + 1u], proxy_indices[base + 2u]) + instance.base_vertex;
-            o = array<vec3<f32>, 3>(proxy_position(v.x), proxy_position(v.y), proxy_position(v.z));
-            let f = cross(o[1] - o[0], o[2] - o[0]);
-            local = f / max(length(f), 1e-30);
-        } else {
-            let v = vec3<u32>(indices[base], indices[base + 1u], indices[base + 2u]) + instance.base_vertex;
-            let b = vec3<f32>(1.0 - c.barycentrics.x - c.barycentrics.y, c.barycentrics);
-            o = array<vec3<f32>, 3>(position(v.x), position(v.y), position(v.z));
-            local = vertex_normal(v.x) * b.x + vertex_normal(v.y) * b.y + vertex_normal(v.z) * b.z;
+        let t = ray_triangle(instance, c.primitive_index);
+        let o = t.corners;
+        var local = ray_triangle_outside(t, vec3<f32>(1.0 - c.barycentrics.x - c.barycentrics.y, c.barycentrics));
+        if t.proxy {
+            local = local / max(length(local), 1e-30);
         }
         let p0 = c.object_to_world * vec4<f32>(o[0], 1.0);
         let p1 = c.object_to_world * vec4<f32>(o[1], 1.0);

@@ -9,6 +9,7 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+helio-mesh-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-core = { workspace = true }

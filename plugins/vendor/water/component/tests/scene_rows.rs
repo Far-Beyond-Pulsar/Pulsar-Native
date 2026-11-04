@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform, Visibility, attachments};
-use helio_pass_object_batch::scene_join::ENTITY_GENERATIONS_KEY;
+use helio_core::ENTITY_GENERATIONS_KEY;
 use helio_scene_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };

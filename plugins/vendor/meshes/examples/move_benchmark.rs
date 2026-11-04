@@ -509,7 +509,7 @@ fn enable_ray_shadows(world: &mut World, objects: &[Entity]) {
             });
         if !blended {
             world.get_mut::<StaticObjectComponent>(id).unwrap().flags |=
-                helio_pass_object_batch::INSTANCE_FLAG_CASTS_SHADOW;
+                helio_mesh_api::INSTANCE_FLAG_CASTS_SHADOW;
         }
     }
 }
@@ -570,7 +570,7 @@ fn editor_resync(world: &mut World, scene: &BenchScene, frame: usize) {
         ];
         world.insert(
             entity,
-            StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+            StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
                 row.mesh_slot,
                 row.mesh_generation,
                 row.material_slot,

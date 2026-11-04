@@ -14,7 +14,7 @@ use lens_component::{
 use helio_scene_join::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };
-use helio_pass_object_batch::scene_join::ENTITY_GENERATIONS_KEY;
+use helio_core::ENTITY_GENERATIONS_KEY;
 use helio_pass_lens::{element_kind, LensElementRow, LensRow};
 use pulsar_scenedb::{Entity, SceneDb};
 

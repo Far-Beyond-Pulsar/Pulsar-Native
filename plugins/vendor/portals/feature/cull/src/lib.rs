@@ -89,7 +89,7 @@ pub use contract::{
     portal_counts, GpuPortalView, PortalCounts, MAX_PORTAL_CHAINS, PORTAL_CHAIN_HANDLE_BUFFER,
     PORTAL_CHAIN_PORTAL_POOL_BUFFER, PORTAL_COUNTS,
 };
-pub use helio_pass_gbuffer::CoordinateSpacesFrameData;
+pub use helio_core::CoordinateSpacesFrameData;
 
 use bytemuck::{Pod, Zeroable};
 use helio_core::{PassContext, PrepareContext, RenderPass, Result as HelioResult};
@@ -163,10 +163,11 @@ pub struct PortalCullPass {
 
 impl PortalCullPass {
     pub fn new(device: &wgpu::Device) -> Self {
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "PortalCull Shader",
             helio_core::include_wgsl!("../shaders/portal_cull.wgsl"),
+            &[helio_mesh_api::DRAW_ROWS_SNIPPET],
         );
 
         let uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -345,7 +346,7 @@ impl RenderPass for PortalCullPass {
         // this frame is culled this frame; the live count is read on the GPU.
         self.draw_capacity = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
             .map(|b| b.group_capacity.min(PORTAL_DRAW_CAPACITY))
@@ -389,13 +390,13 @@ impl RenderPass for PortalCullPass {
         if self.draw_capacity == 0 || self.chain_count == 0 {
             return Ok(());
         }
-        let Some(batch): Option<helio_pass_gbuffer::ObjectBatchFrameData<'_>> = ctx
+        let Some(batch): Option<helio_mesh_api::ObjectBatchFrameData<'_>> = ctx
             .registry
             .get(helio_core::ResourceKey::new("object_batch"))
         else {
             return Ok(());
         };
-        let Some(coord_data): Option<helio_pass_gbuffer::CoordinateSpacesFrameData<'_>> = ctx
+        let Some(coord_data): Option<helio_core::CoordinateSpacesFrameData<'_>> = ctx
             .registry
             .get(helio_core::resource_keys::coordinate_spaces())
         else {
@@ -515,7 +516,7 @@ impl RenderPass for PortalCullPass {
         drop(cmds);
 
         // Pack the survivors per material key, for the portal draw's pipelines.
-        let culled: Option<helio_pass_gbuffer::CulledBatchFrameData<'_>> = ctx
+        let culled: Option<helio_mesh_api::CulledBatchFrameData<'_>> = ctx
             .registry
             .get(helio_core::ResourceKey::new("culled_batch"));
         if let Some(culled) = culled {

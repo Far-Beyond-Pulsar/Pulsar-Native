@@ -126,7 +126,7 @@ fn aabb_in_frustum(min: vec3<f32>, max: vec3<f32>) -> bool {
 
 /// Mirrors `libhelio::INSTANCE_FLAG_ALWAYS_VISIBLE`.
 const INSTANCE_FLAG_ALWAYS_VISIBLE: u32 = 4u;
-/// Mirrors `helio_pass_object_batch::INSTANCE_FLAG_CLASSIC_SUPPRESSED`: another
+/// Mirrors `helio_mesh_api::INSTANCE_FLAG_CLASSIC_SUPPRESSED`: another
 /// renderer (virtual geometry) draws this instance in the main view.
 const INSTANCE_FLAG_CLASSIC_SUPPRESSED: u32 = 16u;
 

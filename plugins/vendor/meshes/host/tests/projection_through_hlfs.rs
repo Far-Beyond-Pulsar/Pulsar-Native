@@ -96,7 +96,7 @@ fn scenedb_projection_tracks_mesh_edits_transforms_removal_and_stale_frames() {
         let object = db.world.spawn();
         db.world.insert(
             object,
-            StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+            StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
                 mesh.index(),
                 mesh.generation() + 1,
                 material.index(),
@@ -108,7 +108,7 @@ fn scenedb_projection_tracks_mesh_edits_transforms_removal_and_stale_frames() {
                 vertices.offset as i32,
                 0,
                 0,
-                helio_pass_object_batch::INSTANCE_FLAG_CASTS_SHADOW,
+                helio_mesh_api::INSTANCE_FLAG_CASTS_SHADOW,
             )),
         );
         let shadow = render(&mut f, &mut acceleration, &db);
@@ -274,7 +274,7 @@ fn non_deforming_meshes_reuse_their_blas_until_marked_dynamic() {
         let object = db.world.spawn();
         db.world.insert(
             object,
-            StaticObjectComponent::from(helio_pass_gbuffer::StaticObjectRow::new(
+            StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
                 mesh.index(),
                 mesh.generation() + 1,
                 material.index(),
@@ -286,7 +286,7 @@ fn non_deforming_meshes_reuse_their_blas_until_marked_dynamic() {
                 vertices.offset as i32,
                 0,
                 0,
-                helio_pass_object_batch::INSTANCE_FLAG_CASTS_SHADOW,
+                helio_mesh_api::INSTANCE_FLAG_CASTS_SHADOW,
             )),
         );
         assert!(

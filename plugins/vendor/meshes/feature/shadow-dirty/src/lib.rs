@@ -433,7 +433,7 @@ impl RenderPass for ShadowDirtyPass {
         helio_core::cpu_scope!("ShadowDirty: execute");
         let Some(batch) = ctx
             .registry
-            .get::<helio_pass_gbuffer::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
+            .get::<helio_mesh_api::ObjectBatchFrameData<'_>>(helio_core::ResourceKey::new(
                 "object_batch",
             ))
         else {
@@ -444,7 +444,7 @@ impl RenderPass for ShadowDirtyPass {
         let draw_capacity = batch.group_capacity;
         let Some(coords) = ctx
             .registry
-            .get::<helio_pass_gbuffer::CoordinateSpacesFrameData<'_>>(
+            .get::<helio_core::CoordinateSpacesFrameData<'_>>(
                 helio_core::resource_keys::coordinate_spaces(),
             )
         else {
