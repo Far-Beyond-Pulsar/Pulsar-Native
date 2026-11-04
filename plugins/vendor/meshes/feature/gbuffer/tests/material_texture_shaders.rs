@@ -6,12 +6,17 @@ fn texture_consumers_validate_with_scene_owned_slot_defaults() {
             "forward",
             include_str!("../../forward/shaders/forward_lit.wgsl"),
         ),
+        ("transparent", helio_mats::templates::TRANSPARENT_BASE),
     ] {
         let resolved = helio_core::shader::resolve_with(
             source,
             &[
                 helio_mats::PBR_EVAL_SNIPPET,
                 helio_mats::SPECULAR_AA_SNIPPET,
+                // The lights' row and forward function, which the forward
+                // and transparent drawers compose in.
+                helio_light_api::LIGHT_LIST_SNIPPET,
+                helio_light_api::LIGHT_FORWARD_SNIPPET,
             ],
         );
         let module = naga::front::wgsl::parse_str(&resolved)
