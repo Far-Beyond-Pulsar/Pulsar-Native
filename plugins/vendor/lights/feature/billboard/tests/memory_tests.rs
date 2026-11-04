@@ -120,7 +120,7 @@ fn bytes_round_trip_preserves_world_pos() {
 fn bytes_round_trip_preserves_scale_flags() {
     let orig = BillboardInstance {
         world_pos: [0.0; 4],
-        scale_flags: [3.14, 2.71, 1.0, 0.0],
+        scale_flags: [3.5, 2.25, 1.0, 0.0],
         color: [0.0; 4],
     };
     let bytes = bytes_of(&orig);
