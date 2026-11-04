@@ -632,7 +632,6 @@ impl Render for AppTitleBar {
                     .px_2()
                     .gap_2()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(self.child.clone()(window, cx))
                     .child({
                         let theme_picker = self.theme_picker.clone();
                         ui::popover::Popover::<crate::theme_dropdown::ThemePicker>::new(
@@ -702,7 +701,10 @@ impl Render for AppTitleBar {
                             ),
                         ),
                     )
-                    .child(self.profile_dropdown.clone()),
+                    .child(self.profile_dropdown.clone())
+                    // Keep custom titlebar actions next to the window controls,
+                    // after the standard utility icons and profile avatar.
+                    .child(self.child.clone()(window, cx)),
             )
     }
 }
