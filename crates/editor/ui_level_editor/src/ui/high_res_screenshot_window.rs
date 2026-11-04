@@ -99,7 +99,14 @@ impl HighResScreenshotWindow {
                     state.build.screenshot_processing = true;
                     let tile_side = 8192u32.min(max_dimension).max(1);
                     let columns = width.div_ceil(tile_side);
-                    let rows = height.div_ceil(tile_side);
+                    // The PNG encoder assembles one bounded horizontal band at a
+                    // time. Its height can be smaller than a full GPU tile when
+                    // the requested output is very wide.
+                    const BAND_BYTES: u64 = 512 * 1024 * 1024;
+                    let band_height = (BAND_BYTES / (u64::from(width) * 4))
+                        .max(1)
+                        .min(u64::from(tile_side)) as u32;
+                    let rows = height.div_ceil(band_height);
                     self.message = Some(format!(
                         "Rendering {width} × {height} in {} tiles. Scene time is frozen during capture.",
                         u64::from(columns) * u64::from(rows)
