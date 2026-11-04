@@ -11,6 +11,8 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
 helio-scene-derivations = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 glam = { workspace = true }
@@ -26,7 +28,6 @@ helio-mats = { workspace = true }
 helio-mesh-api = { workspace = true, features = ["host-rows"] }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-gbuffer = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 helio-pass-object-batch = { workspace = true }
 helio-pass-occlusion-cull = { workspace = true }
 helio-pass-shadow = { workspace = true }
@@ -45,7 +46,6 @@ wgpu = { workspace = true }
 bytemuck = { workspace = true }
 half = "2"
 helio-pass-hlfs = { workspace = true }
-helio-pass-shadow-matrix = { workspace = true }
 image = { workspace = true }
 naga = { version = "30", features = ["wgsl-in"] }
 pollster = "0.4"

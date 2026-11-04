@@ -2,7 +2,7 @@
 //! their band of altitudes and nowhere else, their shadow darkens the
 //! ground under them along the sun, a still view holds still, and what they
 //! cost.
-use helio_components::LightComponent;
+use helio_light_host::LightComponent;
 use std::sync::Arc;
 
 use glam::Vec3;
@@ -81,7 +81,7 @@ fn view(width: u32, height: u32, ground: bool) -> Option<View> {
         16,
         &device,
     );
-    helio_components::LightComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    helio_light_host::LightComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), Arc::clone(&queue));
     let mut scene = pulsar_scenedb::SceneDb::new();
     scene.world.attach_gpu_mirror(mirror.clone());
@@ -145,12 +145,12 @@ impl View {
     fn set_sky(&mut self, towards: Vec3, air: AtmosphereComponent) {
         self.scene.world.insert(
             self.sun,
-            LightComponent::from(helio_pass_light_cull::LightRow::from(helio::GpuLight {
+            LightComponent::from(helio_light_api::LightRow::from(helio_light_api::GpuLight {
                 position_range: [0.0, 0.0, 0.0, f32::MAX],
                 direction_outer: [-towards.x, -towards.y, -towards.z, 0.0],
                 color_intensity: [1.0, 1.0, 1.0, 3.0],
                 shadow_index: u32::MAX,
-                light_type: helio::LightType::Directional as u32,
+                light_type: helio_light_api::LightType::Directional as u32,
                 ..Default::default()
             })),
         );

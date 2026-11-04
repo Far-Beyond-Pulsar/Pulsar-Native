@@ -225,8 +225,8 @@ impl ApplicationHandler for App {
 
         let config = RendererConfig::new(size.width, size.height, format)
             .with_tsr_quality(helio_pass_tsr::TsrQuality::Native)
-            .with_feature(helio_pass_shadow_matrix::ShadowSettings {
-                quality: helio::ShadowQuality::High,
+            .with_feature(helio_light_api::ShadowSettings {
+                quality: helio_light_api::ShadowQuality::High,
                 ..Default::default()
             })
             .with_ssr(true)
@@ -710,7 +710,7 @@ const SUN_DIRECTION: [f32; 3] = [0.58, -0.72, 0.38];
 
 /// Lets an interior light glow in the incense. These lights have no shadow
 /// maps, so their scattering is unshadowed (decay 0): a soft halo, no shafts.
-fn haze_light(mut light: helio::GpuLight) -> helio::GpuLight {
+fn haze_light(mut light: helio_light_api::GpuLight) -> helio_light_api::GpuLight {
     if std::env::var_os("HLFS_NO_HAZE_LIGHTS").is_some() {
         return light;
     }
@@ -832,7 +832,7 @@ fn flicker_lights(
 ) {
     let flicker = 1.0 + (time * 9.1).sin() * 0.03 + (time * 5.7).cos() * 0.02;
     let cflicker = 1.0 + (time * 14.3).sin() * 0.07 + (time * 8.9).cos() * 0.05;
-    let with_shadows = |mut light: helio::GpuLight| {
+    let with_shadows = |mut light: helio_light_api::GpuLight| {
         light.set_ray_traced_shadows(ray_traced);
         light
     };

@@ -1027,8 +1027,8 @@ impl ApplicationHandler for App {
         let queue = graphics.queue.clone();
         let surface_format = graphics.surface_config.format;
         let mut config = RendererConfig::new(size.width, size.height, surface_format)
-            .with_feature(helio_pass_shadow_matrix::ShadowSettings {
-                quality: helio::ShadowQuality::Ultra,
+            .with_feature(helio_light_api::ShadowSettings {
+                quality: helio_light_api::ShadowQuality::Ultra,
                 ..Default::default()
             })
             .with_render_scale(1.0);

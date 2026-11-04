@@ -208,7 +208,7 @@ mod undo_redo_tests {
             .clone();
 
         let default_light_json =
-            serde_json::to_value(helio_component::LightComponent::default()).unwrap();
+            serde_json::to_value(lights_component::LightComponent::default()).unwrap();
         {
             let mut world = state.scene.world_mut();
             crate::scene_edit::components::add_component(
@@ -300,7 +300,7 @@ mod undo_redo_tests {
             .clone();
 
         let default_light_json =
-            serde_json::to_value(helio_component::LightComponent::default()).unwrap();
+            serde_json::to_value(lights_component::LightComponent::default()).unwrap();
         {
             let mut world = state.scene.world_mut();
             crate::scene_edit::components::add_component(
@@ -390,7 +390,7 @@ mod undo_redo_tests {
             .clone();
 
         let default_light_json =
-            serde_json::to_value(helio_component::LightComponent::default()).unwrap();
+            serde_json::to_value(lights_component::LightComponent::default()).unwrap();
         let feed = {
             let mut world = state.scene.world_mut();
             crate::scene_edit::components::add_component(
@@ -422,7 +422,7 @@ mod undo_redo_tests {
         let delivered = feed.take().into_iter().find_map(|update| match update {
             ObjectUpdate::Changed(delta) => delta
                 .value?
-                .downcast::<helio_component::LightComponent>()
+                .downcast::<lights_component::LightComponent>()
                 .ok(),
             ObjectUpdate::Despawned => None,
         });
@@ -454,7 +454,7 @@ mod undo_redo_tests {
         let lamp = add(&mut state, "Lamp");
         let empty = add(&mut state, "Empty");
         {
-            let mut light = helio_component::LightComponent::default();
+            let mut light = lights_component::LightComponent::default();
             light.general.movability = ObjectMovability::Movable;
             let mut world = state.scene.world_mut();
             crate::scene_edit::components::add_component(
@@ -518,7 +518,7 @@ mod undo_redo_tests {
             let light = pulsar_world_registry::attach_value(
                 &mut world,
                 owner,
-                helio_component::LightComponent::default(),
+                lights_component::LightComponent::default(),
             )
             .unwrap();
             let unresolved = pulsar_world_registry::attach_unresolved(
@@ -543,7 +543,7 @@ mod undo_redo_tests {
         let intensity = |state: &LevelEditorState| {
             let world = state.scene.world();
             world
-                .get::<helio_component::LightComponent>(light)
+                .get::<lights_component::LightComponent>(light)
                 .map(|light| light.intensity.intensity)
         };
 
@@ -593,7 +593,7 @@ mod undo_redo_tests {
     fn typed_component_commands_are_undoable_and_report_no_ops() {
         use engine_backend::scene::{attachments, SceneWorldExt};
         let mut state = LevelEditorState::new();
-        let mut light = helio_component::LightComponent::default();
+        let mut light = lights_component::LightComponent::default();
         light.intensity.intensity = 25.0;
         let added = execute_command(
             &mut state,
@@ -619,7 +619,7 @@ mod undo_redo_tests {
                     (
                         attachments::is_enabled(&world, instance),
                         world
-                            .get::<helio_component::LightComponent>(instance)
+                            .get::<lights_component::LightComponent>(instance)
                             .map(|light| light.intensity.intensity),
                     )
                 })
@@ -646,7 +646,7 @@ mod undo_redo_tests {
         assert_eq!(instances(&state)[2], (true, Some(1000.0)));
 
         // A whole-value replacement keeps the instance and is undoable.
-        let mut brighter = helio_component::LightComponent::default();
+        let mut brighter = lights_component::LightComponent::default();
         brighter.intensity.intensity = 50.0;
         assert!(
             execute_command(

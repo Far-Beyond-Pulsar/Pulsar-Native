@@ -6,12 +6,12 @@ description = "Helio world-space diffuse global illumination: a probe clipmap tr
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-mesh-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-core = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-gi-api = { workspace = true }
-helio-pass-shadow-matrix = { workspace = true }
 helio-mats = { workspace = true }
 helio-settings = { workspace = true }
 wgpu = { workspace = true }
@@ -19,8 +19,8 @@ bytemuck = { workspace = true, features = ["derive"] }
 glam = { workspace = true }
 
 [dev-dependencies]
+helio-light-host = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 pollster = "=0.4.0"
 # The graph tests (moved from helio-presets): mesh scenes over Helio's
 # presets plus this feature, their rows as Helio's host components.

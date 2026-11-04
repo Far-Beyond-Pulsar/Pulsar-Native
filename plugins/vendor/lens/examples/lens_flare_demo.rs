@@ -16,10 +16,10 @@ use common::{
     spawn_light, spawn_material, spawn_mesh, spawn_object,
 };
 use helio::{
-    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, GpuLight,
-    HelioGraphicsConfig, HelioGraphicsContext, LightType, Renderer, RendererBuilder,
-    RendererConfig,
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
+    HelioGraphicsConfig, HelioGraphicsContext, Renderer, RendererBuilder, RendererConfig,
 };
+use helio_light_api::{GpuLight, LightType};
 
 use winit::{
     application::ApplicationHandler,

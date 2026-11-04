@@ -2,11 +2,11 @@
 //!
 //! SceneDB owns all world and asset state; component values mirror their own
 //! GPU rows on every write. Helio receives the cloneable GPU mirror during
-//! renderer construction, and the meshes' and lights' scene joins
-//! ([`scene_join`]) turn the authored rows (mesh and light instances, their
-//! owner links, the owner objects' transforms and visibility) into the
-//! object, material and light rows its passes draw, on the GPU, whenever
-//! they change. This module keeps no frame projection, render-row
+//! renderer construction, and the object joins ([`scene_join`]: the meshes',
+//! then every plugin's, [`ObjectJoinRegistration`], such as the lights')
+//! turn the authored rows (mesh and light instances, their owner links, the
+//! owner objects' transforms and visibility) into the object, material and
+//! light rows its passes draw, on the GPU, whenever they change. This module keeps no frame projection, render-row
 //! subscription, material table or per-frame input assembly
 //! (Pulsar-Native#1035, Phase 2). Every other kind's row join
 //! ([`environment_join`]) does the same for its rows (Phase 4); each kind's
@@ -17,11 +17,10 @@
 use std::sync::Arc;
 
 use helio_component::components::{
-    LODComponent, LightSourceRow, SkeletalMeshComponent, StaticMeshComponent, StaticMeshDraw,
-    VirtualGeometryComponent, LIGHT_SOURCES_BUFFER, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER,
-    MESH_SECTIONS_BUFFER, SKELETAL_PALETTE_HANDLES_BUFFER, SKELETAL_SKIN_HANDLES_BUFFER,
+    LODComponent, SkeletalMeshComponent, StaticMeshComponent, StaticMeshDraw,
+    VirtualGeometryComponent, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
+    SKELETAL_PALETTE_HANDLES_BUFFER, SKELETAL_SKIN_HANDLES_BUFFER,
 };
-use helio_pass_light_cull::scene_rows::{LightJoin, LightJoinKeys};
 use helio_pass_object_batch::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
 use helio_scene_derivations::hierarchy_resolve::{HierarchyResolve, HierarchyResolveKeys};
 use helio_scene_join::{DerivationGroup, RowJoinKeys, SceneDerivation};
@@ -38,8 +37,7 @@ use pulsar_scene_model::{ObjectFrame, ObjectHidden, ObjectParent, TransformRow};
 /// links (`ComponentOwner`), object visibility (`Visibility`'s derived
 /// `ObjectHidden`) and transforms (`Transform`'s derived `TransformRow`:
 /// the f64 position as an f32 pair), the mesh geometry
-/// handles and derived draw rows (`StaticMeshComponent`, `StaticMeshDraw`),
-/// and the light rows (`LightComponent`'s derived `LightSourceRow`).
+/// handles and derived draw rows (`StaticMeshComponent`, `StaticMeshDraw`).
 pub fn scene_join_keys() -> SceneJoinKeys {
     // A var-len field's handle table is its pool key + `::handles`.
     SceneJoinKeys {
@@ -58,29 +56,56 @@ pub fn scene_join_keys() -> SceneJoinKeys {
     }
 }
 
-/// Where this engine's light rows live, for the lights' join.
-pub fn light_join_keys() -> LightJoinKeys {
+/// The rows an object join reads ([`ObjectJoinRegistration`]): this
+/// engine's owner links, generations, visibility and transforms, and
+/// whether the renderer is the editor's (which adds editor-only rows, such
+/// as the lights' icons).
+#[derive(Clone, Copy, Debug)]
+pub struct ObjectJoinContext {
+    pub owners: BufferKey,
+    pub generations: BufferKey,
+    pub hidden: BufferKey,
+    pub transforms: BufferKey,
+    pub editor: bool,
+}
+
+/// A plugin's object join: a derivation turning its instances' source rows
+/// into the rows its passes read, placed by their owners, installed in the
+/// engine's scene-join group after the meshes' join and ahead of the
+/// authored LOD selection and every row join ([`environment_join`]), so the
+/// rows it publishes (the lights' list and directional light) are there for
+/// them in the same frame. The plugin's component crate submits one with
+/// `inventory::submit!`; the engine names no kind.
+pub struct ObjectJoinRegistration {
+    /// For diagnostics and tests.
+    pub name: &'static str,
+    /// Registers the join's source-row columns (initial capacities; they
+    /// grow) with the GPU mirror ([`ensure_gpu_mirror`]).
+    pub register_columns: fn(&mut SceneGpuStore, &Arc<wgpu::Device>),
+    pub derivation: fn(&wgpu::Device, &ObjectJoinContext) -> Box<dyn SceneDerivation>,
+}
+
+inventory::collect!(ObjectJoinRegistration);
+
+/// The meshes' scene join and every plugin's object join over this
+/// engine's rows, for `RendererBuilder::with_scene_derivation`. `editor`
+/// lets a join add editor-only rows.
+pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<DerivationGroup> {
     let scene = scene_join_keys();
-    LightJoinKeys {
+    let context = ObjectJoinContext {
         owners: scene.owners,
         generations: scene.generations,
         hidden: scene.hidden,
         transforms: scene.transforms,
-        light_sources: BufferKey::of(LIGHT_SOURCES_BUFFER),
-    }
-}
-
-/// The meshes' and lights' scene joins over this engine's rows, for
-/// `RendererBuilder::with_scene_derivation`. `editor` adds the light icon
-/// billboards.
-pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<DerivationGroup> {
-    Box::new(DerivationGroup::new(
-        "SceneJoins",
-        vec![
-            Box::new(SceneJoin::new(device, scene_join_keys())),
-            Box::new(LightJoin::new(device, light_join_keys(), editor)),
-        ],
-    ))
+        editor,
+    };
+    let mut joins: Vec<Box<dyn SceneDerivation>> = vec![Box::new(SceneJoin::new(device, scene))];
+    joins.extend(
+        inventory::iter::<ObjectJoinRegistration>
+            .into_iter()
+            .map(|registration| (registration.derivation)(device, &context)),
+    );
+    Box::new(DerivationGroup::new("SceneJoins", joins))
 }
 
 /// Per-render-view authored mesh LOD selection. Installed after
@@ -126,8 +151,8 @@ pub fn hierarchy_resolve(device: &wgpu::Device) -> Box<HierarchyResolve> {
 }
 
 /// The rows every kind's row join reads: the same owner, visibility,
-/// transform and mesh bounds rows as the scene join, and the lights'
-/// directional light.
+/// transform and mesh bounds rows as the scene join. No directional light:
+/// a kind whose rows take a sun names the lights' (water does).
 pub fn row_join_keys() -> RowJoinKeys {
     let scene = scene_join_keys();
     RowJoinKeys {
@@ -136,7 +161,7 @@ pub fn row_join_keys() -> RowJoinKeys {
         hidden: scene.hidden,
         transforms: scene.transforms,
         mesh_bounds: scene.mesh_bounds,
-        directional_light: helio_pass_light_cull::scene_rows::DIRECTIONAL_LIGHT_KEY,
+        directional_light: None,
     }
 }
 
@@ -158,7 +183,8 @@ inventory::collect!(SceneRowsRegistration);
 
 /// Every other kind's row join over this engine's rows (each kind's
 /// feature crate's `scene_rows`), for `RendererBuilder::with_scene_derivation`,
-/// after [`scene_join`] (a kind may read the lights' directional light):
+/// after [`scene_join`] (a kind may read what an object join published,
+/// the lights' directional light):
 /// every plugin's kind ([`SceneRowsRegistration`]).
 pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
     let keys = row_join_keys();
@@ -222,10 +248,13 @@ pub fn ensure_gpu_mirror(
     // VirtualGeometryInstances derivation (`vg_instance_overrides`).
     VirtualGeometryComponent::register_gpu_columns_growable(&mut gpu_store, 256, &device);
     SkeletalMeshComponent::register_gpu_columns_growable(&mut gpu_store, 128, &device);
-    // The scene join's inputs (see `scene_join_keys`); the object, material
-    // and light rows passes draw are the join's outputs, not SceneDB's.
+    // The scene join's inputs (see `scene_join_keys`); the object and
+    // material rows passes draw are the join's outputs, not SceneDB's.
     StaticMeshDraw::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
-    LightSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
+    // Every object join's source rows (a plugin's lights').
+    for registration in inventory::iter::<ObjectJoinRegistration> {
+        (registration.register_columns)(&mut gpu_store, &device);
+    }
     ComponentOwner::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // Each object's parent, for the hierarchy resolve (transforms are parent-relative).
@@ -382,10 +411,6 @@ mod tests {
         assert_eq!(
             size_of::<helio_component::components::MeshSectionDraw>() as u64,
             join::MESH_SECTION_ROW_BYTES
-        );
-        assert_eq!(
-            size_of::<LightSourceRow>() as u64,
-            helio_pass_light_cull::scene_rows::LIGHT_SOURCE_ROW_BYTES
         );
         assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
         assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);

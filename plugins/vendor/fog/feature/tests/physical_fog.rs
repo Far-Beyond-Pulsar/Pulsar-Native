@@ -538,7 +538,7 @@ fn point_shadow_cube_matches_real_matrix_producer_and_shadow_strength_adapter() 
     let matrices = buffer(&device, &[0; 576], storage);
     // Use the real shadow producer's math, including its handedness and face order.
     let producer = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("real point shadow matrices"),
-        source: wgpu::ShaderSource::Wgsl(format!("{}\n{}",include_str!("../../../../../crates/renderer/helio/crates/passes/3d/helio-pass-shadow-matrix/shaders/shadow_matrices.wgsl"),
+        source: wgpu::ShaderSource::Wgsl(format!("{}\n{}",include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
             "@compute @workgroup_size(1) fn test_point_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }").into()) });
     let producer = pipeline(&device, &producer, "test_point_matrices");
     let producer_bg = group(&device, &producer, &[(0, &lights), (1, &matrices)]);
@@ -674,14 +674,14 @@ fn point_shadow_cube_matches_real_matrix_producer_and_shadow_strength_adapter() 
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: helio_pass_shadow_matrix::SUN_OCCLUSION_FORMAT,
+            format: helio_light_api::SUN_OCCLUSION_FORMAT,
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         })
         .create_view(&Default::default());
     let no_frame = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
-        size: helio_pass_shadow_matrix::SUN_OCCLUSION_FRAME_BYTES,
+        size: helio_light_api::SUN_OCCLUSION_FRAME_BYTES,
         usage: wgpu::BufferUsages::UNIFORM,
         mapped_at_creation: false,
     });
@@ -800,7 +800,7 @@ impl ShadowProducer {
         let matrices = buffer(device, &[0; 576], wgpu::BufferUsages::STORAGE);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None, source: wgpu::ShaderSource::Wgsl(format!("{}\n{}",
-                include_str!("../../../../../crates/renderer/helio/crates/passes/3d/helio-pass-shadow-matrix/shaders/shadow_matrices.wgsl"),
+                include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
                 "@compute @workgroup_size(1) fn test_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }").into()),
         });
         let pipeline = pipeline(device, &shader, "test_matrices");
@@ -820,25 +820,28 @@ impl helio_core::RenderPass for ShadowProducer {
         "FogTestShadowProducer"
     }
     fn writes(&self) -> &'static [&'static str] {
-        &["shadow_atlas", "shadow_matrices"]
+        &[
+            helio_light_api::SHADOW_ATLAS,
+            helio_light_api::SHADOW_MATRICES,
+        ]
     }
     fn publish<'a>(&self, registry: &mut helio_core::ResourceRegistry<'a>) {
         let view: &'a wgpu::TextureView = unsafe { std::mem::transmute(&self.view) };
         let matrices: &'a wgpu::Buffer = unsafe { std::mem::transmute(&self.matrices) };
         registry.write_texture_view(
-            helio_core::ResourceKey::new("shadow_atlas"),
+            helio_core::ResourceKey::new(helio_light_api::SHADOW_ATLAS),
             view,
             "FogTestShadowProducer",
         );
         registry.write(
-            helio_pass_shadow_matrix::shadow_matrices(),
-            helio_pass_shadow_matrix::ShadowMatricesFrameData {
+            helio_light_api::shadow_matrices(),
+            helio_light_api::ShadowMatricesFrameData {
                 desired_matrices: None,
                 residency: None,
                 budget: Default::default(),
                 shadow_matrices: matrices,
                 shadow_count: 6,
-                per_caster_dirty_gen: [0; helio_pass_shadow_matrix::MAX_SHADOW_CASTERS],
+                per_caster_dirty_gen: [0; helio_light_api::MAX_SHADOW_CASTERS],
                 movable_objects_generation: 0,
                 caster_layout: None,
             },
@@ -993,7 +996,7 @@ fn production_graph_native_fog_black_without_lights_emission_and_disable_clear_h
                     .map(|handle| (key, handle))
             });
         scene.projection = SceneBufferProjection::from_handles(handles.chain(std::iter::once((
-            helio_core::BufferKey::of("scene_lights"),
+            helio_core::BufferKey::of(helio_light_api::LIGHT_LIST),
             helio_core::BufferHandle {
                 buffer: lights.clone(),
                 epoch: 0,
@@ -1203,7 +1206,7 @@ fn smooth_case(local: bool) {
                     .map(|handle| (key, handle))
             });
         scene.projection = SceneBufferProjection::from_handles(handles.chain(std::iter::once((
-            helio_core::BufferKey::of("scene_lights"),
+            helio_core::BufferKey::of(helio_light_api::LIGHT_LIST),
             helio_core::BufferHandle {
                 buffer: lights.clone(),
                 epoch: 0,
@@ -1376,7 +1379,7 @@ fn render_columns(poses: &[glam::Vec3], jitter: bool, half: f32) -> Vec<f32> {
                     .map(|handle| (key, handle))
             });
         scene.projection = SceneBufferProjection::from_handles(handles.chain(std::iter::once((
-            helio_core::BufferKey::of("scene_lights"),
+            helio_core::BufferKey::of(helio_light_api::LIGHT_LIST),
             helio_core::BufferHandle {
                 buffer: lights.clone(),
                 epoch: 0,

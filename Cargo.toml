@@ -110,6 +110,17 @@ members = [
     "plugins/vendor/meshes/component",
     "plugins/vendor/meshes/editor",
     "plugins/vendor/meshes/examples",
+    # The lights (phase B, batch 5): the api (the light list, binning,
+    # shadow views and their WGSL), the feature's crates (binning, shadow
+    # views, deferred lighting, light-field shading, billboards), the
+    # standalone hosts' features and rows, the component crate (Light,
+    # ReflectionCapture, the registrations), the editor crate and examples.
+    "plugins/vendor/lights/api",
+    "plugins/vendor/lights/feature/*",
+    "plugins/vendor/lights/host",
+    "plugins/vendor/lights/component",
+    "plugins/vendor/lights/editor",
+    "plugins/vendor/lights/examples",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -276,6 +287,8 @@ sky_component                      = { path = "plugins/vendor/sky/component" }
 sky_plugin                         = { path = "plugins/vendor/sky/editor", features = ["builtin"] }
 meshes_component                   = { path = "plugins/vendor/meshes/component" }
 meshes_plugin                      = { path = "plugins/vendor/meshes/editor", features = ["builtin"] }
+lights_component                   = { path = "plugins/vendor/lights/component" }
+lights_plugin                      = { path = "plugins/vendor/lights/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -394,7 +407,7 @@ helio-gi-api = { path = "plugins/vendor/gi/api" }
 helio-pass-gi = { path = "plugins/vendor/gi/feature" }
 helio-pass-sky = { path = "plugins/vendor/sky/feature" }
 helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
-helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
+helio-pass-billboard = { path = "plugins/vendor/lights/feature/billboard" }
 helio-pass-forward-lit = { path = "plugins/vendor/meshes/feature/forward" }
 helio-pass-gbuffer = { path = "plugins/vendor/meshes/feature/gbuffer" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
@@ -402,7 +415,9 @@ helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
 helio-mesh-api = { path = "plugins/vendor/meshes/api" }
 helio-scene-join = { path = "crates/renderer/helio/crates/helio-scene-join" }
-helio-pass-light-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-light-cull" }
+helio-pass-light-cull = { path = "plugins/vendor/lights/feature/cull" }
+helio-light-api = { path = "plugins/vendor/lights/api" }
+helio-light-host = { path = "plugins/vendor/lights/host" }
 helio-frame-api = { path = "crates/renderer/helio/crates/helio-frame-api" }
 helio-vg-format = { path = "plugins/vendor/meshes/vg/format" }
 helio-vg-stream = { path = "plugins/vendor/meshes/vg/stream" }
@@ -414,11 +429,11 @@ helio-pass-object-batch = { path = "plugins/vendor/meshes/feature/object-batch" 
 helio-pass-debug-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay" }
 helio-pass-perf-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay" }
 helio-bake = { path = "crates/renderer/helio/crates/helio-bake" }
-helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
+helio-pass-deferred-light = { path = "plugins/vendor/lights/feature/deferred" }
 # Helio crates the voxel plugin's feature and hosts use.
 helio-xr = { path = "crates/renderer/helio/crates/helio-xr" }
 helio-components = { path = "crates/renderer/helio/crates/helio-components" }
-helio-pass-shadow-matrix = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-shadow-matrix" }
+helio-pass-shadow-matrix = { path = "plugins/vendor/lights/feature/shadows" }
 # Helio crates the media plugins' features read.
 helio-pass-hiz = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-hiz" }
 helio-pass-indirect-dispatch = { path = "plugins/vendor/meshes/feature/indirect-dispatch" }
@@ -437,7 +452,7 @@ helio-web-demos = { path = "plugins/vendor/meshes/web-demos" }
 helio-bake-types = { path = "crates/renderer/helio/crates/helio-bake-types" }
 helio-controls = { path = "crates/renderer/helio/crates/helio-controls" }
 helio-pass-fxaa = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-fxaa" }
-helio-pass-hlfs = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-hlfs" }
+helio-pass-hlfs = { path = "plugins/vendor/lights/feature/hlfs" }
 helio-pass-sdf = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sdf" }
 helio-wasm = { path = "crates/renderer/helio/crates/helio-wasm" }
 glam                  = { version = "0.33", features = ["bytemuck"] }

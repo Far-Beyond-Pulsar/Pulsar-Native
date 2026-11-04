@@ -52,8 +52,8 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererBuilder, RendererConfig,
 };
-use helio_components::LightComponent;
 use helio_components::WorldRows;
+use helio_light_host::LightComponent;
 use helio_pass_post_volumes::host_rows::CameraPostProcessComponent;
 use helio_pass_voxel_planet::chunks::pass::ChunkPass;
 use helio_pass_voxel_planet::chunks::VolumeId;
@@ -166,7 +166,7 @@ impl Flight {
         helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
             &mut store, 16, &device,
         );
-        helio_components::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
+        helio_light_host::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
         helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(
             &mut store, 4, &device,
         );
@@ -186,13 +186,13 @@ impl Flight {
         let sky = preset.sky(planet.grid().radius());
         scene.world.insert(
             light,
-            LightComponent::from(helio_pass_light_cull::LightRow::from(helio::GpuLight {
+            LightComponent::from(helio_light_api::LightRow::from(helio_light_api::GpuLight {
                 position_range: [0.0, 0.0, 0.0, f32::MAX],
                 direction_outer: [-sun_dir.x, -sun_dir.y, -sun_dir.z, 0.0],
                 // The sun above the air: the atmosphere colours it.
                 color_intensity: [1.0, 1.0, 1.0, 3.0],
                 shadow_index: u32::MAX,
-                light_type: helio::LightType::Directional as u32,
+                light_type: helio_light_api::LightType::Directional as u32,
                 // Where there is air, it lights the haze too, shadowed by
                 // everything (shafts), as voxel_craft's sun.
                 god_rays_enabled: u32::from(sky.is_some()),

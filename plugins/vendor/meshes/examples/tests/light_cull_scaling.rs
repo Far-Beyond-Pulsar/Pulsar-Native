@@ -8,7 +8,8 @@ mod v3_demo_common;
 
 use glam::{Mat4, Vec3};
 use helio::{Camera, RendererBuilder, RendererConfig};
-use helio_pass_light_cull::{LightCullPass, MAX_LIGHTS_PER_TILE};
+use helio_light_api::MAX_LIGHTS_PER_TILE;
+use helio_pass_light_cull::LightCullPass;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use v3_demo_common::*;

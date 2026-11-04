@@ -1,3 +1,4 @@
+//!use light_list
 //!use gi_common
 //!use sun_occlusion
 //!use sun_transmittance
@@ -34,7 +35,7 @@ enable wgpu_ray_query;
 @group(0) @binding(7) var<storage, read> instances: array<RayInstance>;
 @group(0) @binding(8) var<storage, read> vertices: array<u32>;
 @group(0) @binding(9) var<storage, read> indices: array<u32>;
-@group(0) @binding(10) var<storage, read> scene_lights: array<SceneLight>;
+@group(0) @binding(10) var<storage, read> scene_lights: array<GpuLight>;
 @group(0) @binding(11) var<uniform> sun_occlusion_frame: SunOcclusionFrame;
 @group(0) @binding(12) var sun_occlusion_maps: texture_2d<f32>;
 @group(0) @binding(18) var<storage, read> sun_occlusion_pages: array<u32>;
@@ -73,17 +74,6 @@ struct LocalLights {
     lights: array<LocalLight, MAX_LIGHTS>,
 }
 
-// Helio's lights (`GpuLight`, 128 bytes).
-struct SceneLight {
-    position_range: vec4<f32>,
-    direction_outer: vec4<f32>,
-    color_intensity: vec4<f32>,
-    shadow_index: u32,
-    light_type: u32,
-    inner_angle: f32,
-    flags: u32,
-    rest: array<vec4<u32>, 4>,
-}
 
 const PI: f32 = 3.14159265;
 // A probe ray's cone: the width of its footprint a metre out, the side of
@@ -229,7 +219,7 @@ fn gi_gather_lights() {
     var count = 0u;
     for (var i = 0u; i < min(trace.info.x, arrayLength(&scene_lights)) && count < MAX_LIGHTS; i++) {
         let light = scene_lights[i];
-        if light.light_type == 0u || light.color_intensity.w <= 0.0 || light.position_range.w <= 0.0 { continue; }
+        if light.light_type == LIGHT_DIRECTIONAL || light.color_intensity.w <= 0.0 || light.position_range.w <= 0.0 { continue; }
         local_lights.lights[count] = LocalLight(light.position_range, light.direction_outer, vec4<f32>(light.color_intensity.rgb * light.color_intensity.w, f32(light.light_type)), vec4<f32>(light.inner_angle, 0.0, 0.0, 0.0));
         count++;
     }

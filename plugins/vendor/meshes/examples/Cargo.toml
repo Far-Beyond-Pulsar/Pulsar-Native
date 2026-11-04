@@ -32,10 +32,6 @@ path = "vg_stress.rs"
 required-features = ["vg-stress"]
 
 [[bin]]
-name = "billboard_demo"
-path = "billboard_demo.rs"
-
-[[bin]]
 name = "indoor_corridor"
 path = "indoor_corridor.rs"
 
@@ -128,10 +124,6 @@ name = "rapier_pendulum_cloth"
 path = "rapier_pendulum_cloth.rs"
 
 [[bin]]
-name = "light_benchmark"
-path = "light_benchmark.rs"
-
-[[bin]]
 name = "load_fbx"
 path = "load_fbx.rs"
 
@@ -192,10 +184,6 @@ name = "color_grading_demo"
 path = "color_grading_demo.rs"
 
 [[bin]]
-name = "ies_demo"
-path = "ies_demo.rs"
-
-[[bin]]
 name = "forward_demo"
 path = "forward_demo.rs"
 
@@ -204,6 +192,8 @@ name = "vr_demo"
 path = "vr/main.rs"
 
 [dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
 helio-pass-vg = { workspace = true }
 helio-mesh-api = { workspace = true }
@@ -218,7 +208,6 @@ helio-pass-vg-cull = { workspace = true }
 helio-pass-vg-bvh = { workspace = true }
 helio-pass-vg-raster = { workspace = true }
 helio-mats = { workspace = true }
-helio-pass-shadow-matrix = { workspace = true }
 helio-asset-compat = { workspace = true }
 helio-pass-tsr = { workspace = true }
 helio-pass-fxaa = { workspace = true }

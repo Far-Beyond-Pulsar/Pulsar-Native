@@ -43,20 +43,20 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
             foliage_component::WindComponent::default(),
         )],
         "LightComponent" => vec![TypedComponent::new(
-            helio_component::LightComponent::default(),
+            lights_component::LightComponent::default(),
         )],
         "DirectionalLight" | "SpotLight" => {
-            let mut light = helio_component::LightComponent::default();
+            let mut light = lights_component::LightComponent::default();
             let (light_type, object_light_type) = if class_name == "DirectionalLight" {
                 (
-                    helio_component::LightType::Directional,
+                    lights_component::LightType::Directional,
                     LightType::Directional,
                 )
             } else {
-                (helio_component::LightType::Spot, LightType::Spot)
+                (lights_component::LightType::Spot, LightType::Spot)
             };
             light.general.light_type = light_type;
-            if light_type == helio_component::LightType::Directional {
+            if light_type == lights_component::LightType::Directional {
                 light.intensity.intensity = 2.0;
             }
             object_type = ObjectType::Light(object_light_type);
@@ -72,7 +72,7 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
             post_component::PostProcessVolumeComponent::default(),
         )],
         "ReflectionCaptureComponent" => vec![TypedComponent::new(
-            helio_component::ReflectionCaptureComponent::default(),
+            lights_component::ReflectionCaptureComponent::default(),
         )],
         "WaterVolumeComponent" => vec![TypedComponent::new(
             water_component::WaterVolumeComponent::default(),
@@ -134,7 +134,7 @@ pub fn apply_preset(state: &mut LevelEditorState, preset: EnvironmentPreset) -> 
         changed |= crate::scene_edit::sky::create_sky(state).changed;
     }
 
-    let sun = engine_backend::scene::level_rules::directional_lights(&state.scene.world())
+    let sun = lights_component::directional_lights(&state.scene.world())
         .first()
         .and_then(|instance| {
             let world = state.scene.world();

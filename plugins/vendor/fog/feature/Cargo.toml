@@ -13,6 +13,7 @@ gpu = []
 host-rows = ["dep:helio-components", "dep:pulsar_scenedb_derive", "dep:serde_json"]
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-components = { workspace = true, optional = true }
 pulsar_scenedb_derive = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
@@ -22,7 +23,6 @@ helio-feature-api = { workspace = true }
 pulsar_reflection = { workspace = true }
 helio-core = { workspace = true }
 helio-pass-postprocess = { workspace = true }
-helio-pass-shadow-matrix = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 pulsar_scenedb = { workspace = true }

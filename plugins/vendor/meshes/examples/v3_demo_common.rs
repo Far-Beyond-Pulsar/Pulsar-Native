@@ -1,6 +1,8 @@
 use glam::{Mat4, Vec3};
-use helio::{GpuLight, LightType, Renderer, RendererBuilder, RendererConfig, SceneDbHandle};
-use helio_components::{MaterialComponent, ReflectionCaptureComponent};
+use helio::{Renderer, RendererBuilder, RendererConfig, SceneDbHandle};
+use helio_components::MaterialComponent;
+use helio_light_api::{GpuLight, LightType};
+use helio_light_host::ReflectionCaptureComponent;
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use pulsar_scenedb::{Entity, World};
 use std::sync::Arc;
@@ -54,9 +56,9 @@ pub fn new_scene_db_with_gpu_mirror_and(
         4096,
         device,
     );
-    helio_components::LightComponent::register_gpu_columns_growable(
+    helio_light_host::LightComponent::register_gpu_columns_growable(
         &mut gpu_store,
-        helio_pass_light_cull::MAX_LIGHTS,
+        helio_light_api::MAX_LIGHTS,
         device,
     );
     register_extra(&mut gpu_store);
@@ -354,7 +356,7 @@ pub fn directional_light(direction: [f32; 3], color: [f32; 3], intensity: f32) -
         // check). NOT 0: SceneDB-authored lights never get a real
         // shadow-atlas slot assigned -- the CPU-side importance-scoring
         // loop that would allocate one predates SceneDB and doesn't run
-        // for these (see helio_components::LightComponent's
+        // for these (see helio_light_host::LightComponent's
         // doc comment). shadow_index: 0 silently samples atlas layer 0's
         // stale/unrelated contents as if it belonged to this light, which
         // reads as "fully shadowed" -- an entirely black scene, not merely
@@ -376,7 +378,7 @@ pub fn point_light(position: [f32; 3], color: [f32; 3], intensity: f32, range: f
         // check). NOT 0: SceneDB-authored lights never get a real
         // shadow-atlas slot assigned -- the CPU-side importance-scoring
         // loop that would allocate one predates SceneDB and doesn't run
-        // for these (see helio_components::LightComponent's
+        // for these (see helio_light_host::LightComponent's
         // doc comment). shadow_index: 0 silently samples atlas layer 0's
         // stale/unrelated contents as if it belonged to this light, which
         // reads as "fully shadowed" -- an entirely black scene, not merely
@@ -406,7 +408,7 @@ pub fn spot_light(
         // check). NOT 0: SceneDB-authored lights never get a real
         // shadow-atlas slot assigned -- the CPU-side importance-scoring
         // loop that would allocate one predates SceneDB and doesn't run
-        // for these (see helio_components::LightComponent's
+        // for these (see helio_light_host::LightComponent's
         // doc comment). shadow_index: 0 silently samples atlas layer 0's
         // stale/unrelated contents as if it belonged to this light, which
         // reads as "fully shadowed" -- an entirely black scene, not merely
@@ -423,7 +425,7 @@ pub fn spot_light(
 //
 // A demo's placed objects and lights are authored as *pass-owned* SceneDB
 // components — `helio_mesh_host::StaticObjectComponent` and
-// `helio_components::LightComponent` — not as example-local structs or
+// `helio_light_host::LightComponent` — not as example-local structs or
 // entries in a Helio-owned `Vec`/arena. Each is `#[derive(SceneStore)]` +
 // `#[gpu(layout = packed, ...)]`: the pass that consumes a kind
 // of scene content owns its schema and its generated GPU buffer, and a World
@@ -433,7 +435,7 @@ pub fn spot_light(
 // resolved when the component is authored, while existence and transforms stay
 // exclusively in the World row.
 
-pub use helio_components::LightComponent;
+pub use helio_light_host::LightComponent;
 pub use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 
 /// Spawn an oriented-box reflection-capture influence volume, replacing the
@@ -616,7 +618,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
     let entity = world.spawn();
     world.insert(
         entity,
-        LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
+        LightComponent::from(helio_light_api::LightRow::from(light)),
     );
     entity
 }
@@ -626,7 +628,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
 /// resubmission step exists to call anymore.
 pub fn update_light(world: &mut World, entity: Entity, light: GpuLight) {
     if let Some(mut existing) = world.get_mut::<LightComponent>(entity) {
-        *existing = LightComponent::from(helio_pass_light_cull::LightRow::from(light));
+        *existing = LightComponent::from(helio_light_api::LightRow::from(light));
     }
 }
 

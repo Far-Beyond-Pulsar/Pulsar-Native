@@ -202,7 +202,7 @@ pub struct ConvertedScene {
     pub materials: Vec<ConvertedMaterial>,
     /// The source name and image files of each of `materials`.
     pub material_sources: Vec<MaterialSource>,
-    pub lights: Vec<helio::GpuLight>,
+    pub lights: Vec<helio_light_api::GpuLight>,
     pub cameras: Vec<CameraData>,
     /// Populated instead of `meshes` when [`crate::LoadConfig::merge_meshes`] is true.
     /// One section per unique material; all sections share one vertex buffer.

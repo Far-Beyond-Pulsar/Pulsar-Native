@@ -1,6 +1,5 @@
 //! Create Voxel Terrain: a ready-made world in one undoable step.
 
-use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 use voxel_component::presets::VoxelWorldPreset;
 use voxel_component::VoxelTerrainComponent;
@@ -46,7 +45,7 @@ fn a_voxel_world_is_one_undo_step_that_selects_its_terrain_and_moves_the_camera(
         let world = state.scene.world();
         assert_eq!(sky_component::atmospheres(&world).len(), 1);
         assert_eq!(foliage_component::winds(&world).len(), 1);
-        assert_eq!(level_rules::directional_lights(&world).len(), 1);
+        assert_eq!(lights_component::directional_lights(&world).len(), 1);
     }
 
     assert!(state.scene.undo());

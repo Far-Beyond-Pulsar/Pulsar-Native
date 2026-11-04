@@ -1,7 +1,7 @@
 //! Light conversion from SolidRS to Helio GPU light data.
 
-use helio::GpuLight;
-use helio::LightType;
+use helio_light_api::GpuLight;
+use helio_light_api::LightType;
 use solid_rs::scene::{AreaLight, DirectionalLight, Light, PointLight, SpotLight};
 
 /// Convert a SolidRS light to Helio's GPU light format.

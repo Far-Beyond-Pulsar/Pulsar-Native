@@ -391,8 +391,8 @@ impl GBufferPass {
             bind_group_1: None,
             bind_group_1_version: None,
             globals_buf,
-            // Default CSM splits — single source of truth is helio_pass_shadow_matrix::CSM_SPLITS.
-            csm_splits: helio_pass_shadow_matrix::CSM_SPLITS,
+            // Default CSM splits — single source of truth is helio_light_api::CSM_SPLITS.
+            csm_splits: helio_light_api::CSM_SPLITS,
             debug_mode: 0,
             lightmap_atlas_regions_buf,
             coordinate_spaces,
@@ -462,7 +462,7 @@ impl RenderPass for GBufferPass {
             "builtin_mesh_index",
             "builtin_mesh_vertex",
             "materials",
-            "scene_lights",
+            helio_light_api::LIGHT_LIST,
             "skeletal_bone_palette",
             "skeletal_skin_vertices",
         ]
@@ -785,7 +785,9 @@ impl RenderPass for GBufferPass {
             delta_time: ctx.delta_time,
             light_count: ctx
                 .scene_buffers
-                .get(pulsar_scenedb::gpu::BufferKey::of("scene_lights"))
+                .get(pulsar_scenedb::gpu::BufferKey::of(
+                    helio_light_api::LIGHT_LIST,
+                ))
                 .map_or(0, |lights| lights.row_capacity()),
             ambient_intensity,
             ambient_color,

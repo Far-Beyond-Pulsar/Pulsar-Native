@@ -24,8 +24,8 @@ mod worlds;
 
 use glam::{DVec3, Vec3};
 use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
-use helio_components::LightComponent;
 use helio_components::WorldRows;
+use helio_light_host::LightComponent;
 use helio_pass_foliage_place::host_rows::{FoliageTypeComponent, FoliageWindComponent};
 use helio_pass_foliage_place::FoliagePlacePass;
 use helio_pass_foliage_place::{
@@ -156,7 +156,7 @@ impl Showcase {
         helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
             &mut store, 16, &device,
         );
-        helio_components::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
+        helio_light_host::LightComponent::register_gpu_columns_growable(&mut store, 16, &device);
         helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(
             &mut store, 4, &device,
         );
@@ -209,7 +209,7 @@ impl Showcase {
         let sun_entity = scene.world.spawn();
         scene.world.insert(
             sun_entity,
-            LightComponent::from(helio_pass_light_cull::LightRow::from(directional_sun(
+            LightComponent::from(helio_light_api::LightRow::from(directional_sun(
                 preset_sun("coast").0,
                 preset_sun("coast").1,
             ))),
@@ -514,9 +514,9 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> 
             *self
                 .scene
                 .world
-                .get_mut::<helio_components::LightComponent>(self.sun_entity)
+                .get_mut::<helio_light_host::LightComponent>(self.sun_entity)
                 .expect("sun light component") = LightComponent::from(
-                helio_pass_light_cull::LightRow::from(directional_sun(azimuth, elevation)),
+                helio_light_api::LightRow::from(directional_sun(azimuth, elevation)),
             );
             let sun = sun_direction(azimuth, elevation);
             self.water_row.sun_direction = [sun.x, sun.y, sun.z, 1.0];
@@ -900,14 +900,14 @@ fn sun_direction(azimuth_degrees: f32, elevation_degrees: f32) -> Vec3 {
     .normalize()
 }
 
-fn directional_sun(azimuth_degrees: f32, elevation_degrees: f32) -> helio::GpuLight {
+fn directional_sun(azimuth_degrees: f32, elevation_degrees: f32) -> helio_light_api::GpuLight {
     let direction = sun_direction(azimuth_degrees, elevation_degrees);
-    helio::GpuLight {
+    helio_light_api::GpuLight {
         position_range: [0.0, 0.0, 0.0, f32::MAX],
         direction_outer: [-direction.x, -direction.y, -direction.z, 0.0],
         color_intensity: [1.0, 1.0, 1.0, 3.0],
         shadow_index: u32::MAX,
-        light_type: helio::LightType::Directional as u32,
+        light_type: helio_light_api::LightType::Directional as u32,
         god_rays_enabled: 1,
         god_rays_density: 1.0,
         god_rays_weight: 1.0,

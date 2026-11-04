@@ -11,7 +11,7 @@
 use helio_core::{CommandRecorder, RenderCmds};
 
 /// Graph key under which the transmittance array view is published.
-pub const TRANSMITTANCE_KEY: &str = "shadow_transmittance";
+pub const TRANSMITTANCE_KEY: &str = helio_light_api::SHADOW_TRANSMITTANCE;
 pub const TRANSMITTANCE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 pub(crate) struct Transmittance {

@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use helio_feature_api::{missing, pass_node, Feature, FeatureRegistrar};
 use helio_frame_api::{FrameNode, Phase};
+use helio_light_api::{LightDirtyFlags, ShadowSettings};
 use helio_pass_shadow_dirty::ShadowDirtyPass;
-use helio_pass_shadow_matrix::{LightDirtyFlags, ShadowSettings};
 
 use crate::ShadowPass;
 

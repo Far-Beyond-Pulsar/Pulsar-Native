@@ -3,8 +3,9 @@
 //! Mirrors the `v3_demo_common` module used by the native examples.
 
 use glam::{Mat4, Vec3};
-use helio::{GpuLight, LightType};
-use helio_components::{LightComponent, MaterialComponent};
+use helio_components::MaterialComponent;
+use helio_light_api::{GpuLight, LightType};
+use helio_light_host::LightComponent;
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_mesh_host::StaticObjectComponent;
 use pulsar_scenedb::{Entity, World};
@@ -142,7 +143,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
     let entity = world.spawn();
     world.insert(
         entity,
-        LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
+        LightComponent::from(helio_light_api::LightRow::from(light)),
     );
     entity
 }
@@ -278,9 +279,9 @@ pub fn register_columns(
 ) {
     helio_mesh_host::register_columns(store, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(store, 4096, device);
-    helio_components::LightComponent::register_gpu_columns_growable(
+    helio_light_host::LightComponent::register_gpu_columns_growable(
         store,
-        helio_pass_light_cull::MAX_LIGHTS,
+        helio_light_api::MAX_LIGHTS,
         device,
     );
 }

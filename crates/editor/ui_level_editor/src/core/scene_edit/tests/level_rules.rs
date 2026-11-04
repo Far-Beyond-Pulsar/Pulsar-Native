@@ -1,8 +1,7 @@
 //! What a level may hold only one of, through the editor's producers: one
 //! sky (#1057), one global wind (#1123) and one directional light.
 
-use engine_backend::scene::level_rules;
-use helio_component::components::{LightComponent, LightType};
+use lights_component::{LightComponent, LightType};
 use sky_component::AtmosphereComponent;
 
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
@@ -344,7 +343,7 @@ fn set_light(
 }
 
 fn sun_count(state: &LevelEditorState) -> usize {
-    level_rules::directional_lights(&state.scene.world()).len()
+    lights_component::directional_lights(&state.scene.world()).len()
 }
 
 #[test]
@@ -362,7 +361,7 @@ fn a_second_directional_light_is_refused_with_a_message() {
         true,
     );
     assert!(!second.changed);
-    assert_eq!(second.no_op_reason, level_rules::ONE_DIRECTIONAL_LIGHT);
+    assert_eq!(second.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
     let other = add_object(&mut state, "Other");
     let result = execute_command(
         &mut state,
@@ -372,7 +371,7 @@ fn a_second_directional_light_is_refused_with_a_message() {
             value: Some(Box::new(light(LightType::Directional, true))),
         },
     );
-    assert_eq!(result.no_op_reason, level_rules::ONE_DIRECTIONAL_LIGHT);
+    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
     // The class default is a point light: allowed.
     let point = execute_command(
         &mut state,
@@ -392,7 +391,7 @@ fn a_second_directional_light_is_refused_with_a_message() {
         Box::new(LightType::Directional),
     );
     assert!(!result.changed);
-    assert_eq!(result.no_op_reason, level_rules::ONE_DIRECTIONAL_LIGHT);
+    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
     assert_eq!(
         light_at(&state, &other).general.light_type,
         LightType::Point
@@ -408,7 +407,7 @@ fn a_second_directional_light_is_refused_with_a_message() {
             component_index: 0,
         },
     );
-    assert_eq!(result.no_op_reason, level_rules::ONE_DIRECTIONAL_LIGHT);
+    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
     let copy = objects::duplicate_object(&mut state.scene.world_mut(), &sun).unwrap();
     assert_eq!(components::component_count(&state.scene.world(), &copy), 0);
     assert_eq!(sun_count(&state), 1);
@@ -443,7 +442,7 @@ fn a_second_directional_light_is_refused_with_a_message() {
             enabled: true,
         },
     );
-    assert_eq!(result.no_op_reason, level_rules::ONE_DIRECTIONAL_LIGHT);
+    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
     assert!(!components::set_component_enabled(
         &mut state.scene.world_mut(),
         &sun,
@@ -468,7 +467,7 @@ fn a_disabled_directional_light_is_allowed_but_cannot_be_turned_on_beside_the_su
     assert!(off.changed, "{}", off.no_op_reason);
     let off = off.affected_ids[0].clone();
     let result = set_light(&mut state, &off, "enabled", Box::new(true));
-    assert_eq!(result.no_op_reason, level_rules::ONE_DIRECTIONAL_LIGHT);
+    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
     assert!(!light_at(&state, &off).general.enabled);
 
     // Its instance switched off.
@@ -487,7 +486,7 @@ fn a_disabled_directional_light_is_allowed_but_cannot_be_turned_on_beside_the_su
             enabled: true,
         },
     );
-    assert_eq!(result.no_op_reason, level_rules::ONE_DIRECTIONAL_LIGHT);
+    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
     assert_eq!(sun_count(&state), 1);
 }
 
@@ -513,7 +512,7 @@ fn a_level_file_with_two_directional_lights_loads_with_one_casting() {
     let mut loaded = engine_backend::scene::new_scene();
     crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
     let world = &loaded.world;
-    let suns = level_rules::directional_lights(world);
+    let suns = lights_component::directional_lights(world);
     assert_eq!(suns.len(), 1);
     let owner = engine_backend::scene::attachments::owner_of(world, suns[0]).unwrap();
     assert_eq!(

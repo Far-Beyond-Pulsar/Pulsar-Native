@@ -14,8 +14,9 @@ name = "foliage_demo"
 path = "foliage_demo.rs"
 
 [dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 helio-mats = { workspace = true }
 env_logger = "0.11"
 glam = { workspace = true }

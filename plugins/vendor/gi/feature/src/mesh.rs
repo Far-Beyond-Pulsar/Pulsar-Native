@@ -15,7 +15,7 @@ use bytemuck::{Pod, Zeroable};
 use helio_core::graph::ResourceBuilder;
 use helio_core::{PassContext, PrepareContext, RenderPass, ResourceKey, Result as HelioResult};
 use helio_frame_api::lighting::sun_transmittance::{self, SunTransmittance};
-use helio_pass_shadow_matrix::{
+use helio_light_api::{
     SUN_OCCLUSION_FRAME, SUN_OCCLUSION_FRAME_BYTES, SUN_OCCLUSION_MAPS, SUN_OCCLUSION_PAGES,
     SUN_OCCLUSION_SNIPPET,
 };
@@ -158,6 +158,7 @@ impl GiMeshTracePass {
                 crate::GI_COMMON_SNIPPET,
                 SUN_OCCLUSION_SNIPPET,
                 sun_transmittance::SNIPPET,
+                helio_light_api::LIGHT_LIST_SNIPPET,
                 helio_mesh_api::RAY_SURFACE_SNIPPET,
             ],
         );
@@ -204,7 +205,7 @@ impl GiMeshTracePass {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: helio_pass_shadow_matrix::SUN_OCCLUSION_FORMAT,
+            format: helio_light_api::SUN_OCCLUSION_FORMAT,
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -519,7 +520,7 @@ impl RenderPass for GiMeshTracePass {
         ) else {
             return Ok(());
         };
-        let lights = pool(helio_core::BufferKey::of("scene_lights"));
+        let lights = pool(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST));
         let proxy = |name: &'static str| ctx.registry.get::<&wgpu::Buffer>(ResourceKey::new(name));
         let proxies =
             proxy(helio_mesh_api::RAY_PROXY_VERTICES).zip(proxy(helio_mesh_api::RAY_PROXY_INDICES));

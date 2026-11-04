@@ -28,8 +28,9 @@ name = "portal_rooms"
 path = "portal_rooms.rs"
 
 [dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 helio-mats = { workspace = true }
 # `#[derive(SceneStore)]` expands to reflection paths.
 pulsar_reflection = { workspace = true }

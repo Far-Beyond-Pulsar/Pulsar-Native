@@ -582,13 +582,12 @@ const PAGES_SETTLE_FRAMES: u64 = 180;
 
 /// A sun occlusion trace view's side in texels (`sun_pages::VIEW_PAGES`
 /// pages).
-const OCCLUSION_VIEW: u32 =
-    sun_pages::VIEW_PAGES as u32 * helio_pass_shadow_matrix::SUN_OCCLUSION_PAGE;
+const OCCLUSION_VIEW: u32 = sun_pages::VIEW_PAGES as u32 * helio_light_api::SUN_OCCLUSION_PAGE;
 /// Bytes of the pages a frame's shadow pass asks for: a bit a window page
 /// of every level.
 const SUN_REQUEST_BYTES: u64 = (sun_pages::LEVELS as u64
-    * helio_pass_shadow_matrix::SUN_OCCLUSION_WINDOW as u64
-    * helio_pass_shadow_matrix::SUN_OCCLUSION_WINDOW as u64)
+    * helio_light_api::SUN_OCCLUSION_WINDOW as u64
+    * helio_light_api::SUN_OCCLUSION_WINDOW as u64)
     / 8;
 /// Bytes of a trace view's parameters in the ring (aligned for copies).
 const OCCLUSION_PARAMS_STRIDE: u64 =
@@ -602,7 +601,7 @@ struct RequestSlot {
 }
 
 /// The sun's occlusion by the terrain (`ChunkWorld::draw_sun_occlusion`,
-/// `helio_pass_shadow_matrix::sun_occlusion`): the trace views' own buffers
+/// `helio_light_api::sun_occlusion`): the trace views' own buffers
 /// (their volumes' parameters a pass each in a ring, copied in order into
 /// each volume's sun view; the ring's room in passes) and targets,
 /// the atlas of physical pages, the page tables and near planes, the frame,
@@ -641,7 +640,7 @@ struct SunOcclusion {
 
 impl SunOcclusion {
     fn new(device: &wgpu::Device, voxel: f64) -> Self {
-        use helio_pass_shadow_matrix as so;
+        use helio_light_api as so;
         let buffer = |label: &str, size: u64, usage: wgpu::BufferUsages| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -2839,7 +2838,7 @@ fn texture_entry(
     }
 }
 
-/// The sun's occlusion atlas (`helio_pass_shadow_matrix::sun_occlusion`).
+/// The sun's occlusion atlas (`helio_light_api::sun_occlusion`).
 fn sun_occlusion_maps_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -3034,7 +3033,7 @@ fn draw_source(plane: bool, counting: bool) -> String {
     let source = |rel: &str, embedded: &'static str| {
         helio_core::shader::hot::source_text(env!("CARGO_MANIFEST_DIR"), rel, embedded)
     };
-    (format!("const DOMAIN_UNIT: f32 = {};\n", crate::grid::DOMAIN_UNIT) + &helio_core::shader::hot::source_text(helio_voxel_world::wgsl::DIR, helio_voxel_world::wgsl::NOISE_PATH, helio_voxel_world::wgsl::NOISE) + helio_gi_api::GI_COMMON_SNIPPET.source + helio_pass_shadow_matrix::SUN_OCCLUSION_SNIPPET.source + &walk_templates(&source("shaders/chunk_draw.wgsl", include_str!("../../shaders/chunk_draw.wgsl"))))
+    (format!("const DOMAIN_UNIT: f32 = {};\n", crate::grid::DOMAIN_UNIT) + &helio_core::shader::hot::source_text(helio_voxel_world::wgsl::DIR, helio_voxel_world::wgsl::NOISE_PATH, helio_voxel_world::wgsl::NOISE) + helio_gi_api::GI_COMMON_SNIPPET.source + helio_light_api::SUN_OCCLUSION_SNIPPET.source + helio_light_api::LIGHT_LIST_SNIPPET.source + &walk_templates(&source("shaders/chunk_draw.wgsl", include_str!("../../shaders/chunk_draw.wgsl"))))
         .replace("COUNTERS", if counting { "@group(0) @binding(9) var<storage, read_write> counters: array<atomic<u32>, 256>;" } else { "" })
         .replace("WCOUNT(1)", &wcount(1))
         .replace("WCOUNT(3)", &wcount(3))
@@ -6948,7 +6947,7 @@ impl ChunkWorld {
         eye: DVec3,
         sun: Vec3,
     ) {
-        use helio_pass_shadow_matrix::SUN_OCCLUSION_TABLE_WORDS;
+        use helio_light_api::SUN_OCCLUSION_TABLE_WORDS;
         let toward = sun.as_dvec3().normalize();
         let Some(voxel) = self
             .primary
@@ -7196,7 +7195,7 @@ impl ChunkWorld {
         drawn_in: &FxHashSet<u16>,
         at: &mut u64,
     ) -> f64 {
-        use helio_pass_shadow_matrix::{SUN_OCCLUSION_ATLAS_PAGES, SUN_OCCLUSION_PAGE};
+        use helio_light_api::{SUN_OCCLUSION_ATLAS_PAGES, SUN_OCCLUSION_PAGE};
         let o = self.sun_occlusion.as_ref().unwrap();
         let e = o.pages.current().unwrap();
         let [_, down, forward] = e.axes;
@@ -7358,8 +7357,8 @@ impl ChunkWorld {
 
     /// The sun's occlusion as published, read back (diagnostics and tests;
     /// waits on the device).
-    pub fn read_sun_occlusion(&self) -> Option<helio_pass_shadow_matrix::SunOcclusionSnapshot> {
-        use helio_pass_shadow_matrix::{SUN_OCCLUSION_ATLAS_SIDE, SUN_OCCLUSION_PAGES_BYTES};
+    pub fn read_sun_occlusion(&self) -> Option<helio_light_api::SunOcclusionSnapshot> {
+        use helio_light_api::{SUN_OCCLUSION_ATLAS_SIDE, SUN_OCCLUSION_PAGES_BYTES};
         let o = self.sun_occlusion.as_ref()?;
         let side = SUN_OCCLUSION_ATLAS_SIDE;
         let bytes = u64::from(side * side * 4);
@@ -7397,9 +7396,9 @@ impl ChunkWorld {
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
         let atlas = bytemuck::cast_slice(&staging.slice(..).get_mapped_range().unwrap()).to_vec();
-        let frame: Vec<helio_pass_shadow_matrix::SunOcclusionFrame> = self.read(&o.frame, 1);
+        let frame: Vec<helio_light_api::SunOcclusionFrame> = self.read(&o.frame, 1);
         let pages: Vec<u32> = self.read(&o.pages_buffer, (SUN_OCCLUSION_PAGES_BYTES / 4) as usize);
-        Some(helio_pass_shadow_matrix::SunOcclusionSnapshot {
+        Some(helio_light_api::SunOcclusionSnapshot {
             frame: frame[0],
             pages,
             atlas,

@@ -73,6 +73,7 @@ water_plugin = { workspace = true }
 foliage_plugin = { workspace = true }
 gi_plugin = { workspace = true }
 meshes_plugin = { workspace = true }
+lights_plugin = { workspace = true }
 sky_plugin = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }

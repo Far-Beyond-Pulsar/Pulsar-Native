@@ -179,7 +179,7 @@ impl VgShadePass {
 
 impl RenderPass for VgShadePass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["materials", "scene_lights"]
+        &["materials", helio_light_api::LIGHT_LIST]
     }
 
     fn name(&self) -> &'static str {
@@ -251,7 +251,7 @@ impl RenderPass for VgShadePass {
             delta_time: ctx.delta_time,
             light_count: ctx
                 .scene_buffers
-                .get(BufferKey::of("scene_lights"))
+                .get(BufferKey::of(helio_light_api::LIGHT_LIST))
                 .map_or(0, |lights| lights.row_capacity()),
             ambient_intensity,
             ambient_color,
@@ -380,7 +380,7 @@ impl RenderPass for VgShadePass {
     }
 }
 
-/// The classic G-buffer's cascade splits (`helio_pass_shadow_matrix::CSM_SPLITS`).
+/// The classic G-buffer's cascade splits (`helio_light_api::CSM_SPLITS`).
 fn helio_pass_shadow_matrix_splits() -> [f32; 4] {
-    helio_pass_shadow_matrix::CSM_SPLITS
+    helio_light_api::CSM_SPLITS
 }

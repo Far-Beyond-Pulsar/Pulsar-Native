@@ -163,11 +163,12 @@ mod tests {
         assert_eq!(watch.poll(&replacement), vec![fixed]);
     }
 
-    /// The movability its mesh and light instances author fixes an object;
-    /// one movable instance does not free it.
+    /// The movability its component instances author fixes an object; one
+    /// movable instance does not free it. (A plugin's instances, a light,
+    /// author it through `MovabilityRegistration`: the lights' tests.)
     #[test]
     fn an_object_is_fixed_through_its_component_instances() {
-        use crate::components::{LightComponent, ObjectMovability, StaticMeshComponent};
+        use crate::components::{ObjectMovability, StaticMeshComponent};
         let mut world = World::new();
         let attach = |world: &mut World, object, class: &str| {
             pulsar_scene_model::attachments::spawn_instance(
@@ -187,10 +188,14 @@ mod tests {
                 ..Default::default()
             },
         );
-        let light = attach(&mut world, object, "LightComponent");
-        let mut movable_light = LightComponent::default();
-        movable_light.general.movability = ObjectMovability::Movable;
-        world.insert(light, movable_light);
+        let movable = attach(&mut world, object, "StaticMeshComponent");
+        world.insert(
+            movable,
+            StaticMeshComponent {
+                movability: ObjectMovability::Movable,
+                ..Default::default()
+            },
+        );
         let free = world.spawn();
         world.insert(free, Transform::default());
         let free_mesh = attach(&mut world, free, "StaticMeshComponent");

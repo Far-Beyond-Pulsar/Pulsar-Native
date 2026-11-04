@@ -98,13 +98,16 @@ pub fn shader_source() -> String {
     let source = include_str!("../shaders/volumetric_fog.wgsl")
         .replace("__PP_HEAD_VEC4__", &head.to_string())
         .replace("__PP_TAIL_VEC4__", &tail.to_string());
-    // The terrain's sun occlusion (`//!use sun_occlusion`) and the frame's
-    // sun transmittance (`//!use sun_transmittance`) ahead of it; the
-    // prelude is the module's to resolve.
+    // The terrain's sun occlusion (`//!use sun_occlusion`), the frame's
+    // sun transmittance (`//!use sun_transmittance`) and the lights' row and
+    // shadow atlas (`//!use light_list`, `//!use shadow_atlas`) ahead of it;
+    // the prelude is the module's to resolve.
     format!(
-        "{}\n{}\n{source}",
-        helio_pass_shadow_matrix::SUN_OCCLUSION_SNIPPET.source,
-        helio_frame_api::lighting::sun_transmittance::SNIPPET.source
+        "{}\n{}\n{}\n{}\n{source}",
+        helio_light_api::SUN_OCCLUSION_SNIPPET.source,
+        helio_frame_api::lighting::sun_transmittance::SNIPPET.source,
+        helio_light_api::LIGHT_LIST_SNIPPET.source,
+        helio_light_api::SHADOW_ATLAS_SNIPPET.source,
     )
 }
 
@@ -704,14 +707,14 @@ impl VolumetricFogPass {
                         mip_level_count: 1,
                         sample_count: 1,
                         dimension: wgpu::TextureDimension::D2,
-                        format: helio_pass_shadow_matrix::SUN_OCCLUSION_FORMAT,
+                        format: helio_light_api::SUN_OCCLUSION_FORMAT,
                         usage: wgpu::TextureUsages::TEXTURE_BINDING,
                         view_formats: &[],
                     })
                     .create_view(&Default::default()),
                 device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Fog No Sun Occlusion Frame"),
-                    size: helio_pass_shadow_matrix::SUN_OCCLUSION_FRAME_BYTES,
+                    size: helio_light_api::SUN_OCCLUSION_FRAME_BYTES,
                     usage: wgpu::BufferUsages::UNIFORM,
                     mapped_at_creation: false,
                 }),
@@ -801,7 +804,7 @@ fn orthographic(camera: &helio_core::GpuCameraUniforms) -> bool {
 
 impl RenderPass for VolumetricFogPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["post_process_volumes", "scene_lights"]
+        &["post_process_volumes", helio_light_api::LIGHT_LIST]
     }
 
     fn name(&self) -> &'static str {
@@ -814,14 +817,14 @@ impl RenderPass for VolumetricFogPass {
 
     fn reads(&self) -> &'static [&'static str] {
         let mut reads = vec![
-            "shadow_atlas",
-            "static_shadow_atlas",
-            "shadow_transmittance",
-            "shadow_matrices",
+            helio_light_api::SHADOW_ATLAS,
+            helio_light_api::STATIC_SHADOW_ATLAS,
+            helio_light_api::SHADOW_TRANSMITTANCE,
+            helio_light_api::SHADOW_MATRICES,
             "postprocess_uniforms",
-            helio_pass_shadow_matrix::SUN_OCCLUSION_MAPS,
-            helio_pass_shadow_matrix::SUN_OCCLUSION_PAGES,
-            helio_pass_shadow_matrix::SUN_OCCLUSION_FRAME,
+            helio_light_api::SUN_OCCLUSION_MAPS,
+            helio_light_api::SUN_OCCLUSION_PAGES,
+            helio_light_api::SUN_OCCLUSION_FRAME,
         ];
         if let Some(sun) = self.sun_transmittance {
             reads.extend([sun.map, sun.frame]);
@@ -898,7 +901,7 @@ impl RenderPass for VolumetricFogPass {
         // fall back to sweeping all rows, dead ones included.
         let light_rows = ctx
             .scene_buffers
-            .get(helio_core::BufferKey::of("scene_lights"))
+            .get(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST))
             .map_or(0, |lights| lights.buffer.size() / LIGHT_ROW_BYTES);
         let required = ACTIVE_MEDIA_HEADER_BYTES + light_rows.max(256) * 4;
         if self.active_media_buf.size() < required {
@@ -927,7 +930,7 @@ impl RenderPass for VolumetricFogPass {
 
         let origin_hi = ctx.world_origin.as_vec3();
         let globals = FogGlobals {
-            csm_splits: helio_pass_shadow_matrix::CSM_SPLITS,
+            csm_splits: helio_light_api::CSM_SPLITS,
             _reserved: 0,
             frame: self.frame,
             history_valid: self.history_valid as u32,
@@ -982,23 +985,27 @@ impl RenderPass for VolumetricFogPass {
             .get(helio_core::ResourceKey::new("postprocess_uniforms"));
         let shadow_atlas = ctx
             .registry
-            .get(helio_core::ResourceKey::new("shadow_atlas"))
+            .get(helio_core::ResourceKey::new(helio_light_api::SHADOW_ATLAS))
             .unwrap_or(&self.fallback_shadow);
         let static_shadow_atlas = ctx
             .registry
-            .get(helio_core::ResourceKey::new("static_shadow_atlas"))
+            .get(helio_core::ResourceKey::new(
+                helio_light_api::STATIC_SHADOW_ATLAS,
+            ))
             .unwrap_or(&self.fallback_shadow);
         let transmittance = ctx
             .registry
-            .get(helio_core::ResourceKey::new("shadow_transmittance"))
+            .get(helio_core::ResourceKey::new(
+                helio_light_api::SHADOW_TRANSMITTANCE,
+            ))
             .unwrap_or(&self.fallback_transmittance);
         let sun_occlusion = match (
             ctx.registry
-                .texture_binding(helio_pass_shadow_matrix::SUN_OCCLUSION_MAPS),
+                .texture_binding(helio_light_api::SUN_OCCLUSION_MAPS),
             ctx.registry
-                .buffer_binding(helio_pass_shadow_matrix::SUN_OCCLUSION_FRAME),
+                .buffer_binding(helio_light_api::SUN_OCCLUSION_FRAME),
             ctx.registry
-                .buffer_binding(helio_pass_shadow_matrix::SUN_OCCLUSION_PAGES),
+                .buffer_binding(helio_light_api::SUN_OCCLUSION_PAGES),
         ) {
             (Some(maps), Some(frame), Some(pages)) => (maps, frame, pages),
             _ => (
@@ -1022,7 +1029,7 @@ impl RenderPass for VolumetricFogPass {
         let camera_buf = ctx.camera;
         let lights_buf = ctx
             .scene_buffers
-            .get(helio_core::BufferKey::of("scene_lights"))
+            .get(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST))
             .map(|handle| &handle.buffer)
             .unwrap_or(&self.fallback_lights);
         let volumes_buf = ctx
@@ -1042,9 +1049,7 @@ impl RenderPass for VolumetricFogPass {
         let legacy_buf = resolve_scene("fog_components", &self.fallback_global);
         let shadow_matrices = ctx
             .registry
-            .get::<helio_pass_shadow_matrix::ShadowMatricesFrameData<'_>>(
-                helio_pass_shadow_matrix::shadow_matrices(),
-            )
+            .get::<helio_light_api::ShadowMatricesFrameData<'_>>(helio_light_api::shadow_matrices())
             .map(|s| s.shadow_matrices)
             .unwrap_or(ctx.camera);
 

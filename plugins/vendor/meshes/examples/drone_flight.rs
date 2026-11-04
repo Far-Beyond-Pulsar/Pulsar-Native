@@ -177,8 +177,8 @@ impl ApplicationHandler for App {
         let surface_format = format;
 
         let config = RendererConfig::new(size.width, size.height, format).with_feature(
-            helio_pass_shadow_matrix::ShadowSettings {
-                quality: helio::ShadowQuality::Ultra,
+            helio_light_api::ShadowSettings {
+                quality: helio_light_api::ShadowQuality::Ultra,
                 ..Default::default()
             },
         );
@@ -529,7 +529,7 @@ impl AppState {
         // Candle flicker — more pronounced
         let cflicker = 1.0 + (time * 14.3).sin() * 0.07 + (time * 8.9).cos() * 0.05;
 
-        let with_shadows = |mut light: helio::GpuLight| {
+        let with_shadows = |mut light: helio_light_api::GpuLight| {
             light.set_ray_traced_shadows(self.acceleration.is_some());
             light
         };

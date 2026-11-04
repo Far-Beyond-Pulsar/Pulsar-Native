@@ -16,6 +16,7 @@ pulsar_scenedb_derive = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 helio-foliage-api = { workspace = true }
 helio-scene-join = { workspace = true }
+helio-light-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-water-api = { workspace = true }
 helio-feature-api = { workspace = true }

@@ -176,8 +176,8 @@ pub fn run_scene_animated(
             // Capture resolution denotes native internal rendering by default.
             // Do not silently inherit the renderer's interactive 75% preset.
             .with_render_scale(1.0)
-            .with_feature(helio_pass_shadow_matrix::ShadowSettings {
-                quality: helio::ShadowQuality::High,
+            .with_feature(helio_light_api::ShadowSettings {
+                quality: helio_light_api::ShadowQuality::High,
                 ..Default::default()
             })
             .with_ssr(std::env::var_os("HLFS_SSR").is_some());
@@ -944,14 +944,14 @@ pub fn run_scene_animated(
 /// Include opaque geometry and explicitly authored thin-sheet RT materials.
 pub fn enable_ray_shadows(world: &mut World) {
     let ids: Vec<_> = world
-        .query::<(&helio_components::LightComponent,)>()
+        .query::<(&helio_light_host::LightComponent,)>()
         .map(|(id, _)| id)
         .collect();
     for id in ids {
         let mut component = world
-            .get_mut::<helio_components::LightComponent>(id)
+            .get_mut::<helio_light_host::LightComponent>(id)
             .unwrap();
-        let mut light: helio_pass_light_cull::GpuLight = (*component).into();
+        let mut light: helio_light_api::GpuLight = (*component).into();
         light.set_ray_traced_shadows(std::env::var_os("HLFS_UNSHADOWED").is_none());
         *component = light.into();
     }

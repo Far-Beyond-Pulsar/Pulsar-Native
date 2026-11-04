@@ -1590,7 +1590,7 @@ impl RenderPass for ObjectBatchPass {
         // atlas that holds no casters.
         let counts: &'a wgpu::Buffer = unsafe { std::mem::transmute(&self.scratch.shadow_counts) };
         frame.write_buffer(
-            helio_core::ResourceKey::new("shadow_caster_counts"),
+            helio_core::ResourceKey::new(helio_light_api::SHADOW_CASTER_COUNTS),
             counts,
             "ObjectBatch",
         );

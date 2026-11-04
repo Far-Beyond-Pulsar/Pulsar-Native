@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+lights_component.workspace = true
 helio-mesh-api = { workspace = true }
 # UI framework
 gpui-ce.workspace = true

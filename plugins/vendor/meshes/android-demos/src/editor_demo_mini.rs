@@ -35,7 +35,8 @@ use helio_wasm::{HelioWasmApp, InputState, KeyCode, MouseButton};
 // ── Shared helpers (inlined from helio-web-demos common) ──────────────────────
 
 use glam::{Mat4, Vec3};
-use helio::{GpuLight, GpuMaterial, LightType, MaterialId, MeshId, ObjectDescriptor};
+use helio::{GpuMaterial, MaterialId, MeshId, ObjectDescriptor};
+use helio_light_api::{GpuLight, LightType};
 use helio_mesh_api::{MeshUpload, PackedVertex};
 
 fn make_material(

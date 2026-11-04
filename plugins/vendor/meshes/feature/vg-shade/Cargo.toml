@@ -6,6 +6,7 @@ description = "Virtual geometry deferred shading: vis resolve, material binning,
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-core = { workspace = true }
 helio-mats = { workspace = true }
 helio-vg-format = { workspace = true }

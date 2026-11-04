@@ -1,6 +1,6 @@
 //! The voxel planet pass inside the default deferred graph: pipeline and
 //! attachment compatibility, residency settling, source removal and resize.
-use helio_components::LightComponent;
+use helio_light_host::LightComponent;
 use helio_pass_sky::host_rows::AtmosphereComponent;
 use std::sync::{Arc, Mutex};
 
@@ -135,7 +135,7 @@ fn chunk_pass_builds_settles_and_resizes_in_the_deferred_graph() {
             16,
             &device,
         );
-        helio_components::LightComponent::register_gpu_columns_growable(
+        helio_light_host::LightComponent::register_gpu_columns_growable(
             &mut gpu_store,
             16,
             &device,
@@ -427,7 +427,7 @@ fn editor(width: u32, height: u32) -> Option<Editor> {
         16,
         &device,
     );
-    helio_components::LightComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    helio_light_host::LightComponent::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), Arc::clone(&queue));
     let mut scene = pulsar_scenedb::SceneDb::new();
     scene.world.attach_gpu_mirror(mirror.clone());
@@ -491,12 +491,12 @@ impl Editor {
         let sun = *self.sun.get_or_insert_with(|| self.scene.world.spawn());
         self.scene.world.insert(
             sun,
-            LightComponent::from(helio_pass_light_cull::LightRow::from(helio::GpuLight {
+            LightComponent::from(helio_light_api::LightRow::from(helio_light_api::GpuLight {
                 position_range: [0.0, 0.0, 0.0, f32::MAX],
                 direction_outer: [-towards.x, -towards.y, -towards.z, 0.0],
                 color_intensity: [1.0, 1.0, 1.0, 3.0],
                 shadow_index: u32::MAX,
-                light_type: helio::LightType::Directional as u32,
+                light_type: helio_light_api::LightType::Directional as u32,
                 ..Default::default()
             })),
         );

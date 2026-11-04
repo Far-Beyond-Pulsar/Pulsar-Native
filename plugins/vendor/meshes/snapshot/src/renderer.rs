@@ -2,10 +2,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
-use helio::{Camera, GpuLight, GpuMaterial, LightType, Renderer, RendererBuilder, RendererConfig};
+use helio::{Camera, GpuMaterial, Renderer, RendererBuilder, RendererConfig};
 use helio_asset_compat::{load_scene_file_with_config, ConvertedTextureRef, LoadConfig};
-use helio_components::LightComponent;
 use helio_components::MaterialComponent;
+use helio_light_api::{GpuLight, LightType};
+use helio_light_host::LightComponent;
 use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{Entity, SceneDb, World};
@@ -747,7 +748,7 @@ fn insert_light(world: &mut World, light: GpuLight) -> Entity {
     let entity = world.spawn();
     world.insert(
         entity,
-        LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
+        LightComponent::from(helio_light_api::LightRow::from(light)),
     );
     entity
 }
@@ -1069,7 +1070,7 @@ impl SnapshotBatch {
             let light = self.scene_db.world.spawn();
             self.scene_db.world.insert(
                 light,
-                LightComponent::from(helio_pass_light_cull::LightRow::from(GpuLight {
+                LightComponent::from(helio_light_api::LightRow::from(GpuLight {
                     position_range: [0.0, 0.0, 0.0, f32::MAX],
                     direction_outer: [dir.x, dir.y, dir.z, 0.0],
                     color_intensity: [color[0], color[1], color[2], intensity],

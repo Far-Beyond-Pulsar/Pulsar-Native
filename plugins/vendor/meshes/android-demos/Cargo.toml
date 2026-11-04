@@ -22,6 +22,7 @@ default = []
 editor_demo_mini = []
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-mesh-host = { workspace = true }
 pulsar_scenedb = { workspace = true }

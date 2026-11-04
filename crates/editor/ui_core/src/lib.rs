@@ -32,6 +32,7 @@ use water_plugin as _;
 use gi_plugin as _;
 use sky_plugin as _;
 // The meshes (Phase B batch 4).
+use lights_plugin as _;
 use meshes_plugin as _;
 
 // Initialize translations

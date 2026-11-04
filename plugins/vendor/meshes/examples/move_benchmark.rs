@@ -482,14 +482,14 @@ fn populate_cathedral_large(world: &mut World) -> BenchScene {
 /// Every opaque object casts ray-traced shadows and every light traces them.
 fn enable_ray_shadows(world: &mut World, objects: &[Entity]) {
     let lights: Vec<_> = world
-        .query::<(&helio_components::LightComponent,)>()
+        .query::<(&helio_light_host::LightComponent,)>()
         .map(|(id, _)| id)
         .collect();
     for id in lights {
         let mut component = world
-            .get_mut::<helio_components::LightComponent>(id)
+            .get_mut::<helio_light_host::LightComponent>(id)
             .unwrap();
-        let mut light: helio_pass_light_cull::GpuLight = (*component).into();
+        let mut light: helio_light_api::GpuLight = (*component).into();
         light.set_ray_traced_shadows(true);
         *component = light.into();
     }
@@ -540,9 +540,9 @@ fn move_lights(world: &mut World, lights: &[(Entity, [f32; 3])], frame: usize) {
     let dy = (frame as f32 * 0.2).sin() * 0.5;
     for (i, &(entity, origin)) in lights.iter().enumerate() {
         let mut light = world
-            .get_mut::<helio_components::LightComponent>(entity)
+            .get_mut::<helio_light_host::LightComponent>(entity)
             .expect("light row");
-        let mut gpu: helio_pass_light_cull::GpuLight = (*light).into();
+        let mut gpu: helio_light_api::GpuLight = (*light).into();
         gpu.position_range[1] = origin[1] + dy * if i % 2 == 0 { 1.0 } else { -1.0 };
         *light = gpu.into();
     }
@@ -812,7 +812,7 @@ fn build_bench(
         scene_db.world.flush_gpu_mirror(queue);
         let lights: Vec<Entity> = scene_db
             .world
-            .query::<(&helio_components::LightComponent,)>()
+            .query::<(&helio_light_host::LightComponent,)>()
             .map(|(entity, _)| entity)
             .collect();
         let total = lights.len();
@@ -840,8 +840,8 @@ fn build_bench(
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
     let config = RendererConfig::new(WIDTH, HEIGHT, format)
         .with_render_scale(1.0)
-        .with_feature(helio_pass_shadow_matrix::ShadowSettings {
-            quality: helio::ShadowQuality::High,
+        .with_feature(helio_light_api::ShadowSettings {
+            quality: helio_light_api::ShadowQuality::High,
             ..Default::default()
         });
     let mut renderer = RendererBuilder::new(config, scene_db_handle(&scene_db))
@@ -888,9 +888,9 @@ fn build_bench(
     let view = texture.create_view(&Default::default());
     let lights = scene_db
         .world
-        .query::<(&helio_components::LightComponent,)>()
+        .query::<(&helio_light_host::LightComponent,)>()
         .map(|(entity, (light,))| {
-            let gpu: helio_pass_light_cull::GpuLight = (*light).into();
+            let gpu: helio_light_api::GpuLight = (*light).into();
             (
                 entity,
                 [
@@ -1012,7 +1012,7 @@ fn main() {
                     lights: bench
                         .scene_db
                         .world
-                        .query::<(&helio_components::LightComponent,)>()
+                        .query::<(&helio_light_host::LightComponent,)>()
                         .count(),
                     mode,
                     workload,

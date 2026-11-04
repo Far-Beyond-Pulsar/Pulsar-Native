@@ -12,7 +12,7 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererBuilder, RendererConfig,
 };
-use helio_components::LightComponent;
+use helio_light_host::LightComponent;
 use pulsar_scenedb::SceneDb;
 use v3_demo_common::{
     cube_mesh, make_material, new_scene_db_with_gpu_mirror, plane_mesh, point_light,
@@ -43,7 +43,7 @@ mod scene_light_tests {
             point_light([7.0, 8.0, 9.0], [1.0, 1.0, 1.0], 4.0, 5.0),
         );
         let light = world
-            .get::<helio_components::LightComponent>(entity)
+            .get::<helio_light_host::LightComponent>(entity)
             .expect("SceneDB light missing");
         assert_eq!(&light.position_range[..3], &[7.0, 8.0, 9.0]);
     }
@@ -380,16 +380,11 @@ impl AppState {
         {
             self.scene_db
                 .world
-                .get_mut::<helio_components::LightComponent>(self.light_p0_entity)
+                .get_mut::<helio_light_host::LightComponent>(self.light_p0_entity)
                 .expect("SceneDB animated light disappeared")
-                .clone_from(&LightComponent::from(
-                    helio_pass_light_cull::LightRow::from(point_light(
-                        p0,
-                        [1.0, 0.55, 0.15],
-                        6.0,
-                        5.0,
-                    )),
-                ));
+                .clone_from(&LightComponent::from(helio_light_api::LightRow::from(
+                    point_light(p0, [1.0, 0.55, 0.15], 6.0, 5.0),
+                )));
         }
         // Upload this frame's SceneDB writes to the GPU mirror; without it they
         // are never visible to the renderer (Helio#266).

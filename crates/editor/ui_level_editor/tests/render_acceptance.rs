@@ -1237,7 +1237,7 @@ fn transform(
 fn add_light(
     state: &mut LevelEditorState,
     position: [f32; 3],
-    light_type: helio_component::components::LightType,
+    light_type: lights_component::LightType,
     intensity: f32,
 ) -> String {
     let id = add_object(state, "Light", ObjectType::Light(LightType::Point));
@@ -1452,7 +1452,7 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
 /// inspector open or closed, through the editor's producers to the frame.
 #[test]
 fn mesh_and_light_variations_reach_the_frame() {
-    use helio_component::components::LightType as Kind;
+    use lights_component::LightType as Kind;
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
@@ -1852,7 +1852,7 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
     let light = add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        helio_component::components::LightType::Point,
+        lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -1938,7 +1938,7 @@ fn the_sky_is_the_levels_atmosphere() {
     add_light(
         &mut state,
         [1.0e4, 0.0, 0.0],
-        helio_component::components::LightType::Directional,
+        lights_component::LightType::Directional,
         SUN,
     );
     let mut renderer = harness.renderer(&state);
@@ -2005,7 +2005,7 @@ fn decals_reach_the_frame_and_scripts_set_their_opacity() {
     add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        helio_component::components::LightType::Point,
+        lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -3786,7 +3786,7 @@ fn diag_portal_lighting() {
                 add_light(
                     state,
                     [1.0e4, 0.0, 0.0],
-                    helio_component::components::LightType::Directional,
+                    lights_component::LightType::Directional,
                     SUN,
                 );
             }
@@ -3915,7 +3915,7 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
             let light = add_light(
                 &mut state,
                 [x, radius * 1.5, radius * 4.0],
-                helio_component::components::LightType::Point,
+                lights_component::LightType::Point,
                 BRIGHT,
             );
             set_light(&mut state, &light, "range", Box::new(1200.0f32));

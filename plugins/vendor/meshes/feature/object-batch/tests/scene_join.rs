@@ -321,7 +321,7 @@ fn base_scene() -> Scene {
             section(0, 36, 0.3),
         ],
     );
-    let mut light = helio::GpuLight {
+    let mut light = helio_light_api::GpuLight {
         position_range: [0.0, 0.0, 0.0, 10.0],
         direction_outer: [0.0, -1.0, 0.0, 0.5],
         color_intensity: [1.0, 0.5, 0.25, 100.0],
@@ -332,10 +332,10 @@ fn base_scene() -> Scene {
     scene.put(
         LIGHT_KEYS.light_sources,
         &[
-            helio::GpuLight::default(),
-            helio::GpuLight::default(),
+            helio_light_api::GpuLight::default(),
+            helio_light_api::GpuLight::default(),
             light,
-            helio::GpuLight::default(),
+            helio_light_api::GpuLight::default(),
         ],
     );
     scene
@@ -445,10 +445,12 @@ fn placed_instances_are_joined_with_their_owner_and_nothing_else_is() {
         "a disabled instance draws nothing"
     );
 
-    let lights: Vec<helio::GpuLight> = read(
+    let lights: Vec<helio_light_api::GpuLight> = read(
         &device,
         &queue,
-        &out.get(BufferKey::of("scene_lights")).unwrap().buffer,
+        &out.get(BufferKey::of(helio_light_api::LIGHT_LIST))
+            .unwrap()
+            .buffer,
     );
     let light = lights[2];
     assert!(close(&light.position_range, &[1.0, 2.0, 3.0, 10.0]));
@@ -540,10 +542,12 @@ fn camera_relative_frames_get_positions_relative_to_the_world_origin() {
         "bounds centre"
     );
 
-    let lights: Vec<helio::GpuLight> = read(
+    let lights: Vec<helio_light_api::GpuLight> = read(
         &device,
         &queue,
-        &out.get(BufferKey::of("scene_lights")).unwrap().buffer,
+        &out.get(BufferKey::of(helio_light_api::LIGHT_LIST))
+            .unwrap()
+            .buffer,
     );
     assert!(
         (glam::Vec3::from_slice(&lights[2].position_range[..3]) - offset)
@@ -602,10 +606,12 @@ fn hiding_the_owner_a_stale_generation_or_a_disabled_light_removes_the_rows() {
         objects.iter().all(|o| o.mesh_generation == 0),
         "hidden owner"
     );
-    let lights: Vec<helio::GpuLight> = read(
+    let lights: Vec<helio_light_api::GpuLight> = read(
         &device,
         &queue,
-        &out.get(BufferKey::of("scene_lights")).unwrap().buffer,
+        &out.get(BufferKey::of(helio_light_api::LIGHT_LIST))
+            .unwrap()
+            .buffer,
     );
     assert!(
         lights.iter().all(|l| l.color_intensity[3] == 0.0),
@@ -630,17 +636,19 @@ fn hiding_the_owner_a_stale_generation_or_a_disabled_light_removes_the_rows() {
     );
 
     let mut scene = base_scene();
-    let mut light = helio::GpuLight {
+    let mut light = helio_light_api::GpuLight {
         color_intensity: [1.0; 4],
         ..Default::default()
     };
     light._pad = 0;
     scene.put(LIGHT_KEYS.light_sources, &[light, light, light, light]);
     let out = run(&mut join, &device, &queue, &scene, 3);
-    let lights: Vec<helio::GpuLight> = read(
+    let lights: Vec<helio_light_api::GpuLight> = read(
         &device,
         &queue,
-        &out.get(BufferKey::of("scene_lights")).unwrap().buffer,
+        &out.get(BufferKey::of(helio_light_api::LIGHT_LIST))
+            .unwrap()
+            .buffer,
     );
     assert!(
         lights.iter().all(|l| l.color_intensity[3] == 0.0),

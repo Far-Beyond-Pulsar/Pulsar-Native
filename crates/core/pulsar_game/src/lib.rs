@@ -70,7 +70,8 @@ pub mod script_refs;
 /// visible on the next frame exactly like editor edits.
 pub mod scene {
     pub use engine_backend::scene::{Name, Transform, Visibility};
-    pub use helio_component::components::{LightComponent, MeshAssetPath, StaticMeshComponent};
+    pub use helio_component::components::{MeshAssetPath, StaticMeshComponent};
+    pub use lights_component::LightComponent;
     /// Components attach to objects as instance entities (Pulsar-Native#1035):
     /// `attach_value` adds one, `attachments` finds and edits them.
     pub use pulsar_world_registry::pulsar_scene_model::attachments;
@@ -101,6 +102,7 @@ extern crate water_component;
 extern crate gi_component;
 extern crate sky_component;
 // The meshes (Phase B batch 4).
+extern crate lights_component;
 extern crate meshes_component;
 
 // Compile-time drift guard: exported actors must match the pinned crates

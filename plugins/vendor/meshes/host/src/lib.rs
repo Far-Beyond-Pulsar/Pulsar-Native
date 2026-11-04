@@ -184,9 +184,9 @@ pub fn mesh_upload_to_bake(
 /// generation) are skipped.
 pub fn bake_scene_from_world(world: &pulsar_scenedb::World) -> helio_bake::SceneGeometry {
     use helio_bake::{LightSource, LightSourceKind};
-    use helio_components::LightComponent;
+    use helio_light_api::{GpuLight, LightType};
+    use helio_light_host::LightComponent;
     use helio_mesh_api::MeshUpload;
-    use helio_pass_light_cull::{GpuLight, LightType};
 
     let meshes: std::collections::HashMap<u32, (u32, &MeshComponent)> = world
         .query::<&MeshComponent>()
@@ -213,7 +213,7 @@ pub fn bake_scene_from_world(world: &pulsar_scenedb::World) -> helio_bake::Scene
         ));
     }
     for (_, light) in world.query::<&LightComponent>() {
-        let light = GpuLight::from(helio_pass_light_cull::LightRow::from(*light));
+        let light = GpuLight::from(helio_light_api::LightRow::from(*light));
         if light.color_intensity[3] <= 0.0 {
             continue;
         }
@@ -258,10 +258,10 @@ mod bake_scene_tests {
     use super::*;
     use helio_bake::LightSourceKind;
     use helio_components::WorldRows;
+    use helio_light_api::LightRow;
+    use helio_light_api::{GpuLight, LightType};
     use helio_mesh_api::PackedVertex;
     use helio_mesh_api::StaticObjectRow;
-    use helio_pass_light_cull::LightRow;
-    use helio_pass_light_cull::{GpuLight, LightType};
 
     fn vertex(position: [f32; 3]) -> PackedVertex {
         PackedVertex {
@@ -344,22 +344,30 @@ mod bake_scene_tests {
     }
 }
 
-/// Helio's presets over the meshes' features ([`features`]): what a
-/// standalone host builds a renderer with to draw meshes
+/// Helio's presets over the meshes' features ([`features`]) and the
+/// lights' (`helio_light_host::features`: a standalone host draws its meshes
+/// lit, as an engine with both plugins does): what a standalone host builds
+/// a renderer with to draw meshes
 /// (`RendererBuilder::with_pass_build_context(Box::new(presets::deferred))`).
 pub mod presets {
     use helio::PassBuildContext;
     use helio_core::RenderGraph;
     use helio_presets::{Preset, PresetGraph};
 
-    /// `preset` over the meshes' features.
-    pub fn preset(preset: Preset) -> PresetGraph {
-        preset.with_features(&super::features())
+    /// The meshes' and the lights' features.
+    fn lit() -> helio_feature_api::FeatureSet {
+        super::features().extended(&helio_light_host::features())
     }
 
-    /// `preset` over the meshes' features and `extra` (another plugin's).
+    /// `preset` over the meshes' and the lights' features.
+    pub fn preset(preset: Preset) -> PresetGraph {
+        preset.with_features(&lit())
+    }
+
+    /// `preset` over the meshes' and the lights' features and `extra`
+    /// (another plugin's).
     pub fn with(preset: Preset, extra: &helio_feature_api::FeatureSet) -> PresetGraph {
-        preset.with_features(&super::features().extended(extra))
+        preset.with_features(&lit().extended(extra))
     }
 
     pub fn deferred(ctx: PassBuildContext<'_>) -> RenderGraph {

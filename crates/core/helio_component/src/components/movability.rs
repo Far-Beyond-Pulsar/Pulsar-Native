@@ -55,10 +55,21 @@ impl ObjectMovability {
     }
 }
 
+/// A component that authors its object's movability (a light instance):
+/// how to read it off an instance. Submitted by the component's crate
+/// (`inventory::submit!`), so [`object_movability`] names no kind.
+pub struct MovabilityRegistration {
+    pub of: fn(&pulsar_scenedb::World, pulsar_scenedb::Entity) -> Option<ObjectMovability>,
+}
+
+inventory::collect!(MovabilityRegistration);
+
 /// What may change about `object` at runtime: the least mobile of a
 /// `helio::Movability` placed on the object itself and the movability its
-/// mesh and light instances author (Pulsar-Native#837). `None` when nothing
-/// authors one. Read from the authored values; nothing projects them.
+/// component instances author (its meshes', and every
+/// [`MovabilityRegistration`]'s: a plugin's lights; Pulsar-Native#837).
+/// `None` when nothing authors one. Read from the authored values; nothing
+/// projects them.
 pub fn object_movability(
     world: &pulsar_scenedb::World,
     object: pulsar_scenedb::Entity,
@@ -69,12 +80,13 @@ pub fn object_movability(
         .filter_map(|instance| {
             world
                 .get::<super::StaticMeshComponent>(instance)
-                .map(|mesh| helio::Movability::from(mesh.movability))
+                .map(|mesh| mesh.movability)
                 .or_else(|| {
-                    world
-                        .get::<super::LightComponent>(instance)
-                        .map(|light| helio::Movability::from(light.general.movability))
+                    inventory::iter::<MovabilityRegistration>
+                        .into_iter()
+                        .find_map(|registration| (registration.of)(world, instance))
                 })
+                .map(helio::Movability::from)
         });
     own.into_iter()
         .chain(authored)
@@ -93,7 +105,7 @@ impl From<ObjectMovability> for helio::Movability {
 }
 
 /// Accepts the variant name (serde's form) and the variant index (the
-/// reflection JSON form); levels contain both, as they do for `LightType`.
+/// reflection JSON form); levels contain both, as they do for a light's type.
 impl<'de> Deserialize<'de> for ObjectMovability {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]

@@ -20,8 +20,6 @@ use serde_json::Value;
 // ── Force helio_component into the binary ────────────────────────────────────
 // Re-exporting these types creates a live symbol reference that prevents the
 // linker from dropping helio_component's #[used] inventory statics.
-pub use helio_component::LightComponent as _ForceLink_LightComponent;
-pub use helio_component::ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent;
 pub use helio_component::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 
 // ── Shared public API (called by engine_backend) ─────────────────────────

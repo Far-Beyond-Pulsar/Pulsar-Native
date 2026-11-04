@@ -7,7 +7,7 @@
 //
 // A demo's placed objects and lights are authored as *pass-owned* SceneDB
 // components — `helio_mesh_host::StaticObjectComponent` and
-// `helio_components::LightComponent` — not as example-local structs or
+// `helio_light_host::LightComponent` — not as example-local structs or
 // entries in a Helio-owned `Vec`/arena. Each is `#[derive(SceneStore)]` +
 // `#[gpu(layout = packed, ...)]`, exactly like the already-shipped
 // `CoronaEmitterComponent`: the pass that consumes a kind

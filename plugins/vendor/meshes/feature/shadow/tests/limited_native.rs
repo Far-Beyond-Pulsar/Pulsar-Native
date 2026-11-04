@@ -1,4 +1,4 @@
-use helio_components::LightComponent;
+use helio_light_host::LightComponent;
 use std::sync::Arc;
 
 use glam::Vec3;
@@ -129,7 +129,7 @@ async fn run_default_graph(
     if label == "Budgeted shadows" {
         for i in 0..200 {
             let entity = scene_db.world.spawn();
-            let light = helio_pass_light_cull::GpuLight {
+            let light = helio_light_api::GpuLight {
                 position_range: [(i % 20) as f32 * 0.2 - 2.0, 1.0, (i / 20) as f32 * 0.2, 3.0],
                 direction_outer: [0.0, -1.0, 0.0, 0.7],
                 shadow_index: 0,
@@ -138,7 +138,7 @@ async fn run_default_graph(
             };
             scene_db.world.insert(
                 entity,
-                LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
+                LightComponent::from(helio_light_api::LightRow::from(light)),
             );
         }
     }
@@ -208,7 +208,7 @@ async fn run_default_graph(
                 .last_update_work();
             let budget = config
                 .features
-                .get_or_default::<helio_pass_shadow_matrix::ShadowSettings>()
+                .get_or_default::<helio_light_api::ShadowSettings>()
                 .budget;
             assert!(updates <= budget.updates_per_frame);
             assert!(texels <= budget.update_texels_per_frame);
@@ -274,9 +274,9 @@ fn scene_db_with_gpu_mirror(
     helio_mesh_host::MeshComponent::register_gpu_columns_growable(&mut store, 64, device);
     helio_components::MaterialComponent::register_gpu_columns_growable(&mut store, 64, device);
     helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(&mut store, 64, device);
-    helio_components::LightComponent::register_gpu_columns_growable(
+    helio_light_host::LightComponent::register_gpu_columns_growable(
         &mut store,
-        helio_pass_light_cull::MAX_LIGHTS,
+        helio_light_api::MAX_LIGHTS,
         device,
     );
     let mirror = pulsar_scenedb::gpu::GpuMirrorHandle::new(Arc::new(store), queue.clone());

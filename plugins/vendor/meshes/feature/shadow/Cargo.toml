@@ -6,6 +6,7 @@ description = "Helio render pass: helio-pass-shadow"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-mesh-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-feature-api = { workspace = true }
@@ -18,10 +19,10 @@ bytemuck  = { workspace = true, features = ["derive"] }
 log       = { workspace = true }
 
 [dev-dependencies]
+helio-light-host = { workspace = true }
 helio = { workspace = true }
 pulsar_scenedb = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 helio-components = { workspace = true }
 helio-mats = { workspace = true }
 pollster = { version = "0.4" }

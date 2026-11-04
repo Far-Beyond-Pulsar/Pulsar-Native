@@ -235,12 +235,12 @@ impl ApplicationHandler for App {
 
         spawn_light(
             &mut scene_db.world,
-            helio::GpuLight {
+            helio_light_api::GpuLight {
                 position_range: [3.0, 4.0, 2.0, 10.0],
                 direction_outer: [0.0; 4],
                 color_intensity: [1.0, 0.85, 0.6, 30.0],
                 shadow_index: 0,
-                light_type: helio::LightType::Point as u32,
+                light_type: helio_light_api::LightType::Point as u32,
                 inner_angle: 0.0,
                 _pad: 0,
                 ..Default::default()
@@ -249,12 +249,12 @@ impl ApplicationHandler for App {
 
         spawn_light(
             &mut scene_db.world,
-            helio::GpuLight {
+            helio_light_api::GpuLight {
                 position_range: [-3.0, 3.0, -2.0, 10.0],
                 direction_outer: [0.0; 4],
                 color_intensity: [0.4, 0.6, 1.0, 20.0],
                 shadow_index: 0,
-                light_type: helio::LightType::Point as u32,
+                light_type: helio_light_api::LightType::Point as u32,
                 inner_angle: 0.0,
                 _pad: 0,
                 ..Default::default()

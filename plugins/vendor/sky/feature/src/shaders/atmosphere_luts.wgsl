@@ -1,4 +1,5 @@
 //!use atmosphere
+//!use light_list
 // Atmosphere LUT kernels (see atmosphere_common.wgsl). Every kernel reads
 // the frame `resolve` wrote; all leave their outputs untouched while no
 // atmosphere is active.
@@ -26,8 +27,8 @@ struct Resolve {
 
 @group(0) @binding(0) var<uniform> resolve_input: Resolve;
 @group(0) @binding(1) var<storage, read> atmospheres: array<AtmosphereParams>;
-// `scene_lights`: 128-byte rows (8 vec4s).
-@group(0) @binding(2) var<storage, read> lights: array<vec4<f32>>;
+// The lights' light list (`//!use light_list`).
+@group(0) @binding(2) var<storage, read> lights: array<GpuLight>;
 @group(0) @binding(3) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(4) var<storage, read_write> frame: AtmosphereFrame;
 @group(0) @binding(5) var lut_sampler: sampler;
@@ -41,9 +42,7 @@ struct Resolve {
 @group(1) @binding(6) var aerial_out: texture_storage_3d<rgba16float, write>;
 @group(1) @binding(7) var<storage, read_write> sky_table_out: array<vec4<f32>>;
 
-const LIGHT_ROW_VEC4S: u32 = 8u;
-
-// Picks the first enabled atmosphere and the first directional light, and
+// Picks the first enabled atmosphere and the light list's sun, and
 // places the planet relative to the camera.
 @compute @workgroup_size(1)
 fn resolve() {
@@ -63,18 +62,15 @@ fn resolve() {
     if resolve_input.clock.y > 0.5 {
         params.clouds_enabled = 0u;
     }
-    // Sun: the first directional light with any intensity (direction_outer
-    // is the direction the light travels).
+    // Sun: the light list's (the lights' rule, `light_is_sun`: the first
+    // such light; `direction_outer` is the direction the light travels).
     var sun = vec3<f32>(0.0, 1.0, 0.0);
     var illuminance = vec3<f32>(0.0);
-    let rows = arrayLength(&lights) / LIGHT_ROW_VEC4S;
-    for (var i = 0u; i < rows; i++) {
-        let base = i * LIGHT_ROW_VEC4S;
-        let colour = lights[base + 2u];
-        let light_type = bitcast<u32>(lights[base + 3u].y);
-        if light_type == 0u && colour.w > 0.0 {
-            sun = -normalize(lights[base + 1u].xyz);
-            illuminance = colour.rgb * colour.w;
+    for (var i = 0u; i < arrayLength(&lights); i++) {
+        let light = lights[i];
+        if light_is_sun(light) {
+            sun = -normalize(light.direction_outer.xyz);
+            illuminance = light.color_intensity.rgb * light.color_intensity.w;
             break;
         }
     }

@@ -1,20 +1,14 @@
 //! Level-wide rules on authored components: what a level may hold only one
 //! of.
 //!
-//! - **One of each plugin singleton.** A plugin's component a level holds
-//!   at most one of (the sky plugin's atmosphere, #1057: the atmosphere
-//!   pass draws the first enabled row, so a second would only fight the
-//!   first; the foliage plugin's global wind, #1123) registers itself
-//!   ([`LevelSingletonRegistration`]); adding a second (to a level that has
-//!   one, enabled or not) is refused with the registration's message.
-//! - **One directional light.** Whatever reads the sun (an atmosphere, a
-//!   terrain, the renderer's sun direction) takes the first directional
-//!   light, so a
-//!   level casts at most one: an enabled `LightComponent` instance whose
-//!   light is enabled and directional ([`directional_lights`]). Adding one,
-//!   turning a light directional, or enabling one while another casts is
-//!   refused ([`ONE_DIRECTIONAL_LIGHT`]). A disabled directional light is
-//!   allowed; it casts nothing until it is the only one.
+//! - **One of each plugin singleton.** What a level holds at most one of
+//!   registers itself ([`LevelSingletonRegistration`]): the sky plugin's
+//!   atmosphere (#1057: the atmosphere pass draws the first enabled row, so
+//!   a second would only fight the first), the foliage plugin's global wind
+//!   (#1123), the lights plugin's casting directional light (whatever reads
+//!   the sun takes the first). Adding a second, or a change that makes one
+//!   (a property edit, enabling an instance, where the registration says
+//!   those count), is refused with the registration's message.
 //!
 //! Editors check a prospective change with these functions before applying
 //! it and report the returned message. A level file that already breaks a
@@ -26,21 +20,31 @@ use pulsar_scene_model::attachments;
 use pulsar_scene_model::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};
 
-use helio_component::{LightComponent, LightType};
-
-/// A plugin's component a level holds at most one of (the sky plugin's
-/// atmosphere, the foliage plugin's global wind). Submitted by the plugin's
-/// component crate.
+/// Something a level holds at most one of (the sky plugin's atmosphere, the
+/// foliage plugin's global wind, the lights plugin's casting directional
+/// light). Submitted by the plugin's component crate.
 pub struct LevelSingletonRegistration {
     /// The component's class name.
     pub class_name: &'static str,
     /// Why adding a second one is refused.
     pub refusal: &'static str,
-    /// Every attached instance, enabled or not, in level order
-    /// ([`attached_in_level_order`]).
+    /// Every instance that counts, in level order
+    /// ([`attached_in_level_order`]): every attached one, or with
+    /// `enabled_only` the enabled ones.
     pub instances: fn(&World) -> Vec<Entity>,
     /// Whether a component value is one.
     pub is: fn(&dyn Any) -> bool,
+    /// Whether the value `instance` holds now is one.
+    pub held: fn(&World, Entity) -> bool,
+    /// Whether the class's default value is one (an atmosphere is; a light
+    /// is a point light).
+    pub default_is: bool,
+    /// Only enabled instances count: enabling one is checked, a disabled
+    /// one is allowed.
+    pub enabled_only: bool,
+    /// An edit of a value (a property, the whole value) can make it one, so
+    /// editors check it ([`check_instance`]) after the write.
+    pub edits_checked: bool,
 }
 
 inventory::collect!(LevelSingletonRegistration);
@@ -56,7 +60,7 @@ fn singleton_of(
 ) -> Option<&'static LevelSingletonRegistration> {
     singletons().find(|singleton| match value {
         Some(value) => (singleton.is)(value),
-        None => class_name == singleton.class_name,
+        None => singleton.default_is && class_name == singleton.class_name,
     })
 }
 
@@ -65,36 +69,12 @@ fn singleton_held(world: &World, instance: Entity) -> Option<&'static LevelSingl
     singletons().find(|singleton| (singleton.instances)(world).contains(&instance))
 }
 
-/// Why a second directional light was refused.
-pub const ONE_DIRECTIONAL_LIGHT: &str =
-    "This level already has a directional light; a level has one. Disable it or change its type first.";
-
 /// Whether an edit of a `class_name` value (a property, the whole value)
 /// can break a rule, so an editor checks it ([`check_instance`]) after the
-/// write: a light can be turned into a second directional one.
+/// write: a registration says its edits count (a light can be turned into
+/// a second directional one).
 pub fn edits_are_checked(class_name: &str) -> bool {
-    class_name == "LightComponent"
-}
-
-/// Whether `light`, on an enabled instance, is a directional light that
-/// casts.
-pub fn is_directional(light: &LightComponent) -> bool {
-    light.general.enabled && light.general.light_type == LightType::Directional
-}
-
-/// Every casting directional light: the enabled `LightComponent` instances
-/// whose light is enabled and directional. Never more than
-/// one in a level the editor built or the loader repaired. In level order.
-pub fn directional_lights(world: &World) -> Vec<Entity> {
-    let mut found: Vec<Entity> = world
-        .query::<&LightComponent>()
-        .filter(|(instance, light)| {
-            is_directional(light) && attachments::is_enabled(world, *instance)
-        })
-        .map(|(instance, _)| instance)
-        .collect();
-    sort_in_level_order(world, &mut found);
-    found
+    singletons().any(|singleton| singleton.edits_checked && singleton.class_name == class_name)
 }
 
 /// Sort component instances in level order: their objects depth first in
@@ -152,9 +132,10 @@ pub fn check_new_components(
     let mut held: Vec<(&'static str, usize)> = singletons()
         .map(|singleton| (singleton.class_name, (singleton.instances)(world).len()))
         .collect();
-    let mut suns = directional_lights(world).len();
     for component in components {
-        if let Some(singleton) = singleton_of(component.class_name, component.value) {
+        if let Some(singleton) = singleton_of(component.class_name, component.value)
+            .filter(|singleton| component.enabled || !singleton.enabled_only)
+        {
             let count = held
                 .iter_mut()
                 .find(|(class, _)| *class == singleton.class_name)
@@ -163,17 +144,6 @@ pub fn check_new_components(
             *count += 1;
             if *count > 1 {
                 return Err(singleton.refusal);
-            }
-        }
-        // A light added as the class default is a point light.
-        let sun = component
-            .value
-            .and_then(|value| value.downcast_ref::<LightComponent>())
-            .is_some_and(is_directional);
-        if sun && component.enabled {
-            suns += 1;
-            if suns > 1 {
-                return Err(ONE_DIRECTIONAL_LIGHT);
             }
         }
     }
@@ -198,31 +168,27 @@ pub fn check_new_component(
 }
 
 /// Whether a copy of `source` (an attached instance) may be added to the
-/// level: a level's only plugin singleton (its sky), or its casting
-/// directional light, cannot be duplicated (the copy keeps the source's
-/// enabled state).
+/// level: a level's only plugin singleton (its sky, its casting directional
+/// light) cannot be duplicated (the copy keeps the source's enabled state).
 pub fn check_copy(world: &World, source: Entity) -> Result<(), &'static str> {
     if let Some(singleton) = singleton_held(world, source) {
         return Err(singleton.refusal);
     }
-    if directional_lights(world).contains(&source) {
-        return Err(ONE_DIRECTIONAL_LIGHT);
-    }
     Ok(())
 }
 
-/// Whether enabling `instance` would break a rule: it holds a directional
-/// light and another one already casts.
+/// Whether enabling `instance` would break a rule: it holds a singleton
+/// only enabled instances count of (a directional light) and another one
+/// already counts.
 pub fn check_enable(world: &World, instance: Entity) -> Result<(), &'static str> {
-    let sun = world
-        .get::<LightComponent>(instance)
-        .is_some_and(is_directional);
-    if sun
-        && directional_lights(world)
-            .iter()
-            .any(|other| *other != instance)
-    {
-        return Err(ONE_DIRECTIONAL_LIGHT);
+    for singleton in singletons().filter(|singleton| singleton.enabled_only) {
+        if (singleton.held)(world, instance)
+            && (singleton.instances)(world)
+                .iter()
+                .any(|other| *other != instance)
+        {
+            return Err(singleton.refusal);
+        }
     }
     Ok(())
 }
@@ -240,10 +206,6 @@ pub fn check_instance(world: &World, instance: Entity) -> Result<(), &'static st
             return Err(singleton.refusal);
         }
     }
-    let suns = directional_lights(world);
-    if suns.contains(&instance) && suns.len() > 1 {
-        return Err(ONE_DIRECTIONAL_LIGHT);
-    }
     Ok(())
 }
 
@@ -258,7 +220,7 @@ pub struct Demotion {
 
 /// Repair a freshly loaded level that breaks a rule, keeping the first
 /// instance (file order) and disabling the rest (extra plugin singletons:
-/// skies, global winds; extra casting directional lights); each is logged as a
+/// skies, global winds, casting directional lights); each is logged as a
 /// warning naming its object. Disabling keeps the authored value: the
 /// instance stays attached and is saved as it was, only switched off.
 pub fn enforce_on_load(world: &mut World) -> Vec<Demotion> {
@@ -272,12 +234,6 @@ pub fn enforce_on_load(world: &mut World) -> Vec<Demotion> {
         for instance in extra {
             demote(world, instance, singleton.refusal, &mut demoted);
         }
-    }
-    // Every light keeps its type and values; only the instances past the
-    // first casting directional light are switched off, so exactly one
-    // directional light renders.
-    for instance in directional_lights(world).into_iter().skip(1) {
-        demote(world, instance, ONE_DIRECTIONAL_LIGHT, &mut demoted);
     }
     demoted
 }

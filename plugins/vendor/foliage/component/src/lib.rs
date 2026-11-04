@@ -220,6 +220,10 @@ inventory::submit! {
         refusal: ONE_WIND,
         instances: winds,
         is: |value| value.is::<WindComponent>(),
+        held: |world, instance| world.get::<WindComponent>(instance).is_some(),
+        default_is: true,
+        enabled_only: false,
+        edits_checked: false,
     }
 }
 

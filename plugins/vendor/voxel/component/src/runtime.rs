@@ -711,11 +711,11 @@ fn publish_frame(world: &World, problems: &mut Vec<String>) -> Option<Arc<Planet
 pub fn scene_sun(world: &World) -> Option<Vec3> {
     use pulsar_scene_model::attachments::ComponentOwner;
     let (_, (_, owner)) = world
-        .query::<(&helio_component::LightComponent, &ComponentOwner)>()
+        .query::<(&lights_component::LightComponent, &ComponentOwner)>()
         .find(|(_, (light, owner))| {
             owner.is_enabled()
                 && light.general.enabled
-                && light.general.light_type == helio_component::LightType::Directional
+                && light.general.light_type == lights_component::LightType::Directional
                 && world
                     .get::<pulsar_scene_model::Visibility>(owner.entity())
                     .is_none_or(|visibility| visibility.visible)

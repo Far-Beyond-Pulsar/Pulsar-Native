@@ -1,4 +1,4 @@
-//! The sun's occlusion pages (`helio_pass_shadow_matrix::sun_occlusion`):
+//! The sun's occlusion pages (`helio_light_api::sun_occlusion`):
 //! which pages of the virtual clipmap are resident, which to trace next and
 //! where each sits in the atlas, as Unreal's virtual shadow maps keep a
 //! directional light's pages, planned on the CPU from the pages the frame's
@@ -19,7 +19,7 @@
 //! nothing asks for it and its physical page is needed.
 
 use glam::DVec3;
-use helio_pass_shadow_matrix::{
+use helio_light_api::{
     sun_occlusion_entry, sun_occlusion_entry_physical, sun_occlusion_table_index,
     SunOcclusionEpoch, SunOcclusionFrame, SunOcclusionLevel, SUN_OCCLUSION_ATLAS_PAGES,
     SUN_OCCLUSION_LEVELS, SUN_OCCLUSION_PAGE, SUN_OCCLUSION_PHYSICAL, SUN_OCCLUSION_TABLE_WORDS,

@@ -618,7 +618,7 @@ impl AtmospherePass {
             device,
             "Atmosphere LUTs",
             helio_core::include_wgsl!("shaders/atmosphere_luts.wgsl"),
-            &[ATMOSPHERE_SNIPPET],
+            &[ATMOSPHERE_SNIPPET, helio_light_api::LIGHT_LIST_SNIPPET],
         );
         let compute = wgpu::ShaderStages::COMPUTE;
         let storage = |read_only| wgpu::BufferBindingType::Storage { read_only };
@@ -862,7 +862,7 @@ impl RenderPass for AtmospherePass {
     }
 
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["atmospheres", "scene_lights"]
+        &["atmospheres", helio_light_api::LIGHT_LIST]
     }
 
     fn name(&self) -> &'static str {
@@ -939,7 +939,7 @@ impl RenderPass for AtmospherePass {
             .map_or(&self.no_rows, |h| &h.buffer);
         let lights = ctx
             .scene_buffers
-            .get(BufferKey::of("scene_lights"))
+            .get(BufferKey::of(helio_light_api::LIGHT_LIST))
             .map_or(&self.no_rows, |h| &h.buffer);
         let key = (atmospheres.clone(), lights.clone(), ctx.camera.clone());
         if self.shared_key.as_ref() != Some(&key) {

@@ -60,7 +60,7 @@
 //! whenever the G-buffer views exist. That is not an oversight: a pass that
 //! conditionally returns `None` based on per-frame state can never participate in
 //! subpass fusion, because the executor probes chain membership *once*, at lock time.
-//! `BillboardPass` documents the same trap around `helio-pass-billboard/src/lib.rs:494`.
+//! `BillboardPass` documents the same trap around `helio_pass_billboard`'s `BillboardPass::prepare`.
 //!
 //! # Pass order
 //!
@@ -745,7 +745,7 @@ impl RenderPass for FoliageGBufferPass {
         // any foliage this frame. A pass that returns `None` on per-frame state can
         // never participate in subpass fusion, because the executor probes chain
         // membership once at lock time — see the crate docs and
-        // `helio-pass-billboard/src/lib.rs:494`.
+        // `helio_pass_billboard`'s `BillboardPass::prepare`.
         //
         // The views must be byte-identical to `GBufferPass`'s, in the same order:
         // `compute_chains` requires an exact attachment match before it will fuse.

@@ -375,7 +375,7 @@ impl ApplicationHandler for App {
             let entity = scene_db.world.spawn();
             scene_db.world.insert(
                 entity,
-                helio_components::BillboardComponent {
+                helio_light_host::BillboardComponent {
                     world_pos: billboard.world_pos,
                     scale_flags: billboard.scale_flags,
                     color: billboard.color,

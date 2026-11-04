@@ -9,7 +9,7 @@
 //! alpha is 1 and lets them through where it is 0. Needs hardware ray
 //! queries: without them each test returns at once.
 
-use helio_components::LightComponent;
+use helio_light_host::LightComponent;
 use std::sync::{Arc, RwLock};
 
 use glam::{DVec3, Mat4, Vec3};
@@ -38,9 +38,9 @@ fn scene_db(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> pulsar_scen
     MeshComponent::register_gpu_columns_growable(&mut store, 64, device);
     MaterialComponent::register_gpu_columns_growable(&mut store, 64, device);
     StaticObjectComponent::register_gpu_columns_growable(&mut store, 64, device);
-    helio_components::LightComponent::register_gpu_columns_growable(
+    helio_light_host::LightComponent::register_gpu_columns_growable(
         &mut store,
-        helio_pass_light_cull::MAX_LIGHTS,
+        helio_light_api::MAX_LIGHTS,
         device,
     );
     let textures = Arc::new(RwLock::new(pulsar_scenedb::gpu::TextureStore::new(64)));
@@ -271,15 +271,13 @@ fn room(world: &mut World, light: bool) {
         let entity = world.spawn();
         world.insert(
             entity,
-            LightComponent::from(helio_pass_light_cull::LightRow::from(
-                helio_pass_light_cull::GpuLight {
-                    position_range: [0.0, 2.5, -2.5, 12.0],
-                    color_intensity: [1.0, 0.9, 0.8, 20.0],
-                    shadow_index: u32::MAX,
-                    light_type: 1,
-                    ..Default::default()
-                },
-            )),
+            LightComponent::from(helio_light_api::LightRow::from(helio_light_api::GpuLight {
+                position_range: [0.0, 2.5, -2.5, 12.0],
+                color_intensity: [1.0, 0.9, 0.8, 20.0],
+                shadow_index: u32::MAX,
+                light_type: 1,
+                ..Default::default()
+            })),
         );
     }
     let white = [0.7; 3];

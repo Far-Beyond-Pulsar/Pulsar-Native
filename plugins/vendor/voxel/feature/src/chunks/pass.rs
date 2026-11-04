@@ -299,8 +299,8 @@ const READS: &[&str] = &[
     // Shared coast/travel field read by the terrain scene-material swash.
     "water_shore_fields",
     "water_shore_params",
-    "tile_light_lists",
-    "tile_light_counts",
+    helio_light_api::TILE_LIGHT_LISTS,
+    helio_light_api::TILE_LIGHT_COUNTS,
     helio_gi_api::GI_FRAME,
     helio_gi_api::GI_RAYS,
     helio_gi_api::GI_SUN,
@@ -320,9 +320,9 @@ const WRITES: &[&str] = &[
     // helio-pass-tsr's STOCHASTIC_MASK.
     "tsr_stochastic",
     helio_gi_api::GI_HITS,
-    helio_pass_shadow_matrix::SUN_OCCLUSION_MAPS,
-    helio_pass_shadow_matrix::SUN_OCCLUSION_PAGES,
-    helio_pass_shadow_matrix::SUN_OCCLUSION_FRAME,
+    helio_light_api::SUN_OCCLUSION_MAPS,
+    helio_light_api::SUN_OCCLUSION_PAGES,
+    helio_light_api::SUN_OCCLUSION_FRAME,
 ];
 
 /// GPU times kept for a host that does not take them.
@@ -402,18 +402,10 @@ impl RenderPass for ChunkPass {
         if let Some((maps, pages, sun_frame)) =
             self.world.as_ref().and_then(ChunkWorld::sun_occlusion)
         {
-            frame.write_texture_binding(
-                helio_pass_shadow_matrix::SUN_OCCLUSION_MAPS,
-                maps,
-                self.name(),
-            );
+            frame.write_texture_binding(helio_light_api::SUN_OCCLUSION_MAPS, maps, self.name());
+            frame.write_buffer_binding(helio_light_api::SUN_OCCLUSION_PAGES, pages, self.name());
             frame.write_buffer_binding(
-                helio_pass_shadow_matrix::SUN_OCCLUSION_PAGES,
-                pages,
-                self.name(),
-            );
-            frame.write_buffer_binding(
-                helio_pass_shadow_matrix::SUN_OCCLUSION_FRAME,
+                helio_light_api::SUN_OCCLUSION_FRAME,
                 sun_frame,
                 self.name(),
             );
@@ -670,15 +662,19 @@ impl ChunkPass {
         // the terrain's shadows of them.
         let lights = ctx
             .scene_buffers
-            .get(helio_core::BufferKey::of("scene_lights"))
+            .get(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST))
             .map(|h| h.buffer.clone());
         let tile_lists = ctx
             .registry
-            .get::<&wgpu::Buffer>(helio_core::ResourceKey::new("tile_light_lists"))
+            .get::<&wgpu::Buffer>(helio_core::ResourceKey::new(
+                helio_light_api::TILE_LIGHT_LISTS,
+            ))
             .map(|b| (*b).clone());
         let tile_counts = ctx
             .registry
-            .get::<&wgpu::Buffer>(helio_core::ResourceKey::new("tile_light_counts"))
+            .get::<&wgpu::Buffer>(helio_core::ResourceKey::new(
+                helio_light_api::TILE_LIGHT_COUNTS,
+            ))
             .map(|b| (*b).clone());
         // The GI probes' rays, when a GI pass runs before this one.
         let binding = |name: &str| ctx.registry.buffer_binding(name).cloned();

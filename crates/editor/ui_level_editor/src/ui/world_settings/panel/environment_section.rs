@@ -67,10 +67,8 @@ impl super::WorldSettingsPanelImpl {
         cx: &mut Context<WorldSettingsPanel>,
     ) -> AnyElement {
         let state = self.state.clone();
-        let has_sun = !engine_backend::scene::level_rules::directional_lights(
-            &self.state.read().scene.world(),
-        )
-        .is_empty();
+        let has_sun =
+            !lights_component::directional_lights(&self.state.read().scene.world()).is_empty();
         let presets = crate::scene_edit::environment::EnvironmentPreset::ALL
             .into_iter()
             .map(|preset| {

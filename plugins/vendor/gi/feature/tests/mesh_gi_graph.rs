@@ -4,7 +4,7 @@
 //! published); without ray queries there is no GI, the sky's ambient as
 //! before.
 
-use helio_components::LightComponent;
+use helio_light_host::LightComponent;
 use std::sync::Arc;
 
 use glam::{Mat4, Vec3};
@@ -31,9 +31,9 @@ fn scene_db(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> pulsar_scen
     MeshComponent::register_gpu_columns_growable(&mut store, 64, device);
     MaterialComponent::register_gpu_columns_growable(&mut store, 64, device);
     StaticObjectComponent::register_gpu_columns_growable(&mut store, 64, device);
-    helio_components::LightComponent::register_gpu_columns_growable(
+    helio_light_host::LightComponent::register_gpu_columns_growable(
         &mut store,
-        helio_pass_light_cull::MAX_LIGHTS,
+        helio_light_api::MAX_LIGHTS,
         device,
     );
     scene_db
@@ -109,15 +109,13 @@ fn room(world: &mut pulsar_scenedb::World) {
     let light = world.spawn();
     world.insert(
         light,
-        LightComponent::from(helio_pass_light_cull::LightRow::from(
-            helio_pass_light_cull::GpuLight {
-                position_range: [0.0, 2.5, 0.0, 12.0],
-                color_intensity: [1.0, 0.9, 0.8, 20.0],
-                shadow_index: u32::MAX,
-                light_type: 1,
-                ..Default::default()
-            },
-        )),
+        LightComponent::from(helio_light_api::LightRow::from(helio_light_api::GpuLight {
+            position_range: [0.0, 2.5, 0.0, 12.0],
+            color_intensity: [1.0, 0.9, 0.8, 20.0],
+            shadow_index: u32::MAX,
+            light_type: 1,
+            ..Default::default()
+        })),
     );
     let white = [0.7; 3];
     spawn_box(

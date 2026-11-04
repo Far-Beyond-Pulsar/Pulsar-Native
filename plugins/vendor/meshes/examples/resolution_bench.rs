@@ -388,12 +388,12 @@ fn apply_movability(world: &mut World, mode: &str) {
 /// `cast_shadows: true`; `u32::MAX` means no shadow).
 fn cast_shadows_from_every_light(world: &mut World) {
     let entities: Vec<_> = world
-        .query::<(&helio_components::LightComponent,)>()
+        .query::<(&helio_light_host::LightComponent,)>()
         .map(|(entity, _)| entity)
         .collect();
     for entity in entities {
-        if let Some(light) = world.get::<helio_components::LightComponent>(entity) {
-            let mut gpu: helio_pass_light_cull::GpuLight = (*light).into();
+        if let Some(light) = world.get::<helio_light_host::LightComponent>(entity) {
+            let mut gpu: helio_light_api::GpuLight = (*light).into();
             gpu.shadow_index = 0;
             update_light(world, entity, gpu);
         }
@@ -403,9 +403,9 @@ fn cast_shadows_from_every_light(world: &mut World) {
 /// An editor-style icon over every point light, as `BillboardComponent` rows.
 fn spawn_light_billboards(world: &mut World) {
     let positions: Vec<[f32; 4]> = world
-        .query::<(&helio_components::LightComponent,)>()
+        .query::<(&helio_light_host::LightComponent,)>()
         .map(|(_, (light,))| {
-            let gpu: helio_pass_light_cull::GpuLight = (*light).into();
+            let gpu: helio_light_api::GpuLight = (*light).into();
             gpu.position_range
         })
         .filter(|p| p[3] < f32::MAX)
@@ -414,7 +414,7 @@ fn spawn_light_billboards(world: &mut World) {
         let entity = world.spawn();
         world.insert(
             entity,
-            helio_components::BillboardComponent {
+            helio_light_host::BillboardComponent {
                 world_pos: [p[0], p[1], p[2], 0.0],
                 scale_flags: [0.6, 0.6, 0.0, 0.0],
                 color: [1.0, 0.9, 0.6, 1.0],
@@ -488,7 +488,7 @@ fn run(
     let (pulsar_columns, billboards) = (args.pulsar_columns, args.billboards);
     let mut scene_db: SceneDb = new_scene_db_with_gpu_mirror_and(device, queue, |store| {
         if billboards || pulsar_columns {
-            helio_components::BillboardComponent::register_gpu_columns_growable(
+            helio_light_host::BillboardComponent::register_gpu_columns_growable(
                 store, 1024, device,
             );
         }

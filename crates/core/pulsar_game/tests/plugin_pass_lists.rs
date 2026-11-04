@@ -3,7 +3,7 @@
 //! added, their settings applied) list the same passes as before the leaf
 //! kinds (batch 1), the media and placement kinds (batch 2: fog,
 //! post-process volumes, water, foliage), the lighting kinds (batch 3:
-//! GI, the sky) and the meshes (batch 4) left Helio. Dumps every preset's pass declarations for four
+//! GI, the sky), the meshes (batch 4) and the lights (batch 5) left Helio. Dumps every preset's pass declarations for four
 //! configs into `PRESET_SNAPSHOT_OUT` (the format of Helio's preset
 //! snapshot), to diff against a snapshot of the presets from before the
 //! move; skips without the variable. Also checks, always, that the plugins'
@@ -23,6 +23,7 @@ use fog_component as _;
 use foliage_component as _;
 use gi_component as _;
 use lens_component as _;
+use lights_component as _;
 use meshes_component as _;
 use particles_component as _;
 use portals_component as _;
@@ -158,6 +159,9 @@ fn the_engines_presets_carry_the_plugins_passes() {
                     "OcclusionCull",
                     "GBuffer",
                     "TransparentPass",
+                    "ShadowMatrix",
+                    "LightCull",
+                    "DeferredLight",
                 ] {
                     assert!(
                         passes.iter().any(|(pass, _)| pass.pass == name),
@@ -178,6 +182,9 @@ fn the_engines_presets_carry_the_plugins_passes() {
                     .external_input_names()
                     .iter()
                     .any(|input| *input == "corona_emitters"));
+                // The lights' lighting model resolves the G-buffer: the
+                // spine's unlit stand-in builds only without one.
+                assert!(passes.iter().all(|(pass, _)| pass.pass != "Unlit"));
             }
             writeln!(text, "### {} / {config_name}", preset.name()).unwrap();
             let mut inputs = graph.external_input_names();

@@ -16,7 +16,7 @@ pub use transmittance::{TRANSMITTANCE_FORMAT, TRANSMITTANCE_KEY};
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /// Maximum logical faces in the bounded residency pool.
-const MAX_SHADOW_FACES: usize = helio_pass_shadow_matrix::MAX_SHADOW_FACES;
+const MAX_SHADOW_FACES: usize = helio_light_api::MAX_SHADOW_FACES;
 
 /// Byte stride between consecutive face-index entries in `face_idx_buf`.
 ///
@@ -79,7 +79,7 @@ pub struct ShadowPass {
     /// generation it was written under: a fade is the only reason to write
     /// it again, but a residency change rewrites it behind our back.
     face_strength_written: Vec<(f32, u64)>,
-    face_ownership: Vec<(u32, helio_pass_shadow_matrix::ShadowTile)>,
+    face_ownership: Vec<(u32, helio_light_api::ShadowTile)>,
     schedule_frame: u64,
     last_work: (u32, u32),
     /// Faces serviced last frame: (metered by the budget, unmetered GPU-gated).
@@ -551,10 +551,10 @@ impl RenderPass for ShadowPass {
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
         // Pass-owned one-layer array views, preserving the sampling ABI at one physical layer.
-        builder.write_buffer("shadow_atlas");
-        builder.write_buffer("static_shadow_atlas");
+        builder.write_buffer(helio_light_api::SHADOW_ATLAS);
+        builder.write_buffer(helio_light_api::STATIC_SHADOW_ATLAS);
         builder.read("object_batch");
-        builder.read("shadow_matrices");
+        builder.read(helio_light_api::SHADOW_MATRICES);
         builder.read("shadow_dirty");
         builder.read("material_textures");
         // Pass-owned (it caches with the static atlas): declared for ordering,
@@ -568,17 +568,21 @@ impl RenderPass for ShadowPass {
 
     fn writes(&self) -> &'static [&'static str] {
         &[
-            "shadow_atlas",
-            "shadow_sampler",
-            "static_shadow_atlas",
+            helio_light_api::SHADOW_ATLAS,
+            helio_light_api::SHADOW_SAMPLER,
+            helio_light_api::STATIC_SHADOW_ATLAS,
             TRANSMITTANCE_KEY,
         ]
     }
 
     fn publish<'a>(&self, frame: &mut helio_core::ResourceRegistry<'a>) {
-        frame.route_named_texture("shadow_atlas", &self.dynamic_array_view, self.name());
+        frame.route_named_texture(
+            helio_light_api::SHADOW_ATLAS,
+            &self.dynamic_array_view,
+            self.name(),
+        );
         if let Some(view) = self.static_array_view.as_ref() {
-            frame.route_named_texture("static_shadow_atlas", view, self.name());
+            frame.route_named_texture(helio_light_api::STATIC_SHADOW_ATLAS, view, self.name());
         }
         if self.has_glass {
             frame.route_named_texture(TRANSMITTANCE_KEY, &self.transmittance.view, self.name());
@@ -609,11 +613,11 @@ impl RenderPass for ShadowPass {
         else {
             return Ok(());
         };
-        let Some(data) = ctx
-            .registry
-            .get::<helio_pass_shadow_matrix::ShadowMatricesFrameData<'_>>(
-                helio_pass_shadow_matrix::shadow_matrices(),
-            )
+        let Some(data) =
+            ctx.registry
+                .get::<helio_light_api::ShadowMatricesFrameData<'_>>(
+                    helio_light_api::shadow_matrices(),
+                )
         else {
             return Ok(());
         };

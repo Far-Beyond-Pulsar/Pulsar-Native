@@ -66,7 +66,7 @@ pub fn create(state: &mut LevelEditorState, kind: &str) -> CommandResult {
 
 fn object_for(kind: &str) -> Option<(&'static str, ObjectType, Vec<TypedComponent>)> {
     let light = |name, light_type, kind| {
-        let mut light = helio_component::LightComponent::default();
+        let mut light = lights_component::LightComponent::default();
         light.general.enabled = true;
         light.general.light_type = light_type;
         (
@@ -85,7 +85,7 @@ fn object_for(kind: &str) -> Option<(&'static str, ObjectType, Vec<TypedComponen
             vec![TypedComponent::new(mesh)],
         )
     };
-    use helio_component::LightType as Helio;
+    use lights_component::LightType as Helio;
     Some(match kind {
         "empty" => ("Empty", ObjectType::Empty, vec![]),
         "folder" => ("Folder", ObjectType::Folder, vec![]),

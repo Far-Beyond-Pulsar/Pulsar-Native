@@ -16,8 +16,9 @@ name = "indoor_cathedral_decals"
 path = "indoor_cathedral_decals.rs"
 
 [dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 helio-mats = { workspace = true }
 # `#[derive(SceneStore)]` expands to reflection paths.
 pulsar_reflection = { workspace = true }
@@ -33,7 +34,6 @@ helio-pass-debug-overlay = { workspace = true }
 helio-pass-decal = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-perf-overlay = { workspace = true }
-helio-pass-shadow-matrix = { workspace = true }
 helio-pass-gi = { workspace = true }
 helio-pass-sky = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }

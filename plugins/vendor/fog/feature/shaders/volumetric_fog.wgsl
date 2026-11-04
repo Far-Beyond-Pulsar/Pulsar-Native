@@ -1,6 +1,8 @@
 //!use helio_prelude
 //!use sun_occlusion
 //!use sun_transmittance
+//!use light_list
+//!use shadow_atlas
 //
 // Volumetric fog — froxel grid (Hillaire, "Physically Based and Unified Volumetric
 // Rendering in Frostbite", SIGGRAPH 2015).
@@ -48,39 +50,6 @@ struct FogUniforms {
 const FOG_MODE_UNIFORM: u32 = 0u;
 const FOG_MODE_HEIGHT: u32  = 1u;
 
-// ── Lights ──────────────────────────────────────────────────────────────────
-// Mirror of GpuLight (128 bytes). See that struct's doc comment for the
-// full list of shaders that must be edited together.
-
-struct GpuLight {
-    position_range:  vec4<f32>,
-    direction_outer: vec4<f32>,
-    color_intensity: vec4<f32>,
-    shadow_index:    u32,
-    light_type:      u32,
-    inner_angle:     f32,
-    _pad:            u32,
-    god_rays_enabled:  u32,
-    god_rays_density:  f32,
-    god_rays_weight:   f32,
-    god_rays_decay:    f32,
-    god_rays_exposure: f32,
-    flare_enabled:      u32,
-    flare_type:         u32,
-    flare_intensity:    f32,
-    flare_scale:        f32,
-    flare_tint_r:       f32,
-    flare_tint_g:       f32,
-    flare_tint_b:       f32,
-    ies_profile_index:    i32,
-    light_function_index: i32,
-    ies_angle_scale:      f32,
-    ies_angle_offset:     f32,
-}
-
-struct LightMatrix { mat: mat4x4<f32>,
-    atlas: vec4f,
-    policy: vec4u, }
 
 struct FogGlobals {
     /// Globals.csm_splits — cascade boundaries for directional shadow lookup.
@@ -111,11 +80,6 @@ struct FogGlobals {
     noise_phase: vec4<f32>,
 }
 
-const LIGHT_DIRECTIONAL: u32 = 0u;
-const LIGHT_POINT:       u32 = 1u;
-const LIGHT_SPOT:        u32 = 2u;
-
-const NO_SHADOW: u32 = 4294967295u;
 
 @group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(1) var<uniform>       fog:             FogUniforms;
@@ -838,15 +802,6 @@ fn froxel_world_pos(uv: vec2<f32>, slice_norm: f32) -> vec3<f32> {
 
 // ── Shadowing ───────────────────────────────────────────────────────────────
 
-// Same face order and tie policy as deferred_lighting.wgsl / HLFS and the
-// shadow-matrix producer: +X, -X, +Y, -Y, +Z, -Z. Projection uses the shared
-// helio_shadow_project helper, including atlas Y flip and validity checks.
-fn point_light_face(dir: vec3<f32>) -> u32 {
-    let a = abs(dir);
-    if a.x >= a.y && a.x >= a.z { return select(0u, 1u, dir.x < 0.0); }
-    if a.y >= a.x && a.y >= a.z { return select(2u, 3u, dir.y < 0.0); }
-    return select(4u, 5u, dir.z < 0.0);
-}
 
 /// Fraction of `light_idx` reaching `p`. 1.0 = fully lit: its shadow maps,
 /// and for the sun the terrain's occlusion (shafts through canopies and past
@@ -870,7 +825,7 @@ fn shaft_visibility(light_idx: u32, p0: vec3<f32>) -> vec3<f32> {
 fn shadow_map_visibility(light_idx: u32, p0: vec3<f32>) -> vec3<f32> {
     if textureDimensions(shadow_atlas).x <= 1u { return vec3<f32>(1.0); }
     let light = lights[light_idx];
-    if light.shadow_index == NO_SHADOW { return vec3<f32>(1.0); }
+    if light.shadow_index == LIGHT_NO_SHADOW { return vec3<f32>(1.0); }
 
     // Fog has no surface normal to offset along, so receivers lying in or near
     // a caster (the floor under a local volume, a mesh inside it) compare
@@ -903,40 +858,14 @@ fn shadow_map_visibility(light_idx: u32, p0: vec3<f32>) -> vec3<f32> {
     if !proj.valid { return vec3<f32>(1.0); }
 
     // Dynamic (movable) and cached static casters, as deferred lighting does.
-    let lit = min(budget_compare_dynamic(proj.uv, u32(layer), proj.depth),
-                  budget_compare_static(proj.uv, u32(layer), proj.depth));
+    let lit = min(budget_compare(shadow_atlas, shadow_samp, proj.uv, u32(layer), proj.depth, 32u),
+                  budget_compare(static_shadow_atlas, shadow_samp, proj.uv, u32(layer), proj.depth, 16u));
     if lit <= 0.0 || budget_layer(layer) >= textureNumLayers(shadow_transmittance) { return vec3<f32>(lit); }
     // Light that crossed stained glass arrives coloured: the shafts take the
     // panes' tint, not just their outline.
-    return lit * glass_tint(proj.uv, i32(layer), 1.0 - proj.depth);
+    return lit * budget_glass_tint(shadow_transmittance, proj.uv, i32(layer), 1.0 - proj.depth);
 }
 
-// Tint of the stained-glass panes a receiver lies behind. Each of the four
-// nearest texels is depth-tested on its own, then the results are weighted
-// bilinearly. Bilinearly filtering the pane depth (alpha) first and testing
-// once failed the test along every pane edge wherever a neighbouring texel
-// held no pane: an untinted rim and stair-stepped edges, most visible in the
-// coarse cascades, where a half-resolution texel covers several centimetres.
-fn glass_tint(uv:vec2f, layer:i32, receiver:f32)->vec3f {
-    let face=u32(layer);
-    if !budget_valid(face,16u) {return vec3f(1);}
-    let physical=i32(budget_layer(face));
-    if physical>=i32(textureNumLayers(shadow_transmittance)) {return vec3f(1);}
-    let dims=vec2f(textureDimensions(shadow_transmittance));
-    let p=budget_uv(uv,face,dims)*dims-0.5;
-    let base=floor(p);let f=fract(p);var tint=vec3f(0);
-    let m=shadow_matrices[face];
-    let offset=select(m.atlas.xy,vec2f(0),m.policy.w==0u);
-    let size=select(m.atlas.z,1.0,m.policy.w==0u);
-    for(var i=0;i<4;i++) {
-        let o=vec2i(i&1,i>>1);
-        let pixel=clamp(vec2i(base)+o,vec2i(offset*dims),vec2i((offset+vec2f(size))*dims)-1);
-        let t=textureLoad(shadow_transmittance,pixel,physical,0);
-        let w=select(1.0-f.x,f.x,o.x==1)*select(1.0-f.y,f.y,o.y==1);
-        tint+=w*select(vec3f(1),1.0-t.rgb,receiver<t.a);
-    }
-    return mix(vec3f(1),tint,budget_strength(face));
-}
 
 // ── Light evaluation ────────────────────────────────────────────────────────
 
@@ -1347,57 +1276,4 @@ fn cs_integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
             vec4<f32>(min(accum, vec3<f32>(65504)), transmittance),
         );
     }
-}
-
-// Logical face metadata maps all filtering into a guarded physical tile.
-fn budget_resolution(layer:u32)->f32 {
-    if layer>=arrayLength(&shadow_matrices) {return 128.0;}
-    let m=shadow_matrices[layer];
-    return select(max(f32(m.policy.z),128.0),1024.0,m.policy.w==0u);
-}
-fn budget_layer(layer:u32)->u32 {
-    return select(shadow_matrices[layer].policy.x,layer,shadow_matrices[layer].policy.w==0u);
-}
-fn budget_uv(uv:vec2f,layer:u32,dims:vec2f)->vec2f {
-    let m=shadow_matrices[layer];
-    let offset=select(m.atlas.xy,vec2f(0),m.policy.w==0u);
-    let size=select(m.atlas.z,1.0,m.policy.w==0u);
-    let half_texel=0.5/dims;
-    return clamp(offset+uv*size,offset+half_texel,offset+vec2f(size)-half_texel);
-}
-fn budget_valid(layer:u32,disabled:u32)->bool {
-    if layer>=arrayLength(&shadow_matrices) {return false;}
-    let m=shadow_matrices[layer];
-    return m.policy.w==0u || (m.policy.w==2u && m.atlas.z>0.0 && (m.policy.y&disabled)==0u);
-}
-fn budget_strength(layer:u32)->f32 {
-    let m=shadow_matrices[layer];return select(m.atlas.w,1.0,m.policy.w==0u);
-}
-
-fn budget_compare_dynamic(uv:vec2f,layer:u32,depth:f32)->f32 {
-    if !budget_valid(layer,32u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(shadow_atlas) {return 1.0;}
-    let value=textureSampleCompareLevel(shadow_atlas,shadow_samp,budget_uv(uv,layer,vec2f(textureDimensions(shadow_atlas))),i32(budget_layer(layer)),depth);
-    return mix(1.0,value,budget_strength(layer));
-}
-fn budget_depth_dynamic(pixel:vec2i,layer:u32)->f32 {
-    if !budget_valid(layer,32u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(shadow_atlas) {return 1.0;}
-    let dims=vec2f(textureDimensions(shadow_atlas));
-    let uv=(vec2f(pixel)+0.5)/budget_resolution(layer);
-    return textureLoad(shadow_atlas,vec2i(budget_uv(uv,layer,dims)*dims),i32(budget_layer(layer)),0);
-}
-
-fn budget_compare_static(uv:vec2f,layer:u32,depth:f32)->f32 {
-    if !budget_valid(layer,16u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(static_shadow_atlas) {return 1.0;}
-    let value=textureSampleCompareLevel(static_shadow_atlas,shadow_samp,budget_uv(uv,layer,vec2f(textureDimensions(static_shadow_atlas))),i32(budget_layer(layer)),depth);
-    return mix(1.0,value,budget_strength(layer));
-}
-fn budget_depth_static(pixel:vec2i,layer:u32)->f32 {
-    if !budget_valid(layer,16u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(static_shadow_atlas) {return 1.0;}
-    let dims=vec2f(textureDimensions(static_shadow_atlas));
-    let uv=(vec2f(pixel)+0.5)/budget_resolution(layer);
-    return textureLoad(static_shadow_atlas,vec2i(budget_uv(uv,layer,dims)*dims),i32(budget_layer(layer)),0);
 }

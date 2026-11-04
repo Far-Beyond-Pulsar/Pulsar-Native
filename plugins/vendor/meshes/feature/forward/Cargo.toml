@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-mesh-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-feature-api = { workspace = true }
 pulsar_reflection = { workspace = true }
 helio-core = { workspace = true }
 helio-mats = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 log = { workspace = true }

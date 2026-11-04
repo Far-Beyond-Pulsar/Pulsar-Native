@@ -479,7 +479,7 @@ fn main() {
     // examples).
     {
         use fog_component::GlobalFogComponent;
-        use helio_component::components::LightComponent;
+        use lights_component::LightComponent;
         use post_component::{CameraPostProcessComponent, PostProcessVolumeComponent};
         use sky_component::AtmosphereComponent;
         let world = &scene.read().world;

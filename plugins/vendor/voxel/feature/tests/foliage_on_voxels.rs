@@ -85,7 +85,7 @@ impl Harness {
             helio_mesh_host::StaticObjectComponent::register_gpu_columns_growable(
                 &mut store, 16, &device,
             );
-            helio_components::LightComponent::register_gpu_columns_growable(
+            helio_light_host::LightComponent::register_gpu_columns_growable(
                 &mut store, 16, &device,
             );
             scene

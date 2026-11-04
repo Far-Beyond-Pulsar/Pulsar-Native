@@ -52,8 +52,8 @@ impl HelioWasmApp for Demo {
         );
 
         let light_ids: [Entity; 3] = std::array::from_fn(|i| {
-            let mut light = helio::GpuLight::default();
-            light.light_type = helio::LightType::Spot as u32;
+            let mut light = helio_light_api::GpuLight::default();
+            light.light_type = helio_light_api::LightType::Spot as u32;
             light.color_intensity = match i {
                 0 => [1.0, 0.3, 0.2, 8.0],
                 1 => [0.2, 1.0, 0.3, 8.0],

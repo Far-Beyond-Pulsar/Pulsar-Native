@@ -206,8 +206,8 @@ impl ApplicationHandler for App {
             panic!("[GPU UNCAPTURED ERROR] {:?}", e);
         }));
         let config = RendererConfig::new(size.width, size.height, format).with_feature(
-            helio_pass_shadow_matrix::ShadowSettings {
-                quality: helio::ShadowQuality::Ultra,
+            helio_light_api::ShadowSettings {
+                quality: helio_light_api::ShadowQuality::Ultra,
                 ..Default::default()
             },
         );

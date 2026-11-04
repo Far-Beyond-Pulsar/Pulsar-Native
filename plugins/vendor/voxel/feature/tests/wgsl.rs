@@ -10,7 +10,7 @@ const SNIPPETS: &[helio_core::shader::ShaderSnippet] = &[
     helio_mats::SPECULAR_AA_SNIPPET,
     helio_gi_api::GI_COMMON_SNIPPET,
     helio_gi_api::GI_SAMPLE_SNIPPET,
-    helio_pass_shadow_matrix::SUN_OCCLUSION_SNIPPET,
+    helio_light_api::SUN_OCCLUSION_SNIPPET,
 ];
 
 #[test]

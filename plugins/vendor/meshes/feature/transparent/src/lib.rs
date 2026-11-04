@@ -20,7 +20,7 @@ use helio_mats::radiant::{RadiantShaderCache, RadiantShaderKey};
 use pulsar_scenedb::gpu::{world_mirror::DEFAULT_AUTO_REGISTER_CAPACITY, BufferKey};
 
 /// Fixed capacity for the `"scene_lights"` SceneDB buffer, kept equal to
-/// `helio_pass_light_cull::MAX_LIGHTS`/`helio_pass_light_cull::MAX_LIGHTS`
+/// `helio_light_api::MAX_LIGHTS`/`helio_light_api::MAX_LIGHTS`
 /// by construction (all three are literally `DEFAULT_AUTO_REGISTER_CAPACITY`).
 const MAX_LIGHTS: u32 = DEFAULT_AUTO_REGISTER_CAPACITY;
 
@@ -311,6 +311,9 @@ impl TransparentPass {
                         String::with_capacity(base_src.len() + helio_mats::PBR_EVAL.len());
                     resolved.push_str(helio_mats::PBR_EVAL);
                     resolved.push('\n');
+                    // The lights' row and forward light function.
+                    resolved.push_str(helio_light_api::LIGHT_LIST_SNIPPET.source);
+                    resolved.push_str(helio_light_api::LIGHT_FORWARD_SNIPPET.source);
                     resolved.push_str(&base_src.replace(
                         "// HELIO_VIEW_SURFACE_EFFECT",
                         "surface = apply_medium(surface, input.world_position);",
@@ -410,7 +413,7 @@ impl RenderPass for TransparentPass {
             "builtin_mesh_index",
             "builtin_mesh_vertex",
             "materials",
-            "scene_lights",
+            helio_light_api::LIGHT_LIST,
             "skeletal_bone_palette",
             "skeletal_skin_vertices",
         ]
@@ -430,7 +433,7 @@ impl RenderPass for TransparentPass {
         }
         reads.extend([
             "depth",
-            "cluster_light_grid",
+            helio_light_api::CLUSTER_LIGHT_GRID,
             "object_batch",
             "culled_batch",
         ]);
@@ -466,7 +469,7 @@ impl RenderPass for TransparentPass {
             builder.read(media.parameters);
         }
         builder.read("depth");
-        builder.read("cluster_light_grid");
+        builder.read(helio_light_api::CLUSTER_LIGHT_GRID);
         builder.read("object_batch");
         builder.read("culled_batch");
     }
@@ -479,7 +482,9 @@ impl RenderPass for TransparentPass {
         // `LightsFrameData` bridge's `movable_light_count`, production's
         // actual light count today -- see `ForwardLitPass`'s identical
         // `light_mode_direct_index` doc for the full reasoning.
-        let scene_lights = ctx.scene_buffers.get(BufferKey::of("scene_lights"));
+        let scene_lights = ctx
+            .scene_buffers
+            .get(BufferKey::of(helio_light_api::LIGHT_LIST));
         let use_direct_index = scene_lights.is_some();
         let light_count = scene_lights.map_or(0, |lights| lights.row_capacity());
         ctx.write_buffer(
@@ -609,12 +614,12 @@ impl RenderPass for TransparentPass {
         // buffer pointers change. Lights are always read from the SceneDB
         // component buffer; the camera buffer is a valid binding fallback
         // when no light component has been authored yet.
-        let cluster = ctx
-            .registry
-            .get::<helio_pass_light_cull::ClusterLightGrid<'_>>(helio_core::ResourceKey::new(
-                "cluster_light_grid",
-            ));
-        let lights_handle = ctx.scene_buffers.get(BufferKey::of("scene_lights"));
+        let cluster = ctx.registry.get::<helio_light_api::ClusterLightGrid<'_>>(
+            helio_core::ResourceKey::new(helio_light_api::CLUSTER_LIGHT_GRID),
+        );
+        let lights_handle = ctx
+            .scene_buffers
+            .get(BufferKey::of(helio_light_api::LIGHT_LIST));
         let lights_buf = lights_handle
             .map(|handle| &handle.buffer)
             .unwrap_or(batch.instances);
@@ -829,6 +834,28 @@ impl TransparentPass {
                     }
                     &self.local_class0
                 });
+            // A custom template is the transparent base with its own
+            // surface: it takes the same snippets the base does.
+            let composed;
+            let template = if std::ptr::eq(template, &self.local_class0) {
+                template
+            } else {
+                composed = helio_mats::radiant::RadiantTemplate {
+                    name: template.name.clone(),
+                    wgsl_source: std::sync::Arc::from(
+                        helio_core::shader::resolve_with(
+                            &template.wgsl_source,
+                            &[
+                                helio_mats::PBR_EVAL_SNIPPET,
+                                helio_light_api::LIGHT_LIST_SNIPPET,
+                                helio_light_api::LIGHT_FORWARD_SNIPPET,
+                            ],
+                        )
+                        .as_ref(),
+                    ),
+                };
+                &composed
+            };
             let supports_reactivity = template
                 .wgsl_source
                 .contains("HELIO_TRANSPARENT_REACTIVITY");

@@ -5,6 +5,7 @@ edition = "2021"
 description = "SolidRS integration layer for Helio renderer - asset loading and conversion"
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-mesh-api = { workspace = true }
 # Helio renderer facade
 helio = { workspace = true }

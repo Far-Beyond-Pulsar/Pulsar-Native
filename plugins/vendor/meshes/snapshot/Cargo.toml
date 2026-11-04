@@ -6,6 +6,8 @@ description = "Headless snapshot renderer for Helio — loads a model file, rend
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
 helio-mesh-api = { workspace = true }
 helio-mesh-host = { workspace = true }
 helio-mats = { workspace = true }
@@ -13,7 +15,6 @@ helio-components = { workspace = true }
 helio-asset-compat = { workspace = true }
 helio              = { workspace = true }
 helio-presets = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 pulsar_scenedb = { workspace = true }
 wgpu               = { workspace = true }
 glam               = { workspace = true }

@@ -3360,25 +3360,14 @@ fn shadow_cross(@builtin(global_invocation_id) gid: vec3<u32>) {
 // The second: 1 where the word is the pixel's own walks', 0 where a
 // neighbour's.
 @group(1) @binding(30) var<storage, read_write> local_seen: array<vec2<u32>>;
-// Helio's lights (`GpuLight`, 128 bytes) and its tile light lists.
-struct SceneLight {
-    position_range: vec4<f32>,
-    direction_outer: vec4<f32>,
-    color_intensity: vec4<f32>,
-    shadow_index: u32,
-    light_type: u32,
-    inner_angle: f32,
-    flags: u32,
-    rest: array<vec4<u32>, 4>,
-}
-@group(1) @binding(31) var<storage, read> scene_lights: array<SceneLight>;
+// The lights' light list (`GpuLight`, `//!use light_list`) and its tile
+// lists.
+@group(1) @binding(31) var<storage, read> scene_lights: array<GpuLight>;
 @group(1) @binding(32) var<storage, read> tile_light_lists: array<u32>;
 @group(1) @binding(33) var<storage, read> tile_light_counts: array<u32>;
 // A sample a 2x2 block (`local_sample`, rows of the half frame): its word,
 // its hit's distance (0: none).
 @group(1) @binding(34) var<storage, read_write> local_samples: array<vec2<u32>>;
-const LIGHT_TILE: u32 = 16u;
-const LIGHTS_PER_TILE: u32 = 64u;
 const LOCAL_LIGHTS: u32 = 32u;
 
 // Whether light `light` (in a tile's list) wants the terrain's shadow at
@@ -3393,11 +3382,11 @@ struct LightReach {
     back: bool,
 }
 
-fn light_reach(light: SceneLight, at: vec3<f32>, n: vec3<f32>, transmits: bool) -> LightReach {
+fn light_reach(light: GpuLight, at: vec3<f32>, n: vec3<f32>, transmits: bool) -> LightReach {
     var none: LightReach;
-    // Shadows as the deferred lighting requests them (`shadow_factor`).
-    let requested = select(light.shadow_index != 0xffffffffu, (light.flags & 4u) != 0u, (light.flags & 8u) != 0u);
-    if light.light_type == 0u || !requested || (light.flags & 48u) == 48u { return none; }
+    // Shadows as the lights request them (the caster kinds it skips: both,
+    // none of the terrain's).
+    if light.light_type == LIGHT_DIRECTIONAL || !light_shadow_requested(light) || (light._pad & 48u) == 48u { return none; }
     // The light in the volume's frame (eye-relative).
     let to = to_local(light.position_range.xyz - params.light_eye.xyz) - at;
     let range = length(to);
@@ -3405,15 +3394,15 @@ fn light_reach(light: SceneLight, at: vec3<f32>, n: vec3<f32>, transmits: bool) 
     let dir = to / range;
     let back = dot(n, n) > 0.0 && dot(n, dir) <= 0.0;
     if back && !transmits { return none; }
-    if light.light_type == 2u && dot(-dir, normalize(to_local(light.direction_outer.xyz))) < light.direction_outer.w { return none; }
+    if light.light_type == LIGHT_SPOT && dot(-dir, normalize(to_local(light.direction_outer.xyz))) < light.direction_outer.w { return none; }
     return LightReach(true, dir, range, back);
 }
 
 // The tile list of pixel `p` (its first entry, its count up to 32).
 fn light_tile(p: vec2<u32>, size: vec2<u32>) -> vec2<u32> {
-    let tiles_x = (size.x + LIGHT_TILE - 1u) / LIGHT_TILE;
-    let tile = (p.y / LIGHT_TILE) * tiles_x + p.x / LIGHT_TILE;
-    return vec2<u32>(tile * LIGHTS_PER_TILE, min(tile_light_counts[tile], LOCAL_LIGHTS));
+    let tiles_x = (size.x + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    let tile = (p.y / LIGHT_TILE_SIZE) * tiles_x + p.x / LIGHT_TILE_SIZE;
+    return vec2<u32>(tile * LIGHT_MAX_PER_TILE, min(tile_light_counts[tile], LOCAL_LIGHTS));
 }
 
 // WALK {
@@ -3504,7 +3493,7 @@ fn local_reuse(p: vec2<u32>, size: vec2<u32>, slot: u32, t: f32) -> u32 {
     for (var b = 0u; b < 4u; b++) {
         let at = blocks[b];
         // Blocks of another light tile list another tile's lights.
-        if any(at < vec2<i32>(0)) || any(at >= half) || any(at * 2 / i32(LIGHT_TILE) != vec2<i32>(p) / i32(LIGHT_TILE)) { continue; }
+        if any(at < vec2<i32>(0)) || any(at >= half) || any(at * 2 / i32(LIGHT_TILE_SIZE) != vec2<i32>(p) / i32(LIGHT_TILE_SIZE)) { continue; }
         let s = local_samples[u32(at.y) * u32(half.x) + u32(at.x)];
         if s.y != 0u && distance(pixel_ray(sample_pixel(vec2<u32>(at), size), size) * bitcast<f32>(s.y), at_hit) <= reach { return s.x; }
     }
@@ -4203,7 +4192,7 @@ fn local_gate(@builtin(local_invocation_index) li: u32) {
     workgroupBarrier();
     for (var i = li; i < arrayLength(&scene_lights); i += 64u) {
         let light = scene_lights[i];
-        if light.light_type != 0u && light.color_intensity.w > 0.0 { atomicOr(&w_present, 1u); }
+        if light.light_type != LIGHT_DIRECTIONAL && light.color_intensity.w > 0.0 { atomicOr(&w_present, 1u); }
     }
     workgroupBarrier();
     if li != 0u { return; }
@@ -4255,14 +4244,14 @@ fn local_temporal(@builtin(global_invocation_id) id: vec3<u32>, @builtin(workgro
     let size = textureDimensions(hit_distance);
     let rp = ray_plane(size);
     let origin = vec2<i32>(group.xy) * 8 - CLAMP_RADIUS;
-    // A workgroup lies in one light tile (8 divides LIGHT_TILE). Without a
+    // A workgroup lies in one light tile (8 divides LIGHT_TILE_SIZE). Without a
     // point or spot light in it, nothing tracked (lighting reads none of
     // its words: they are only for those lights).
-    let tile_lo = (vec2<i32>(group.xy) * 8 / i32(LIGHT_TILE)) * i32(LIGHT_TILE);
+    let tile_lo = (vec2<i32>(group.xy) * 8 / i32(LIGHT_TILE_SIZE)) * i32(LIGHT_TILE_SIZE);
     let tile_list = light_tile(vec2<u32>(tile_lo), size);
     var local_lights = false;
     for (var i = 0u; i < tile_list.y; i++) {
-        local_lights = local_lights || scene_lights[tile_light_lists[tile_list.x + i]].light_type != 0u;
+        local_lights = local_lights || scene_lights[tile_light_lists[tile_list.x + i]].light_type != LIGHT_DIRECTIONAL;
     }
     if !local_lights {
         if id.x < size.x && id.y < size.y { local_history[id.y * size.x + id.x] = vec4<u32>(0u); }
@@ -4272,7 +4261,7 @@ fn local_temporal(@builtin(global_invocation_id) id: vec3<u32>, @builtin(workgro
         let q = origin + vec2<i32>(i32(i) % LOCAL_TILE, i32(i) / LOCAL_TILE);
         var depth = 0.0;
         var seen = 0u;
-        if all(q >= tile_lo) && all(q < min(tile_lo + i32(LIGHT_TILE), vec2<i32>(size))) {
+        if all(q >= tile_lo) && all(q < min(tile_lo + i32(LIGHT_TILE_SIZE), vec2<i32>(size))) {
             depth = surface_depth(q, walked_sun(q, size), rp);
             seen = local_seen[u32(q.y) * size.x + u32(q.x)].x;
         }

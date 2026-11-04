@@ -90,6 +90,7 @@ foliage_component = { workspace = true }
 gi_component = { workspace = true }
 sky_component = { workspace = true }
 meshes_component = { workspace = true }
+lights_component = { workspace = true }
 
 [lints]
 workspace = true

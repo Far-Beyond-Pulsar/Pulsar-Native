@@ -106,8 +106,8 @@ impl ApplicationHandler for App {
         let surface_format = format;
 
         let config = RendererConfig::new(size.width, size.height, format).with_feature(
-            helio_pass_shadow_matrix::ShadowSettings {
-                quality: helio::ShadowQuality::High,
+            helio_light_api::ShadowSettings {
+                quality: helio_light_api::ShadowQuality::High,
                 ..Default::default()
             },
         );

@@ -6,6 +6,7 @@ description = "Destructible voxel worlds, drawn: chunk-tree residency, generatio
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-light-api = { workspace = true }
 helio-pass-tsr = { workspace = true }
 helio-water-api = { workspace = true }
 helio-voxel-world = { workspace = true }
@@ -33,8 +34,8 @@ image = { workspace = true }
 miniz_oxide = { version = "0.8" }
 
 [dev-dependencies]
+helio-light-host = { workspace = true }
 helio-mesh-host = { workspace = true }
-helio-pass-light-cull = { workspace = true }
 pollster = "0.4"
 # examples/shader_stats.rs: driver statistics of the compute pipelines.
 ash = "0.38"

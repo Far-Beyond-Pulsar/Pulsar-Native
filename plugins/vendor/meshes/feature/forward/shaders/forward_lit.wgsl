@@ -1,4 +1,6 @@
 //!use pbr_eval
+//!use light_list
+//!use light_forward
 //!use specular_aa
 
 enable wgpu_binding_array;
@@ -24,18 +26,11 @@ struct Globals {
     num_tiles_y:       u32,
     screen_width:      f32,
     screen_height:     f32,
-    // 1 when `lights[i]`/`transforms[i]` share the same raw entity index
-    // (SceneDB-direct); 0 when `lights` is `ctx.scene.lights`, a freshly
-    // rebuilt dense array whose entry `i` needs `light_entity_indices[i]`
-    // to find its real entity. See `light_entity_indices`'s binding doc.
-    light_mode_direct_index: u32,
+    _pad0: u32,
     time: f32, // RADIANT_GLOBALS_TIME: seconds since start, for graph time nodes
     _pad1: u32,
     _pad2: u32,
 }
-
-const TILE_SIZE: u32 = 16u;
-const MAX_LIGHTS_PER_TILE: u32 = 64u;
 
 struct GpuMaterial {
     base_color:         vec4<f32>,
@@ -89,50 +84,10 @@ struct GpuInstanceData {
     _skin_pad: u32,
 }
 
-struct GpuLight {
-    position_range:  vec4<f32>,
-    direction_outer: vec4<f32>,
-    color_intensity: vec4<f32>,
-    shadow_index:    u32,
-    light_type:      u32,
-    inner_angle:     f32,
-    _pad:            u32,
-    god_rays_enabled:  u32,
-    god_rays_density:  f32,
-    god_rays_weight:   f32,
-    god_rays_decay:    f32,
-    god_rays_exposure: f32,
-    flare_enabled:      u32,
-    flare_type:         u32,
-    flare_intensity:    f32,
-    flare_scale:        f32,
-    flare_tint_r:       f32,
-    flare_tint_g:       f32,
-    flare_tint_b:       f32,
-    ies_profile_index:    i32,
-    light_function_index: i32,
-    ies_angle_scale:      f32,
-    ies_angle_offset:     f32,
-}
-
 const FLAG_HAS_NORMAL_MAP: u32 = 1u << 3u;
 const NO_TEXTURE: u32 = 0xffffffffu;
 const MATERIAL_WORKFLOW_METALLIC: u32 = 0u;
 const MATERIAL_WORKFLOW_SPECULAR: u32 = 1u;
-
-// SceneDB's `Transform` component (`engine_backend::scene::Transform`),
-// mirrored byte-for-byte via `#[gpu(layout = packed)]` -- `position`,
-// `rotation`, `scale` are plain `[f32; 3]` (12 bytes each, no padding),
-// so this must stay `array<f32, 3>` fields rather than `vec3<f32>` ones:
-// WGSL gives a struct-member `vec3<f32>` 16-byte alignment, which would
-// desync every read against the true 36-byte-stride Rust layout.
-// `rotation` is degrees, `[pitch_x, yaw_y, roll_z]` -- see
-// `light_direction_from_rotation` below for the exact convention.
-struct Transform {
-    position: array<f32, 3>,
-    rotation: array<f32, 3>,
-    scale:    array<f32, 3>,
-}
 
 @group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(1) var<uniform>          globals:           Globals;
@@ -141,21 +96,6 @@ struct Transform {
 @group(0) @binding(4) var<storage, read>    lights:            array<GpuLight>;
 @group(0) @binding(5) var<storage, read>    tile_light_lists:  array<u32>;
 @group(0) @binding(6) var<storage, read>    tile_light_counts: array<u32>;
-// Parallel to `lights` when `globals.light_mode_direct_index == 0` -- entry
-// `i` is the real SceneDB entity index `lights[i]` was built from this frame
-// (`ctx.scene.lights` is a freshly-rebuilt dense array every frame, not
-// itself entity-indexed). Ignored (identity) when
-// `light_mode_direct_index == 1`, since `lights` is then the SceneDB
-// `"scene_lights"` buffer directly, already entity-indexed the same way
-// `transforms` is.
-@group(0) @binding(7) var<storage, read>    light_entity_indices: array<u32>;
-// SceneDB's live `Transform` buffer. This is the ONLY source of light world
-// position/direction -- `GpuLight.position_range`/`direction_outer` carry a
-// stale/zeroed placeholder for these fields (see
-// `LightComponentGpuMirror::to_helio_gpu_light`'s doc, helio-component);
-// `.range`/`.outer_angle` (the `.w` components) are real light properties,
-// not positional data, and still come from `lights` as before.
-@group(0) @binding(8) var<storage, read>    transforms: array<Transform>;
 struct SkinVertex { joints: vec4<u32>, weights: vec4<f32> }
 @group(0) @binding(9) var<storage, read> skin_vertices: array<SkinVertex>;
 @group(0) @binding(10) var<storage, read> bone_palette: array<mat4x4<f32>>;
@@ -371,121 +311,6 @@ fn radiant_eval_surface(material: GpuMaterial, material_tex: MaterialTextureData
     return s;
 }
 
-// Quaternion helpers (xyzw), matching glam's own conventions exactly --
-// verified numerically against real `glam::Quat` output (8 angle
-// combinations, max error 0.0) before landing this. Do not "simplify"
-// these into a closed-form sin/cos direction formula by hand; composing
-// per-axis quaternions the same way glam does is what makes this provably
-// correct instead of independently re-derived (and possibly sign-flipped).
-fn quat_from_rotation_x(angle: f32) -> vec4<f32> {
-    let h = angle * 0.5;
-    return vec4<f32>(sin(h), 0.0, 0.0, cos(h));
-}
-fn quat_from_rotation_y(angle: f32) -> vec4<f32> {
-    let h = angle * 0.5;
-    return vec4<f32>(0.0, sin(h), 0.0, cos(h));
-}
-fn quat_from_rotation_z(angle: f32) -> vec4<f32> {
-    let h = angle * 0.5;
-    return vec4<f32>(0.0, 0.0, sin(h), cos(h));
-}
-fn quat_mul(q1: vec4<f32>, q2: vec4<f32>) -> vec4<f32> {
-    return vec4<f32>(
-        q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
-        q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
-        q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
-        q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z,
-    );
-}
-fn quat_rotate_vec3(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
-    let qv = q.xyz;
-    let t  = 2.0 * cross(qv, v);
-    return v + q.w * t + cross(qv, t);
-}
-
-// A light with identity rotation shines down -Z. There was no established
-// "forward" convention for lights before this landed -- they previously
-// used a hardcoded, never-rotated [0,-1,0] placeholder (see
-// `LightComponentGpuMirror::to_helio_gpu_light`'s doc, helio-component,
-// for why it couldn't be computed there). This is now the one canonical
-// definition; change it here only.
-const LIGHT_LOCAL_FORWARD: vec3<f32> = vec3<f32>(0.0, 0.0, -1.0);
-
-// Matches `Quat::from_euler(EulerRot::YXZ, rotation[1].to_radians(),
-// rotation[0].to_radians(), rotation[2].to_radians())`, the exact call
-// Pulsar's `Transform` composition (`pulsar_scene_model`) uses for
-// this same `Transform.rotation` field -- `rotation = [pitch_x, yaw_y,
-// roll_z]` in degrees. Composition order (glam's own `from_euler`
-// definition for this enum variant) is Y * X * Z: a vector is rotated by
-// Z first, then X, then Y.
-fn light_direction_from_rotation(rotation_deg: array<f32, 3>) -> vec3<f32> {
-    let pitch = radians(rotation_deg[0]);
-    let yaw   = radians(rotation_deg[1]);
-    let roll  = radians(rotation_deg[2]);
-    let qy = quat_from_rotation_y(yaw);
-    let qx = quat_from_rotation_x(pitch);
-    let qz = quat_from_rotation_z(roll);
-    let q  = quat_mul(quat_mul(qy, qx), qz);
-    return normalize(quat_rotate_vec3(q, LIGHT_LOCAL_FORWARD));
-}
-
-fn pbr_direct_light(
-    light:     GpuLight,
-    light_pos: vec3<f32>,
-    light_dir: vec3<f32>,
-    world_pos: vec3<f32>,
-    N:         vec3<f32>,
-    V:         vec3<f32>,
-    F0:        vec3<f32>,
-    albedo:    vec3<f32>,
-    roughness: f32,
-    metallic:  f32,
-    sf:        f32,
-    is_anisotropic: bool,
-    T:         vec3<f32>,
-    ax:        f32,
-    ay:        f32,
-    has_subsurface: bool,
-    subsurface_color: vec3<f32>,
-) -> vec3<f32> {
-    var L:        vec3<f32>;
-    var radiance: vec3<f32>;
-
-    if light.light_type == 0u {
-        L        = normalize(-light_dir);
-        radiance = light.color_intensity.xyz * light.color_intensity.w;
-    } else {
-        let to_light = light_pos - world_pos;
-        let dist     = length(to_light);
-        if dist > light.position_range.w { return vec3<f32>(0.0); }
-        L = to_light / dist;
-        var atten = 1.0 / (dist * dist + 0.0001);
-        let normalized_dist = dist / light.position_range.w;
-        atten *= max(0.0, 1.0 - normalized_dist * normalized_dist * normalized_dist * normalized_dist);
-        if light.light_type == 2u {
-            let cos_a = dot(-L, light_dir);
-            atten    *= smoothstep(light.direction_outer.w, light.inner_angle, cos_a);
-        }
-        radiance = light.color_intensity.xyz * light.color_intensity.w * atten;
-    }
-
-    let NdL = max(dot(N, L), 0.0);
-    if NdL == 0.0 { return vec3<f32>(0.0); }
-
-    let H = normalize(V + L);
-    let F = fresnel_schlick(max(dot(H, V), 0.0), F0);
-    let kD = (1.0 - F) * (1.0 - metallic);
-    let NdV = max(dot(N, V), 0.0);
-
-    var D = distribution_ggx(N, H, roughness);
-    var G = geometry_smith(N, V, L, roughness);
-
-    let specular = D * G * F / (4.0 * NdV * NdL + 0.0001);
-    let diffuse_term = kD * albedo / PI;
-
-    return (diffuse_term + specular) * radiance * NdL;
-}
-
 // Basic SceneDB materials carry texture-store indices directly. An explicit
 // metadata table can still supply transformed UVs and extension textures.
 fn material_slot(index: u32) -> MaterialTextureSlot {
@@ -520,33 +345,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
     var Lo = vec3<f32>(0.0);
 
-    let tile_x = u32(input.clip_position.x) / TILE_SIZE;
-    let tile_y = u32(input.clip_position.y) / TILE_SIZE;
-    let tile_idx = tile_y * globals.num_tiles_x + tile_x;
-    let tile_light_count = tile_light_counts[tile_idx];
-
-    for (var i = 0u; i < tile_light_count; i++) {
-        let light_idx = tile_light_lists[tile_idx * MAX_LIGHTS_PER_TILE + i];
-        let light = lights[light_idx];
-        // World position/direction come from SceneDB's own Transform buffer,
-        // not from `light`'s own (stale/zeroed) `position_range`/
-        // `direction_outer` xyz -- see the `transforms` binding's own doc.
-        // The entity index to look it up under depends on which light
-        // source is active this frame; see `light_entity_indices`'s doc.
-        let entity_idx = select(light_entity_indices[light_idx], light_idx, globals.light_mode_direct_index != 0u);
-        let transform  = transforms[entity_idx];
-        let light_pos  = vec3<f32>(transform.position[0], transform.position[1], transform.position[2]);
-        let light_dir  = light_direction_from_rotation(transform.rotation);
-        if light.light_type != 0u {
-            let dist = length(light_pos - input.world_position);
-            if dist > light.position_range.w { continue; }
-        }
-        Lo += pbr_direct_light(
-            light, light_pos, light_dir, input.world_position, N, V, F0, albedo,
-            roughness, metallic, 1.0, false,
-            vec3<f32>(0.0), 0.0, 0.0, false, vec3<f32>(0.0),
-        );
-    }
+    // The lights of the pixel's tile (the lights' forward function).
+    Lo += light_forward(
+        input.clip_position.xy, globals.num_tiles_x, input.world_position,
+        N, V, F0, albedo, roughness, metallic,
+    );
 
     let ambient = globals.ambient_color.rgb * globals.ambient_intensity * albedo * ao;
     let color = Lo + ambient + emissive;

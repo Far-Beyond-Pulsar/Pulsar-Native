@@ -255,7 +255,7 @@ fn water_volumes_are_packed_into_the_leading_rows() {
 #[test]
 fn water_takes_the_scenes_sun_and_the_global_wind() {
     use foliage_component::WindComponent;
-    use helio_component::components::{LightComponent, LightType};
+    use lights_component::{LightComponent, LightType};
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return;
@@ -324,8 +324,9 @@ fn water_takes_the_scenes_sun_and_the_global_wind() {
     light.general.light_type = LightType::Directional;
     let light = pulsar_world_registry::attach_value(&mut scene.world, sun, light).unwrap();
     let (rows, out) = water_rows(&mut join, &mut scene, &mut scene_join);
-    let lit: helio::GpuLight =
-        join.read::<helio::GpuLight>(&out, "scene_lights")[light.index() as usize];
+    let lit: helio_light_api::GpuLight = join
+        .read::<helio_light_api::GpuLight>(&out, helio_light_api::LIGHT_LIST)
+        [light.index() as usize];
     let toward = -glam::Vec3::from_slice(&lit.direction_outer[..3]).normalize();
     assert!(
         toward.y > 0.1 && toward.x.abs() > 0.1,

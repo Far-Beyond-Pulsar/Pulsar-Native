@@ -4,8 +4,9 @@
 #![allow(dead_code)]
 
 use glam::{Mat4, Vec3};
-use helio::{GpuLight, SceneDbHandle};
+use helio::SceneDbHandle;
 use helio_components::MaterialComponent;
+use helio_light_api::GpuLight;
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use helio_pass_sky::host_rows::AtmosphereComponent;
 use pulsar_scenedb::{Entity, World};
@@ -65,9 +66,9 @@ pub fn new_scene_db_with_gpu_mirror_and(
         4096,
         device,
     );
-    helio_components::LightComponent::register_gpu_columns_growable(
+    helio_light_host::LightComponent::register_gpu_columns_growable(
         &mut gpu_store,
-        helio_pass_light_cull::MAX_LIGHTS,
+        helio_light_api::MAX_LIGHTS,
         device,
     );
     register_extra(&mut gpu_store);
@@ -258,7 +259,7 @@ pub fn spawn_material(world: &mut World, material: helio_components::MaterialCom
 //
 // A demo's placed objects and lights are authored as *pass-owned* SceneDB
 // components — `helio_mesh_host::StaticObjectComponent` and
-// `helio_components::LightComponent` — not as example-local structs or
+// `helio_light_host::LightComponent` — not as example-local structs or
 // entries in a Helio-owned `Vec`/arena. Each is `#[derive(SceneStore)]` +
 // `#[gpu(layout = packed, ...)]`, exactly like the already-shipped
 // `CoronaEmitterComponent`: the pass that consumes a kind
@@ -269,7 +270,7 @@ pub fn spawn_material(world: &mut World, material: helio_components::MaterialCom
 // resolved when the component is authored, while existence and transforms stay
 // exclusively in the World row.
 
-pub use helio_components::LightComponent;
+pub use helio_light_host::LightComponent;
 pub use helio_mesh_host::{MeshComponent, StaticObjectComponent};
 
 /// Insert the scene's atmosphere: Earth's air, its Rayleigh scattering
@@ -368,7 +369,7 @@ pub fn spawn_light(world: &mut World, light: GpuLight) -> Entity {
     let entity = world.spawn();
     world.insert(
         entity,
-        LightComponent::from(helio_pass_light_cull::LightRow::from(light)),
+        LightComponent::from(helio_light_api::LightRow::from(light)),
     );
     entity
 }

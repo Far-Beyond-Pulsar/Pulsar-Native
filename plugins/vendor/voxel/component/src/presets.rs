@@ -16,12 +16,11 @@
 //! object. Objects left with nothing on them are removed.
 
 use engine_backend::scene::{
-    EditorCamera, Name, ObjectType, RuntimeLevel, SceneWorldExt, SpawnObject, Transform,
-    Visibility, level_rules,
+    EditorCamera, Name, ObjectType, RuntimeLevel, SceneWorldExt, SpawnObject, Transform, Visibility,
 };
 use fog_component::GlobalFogComponent;
 use foliage_component::{FoliageComponent, FoliageForm};
-use helio_component::LightComponent;
+use lights_component::LightComponent;
 use post_component::PostProcessVolumeComponent;
 use pulsar_scene_model::{NewInstance, attachments};
 use pulsar_scenedb::{Entity, World};
@@ -135,7 +134,7 @@ impl Plan {
         }
         Self {
             terrain_owner,
-            sun: level_rules::directional_lights(world).first().copied(),
+            sun: lights_component::directional_lights(world).first().copied(),
             look: attached::<PostProcessVolumeComponent>(world, |volume| {
                 volume.enabled && volume.unbound
             })
@@ -213,7 +212,7 @@ pub fn add_voxel_world(
         let light = instances.iter().find(|instance| {
             source
                 .get::<LightComponent>(**instance)
-                .is_some_and(level_rules::is_directional)
+                .is_some_and(lights_component::is_directional)
         });
         let look = instances.iter().find(|instance| {
             source
@@ -401,7 +400,7 @@ mod tests {
             );
             assert!(sky_component::atmospheres(&world).len() <= 1);
             assert!(foliage_component::winds(&world).len() <= 1);
-            assert_eq!(level_rules::directional_lights(&world).len(), 1);
+            assert_eq!(lights_component::directional_lights(&world).len(), 1);
         }
     }
 
@@ -421,7 +420,7 @@ mod tests {
         assert_eq!(world.query::<&FoliageComponent>().count(), 0);
         assert_eq!(sky_component::atmospheres(&world).len(), 1);
         assert_eq!(foliage_component::winds(&world).len(), 0);
-        assert_eq!(level_rules::directional_lights(&world).len(), 1);
+        assert_eq!(lights_component::directional_lights(&world).len(), 1);
         assert_eq!(world.query::<&VoxelTerrainComponent>().count(), 1);
         assert_eq!(world.query::<&VoxelTerrainLayersComponent>().count(), 1);
         let terrain = world.query::<&VoxelTerrainComponent>().next().unwrap().1;
@@ -435,7 +434,7 @@ mod tests {
         let mut sky_only = World::new();
         let lamp = sky_only.spawn_object(SpawnObject::new("Lamp")).unwrap();
         let mut point = LightComponent::default();
-        point.general.light_type = helio_component::LightType::Point;
+        point.general.light_type = lights_component::LightType::Point;
         pulsar_world_registry::attach_value(&mut sky_only, lamp, point).unwrap();
         let sky = sky_only.spawn_object(SpawnObject::new("Sky")).unwrap();
         pulsar_world_registry::attach_value(&mut sky_only, sky, AtmosphereComponent::default())

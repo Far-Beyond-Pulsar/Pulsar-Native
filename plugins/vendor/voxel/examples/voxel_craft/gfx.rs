@@ -282,7 +282,7 @@ fn chunk_config(h: u32) -> ResidencyConfig {
 
 /// The sun along `direction` (from it), of `color`: it lights the haze too,
 /// shadowed by everything (shafts).
-fn sun_light(direction: [f32; 3], color: [f32; 3]) -> helio::GpuLight {
+fn sun_light(direction: [f32; 3], color: [f32; 3]) -> helio_light_api::GpuLight {
     let mut light = directional_light(direction, color, 3.0);
     light.god_rays_enabled = 1;
     light.god_rays_density = 1.0;

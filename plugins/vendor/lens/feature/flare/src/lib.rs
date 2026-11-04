@@ -294,10 +294,14 @@ impl LensFlarePass {
                 },
             ],
         });
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "Physical lens response",
             helio_core::include_wgsl!("../shaders/lens_response.wgsl"),
+            &[
+                helio_light_api::LIGHT_LIST_SNIPPET,
+                helio_light_api::SHADOW_ATLAS_SNIPPET,
+            ],
         );
         let pipeline = |entry, layouts: &[Option<&wgpu::BindGroupLayout>]| {
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -848,7 +852,7 @@ fn procedural_dirt(device: &wgpu::Device) -> (wgpu::Texture, wgpu::Buffer) {
 
 impl RenderPass for LensFlarePass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["scene_lights"]
+        &[helio_light_api::LIGHT_LIST]
     }
 
     fn name(&self) -> &'static str {
@@ -864,8 +868,8 @@ impl RenderPass for LensFlarePass {
             builder.read(alias);
         }
         // Analytic light sources: current-frame shadows for lens visibility.
-        builder.read("shadow_atlas");
-        builder.read("shadow_matrices");
+        builder.read(helio_light_api::SHADOW_ATLAS);
+        builder.read(helio_light_api::SHADOW_MATRICES);
         builder.read(DIRT_KEY);
         builder.read(RESOLVED_KEY);
         // A manually owned resource: this declaration tracks its dependency,
@@ -900,18 +904,18 @@ impl RenderPass for LensFlarePass {
             camera: Some(ctx.camera),
             lights: ctx
                 .scene_buffers
-                .get(helio_core::BufferKey::of("scene_lights"))
+                .get(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST))
                 .map(|handle| &handle.buffer),
             depth: Some(ctx.depth),
             shadow_matrices: ctx
                 .registry
-                .get::<helio_pass_shadow_matrix::ShadowMatricesFrameData<'_>>(
-                    helio_pass_shadow_matrix::shadow_matrices(),
+                .get::<helio_light_api::ShadowMatricesFrameData<'_>>(
+                    helio_light_api::shadow_matrices(),
                 )
                 .map(|s| s.shadow_matrices),
             shadow_atlas: ctx
                 .registry
-                .get::<&wgpu::TextureView>(ResourceKey::new("shadow_atlas")),
+                .get::<&wgpu::TextureView>(ResourceKey::new(helio_light_api::SHADOW_ATLAS)),
             dirt: ctx
                 .registry
                 .get::<&wgpu::TextureView>(ResourceKey::new(DIRT_KEY)),

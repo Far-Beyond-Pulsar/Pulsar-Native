@@ -47,11 +47,11 @@ pub use authored_lod::{
 #[cfg(feature = "render")]
 pub use helio_bridge::{
     authored_lod_selection, ensure_gpu_mirror, environment_join, first_fixed_in_group,
-    hierarchy_resolve, hierarchy_resolve_keys, light_join_keys, row_join_keys, scene_join,
-    scene_join_keys, sync_virtual_geometry, virtual_geometry_asset_ready,
-    virtual_geometry_instances, virtual_geometry_runtime_settings, SceneRowsRegistration,
-    SpaceProducer, SpaceProducerRegistration, SpaceSync, SpaceTable, VgAssetReadyPublisher,
-    VirtualGeometryHost, VirtualGeometryInstances,
+    hierarchy_resolve, hierarchy_resolve_keys, row_join_keys, scene_join, scene_join_keys,
+    sync_virtual_geometry, virtual_geometry_asset_ready, virtual_geometry_instances,
+    virtual_geometry_runtime_settings, ObjectJoinContext, ObjectJoinRegistration,
+    SceneRowsRegistration, SpaceProducer, SpaceProducerRegistration, SpaceSync, SpaceTable,
+    VgAssetReadyPublisher, VirtualGeometryHost, VirtualGeometryInstances,
 };
 #[cfg(feature = "render")]
 pub mod editor_postprocess;

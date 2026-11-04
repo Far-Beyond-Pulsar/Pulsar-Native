@@ -288,6 +288,7 @@ impl GiPass {
                 GI_COMMON_SNIPPET,
                 GI_SAMPLE_SNIPPET,
                 sun_transmittance::SNIPPET,
+                helio_light_api::LIGHT_LIST_SNIPPET,
             ],
         );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -597,7 +598,7 @@ impl RenderPass for GiPass {
             .cloned();
         let lights = ctx
             .scene_buffers
-            .get(helio_core::BufferKey::of("scene_lights"))
+            .get(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST))
             .map(|h| h.buffer.clone());
         let sun = self.sun_transmittance.and_then(|sun| {
             ctx.registry
@@ -1005,6 +1006,7 @@ mod shader_tests {
                 GI_COMMON_SNIPPET,
                 GI_SAMPLE_SNIPPET,
                 sun_transmittance::SNIPPET,
+                helio_light_api::LIGHT_LIST_SNIPPET,
             ],
         );
         validate(
@@ -1028,8 +1030,9 @@ mod shader_tests {
                 &crate::mesh::mesh_trace_source(binding),
                 &[
                     GI_COMMON_SNIPPET,
-                    helio_pass_shadow_matrix::SUN_OCCLUSION_SNIPPET,
+                    helio_light_api::SUN_OCCLUSION_SNIPPET,
                     sun_transmittance::SNIPPET,
+                    helio_light_api::LIGHT_LIST_SNIPPET,
                     helio_mesh_api::RAY_SURFACE_SNIPPET,
                 ],
             );

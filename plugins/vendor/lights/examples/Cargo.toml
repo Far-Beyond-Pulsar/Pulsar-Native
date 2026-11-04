@@ -1,0 +1,41 @@
+[package]
+name = "lights-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Lights (pulsar.lights): the examples whose subject is the lights (IES profiles, many lights, light icons), over Helio's presets with the meshes' and the lights' features"
+
+[dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true, features = ["host-rows"] }
+helio-mesh-host = { workspace = true }
+helio-mesh-api = { workspace = true }
+helio-components = { workspace = true }
+helio = { workspace = true }
+helio-core = { workspace = true }
+helio-mats = { workspace = true }
+helio-vg-stream = { workspace = true }
+helio-pass-deferred-light = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-postprocess = { workspace = true }
+pulsar_scenedb = { workspace = true }
+scenedb-inspector-agent = { workspace = true }
+image = { workspace = true, features = ["png", "jpeg"] }
+glam = { workspace = true }
+winit = { workspace = true }
+env_logger = { version = "0.11" }
+log = { workspace = true }
+wgpu = { workspace = true }
+pollster = { version = "0.4" }
+
+[[bin]]
+name = "ies_demo"
+path = "ies_demo.rs"
+
+[[bin]]
+name = "light_benchmark"
+path = "light_benchmark.rs"
+
+[[bin]]
+name = "billboard_demo"
+path = "billboard_demo.rs"

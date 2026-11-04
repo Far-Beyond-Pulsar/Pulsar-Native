@@ -4,13 +4,13 @@
 //! the fixture has one copy). Edits, moves, removal, stale frames,
 //! transmission rows and BLAS reuse all show in its shadow.
 #![allow(dead_code)]
-#[path = "../../../../../crates/renderer/helio/crates/passes/3d/helio-pass-hlfs/tests/support/mod.rs"]
+#[path = "../../../lights/feature/hlfs/tests/support/mod.rs"]
 mod support;
 use helio_mesh_host::ray_tracing::{RayTransmission, SceneDbRayTracing};
 use helio_pass_hlfs::{HlfsConfig, HlfsDebugMode, HlfsMode};
 use support::{mean, point, Fixture};
 
-fn light() -> helio_pass_light_cull::GpuLight {
+fn light() -> helio_light_api::GpuLight {
     let mut light = point([10.0, 0.0, 2.0], [1.0, 1.0, 1.0], 10000.0);
     light.position_range[3] = 100.0;
     light.shadow_index = u32::MAX;

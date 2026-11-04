@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 /// Maximum shadow atlas faces.  Must match `MAX_FACES` in the WGSL shader and
 /// `MAX_SHADOW_FACES` in `helio-pass-shadow`.
-const MAX_SHADOW_FACES: usize = helio_pass_shadow_matrix::MAX_SHADOW_FACES as usize;
+const MAX_SHADOW_FACES: usize = helio_light_api::MAX_SHADOW_FACES as usize;
 
 /// Regions of `face_geom_count_buf`, each `MAX_SHADOW_FACES` `u32`s: the
 /// movable, static and transmissive caster counts, in that order.
@@ -388,7 +388,7 @@ impl RenderPass for ShadowDirtyPass {
 
     fn declare_resources(&self, builder: &mut helio_core::graph::ResourceBuilder) {
         builder.read("object_batch");
-        builder.read("shadow_matrices");
+        builder.read(helio_light_api::SHADOW_MATRICES);
         builder.write_buffer("shadow_dirty");
     }
 
@@ -403,11 +403,11 @@ impl RenderPass for ShadowDirtyPass {
 
     fn prepare(&mut self, ctx: &PrepareContext) -> HelioResult<()> {
         helio_core::cpu_scope!("ShadowDirty: prepare");
-        let shadow = ctx
-            .registry
-            .get::<helio_pass_shadow_matrix::ShadowMatricesFrameData<'_>>(
-                helio_pass_shadow_matrix::shadow_matrices(),
-            );
+        let shadow =
+            ctx.registry
+                .get::<helio_light_api::ShadowMatricesFrameData<'_>>(
+                    helio_light_api::shadow_matrices(),
+                );
         let face_count = shadow
             .as_ref()
             .map(|s| s.shadow_count)
@@ -470,11 +470,11 @@ impl RenderPass for ShadowDirtyPass {
             });
             self.bind_group_key = None;
         }
-        let Some(shadow_data) = ctx
-            .registry
-            .get::<helio_pass_shadow_matrix::ShadowMatricesFrameData<'_>>(
-                helio_pass_shadow_matrix::shadow_matrices(),
-            )
+        let Some(shadow_data) =
+            ctx.registry
+                .get::<helio_light_api::ShadowMatricesFrameData<'_>>(
+                    helio_light_api::shadow_matrices(),
+                )
         else {
             return Ok(());
         };
