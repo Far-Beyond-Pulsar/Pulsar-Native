@@ -157,6 +157,10 @@ fn a_disabled_plugin_is_absent() {
     // Their level editor UI is not registered; the others' is.
     level_editor_ui(false);
 
+    // Their assets: no loader serves a material, a mesh slot naming one
+    // draws its imported surface, and a changed material file reloads nothing.
+    material_assets(off.path(), false);
+
     // A level holding them loads; their instances keep their data verbatim.
     let level = write_level(off.path());
     let scene = RuntimeLevel::load(&level).expect("the level loads").scene();
@@ -204,10 +208,49 @@ fn a_disabled_plugin_is_absent() {
         assert!(features.contains(id), "{id} is back in the feature set");
     }
     level_editor_ui(true);
+    material_assets(on.path(), true);
     // A project that does not list them has every plugin's default (on).
     let silent = project(None);
     engine_state::set_project_path(silent.path().display().to_string());
     assert!(registered("LightComponent"));
+}
+
+/// The materials' assets are served (`present`) or not: the material asset
+/// kind's loader and reloads are the materials plugin's, reached by the
+/// meshes through the materials' api only.
+fn material_assets(project: &Path, present: bool) {
+    use helio_component::asset_component::{asset_sources_for_file, load_asset_now};
+    use helio_component::components::{StaticMeshMaterialSlot, resolve_slot_material};
+    use helio_mats::asset::{MATERIAL_ASSET_KIND, SurfaceMaterialDocument, SurfaceValues};
+    let red = [1.0, 0.0, 0.0, 1.0];
+    let file = project.join("materials/red.mat");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let document = SurfaceMaterialDocument::from(SurfaceValues {
+        base_color: red,
+        ..Default::default()
+    });
+    std::fs::write(&file, serde_json::to_vec(&document).unwrap()).unwrap();
+
+    assert_eq!(
+        load_asset_now(MATERIAL_ASSET_KIND, "materials/red.mat").is_ok(),
+        present
+    );
+    let slot = StaticMeshMaterialSlot {
+        material_asset: "materials/red.mat".into(),
+        ..Default::default()
+    };
+    let drawn = resolve_slot_material(Some(&slot), None).row.base_color;
+    if present {
+        assert_eq!(drawn, red, "the slot draws its material");
+    } else {
+        assert_eq!(
+            drawn,
+            SurfaceValues::default().base_color,
+            "the slot draws its imported surface"
+        );
+    }
+    let reloads = asset_sources_for_file(&plugin_editor_api::AssetKind::Material, &file);
+    assert_eq!(!reloads.is_empty(), present, "{reloads:?}");
 }
 
 /// The disabled plugins' level editor UI is registered (`present`) or not;

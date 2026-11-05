@@ -1,14 +1,14 @@
 //! Shader-graph materials in the mesh viewer.
 //!
 //! The graph is compiled by the same code the renderer uses
-//! (`helio_component::graph_preview`) and composed into the default material
+//! (`materials_component::graph_preview`) and composed into the default material
 //! class's template exactly as a drawer composes it
 //! (`RadiantTemplate::compose`), so `radiant_eval_surface` produces the same
 //! albedo, emissive and alpha the engine would. The viewer's program is a
 //! drawer's: a vertex stage (position, normal, UV) and a small fragment
 //! stage that lights the surface.
 
-use helio_component::graph_preview::GraphPreview;
+use materials_component::graph_preview::GraphPreview;
 
 /// The viewer's program. The material table's bindings are declared as every
 /// drawer declares them (group 1; the viewer binds only the textures, which

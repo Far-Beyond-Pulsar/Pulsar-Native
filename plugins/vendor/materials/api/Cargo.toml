@@ -21,6 +21,8 @@ pulsar_scenedb = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 log = { workspace = true }
+# The scalar surface values and document (`asset`).
+serde = { workspace = true, features = ["derive"] }
 helio-components = { workspace = true, optional = true }
 pulsar_scenedb_derive = { workspace = true, optional = true }
 # `#[derive(SceneStore)]` expands to `::serde_json`, `::wgpu` and reflection paths.

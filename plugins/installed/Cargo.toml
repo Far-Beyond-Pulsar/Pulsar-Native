@@ -82,6 +82,7 @@ helio-core = { workspace = true }
 helio-presets = { workspace = true }
 helio-mats = { workspace = true }
 helio_component = { workspace = true }
+plugin_editor_api = { workspace = true }
 wgpu = { workspace = true }
 pollster = "1.0"
 glam = { workspace = true }

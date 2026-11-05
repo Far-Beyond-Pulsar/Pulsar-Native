@@ -16,9 +16,6 @@ pollster = "=0.4.0"
 # The movement scaling report drives the object batch behind the join.
 helio-pass-object-batch = { workspace = true }
 helio-core = { workspace = true }
-# The material graph rendering test reads its captures back.
-image = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [build-dependencies]
 toml = { workspace = true }

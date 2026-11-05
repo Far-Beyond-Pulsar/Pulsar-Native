@@ -19,6 +19,8 @@ ui      = { workspace = true }
 plugin_editor_api = { workspace = true }
 ui_common         = { workspace = true }
 helio_component   = { workspace = true }
+# Material graph previews (the materials' one compiler).
+materials_component = { workspace = true }
 helio-mats        = { workspace = true }
 pollster          = "0.4"
 engine_state      = { workspace = true }

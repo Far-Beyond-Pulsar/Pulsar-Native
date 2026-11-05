@@ -24,9 +24,22 @@ helio = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-mats = { workspace = true }
 helio-pass-materials = { workspace = true }
+# The material assets: the generic asset seams (loader and reload
+# registrations), texture residency and cooking (images are core).
+helio_component = { workspace = true }
+plugin_editor_api = { workspace = true }
+pulsar_scenedb = { workspace = true }
+# The material graph compiler.
+psgc = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 pollster = "=0.4.0"
+engine_state = { workspace = true }
+image = { workspace = true }
+pulsar_world_registry = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

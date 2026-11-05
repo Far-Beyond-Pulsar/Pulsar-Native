@@ -26,7 +26,7 @@ pub struct MeshMaterials {
 fn material_queries() -> Vec<AssetQuery> {
     vec![
         AssetQuery::extension("mat"),
-        AssetQuery::folder_marker("shader_graph_save.json"),
+        AssetQuery::folder_marker(helio_mats::asset::SHADER_GRAPH_FILE),
     ]
 }
 
@@ -162,7 +162,7 @@ impl AssetViewerPanel {
                     ..Default::default()
                 };
                 helio_component::components::resolve_slot_material(Some(&slot), None)
-                    .surface
+                    .row
                     .base_color
             })
             .collect();
@@ -223,7 +223,7 @@ impl AssetViewerPanel {
                     material_paths
                         .into_iter()
                         .map(|material| {
-                            helio_component::graph_preview::compile_graph_preview(&root, &material)
+                            materials_component::graph_preview::compile_graph_preview(&root, &material)
                                 .map(|preview| {
                                     preview
                                         .and_then(|preview| {

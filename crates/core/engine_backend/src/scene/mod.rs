@@ -134,52 +134,29 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     scene.write().world.pump_assets()
 }
 
-/// Apply one asset update to `world` (SceneDB#84): a mesh, texture or
-/// material update reloads that file's assets, and the world rebinds every
-/// component showing them when the new data arrives. A texture is also
-/// reloaded as part of every shader-graph material that samples it. A class
-/// (Blueprint) update rebuilds every placed instance of the class from its
-/// new definition, keeping each instance's overrides (see [`classes`]).
-/// Returns how many assets were queued plus how many entities were rebuilt.
-/// Other kinds are not world assets yet and are left to their own handlers.
+/// Apply one asset update to `world` (SceneDB#84): a changed file reloads
+/// the world assets it is or feeds, as each asset kind's owner maps it
+/// (`helio_component::AssetReloadRegistration`: a mesh file its mesh, an
+/// image its texture and every material graph sampling it, a material
+/// document its material), and the world rebinds every component showing
+/// them when the new data arrives. A class (Blueprint) update rebuilds every
+/// placed instance of the class from its new definition, keeping each
+/// instance's overrides (see [`classes`]). Returns how many assets were
+/// queued plus how many entities were rebuilt.
 pub fn reload_updated_asset(
     world: &mut pulsar_scenedb::World,
     event: &pulsar_events::AssetUpdated,
 ) -> usize {
-    use helio_component::material_assets::material_sources_for_file;
     match (&event.kind, event.path.as_deref()) {
-        (pulsar_events::AssetKind::Mesh, Some(path)) => {
-            world.asset_source_changed(&helio_component::components::mesh_source_for_file(path))
-        }
-        (pulsar_events::AssetKind::Texture, Some(path)) => {
-            world.asset_source_changed(&helio_component::texture_assets::texture_source_for_file(
-                path,
-            )) + reload_materials(world, material_sources_for_file(path))
-        }
-        (pulsar_events::AssetKind::Material, Some(path)) => {
-            reload_materials(world, material_sources_for_file(path))
-        }
         (pulsar_events::AssetKind::Blueprint, _) => {
             classes::reload_class_instances(world, event).len()
         }
+        (kind, Some(path)) => helio_component::asset_sources_for_file(kind, path)
+            .iter()
+            .map(|source| world.asset_source_changed(source))
+            .sum(),
         _ => 0,
     }
-}
-
-/// An animation asset file changed: the graph or sequence a component holds directly
-/// reloads through SceneDB, and every running graph that depends on the file
-/// recompiles in place (see `helio_component::components::reload_animation_dependencies`).
-fn reload_animation_asset(world: &mut pulsar_scenedb::World, path: &std::path::Path) -> usize {
-    let source = helio_component::components::animation_source_for_file(path);
-    world.asset_source_changed(&source)
-        + helio_component::components::reload_animation_dependencies(world, path)
-}
-
-fn reload_materials(world: &mut pulsar_scenedb::World, sources: Vec<String>) -> usize {
-    sources
-        .iter()
-        .map(|source| world.asset_source_changed(source))
-        .sum()
 }
 
 /// Keep `scene` current with updated assets for as long as the returned

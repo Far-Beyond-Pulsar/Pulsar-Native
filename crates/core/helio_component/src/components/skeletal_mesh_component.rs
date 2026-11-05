@@ -1796,7 +1796,7 @@ fn skeletal_mesh_draw_dispatch(
                 graph_hash_lo: 0,
                 graph_hash_hi: 0,
                 _pad: [0; 3],
-                material: crate::components::surface_material(&surface, [u32::MAX; 5]),
+                material: surface.row([helio_mats::GpuMaterial::NO_TEXTURE; 5]),
             }
         })
         .collect::<Vec<_>>();

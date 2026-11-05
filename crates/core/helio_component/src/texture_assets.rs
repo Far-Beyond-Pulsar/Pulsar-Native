@@ -327,6 +327,15 @@ pub fn texture_source_for_file(abs: &std::path::Path) -> String {
     normal.to_string_lossy().into_owned()
 }
 
+// A changed image reloads its texture asset.
+inventory::submit! {
+    crate::asset_component::AssetReloadRegistration {
+        origin: pulsar_plugins::origin!(),
+        kind: plugin_editor_api::AssetKind::Texture,
+        sources_for_file: |path| vec![texture_source_for_file(path)],
+    }
+}
+
 /// The asset id of the image `path` names, without declaring it.
 /// [`AssetId::ZERO`] for an empty path.
 pub fn texture_asset_id_of(path: &str) -> AssetId {
@@ -360,7 +369,7 @@ fn load_texture_asset(source: &str) -> Result<AssetPayload, String> {
 /// loader thread, in the format the engine prefers. A file that cannot be
 /// decoded fails the load here, and the derived-data cache is warm before any
 /// scene asks for the texture.
-pub(crate) fn decode_image_file(path: &std::path::Path) -> Result<LoadedTexture, String> {
+pub fn decode_image_file(path: &std::path::Path) -> Result<LoadedTexture, String> {
     let shown = path.display();
     let cap = max_texture_size();
     let (source_width, source_height) = image::ImageReader::open(path)
@@ -581,7 +590,7 @@ fn shared_texture(
 /// `mirror`'s texture store, uploading it when the store does not hold that
 /// version yet. A device that already holds that version for another scene
 /// shares it: no decode, no second upload, no second GPU allocation.
-pub(crate) fn resident_slot(
+pub fn resident_slot(
     id: AssetId,
     version: u64,
     image: &LoadedTexture,
@@ -643,9 +652,9 @@ pub(crate) fn resident_slot(
         (None, Some(cooked)) => {
             let native_bytes = cooked.byte_size() as u64;
             let slot = if bias == 0 {
-                crate::material_textures::upload_cooked(&mut store, mirror, &cooked)?
+                upload_cooked(&mut store, mirror, &cooked)?
             } else {
-                crate::material_textures::upload_cooked(
+                upload_cooked(
                     &mut store,
                     mirror,
                     &cooked.without_top_mips(bias),
@@ -697,7 +706,7 @@ pub(crate) fn resident_slot(
 /// them. A texture the store already holds, or that another scene on the same
 /// device has uploaded, is left alone: nothing about it would be used. The
 /// `resident_slot` calls that follow join the work in flight.
-pub(crate) fn prefetch_missing<'a>(
+pub fn prefetch_missing<'a>(
     images: impl IntoIterator<Item = (AssetId, TextureUse, &'a LoadedTexture)>,
     version: u64,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
@@ -1013,4 +1022,31 @@ mod shared_upload_tests {
         assert_eq!(store.texture(restored).unwrap().width(), 16);
         assert_eq!(store.upload_count(), 3);
     }
+}
+
+/// Upload a cooked texture (its full mip chain, in its own format) into
+/// `store`, the texture store of `mirror`'s scene, and return its slot.
+fn upload_cooked(
+    store: &mut pulsar_scenedb::gpu::TextureStore,
+    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
+    cooked: &crate::cooked_texture::CookedTexture,
+) -> Result<u32, String> {
+    let device = mirror.store().device_arc();
+    let descriptor = wgpu::TextureDescriptor {
+        label: Some("Scene Texture"),
+        size: wgpu::Extent3d {
+            width: cooked.width,
+            height: cooked.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: cooked.mip_count(),
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: cooked.wgpu_format(),
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    };
+    store
+        .register_mips(&device, mirror.queue(), &descriptor, &cooked.mips())
+        .map_err(|error| format!("could not register texture in SceneDB: {error:?}"))
 }

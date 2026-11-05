@@ -15,6 +15,7 @@
 //! SceneDB component storing a [`MaterialRow`] under [`MATERIALS`] (for
 //! standalone hosts, [`host_rows`] with the `host-rows` feature).
 
+pub mod asset;
 #[cfg(feature = "host-rows")]
 pub mod host_rows;
 pub mod material;

@@ -95,7 +95,7 @@ pub fn render_mesh_thumbnail(path: &Path) -> Option<image::RgbaImage> {
             mesh_default_material: meta.material_asset.clone(),
             ..Default::default()
         };
-        let color = resolve_slot_material(Some(&slot), None).surface.base_color;
+        let color = resolve_slot_material(Some(&slot), None).row.base_color;
         [color[0], color[1], color[2]]
     };
 

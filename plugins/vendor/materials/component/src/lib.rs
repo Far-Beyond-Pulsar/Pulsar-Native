@@ -1,19 +1,24 @@
-//! Materials (`pulsar.materials`): the plugin's registrations.
+//! Materials (`pulsar.materials`): the material assets and the plugin's
+//! registrations.
 //!
-//! The materials' Helio feature (`helio-pass-materials`: the material
-//! texture table every kind's drawers bind) joins every pipeline the engine
-//! runs, and its sampler comes from the project's texture streaming
-//! settings ([`sampler`]).
-//!
-//! The material assets themselves (`helio_component::material_assets`, the
-//! material graph and cooked textures) stay with the meshes' components in
-//! `helio_component`: core crates (the importer, the cooker, the class and
-//! prefab records) read them by type, as batch 4 found for the meshes.
+//! - [`assets`]: the material asset kind (a scalar surface document or a
+//!   shader-graph folder): its SceneDB loader and its reloads, registered
+//!   through the engine's generic asset seams. Whoever draws with materials
+//!   reads them through the materials' api (`helio_mats::asset`).
+//! - [`graph`]: the one material graph compiler; [`graph_preview`]
+//!   compiles a graph for a preview without a scene.
+//! - The materials' Helio feature (`helio-pass-materials`: the material
+//!   texture table every kind's drawers bind) joins every pipeline the
+//!   engine runs, and its sampler comes from the project's texture
+//!   streaming settings ([`sampler`]).
 
 // The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
 // installs the plugin; a project enables it or not (`pulsar_plugins`).
 pulsar_plugins::installed!("../pulsar-plugin.toml");
 
+pub mod assets;
+pub mod graph;
+pub mod graph_preview;
 pub mod sampler;
 
 /// The materials' features: the texture table.

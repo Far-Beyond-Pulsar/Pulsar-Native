@@ -1,7 +1,8 @@
 //! Lower compiled PSGC material graphs into Helio surface evaluation.
 //!
-//! Used by `StaticMeshDraw` to resolve a shader-graph material slot; public
-//! so the engine's material-graph tests drive the same lowering.
+//! The one material graph compiler: material assets compile their graphs
+//! with it ([`crate::assets`]), as do the editors' previews
+//! ([`crate::graph_preview`]).
 
 /// Only the output's dependency chain owns runtime texture dependencies.
 pub fn texture_assets(graph: &psgc::GraphDescription) -> Result<Vec<String>, String> {
@@ -54,13 +55,13 @@ fn is_texture_sample(kind: &str) -> bool {
 /// `normal` is a normal map; one feeding `roughness`, `metallic`,
 /// `ambient_occlusion`, `opacity` or `opacity_mask` is data, numbers that must
 /// not be gamma-decoded. A texture that reaches several pins takes the
-/// strongest use ([`crate::cooked_texture::TextureUse::strongest`]: colour
+/// strongest use ([`helio_component::cooked_texture::TextureUse::strongest`]: colour
 /// wins, which is how every texture was treated before uses existed). Only
 /// samples the output depends on are listed, as in [`texture_assets`].
 pub fn texture_uses(
     graph: &psgc::GraphDescription,
-) -> std::collections::HashMap<String, crate::cooked_texture::TextureUse> {
-    use crate::cooked_texture::TextureUse;
+) -> std::collections::HashMap<String, helio_component::cooked_texture::TextureUse> {
+    use helio_component::cooked_texture::TextureUse;
 
     fn pin_use(pin: &str) -> TextureUse {
         match pin {
@@ -269,7 +270,7 @@ fn bind_graph_texture_samplers(source: &mut String) {
 #[cfg(test)]
 mod usage_tests {
     use super::*;
-    use crate::cooked_texture::TextureUse;
+    use helio_component::cooked_texture::TextureUse;
     use psgc::{Connection, ConnectionType, GraphDescription, NodeInstance, Position};
 
     fn node(graph: &mut GraphDescription, id: &str, kind: &str, texture: Option<&str>) {

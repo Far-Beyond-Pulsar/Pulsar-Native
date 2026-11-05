@@ -88,31 +88,11 @@ pub struct MeshMaterialSlot {
     pub material_asset: String,
 }
 
-/// FBX/OBJ/glTF scalar material data retained by native mesh imports. Texture
-/// payloads remain separate assets; these values provide a deterministic PBR
-/// surface when a slot has no authored material assignment.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ImportedSurfaceMaterial {
-    pub base_color: [f32; 4],
-    pub roughness: f32,
-    pub metallic: f32,
-    pub emissive: [f32; 3],
-    pub emissive_intensity: f32,
-    pub alpha: f32,
-}
-
-impl Default for ImportedSurfaceMaterial {
-    fn default() -> Self {
-        Self {
-            base_color: [0.22, 0.15, 0.08, 1.0],
-            roughness: 0.7,
-            metallic: 0.0,
-            emissive: [0.0; 3],
-            emissive_intensity: 0.0,
-            alpha: 1.0,
-        }
-    }
-}
+/// FBX/OBJ/glTF scalar material data retained by native mesh imports: the
+/// materials' surface values. Texture payloads remain separate assets; these
+/// values provide a deterministic PBR surface when a slot has no authored
+/// material assignment.
+pub use helio_mats::asset::SurfaceValues as ImportedSurfaceMaterial;
 
 /// An indexed section in the mesh's shared index buffer. Its `material_slot`
 /// selects the matching entry in [`MeshAssetUpload::material_slots`].

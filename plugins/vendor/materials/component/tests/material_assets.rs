@@ -5,6 +5,9 @@
 //! material file, or a texture a graph samples, reloads the material in
 //! every mesh using it.
 //!
+//! The mesh reads the materials through the materials' api only
+//! (`helio_mats::asset`); this crate's loader serves them.
+//!
 //! One test, because the project path sources resolve against is a process
 //! global. No GPU: a graph is compiled against texture slots when a mirror
 //! derives the draw, which the render acceptance tests cover.
@@ -15,10 +18,8 @@ use std::time::Duration;
 use helio_component::components::{
     StaticMeshComponent, StaticMeshMaterialSlot, mesh_reads_time, resolve_slot_material,
 };
-use helio_component::material_assets::{
-    LoadedMaterial, material_asset_id_of, material_sources_for_file, resolve_material,
-    slot_material_id,
-};
+use helio_component::mesh_materials::{material_asset_id_of, resolve_material, slot_material_id};
+use materials_component::assets::material_sources_for_file;
 use pulsar_scenedb::{AssetState, Entity, World};
 
 fn write_surface(path: &Path, base_color: [f32; 4]) {
@@ -116,14 +117,19 @@ fn slot_color(world: &World, entity: Entity, index: usize) -> [f32; 4] {
         .materials
         .get(id)
         .map(|(version, material)| (id, version, material.as_ref()));
-    resolve_material(Some(slot), bound, None).surface.base_color
+    resolve_material(Some(slot), bound, None).row.base_color
 }
 
+/// Whether `path` is bound into `entity`'s mesh as a graph: a material
+/// that draws only in a scene (its textures take slots there).
 fn is_graph(world: &World, entity: Entity, path: &str) -> bool {
     let mesh = world.get::<StaticMeshComponent>(entity).unwrap();
-    mesh.materials
-        .get(material_asset_id_of(path))
-        .is_some_and(|(_, material)| matches!(material.as_ref(), LoadedMaterial::Graph(_)))
+    let id = material_asset_id_of(path);
+    mesh.materials.get(id).is_some_and(|(version, material)| {
+        material
+            .resolve(id, version, None, &Default::default())
+            .is_err()
+    })
 }
 
 const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
@@ -298,7 +304,7 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
     // ── Outside a world, a tool resolves a slot by loading it now ──────────
     assert_eq!(
         resolve_slot_material(Some(&slot("materials/red.mat")), None)
-            .surface
+            .row
             .base_color,
         RED
     );

@@ -1,14 +1,15 @@
 //! Compiling a shader-graph material for an editor preview.
 //!
 //! Placed meshes get their graph materials through SceneDB's texture store
-//! ([`crate::components::StaticMeshDraw`]). A standalone preview (the mesh
+//! ([`crate::assets`]). A standalone preview (the mesh
 //! viewer) has no scene, so it binds the graph's textures itself: this
 //! compiles the graph exactly as the renderer does, with texture slots
 //! numbered `0..n` in the order of [`GraphPreview::textures`].
 
 use std::path::{Path, PathBuf};
 
-use crate::material_graph::{compile_material_graph, texture_assets};
+use crate::graph::{compile_material_graph, texture_assets};
+use helio_mats::asset::SHADER_GRAPH_FILE;
 
 /// A graph material ready to host in a preview shader.
 #[derive(Debug)]
@@ -25,10 +26,10 @@ pub struct GraphPreview {
 /// (a scalar `.mat`).
 fn graph_file(path: &Path) -> Option<PathBuf> {
     let file = if path.is_dir() {
-        path.join("shader_graph_save.json")
+        path.join(SHADER_GRAPH_FILE)
     } else if path
         .file_name()
-        .is_some_and(|n| n == "shader_graph_save.json")
+        .is_some_and(|n| n == SHADER_GRAPH_FILE)
     {
         path.to_path_buf()
     } else {
@@ -43,7 +44,7 @@ pub fn compile_graph_preview(
     project_root: &Path,
     material_asset: &str,
 ) -> Option<Result<GraphPreview, String>> {
-    let path = crate::subsystems::resolve_asset_path(project_root, material_asset);
+    let path = helio_component::subsystems::resolve_asset_path(project_root, material_asset);
     let file = graph_file(&path)?;
     Some(compile_file(&file, project_root))
 }
@@ -85,7 +86,7 @@ fn compile_file(file: &Path, project_root: &Path) -> Result<GraphPreview, String
     let mut snippet = compile_material_graph(&graph, &bindings)?;
     // The standalone viewer has no scene material row, so specialize the
     // stable material fields to its own densely bound texture table.
-    for (ordinal, field) in crate::material_graph::GRAPH_TEXTURE_FIELDS
+    for (ordinal, field) in crate::graph::GRAPH_TEXTURE_FIELDS
         .iter()
         .enumerate()
     {

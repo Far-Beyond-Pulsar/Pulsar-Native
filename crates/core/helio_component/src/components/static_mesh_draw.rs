@@ -16,17 +16,17 @@
 //! GPU each frame they change.
 //!
 //! Each section's material is resolved from what the world bound into the
-//! component ([`crate::material_assets`]): an explicit surface override, a
-//! scalar surface asset, a compiled shader-graph folder (whose textures are
-//! registered in the mirror's texture store), or the mesh's imported surface
-//! while its material is not loaded. Nothing here reads a file.
+//! component ([`crate::mesh_materials`]): an explicit surface override, the
+//! bound material asset's row (a graph's textures take slots in the
+//! mirror's texture store), or the mesh's imported surface while its
+//! material is not loaded. Nothing here reads a file.
 
 use pulsar_scenedb::gpu::GpuMirrorHandle;
 use pulsar_scenedb_derive::SceneStore;
 
 use super::{StaticMeshComponent, StaticMeshMaterialSlot};
-use crate::material_assets::{LoadedMaterial, resolve_material, slot_material_id};
-use crate::mesh_cache::{ImportedSurfaceMaterial, MeshSection};
+use crate::mesh_cache::MeshSection;
+use crate::mesh_materials::{resolve_material, slot_material_id};
 
 /// Pool of every instance's [`MeshSectionDraw`]s; its handle table is
 /// `static_mesh_draw_sections::handles`, keyed by the instance entity.
@@ -104,7 +104,7 @@ impl StaticMeshDraw {
                     graph_hash_lo: material.graph_hash as u32,
                     graph_hash_hi: (material.graph_hash >> 32) as u32,
                     _pad: [0; 3],
-                    material: surface_material(&material.surface, material.graph_texture_slots),
+                    material: material.row,
                 }
             })
             .collect();
@@ -151,77 +151,37 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
     }
 }
 
-/// A surface as a material row: scalar PBR values plus any graph texture slots.
-/// `alpha < 1` selects the blended, transparent-only path (glass).
-pub(crate) fn surface_material(
-    surface: &ImportedSurfaceMaterial,
-    graph_texture_slots: [u32; 5],
-) -> helio_mats::GpuMaterial {
-    let alpha = surface.alpha.clamp(0.0, 1.0);
-    let mut flags = 0;
-    if alpha < 1.0 {
-        flags |= helio_mats::FLAG_ALPHA_BLEND | helio_mats::FLAG_TRANSPARENT_ONLY;
-    }
-    helio_mats::GpuMaterial {
-        base_color: [
-            surface.base_color[0],
-            surface.base_color[1],
-            surface.base_color[2],
-            alpha,
-        ],
-        emissive: [
-            surface.emissive[0],
-            surface.emissive[1],
-            surface.emissive[2],
-            surface.emissive_intensity,
-        ],
-        roughness_metallic: [surface.roughness, surface.metallic, 1.5, 0.5],
-        tex_base_color: graph_texture_slots[0],
-        tex_normal: graph_texture_slots[1],
-        tex_roughness: graph_texture_slots[2],
-        tex_emissive: graph_texture_slots[3],
-        tex_occlusion: graph_texture_slots[4],
-        workflow: 0,
-        flags,
-        material_class: 0,
-        class_params: [0.0; 4],
-    }
-}
-
-/// A slot's material as drawn: the surface values, and for a shader-graph
-/// material its class and registered graph.
-#[derive(Clone)]
-pub struct ResolvedSlotMaterial {
-    pub surface: ImportedSurfaceMaterial,
-    pub material_class: u32,
-    pub graph_hash: u64,
-    /// Scene-local texture slots for this graph's local texture ordinals.
-    pub graph_texture_slots: [u32; 5],
-}
-
 /// Resolve one slot's material outside a world (tools such as thumbnails
-/// and the asset viewer): its material file is loaded now, on the caller's
-/// thread. An empty slot or one whose assignment cannot be loaded draws
-/// with the mesh's imported surface (with a warning for the latter). In a
-/// world, the mesh's draw reads the materials the world bound instead.
+/// and the asset viewer): its material asset is loaded now, on the caller's
+/// thread, with the materials plugin's loader. An empty slot, or one whose
+/// assignment cannot be loaded (or no enabled plugin loads), draws with the
+/// mesh's imported surface (with a warning for a failed load). In a world,
+/// the mesh's draw reads the materials the world bound instead.
 pub fn resolve_slot_material(
     slot: Option<&StaticMeshMaterialSlot>,
     mirror: Option<&GpuMirrorHandle>,
-) -> ResolvedSlotMaterial {
+) -> helio_mats::asset::ResolvedMaterial {
     let id = slot.map_or(pulsar_scenedb::AssetId::ZERO, slot_material_id);
     let loaded = slot
         .filter(|_| !id.is_zero())
-        .and_then(|slot| crate::material_assets::material_source(slot.effective_material_asset()))
-        .and_then(|source| match crate::material_assets::load_material(&source) {
-            Ok(material) => Some(material),
-            Err(error) => {
-                tracing::warn!(%source, %error, "static mesh material could not be loaded; using the imported material");
-                None
+        .and_then(|slot| crate::asset_component::asset_source(slot.effective_material_asset()))
+        .and_then(|source| {
+            match crate::asset_component::load_asset_now(
+                helio_mats::asset::MATERIAL_ASSET_KIND,
+                &source,
+            ) {
+                Ok(payload) => payload
+                    .downcast::<helio_mats::asset::MaterialPayload>()
+                    .ok(),
+                Err(error) => {
+                    tracing::warn!(%source, %error, "static mesh material could not be loaded; using the imported material");
+                    None
+                }
             }
         });
     resolve_material(
         slot,
-        loaded.as_ref().map(|material| (id, 0, material)),
+        loaded.as_ref().map(|material| (id, 0, material.0.as_ref())),
         mirror,
     )
 }
@@ -233,9 +193,7 @@ pub fn mesh_reads_time(mesh: &StaticMeshComponent) -> bool {
     mesh.material_slots.slots.iter().any(|slot| {
         mesh.materials
             .get(slot_material_id(slot))
-            .is_some_and(|(_, material)| {
-                matches!(material.as_ref(), LoadedMaterial::Graph(graph) if graph.reads_time)
-            })
+            .is_some_and(|(_, material)| material.reads_time())
     })
 }
 

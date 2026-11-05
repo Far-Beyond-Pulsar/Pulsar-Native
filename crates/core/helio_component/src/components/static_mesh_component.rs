@@ -354,6 +354,15 @@ pub fn mesh_source_for_file(abs: &std::path::Path) -> String {
         .into_owned()
 }
 
+// A changed mesh file reloads its mesh asset.
+inventory::submit! {
+    crate::asset_component::AssetReloadRegistration {
+        origin: pulsar_plugins::origin!(),
+        kind: plugin_editor_api::AssetKind::Mesh,
+        sources_for_file: |path| vec![mesh_source_for_file(path)],
+    }
+}
+
 /// The mesh kind's loader: runs on a SceneDB worker thread.
 fn load_mesh_asset(source: &str) -> Result<AssetPayload, String> {
     let asset = AssetId::of(MESH_ASSET_KIND, source);
@@ -525,48 +534,6 @@ impl LegacyMaterialOverrideData {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct StaticMeshMaterialSlots {
     pub slots: Vec<StaticMeshMaterialSlot>,
-}
-
-/// Small scalar-PBR surface document supported by mesh slots alongside
-/// compiled shader-graph material folders.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SurfaceMaterialAsset {
-    pub version: u32,
-    pub base_color: [f32; 4],
-    pub metallic: f32,
-    pub roughness: f32,
-    pub emissive_color: [f32; 3],
-    pub emissive_intensity: f32,
-    pub alpha: f32,
-}
-
-impl Default for SurfaceMaterialAsset {
-    fn default() -> Self {
-        Self {
-            version: 1,
-            base_color: [0.22, 0.15, 0.08, 1.0],
-            metallic: 0.0,
-            roughness: 0.7,
-            emissive_color: [0.0; 3],
-            emissive_intensity: 0.0,
-            alpha: 1.0,
-        }
-    }
-}
-
-impl From<crate::mesh_cache::ImportedSurfaceMaterial> for SurfaceMaterialAsset {
-    fn from(value: crate::mesh_cache::ImportedSurfaceMaterial) -> Self {
-        Self {
-            base_color: value.base_color,
-            metallic: value.metallic,
-            roughness: value.roughness,
-            emissive_color: value.emissive,
-            emissive_intensity: value.emissive_intensity,
-            alpha: value.alpha,
-            ..Self::default()
-        }
-    }
 }
 
 // ── Reflection registration ───────────────────────────────────────────────────
@@ -844,7 +811,7 @@ impl StaticMeshMaterialSlotsEditor {
         let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
         let queries = vec![
             AssetQuery::extension("mat"),
-            AssetQuery::folder_marker("shader_graph_save.json"),
+            AssetQuery::folder_marker(helio_mats::asset::SHADER_GRAPH_FILE),
         ];
         for (index, slot) in value.slots.iter().enumerate() {
             let key = (slot.source_material, index);
@@ -951,7 +918,7 @@ impl StaticMeshMaterialSlotsEditor {
             })
             .find(|(path, _)| !path.exists())
             .expect("unbounded unique material filename search");
-        let material = SurfaceMaterialAsset::from(slot.imported_surface);
+        let material = helio_mats::asset::SurfaceMaterialDocument::from(slot.imported_surface);
         let Ok(bytes) = serde_json::to_vec_pretty(&material) else {
             return;
         };
@@ -1135,7 +1102,7 @@ type RegisteredStaticMeshMaterialSlots = StaticMeshMaterialSlots;
     deserialize,
     scene_store
 )]
-#[scene_store(collect_handles = crate::material_assets::collect_mesh_materials)]
+#[scene_store(collect_handles = crate::mesh_materials::collect_mesh_materials)]
 pub struct StaticMeshComponent {
     /// Relative asset path to the mesh file (e.g. "meshes/primitives/SM_Cube.fbx").
     ///
@@ -1176,7 +1143,7 @@ pub struct StaticMeshComponent {
     /// collector counts one reference per slot material; never authored or
     /// saved.
     #[serde(skip)]
-    pub materials: crate::material_assets::BoundMaterials,
+    pub materials: crate::mesh_materials::BoundMaterials,
 
     /// Which loaded geometry `vertices`/`indices` hold, the id their GPU copy
     /// is interned under (see [`MeshGeometryKey`]). Set by the binding.

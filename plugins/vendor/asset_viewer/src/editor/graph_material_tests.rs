@@ -3,7 +3,7 @@
 //! These render through the viewer's real graph pipeline on a real device,
 //! so they need a GPU adapter; absence fails rather than skipping.
 
-use helio_component::graph_preview::GraphPreview;
+use materials_component::graph_preview::GraphPreview;
 use psgc::*;
 
 use super::graph_material::{build, globals_layout, write_globals_at, GraphContext, GLOBALS_SIZE};
@@ -48,7 +48,7 @@ fn compile(graph: &GraphDescription) -> (tempfile::TempDir, GraphPreview) {
         serde_json::json!({ "main_graph": graph }).to_string(),
     )
     .unwrap();
-    let preview = helio_component::graph_preview::compile_graph_preview(dir.path(), "M.material")
+    let preview = materials_component::graph_preview::compile_graph_preview(dir.path(), "M.material")
         .expect("a graph material")
         .expect("compiles");
     (dir, preview)

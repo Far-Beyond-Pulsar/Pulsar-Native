@@ -52,8 +52,6 @@ helio-vg-format.workspace = true
 helio-vg-stream.workspace = true
 helio-vg-build.workspace = true
 helio-mats.workspace = true
-# Shader-graph material slots compile at upload time (static_mesh_draw).
-psgc.workspace = true
 image.workspace = true
 # BC7 encoder (Intel ISPC Texture Compressor, prebuilt kernels) for cooked
 # textures; see src/cooked_texture.rs.
