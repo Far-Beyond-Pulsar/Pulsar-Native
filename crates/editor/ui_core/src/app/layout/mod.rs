@@ -139,6 +139,8 @@ mod resolve;
 mod store;
 mod window_geometry;
 
+pub(crate) use resolve::lazy_builder;
+
 use std::time::Duration;
 
 use gpui::{AnyWindowHandle, AppContext as _, Context, Window, WindowBounds};
@@ -280,11 +282,41 @@ impl PulsarApp {
     pub(super) fn restore_layout_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.restore_layout(window, cx);
         self.state.layout_ready = true;
+        self.start_tab_sleep_sweeper(window, cx);
         cx.notify();
         // Only the primary window brings the others back.
         if self.state.layout_slot == Some(PRIMARY) {
             self.reopen_recorded_windows(cx);
         }
+    }
+
+    /// Every minute, put idle tabs to sleep (see `ui::dock::lazy_panel` for the
+    /// rules: 10 minutes undisplayed, never one of the last 3 used).
+    fn start_tab_sleep_sweeper(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        cx.spawn_in(window, async move |this, cx| loop {
+            cx.background_executor()
+                .timer(Duration::from_secs(60))
+                .await;
+            let alive = this
+                .update(cx, |app, cx| {
+                    let panels: Vec<_> = app
+                        .state
+                        .dock_area
+                        .read(cx)
+                        .tab_panels(cx)
+                        .into_iter()
+                        .flat_map(|(_, tabs)| tabs.read(cx).all_panels())
+                        .collect();
+                    if ui::dock::sweep_idle(&panels, cx) > 0 {
+                        cx.notify();
+                    }
+                })
+                .is_ok();
+            if !alive {
+                break;
+            }
+        })
+        .detach();
     }
 
     /// Record the window's current geometry, remembering the last windowed

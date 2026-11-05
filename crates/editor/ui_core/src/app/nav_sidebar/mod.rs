@@ -784,6 +784,7 @@ impl PulsarApp {
                     icon: panel.tab_icon(cx),
                     active: open.tabs.read(cx).active_tab_index() == Some(open.local_ix),
                     unsaved: panel.tab_unsaved(cx),
+                    asleep: panel.life(cx) == ui::dock::TabLife::Sleeping,
                     kind,
                 }
             })

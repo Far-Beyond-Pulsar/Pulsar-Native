@@ -46,6 +46,8 @@ pub struct SidebarTab {
     pub icon: Option<IconName>,
     pub active: bool,
     pub unsaved: bool,
+    /// The tab is asleep: its editor is not loaded.
+    pub asleep: bool,
 }
 
 impl SidebarTab {
@@ -438,6 +440,7 @@ fn closed_file(path: &Path) -> SidebarTab {
         icon: None,
         active: false,
         unsaved: false,
+        asleep: false,
     }
 }
 
@@ -569,6 +572,7 @@ mod tests {
             icon: None,
             active: index == 0,
             unsaved: false,
+            asleep: false,
         }
     }
 

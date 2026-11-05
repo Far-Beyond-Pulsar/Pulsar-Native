@@ -170,6 +170,14 @@ impl PanelView for FileTypeDecoratedPanelView {
     fn discord_icon_key(&self, cx: &gpui::App) -> &'static str {
         self.inner.discord_icon_key(cx)
     }
+
+    fn life(&self, cx: &gpui::App) -> ui::dock::TabLife {
+        self.inner.life(cx)
+    }
+
+    fn try_sleep(&self, cx: &mut gpui::App) -> bool {
+        self.inner.try_sleep(cx)
+    }
 }
 
 pub mod builtin;

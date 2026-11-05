@@ -701,10 +701,20 @@ impl Render for AppTitleBar {
                             ),
                         ),
                     )
-                    .child(self.profile_dropdown.clone())
-                    // Keep custom titlebar actions next to the window controls,
-                    // after the standard utility icons and profile avatar.
-                    .child(self.child.clone()(window, cx)),
+                    // Keep the profile avatar and custom project status together
+                    // in one group beside the window controls.
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .rounded_md()
+                            .px_2()
+                            .py(px(2.))
+                            .bg(cx.theme().muted.opacity(0.35))
+                            .child(self.profile_dropdown.clone())
+                            .child(self.child.clone()(window, cx)),
+                    ),
             )
     }
 }
