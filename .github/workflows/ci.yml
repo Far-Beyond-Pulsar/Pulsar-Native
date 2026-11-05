@@ -421,10 +421,32 @@ jobs:
       # .config/nextest.toml; this bounds the whole step.
       - name: Run tests
         timeout-minutes: 60
+        # Line tables were not enough: on #1587 and #1588 the linker died with
+        # a bus error and the runner ran out of disk, with ~93 GB free at the
+        # start. Build without debuginfo (a panic still names its test), and
+        # link the plugins' `*-examples` packages (~70 binaries, each linking
+        # the whole renderer) in a second step, after this one's linked test
+        # binaries are deleted.
         env:
-          CARGO_PROFILE_DEV_DEBUG: line-tables-only
-          CARGO_PROFILE_TEST_DEBUG: line-tables-only
-        run: cargo nextest run --profile ci --all --no-fail-fast
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: cargo nextest run --profile ci --workspace --exclude '*-examples' --no-fail-fast
+
+      # Keep the compiled libraries (so nothing recompiles), drop the linked
+      # executables. Proc-macro .so files stay: the next build loads them.
+      - name: Free the linked test binaries
+        if: ${{ !cancelled() }}
+        run: |
+          find target/debug/deps -maxdepth 1 -type f -perm -u+x ! -name '*.so' -delete
+          df -h /
+
+      - name: Run the examples' tests
+        if: ${{ !cancelled() }}
+        timeout-minutes: 45
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: cargo nextest run --profile ci --package '*-examples' --no-fail-fast
 
   # Windows and macOS: compile only, no tests. Runs on main, nightly and by
   # hand, never per pull request: a Windows or macOS minute costs 2x or 10x a
