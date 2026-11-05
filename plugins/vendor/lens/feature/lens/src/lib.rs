@@ -640,7 +640,7 @@ impl LensPass {
             view_formats: &[],
         });
         Self {
-            input_key: "pre_aa",
+            input_key: helio_frame_api::color::SCENE_COLOR,
             input_alias: None,
             stages,
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {

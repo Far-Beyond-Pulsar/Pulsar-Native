@@ -79,7 +79,7 @@ impl Feature for GiFeature {
                 "GI: Mesh Rays",
                 "Traces the probes' rays against the scene's TLAS (hardware ray queries).",
                 |build| {
-                    if let Some(pass) = GiMeshTracePass::new(build.env.device) {
+                    if let Some(pass) = GiMeshTracePass::new(build.env.device, build.env.queue) {
                         let sun = sun_transmittance::current(build.env);
                         build
                             .graph

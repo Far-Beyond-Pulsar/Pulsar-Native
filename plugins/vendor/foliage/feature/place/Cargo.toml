@@ -12,6 +12,7 @@ gpu = []
 host-rows = ["helio-foliage-api/host-rows"]
 
 [dependencies]
+helio-frame-api = { workspace = true }
 helio-scene-join = { workspace = true }
 helio-settings = { workspace = true }
 pulsar_reflection = { workspace = true }

@@ -259,48 +259,7 @@ impl PortalInstancePass {
                     module: shader,
                     entry_point: Some("fs_main"),
                     compilation_options: Default::default(),
-                    targets: &[
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba8Unorm,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba16Float,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba8Unorm,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba16Float,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rg16Float,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba16Float,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba16Float,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                        Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba16Float,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                    ],
+                    targets: &helio_frame_api::gbuffer::color_targets(),
                 }),
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
@@ -439,14 +398,15 @@ fn uniform_entry(
 
 impl RenderPass for PortalInstancePass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &[
-            "builtin_mesh_index",
-            "builtin_mesh_vertex",
-            "materials",
+        const LIST: &[&str] = &[
+            helio_mesh_api::MESH_INDICES.name(),
+            helio_mesh_api::MESH_VERTICES.name(),
+            helio_mats::MATERIALS.name(),
             "portal_views",
-            "skeletal_bone_palette",
-            "skeletal_skin_vertices",
-        ]
+            helio_mesh_api::SKELETAL_BONE_PALETTE,
+            helio_mesh_api::SKELETAL_SKIN_VERTICES,
+        ];
+        LIST
     }
 
     fn name(&self) -> &'static str {
@@ -467,7 +427,7 @@ impl RenderPass for PortalInstancePass {
         // targets are declared and owned by GBufferPass; this pass loads and
         // draws into them, which is what makes fusion into the same physical
         // pass possible.
-        builder.read("gbuffer");
+        builder.read(helio_frame_api::gbuffer::GROUP);
         // Written by helio-pass-portal-mask, which must run before this pass.
         builder.read("portal_mask");
         builder.read("object_batch");
@@ -477,7 +437,7 @@ impl RenderPass for PortalInstancePass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "gbuffer",
+            helio_frame_api::gbuffer::GROUP,
             "portal_mask",
             "object_batch",
             "culled_batch",
@@ -497,23 +457,23 @@ impl RenderPass for PortalInstancePass {
         // helio-pass-foliage-gbuffer's docs for why returning `None` here
         // conditionally would break fusion).
         let gbuffer = resources.read::<helio_core::ViewGroup<'_, 4>>(
-            helio_core::ResourceKey::new("gbuffer"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::GROUP),
             "PortalInstance",
         )?;
         let lightmap_uv = resources.read(
-            helio_core::ResourceKey::new("gbuffer_lightmap_uv"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::LIGHTMAP_UV),
             "PortalInstance",
         )?;
         let sss_target = resources.read(
-            helio_core::ResourceKey::new("gbuffer_sss"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::SSS),
             "PortalInstance",
         )?;
         let extra_target = resources.read(
-            helio_core::ResourceKey::new("gbuffer_extra"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::EXTRA),
             "PortalInstance",
         )?;
         let velocity_target = resources.read(
-            helio_core::ResourceKey::new("gbuffer_velocity"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::VELOCITY),
             "PortalInstance",
         )?;
 
@@ -698,10 +658,10 @@ impl RenderPass for PortalInstancePass {
                 (*self.portal_compacted_indices_buf).clone(),
                 (*self.portal_compacted_chains_buf).clone(),
                 ctx.scene_buffers
-                    .get(BufferKey::of("skeletal_skin_vertices"))
+                    .get(BufferKey::of(helio_mesh_api::SKELETAL_SKIN_VERTICES))
                     .map_or_else(|| batch.instances.clone(), |h| h.buffer.clone()),
                 ctx.scene_buffers
-                    .get(BufferKey::of("skeletal_bone_palette"))
+                    .get(BufferKey::of(helio_mesh_api::SKELETAL_BONE_PALETTE))
                     .map_or_else(|| batch.instances.clone(), |h| h.buffer.clone()),
             ],
             portal_mask_view.clone(),
@@ -776,18 +736,17 @@ impl RenderPass for PortalInstancePass {
         let Some(material_textures) = material_textures else {
             return Ok(());
         };
-        let Some(vertices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_vertex"))
+        let Some(vertices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_VERTICES.key())
         else {
             return Ok(());
         };
-        let Some(indices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_index"))
-        else {
+        let Some(indices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_INDICES.key()) else {
             return Ok(());
         };
         // The material rows are the scene join's output, which reallocates as meshes
         // load: bind group 1 must follow the buffer, not only the texture set (the
         // main G-buffer pass keys on the same pair).
-        let materials_handle = ctx.scene_buffers.get(BufferKey::of("materials"));
+        let materials_handle = ctx.scene_buffers.get(helio_mats::MATERIALS.key());
         let materials_buf = materials_handle
             .map(|handle| &handle.buffer)
             .unwrap_or(batch.instances);

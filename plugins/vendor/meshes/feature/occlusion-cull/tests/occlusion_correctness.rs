@@ -87,8 +87,8 @@ impl RenderPass for SceneInjectorPass {
         &[
             "object_batch",
             "indirect_dispatch",
-            "coordinate_spaces",
-            "depth",
+            helio_core::resource_keys::COORDINATE_SPACES,
+            helio_frame_api::gbuffer::DEPTH,
         ]
     }
 

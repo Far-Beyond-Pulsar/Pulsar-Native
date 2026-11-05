@@ -1,3 +1,4 @@
+//!use helio_prelude
 // Corona particle rendering. Kept separate from the compute shader so the
 // vertex stage sees read-only storage bindings, as baseline WebGPU requires.
 
@@ -38,22 +39,12 @@ struct EmitterDef {
     _pad:               array<f32, 12>,
 }
 
-struct CameraUniforms {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    inv_view_proj:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 @group(0) @binding(0)  var<uniform>       uniforms:         GpuCoronaUniforms;
 @group(0) @binding(1)  var<storage, read> particles:        array<Particle>;
 @group(0) @binding(2)  var<storage, read> emitters:         array<EmitterDef>;
 @group(0) @binding(3)  var<storage, read> compact_buf:      array<u32>;
-@group(0) @binding(6)  var<storage, read> cameras: array<CameraUniforms, 2>;
+@group(0) @binding(6)  var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(10) var                particle_tex:     texture_2d<f32>;
 @group(0) @binding(11) var                particle_sampler: sampler;
 

@@ -301,6 +301,7 @@ impl LensFlarePass {
             &[
                 helio_light_api::LIGHT_LIST_SNIPPET,
                 helio_light_api::SHADOW_ATLAS_SNIPPET,
+                helio_light_api::SHADOW_LOOKUP_SNIPPET,
             ],
         );
         let pipeline = |entry, layouts: &[Option<&wgpu::BindGroupLayout>]| {
@@ -358,7 +359,7 @@ impl LensFlarePass {
         let (w, h) = reduced_size(width, height);
         let history = history_texture(device, w, h);
         Self {
-            input_key: "pre_aa",
+            input_key: helio_frame_api::color::SCENE_COLOR,
             input_alias: None,
             control: pipeline("cs_control", &[Some(&control_layout)]),
             extract: pipeline("cs_extract", &[Some(&image_layout), Some(&optics_layout)]),
@@ -862,7 +863,7 @@ impl RenderPass for LensFlarePass {
         &[OUTPUT_KEY]
     }
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("postprocess_uniforms");
+        builder.read(helio_pass_postprocess::POST_SETTINGS);
         builder.read(self.input_key);
         if let Some(alias) = self.input_alias {
             builder.read(alias);
@@ -899,7 +900,9 @@ impl RenderPass for LensFlarePass {
                 self.input_alias
                     .and_then(|alias| ctx.registry.get(ResourceKey::new(alias)))
             });
-        let pp = ctx.registry.get(ResourceKey::new("postprocess_uniforms"));
+        let pp = ctx
+            .registry
+            .get(ResourceKey::new(helio_pass_postprocess::POST_SETTINGS));
         let optics = OpticsInputs {
             camera: Some(ctx.camera),
             lights: ctx

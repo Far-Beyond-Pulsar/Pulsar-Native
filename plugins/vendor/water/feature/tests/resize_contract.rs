@@ -16,7 +16,7 @@ impl RenderPass for PreAaProducer {
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
         builder.write_color(
-            "pre_aa",
+            helio_frame_api::color::SCENE_COLOR,
             ResourceFormat::Rgba8Unorm,
             ResourceSize::MatchSurface,
         );
@@ -32,7 +32,10 @@ impl RenderPass for PreAaProducer {
         color_only_descriptor(
             "Pre-AA Producer",
             resources
-                .read_texture_view(ResourceKey::new("pre_aa"), self.name())
+                .read_texture_view(
+                    ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
+                    self.name(),
+                )
                 .expect("pre_aa is routed"),
             storage,
         )
@@ -51,7 +54,7 @@ impl RenderPass for PreAaDepthConsumer {
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("pre_aa");
+        builder.read(helio_frame_api::color::SCENE_COLOR);
     }
 
     fn render_pass_descriptor_with_storage<'a>(
@@ -62,7 +65,10 @@ impl RenderPass for PreAaDepthConsumer {
         storage: &'a mut helio_core::RenderFrameStorage,
     ) -> Option<wgpu::RenderPassDescriptor<'a>> {
         let pre_aa = resources
-            .read_texture_view(ResourceKey::new("pre_aa"), self.name())
+            .read_texture_view(
+                ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
+                self.name(),
+            )
             .expect("pre_aa is published");
         let color_attachments =
             storage.retain_boxed_slice(Box::new([Some(wgpu::RenderPassColorAttachment {

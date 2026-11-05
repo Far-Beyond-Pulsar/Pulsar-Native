@@ -1,10 +1,6 @@
+//!use helio_prelude
 //! Decal apply: reads temp textures, writes final values to GBuffer via storage.
 
-struct Camera {
-    view: mat4x4<f32>, proj: mat4x4<f32>, view_proj: mat4x4<f32>,
-    view_proj_inv: mat4x4<f32>, position_near: vec4<f32>,
-    forward_far: vec4<f32>, jitter_frame: vec4<f32>, prev_view_proj: mat4x4<f32>,
-}
 
 struct GpuDecal {
     transform: mat4x4<f32>, color: vec4<f32>,

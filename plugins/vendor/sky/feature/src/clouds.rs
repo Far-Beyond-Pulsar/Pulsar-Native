@@ -857,7 +857,7 @@ impl RenderPass for CloudTracePass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "depth",
+            helio_frame_api::gbuffer::DEPTH,
             ATMOSPHERE_FRAME,
             ATMOSPHERE_SKY_TABLE,
             ATMOSPHERE_TRANSMITTANCE,

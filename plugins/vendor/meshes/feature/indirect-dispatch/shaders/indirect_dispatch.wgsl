@@ -1,16 +1,7 @@
+//!use helio_prelude
 // GPU frustum culling + indirect draw command generation.
 // O(1) CPU cost: one dispatch, all culling on GPU.
 
-struct Camera {
-    view:          mat4x4<f32>,
-    proj:          mat4x4<f32>,
-    view_proj:     mat4x4<f32>,
-    inv_view_proj: mat4x4<f32>,
-    position_near: vec4<f32>,
-    forward_far:   vec4<f32>,
-    jitter_frame:  vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 struct CullUniforms {
     frustum_planes: array<vec4<f32>, 6>,

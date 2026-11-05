@@ -30,7 +30,7 @@
 //!
 //! Anything holding a GPU resource, and anything with per-frame state. Buffers, bind
 //! groups and residency bookkeeping belong to `helio-pass-foliage-place`. The SceneDB rows
-//! ([`components`]) and the shared WGSL ([`COMMON_SNIPPET`], [`WIND_SNIPPET`]) live here
+//! ([`components`]) and the shared WGSL ([`COMMON_SNIPPET`], [`WIND_SNIPPET`], [`GROUND_SNIPPET`]) live here
 //! too: what a feature that grows foliage on its ground (a voxel terrain) or draws it
 //! reads, without depending on the foliage passes.
 
@@ -84,6 +84,14 @@ pub const COMMON: &str = include_str!("shaders/foliage_common.wgsl");
 /// [`helio_core::shader::ShaderSnippet`] for [`COMMON`].
 pub const COMMON_SNIPPET: helio_core::shader::ShaderSnippet =
     helio_core::wgsl_snippet!(COMMON_MARKER, "shaders/foliage_common.wgsl");
+
+/// Marker opting a shader into [`GROUND_SNIPPET`].
+pub const GROUND_MARKER: &str = "//!use helio_foliage_ground";
+/// The ground's query and answer rows ([`ground`]: `GroundQuery`,
+/// `GroundHit`, `GroundArgs`, `GROUND_NONE`, `ground_miss()`), for placement
+/// and for every ground that answers it (a voxel terrain).
+pub const GROUND_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!(GROUND_MARKER, "shaders/foliage_ground.wgsl");
 
 /// Cubes in the tallest blocky blade ([`FoliageKind::Block`]): a stack of the type's
 /// cube (`width_range[0]`) as tall as its height rounds to, at most this many.

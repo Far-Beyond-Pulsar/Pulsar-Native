@@ -5,6 +5,8 @@ use helio_pass_vg_raster::shaders;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 fn validate(label: &str, src: &str, caps: Capabilities) -> Result<naga::Module, String> {
+    // What the device compiles: the prelude expanded.
+    let src = &*helio_core::shader::resolve(src);
     let module = naga::front::wgsl::parse_str(src)
         .map_err(|e| format!("{label}: parse: {}", e.emit_to_string(src)))?;
     Validator::new(ValidationFlags::all(), caps)
@@ -112,7 +114,8 @@ fn abi_struct_sizes_match() {
         std::mem::size_of::<VgRasterParams>()
     );
     assert_eq!(
-        size("VgCamera"),
+        // The prelude's camera, which the bindings use.
+        size("Camera"),
         std::mem::size_of::<helio_core::GpuCameraUniforms>()
     );
 }

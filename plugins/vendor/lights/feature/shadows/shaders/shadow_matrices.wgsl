@@ -1,3 +1,4 @@
+//!use helio_prelude
 /// GPU shadow matrix computation
 ///
 /// Computes shadow light-space matrices entirely on GPU to eliminate CPU overhead.
@@ -57,18 +58,6 @@ struct GpuShadowMatrix {
     policy: vec4u,
 }
 
-/// Camera data for CSM cascade computation.
-/// Layout must match GpuCameraUniforms in libhelio/src/camera.rs (256 bytes).
-struct CameraUniforms {
-    view:           mat4x4f,   // offset   0
-    proj:           mat4x4f,   // offset  64
-    view_proj:      mat4x4f,   // offset 128
-    inv_view_proj:  mat4x4f,   // offset 192
-    position_near:  vec4f,     // offset 256 — xyz = world pos, w = near plane
-    forward_far:    vec4f,     // offset 272
-    jitter_frame:   vec4f,     // offset 288
-    prev_view_proj: mat4x4f,   // offset 304
-}
 
 struct ShadowMatrixParams {
     light_count: u32,
@@ -81,7 +70,7 @@ struct ShadowMatrixParams {
 
 @group(0) @binding(0) var<storage, read>       lights:         array<GpuLight>;
 @group(0) @binding(1) var<storage, read_write> shadow_mats:    array<GpuShadowMatrix>;
-@group(0) @binding(2) var<storage, read> cameras: array<CameraUniforms, 2>;
+@group(0) @binding(2) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(3) var<uniform>             params:         ShadowMatrixParams;
 @group(0) @binding(4) var<storage, read_write> shadow_dirty:   array<atomic<u32>>;  // Atomic dirty flags per caster slot
 @group(0) @binding(5) var<storage, read_write> shadow_hashes:  array<u32>;  // FNV hashes to detect changes
@@ -197,7 +186,7 @@ fn compute_directional_cascades(light_idx: u32, direction: vec3f) {
     let eye = cameras[0].position_near.xyz;
     var world: array<vec3f, 8>;
     for (var i = 0u; i < 8u; i++) {
-        let v = cameras[0].inv_view_proj * ndc[i];
+        let v = cameras[0].view_proj_inv * ndc[i];
         if i < 4u {
             world[i] = v.xyz / v.w;
         } else {

@@ -1,4 +1,4 @@
-struct ShadowFace { mat:mat4x4f, atlas:vec4f, policy:vec4u }
+//!use shadow_atlas
 // Shadow caster pass — depth-only, GPU-driven.
 //
 // Vertex shader projects world-space geometry into each light's clip space using
@@ -41,7 +41,7 @@ struct FaceIndex {
 // ── Bindings ──────────────────────────────────────────────────────────────────
 
 // Pre-computed light-space view-projection matrices; one per shadow atlas face.
-@group(0) @binding(0) var<storage, read> shadow_matrices: array<ShadowFace>;
+@group(0) @binding(0) var<storage, read> shadow_matrices: array<LightMatrix>;
 // Per-instance world transforms for the entire scene.
 @group(0) @binding(1) var<storage, read> instances:       array<GpuInstanceData>;
 // Current face selection, updated each pass via dynamic offset into a pre-written buffer.

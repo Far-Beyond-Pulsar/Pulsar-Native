@@ -1,4 +1,5 @@
 enable wgpu_binding_array;
+//!use helio_prelude
 //!use specular_aa
 //!use mesh_draw_rows
 //!use pbr_eval
@@ -55,16 +56,6 @@ enable wgpu_binding_array;
 //! look directly). Their exact projected aperture is evaluated per fragment
 //! by intersecting the camera ray with each mapped portal plane.
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    inv_view_proj:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 struct ScreenSize {
     width:  f32,
@@ -237,7 +228,7 @@ fn vs_main(v: Vertex, @location(15) instance_index: u32, @builtin(vertex_index) 
     out.prev_clip_position = prev_clip;
     out.chain_idx          = chain_idx;
     out.pre_portal_position = pre_portal_position;
-    out.lightmap_uv        = vec2<f32>(-1.0, -1.0);
+    out.lightmap_uv        = GBUFFER_TAG_UNLIGHTMAPPED;
     return out;
 }
 
@@ -388,7 +379,7 @@ fn fs_main(input: VertexOutput) -> GBufferOutput {
     out.emissive = vec4<f32>(surface.emissive, surface.specular_f0.b);
     // x = -1 reads as "no lightmap"; y carries the chain so lighting can shade this
     // pixel in the content's own world (-3 - chain index, below the -1/-2 tags).
-    out.lightmap_uv = vec2<f32>(-1.0, -3.0 - f32(input.chain_idx));
+    out.lightmap_uv = gbuffer_tag_view_remap(input.chain_idx);
     out.sss = vec4<f32>(surface.subsurface_color, surface.subsurface_radius);
     out.extra = vec4<f32>(surface.roughness_aniso_x, surface.roughness_aniso_y,
                           surface.aniso_rotation, f32(surface.flags));

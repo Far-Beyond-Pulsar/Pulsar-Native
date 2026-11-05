@@ -164,23 +164,6 @@ pub const fn visible_region_offset(lod: u32, stride: u32) -> u32 {
 // Pipeline contract
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// The eight G-buffer colour formats, in the exact order and format `GBufferPass`
-/// declares them.
-///
-/// Duplicated here rather than imported because importing them would make this crate
-/// depend on `helio-pass-gbuffer` for a constant. The list is pinned against the real
-/// one in `tests/pipeline_contract.rs`; if that ever fails, the fix is here, not there.
-pub const GBUFFER_TARGET_FORMATS: [wgpu::TextureFormat; 8] = [
-    wgpu::TextureFormat::Rgba8Unorm,  // 0 albedo
-    wgpu::TextureFormat::Rgba16Float, // 1 normal
-    wgpu::TextureFormat::Rgba8Unorm,  // 2 orm
-    wgpu::TextureFormat::Rgba16Float, // 3 emissive
-    wgpu::TextureFormat::Rg16Float,   // 4 lightmap_uv
-    wgpu::TextureFormat::Rgba16Float, // 5 sss
-    wgpu::TextureFormat::Rgba16Float, // 6 extra
-    wgpu::TextureFormat::Rgba16Float, // 7 velocity (depth residual reserved)
-];
-
 /// The two targets grass does not write, which therefore carry
 /// [`wgpu::ColorWrites::empty()`].
 ///
@@ -196,7 +179,7 @@ pub const UNWRITTEN_TARGET_INDICES: [usize; 2] = [5, 6];
 pub fn color_target_states() -> [Option<wgpu::ColorTargetState>; 8] {
     std::array::from_fn(|index| {
         Some(wgpu::ColorTargetState {
-            format: GBUFFER_TARGET_FORMATS[index],
+            format: helio_frame_api::gbuffer::TARGET_FORMATS[index],
             // No blending: blending grass into the G-buffer would write a half-weight
             // normal and a half-weight depth, which is not a surface any deferred
             // lighting model can interpret. LODs switch whole tufts instead.
@@ -719,11 +702,18 @@ impl RenderPass for FoliageGBufferPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["gbuffer", "foliage_draws", "foliage_boxes"]
+        &[
+            helio_frame_api::gbuffer::GROUP,
+            "foliage_draws",
+            "foliage_boxes",
+        ]
     }
 
     fn writes(&self) -> &'static [&'static str] {
-        &["gbuffer", "gbuffer_velocity"]
+        &[
+            helio_frame_api::gbuffer::GROUP,
+            helio_frame_api::gbuffer::VELOCITY,
+        ]
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
@@ -731,7 +721,7 @@ impl RenderPass for FoliageGBufferPass {
         // this pass loads them and draws into them, exactly as `VirtualGeometryPass`
         // does. Declaring a second writer would allocate a second set of textures and
         // the fusion this pass is positioned for would become impossible.
-        builder.read("gbuffer");
+        builder.read(helio_frame_api::gbuffer::GROUP);
     }
 
     fn render_pass_descriptor_with_storage<'a>(
@@ -750,23 +740,23 @@ impl RenderPass for FoliageGBufferPass {
         // The views must be byte-identical to `GBufferPass`'s, in the same order:
         // `compute_chains` requires an exact attachment match before it will fuse.
         let gbuffer = resources.read::<helio_core::ViewGroup<'_, 4>>(
-            helio_core::ResourceKey::new("gbuffer"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::GROUP),
             "FoliageGBuffer",
         )?;
         let lightmap_uv = resources.read(
-            helio_core::ResourceKey::new("gbuffer_lightmap_uv"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::LIGHTMAP_UV),
             "FoliageGBuffer",
         )?;
         let sss_target = resources.read(
-            helio_core::ResourceKey::new("gbuffer_sss"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::SSS),
             "FoliageGBuffer",
         )?;
         let extra_target = resources.read(
-            helio_core::ResourceKey::new("gbuffer_extra"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::EXTRA),
             "FoliageGBuffer",
         )?;
         let velocity_target = resources.read(
-            helio_core::ResourceKey::new("gbuffer_velocity"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::VELOCITY),
             "FoliageGBuffer",
         )?;
 

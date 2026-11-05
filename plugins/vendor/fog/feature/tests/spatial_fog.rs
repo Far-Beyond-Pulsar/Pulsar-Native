@@ -168,7 +168,7 @@ fn scenedb_local_fog_is_visible_from_outside_and_tracks_edits_and_removal() {
 fn cs_probe() {
     let points = array<vec3<f32>, 4>(vec3<f32>(0,0,-10), vec3<f32>(4,0,-10), vec3<f32>(0,0,-5), vec3<f32>(1.75,0,-10));
     for (var i = 0u; i < 4u; i++) {
-        let m = medium_at(points[i], -points[i].z);
+        let m = fog_medium_at(points[i], -points[i].z);
         probes[i] = vec4<f32>(m.albedo, m.extinction);
     }
 }"#

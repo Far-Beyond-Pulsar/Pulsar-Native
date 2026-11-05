@@ -1,19 +1,10 @@
+//!use helio_prelude
 // vis_resolve: merge the hardware, software, dense and ray-traced visibility
 // results into the unified RG32Uint payload (R = vis id, G = bary_pack(u,v))
 // and the resolved depth, depth-testing against the classic G-buffer depth.
 //
 // Reversed-Z: larger depth is nearer; 0 is "nothing".
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    view_proj_inv:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 struct Params {
     width: u32,

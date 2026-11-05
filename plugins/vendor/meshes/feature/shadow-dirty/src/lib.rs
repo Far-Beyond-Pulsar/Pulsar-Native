@@ -92,10 +92,11 @@ impl ShadowDirtyPass {
     /// Allocate all GPU resources.  Pass the shared buffers to `ShadowPass::new()`.
     pub fn new(device: &wgpu::Device, light_dirty_buf: Arc<wgpu::Buffer>) -> Self {
         // ── Shader ────────────────────────────────────────────────────────────
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "ShadowDirty Shader",
             helio_core::include_wgsl!("../shaders/shadow_dirty.wgsl"),
+            &[helio_light_api::SHADOW_ATLAS_SNIPPET],
         );
 
         // ── Bind Group Layout ─────────────────────────────────────────────────

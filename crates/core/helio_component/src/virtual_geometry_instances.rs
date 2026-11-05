@@ -75,16 +75,16 @@
 use helio_core::{
     BufferHandle, BufferKey, SceneDerivation, SceneDerivationContext, SceneDerivationOutput,
 };
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub use helio_vg_format::{
-    GpuVgInstance, INST_LOD_SUPPRESS, VG_ASSET_READY_FLAG_READY, VgAssetReadyRow,
+    GpuVgInstance, VgAssetReadyRow, INST_LOD_SUPPRESS, VG_ASSET_READY_FLAG_READY,
 };
 
 /// The VG instance rows (`GpuVgInstance`, 16 B each), one per VG-active
 /// instance. See the module doc.
-pub const VG_INSTANCES_KEY: BufferKey = BufferKey::of("vg_instances");
+pub const VG_INSTANCES_KEY: BufferKey = BufferKey::of(helio_mesh_api::VG_INSTANCES);
 /// One 16-byte row; word 0 is the number of valid rows in [`VG_INSTANCES_KEY`].
 pub const VG_INSTANCE_COUNT_KEY: BufferKey = BufferKey::of("vg_instance_count");
 /// Generic authored-LOD suppression flags, one `u32` per object entity index.
@@ -147,7 +147,7 @@ impl VgInstanceKeys {
 }
 
 /// The scene join's published object rows (`StaticObjectComponent`).
-const OBJECTS_KEY: BufferKey = BufferKey::of("static_objects");
+const OBJECTS_KEY: BufferKey = helio_mesh_api::STATIC_OBJECTS.key();
 
 /// Runtime switch for the derivation, from `VirtualGeometrySettings`: when
 /// off, no instance is VG-active and nothing is suppressed. Cloneable; hold
@@ -165,13 +165,14 @@ impl VgInstanceControl {
     }
 }
 
-/// The shader as compiled: the shared VG declarations, then the derivation.
+/// The shader as compiled: the shared VG declarations, the scene join's
+/// rows (owner links, pool handles), then the derivation.
 pub fn shader_source() -> String {
-    format!(
+    helio_scene_join::join_source(&format!(
         "{}\n{}",
         helio_vg_format::WGSL,
         include_str!("virtual_geometry_instances.wgsl")
-    )
+    ))
 }
 
 #[repr(C)]

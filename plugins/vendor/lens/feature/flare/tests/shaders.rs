@@ -8,6 +8,7 @@ fn the_lens_response_shader_validates() {
         &[
             helio_light_api::LIGHT_LIST_SNIPPET,
             helio_light_api::SHADOW_ATLAS_SNIPPET,
+            helio_light_api::SHADOW_LOOKUP_SNIPPET,
         ],
     );
     let source = source.as_ref();

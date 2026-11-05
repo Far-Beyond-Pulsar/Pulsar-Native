@@ -331,8 +331,8 @@ fn native_media_world_space_overlap_transmittance_quality_edits_and_tombstones()
             r#"
 @group(0) @binding(20) var<storage, read_write> probes: array<vec4<f32>, 4>;
 @compute @workgroup_size(1) fn probe_native() {
-    let a = medium_at(vec3<f32>(0,0,-10), 1000000.0);
-    let b = medium_at(vec3<f32>(4,0,-10), -1000000.0);
+    let a = fog_medium_at(vec3<f32>(0,0,-10), 1000000.0);
+    let b = fog_medium_at(vec3<f32>(4,0,-10), -1000000.0);
     probes[0] = vec4<f32>(a.albedo, a.extinction);
     probes[1] = vec4<f32>(a.emissive, b.extinction);
     probes[2] = vec4<f32>(medium_transmittance(vec3<f32>(0), vec3<f32>(0,0,-1), 20.0), vec3<f32>(media_list.grid));
@@ -538,8 +538,8 @@ fn point_shadow_cube_matches_real_matrix_producer_and_shadow_strength_adapter() 
     let matrices = buffer(&device, &[0; 576], storage);
     // Use the real shadow producer's math, including its handedness and face order.
     let producer = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("real point shadow matrices"),
-        source: wgpu::ShaderSource::Wgsl(format!("{}\n{}",include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
-            "@compute @workgroup_size(1) fn test_point_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }").into()) });
+        source: wgpu::ShaderSource::Wgsl(helio_core::shader::resolve(&format!("{}\n{}",include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
+            "@compute @workgroup_size(1) fn test_point_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }")).into_owned().into()) });
     let producer = pipeline(&device, &producer, "test_point_matrices");
     let producer_bg = group(&device, &producer, &[(0, &lights), (1, &matrices)]);
     let shader = helio_core::shader::module(
@@ -799,9 +799,9 @@ impl ShadowProducer {
         });
         let matrices = buffer(device, &[0; 576], wgpu::BufferUsages::STORAGE);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None, source: wgpu::ShaderSource::Wgsl(format!("{}\n{}",
+            label: None, source: wgpu::ShaderSource::Wgsl(helio_core::shader::resolve(&format!("{}\n{}",
                 include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
-                "@compute @workgroup_size(1) fn test_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }").into()),
+                "@compute @workgroup_size(1) fn test_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }")).into_owned().into()),
         });
         let pipeline = pipeline(device, &shader, "test_matrices");
         let bg = group(device, &pipeline, &[(0, lights), (1, &matrices)]);

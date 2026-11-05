@@ -5425,6 +5425,7 @@ dependencies = [
  "half",
  "helio-bake-types",
  "helio-core",
+ "helio-frame-api",
  "log",
  "nebula",
  "pollster 0.4.0",
@@ -5792,6 +5793,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-core",
  "helio-foliage-api",
+ "helio-frame-api",
  "helio-scene-join",
  "helio-settings",
  "log",
@@ -5885,6 +5887,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-frame-api",
  "log",
  "wgpu",
 ]
@@ -6117,6 +6120,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
+ "helio-frame-api",
  "log",
  "wgpu",
 ]
@@ -6181,6 +6185,7 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-feature-api",
+ "helio-frame-api",
  "log",
  "wgpu",
 ]
@@ -6389,6 +6394,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
+ "helio-frame-api",
  "helio-light-api",
  "helio-mats",
  "helio-pass-gbuffer",
@@ -6788,6 +6794,7 @@ dependencies = [
  "helio-mats",
  "helio-mesh-api",
  "helio-pass-postprocess",
+ "helio-scene-join",
  "helio-vg-build",
  "helio-vg-format",
  "helio-vg-stream",
@@ -9889,6 +9896,10 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "one_owner"
+version = "0.1.0"
 
 [[package]]
 name = "oorandom"

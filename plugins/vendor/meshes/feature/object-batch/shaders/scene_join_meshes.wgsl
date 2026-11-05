@@ -5,11 +5,6 @@
 // every other slot stays zero (the object-batch pass skips rows whose
 // `mesh_generation` is 0).
 
-struct Handle {
-    offset: u32,
-    count: u32,
-}
-
 /// `helio_component::MeshSectionDraw` (128 bytes).
 struct Section {
     first_index: u32,

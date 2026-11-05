@@ -408,16 +408,19 @@ impl RenderPass for PortalEditorOverlayPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["pre_aa", "depth"]
+        &[
+            helio_frame_api::color::SCENE_COLOR,
+            helio_frame_api::gbuffer::DEPTH,
+        ]
     }
 
     fn writes(&self) -> &'static [&'static str] {
         // Draws (LoadOp::Load) directly onto pre_aa — see render_pass_descriptor.
-        &["pre_aa"]
+        &[helio_frame_api::color::SCENE_COLOR]
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("pre_aa");
+        builder.read(helio_frame_api::color::SCENE_COLOR);
     }
 
     fn set_editor_mode(&mut self, enabled: bool) {
@@ -438,7 +441,9 @@ impl RenderPass for PortalEditorOverlayPass {
         // would make this pass flicker in and out of the chain and could
         // break fusion for passes chained through it. `execute()` is where
         // editor_mode actually matters: no draw call, zero cost, when off.
-        let pre_aa = resources.get(helio_core::ResourceKey::new("pre_aa"));
+        let pre_aa = resources.get(helio_core::ResourceKey::new(
+            helio_frame_api::color::SCENE_COLOR,
+        ));
         let target_view = pre_aa.unwrap_or(target);
         // `pre_aa` is internal-resolution (render-scaled); the raw `target`
         // fallback is full output resolution. Depth must track whichever one
@@ -448,7 +453,9 @@ impl RenderPass for PortalEditorOverlayPass {
             depth
         } else {
             resources
-                .get(helio_core::ResourceKey::new("full_res_depth"))
+                .get(helio_core::ResourceKey::new(
+                    helio_frame_api::depth::FULL_RES_DEPTH,
+                ))
                 .unwrap_or(depth)
         };
         let color_attachments: &'a [Option<wgpu::RenderPassColorAttachment<'a>>] = storage

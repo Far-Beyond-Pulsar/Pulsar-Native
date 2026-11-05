@@ -1013,6 +1013,6 @@ fn fs_main(input: VertexOutput, @builtin(front_facing) front_facing: bool) -> Fo
     // (helio-pass-tsr MOTION_VECTORS); still, it moves with the camera.
     out.velocity = vec4<f32>(foliage_velocity(input.clip_position.xy, input.prev_clip_position), 0.0,
         select(0.0, 1.0, input.moved > 0.0));
-    out.lightmap_uv = vec2<f32>(-1.0, -1.5);
+    out.lightmap_uv = GBUFFER_TAG_OWN_OCCLUSION;
     return out;
 }

@@ -28,6 +28,9 @@ impl Feature for LensFlareFeature {
                         .with_color_input(input)
                         .with_color_alias(color::alias(build.env));
                     build.graph.add_pass(Box::new(pass));
+                    // The flare's response is the frame's glare: the tone
+                    // map composites it with the scene's exposure.
+                    color::publish_glare(build.env, crate::OUTPUT_KEY);
                     Ok(())
                 },
             )

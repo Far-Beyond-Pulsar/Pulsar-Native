@@ -753,7 +753,7 @@ impl DrawPipelines {
         let sky_layout = layout(&layouts.sky_sample);
         let local_layout = layout(&layouts.local);
         let filter_layout = layout(&layouts.filter);
-        let gbuffer_targets = crate::engine::GBUFFER_FORMATS.map(|format| {
+        let gbuffer_targets = helio_frame_api::gbuffer::TARGET_FORMATS.map(|format| {
             Some(wgpu::ColorTargetState {
                 format,
                 blend: None,

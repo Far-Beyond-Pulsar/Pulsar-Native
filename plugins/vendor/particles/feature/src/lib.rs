@@ -903,19 +903,24 @@ impl RenderPass for CoronaPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["pre_aa", "full_res_depth", "corona_emitters", "depth"]
+        &[
+            helio_frame_api::color::SCENE_COLOR,
+            helio_frame_api::depth::FULL_RES_DEPTH,
+            "corona_emitters",
+            helio_frame_api::gbuffer::DEPTH,
+        ]
     }
 
     fn writes(&self) -> &'static [&'static str] {
         // Draws (LoadOp::Load) directly onto pre_aa — see render_pass_descriptor()
         // below. Declaring this lets the render graph see the real dependency
         // for subpass fusion.
-        &["pre_aa"]
+        &[helio_frame_api::color::SCENE_COLOR]
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("pre_aa");
-        builder.read("full_res_depth");
+        builder.read(helio_frame_api::color::SCENE_COLOR);
+        builder.read(helio_frame_api::depth::FULL_RES_DEPTH);
         builder.read("corona_emitters");
     }
 
@@ -968,7 +973,9 @@ impl RenderPass for CoronaPass {
         resources: &'a helio_core::ResourceRegistry<'a>,
         storage: &'a mut helio_core::RenderFrameStorage,
     ) -> Option<wgpu::RenderPassDescriptor<'a>> {
-        let pre_aa = resources.get(helio_core::ResourceKey::new("pre_aa"));
+        let pre_aa = resources.get(helio_core::ResourceKey::new(
+            helio_frame_api::color::SCENE_COLOR,
+        ));
         let target_view = pre_aa.unwrap_or(target);
         // `pre_aa` is internal-resolution (render-scaled); the raw `target`
         // fallback is full output resolution. Depth must track whichever one
@@ -978,7 +985,9 @@ impl RenderPass for CoronaPass {
             depth
         } else {
             resources
-                .get(helio_core::ResourceKey::new("full_res_depth"))
+                .get(helio_core::ResourceKey::new(
+                    helio_frame_api::depth::FULL_RES_DEPTH,
+                ))
                 .unwrap_or(depth)
         };
         let color_attachments: &'a [Option<wgpu::RenderPassColorAttachment<'a>>] = storage

@@ -41,7 +41,7 @@ unsafe impl pulsar_scenedb::Pod for ReflectionCaptureRow {}
 /// The buffer the renderer reads [`ReflectionCaptureRow`]s from. Engines produce it
 /// (a SceneDB component stored under this key, or a scene derivation).
 pub const REFLECTION_CAPTURES: helio_core::BufferContract<ReflectionCaptureRow> =
-    helio_core::BufferContract::new("reflection_captures");
+    helio_core::BufferContract::new(helio_frame_api::lighting::ENVIRONMENT_PROBES);
 
 impl From<crate::GpuReflectionCapture> for ReflectionCaptureRow {
     fn from(v: crate::GpuReflectionCapture) -> Self {

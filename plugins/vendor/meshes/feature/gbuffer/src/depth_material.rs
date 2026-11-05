@@ -47,7 +47,7 @@ impl DepthMaterialBindings {
             .get_or_insert_with(|| helio_mats::MaterialStandIn::new(&ctx.device, ctx.queue));
         let materials = ctx
             .scene_buffers
-            .get(BufferKey::of("materials"))
+            .get(helio_mats::MATERIALS.key())
             .map_or(stand_in.rows(), |handle| &handle.buffer);
         let textures = ctx
             .registry

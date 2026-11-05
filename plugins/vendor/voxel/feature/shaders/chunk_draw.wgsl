@@ -2187,9 +2187,8 @@ fn textured_normal(n: vec3<f32>, t: vec3<f32>, c: ChunkDraw, axis: u32) -> vec3<
     return normalize(tu * t.x + tv * t.y + n * t.z);
 }
 
-// Helio's gbuffer (`engine::GBUFFER_FORMATS`).
-// Helio's surface flag for two-sided foliage (`pbr_eval.wgsl`).
-const SURFACE_FLAG_TWO_SIDED: u32 = 8u;
+// The frame's G-buffer targets, in location order
+// (`helio_frame_api::gbuffer::TARGETS`).
 struct GOut {
     @location(0) albedo: vec4<f32>,
     @location(1) normal: vec4<f32>,
@@ -2283,7 +2282,7 @@ fn publish(@builtin(position) pixel: vec4<f32>) -> GOut {
     out.orm = vec4<f32>(look.ao * textureLoad(hit_sky, p, 0).r * occlusion, clamp(roughness, 0.04, 1.0), 0.0, f0);
     out.emissive = vec4<f32>(emissive, f0);
     // Terrain tag consumed by deferred lighting (skips screen-space AO).
-    out.lightmap_uv = vec2<f32>(-1.0, -2.0);
+    out.lightmap_uv = GBUFFER_TAG_TRACED;
     // Materials that let light through are two-sided foliage: the sun from
     // behind comes through tinted by their colour (its share through the
     // leaf and those past it is the sun's visibility: `shadow_fallback`).
@@ -4666,23 +4665,9 @@ fn gi_shade(index: u32, ray: GiRay, end: WalkEnd) {
 // GI probes are); it walks the drawn cut, and where it meets a top face it
 // answers the distance, the face's normal and its cell's material (the
 // ground id foliage types are keyed by). Walls, rock and nothing drawn are
-// no ground. A switch between levels shows its new side (dither 0): the
+// no ground (`helio_foliage_api`'s ground rows, `GroundQuery`/`GroundHit`).
+// A switch between levels shows its new side (dither 0): the
 // ground changes when it starts and again when it ends.
-struct GroundQuery {
-    start: vec3<f32>,
-    length: f32,
-    up: vec3<f32>,
-    pad: u32,
-}
-
-struct GroundHit {
-    distance: u32,
-    normal: u32,
-    ground: u32,
-    // The ground's linear colour there, RGBA8 (0: none).
-    colour: u32,
-}
-
 struct ProbeTile {
     cell: vec4<i32>,
     frac: vec4<f32>,
@@ -4711,7 +4696,7 @@ const PROBE_STEP: f32 = 4.0;
 @compute @workgroup_size(64)
 fn ground_probe(@builtin(global_invocation_id) id: vec3<u32>) {
     if id.x >= probe_frame.counts.x || id.x >= arrayLength(&ground_queries) || id.x >= arrayLength(&ground_hits) { return; }
-    var hit = GroundHit(bitcast<u32>(-1.0), 0u, 0xffffffffu, 0u);
+    var hit = ground_miss();
     // The block holding the query: the last whose first query is at or before it.
     var lo = 0u;
     var hi = min(probe_frame.counts.y, arrayLength(&probe_tiles));
@@ -4757,7 +4742,7 @@ fn ground_probe(@builtin(global_invocation_id) id: vec3<u32>) {
 // query's start): a top face's distance from the start, normal and
 // material, else none (`ground_probe`).
 fn ground_answer(end: WalkEnd, org: vec3<f32>, up: vec3<f32>, along: f32) -> GroundHit {
-    var hit = GroundHit(bitcast<u32>(-1.0), 0u, 0xffffffffu, 0u);
+    var hit = ground_miss();
     let f = cell_frame(end.slot, end.cell);
     let axis = select(select(f.m2.xyz, f.m1.xyz, end.axis == 1u), f.m0.xyz, end.axis == 0u);
     let n = normalize(axis) * select(-1.0, 1.0, end.sign == 1u);
@@ -4803,7 +4788,7 @@ fn ground_probe_cross(@builtin(global_invocation_id) id: vec3<u32>) {
     let q = vec2<u32>(id.x & 63u, id.x >> 6u);
     let e = enter_volume(org, -up, band_end - band_top, 0);
     if e.kind == 2u { return; }
-    var hit = GroundHit(bitcast<u32>(-1.0), 0u, 0xffffffffu, 0u);
+    var hit = ground_miss();
     if e.kind == 0u {
         let end = walk(e.walk, org, -up, e.t, band_end - band_top, 0, 96u, false, q);
         if !end.hit { return; }

@@ -3,6 +3,7 @@
 //!use sun_transmittance
 //!use light_list
 //!use shadow_atlas
+//!use shadow_lookup
 //
 // Volumetric fog — froxel grid (Hillaire, "Physically Based and Unified Volumetric
 // Rendering in Frostbite", SIGGRAPH 2015).
@@ -249,7 +250,7 @@ fn cs_resolve(@builtin(local_invocation_index) lid: u32) {
     // Disabled, the resolver reports a 1-unit placeholder range; using it
     // would confine global and local media to the first unit of the grid.
     var range = select(1000.0, config.fog_max_distance,
-        config.fog_enabled != 0u && config.fog_max_distance > HELIO_FROXEL_NEAR);
+        config.fog_enabled != 0u && config.fog_max_distance > MEDIA_NEAR);
     media_list.render_enabled = fog_globals.enabled;
     media_list.temporal_blend = finite_clamp(fog_globals.temporal_blend, 0.01, 1.0);
     media_list.history_rejection = 0.8;
@@ -273,7 +274,7 @@ fn cs_resolve(@builtin(local_invocation_index) lid: u32) {
     if media_far > range {
         range = min(exp2(ceil(log2(media_far * 1.05) * 2.0) * 0.5), 20000.0);
     }
-    range = finite_clamp(range, HELIO_FROXEL_NEAR + 0.01, 100000.0);
+    range = finite_clamp(range, MEDIA_NEAR + 0.01, 100000.0);
     media_list.history_compatible = select(0u, 1u,
         abs(media_list.previous_range - range) < 0.001 && media_list.previous_epoch == epoch && media_list.previous_quality == quality);
     media_list.previous_range = range;
@@ -577,7 +578,7 @@ fn smoke_noise(p: vec3<f32>) -> f32 {
             mix(smoke_hash(i + vec3<f32>(0,1,1)), smoke_hash(i + vec3<f32>(1,1,1)), u.x), u.y), u.z);
 }
 
-struct Medium {
+struct FogMedium {
     extinction: f32,
     albedo: vec3<f32>,
     emissive: vec3<f32>,
@@ -610,7 +611,7 @@ fn local_shape(p: vec3<f32>, v: LocalMedium) -> f32 {
     return smoothstep(0.0, v.edge_fade, min(edge.x, min(edge.y, edge.z)));
 }
 
-fn add_world_medium(accum: Medium, m: WorldMedium, p: vec3<f32>, shape: f32) -> Medium {
+fn add_world_medium(accum: FogMedium, m: WorldMedium, p: vec3<f32>, shape: f32) -> FogMedium {
     var result = accum;
     var config = world_config(m);
     config.fog_density = 1.0;
@@ -628,8 +629,8 @@ fn add_world_medium(accum: Medium, m: WorldMedium, p: vec3<f32>, shape: f32) -> 
     return result;
 }
 
-fn medium_at(p: vec3<f32>, view_depth: f32) -> Medium {
-    var m: Medium;
+fn fog_medium_at(p: vec3<f32>, view_depth: f32) -> FogMedium {
+    var m: FogMedium;
     if fog.fog_enabled != 0u && view_depth >= fog.fog_start_distance {
         m.extinction = density_at(p, fog, FLAT);
         if fog.fog_mode == 2u { m.smoke = m.extinction; }
@@ -777,7 +778,7 @@ fn pixel_ray(ndc: vec2<f32>) -> vec3<f32> {
 
 /// World position at the centre of a froxel, given normalized grid coords.
 ///
-/// `slice_norm` maps through the prelude's exponential distribution, so this is
+/// `slice_norm` maps through the frame's media mapping, so this is
 /// the exact inverse of what the composite does to find a slice from a depth.
 fn froxel_world_pos(uv: vec2<f32>, slice_norm: f32) -> vec3<f32> {
     // The grid is anchored to the UNJITTERED frustum. With TSR the camera
@@ -790,7 +791,7 @@ fn froxel_world_pos(uv: vec2<f32>, slice_norm: f32) -> vec3<f32> {
 
     let dir = pixel_ray(ndc);
 
-    let view_depth = helio_froxel_view_depth_from_slice(slice_norm, fog.fog_max_distance);
+    let view_depth = media_view_depth_from_slice(slice_norm, fog.fog_max_distance);
 
     // Slices are planes of constant *view depth*, not spheres of constant radius,
     // so the radial distance along this ray is view_depth / cos(angle to forward).
@@ -845,14 +846,14 @@ fn shadow_map_visibility(light_idx: u32, p0: vec3<f32>) -> vec3<f32> {
 
     if light.light_type == LIGHT_DIRECTIONAL {
         let dist = length(p - cameras[0].position_near.xyz);
-        let sel = helio_csm_select(dist, fog_globals.csm_splits);
+        let sel = shadow_csm_select(dist, fog_globals.csm_splits);
         layer = light.shadow_index + sel.cascade_a;
     } else if light.light_type == LIGHT_POINT {
         layer = light.shadow_index + point_light_face(p - light.position_range.xyz);
     }
 
     if layer >= arrayLength(&shadow_matrices) { return vec3<f32>(1.0); }
-    let proj = helio_shadow_project(shadow_matrices[layer].mat, p);
+    let proj = shadow_project(shadow_matrices[layer].mat, p);
     // Outside the map or behind the light: lit, not shadowed. Returning 0.0 would
     // ring the fog with a black shell wherever the cascade ends.
     if !proj.valid { return vec3<f32>(1.0); }
@@ -1007,7 +1008,7 @@ fn inscatter_from_light(light_idx: u32, p: vec3<f32>, ray_dir: vec3<f32>, anisot
     let cos_theta = dot(view_dir, to_light);
     let g = clamp(anisotropy, -0.95, 0.95);
     // ABI adapter: decay was unused; it now controls geometric fog-shadow
-    // strength. Medium absorption remains physical even with geometry opt-out.
+    // strength. FogMedium absorption remains physical even with geometry opt-out.
     let shadow_strength = finite_clamp(light.god_rays_decay, 0.0, 1.0);
     var vis = vec3<f32>(1.0);
     if shadow_strength > 0.0 { vis = mix(vec3<f32>(1.0), shaft_visibility_averaged(light_idx, p), shadow_strength); }
@@ -1030,7 +1031,7 @@ fn inscatter_from_light(light_idx: u32, p: vec3<f32>, ray_dir: vec3<f32>, anisot
 fn sample_history(p: vec3<f32>) -> vec4<f32> {
     let prev_clip = cameras[0].prev_view_proj * vec4<f32>(p, 1.0);
     // For the engine's perspective matrix, clip.w is the positive view depth.
-    if prev_clip.w <= HELIO_FROXEL_NEAR { return vec4<f32>(0.0, 0.0, 0.0, -1.0); }
+    if prev_clip.w <= MEDIA_NEAR { return vec4<f32>(0.0, 0.0, 0.0, -1.0); }
 
     // prev_view_proj is last frame's jittered matrix: remove its jitter to land
     // in last frame's (unjittered) grid.
@@ -1040,7 +1041,7 @@ fn sample_history(p: vec3<f32>) -> vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, -1.0);
     }
 
-    let prev_slice = helio_froxel_slice_from_view_depth(prev_clip.w, fog.fog_max_distance);
+    let prev_slice = media_slice_from_view_depth(prev_clip.w, fog.fog_max_distance);
     if prev_slice < 0.0 || prev_slice > 1.0 {
         return vec4<f32>(0.0, 0.0, 0.0, -1.0);
     }
@@ -1074,7 +1075,7 @@ fn temporal_result(current: vec4<f32>, history: vec4<f32>, blend: f32, rejection
 /// the boundary (a ramp) while staying fully deterministic frame to frame.
 /// Sums are of extensive quantities (scattering, emission, weighted phase), so
 /// the result is the true volume average, not an average of ratios.
-fn medium_averaged(gid: vec3<u32>, dims: vec3<u32>, centre: vec3<f32>, view_depth: f32) -> Medium {
+fn medium_averaged(gid: vec3<u32>, dims: vec3<u32>, centre: vec3<f32>, view_depth: f32) -> FogMedium {
     var extinction = 0.0;
     var scattering = vec3<f32>(0.0);
     var emissive = vec3<f32>(0.0);
@@ -1086,7 +1087,7 @@ fn medium_averaged(gid: vec3<u32>, dims: vec3<u32>, centre: vec3<f32>, view_dept
             select(0.25, 0.75, (k & 4u) != 0u));
         let q = froxel_world_pos((vec2<f32>(gid.xy) + sub.xy) / vec2<f32>(dims.xy),
             (f32(gid.z) + sub.z) / f32(dims.z));
-        let m = medium_at(q, view_depth);
+        let m = fog_medium_at(q, view_depth);
         extinction += m.extinction;
         scattering += m.albedo * m.extinction;
         emissive += m.emissive;
@@ -1094,7 +1095,7 @@ fn medium_averaged(gid: vec3<u32>, dims: vec3<u32>, centre: vec3<f32>, view_dept
         phase_weight += m.scattering_weight;
         smoke += m.smoke * m.extinction;
     }
-    var result: Medium;
+    var result: FogMedium;
     result.extinction = extinction * 0.125;
     if extinction > 0.0 {
         result.albedo = scattering / extinction;
@@ -1120,7 +1121,7 @@ fn cs_inject(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Deterministic sampling: no per-frame or per-cell randomness, so a static
     // camera and scene give bit-identical froxels every frame and nothing can
-    // flicker. Medium and phase are evaluated at the froxel centre; shadow
+    // flicker. FogMedium and phase are evaluated at the froxel centre; shadow
     // visibility averages four fixed taps spread over the cell (2x2 across the
     // screen, four depth strata), which replaces the old jitter without its
     // noise. Far froxels span metres, so a single tap would alias hard.
@@ -1139,12 +1140,12 @@ fn cs_inject(@builtin(global_invocation_id) gid: vec3<u32>) {
             (f32(gid.z) + dz) / f32(dims.z));
     }
 
-    let view_depth = helio_froxel_view_depth_from_slice(slice_norm, fog.fog_max_distance);
+    let view_depth = media_view_depth_from_slice(slice_norm, fog.fog_max_distance);
     let medium = medium_averaged(gid, dims, p, view_depth);
     // This froxel's ray segment (radial = view depth / cos) and half-width.
     let radial_scale = distance(p, cameras[0].position_near.xyz) / max(view_depth, 1e-6);
-    sample_t0 = helio_froxel_view_depth_from_slice(f32(gid.z) / f32(dims.z), fog.fog_max_distance) * radial_scale;
-    sample_t1 = helio_froxel_view_depth_from_slice(f32(gid.z + 1u) / f32(dims.z), fog.fog_max_distance) * radial_scale;
+    sample_t0 = media_view_depth_from_slice(f32(gid.z) / f32(dims.z), fog.fog_max_distance) * radial_scale;
+    sample_t1 = media_view_depth_from_slice(f32(gid.z + 1u) / f32(dims.z), fog.fog_max_distance) * radial_scale;
     sample_lateral = 0.5 * distance(froxel_world_pos(uv + vec2<f32>(1.0 / f32(dims.x), 0.0), slice_norm), p);
     sample_center_dir = normalize(froxel_world_pos((vec2<f32>(gid.xy) + 0.5) / vec2<f32>(dims.xy), slice_norm)
         - cameras[0].position_near.xyz);
@@ -1246,11 +1247,11 @@ fn cs_integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     var accum = vec3<f32>(0.0);
     var transmittance = 1.0;
-    var prev_depth = HELIO_FROXEL_NEAR;
+    var prev_depth = MEDIA_NEAR;
 
     for (var z = 0u; z < dims.z; z++) {
         let slice_norm = (f32(z) + 1.0) / f32(dims.z);
-        let depth = helio_froxel_view_depth_from_slice(slice_norm, fog.fog_max_distance);
+        let depth = media_view_depth_from_slice(slice_norm, fog.fog_max_distance);
         let step_len = max(depth - prev_depth, 0.0) / cos_a;
         prev_depth = depth;
 

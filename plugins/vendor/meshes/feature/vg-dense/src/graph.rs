@@ -212,7 +212,8 @@ fn column_major(m: &[f32; 16]) -> [[f32; 4]; 4] {
 
 impl RenderPass for VgDensePass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["materials"]
+        const LIST: &[&str] = &[helio_mats::MATERIALS.name()];
+        LIST
     }
 
     fn name(&self) -> &'static str {
@@ -382,8 +383,7 @@ impl RenderPass for VgDensePass {
         // Alpha-masked clusters (cull bins 6 and 7) need the material tables: the
         // masked peel evaluates the alpha test per fragment.
         let masked_tables = match (
-            ctx.scene_buffers
-                .get(helio_core::BufferKey::of("materials")),
+            ctx.scene_buffers.get(helio_mats::MATERIALS.key()),
             registry
                 .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures()),
         ) {

@@ -444,7 +444,7 @@ impl FoliagePlacePass {
         });
 
         // ── Pipelines ──────────────────────────────────────────────────────────
-        let snippets = [crate::COMMON_SNIPPET];
+        let snippets = [crate::COMMON_SNIPPET, crate::GROUND_SNIPPET];
         let place_shader = helio_core::shader::module_with(
             device,
             "Foliage Place Shader",
@@ -953,7 +953,8 @@ impl FoliagePlacePass {
         let hiz_mip_count = (u32::BITS - max_dim.leading_zeros()).max(1);
         // Frame 0 has no pyramid: its texels are not depth anything drew, and testing
         // against them can cull everything. Same guard as `vg_cull.wgsl`.
-        let hiz_valid = (ctx.frame_num > 0 && ctx.registry.contains("hiz")) as u32;
+        let hiz_valid =
+            (ctx.frame_num > 0 && ctx.registry.contains(helio_frame_api::depth::HIZ)) as u32;
 
         ctx.write_buffer(
             &self.cull_uniforms,
@@ -1022,7 +1023,7 @@ impl RenderPass for FoliagePlacePass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["hiz"]
+        &[helio_frame_api::depth::HIZ]
     }
 
     fn writes(&self) -> &'static [&'static str] {
@@ -1342,11 +1343,13 @@ impl RenderPass for FoliagePlacePass {
 
         let hiz_view = ctx
             .resource_pool
-            .get_view_2d("hiz")
+            .get_view_2d(helio_frame_api::depth::HIZ)
             .unwrap_or(&self.placeholder_hiz);
         let hiz_sampler = ctx
             .registry
-            .get(helio_core::ResourceKey::new("hiz_sampler"))
+            .get(helio_core::ResourceKey::new(
+                helio_frame_api::depth::HIZ_SAMPLER,
+            ))
             .unwrap_or(&self.placeholder_hiz_sampler);
         let type_buffer = ctx
             .scene_buffers

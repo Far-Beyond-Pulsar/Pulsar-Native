@@ -6,6 +6,7 @@ description = "Virtual geometry's graph glue as a Helio feature: the pass chain,
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-mats = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-core = { workspace = true }
 # The renderer config `with_virtual_geometry` adds VG's settings to.

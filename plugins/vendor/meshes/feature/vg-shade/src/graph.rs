@@ -179,7 +179,8 @@ impl VgShadePass {
 
 impl RenderPass for VgShadePass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["materials", helio_light_api::LIGHT_LIST]
+        const LIST: &[&str] = &[helio_mats::MATERIALS.name(), helio_light_api::LIGHT_LIST];
+        LIST
     }
 
     fn name(&self) -> &'static str {
@@ -188,14 +189,14 @@ impl RenderPass for VgShadePass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "gbuffer",
-            "gbuffer_lightmap_uv",
-            "gbuffer_sss",
-            "gbuffer_extra",
-            "gbuffer_velocity",
-            "depth",
+            helio_frame_api::gbuffer::GROUP,
+            helio_frame_api::gbuffer::LIGHTMAP_UV,
+            helio_frame_api::gbuffer::SSS,
+            helio_frame_api::gbuffer::EXTRA,
+            helio_frame_api::gbuffer::VELOCITY,
+            helio_frame_api::gbuffer::DEPTH,
             helio_mats::MATERIAL_TEXTURES,
-            "render_environment",
+            helio_core::resource_keys::RENDER_ENVIRONMENT,
         ]
     }
 
@@ -292,7 +293,7 @@ impl RenderPass for VgShadePass {
         else {
             return Ok(());
         };
-        let Some(materials) = ctx.scene_buffers.get(BufferKey::of("materials")) else {
+        let Some(materials) = ctx.scene_buffers.get(helio_mats::MATERIALS.key()) else {
             return Ok(());
         };
         let coordinate_spaces = ctx
@@ -305,16 +306,16 @@ impl RenderPass for VgShadePass {
             .unwrap_or((ctx.camera, ctx.camera));
         let Some(gbuffer) = ctx
             .registry
-            .get::<ViewGroup<'_, 4>>(ResourceKey::new("gbuffer"))
+            .get::<ViewGroup<'_, 4>>(ResourceKey::new(helio_frame_api::gbuffer::GROUP))
         else {
             return Ok(());
         };
         let reg = ctx.registry;
         let (Some(lightmap_uv), Some(sss), Some(extra), Some(velocity)) = (
-            reg.texture_view(ResourceKey::new("gbuffer_lightmap_uv")),
-            reg.texture_view(ResourceKey::new("gbuffer_sss")),
-            reg.texture_view(ResourceKey::new("gbuffer_extra")),
-            reg.texture_view(ResourceKey::new("gbuffer_velocity")),
+            reg.texture_view(ResourceKey::new(helio_frame_api::gbuffer::LIGHTMAP_UV)),
+            reg.texture_view(ResourceKey::new(helio_frame_api::gbuffer::SSS)),
+            reg.texture_view(ResourceKey::new(helio_frame_api::gbuffer::EXTRA)),
+            reg.texture_view(ResourceKey::new(helio_frame_api::gbuffer::VELOCITY)),
         ) else {
             return Ok(());
         };

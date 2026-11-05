@@ -1,4 +1,5 @@
 enable wgpu_binding_array;
+//!use helio_prelude
 //!use specular_aa
 //!use pbr_eval
 //!use material_row
@@ -25,16 +26,6 @@ enable wgpu_binding_array;
 //!   orm.a      = F0.g
 //!   emissive.a = F0.b
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    view_proj_inv:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 struct Globals {
     frame: u32,
@@ -254,9 +245,9 @@ fn vs_main(v: Vertex, @location(15) slot: u32, @builtin(vertex_index) vertex_ind
         let raw_uv = region.uv_offset + lm_input * region.uv_scale;
         out.lightmap_uv = clamp(raw_uv, region.uv_clamp_min, region.uv_clamp_max);
     } else {
-        // Sentinel: negative UV signals "no lightmap" to the deferred pass.
-        // Cannot use (0,0) because a valid atlas region can start at (0,0).
-        out.lightmap_uv = vec2<f32>(-1.0, -1.0);
+        // The frame's "no lightmap" tag (not (0, 0): a valid atlas region can
+        // start there).
+        out.lightmap_uv = GBUFFER_TAG_UNLIGHTMAPPED;
     }
     return out;
 }

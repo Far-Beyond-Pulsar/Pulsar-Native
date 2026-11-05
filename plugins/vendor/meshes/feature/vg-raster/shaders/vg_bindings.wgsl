@@ -1,3 +1,4 @@
+//!use helio_prelude
 // Group 0 of every virtual-geometry raster kernel: the scene-side inputs.
 // Prepended after `helio_vg_format::WGSL`; `vg_page_pool` / `vg_asset_quant`
 // (bindings 1 and 2) are declared by `helio_vg_format::decode_bindings_wgsl`
@@ -12,17 +13,6 @@
 //   vg_instances   `vg_instances` (GpuVgInstance rows)
 //   vg_objects     scene join `static_objects` (252-byte / 63-word rows)
 
-// Same layout as `helio_core::GpuCameraUniforms` (view 0 is used).
-struct VgCamera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    view_proj_inv:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 // Row of the scene join's `static_objects` buffer (`StaticObjectComponent`,
 // 63 words = 252 bytes). Only the transform (words 4..20) is read here.
@@ -49,7 +39,7 @@ const VG_FLAG_CULL_BACK: u32 = 1u;
 // Workgroups per row of the indirect software dispatch (cull `SW_GROUP_WIDTH`).
 const VG_SW_ROW: u32 = 32768u;
 
-@group(0) @binding(0) var<storage, read> vg_cameras:   array<VgCamera>;
+@group(0) @binding(0) var<storage, read> vg_cameras:   array<Camera>;
 // binding 1: vg_page_pool, binding 2: vg_asset_quant (decode_bindings_wgsl)
 @group(0) @binding(3) var<storage, read> vg_visible:   array<VgVisibleCluster>;
 @group(0) @binding(4) var<storage, read> vg_instances: array<VgInstance>;

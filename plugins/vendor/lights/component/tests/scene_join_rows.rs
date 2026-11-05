@@ -3,11 +3,11 @@
 //! engine_backend's scene_join_rows with the light component).
 use std::sync::Arc;
 
-use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform, Visibility, attachments};
+use engine_backend::scene::{attachments, SceneWorldExt, SpawnObject, Transform, Visibility};
 use helio_component::components::{MeshAssetPath, ObjectMovability, StaticMeshComponent};
 use helio_pass_object_batch::scene_join::{
-    BufferHandle, BufferKey, ENTITY_GENERATIONS_KEY, SceneBufferProjection, SceneDerivation,
-    SceneDerivationContext,
+    BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
+    ENTITY_GENERATIONS_KEY,
 };
 use lights_component::LightComponent;
 use pulsar_scenedb::{Entity, SceneDb};
@@ -148,7 +148,7 @@ impl Join {
         out: &SceneBufferProjection,
         instance: Entity,
     ) -> Vec<helio_mesh_api::StaticObjectRow> {
-        self.read::<helio_mesh_api::StaticObjectRow>(out, "static_objects")
+        self.read::<helio_mesh_api::StaticObjectRow>(out, helio_mesh_api::STATIC_OBJECTS.name())
             .into_iter()
             .filter(|row| row.mesh_generation != 0 && row.mesh_slot == instance.index())
             .collect()

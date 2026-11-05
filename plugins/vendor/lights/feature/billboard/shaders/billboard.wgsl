@@ -1,21 +1,10 @@
+//!use helio_prelude
 //! Billboard shader - camera-facing instanced quads
 //!
 //! Vertex inputs:
 //!   Slot 0 (per-vertex):   position (vec2), uv (vec2)
 //!   Slot 1 (per-instance): world_pos_pad (vec4), scale_flags (vec4), color (vec4)
 
-// Group 0: global uniforms (camera + globals)
-// Layout must match GpuCameraUniforms in libhelio/src/camera.rs (368 bytes).
-struct Camera {
-    view:          mat4x4<f32>,   // offset   0 — world→view
-    proj:          mat4x4<f32>,   // offset  64 — view→clip
-    view_proj:     mat4x4<f32>,   // offset 128 — combined VP
-    inv_view_proj: mat4x4<f32>,   // offset 192 — clip→world
-    position_near: vec4<f32>,     // offset 256 — xyz=world pos, w=near
-    forward_far:   vec4<f32>,     // offset 272 — xyz=forward, w=far
-    jitter_frame:  vec4<f32>,     // offset 288
-    prev_view_proj: mat4x4<f32>,  // offset 304
-}
 struct Globals {
     frame: u32,
     delta_time: f32,

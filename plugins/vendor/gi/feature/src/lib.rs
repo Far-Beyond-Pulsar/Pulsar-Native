@@ -539,7 +539,7 @@ impl RenderPass for GiPass {
         if let Some(sun) = self.sun_transmittance {
             reads.extend([sun.map, sun.frame]);
         }
-        reads.push("render_environment");
+        reads.push(helio_core::resource_keys::RENDER_ENVIRONMENT);
         helio_frame_api::static_names(&reads)
     }
 
@@ -808,7 +808,12 @@ impl RenderPass for GiResolvePass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["gbuffer", "depth", GI_FRAME, GI_PROBES]
+        &[
+            helio_frame_api::gbuffer::GROUP,
+            helio_frame_api::gbuffer::DEPTH,
+            GI_FRAME,
+            GI_PROBES,
+        ]
     }
 
     fn writes(&self) -> &'static [&'static str] {
@@ -816,7 +821,7 @@ impl RenderPass for GiResolvePass {
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("gbuffer");
+        builder.read(helio_frame_api::gbuffer::GROUP);
     }
 
     fn render_pass_descriptor<'a>(
@@ -838,9 +843,11 @@ impl RenderPass for GiResolvePass {
         };
         let Some(gbuffer) = ctx
             .registry
-            .get::<helio_core::ViewGroup<'_, 4>>(ResourceKey::new("gbuffer"))
+            .get::<helio_core::ViewGroup<'_, 4>>(ResourceKey::new(helio_frame_api::gbuffer::GROUP))
         else {
-            return Err(helio_core::Error::ResourceNotFound("gbuffer".into()));
+            return Err(helio_core::Error::ResourceNotFound(
+                helio_frame_api::gbuffer::GROUP.into(),
+            ));
         };
         let mut cmds = ctx.graphics_cmds();
         self.record(

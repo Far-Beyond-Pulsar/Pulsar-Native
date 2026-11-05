@@ -367,14 +367,15 @@ impl ForwardLitPass {
 
 impl RenderPass for ForwardLitPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &[
-            "builtin_mesh_index",
-            "builtin_mesh_vertex",
-            "materials",
+        const LIST: &[&str] = &[
+            helio_mesh_api::MESH_INDICES.name(),
+            helio_mesh_api::MESH_VERTICES.name(),
+            helio_mats::MATERIALS.name(),
             helio_light_api::LIGHT_LIST,
-            "skeletal_bone_palette",
-            "skeletal_skin_vertices",
-        ]
+            helio_mesh_api::SKELETAL_BONE_PALETTE,
+            helio_mesh_api::SKELETAL_SKIN_VERTICES,
+        ];
+        LIST
     }
 
     fn name(&self) -> &'static str {
@@ -384,9 +385,9 @@ impl RenderPass for ForwardLitPass {
     fn reads(&self) -> &'static [&'static str] {
         &[
             helio_mats::MATERIAL_TEXTURES,
-            "render_environment",
-            "depth",
-            "pre_aa",
+            helio_core::resource_keys::RENDER_ENVIRONMENT,
+            helio_frame_api::gbuffer::DEPTH,
+            helio_frame_api::color::SCENE_COLOR,
             helio_light_api::CLUSTER_LIGHT_GRID,
             "object_batch",
             "culled_batch",
@@ -394,11 +395,15 @@ impl RenderPass for ForwardLitPass {
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("depth");
+        builder.read(helio_frame_api::gbuffer::DEPTH);
         builder.read(helio_light_api::CLUSTER_LIGHT_GRID);
         builder.read("object_batch");
         builder.read("culled_batch");
-        builder.write_color_raw("pre_aa", self.surface_format, ResourceSize::MatchSurface);
+        builder.write_color_raw(
+            helio_frame_api::color::SCENE_COLOR,
+            self.surface_format,
+            ResourceSize::MatchSurface,
+        );
     }
 
     fn publish<'a>(&self, _frame: &mut helio_core::ResourceRegistry<'a>) {}
@@ -410,7 +415,10 @@ impl RenderPass for ForwardLitPass {
         resources: &'a helio_core::ResourceRegistry<'a>,
         storage: &'a mut helio_core::RenderFrameStorage,
     ) -> Option<wgpu::RenderPassDescriptor<'a>> {
-        let pre_aa_view = resources.read(helio_core::ResourceKey::new("pre_aa"), "ForwardLit")?;
+        let pre_aa_view = resources.read(
+            helio_core::ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
+            "ForwardLit",
+        )?;
         let color_attachments: &'a [Option<wgpu::RenderPassColorAttachment<'a>>] = storage
             .retain_boxed_slice(Box::new([Some(wgpu::RenderPassColorAttachment {
                 view: pre_aa_view,
@@ -510,12 +518,11 @@ impl RenderPass for ForwardLitPass {
             .registry
             .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())
             .unwrap_or_else(|| stand_in.textures());
-        let Some(vertices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_vertex"))
+        let Some(vertices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_VERTICES.key())
         else {
             return Ok(());
         };
-        let Some(indices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_index"))
-        else {
+        let Some(indices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_INDICES.key()) else {
             return Ok(());
         };
         let vertices = &vertices_handle.buffer;
@@ -523,7 +530,7 @@ impl RenderPass for ForwardLitPass {
 
         // Material rows are SceneDB component data.  Resolve the column by
         // key so the renderer never becomes the material authority again.
-        let materials_handle = ctx.scene_buffers.get(BufferKey::of("materials"));
+        let materials_handle = ctx.scene_buffers.get(helio_mats::MATERIALS.key());
         let materials_buf = materials_handle
             .map(|handle| &handle.buffer)
             .unwrap_or(stand_in.rows());
@@ -541,12 +548,12 @@ impl RenderPass for ForwardLitPass {
         let lights_ptr = lights_handle.map_or(usize::MAX, |handle| handle.epoch as usize);
         let skin_buffer = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_skin_vertices"))
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_SKIN_VERTICES))
             .map(|h| h.buffer.clone())
             .unwrap_or_else(|| batch.instances.clone());
         let palette_buffer = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_bone_palette"))
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_BONE_PALETTE))
             .map(|h| h.buffer.clone())
             .unwrap_or_else(|| batch.instances.clone());
 

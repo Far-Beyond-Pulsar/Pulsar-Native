@@ -8,10 +8,10 @@ enable wgpu_binding_array;
 // in `atlas_layer`) instead of the pass's own atlas array. `0xffffffff`: no
 // image, the tint alone.
 
-struct Camera {
+struct SpriteCamera {
     view_proj: mat4x4<f32>,
 }
-@group(0) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(0) var<uniform> camera: SpriteCamera;
 
 struct SpriteInstance {
     position: vec2<f32>,

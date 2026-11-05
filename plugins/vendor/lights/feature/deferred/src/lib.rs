@@ -11,7 +11,7 @@ use helio_frame_api::lighting::sky::{
 use helio_frame_api::lighting::{
     DIRECTIONAL_VISIBILITY, ENVIRONMENT_CUBES, ENVIRONMENT_CUBES_SAMPLER, ENVIRONMENT_PROBES,
     INDIRECT_DIFFUSE, INDIRECT_SPECULAR_LAYERS, SUN_VISIBILITY, TRANSMISSION, VIEW_REMAPS,
-    VIEW_REMAPS_BYTES, VIEW_REMAP_SNIPPET,
+    VIEW_REMAPS_BYTES,
 };
 use helio_light_api::LIGHT_LIST;
 use pulsar_scenedb::gpu::BufferKey;
@@ -209,7 +209,6 @@ impl DeferredLightPass {
                 helio_mats::PBR_EVAL_SNIPPET,
                 ATMOSPHERE_SNIPPET,
                 ATMOSPHERE_SKY_TABLE_SNIPPET,
-                VIEW_REMAP_SNIPPET,
             ],
         );
 
@@ -884,11 +883,11 @@ impl RenderPass for DeferredLightPass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "gbuffer",
-            "gbuffer_lightmap_uv",
-            "gbuffer_sss",
-            "gbuffer_extra",
-            "depth",
+            helio_frame_api::gbuffer::GROUP,
+            helio_frame_api::gbuffer::LIGHTMAP_UV,
+            helio_frame_api::gbuffer::SSS,
+            helio_frame_api::gbuffer::EXTRA,
+            helio_frame_api::gbuffer::DEPTH,
             helio_light_api::SHADOW_ATLAS,
             helio_light_api::STATIC_SHADOW_ATLAS,
             helio_light_api::SHADOW_SAMPLER,
@@ -901,10 +900,10 @@ impl RenderPass for DeferredLightPass {
             helio_light_api::TILE_LIGHT_LISTS,
             helio_light_api::TILE_LIGHT_COUNTS,
             INDIRECT_DIFFUSE,
-            "render_environment",
+            helio_core::resource_keys::RENDER_ENVIRONMENT,
             TRANSMISSION,
-            "pre_aa",
-            "baked_lightmap",
+            helio_frame_api::color::SCENE_COLOR,
+            helio_bake_types::BAKED_LIGHTMAP,
             "baked_lightmap_sampler",
             INDIRECT_SPECULAR_LAYERS[0],
             INDIRECT_SPECULAR_LAYERS[1],
@@ -912,7 +911,11 @@ impl RenderPass for DeferredLightPass {
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.write_color_raw("pre_aa", self.pre_aa_format, ResourceSize::MatchSurface);
+        builder.write_color_raw(
+            helio_frame_api::color::SCENE_COLOR,
+            self.pre_aa_format,
+            ResourceSize::MatchSurface,
+        );
     }
 
     fn on_resize(&mut self, _device: &wgpu::Device, _size: helio_core::RenderSize) {}
@@ -949,7 +952,7 @@ impl RenderPass for DeferredLightPass {
             // not a live count -- see `MAX_REFLECTION_CAPTURES`'s doc.
             reflection_capture_count: if ctx
                 .scene_buffers
-                .contains(BufferKey::of("reflection_captures"))
+                .contains(BufferKey::of(helio_frame_api::lighting::ENVIRONMENT_PROBES))
             {
                 MAX_REFLECTION_CAPTURES
             } else {
@@ -972,8 +975,10 @@ impl RenderPass for DeferredLightPass {
         resources: &'a helio_core::ResourceRegistry<'a>,
         storage: &'a mut helio_core::RenderFrameStorage,
     ) -> Option<wgpu::RenderPassDescriptor<'a>> {
-        let pre_aa_view =
-            resources.read(helio_core::ResourceKey::new("pre_aa"), "DeferredLight")?;
+        let pre_aa_view = resources.read(
+            helio_core::ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
+            "DeferredLight",
+        )?;
         // Loaded: the graph's background pass has cleared `pre_aa`, and
         // reflections may have sampled it, before lighting covers it.
         let load_op = wgpu::LoadOp::Load;
@@ -999,7 +1004,7 @@ impl RenderPass for DeferredLightPass {
 
     fn execute(&mut self, ctx: &mut PassContext) -> HelioResult<()> {
         let gbuffer_opt = ctx.registry.read::<helio_core::ViewGroup<'_, 4>>(
-            helio_core::ResourceKey::new("gbuffer"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::GROUP),
             "DeferredLight",
         );
         let gbuffer = gbuffer_opt.as_ref().ok_or_else(|| {
@@ -1018,17 +1023,21 @@ impl RenderPass for DeferredLightPass {
         // Lightmap UVs from GBuffer
         let lightmap_uv_view = ctx
             .registry
-            .get(helio_core::ResourceKey::new("gbuffer_lightmap_uv"))
+            .get(helio_core::ResourceKey::new(
+                helio_frame_api::gbuffer::LIGHTMAP_UV,
+            ))
             .unwrap_or(&self.fallback_lightmap_uv_view);
 
         // SSS/Extra data from GBuffer
         let sss_view = ctx
             .registry
-            .get(helio_core::ResourceKey::new("gbuffer_sss"))
+            .get(helio_core::ResourceKey::new(helio_frame_api::gbuffer::SSS))
             .unwrap_or(&self.fallback_lightmap_uv_view);
         let extra_view = ctx
             .registry
-            .get(helio_core::ResourceKey::new("gbuffer_extra"))
+            .get(helio_core::ResourceKey::new(
+                helio_frame_api::gbuffer::EXTRA,
+            ))
             .unwrap_or(&self.fallback_lightmap_uv_view);
         // The sun's visibility at each pixel: occluders' and media's together
         // (`sun_visibility`), or the occluders' alone.

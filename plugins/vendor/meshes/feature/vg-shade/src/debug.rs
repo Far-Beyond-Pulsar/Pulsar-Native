@@ -101,10 +101,7 @@ impl DebugPipeline {
             bind_group_layouts: &[Some(&bgl0), Some(&bgl1)],
             immediate_size: 0,
         });
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("VgShade debug"),
-            source: wgpu::ShaderSource::Wgsl(debug_source().into()),
-        });
+        let module = helio_core::shader::module(device, "VgShade debug", debug_source().as_str());
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("VgShade vg_debug"),
             layout: Some(&layout),

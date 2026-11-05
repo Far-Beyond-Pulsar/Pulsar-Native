@@ -361,7 +361,7 @@ struct VertexOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2
             },
             |registry| {
                 registry.write(
-                    helio_core::ResourceKey::new("pre_aa"),
+                    helio_core::ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
                     target_view,
                     "WaterPlanarReflection",
                 );
@@ -477,9 +477,9 @@ fn build_secondary_graph(
         mapped_at_creation: false,
     });
     let mut graph = RenderGraph::new_with_external_device_ref(device, queue);
-    graph.declare_external_input("pre_aa");
+    graph.declare_external_input(helio_frame_api::color::SCENE_COLOR);
     graph.declare_external_input(helio_mats::MATERIAL_TEXTURES);
-    graph.declare_external_input("render_environment");
+    graph.declare_external_input(helio_core::resource_keys::RENDER_ENVIRONMENT);
     graph.add_pass(Box::new(helio_pass_object_batch::ObjectBatchPass::new(
         device,
     )));

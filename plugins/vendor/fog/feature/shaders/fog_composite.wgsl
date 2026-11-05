@@ -1,4 +1,5 @@
 //!use helio_prelude
+//!use frame_media
 
 // ── Participating-medium composite ────────────────────────────────────────────
 //
@@ -83,7 +84,7 @@ fn fs_composite(in: VOut) -> @location(0) vec4<f32> {
     let color = source.rgb;
     let far = fog_parameters.max_distance;
     // Zero range: no fog producer (neutral fallback buffer). Pass through.
-    if !(far > HELIO_FROXEL_NEAR) {
+    if !(far > MEDIA_NEAR) {
         return vec4<f32>(color, source.a);
     }
     let depth_dims = vec2<f32>(textureDimensions(scene_depth));
@@ -92,18 +93,11 @@ fn fs_composite(in: VOut) -> @location(0) vec4<f32> {
     // Slices are planes of constant view depth: convert the buffer value, do
     // not use radial distance.
     let view_depth = helio_view_depth(cameras[0].proj, raw_depth);
-    // Integration stores each slice's cumulative value at its far face, not
-    // its centre; offset by half a texel for texel-centre sampling.
-    let slice = clamp(
-        helio_froxel_slice_from_view_depth(view_depth, far)
-            - 0.5 / f32(textureDimensions(integrated_medium).z),
-        0.0,
-        1.0,
-    );
+    let slice = media_grid_w(view_depth, far, textureDimensions(integrated_medium).z);
     // The froxel grid is unjittered; this pixel's ray is the jittered one.
     let grid_uv = in.uv - cameras[0].jitter_frame.xy * vec2<f32>(0.5, -0.5);
     let medium = sample_medium(grid_uv, slice);
     // Beer-Lambert attenuation of the surface plus scattered radiance. HDR is
     // preserved; exposure and tone mapping happen once, later.
-    return vec4<f32>(color * clamp(medium.a, 0.0, 1.0) + max(medium.rgb, vec3<f32>(0.0)), source.a);
+    return vec4<f32>(media_seen(color, medium), source.a);
 }

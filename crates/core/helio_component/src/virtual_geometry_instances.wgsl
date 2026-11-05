@@ -8,17 +8,6 @@
 //   cs_compact            one workgroup: ordered compaction of the active
 //                         candidates into vg_instances, count in vg_instance_count
 
-struct Owner {
-    owner_index: u32,
-    owner_generation: u32,
-    enabled: u32,
-}
-
-struct Handle {
-    offset: u32,
-    count: u32,
-}
-
 /// `helio_component::VgOverrideGpu`.
 struct Override {
     flags: u32,

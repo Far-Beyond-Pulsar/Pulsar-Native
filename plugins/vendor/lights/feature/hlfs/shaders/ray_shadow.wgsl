@@ -1,5 +1,5 @@
+// The frame's ray transmission rows (`frame_ray_transmission`) come first.
 @group(3) @binding(0) var acc_struct: acceleration_structure;
-struct RayTransmissionData { header: vec4<u32>, rows: array<vec4<f32>> };
 @group(3) @binding(1) var<storage, read> ray_transmission: RayTransmissionData;
 // Same visibility interface as shadows.wgsl. Both sampling and reconstruction
 // use this implementation in RayTraced mode; screen depth never decides a hit.
@@ -25,10 +25,10 @@ fn shadow_factor_from_receiver(id: u32, origin: vec3<f32>, position: vec3<f32>, 
     // candidate triangle is a thin sheet; reject it after accumulating tint so
     // traversal keeps visiting candidates in its unspecified order.
     var throughput=vec3<f32>(1.0);
-    rayQueryInitialize(&query,acc_struct,RayDesc(select(0x02u,0x04u,(ray_transmission.header.x&1u)!=0u),caster_mask,0.0001,distance,origin,inc.direction));
+    rayQueryInitialize(&query,acc_struct,RayDesc(select(0x02u,0x04u,(ray_transmission.header.x&RAY_TRANSMISSION_OPACITY_MATCHES)!=0u),caster_mask,0.0001,distance,origin,inc.direction));
     while rayQueryProceed(&query) {
         let hit=rayQueryGetCandidateIntersection(&query);
-        if hit.instance_index>=min(ray_transmission.header.y,arrayLength(&ray_transmission.rows)) {
+        if hit.instance_index>=ray_transmission_count() {
             rayQueryTerminate(&query);
             return Visibility(0.0);
         }

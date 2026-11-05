@@ -1,14 +1,3 @@
-struct Owner {
-    owner_index: u32,
-    owner_generation: u32,
-    enabled: u32,
-}
-
-struct Handle {
-    offset: u32,
-    count: u32,
-}
-
 struct Selection {
     level_index: u32,
     valid: u32,

@@ -69,10 +69,11 @@ impl FogCompositePass {
     }
 
     pub fn with_format(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "Fog Composite",
             helio_core::include_wgsl!("../shaders/fog_composite.wgsl"),
+            &[helio_frame_api::media::SNIPPET],
         );
         let fragment = wgpu::ShaderStages::FRAGMENT;
         let texture = |binding, sample_type, view_dimension| wgpu::BindGroupLayoutEntry {
@@ -187,7 +188,7 @@ impl FogCompositePass {
             })
             .create_view(&Default::default());
         Self {
-            input: "pre_aa",
+            input: helio_frame_api::color::SCENE_COLOR,
             format,
             pipeline,
             layout,
@@ -245,7 +246,7 @@ impl RenderPass for FogCompositePass {
     fn reads(&self) -> &'static [&'static str] {
         &[
             helio_frame_api::color::SCENE_COLOR,
-            "depth",
+            helio_frame_api::gbuffer::DEPTH,
             crate::FOG_ACCUM,
             crate::FOG_PARAMETERS,
         ]

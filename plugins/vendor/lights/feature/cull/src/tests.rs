@@ -42,7 +42,12 @@ fn sparse_light_ids_reach_every_tile_and_deleted_lights_disappear() {
         // describe a directional light, which must reach all four tiles.
         let lights = buffer("sparse lights", (high as u64 + 1) * 128, usage);
         let active = buffer("active IDs", (high as u64 + 2) * 4, usage);
-        let camera = buffer("camera", 576, usage);
+        // Two views of the frame's camera (`GpuCameraUniforms`).
+        let camera = buffer(
+            "camera",
+            2 * std::mem::size_of::<helio_core::GpuCameraUniforms>() as u64,
+            usage,
+        );
         let params = LightCullParams {
             num_tiles_x: 2,
             num_tiles_y: 2,

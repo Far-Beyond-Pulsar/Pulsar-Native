@@ -65,8 +65,8 @@ pub fn shared_decode() -> String {
     )
 }
 
-/// The meshes' G-buffer program, whose view declarations (`Camera`,
-/// `Globals`) and motion vectors (`compute_velocity`) the shade pass shares.
+/// The meshes' G-buffer program, whose `Globals` and motion vectors
+/// (`compute_velocity`) the shade pass shares (the camera is the prelude's).
 const GBUFFER_WGSL: &str = helio_pass_gbuffer::GBUFFER_PROGRAM;
 
 /// One visible cluster, produced by the cull pass: `{instance, cluster_slot}`.
@@ -154,11 +154,11 @@ pub mod shader_source {
     /// [`gradient_sampling`].
     pub fn shade_program(decode: &str) -> String {
         let gbuffer = GBUFFER_WGSL.replace("\r\n", "\n");
-        // Camera, Globals.
-        let declarations = between(&gbuffer, "struct Camera {", "struct SkinVertex {");
+        // Globals (the camera is the prelude's).
+        let declarations = between(&gbuffer, "struct Globals {", "struct SkinVertex {");
         let velocity = between(&gbuffer, "fn compute_velocity", "@fragment");
         format!(
-            "enable wgpu_binding_array;\n{}\n//!use pbr_eval\n//!use material_row\n//!use material_surface\n{}\n{COMMON_WGSL}\n{decode}\n{declarations}\n{SHADE_WGSL}\n{velocity}",
+            "enable wgpu_binding_array;\n//!use helio_prelude\n{}\n//!use pbr_eval\n//!use material_row\n//!use material_surface\n{}\n{COMMON_WGSL}\n{decode}\n{declarations}\n{SHADE_WGSL}\n{velocity}",
             helio_mats::SPECULAR_AA_MARKER,
             helio_vg_format::WGSL
         )
@@ -407,10 +407,7 @@ impl VgShade {
     pub fn with_decode(device: &wgpu::Device, decode: &str) -> Self {
         let binding = helio_mats::MaterialBindingConfig::for_device(device);
         let module = |label: &str, source: String| {
-            device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            })
+            helio_core::shader::module(device, label, source.as_str())
         };
 
         // ── resolve ──
@@ -507,19 +504,20 @@ impl VgShade {
             label: Some("VgShade shade 1 (materials)"),
             entries: &s1,
         });
-        use wgpu::TextureFormat as F;
+        use helio_frame_api::gbuffer as G;
         let shade_bgl2 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("VgShade shade 2 (payload, targets)"),
             entries: &[
                 texture_entry(0, CS, UINT),
                 texture_entry(1, CS, UNFILTERABLE),
-                storage_texture_entry(2, F::Rgba8Unorm),
-                storage_texture_entry(3, F::Rgba16Float),
-                storage_texture_entry(4, F::Rgba8Unorm),
-                storage_texture_entry(5, F::Rgba16Float),
-                storage_texture_entry(6, F::Rgba16Float),
-                storage_texture_entry(7, F::Rgba16Float),
-                storage_texture_entry(8, F::Rgba16Float),
+                // The frame's G-buffer targets, written as storage.
+                storage_texture_entry(2, G::ALBEDO_FORMAT.to_wgpu()),
+                storage_texture_entry(3, G::NORMAL_FORMAT.to_wgpu()),
+                storage_texture_entry(4, G::ORM_FORMAT.to_wgpu()),
+                storage_texture_entry(5, G::EMISSIVE_FORMAT.to_wgpu()),
+                storage_texture_entry(6, G::SSS_FORMAT.to_wgpu()),
+                storage_texture_entry(7, G::EXTRA_FORMAT.to_wgpu()),
+                storage_texture_entry(8, G::VELOCITY_FORMAT.to_wgpu()),
             ],
         });
         let shade_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -553,7 +551,7 @@ impl VgShade {
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rg16Float,
+                    format: helio_frame_api::gbuffer::LIGHTMAP_UV_FORMAT.to_wgpu(),
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -1268,6 +1266,8 @@ mod tests {
     use glam::{Mat4, Vec2, Vec3};
 
     fn validate(name: &str, source: &str) -> naga::Module {
+        // What the device compiles: the prelude expanded.
+        let source = &*helio_core::shader::resolve(source);
         let module = naga::front::wgsl::parse_str(source)
             .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
         naga::valid::Validator::new(

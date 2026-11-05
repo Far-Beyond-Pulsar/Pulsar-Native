@@ -1,3 +1,4 @@
+//!use helio_prelude
 // Post-process volume blending: the camera's baseline (its
 // `camera_postprocess` row, else the defaults) blended with every active
 // volume around it, written as the frame's post settings.
@@ -6,16 +7,6 @@
 // auto-register capacity -- see `MAX_PP_VOLUMES`.
 const MAX_PP_VOLUMES: u32 = 64u;
 
-struct CameraUniforms {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    inv_view_proj:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 // ── GpuPostProcessVolume (matches CPU-side layout) ─────────────────────────────
 
@@ -43,7 +34,7 @@ struct CameraPostProcessComponent {
 @group(0) @binding(20) var<storage, read> camera_postprocess: array<CameraPostProcessComponent>;
 
 @group(0) @binding(0)  var<uniform>            postprocess:  GpuPostProcessUniforms;
-@group(0) @binding(1)  var<storage, read> cameras: array<CameraUniforms, 2>;
+@group(0) @binding(1)  var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(15) var<storage, read>      pp_volumes:   array<GpuPostProcessVolume>;
 @group(0) @binding(16) var<storage, read_write> blend_output: GpuPostProcessUniforms;
 

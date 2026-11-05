@@ -11,7 +11,8 @@
 //!   ([`sun_occlusion`]), which such a terrain publishes and media read;
 //! - in WGSL: [`LIGHT_LIST_SNIPPET`] (`//!use light_list`),
 //!   [`LIGHT_FORWARD_SNIPPET`] (`//!use light_forward`, the forward light
-//!   function), [`SHADOW_ATLAS_SNIPPET`] (`//!use shadow_atlas`) and
+//!   function), [`SHADOW_ATLAS_SNIPPET`] (`//!use shadow_atlas`),
+//!   [`SHADOW_LOOKUP_SNIPPET`] (`//!use shadow_lookup`) and
 //!   [`SUN_OCCLUSION_SNIPPET`] (`//!use sun_occlusion`).
 //!
 //! No passes: a kind that reads lights depends on this crate, never on the
@@ -57,3 +58,9 @@ pub const LIGHT_FORWARD_SNIPPET: helio_core::shader::ShaderSnippet =
 /// sampling (`budget_compare`, `budget_depth`, `budget_glass_tint`).
 pub const SHADOW_ATLAS_SNIPPET: helio_core::shader::ShaderSnippet =
     helio_core::wgsl_snippet!("//!use shadow_atlas", "shaders/shadow_atlas.wgsl");
+
+/// A shadow lookup outside the lights' passes (`//!use shadow_lookup`, over
+/// the prelude and [`SHADOW_ATLAS_SNIPPET`]): cascade selection
+/// (`shadow_csm_select`) and projection into a face (`shadow_project`).
+pub const SHADOW_LOOKUP_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use shadow_lookup", "shaders/shadow_lookup.wgsl");

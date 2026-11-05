@@ -402,14 +402,15 @@ impl TransparentPass {
 
 impl RenderPass for TransparentPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &[
-            "builtin_mesh_index",
-            "builtin_mesh_vertex",
-            "materials",
+        const LIST: &[&str] = &[
+            helio_mesh_api::MESH_INDICES.name(),
+            helio_mesh_api::MESH_VERTICES.name(),
+            helio_mats::MATERIALS.name(),
             helio_light_api::LIGHT_LIST,
-            "skeletal_bone_palette",
-            "skeletal_skin_vertices",
-        ]
+            helio_mesh_api::SKELETAL_BONE_PALETTE,
+            helio_mesh_api::SKELETAL_SKIN_VERTICES,
+        ];
+        LIST
     }
 
     fn name(&self) -> &'static str {
@@ -425,7 +426,7 @@ impl RenderPass for TransparentPass {
             reads.extend([media.grid, media.parameters]);
         }
         reads.extend([
-            "depth",
+            helio_frame_api::gbuffer::DEPTH,
             helio_light_api::CLUSTER_LIGHT_GRID,
             "object_batch",
             "culled_batch",
@@ -461,7 +462,7 @@ impl RenderPass for TransparentPass {
             builder.read(media.grid);
             builder.read(media.parameters);
         }
-        builder.read("depth");
+        builder.read(helio_frame_api::gbuffer::DEPTH);
         builder.read(helio_light_api::CLUSTER_LIGHT_GRID);
         builder.read("object_batch");
         builder.read("culled_batch");
@@ -540,7 +541,9 @@ impl RenderPass for TransparentPass {
             depth
         } else {
             resources
-                .get(helio_core::ResourceKey::new("full_res_depth"))
+                .get(helio_core::ResourceKey::new(
+                    helio_frame_api::depth::FULL_RES_DEPTH,
+                ))
                 .unwrap_or(depth)
         };
         Some(wgpu::RenderPassDescriptor {
@@ -592,12 +595,11 @@ impl RenderPass for TransparentPass {
             return Ok(());
         }
 
-        let Some(vertices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_vertex"))
+        let Some(vertices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_VERTICES.key())
         else {
             return Ok(());
         };
-        let Some(indices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_index"))
-        else {
+        let Some(indices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_INDICES.key()) else {
             return Ok(());
         };
         let vertices = &vertices_handle.buffer;
@@ -616,7 +618,7 @@ impl RenderPass for TransparentPass {
         let lights_buf = lights_handle
             .map(|handle| &handle.buffer)
             .unwrap_or(batch.instances);
-        let Some(materials_handle) = ctx.scene_buffers.get(BufferKey::of("materials")) else {
+        let Some(materials_handle) = ctx.scene_buffers.get(helio_mats::MATERIALS.key()) else {
             return Ok(());
         };
         let materials_buf = &materials_handle.buffer;
@@ -682,12 +684,12 @@ impl RenderPass for TransparentPass {
         // built once at construction time (mirrors `bind_group_1`'s pattern).
         let skin_buf = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_skin_vertices"))
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_SKIN_VERTICES))
             .map(|h| h.buffer.clone())
             .unwrap_or_else(|| batch.instances.clone());
         let palette_buf = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_bone_palette"))
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_BONE_PALETTE))
             .map(|h| h.buffer.clone())
             .unwrap_or_else(|| batch.instances.clone());
         let bg0_key = [
@@ -840,6 +842,7 @@ impl TransparentPass {
                     helio_mesh_api::DRAW_ROWS_SNIPPET,
                     helio_light_api::LIGHT_LIST_SNIPPET,
                     helio_light_api::LIGHT_FORWARD_SNIPPET,
+                    helio_frame_api::media::SNIPPET,
                 ],
                 helio_mats::MaterialBindingConfig::for_device(device),
                 "Transparent Shader",

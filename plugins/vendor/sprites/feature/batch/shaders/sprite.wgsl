@@ -20,10 +20,10 @@
 // physically reordering the data buffer — which is exactly the per-frame
 // full-rewrite this design avoids.
 
-struct Camera {
+struct SpriteCamera {
     view_proj: mat4x4<f32>,
 }
-@group(0) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(0) var<uniform> camera: SpriteCamera;
 @group(0) @binding(1) var atlas_tex: texture_2d_array<f32>;
 @group(0) @binding(2) var atlas_samp: sampler;
 

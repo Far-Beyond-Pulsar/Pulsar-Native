@@ -217,7 +217,7 @@ impl RenderPass for VgInputsPass {
             dense_mask,
             materials: ctx
                 .scene_buffers
-                .get(BufferKey::of("materials"))
+                .get(helio_mats::MATERIALS.key())
                 .map(|m| m.buffer.clone()),
             dense_tiles,
         });

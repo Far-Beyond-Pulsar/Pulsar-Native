@@ -151,7 +151,7 @@ impl Join {
         out: &SceneBufferProjection,
         instance: Entity,
     ) -> Vec<helio_mesh_api::StaticObjectRow> {
-        self.read::<helio_mesh_api::StaticObjectRow>(out, "static_objects")
+        self.read::<helio_mesh_api::StaticObjectRow>(out, helio_mesh_api::STATIC_OBJECTS.name())
             .into_iter()
             .filter(|row| row.mesh_generation != 0 && row.mesh_slot == instance.index())
             .collect()

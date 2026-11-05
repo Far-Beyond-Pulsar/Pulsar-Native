@@ -1,19 +1,10 @@
+//!use helio_prelude
 //!use atmosphere
 //!use light_list
 // Atmosphere LUT kernels (see atmosphere_common.wgsl). Every kernel reads
 // the frame `resolve` wrote; all leave their outputs untouched while no
 // atmosphere is active.
 
-struct Camera {
-    view: mat4x4<f32>,
-    proj: mat4x4<f32>,
-    view_proj: mat4x4<f32>,
-    inv_view_proj: mat4x4<f32>,
-    position_near: vec4<f32>,
-    forward_far: vec4<f32>,
-    jitter_frame: vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 struct Resolve {
     // The frame's world origin (camera-relative frames), split into an f32

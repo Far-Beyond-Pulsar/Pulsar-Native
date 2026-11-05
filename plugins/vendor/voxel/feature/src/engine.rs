@@ -9,17 +9,6 @@ use glam::{DVec3, IVec4, Vec3};
 use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 
-pub const GBUFFER_FORMATS: [wgpu::TextureFormat; 8] = [
-    wgpu::TextureFormat::Rgba8Unorm,
-    wgpu::TextureFormat::Rgba16Float,
-    wgpu::TextureFormat::Rgba8Unorm,
-    wgpu::TextureFormat::Rgba16Float,
-    wgpu::TextureFormat::Rg16Float,
-    wgpu::TextureFormat::Rgba16Float,
-    wgpu::TextureFormat::Rgba16Float,
-    wgpu::TextureFormat::Rgba16Float,
-];
-
 /// The voxel volumes a scene shows, as its content publishes them each
 /// frame under [`VOXEL_FRAME`] (a Pulsar voxel terrain's runtime, a Helio
 /// example host). The pass draws them from the active camera's eye.

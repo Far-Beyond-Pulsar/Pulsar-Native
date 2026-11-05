@@ -378,10 +378,8 @@ fn pipeline_layout(
     })
 }
 fn module(device: &wgpu::Device, label: &str, src: String) -> wgpu::ShaderModule {
-    device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(src.into()),
-    })
+    // Expands the prelude `vg_bindings.wgsl` opts into (the frame's camera).
+    helio_core::shader::module(device, label, src.as_str())
 }
 fn compute(
     device: &wgpu::Device,

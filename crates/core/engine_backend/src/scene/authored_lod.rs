@@ -35,11 +35,11 @@ pub const LOD_SELECTIONS_KEY: BufferKey = BufferKey::of("authored_lod_selections
 const LOD_SUPPRESSED_KEY: BufferKey = BufferKey::of("lod_suppressed");
 const LOD_ASSETS_KEY: BufferKey = BufferKey::of("authored_lod_assets");
 const LOD_SECTIONS_KEY: BufferKey = BufferKey::of("authored_lod_sections");
-const OBJECTS_KEY: BufferKey = BufferKey::of("static_objects");
+const OBJECTS_KEY: BufferKey = helio_mesh_api::STATIC_OBJECTS.key();
 const OBJECT_SECTIONS_KEY: BufferKey = BufferKey::of("static_mesh_draw_sections::handles");
-const OBJECTS_STRUCTURE_KEY: BufferKey = BufferKey::of("scene_objects_structure");
-const VERTEX_POOL_KEY: BufferKey = BufferKey::of("builtin_mesh_vertex");
-const INDEX_POOL_KEY: BufferKey = BufferKey::of("builtin_mesh_index");
+const OBJECTS_STRUCTURE_KEY: BufferKey = helio_pass_object_batch::scene_join::OBJECTS_STRUCTURE_KEY;
+const VERTEX_POOL_KEY: BufferKey = helio_mesh_api::MESH_VERTICES.key();
+const INDEX_POOL_KEY: BufferKey = helio_mesh_api::MESH_INDICES.key();
 
 /// Source buffers emitted by SceneDB and the transform derivation.
 #[derive(Clone, Copy, Debug)]
@@ -162,10 +162,14 @@ impl AuthoredLodSelection {
                 layout_entry(9, wgpu::BufferBindingType::Storage { read_only: true }),
             ],
         });
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Authored LOD Selection"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("authored_lod.wgsl").into()),
-        });
+        // The prelude brings the frame's camera.
+        // The scene join's rows and frame-origin rebasing, and the prelude's
+        // camera.
+        let module = helio_core::shader::module(
+            device,
+            "Authored LOD Selection",
+            helio_scene_join::join_source(include_str!("authored_lod.wgsl")).as_str(),
+        );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Authored LOD Selection Pipeline Layout"),
             bind_group_layouts: &[Some(&layout)],
@@ -191,10 +195,11 @@ impl AuthoredLodSelection {
                 layout_entry(6, wgpu::BufferBindingType::Storage { read_only: true }),
             ],
         });
-        let apply_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Authored LOD Apply"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("authored_lod_apply.wgsl").into()),
-        });
+        let apply_module = helio_core::shader::module(
+            device,
+            "Authored LOD Apply",
+            helio_scene_join::join_source(include_str!("authored_lod_apply.wgsl")).as_str(),
+        );
         let apply_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Authored LOD Apply Pipeline Layout"),
@@ -513,9 +518,8 @@ impl AuthoredLodSelection {
 #[derive(Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 struct SelectionUniforms {
     component_rows: u32,
-    /// 1.0 (the shader's guard against reassociated floats).
-    one: f32,
-    _pad: [u32; 2],
+    _pad: [u32; 3],
+    /// The frame's world origin (`helio_scene_join::origin_pair`).
     origin_hi: [f32; 4],
     origin_lo: [f32; 4],
 }
@@ -617,11 +621,10 @@ impl SceneDerivation for AuthoredLodSelection {
                     // The camera rows are relative to the frame's world
                     // origin; the transform rows are world positions, which
                     // the selection takes the origin off.
-                    let (origin_hi, origin_lo) = origin_pair(ctx.world_origin);
+                    let (origin_hi, origin_lo) = helio_scene_join::origin_pair(ctx.world_origin);
                     let uniforms = SelectionUniforms {
                         component_rows,
-                        one: 1.0,
-                        _pad: [0; 2],
+                        _pad: [0; 3],
                         origin_hi,
                         origin_lo,
                     };
@@ -867,12 +870,6 @@ fn signature(handles: &[&BufferHandle]) -> u64 {
             }
             hash
         })
-}
-
-fn origin_pair(origin: glam::DVec3) -> ([f32; 4], [f32; 4]) {
-    let hi = origin.as_vec3();
-    let lo = (origin - hi.as_dvec3()).as_vec3();
-    (hi.extend(0.0).to_array(), lo.extend(0.0).to_array())
 }
 
 fn asset_id(words: [u32; 4]) -> AssetId {

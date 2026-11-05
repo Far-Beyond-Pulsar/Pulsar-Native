@@ -18,7 +18,7 @@ impl Feature for GBufferDrawers {
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
         registrar.node(
             pass_node(
-                "gbuffer",
+                helio_frame_api::gbuffer::GROUP,
                 "Geometry: GBuffer",
                 "Passes: Geometry",
                 "Opaque meshes into the GBuffer and the scene depth; opens the G-buffer phase.",

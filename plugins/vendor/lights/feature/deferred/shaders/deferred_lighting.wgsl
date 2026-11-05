@@ -2,7 +2,6 @@
 //!use pbr_eval
 //!use atmosphere
 //!use atmosphere_sky_table
-//!use view_remap
 
 //! Deferred lighting pass.
 //!
@@ -1034,36 +1033,32 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     // Screen-space AO (SSAO or pre-baked AO).  Sampled by normalised screen UV
     // so it works regardless of whether the AO texture is at a different resolution.
     let screen_uv    = in.clip_pos.xy / vec2<f32>(textureDimensions(gbuf_albedo));
-    // The stored voxel pass uses (-1, -2) as its unlightmapped surface tag.
-    // Its 10 cm cube edges overwhelm the screen-space AO kernel at distance;
-    // that turns whole side faces black and produces moving contour bands.
-    // Keep material AO and hemisphere fill; voxel-local occlusion belongs to
-    // the stored terrain visibility path instead.
-    let voxel_lightmap_uv = textureLoad(gbuf_lightmap_uv, pix, 0).rg;
-    let is_stored_voxel = voxel_lightmap_uv.x == -1.0 && voxel_lightmap_uv.y == -2.0;
-    // Foliage tags itself (-1, -1.5) for the same reason: a meadow's dense blades
-    // fill the kernel and turn whole fields black; blades carry their own
-    // height AO.
-    let is_foliage = voxel_lightmap_uv.x == -1.0 && voxel_lightmap_uv.y == -1.5;
-    // The voxel pass's debug colours (trace cost, levels) unlit.
+    // The G-buffer's surface tag (the prelude's `GBUFFER_TAG_*`): a
+    // traced surface or dense geometry carries its own occlusion, which a
+    // screen-space AO kernel would overwhelm (coarse lattice edges at
+    // distance, a meadow's blades), so it gets material AO and hemisphere
+    // fill only.
+    let surface_tag = textureLoad(gbuf_lightmap_uv, pix, 0).rg;
+    let is_traced = gbuffer_tagged(surface_tag, GBUFFER_TAG_TRACED);
+    // A traced drawer's debug colours (trace cost, levels) unlit.
     if globals.debug_mode == 32u || globals.debug_mode == 34u || (globals.debug_mode == 35u && pix.x * 2 < i32(textureDimensions(gbuf_albedo).x)) {
-        if is_stored_voxel {
+        if is_traced {
             return vec4<f32>(albedo, 1.0);
         }
         return vec4<f32>(0.035, 0.035, 0.035, 1.0);
     }
     if globals.debug_mode == 33u {
         // Per-pixel source of the visible surface. Warm = rasterized, cool = ray
-        // traced. Voxel ray tracing marks its pixels with the (-1, -2) lightmap
-        // tag. The virtual-geometry shade pass paints its own pixels with the
+        // traced. A traced drawer marks its pixels `GBUFFER_TAG_TRACED`. The
+        // virtual-geometry shade pass paints its own pixels with the
         // source `vis_resolve` recorded for each one (hardware raster, compute
         // micro-raster, dense peel, ray query) and marks them with albedo alpha 0:
-        // take that colour, never a guess from this pass's own state. The lightmap
-        // tag (-1, -1) cannot be that marker, every classic mesh without a
-        // lightmap writes it too. Anything unmarked was written by the classic
-        // G-buffer raster.
+        // take that colour, never a guess from this pass's own state.
+        // `GBUFFER_TAG_UNLIGHTMAPPED` cannot be that marker: every classic mesh
+        // without a lightmap writes it too. Anything unmarked was written by
+        // the classic G-buffer raster.
         let painted_by_virtual_geometry = albedo_a.a < 0.004;
-        if is_stored_voxel {
+        if is_traced {
             return vec4<f32>(0.12, 0.78, 1.0, 1.0);
         }
         if painted_by_virtual_geometry {
@@ -1071,7 +1066,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         }
         return vec4<f32>(1.0, 0.36, 0.08, 1.0);
     }
-    let ssao_factor  = select(textureSample(screen_ao, screen_ao_samp, screen_uv).r, 1.0, is_stored_voxel || is_foliage);
+    let ssao_factor  = select(textureSample(screen_ao, screen_ao_samp, screen_uv).r, 1.0, gbuffer_own_occlusion(surface_tag));
     // Combined AO: material AO from G-buffer × screen-space AO.
     let ao_combined  = ao * ssao_factor;
 
@@ -1098,13 +1093,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         return vec4<f32>(f0, 1.0);
     }
     if globals.debug_mode == 14u {
-        if voxel_lightmap_uv.x < -1.5 {
-            return vec4<f32>(1.0, 0.0, 1.0, 1.0);
-        }
-        if voxel_lightmap_uv.x < 0.0 {
+        if !gbuffer_has_lightmap(surface_tag) {
             return vec4<f32>(0.12, 0.12, 0.12, 1.0);
         }
-        return vec4<f32>(fract(voxel_lightmap_uv), 0.0, 1.0);
+        return vec4<f32>(fract(surface_tag), 0.0, 1.0);
     }
 
     // ── Debug mode: bypass lighting ───────────────────────────────────────────
@@ -1124,10 +1116,8 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         return vec4<f32>(N_host * 0.5 + 0.5, 1.0);
     }
 
-    // ── VG flag: VG pass writes a (-2, -2) sentinel into gbuf_lightmap_uv ─────
-    let lightmap_uv     = textureLoad(gbuf_lightmap_uv, pix, 0).rg;
-    let is_vg           = lightmap_uv.x < -1.5;
-    let has_lightmap    = !is_vg && lightmap_uv.x >= 0.0;  // sentinel: negative x = no lightmap
+    let lightmap_uv     = surface_tag;
+    let has_lightmap    = gbuffer_has_lightmap(lightmap_uv);
 
     // ── Reconstruct world position from depth + inv_view_proj ────────────────
     // clip_pos.xy is in viewport space (0→width, 0→height, y↓).
@@ -1158,11 +1148,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     if globals.debug_mode == 10u {
         var shadow_sum = 0.0;
         for (var i = 0u; i < globals.light_count; i++) {
-            var sf = 1.0;
-            if !is_vg {
-                sf = shadow_factor(i, world_pos, N, in.clip_pos.xy, globals.frame);
-            }
-            shadow_sum += sf;
+            shadow_sum += shadow_factor(i, world_pos, N, in.clip_pos.xy, globals.frame);
         }
         let sf = shadow_sum / max(f32(globals.light_count), 1.0);
         return vec4<f32>(sf, sf, sf, 1.0);
@@ -1258,7 +1244,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             // affect every surface. Spot-cone attenuation still costs work and
             // therefore does not darken pixels outside the cone.
             affecting_lights += 1.0;
-            if light.shadow_index != 0xffffffffu && !is_vg && !remapped { shadow_work += 1.0; }
+            if light.shadow_index != 0xffffffffu && !remapped { shadow_work += 1.0; }
         }
 
         if globals.debug_mode == 50u {
@@ -1271,7 +1257,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         // metallic, and lighting response do not change the execution path).
         var material_work = 1.0;
         material_work += select(0.0, 1.8, is_anisotropic) + select(0.0, 1.2, has_subsurface);
-        material_work += select(0.0, 0.4, has_lightmap) + select(0.0, 0.6, is_vg);
+        material_work += select(0.0, 0.4, has_lightmap);
         let surface_work = 2.0 + material_work * 2.0 + affecting_lights * 1.6 + shadow_work * 1.1;
         if globals.debug_mode == 52u {
             // Show an absolute estimated time contribution per output pixel.
@@ -1351,16 +1337,13 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             let back = dot(N, to_light_dir) < -1e-4;
             if back && !two_sided { continue; }
             let N_lit = select(N, -N, back);
-            // VG geometry does not render into shadow maps, so shadow_factor
-            // would incorrectly occlude VG pixels with unrelated regular geometry.
-            // Skip shadow evaluation for VG surfaces. Must be a real `if`, not
-            // select() — select() evaluates both arguments unconditionally, so
-            // routing through select() paid for a full PCF/PCSS shadow sample
-            // (dozens of shadow-atlas taps, per light) on every VG-covered pixel
-            // only to throw the result away every time.
+            // A remapped pixel shows another world: the host's shadow maps
+            // say nothing about it. Must be a real `if`, not select():
+            // select() evaluates both arguments, paying for a full PCF/PCSS
+            // shadow sample per light only to throw it away.
             var sf = 1.0;
             var transmit = vec3<f32>(1.0);
-            if !is_vg && !remapped {
+            if !remapped {
                 sf = shadow_factor(light_idx, world_pos, N_lit, in.clip_pos.xy, globals.frame);
                 if sf > 0.0 {
                     transmit = light_transmittance(light_idx, world_pos, N_lit);
@@ -1572,8 +1555,7 @@ fn fs_reflection(in: VSOut) -> @location(0) vec4<f32> {
     let screen_uv = in.clip_pos.xy / screen_size;
     let ao_combined = orm_r.r * textureSample(screen_ao, screen_ao_samp, screen_uv).r;
     let lightmap_uv = textureLoad(gbuf_lightmap_uv, pix, 0).rg;
-    let is_vg = lightmap_uv.x < -1.5;
-    let has_lightmap = !is_vg && lightmap_uv.x >= 0.0;
+    let has_lightmap = gbuffer_has_lightmap(lightmap_uv);
 
     let ndc_xy = vec2<f32>(screen_uv.x * 2.0 - 1.0, 1.0 - screen_uv.y * 2.0);
     let world_h = cameras[0].view_proj_inv * vec4<f32>(ndc_xy, depth, 1.0);

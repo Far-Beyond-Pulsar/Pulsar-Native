@@ -6,6 +6,7 @@ description = "Helio render pass: image-based scene-linear lens response (ghosts
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+helio-pass-postprocess = { workspace = true }
 helio-light-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-feature-api = { workspace = true }

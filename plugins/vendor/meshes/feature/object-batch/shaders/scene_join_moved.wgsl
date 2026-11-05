@@ -17,11 +17,6 @@
 //
 // The moved list is `[total, fresh, slot, slot, ..]`.
 
-struct Handle {
-    offset: u32,
-    count: u32,
-}
-
 /// `helio_pass_gbuffer::StaticObjectComponent` (252 bytes).
 struct StaticObjectRow {
     mesh_slot: u32,

@@ -2766,7 +2766,7 @@ fn publish_shows_hits_only_in_front_of_meshes() {
     };
     let depth = texture("mesh plane depth", wgpu::TextureFormat::Depth32Float);
     let depth_view = depth.create_view(&Default::default());
-    let gbuffer: Vec<wgpu::Texture> = helio_pass_voxel_planet::engine::GBUFFER_FORMATS
+    let gbuffer: Vec<wgpu::Texture> = helio_frame_api::gbuffer::TARGET_FORMATS
         .iter()
         .map(|&f| texture("gbuffer", f))
         .collect();

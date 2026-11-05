@@ -67,7 +67,7 @@ pub const BUILD_WGSL: &str = include_str!("../shaders/vg_bvh_build.wgsl");
 /// Names of the buffers this pass reads and publishes.
 pub mod keys {
     /// Input: `array<GpuVgInstance>` (scene buffer).
-    pub const INSTANCES: &str = "vg_instances";
+    pub const INSTANCES: &str = helio_mesh_api::VG_INSTANCES;
     /// Input: the scene join's object rows (scene buffer).
     pub const STATIC_OBJECTS: &str = "static_objects";
     /// Input: the scene join's structure marker, as in `helio-pass-object-batch`.

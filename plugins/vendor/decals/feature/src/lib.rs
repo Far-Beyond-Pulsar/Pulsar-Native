@@ -387,8 +387,8 @@ impl RenderPass for DecalPass {
         self.last_h = 0;
     }
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("gbuffer");
-        builder.read("hiz");
+        builder.read(helio_frame_api::gbuffer::GROUP);
+        builder.read(helio_frame_api::depth::HIZ);
         builder.read(helio_mats::MATERIAL_TEXTURES);
     }
     fn publish<'a>(&self, _: &mut helio_core::ResourceRegistry<'a>) {}
@@ -426,16 +426,16 @@ impl RenderPass for DecalPass {
             return Ok(());
         }
         let gb = match ctx.registry.read::<helio_core::ViewGroup<'_, 4>>(
-            helio_core::ResourceKey::new("gbuffer"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::GROUP),
             self.name(),
         ) {
             Some(g) => g,
             None => return Ok(()),
         };
-        let depth_view = match ctx
-            .registry
-            .read::<&wgpu::TextureView>(helio_core::ResourceKey::new("hiz"), self.name())
-        {
+        let depth_view = match ctx.registry.read::<&wgpu::TextureView>(
+            helio_core::ResourceKey::new(helio_frame_api::depth::HIZ),
+            self.name(),
+        ) {
             Some(v) => v,
             None => return Ok(()),
         };
@@ -543,7 +543,7 @@ impl RenderPass for DecalPass {
     }
 
     fn writes(&self) -> &'static [&'static str] {
-        &["gbuffer"]
+        &[helio_frame_api::gbuffer::GROUP]
     }
 }
 

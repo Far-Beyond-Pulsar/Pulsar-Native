@@ -1,3 +1,4 @@
+//!use shadow_atlas
 const MAX_FACES: u32 = 1536u;
 
 /// Minimum world-space displacement (metres) that counts as a "move".
@@ -34,13 +35,6 @@ struct DrawIndexedIndirect {
     first_instance: u32,
 }
 
-/// Must match GpuShadowMatrix in shadow_matrices.wgsl / libhelio (64 bytes).
-struct GpuShadowMatrix {
-    mat: mat4x4f,
-    atlas: vec4f,
-    policy: vec4u,
-}
-
 struct ShadowDirtyUniforms {
     /// Number of active shadow faces (= shadow_count from SceneResources).
     face_count: u32,
@@ -55,7 +49,7 @@ struct ShadowDirtyUniforms {
 @group(0) @binding(0) var<storage, read>         instances:      array<GpuInstance>;
 @group(0) @binding(1) var<storage, read>          movable_draws:  array<DrawIndexedIndirect>;
 @group(0) @binding(2) var<storage, read_write>    prev_positions: array<Previous>;
-@group(0) @binding(3) var<storage, read>          shadow_mats:    array<GpuShadowMatrix>;
+@group(0) @binding(3) var<storage, read>          shadow_matrices:    array<LightMatrix>;
 /// Per-face dirty flag (0 = clean, 1 = dirty). Also used as clear-draw count by ShadowPass.
 @group(0) @binding(4) var<storage, read_write>    face_dirty:     array<atomic<u32>>;
 /// Per-face draw counts that drive multi_draw_indexed_indirect_count, in three
@@ -209,7 +203,7 @@ struct Changed { bounds: vec4f, previous: vec4f, has_previous: vec4u }
 @group(0) @binding(12) var<storage, read_write> changed: array<Changed>;
 @group(0) @binding(13) var<storage, read_write> changed_count: array<atomic<u32>>;
 
-fn face_total() -> u32 { return min(uniforms.face_count, arrayLength(&shadow_mats)); }
+fn face_total() -> u32 { return min(uniforms.face_count, arrayLength(&shadow_matrices)); }
 
 // The work is four small dispatches in this order, so no thread loops over
 // every face or every caster alone:
@@ -277,8 +271,8 @@ fn faces(@builtin(global_invocation_id) gid:vec3u) {
         atomicStore(&face_geom_count[2u*MAX_FACES+f],transmissive_count());
     }
     let n=min(atomicLoad(&changed_count[0]),arrayLength(&changed));
-    if n==0u || shadow_mats[f].atlas.z==0.0 {return;}
-    let m=shadow_mats[f].mat;
+    if n==0u || shadow_matrices[f].atlas.z==0.0 {return;}
+    let m=shadow_matrices[f].mat;
     let planes=extract_frustum_planes(m);
     var pages=vec2u(0u);
     var touched=false;

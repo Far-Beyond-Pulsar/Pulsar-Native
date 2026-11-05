@@ -1,37 +1,10 @@
-struct Owner {
-    owner_index: u32,
-    owner_generation: u32,
-    enabled: u32,
-}
-
-struct Transform {
-    position_hi: array<f32, 3>,
-    position_lo: array<f32, 3>,
-    rotation: array<f32, 3>,
-    scale: array<f32, 3>,
-}
-
-struct Handle {
-    offset: u32,
-    count: u32,
-}
-
+//!use helio_prelude
 struct Level {
     distance_threshold: f32,
     lod_bias: f32,
     mesh_asset: array<u32, 4>,
 }
 
-struct Camera {
-    view: array<vec4<f32>, 4>,
-    proj: array<vec4<f32>, 4>,
-    view_proj: array<vec4<f32>, 4>,
-    inv_view_proj: array<vec4<f32>, 4>,
-    position_near: vec4<f32>,
-    forward_far: vec4<f32>,
-    jitter_frame: vec4<f32>,
-    prev_view_proj: array<vec4<f32>, 4>,
-}
 
 struct Selection {
     level_index: u32,
@@ -42,9 +15,10 @@ struct Selection {
 
 struct Uniforms {
     component_rows: u32,
-    // 1.0, unknown to the compiler: keeps the pair's halves apart.
-    one: f32,
-    _pad: vec2<u32>,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+    // The frame's world origin as an f32 pair (`helio_scene_join::origin_pair`).
     origin_hi: vec4<f32>,
     origin_lo: vec4<f32>,
 }
@@ -59,7 +33,7 @@ fn is_finite(value: f32) -> bool {
 @group(0) @binding(1) var<storage, read> owners: array<Owner>;
 @group(0) @binding(2) var<storage, read> generations: array<u32>;
 @group(0) @binding(3) var<storage, read> hidden: array<u32>;
-@group(0) @binding(4) var<storage, read> transforms: array<Transform>;
+@group(0) @binding(4) var<storage, read> transforms: array<ObjectTransform>;
 @group(0) @binding(5) var<storage, read> level_handles: array<Handle>;
 @group(0) @binding(6) var<storage, read> levels: array<Level>;
 @group(0) @binding(7) var<storage, read> cameras: array<Camera>;
@@ -100,15 +74,9 @@ fn cs_select_authored_lod(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // The object in the frame's space, like the eye: its world position (an
-    // f32 pair) less the frame's world origin, pair-wise, so it keeps its
-    // precision however far from the world's origin both are. Each half goes
-    // through `u.one`: a driver reassociating the sum to `(hi + lo) - origin`
-    // rounds the low half away (NVIDIA's Vulkan driver does).
-    let transform = transforms[owner.owner_index];
-    let near_hi = (vec3<f32>(transform.position_hi[0], transform.position_hi[1], transform.position_hi[2]) - u.origin_hi.xyz) * u.one;
-    let near_lo = (vec3<f32>(transform.position_lo[0], transform.position_lo[1], transform.position_lo[2]) - u.origin_lo.xyz) * u.one;
-    let object_position = near_hi + near_lo;
+    // The object in the frame's space, like the eye (the scene join's
+    // frame-origin rebasing).
+    let object_position = object_relative(transforms[owner.owner_index], u.origin_hi, u.origin_lo);
     let distance = length(object_position - cameras[0].position_near.xyz);
     if handle.count == 0u || handle.offset > arrayLength(&levels)
         || handle.count > arrayLength(&levels) - handle.offset {

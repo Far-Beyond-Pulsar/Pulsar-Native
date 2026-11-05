@@ -1,5 +1,8 @@
 
-// Pass-owned view effect. Camera/material template remains independent of media.
+//!use frame_media
+// Pass-owned view effect: each fragment seen through the frame's medium at
+// its own depth (the grid's mapping and composite are the frame's
+// `frame_media`). Camera/material template remains independent of media.
 struct TransparentMediumParameters {
     first: vec4<f32>,
     distances: vec4<f32>,
@@ -12,16 +15,15 @@ struct TransparentMediumParameters {
 
 fn apply_medium(surface: vec4<f32>, p: vec3<f32>) -> vec4<f32> {
     let far = medium_parameters.distances.y;
-    if far <= 0.5 { return surface; }
+    if far <= MEDIA_NEAR { return surface; }
     let clip = cameras[0].view_proj * vec4<f32>(p, 1.0);
     // view_proj is jittered; the froxel grid is not.
     let uv = (clip.xy / clip.w - cameras[0].jitter_frame.xy) * vec2<f32>(0.5, -0.5) + 0.5;
     let depth = dot(p - cameras[0].position_near.xyz, normalize(cameras[0].forward_far.xyz));
-    if depth <= 0.5 { return surface; }
-    let slice = clamp(log(max(depth, 0.5) / 0.5) / log(max(far, 1.0) / 0.5)
-        - 0.5 / f32(textureDimensions(integrated_medium).z), 0.0, 1.0);
+    if depth <= MEDIA_NEAR { return surface; }
+    let slice = media_grid_w(depth, far, textureDimensions(integrated_medium).z);
     let fog = textureSampleLevel(integrated_medium, medium_sampler, vec3<f32>(uv, slice), 0.0);
     // SrcAlpha blending with the fogged background counts foreground scattering
     // once: alpha*S + (1-alpha)*S = S, with alpha*T*surface radiance.
-    return vec4<f32>(surface.rgb * clamp(fog.a, 0.0, 1.0) + max(fog.rgb, vec3<f32>(0.0)), surface.a);
+    return vec4<f32>(media_seen(surface.rgb, fog), surface.a);
 }

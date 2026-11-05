@@ -296,7 +296,7 @@ impl Fixture {
             );
         }
         resources.write(
-            helio_core::ResourceKey::new("gbuffer"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::GROUP),
             helio_core::ViewGroup::<4> {
                 views: [
                     &self.views[0],
@@ -308,7 +308,7 @@ impl Fixture {
             "Fixture",
         );
         resources.write(
-            helio_core::ResourceKey::new("pre_aa"),
+            helio_core::ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
             &self.views[4],
             "Fixture",
         );
@@ -335,7 +335,7 @@ impl Fixture {
         }
         if let Some(velocity) = &self.velocity {
             resources.write(
-                helio_core::ResourceKey::new("gbuffer_velocity"),
+                helio_core::ResourceKey::new(helio_frame_api::gbuffer::VELOCITY),
                 velocity,
                 "Fixture",
             );

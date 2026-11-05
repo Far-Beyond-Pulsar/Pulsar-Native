@@ -245,7 +245,7 @@ const QUAD_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct CameraUniform {
+struct SpriteCamera {
     view_proj: [[f32; 4]; 4],
 }
 
@@ -457,7 +457,7 @@ impl SpriteBatchPass {
 
         let camera_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Sprite Camera Uniform"),
-            size: std::mem::size_of::<CameraUniform>() as u64,
+            size: std::mem::size_of::<SpriteCamera>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1077,7 +1077,7 @@ impl RenderPass for SpriteBatchPass {
             // Y-up world space; a Y-down convention would swap `cy - hy`/`cy + hy`.
             let view_proj =
                 glam::Mat4::orthographic_rh(cx - hx, cx + hx, cy - hy, cy + hy, -1.0, 1.0);
-            let uniform = CameraUniform {
+            let uniform = SpriteCamera {
                 view_proj: view_proj.to_cols_array_2d(),
             };
             ctx.write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&uniform));

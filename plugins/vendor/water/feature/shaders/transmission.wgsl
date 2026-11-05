@@ -1,5 +1,4 @@
 //!use helio_prelude
-//!use view_remap
 
 // The light water focuses onto what lies under it (caustics), at each pixel:
 // the frame's `transmission` lighting input. A fullscreen draw rather than a

@@ -1,0 +1,9 @@
+[package]
+name = "one_owner"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The one-owner rule (docs/architecture/plugin-migration.md, Phase C step 1): every cross-kind concept has one owner (a plugin or the frame), and nothing else declares a copy of it. Reads the source tree; no dependencies."
+
+[lints]
+workspace = true

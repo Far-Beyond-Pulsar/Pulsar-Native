@@ -72,19 +72,24 @@ impl helio_core::RenderPass for FinalResourceConsumer {
         "FinalResourceConsumer"
     }
     fn reads(&self) -> &'static [&'static str] {
-        &["pre_aa"]
+        &[helio_frame_api::color::SCENE_COLOR]
     }
     // A resize keeps the pass: it learns the new size here.
     fn on_resize(&mut self, _device: &wgpu::Device, size: helio_core::RenderSize) {
         self.expected = size.internal;
     }
     fn execute(&mut self, ctx: &mut helio_core::PassContext) -> helio_core::Result<()> {
-        let texture = ctx.resource_pool.get_texture("pre_aa").unwrap();
+        let texture = ctx
+            .resource_pool
+            .get_texture(helio_frame_api::color::SCENE_COLOR)
+            .unwrap();
         let extent = [texture.width(), texture.height()];
         assert_eq!(extent, self.expected);
         assert!(ctx
             .registry
-            .texture_view(helio_core::ResourceKey::new("pre_aa"))
+            .texture_view(helio_core::ResourceKey::new(
+                helio_frame_api::color::SCENE_COLOR
+            ))
             .is_some());
         self.observed.lock().unwrap().push(extent);
         Ok(())

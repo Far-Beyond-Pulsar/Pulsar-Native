@@ -79,7 +79,12 @@ fn shader_source_for_transmission(stage: &str, presampled: bool, transmission: b
             // Owned handles: a `&str` borrowed from a temporary would not
             // outlive the `if` branch that created it.
             let shadow = if transmission {
-                wgsl_text!("../shaders/ray_shadow.wgsl")
+                // The frame's transmission rows, then the shadow ray.
+                std::borrow::Cow::Owned(format!(
+                    "{}\n{}",
+                    helio_frame_api::rays::RAY_TRANSMISSION_SNIPPET.source,
+                    wgsl_text!("../shaders/ray_shadow.wgsl")
+                ))
             } else {
                 wgsl_text!("../shaders/ray_shadow_opaque.wgsl")
             };

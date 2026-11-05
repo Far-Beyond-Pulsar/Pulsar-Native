@@ -1,3 +1,4 @@
+//!use helio_prelude
 //! Screen-space portal-opening mask — two tiny sub-passes run back to back
 //! (see `helio-pass-portal-instances::mask::PortalMaskPass::execute`):
 //!
@@ -24,16 +25,6 @@
 //!    the portal itself is blocked from view — so the duplicate pass's own
 //!    depth+mask test still correctly rejects content there too.
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    inv_view_proj:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 /// Must match libhelio::GpuPortalView (144 bytes) — see gbuffer_portal.wgsl.
 struct GpuPortalView {

@@ -45,6 +45,7 @@ helio.workspace = true
 # `SceneDerivation`/`BufferKey` for the virtual-geometry instance derivation
 # (src/virtual_geometry_instances.rs); `helio-vg-format` is the frozen GPU ABI.
 helio-core.workspace = true
+helio-scene-join.workspace = true
 helio-vg-format.workspace = true
 helio-vg-stream.workspace = true
 helio-vg-build.workspace = true

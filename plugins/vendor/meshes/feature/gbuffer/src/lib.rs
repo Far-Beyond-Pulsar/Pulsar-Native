@@ -448,14 +448,15 @@ impl GBufferPass {
 
 impl RenderPass for GBufferPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &[
-            "builtin_mesh_index",
-            "builtin_mesh_vertex",
-            "materials",
+        const LIST: &[&str] = &[
+            helio_mesh_api::MESH_INDICES.name(),
+            helio_mesh_api::MESH_VERTICES.name(),
+            helio_mats::MATERIALS.name(),
             helio_light_api::LIGHT_LIST,
-            "skeletal_bone_palette",
-            "skeletal_skin_vertices",
-        ]
+            helio_mesh_api::SKELETAL_BONE_PALETTE,
+            helio_mesh_api::SKELETAL_SKIN_VERTICES,
+        ];
+        LIST
     }
 
     fn name(&self) -> &'static str {
@@ -496,26 +497,24 @@ impl RenderPass for GBufferPass {
         // rather than as 4 independent `write_color_raw` calls. See
         // `docs/helio_3_0_spec.md` §5.
         builder.write_group(
-            "gbuffer",
-            [
-                ("gbuffer_albedo", ResourceFormat::Rgba8Unorm),
-                ("gbuffer_normal", ResourceFormat::Rgba16Float),
-                ("gbuffer_orm", ResourceFormat::Rgba8Unorm),
-                ("gbuffer_emissive", ResourceFormat::Rgba16Float),
-            ],
+            helio_frame_api::gbuffer::GROUP,
+            helio_frame_api::gbuffer::GROUP_MEMBERS,
             ResourceSize::MatchSurface,
         );
-        builder.with_group_extra_usage("gbuffer", wgpu::TextureUsages::STORAGE_BINDING);
+        builder.with_group_extra_usage(
+            helio_frame_api::gbuffer::GROUP,
+            wgpu::TextureUsages::STORAGE_BINDING,
+        );
         // The remaining 4 G-buffer targets are each read independently
         // downstream (no bundling) — plain single-view declarations.
         builder.write_color_raw(
-            "gbuffer_lightmap_uv",
-            wgpu::TextureFormat::Rg16Float,
+            helio_frame_api::gbuffer::LIGHTMAP_UV,
+            helio_frame_api::gbuffer::LIGHTMAP_UV_FORMAT.to_wgpu(),
             ResourceSize::MatchSurface,
         );
         builder.write_color_raw(
-            "gbuffer_sss",
-            wgpu::TextureFormat::Rgba16Float,
+            helio_frame_api::gbuffer::SSS,
+            helio_frame_api::gbuffer::SSS_FORMAT.to_wgpu(),
             ResourceSize::MatchSurface,
         );
         // `gbuffer_sss`, `gbuffer_extra` and `gbuffer_velocity` are also written
@@ -524,13 +523,13 @@ impl RenderPass for GBufferPass {
         // storage format (the VG depth pass writes it as an attachment).
         builder.with_extra_usage(wgpu::TextureUsages::STORAGE_BINDING);
         builder.write_color_raw(
-            "gbuffer_extra",
-            wgpu::TextureFormat::Rgba16Float,
+            helio_frame_api::gbuffer::EXTRA,
+            helio_frame_api::gbuffer::EXTRA_FORMAT.to_wgpu(),
             ResourceSize::MatchSurface,
         );
         builder.with_extra_usage(wgpu::TextureUsages::STORAGE_BINDING);
         builder.write_color_raw(
-            "gbuffer_velocity",
+            helio_frame_api::gbuffer::VELOCITY,
             // XY remain pixel motion. Z is the FP16 view-depth residual and W=2
             // marks a valid correction for precise ray-query receiver origins.
             wgpu::TextureFormat::Rgba16Float,
@@ -551,10 +550,10 @@ impl RenderPass for GBufferPass {
         // stable bundled contract downstream passes (DeferredLight, SSAO,
         // SSR, VirtualGeometry, …) read as `frame.gbuffer`. Order matches
         // the `write_group` call in `declare_resources` above.
-        if group_name == "gbuffer" {
+        if group_name == helio_frame_api::gbuffer::GROUP {
             if let [albedo, normal, orm, emissive] = *views {
                 frame.write(
-                    helio_core::ResourceKey::new("gbuffer"),
+                    helio_core::ResourceKey::new(helio_frame_api::gbuffer::GROUP),
                     helio_core::ViewGroup::<4> {
                         views: [albedo, normal, orm, emissive],
                     },
@@ -572,18 +571,25 @@ impl RenderPass for GBufferPass {
         storage: &'a mut helio_core::RenderFrameStorage,
     ) -> Option<wgpu::RenderPassDescriptor<'a>> {
         let gbuffer = resources.read::<helio_core::ViewGroup<'_, 4>>(
-            helio_core::ResourceKey::new("gbuffer"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::GROUP),
             "GBuffer",
         )?;
         let lightmap_uv = resources.read(
-            helio_core::ResourceKey::new("gbuffer_lightmap_uv"),
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::LIGHTMAP_UV),
             "GBuffer",
         )?;
-        let sss_target = resources.read(helio_core::ResourceKey::new("gbuffer_sss"), "GBuffer")?;
-        let extra_target =
-            resources.read(helio_core::ResourceKey::new("gbuffer_extra"), "GBuffer")?;
-        let velocity_target =
-            resources.read(helio_core::ResourceKey::new("gbuffer_velocity"), "GBuffer")?;
+        let sss_target = resources.read(
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::SSS),
+            "GBuffer",
+        )?;
+        let extra_target = resources.read(
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::EXTRA),
+            "GBuffer",
+        )?;
+        let velocity_target = resources.read(
+            helio_core::ResourceKey::new(helio_frame_api::gbuffer::VELOCITY),
+            "GBuffer",
+        )?;
         let color_attachments: &'a [Option<wgpu::RenderPassColorAttachment<'a>>] = storage
             .retain_boxed_slice(Box::new([
                 Some(wgpu::RenderPassColorAttachment {
@@ -809,12 +815,11 @@ impl RenderPass for GBufferPass {
             .registry
             .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())
             .unwrap_or_else(|| stand_in.textures());
-        let Some(vertices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_vertex"))
+        let Some(vertices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_VERTICES.key())
         else {
             return Ok(());
         };
-        let Some(indices_handle) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_index"))
-        else {
+        let Some(indices_handle) = ctx.scene_buffers.get(helio_mesh_api::MESH_INDICES.key()) else {
             return Ok(());
         };
         let vertices = &vertices_handle.buffer;
@@ -834,10 +839,10 @@ impl RenderPass for GBufferPass {
             .unwrap_or(ctx.camera);
         let skin_handle = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_skin_vertices"));
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_SKIN_VERTICES));
         let palette_handle = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_bone_palette"));
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_BONE_PALETTE));
         let skin_buf = skin_handle
             .map(|handle| &handle.buffer)
             .unwrap_or(&self.fallback_skeletal_storage);
@@ -903,7 +908,7 @@ impl RenderPass for GBufferPass {
         // Material rows are SceneDB component data.  The pass resolves the
         // component column by key; it must not consume a renderer-owned
         // material table hidden inside ResourceRegistry.
-        let materials_handle = ctx.scene_buffers.get(BufferKey::of("materials"));
+        let materials_handle = ctx.scene_buffers.get(helio_mats::MATERIALS.key());
         let materials_buf = materials_handle
             .map(|handle| &handle.buffer)
             .unwrap_or(stand_in.rows());
@@ -1045,7 +1050,7 @@ impl RenderPass for GBufferPass {
     fn reads(&self) -> &'static [&'static str] {
         &[
             helio_mats::MATERIAL_TEXTURES,
-            "render_environment",
+            helio_core::resource_keys::RENDER_ENVIRONMENT,
             "object_batch",
             "culled_batch",
         ]
@@ -1227,48 +1232,7 @@ impl GBufferPass {
                         module,
                         entry_point: Some("fs_main"),
                         compilation_options: Default::default(),
-                        targets: &[
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rgba8Unorm,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rgba16Float,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rgba8Unorm,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rgba16Float,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rg16Float,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rgba16Float,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rgba16Float,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                            Some(wgpu::ColorTargetState {
-                                format: wgpu::TextureFormat::Rgba16Float,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                        ],
+                        targets: &helio_frame_api::gbuffer::color_targets(),
                     }),
                     primitive: wgpu::PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleList,

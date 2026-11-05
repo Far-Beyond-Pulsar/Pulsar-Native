@@ -290,11 +290,11 @@ impl ChunkPass {
 }
 
 const READS: &[&str] = &[
-    "gbuffer",
-    "gbuffer_lightmap_uv",
-    "gbuffer_sss",
-    "gbuffer_extra",
-    "gbuffer_velocity",
+    helio_frame_api::gbuffer::GROUP,
+    helio_frame_api::gbuffer::LIGHTMAP_UV,
+    helio_frame_api::gbuffer::SSS,
+    helio_frame_api::gbuffer::EXTRA,
+    helio_frame_api::gbuffer::VELOCITY,
     helio_mats::MATERIAL_TEXTURES,
     // Shared coast/travel field read by the terrain scene-material swash.
     "water_shore_fields",
@@ -310,15 +310,15 @@ const READS: &[&str] = &[
 /// helio-pass-sky's frame of the atmosphere (its sun's disk).
 const ATMOSPHERE_FRAME: &str = "atmosphere_frame";
 const WRITES: &[&str] = &[
-    "gbuffer",
-    "gbuffer_lightmap_uv",
-    "gbuffer_sss",
-    "gbuffer_extra",
-    "gbuffer_velocity",
-    "directional_visibility",
+    helio_frame_api::gbuffer::GROUP,
+    helio_frame_api::gbuffer::LIGHTMAP_UV,
+    helio_frame_api::gbuffer::SSS,
+    helio_frame_api::gbuffer::EXTRA,
+    helio_frame_api::gbuffer::VELOCITY,
+    helio_frame_api::lighting::DIRECTIONAL_VISIBILITY,
     "local_visibility",
     // helio-pass-tsr's STOCHASTIC_MASK.
-    "tsr_stochastic",
+    helio_pass_tsr::STOCHASTIC_MASK,
     helio_gi_api::GI_HITS,
     helio_light_api::SUN_OCCLUSION_MAPS,
     helio_light_api::SUN_OCCLUSION_PAGES,
@@ -391,10 +391,14 @@ impl RenderPass for ChunkPass {
     }
     fn publish<'a>(&self, frame: &mut helio_core::ResourceRegistry<'a>) {
         if let Some(view) = self.world.as_ref().and_then(ChunkWorld::stochastic_view) {
-            frame.write_texture_binding("tsr_stochastic", view, self.name());
+            frame.write_texture_binding(helio_pass_tsr::STOCHASTIC_MASK, view, self.name());
         }
         if let Some(view) = self.world.as_ref().and_then(ChunkWorld::sun_view) {
-            frame.write_texture_binding("directional_visibility", view, self.name());
+            frame.write_texture_binding(
+                helio_frame_api::lighting::DIRECTIONAL_VISIBILITY,
+                view,
+                self.name(),
+            );
         }
         if let Some(buffer) = self.world.as_ref().and_then(ChunkWorld::local_visibility) {
             frame.write_buffer_binding("local_visibility", buffer, self.name());
@@ -600,10 +604,12 @@ impl ChunkPass {
         let missing = |name: &str| helio_core::Error::ResourceNotFound(name.into());
         let g = ctx
             .registry
-            .get::<helio_core::ViewGroup<'_, 4>>(helio_core::ResourceKey::new("gbuffer"))
-            .ok_or_else(|| missing("gbuffer"))?;
+            .get::<helio_core::ViewGroup<'_, 4>>(helio_core::ResourceKey::new(
+                helio_frame_api::gbuffer::GROUP,
+            ))
+            .ok_or_else(|| missing(helio_frame_api::gbuffer::GROUP))?;
         macro_rules! view {
-            ($name:literal) => {
+            ($name:expr) => {
                 ctx.registry
                     .get::<&wgpu::TextureView>(helio_core::ResourceKey::new($name))
                     .ok_or_else(|| missing($name))?
@@ -614,10 +620,10 @@ impl ChunkPass {
             g.views[1],
             g.views[2],
             g.views[3],
-            view!("gbuffer_lightmap_uv"),
-            view!("gbuffer_sss"),
-            view!("gbuffer_extra"),
-            view!("gbuffer_velocity"),
+            view!(helio_frame_api::gbuffer::LIGHTMAP_UV),
+            view!(helio_frame_api::gbuffer::SSS),
+            view!(helio_frame_api::gbuffer::EXTRA),
+            view!(helio_frame_api::gbuffer::VELOCITY),
         ];
         let camera = ctx.camera_data;
         let eye_index = if self.xr_mode && camera.jitter_frame[3].to_bits() == 2 {

@@ -17,7 +17,6 @@ const SNIPPETS: &[helio_core::shader::ShaderSnippet] = &[
     helio_frame_api::lighting::sky::ATMOSPHERE_SNIPPET,
     helio_frame_api::lighting::sky::ATMOSPHERE_SKY_TABLE_SNIPPET,
     helio_frame_api::lighting::sun_transmittance::SNIPPET,
-    helio_frame_api::lighting::VIEW_REMAP_SNIPPET,
     helio_light_api::SUN_OCCLUSION_SNIPPET,
     helio_light_api::LIGHT_LIST_SNIPPET,
     helio_light_api::SHADOW_ATLAS_SNIPPET,
@@ -448,9 +447,11 @@ fn gpu_tile_sampling_fades_and_honors_author_policy() {
         6 * 8,
         wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
     );
-    // The atlas's addressing and sampling, as every reader takes them.
+    // The atlas's addressing and sampling, as every reader takes them (over
+    // the prelude, whose screen-space helpers the snippet uses).
     let helpers = format!(
-        "{}\n{}",
+        "{}\n{}\n{}",
+        helio_core::shader::PRELUDE,
         helio_light_api::SHADOW_ATLAS_SNIPPET.source,
         "fn budget_compare_dynamic(uv:vec2f,layer:u32,depth:f32)->f32 {return budget_compare(shadow_atlas,shadow_sampler,uv,layer,depth,32u);}\n\
          fn budget_compare_static(uv:vec2f,layer:u32,depth:f32)->f32 {return budget_compare(static_shadow_atlas,shadow_sampler,uv,layer,depth,16u);}"

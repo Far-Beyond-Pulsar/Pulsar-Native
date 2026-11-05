@@ -1,6 +1,7 @@
 //!use helio_prelude
 //!use light_list
 //!use shadow_atlas
+//!use shadow_lookup
 
 // ── Scene-linear lens response ───────────────────────────────────────────────
 //
@@ -297,7 +298,7 @@ fn shadow_visibility(light: GpuLight, p: vec3<f32>) -> f32 {
     }
     // Directional: the lens sits at distance zero, which is always cascade 0.
     if layer >= arrayLength(&shadow_matrices) { return 1.0; }
-    let proj = helio_shadow_project(shadow_matrices[layer].mat, p);
+    let proj = shadow_project(shadow_matrices[layer].mat, p);
     if !proj.valid { return 1.0; }
     // Four taps around the lens position soften the handover at shadow edges.
     let texel = 1.0 / vec2<f32>(textureDimensions(shadow_atlas));

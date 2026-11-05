@@ -332,7 +332,7 @@ const DIRECTIONS: [Vec3; 6] = [
 #[test]
 fn a_glowing_box_lights_its_probes_evenly() {
     let Some(gpu) = gpu() else { return };
-    let mesh = GiMeshTracePass::new(&gpu.device).unwrap();
+    let mesh = GiMeshTracePass::new(&gpu.device, &gpu.queue).unwrap();
     let h = 2.1;
     let scene = scene(gpu, &room(h, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ONE));
     let mut pass = GiPass::new(
@@ -393,7 +393,7 @@ fn a_glowing_box_lights_its_probes_evenly() {
 #[test]
 fn bounces_in_a_box_approach_the_furnace_without_gaining_energy() {
     let Some(gpu) = gpu() else { return };
-    let mesh = GiMeshTracePass::new(&gpu.device).unwrap();
+    let mesh = GiMeshTracePass::new(&gpu.device, &gpu.queue).unwrap();
     let h = 2.1;
     let half = Vec3::splat(0.5);
     let scene = scene(gpu, &room(h, half, half, half, half));
@@ -445,7 +445,7 @@ fn bounces_in_a_box_approach_the_furnace_without_gaining_energy() {
 #[test]
 fn a_cornell_box_bleeds_its_walls_colours() {
     let Some(gpu) = gpu() else { return };
-    let mesh = GiMeshTracePass::new(&gpu.device).unwrap();
+    let mesh = GiMeshTracePass::new(&gpu.device, &gpu.queue).unwrap();
     let h = 2.1;
     let (red, green, white) = (
         Vec3::new(0.7, 0.05, 0.05),
@@ -515,7 +515,7 @@ fn a_cornell_box_bleeds_its_walls_colours() {
 #[test]
 fn the_nearer_of_a_mesh_and_another_tracers_hit_stands() {
     let Some(gpu) = gpu() else { return };
-    let mesh = GiMeshTracePass::new(&gpu.device).unwrap();
+    let mesh = GiMeshTracePass::new(&gpu.device, &gpu.queue).unwrap();
     // Planes wide enough that no ray up passes beside the ceiling.
     let plane = |y: f32, normal: Vec3, emissive: f32| Quad {
         corner: Vec3::new(-4000.0, y, -4000.0),
@@ -735,7 +735,7 @@ fn a_cut_out_canopy_shades_its_probes_through_its_holes() {
     // Mean irradiance / pi from above at the finest level's probes under
     // the canopy, after every one of them updated.
     let under = |texture: Option<wgpu::Texture>| -> (usize, f32) {
-        let mesh = GiMeshTracePass::new(&gpu.device).unwrap();
+        let mesh = GiMeshTracePass::new(&gpu.device, &gpu.queue).unwrap();
         let canopy = Quad {
             corner: Vec3::new(-4000.0, 3.0, -4000.0),
             u: Vec3::X * 8000.0,

@@ -1,3 +1,4 @@
+//!use helio_prelude
 //!use mesh_draw_rows
 // Per-portal-*chain* GPU frustum culling — selects which instances get a
 // duplicate draw through each active portal chain (a sequence of up to
@@ -30,16 +31,6 @@
 // already bounded by the frustum test; occlusion is a pure fill-rate
 // optimization this v1 skips (see docs/).
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    inv_view_proj:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 @group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
 
 struct CullUniforms {

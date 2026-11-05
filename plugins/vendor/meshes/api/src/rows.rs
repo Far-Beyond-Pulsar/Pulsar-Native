@@ -153,6 +153,16 @@ pub struct StaticObjectRow {
 // pattern valid. Lets an engine's SceneDB component embed it.
 unsafe impl pulsar_scenedb::Pod for StaticObjectRow {}
 
+/// The skinned meshes' per-vertex skin influences (a variable-length pool
+/// the skinned drawers read by instance range).
+pub const SKELETAL_SKIN_VERTICES: &str = "skeletal_skin_vertices";
+/// The skinned meshes' bone palettes: each instance's current palette
+/// followed by its previous frame's, in one variable-length range.
+pub const SKELETAL_BONE_PALETTE: &str = "skeletal_bone_palette";
+/// The virtual-geometry instance rows (`GpuVgInstance`), one per VG-active
+/// instance, which the VG host derives and the VG passes read.
+pub const VG_INSTANCES: &str = "vg_instances";
+
 /// The buffer the renderer reads [`StaticObjectRow`]s from. Engines produce it
 /// (a SceneDB component stored under this key, or a scene derivation).
 pub const STATIC_OBJECTS: helio_core::BufferContract<StaticObjectRow> =

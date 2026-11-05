@@ -848,13 +848,13 @@ impl RenderPass for WaterSimPass {
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("pre_aa");
+        builder.read(helio_frame_api::color::SCENE_COLOR);
         builder.write_color(
             "water_output",
             ResourceFormat::from(self.surface_format),
             ResourceSize::MatchSurface,
         );
-        builder.publish_alias("water_output", "pre_aa");
+        builder.publish_alias("water_output", helio_frame_api::color::SCENE_COLOR);
         // The pass owns these mipmapped outputs; the graph tracks producer/
         // consumer ordering without allocating one-mip placeholder textures.
         builder.write_buffer("water_caustics");
@@ -863,12 +863,12 @@ impl RenderPass for WaterSimPass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "gbuffer",
-            "depth",
-            "pre_aa",
+            helio_frame_api::gbuffer::GROUP,
+            helio_frame_api::gbuffer::DEPTH,
+            helio_frame_api::color::SCENE_COLOR,
             // Min-reduced depth pyramid, marched for water reflections. Built
             // by HiZBuildPass from `depth` alone, so it is available here.
-            "hiz_nearest",
+            helio_frame_api::depth::HIZ_NEAREST,
             // The sky the sea reflects and scatters.
             helio_frame_api::lighting::sky::ATMOSPHERE_FRAME,
             helio_frame_api::lighting::sky::ATMOSPHERE_SKY_TABLE,
@@ -887,7 +887,7 @@ impl RenderPass for WaterSimPass {
             "water_caustics_deep",
             "water_planar_reflection",
             "water_planar_reflection_camera",
-            "pre_aa",
+            helio_frame_api::color::SCENE_COLOR,
         ]
     }
 
@@ -972,7 +972,11 @@ impl RenderPass for WaterSimPass {
             .filter(|_| self.screen_active)
         {
             let view: &'a wgpu::TextureView = unsafe { std::mem::transmute(view) };
-            frame.write(helio_core::ResourceKey::new("pre_aa"), view, "WaterSim");
+            frame.write(
+                helio_core::ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
+                view,
+                "WaterSim",
+            );
         }
     }
 
@@ -988,7 +992,7 @@ impl RenderPass for WaterSimPass {
             .get(BufferKey::of("water_volumes"))
             .is_some()
         {
-            demands.demand("hiz_nearest");
+            demands.demand(helio_frame_api::depth::HIZ_NEAREST);
         }
     }
 
@@ -1801,7 +1805,9 @@ impl RenderPass for WaterSimPass {
             .expect("water_output view from graph");
         let scene_view: &wgpu::TextureView = ctx
             .registry
-            .get(helio_core::ResourceKey::new("pre_aa"))
+            .get(helio_core::ResourceKey::new(
+                helio_frame_api::color::SCENE_COLOR,
+            ))
             .unwrap_or(&self.pre_aa_fallback_view);
         if self.blit_bg_key.as_ref() != Some(scene_view) {
             self.blit_bg = Some(ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1916,12 +1922,17 @@ impl RenderPass for WaterSimPass {
             if let Some(vols_buf) = water_volumes_buf {
                 let gbuffer_normal_view = ctx
                     .registry
-                    .get::<helio_core::ViewGroup<'_, 4>>(helio_core::ResourceKey::new("gbuffer"))
+                    .get::<helio_core::ViewGroup<'_, 4>>(helio_core::ResourceKey::new(
+                        helio_frame_api::gbuffer::GROUP,
+                    ))
                     .map(|gb| gb.views[1])
                     .unwrap_or(&self.gbuffer_fallback_view);
                 let depth_view = ctx.depth;
 
-                let hiz_nearest_view = match ctx.resource_pool.get_view("hiz_nearest") {
+                let hiz_nearest_view = match ctx
+                    .resource_pool
+                    .get_view(helio_frame_api::depth::HIZ_NEAREST)
+                {
                     Some(v) => v.clone(),
                     None => {
                         return Err(helio_core::Error::InvalidPassConfig(

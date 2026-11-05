@@ -15,7 +15,7 @@ fn leaf_opacity_casts_identical_cutout_shadows_from_both_sides() {
             .await
             .unwrap();
         let bindings = helio_pass_gbuffer::depth_material::DepthMaterialBindings::new(&device);
-        let source = bindings.shader_source(include_str!("../shaders/shadow.wgsl"));
+        let source = bindings.shader_source(&helio_pass_shadow::caster_geometry());
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Production shadow cutout test"),
             source: wgpu::ShaderSource::Wgsl(source.into()),

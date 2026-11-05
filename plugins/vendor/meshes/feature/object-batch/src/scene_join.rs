@@ -93,7 +93,7 @@ pub struct SceneJoinKeys {
 }
 
 pub const OBJECTS_KEY: BufferKey = BufferKey::of("static_objects");
-pub const MATERIALS_KEY: BufferKey = BufferKey::of("materials");
+pub const MATERIALS_KEY: BufferKey = helio_mats::MATERIALS.key();
 /// A marker whose `content_generation` moves only when the *structure* of the
 /// object rows changes (objects added, removed, hidden, or their mesh,
 /// material or flags changed), not when objects merely move. The object batch

@@ -1506,7 +1506,11 @@ impl ObjectBatchPass {
 
 impl RenderPass for ObjectBatchPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["materials", "static_objects"]
+        const LIST: &[&str] = &[
+            helio_mats::MATERIALS.name(),
+            helio_mesh_api::STATIC_OBJECTS.name(),
+        ];
+        LIST
     }
 
     fn name(&self) -> &'static str {
@@ -1620,7 +1624,7 @@ impl RenderPass for ObjectBatchPass {
             .as_ref()
             .map(|h| h.buffer.clone())
             .unwrap_or_else(|| self.fallback_buf.clone());
-        let materials_handle = ctx.scene_buffers.get(BufferKey::of("materials"));
+        let materials_handle = ctx.scene_buffers.get(helio_mats::MATERIALS.key());
         let materials_buf = materials_handle
             .as_ref()
             .map(|h| &h.buffer)

@@ -1,3 +1,4 @@
+//!use helio_prelude
 //!use pbr_eval
 //!use light_list
 //!use light_forward
@@ -10,16 +11,6 @@
 // forward function (the lights plugin's snippets).
 // Camera struct matches the gbuffer's layout so position_near is correct.
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    view_proj_inv:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 struct Globals {
     frame:             u32,

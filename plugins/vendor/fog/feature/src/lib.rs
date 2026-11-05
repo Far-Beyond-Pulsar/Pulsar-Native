@@ -100,14 +100,18 @@ pub fn shader_source() -> String {
         .replace("__PP_TAIL_VEC4__", &tail.to_string());
     // The terrain's sun occlusion (`//!use sun_occlusion`), the frame's
     // sun transmittance (`//!use sun_transmittance`) and the lights' row and
-    // shadow atlas (`//!use light_list`, `//!use shadow_atlas`) ahead of it;
-    // the prelude is the module's to resolve.
+    // shadow atlas and lookup (`//!use light_list`, `//!use shadow_atlas`,
+    // `//!use shadow_lookup`) and the
+    // frame's media grid mapping (`//!use frame_media`) ahead of it; the
+    // prelude is the module's to resolve.
     format!(
-        "{}\n{}\n{}\n{}\n{source}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{source}",
+        helio_frame_api::media::SNIPPET.source,
         helio_light_api::SUN_OCCLUSION_SNIPPET.source,
         helio_frame_api::lighting::sun_transmittance::SNIPPET.source,
         helio_light_api::LIGHT_LIST_SNIPPET.source,
         helio_light_api::SHADOW_ATLAS_SNIPPET.source,
+        helio_light_api::SHADOW_LOOKUP_SNIPPET.source,
     )
 }
 
@@ -821,7 +825,7 @@ impl RenderPass for VolumetricFogPass {
             helio_light_api::STATIC_SHADOW_ATLAS,
             helio_light_api::SHADOW_TRANSMITTANCE,
             helio_light_api::SHADOW_MATRICES,
-            "postprocess_uniforms",
+            helio_pass_postprocess::POST_SETTINGS,
             helio_light_api::SUN_OCCLUSION_MAPS,
             helio_light_api::SUN_OCCLUSION_PAGES,
             helio_light_api::SUN_OCCLUSION_FRAME,
@@ -980,9 +984,9 @@ impl RenderPass for VolumetricFogPass {
             });
             self.fallback_shadow_cleared = true;
         }
-        let postprocess_buf = ctx
-            .registry
-            .get(helio_core::ResourceKey::new("postprocess_uniforms"));
+        let postprocess_buf = ctx.registry.get(helio_core::ResourceKey::new(
+            helio_pass_postprocess::POST_SETTINGS,
+        ));
         let shadow_atlas = ctx
             .registry
             .get(helio_core::ResourceKey::new(helio_light_api::SHADOW_ATLAS))

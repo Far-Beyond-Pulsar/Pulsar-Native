@@ -1,3 +1,4 @@
+//!use helio_prelude
 //! Editor-only portal-surface indicator.
 //!
 //! In game mode a portal is meant to be perfectly seamless — nothing marks
@@ -16,16 +17,6 @@
 //! the duplicated content behind it. Only runs when the pass's `editor_mode`
 //! flag is set — zero draws, zero cost, in game builds.
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    inv_view_proj:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 /// Must match libhelio::GpuPortalView (144 bytes) — see gbuffer_portal.wgsl.
 struct GpuPortalView {

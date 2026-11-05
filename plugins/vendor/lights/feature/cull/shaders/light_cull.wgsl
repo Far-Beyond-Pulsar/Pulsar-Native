@@ -1,3 +1,4 @@
+//!use helio_prelude
 //! Tiled light culling (Forward+ style).
 //!
 //! Divides the screen into TILE_SIZE×TILE_SIZE tiles.  Each workgroup thread
@@ -21,14 +22,6 @@ const MAX_LIGHTS_PER_TILE: u32 = 64u;
 // Bind group 0 — uniforms & scene data
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct Camera {
-    view:          mat4x4<f32>,
-    proj:          mat4x4<f32>,
-    view_proj:     mat4x4<f32>,
-    inv_view_proj: mat4x4<f32>,
-    position_near: vec4<f32>,
-    direction_far: vec4<f32>,
-}
 @group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
 
 struct LightCullParams {

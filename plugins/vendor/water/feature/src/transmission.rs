@@ -9,7 +9,7 @@
 use helio_core::graph::{ResourceBuilder, ResourceSize};
 use helio_core::{PassContext, PrepareContext, RenderPass, ResourceKey, Result as HelioResult};
 use helio_frame_api::lighting::{
-    TRANSMISSION, TRANSMISSION_FORMAT, VIEW_REMAPS, VIEW_REMAPS_BYTES, VIEW_REMAP_SNIPPET,
+    TRANSMISSION, TRANSMISSION_FORMAT, VIEW_REMAPS, VIEW_REMAPS_BYTES,
 };
 use pulsar_scenedb::gpu::BufferKey;
 use wgpu::util::DeviceExt;
@@ -88,11 +88,10 @@ impl WaterTransmissionPass {
                 ),
             ],
         });
-        let shader = helio_core::shader::module_with(
+        let shader = helio_core::shader::module(
             device,
             "Water transmission",
             helio_core::include_wgsl!("../shaders/transmission.wgsl"),
-            &[VIEW_REMAP_SNIPPET],
         );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Water transmission"),
@@ -178,7 +177,7 @@ impl RenderPass for WaterTransmissionPass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "depth",
+            helio_frame_api::gbuffer::DEPTH,
             helio_frame_api::gbuffer::LIGHTMAP_UV,
             "water_caustics",
             "water_caustics_deep",

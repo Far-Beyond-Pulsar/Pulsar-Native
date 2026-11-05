@@ -315,7 +315,7 @@ fn without_ray_queries_a_mesh_scene_has_no_gi() {
     }))
     .unwrap();
     let (device, queue) = (Arc::new(device), Arc::new(queue));
-    assert!(GiMeshTracePass::new(&device).is_none());
+    assert!(GiMeshTracePass::new(&device, &queue).is_none());
     let mut scene = scene_db(&device, &queue);
     room(&mut scene.world);
     let config = RendererConfig::new(32, 32, wgpu::TextureFormat::Rgba8Unorm);

@@ -413,9 +413,8 @@ impl SceneDbRayTracing {
             .query::<(&MaterialComponent,)>()
             .map(|(entity, (material,))| (entity.index(), (entity, material)))
             .collect();
-        let vertices =
-            store.resolve_buffer_handle(helio_core::BufferKey::of("builtin_mesh_vertex"));
-        let indices = store.resolve_buffer_handle(helio_core::BufferKey::of("builtin_mesh_index"));
+        let vertices = store.resolve_buffer_handle(helio_mesh_api::MESH_VERTICES.key());
+        let indices = store.resolve_buffer_handle(helio_mesh_api::MESH_INDICES.key());
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -770,9 +769,9 @@ fn reject_unsupported_geometry(world: &World, virtual_geometry: bool) -> helio_c
         "sectioned_objects",
         "foliage_layers",
         "voxel_volumes",
-        "vg_instances",
+        helio_mesh_api::VG_INSTANCES,
     ] {
-        if virtual_geometry && name == "vg_instances" {
+        if virtual_geometry && name == helio_mesh_api::VG_INSTANCES {
             continue;
         }
         if store

@@ -461,19 +461,24 @@ impl RenderPass for BillboardPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["pre_aa", "full_res_depth", "billboards", "depth"]
+        &[
+            helio_frame_api::color::SCENE_COLOR,
+            helio_frame_api::depth::FULL_RES_DEPTH,
+            "billboards",
+            helio_frame_api::gbuffer::DEPTH,
+        ]
     }
 
     fn writes(&self) -> &'static [&'static str] {
         // Draws (LoadOp::Load) directly onto pre_aa when occluded_by_geometry —
         // see render_pass_descriptor() below. Declaring this lets the render
         // graph see the real dependency for subpass fusion.
-        &["pre_aa"]
+        &[helio_frame_api::color::SCENE_COLOR]
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("pre_aa");
-        builder.read("full_res_depth");
+        builder.read(helio_frame_api::color::SCENE_COLOR);
+        builder.read(helio_frame_api::depth::FULL_RES_DEPTH);
         builder.read("billboards");
     }
 
@@ -541,7 +546,9 @@ impl RenderPass for BillboardPass {
         // nothing) — a pass that conditionally returns None based on per-frame
         // state can never safely participate in subpass-chain fusion, since the
         // executor decides chain membership once via a lock-time probe.
-        let pre_aa = resources.get(helio_core::ResourceKey::new("pre_aa"));
+        let pre_aa = resources.get(helio_core::ResourceKey::new(
+            helio_frame_api::color::SCENE_COLOR,
+        ));
         let target_view = if self.occluded_by_geometry {
             pre_aa.unwrap_or(target)
         } else {
@@ -556,7 +563,9 @@ impl RenderPass for BillboardPass {
             depth
         } else {
             resources
-                .get(helio_core::ResourceKey::new("full_res_depth"))
+                .get(helio_core::ResourceKey::new(
+                    helio_frame_api::depth::FULL_RES_DEPTH,
+                ))
                 .unwrap_or(depth)
         };
         let color_attachments: &'a [Option<wgpu::RenderPassColorAttachment<'a>>] = storage

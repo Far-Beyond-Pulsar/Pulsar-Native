@@ -1206,8 +1206,8 @@ impl RenderPass for AtmosphereCompositePass {
 
     fn reads(&self) -> &'static [&'static str] {
         &[
-            "pre_aa",
-            "depth",
+            helio_frame_api::color::SCENE_COLOR,
+            helio_frame_api::gbuffer::DEPTH,
             ATMOSPHERE_FRAME,
             ATMOSPHERE_TRANSMITTANCE,
             ATMOSPHERE_MULTI_SCATTERING,
@@ -1219,11 +1219,11 @@ impl RenderPass for AtmosphereCompositePass {
     }
 
     fn writes(&self) -> &'static [&'static str] {
-        &["pre_aa"]
+        &[helio_frame_api::color::SCENE_COLOR]
     }
 
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
-        builder.read("pre_aa");
+        builder.read(helio_frame_api::color::SCENE_COLOR);
     }
 
     fn prepare(&mut self, ctx: &PrepareContext) -> HelioResult<()> {
@@ -1244,7 +1244,8 @@ impl RenderPass for AtmosphereCompositePass {
         if !self.active {
             return None;
         }
-        let target = resources.texture_view(ResourceKey::new("pre_aa"))?;
+        let target =
+            resources.texture_view(ResourceKey::new(helio_frame_api::color::SCENE_COLOR))?;
         let color_attachments: &'a [Option<wgpu::RenderPassColorAttachment<'a>>] = storage
             .retain_boxed_slice(Box::new([Some(wgpu::RenderPassColorAttachment {
                 view: target,

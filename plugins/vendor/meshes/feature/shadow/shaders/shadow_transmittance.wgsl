@@ -1,4 +1,4 @@
-struct ShadowFace { mat:mat4x4f, atlas:vec4f, policy:vec4u }
+//!use shadow_atlas
 //!use material_row
 // Coloured shadow transmittance — translucent casters (stained glass).
 //
@@ -47,7 +47,7 @@ struct TransmitParams {
     _pad2: f32,
 }
 
-@group(0) @binding(0) var<storage, read> shadow_matrices:   array<ShadowFace>;
+@group(0) @binding(0) var<storage, read> shadow_matrices:   array<LightMatrix>;
 @group(0) @binding(1) var<storage, read> instances:         array<GpuInstanceData>;
 @group(0) @binding(2) var<uniform>       face:              FaceIndex;
 @group(0) @binding(3) var<storage, read> coordinate_spaces: array<mat4x4<f32>>;

@@ -85,7 +85,7 @@ pub fn mesh_rays_supported(device: &wgpu::Device) -> bool {
 impl GiMeshTracePass {
     /// The tracer, on a device with hardware ray queries (none without:
     /// the probes then see only the other tracers' geometry).
-    pub fn new(device: &wgpu::Device) -> Option<Self> {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Self> {
         if !mesh_rays_supported(device) {
             return None;
         }
@@ -211,43 +211,15 @@ impl GiMeshTracePass {
         });
         let maps = maps.create_view(&Default::default());
         let uniform_usage = wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST;
-        // No material table: rows shorter than one material (each row reads
-        // as no row: opaque) and a white texture in every slot.
-        let no_rows = buffer(
-            device,
-            "GI mesh no materials",
-            16,
-            wgpu::BufferUsages::STORAGE,
-        );
-        let white = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("GI mesh no material texture"),
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let white = white.create_view(&Default::default());
-        let sampler = device.create_sampler(&Default::default());
-        let views = vec![&white; binding.max_textures];
-        let samplers = vec![&sampler; binding.max_textures];
+        // Without the materials plugin: the materials' stand-in (one grey
+        // opaque row, a white texture table), as every drawer binds.
+        let stand_in = helio_mats::MaterialStandIn::new(device, queue);
         let no_materials = Self::materials_group(
             device,
             &materials_layout,
             binding,
-            &no_rows,
-            helio_mats::MaterialTextureBindings {
-                material_textures: &no_rows,
-                texture_views: &views,
-                samplers: &samplers,
-                version: 0,
-            },
+            stand_in.rows(),
+            stand_in.textures(),
         );
         Some(Self {
             layout,
@@ -454,7 +426,7 @@ impl RenderPass for GiMeshTracePass {
             GI_HITS,
             GI_SUN,
             GI_LIGHT,
-            "render_environment",
+            helio_core::resource_keys::RENDER_ENVIRONMENT,
             helio_mesh_api::RAY_INSTANCES,
             helio_mesh_api::RAY_PROXY_VERTICES,
             helio_mesh_api::RAY_PROXY_INDICES,

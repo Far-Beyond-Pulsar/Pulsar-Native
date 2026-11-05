@@ -124,7 +124,10 @@ impl Transmittance {
             device,
             "Shadow/Transmittance",
             helio_core::include_wgsl!("../shaders/shadow_transmittance.wgsl"),
-            &[helio_mats::MATERIAL_ROW_SNIPPET],
+            &[
+                helio_mats::MATERIAL_ROW_SNIPPET,
+                helio_light_api::SHADOW_ATLAS_SNIPPET,
+            ],
         );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Shadow/Transmittance PL"),

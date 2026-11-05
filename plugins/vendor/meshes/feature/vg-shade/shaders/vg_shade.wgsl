@@ -175,7 +175,7 @@ fn vg_shade(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_inde
     input.bitangent_sign = a0.bitangent_sign;
     input.tex_coords = a0.uv0 * b.x + a1.uv0 * b.y + a2.uv0 * b.z;
     input.material_id = static_objects[row_word + VGS_OBJ_MATERIAL_SLOT];
-    input.lightmap_uv = vec2<f32>(-1.0, -1.0);
+    input.lightmap_uv = GBUFFER_TAG_UNLIGHTMAPPED;
     input.prev_clip_position = pc0 * b.x + pc1 * b.y + pc2 * b.z;
     let moved = any(prev_model[0] != transform[0]) || any(prev_model[1] != transform[1])
         || any(prev_model[2] != transform[2]) || any(prev_model[3] != transform[3])

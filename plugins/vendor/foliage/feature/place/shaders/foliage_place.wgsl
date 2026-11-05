@@ -1,4 +1,5 @@
 //!use helio_foliage_common
+//!use helio_foliage_ground
 // Foliage placement — stage 1 of `FoliagePlacePass`, on any ground (`contract::ground`),
 // in every band (`contract::bands`).
 //
@@ -46,9 +47,6 @@ const TILE_STATE_RESIDENT: u32 = 2u;
 const COUNTER_PLACEMENT_OVERFLOW: u32 = 5u;
 const COUNTER_PLACED_BLADES: u32 = 6u;
 
-// Mirrors contract::ground::GROUND_NONE.
-const GROUND_NONE: u32 = 0xffffffffu;
-
 /// Mirrors `PlaceUniforms` (Rust, 80 bytes).
 struct PlaceUniforms {
     /// Edge of one cluster block in candidates: `cluster_size` consecutive candidates are
@@ -91,28 +89,6 @@ struct PlaceUniforms {
 struct FoliageLayer {
     bounds_min: vec4<f32>,
     bounds_max: vec4<f32>,
-}
-
-/// Mirrors `crate::GpuGroundQuery` (Rust, 32 bytes).
-struct GroundQuery {
-    start:  vec3<f32>,
-    length: f32,
-    up:     vec3<f32>,
-    pad:    u32,
-}
-
-/// Mirrors `crate::GpuGroundHit` (Rust, 16 bytes).
-struct GroundHit {
-    distance: u32,
-    normal:   u32,
-    ground:   u32,
-    colour:   u32,
-}
-
-/// Mirrors `crate::GpuGroundArgs` (Rust, 16 bytes).
-struct GroundArgs {
-    groups: vec3<u32>,
-    count:  u32,
 }
 
 @group(0) @binding(0)  var<uniform> place: PlaceUniforms;

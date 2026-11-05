@@ -38,7 +38,7 @@ use pulsar_scenedb::{AssetId, AssetPayload, AssetView, Entity, World};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use skeletal_assets::diagnostics::Diagnostic;
-use skeletal_assets::runtime::anim_instance::{AnimInstance, single_sequence_graph};
+use skeletal_assets::runtime::anim_instance::{single_sequence_graph, AnimInstance};
 use skeletal_assets::runtime::clip::CompiledClip;
 use skeletal_assets::runtime::graph::compile::{compile_graph, compile_montage};
 use skeletal_assets::runtime::graph::{CompiledGraph, ParamError, Value as AnimValue};
@@ -57,22 +57,20 @@ use crate::mesh_cache::MeshSection;
 #[path = "skeletal_notifies.rs"]
 mod notifies;
 pub use notifies::{
+    anim_state_descriptor, animation_notify_descriptor, animation_notify_state_descriptor,
+    animation_source_for_file, component_animation_notify_events, flush_animation_notifies,
+    montage_lifecycle_descriptor, montage_notify_descriptor, montage_notify_state_descriptor,
+    project_animation_notify_events, register_animation_notifies,
+    register_loaded_animation_notifies, register_montage_events, run_animation_phase,
     AnimStateEvent, AnimationNotifyCatalog, AnimationNotifyDiagnostic, AnimationNotifyEvent,
-    MONTAGE_LIFECYCLE_KINDS, MontageLifecycleEvent, SkeletalAnimationEvents,
-    SkeletalAnimationEventsEventWriterExt, anim_state_descriptor, animation_notify_descriptor,
-    animation_notify_state_descriptor, animation_source_for_file,
-    component_animation_notify_events, flush_animation_notifies, montage_lifecycle_descriptor,
-    montage_notify_descriptor, montage_notify_state_descriptor, project_animation_notify_events,
-    register_animation_notifies, register_loaded_animation_notifies, register_montage_events,
-    run_animation_phase,
+    MontageLifecycleEvent, SkeletalAnimationEvents, SkeletalAnimationEventsEventWriterExt,
+    MONTAGE_LIFECYCLE_KINDS,
 };
 
 pub const SKELETAL_MESH_ASSET_KIND: &str = "skmesh";
 pub const SKELETON_ASSET_KIND: &str = "skeleton";
 pub const ANIMATION_SEQUENCE_ASSET_KIND: &str = "animseq";
 pub const ANIMATION_GRAPH_ASSET_KIND: &str = "anim_graph";
-pub const SKELETAL_SKIN_VERTICES_BUFFER: &str = "skeletal_skin_vertices";
-pub const SKELETAL_BONE_PALETTE_BUFFER: &str = "skeletal_bone_palette";
 pub const SKELETAL_PREVIOUS_BONE_PALETTE_BUFFER: &str = "skeletal_previous_bone_palette";
 pub const SKELETAL_SKIN_HANDLES_BUFFER: &str = "skeletal_skin_vertices::handles";
 pub const SKELETAL_PALETTE_HANDLES_BUFFER: &str = "skeletal_bone_palette::handles";
@@ -377,6 +375,8 @@ pub struct SkeletalMeshComponent {
     #[gpu(buffer = "builtin_mesh_index", mirror = Once, content_id = "geometry_key")]
     #[serde(skip)]
     pub indices: Vec<u32>,
+    // `helio_mesh_api::SKELETAL_SKIN_VERTICES` (an attribute takes no const;
+    // `skin_buffers_are_the_mesh_api_keys` pins it).
     #[gpu(buffer = "skeletal_skin_vertices", mirror = Once, content_id = "geometry_key")]
     #[serde(skip)]
     pub skin_vertices: Vec<SkinVertex>,
@@ -384,6 +384,7 @@ pub struct SkeletalMeshComponent {
     pub bone_palette: Vec<[[f32; 4]; 4]>,
     /// Current palette followed by the previous-frame palette in the same
     /// variable-length GPU range; SceneJoin exposes the half-size count.
+    // `helio_mesh_api::SKELETAL_BONE_PALETTE` (pinned as above).
     #[gpu(buffer = "skeletal_bone_palette")]
     #[serde(skip)]
     pub gpu_bone_palettes: Vec<[[f32; 4]; 4]>,
@@ -1828,6 +1829,20 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
 mod authority_tests {
     use super::*;
 
+    /// The skin buffers' `#[gpu(buffer = ...)]` attributes (which take no
+    /// const) name the meshes api's keys.
+    #[test]
+    fn skin_buffers_are_the_mesh_api_keys() {
+        assert_eq!(
+            helio_mesh_api::SKELETAL_SKIN_VERTICES,
+            "skeletal_skin_vertices"
+        );
+        assert_eq!(
+            helio_mesh_api::SKELETAL_BONE_PALETTE,
+            "skeletal_bone_palette"
+        );
+    }
+
     const MESH: &str = "11111111-1111-4111-8111-111111111111";
     const SKELETON_A: &str = "aaaaaaaa-0000-4000-8000-00000000000a";
     const SKELETON_B: &str = "bbbbbbbb-0000-4000-8000-00000000000b";
@@ -1859,12 +1874,10 @@ mod authority_tests {
         );
         assert_eq!(saved["mesh"], MESH);
         // and a fresh component never writes one either
-        assert!(
-            serde_json::to_value(SkeletalMeshComponent::default())
-                .unwrap()
-                .get("skeleton")
-                .is_none()
-        );
+        assert!(serde_json::to_value(SkeletalMeshComponent::default())
+            .unwrap()
+            .get("skeleton")
+            .is_none());
     }
 
     #[test]
@@ -1894,17 +1907,15 @@ mod authority_tests {
             skeletal_assets::issue::Severity::Warning
         );
         // no legacy value, no diagnostic
-        assert!(
-            link_diagnostics(
-                Some(&mesh),
-                false,
-                skeleton(SKELETON_A).as_ref(),
-                None,
-                None,
-                false
-            )
-            .is_empty()
-        );
+        assert!(link_diagnostics(
+            Some(&mesh),
+            false,
+            skeleton(SKELETON_A).as_ref(),
+            None,
+            None,
+            false
+        )
+        .is_empty());
     }
 
     #[test]
@@ -1973,8 +1984,8 @@ fn blend_mesh_space(animated: &glam::Mat4, owned: &glam::Mat4, weight: f32) -> g
 mod animation_runtime_tests {
     use super::*;
     use pulsar_events::{
-        EventHub, FlushPoint,
         gamma::{Channel, DynValue, SubscribeOptions},
+        EventHub, FlushPoint,
     };
     use pulsar_scenedb::World;
     use pulsar_world_registry::ComponentRuntimeState;
@@ -2109,18 +2120,17 @@ mod animation_runtime_tests {
         both.legacy_animation = AssetRef::parse(id);
         both.animation_graph = AssetRef::parse("33333333-3333-4333-8333-333333333333");
         both.refresh_diagnostics();
-        assert!(
-            both.diagnostics
-                .iter()
-                .any(|d| d.code == "component.sequence_shadowed_by_graph")
-        );
+        assert!(both
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "component.sequence_shadowed_by_graph"));
         both.ensure_runtime();
         assert_eq!(both.animation().unwrap().graph().unwrap().id, graph.id);
     }
 
     #[test]
-    fn a_graph_component_runs_in_the_animation_phase_with_typed_parameters_and_raises_graph_player_notifies()
-     {
+    fn a_graph_component_runs_in_the_animation_phase_with_typed_parameters_and_raises_graph_player_notifies(
+    ) {
         let (rig, graph, walk_id) = rig();
         let hub = registered_hub();
         let mut world = World::new();
@@ -2366,11 +2376,9 @@ mod animation_runtime_tests {
             .get_mut::<SkeletalMeshComponent>(c)
             .unwrap()
             .take_montage_events();
-        assert!(
-            events
-                .iter()
-                .any(|e| e.handle == handle && matches!(e.kind, MontageEventKind::Started))
-        );
+        assert!(events
+            .iter()
+            .any(|e| e.handle == handle && matches!(e.kind, MontageEventKind::Started)));
         assert!(
             events.iter().any(|e| e.handle == handle
                 && matches!(e.kind, MontageEventKind::Ended(MontageResult::Completed))),

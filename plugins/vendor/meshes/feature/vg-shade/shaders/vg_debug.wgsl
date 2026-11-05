@@ -1,3 +1,4 @@
+//!use helio_prelude
 // vg_debug: the virtual-geometry debug views (`helio_vg_format::debug_view`).
 //
 // A small compute pass that runs only while one of the views is selected. It
@@ -8,16 +9,6 @@
 // stream bindings (group 0, bindings 7..=13) and helpers, the generated
 // `VGDBG_*` constants, `vg_common.wgsl` and the shared decode.
 
-struct Camera {
-    view:           mat4x4<f32>,
-    proj:           mat4x4<f32>,
-    view_proj:      mat4x4<f32>,
-    view_proj_inv:  mat4x4<f32>,
-    position_near:  vec4<f32>,
-    forward_far:    vec4<f32>,
-    jitter_frame:   vec4<f32>,
-    prev_view_proj: mat4x4<f32>,
-}
 
 struct DebugParams {
     width: u32,

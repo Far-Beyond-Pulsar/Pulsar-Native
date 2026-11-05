@@ -18,31 +18,17 @@ use helio_pass_foliage_gbuffer::*;
 
 #[test]
 fn there_are_exactly_eight_targets_in_gbuffer_order() {
-    // Order and format copied from `GBufferPass::declare_resources` /
-    // `get_or_create_pipeline`. The chain will only fuse if the attachment lists match
-    // exactly, so a divergence here does not error — it silently costs a store and
-    // reload of the whole G-buffer.
-    assert_eq!(GBUFFER_TARGET_FORMATS.len(), 8);
-    assert_eq!(
-        GBUFFER_TARGET_FORMATS,
-        [
-            wgpu::TextureFormat::Rgba8Unorm,  // 0 albedo
-            wgpu::TextureFormat::Rgba16Float, // 1 normal
-            wgpu::TextureFormat::Rgba8Unorm,  // 2 orm
-            wgpu::TextureFormat::Rgba16Float, // 3 emissive
-            wgpu::TextureFormat::Rg16Float,   // 4 lightmap_uv
-            wgpu::TextureFormat::Rgba16Float, // 5 sss
-            wgpu::TextureFormat::Rgba16Float, // 6 extra
-            wgpu::TextureFormat::Rgba16Float, // 7 velocity and depth residual
-        ]
-    );
-
+    // The frame's G-buffer layout (`helio_frame_api::gbuffer::TARGETS`). The
+    // chain will only fuse if the attachment lists match exactly, so a
+    // divergence here does not error: it silently costs a store and reload of
+    // the whole G-buffer.
     let targets = color_target_states();
     assert_eq!(targets.len(), 8);
     for (index, target) in targets.iter().enumerate() {
         let target = target.as_ref().expect("every target slot must be occupied");
         assert_eq!(
-            target.format, GBUFFER_TARGET_FORMATS[index],
+            target.format,
+            helio_frame_api::gbuffer::TARGET_FORMATS[index],
             "target {index} format diverged from the G-buffer's"
         );
     }
@@ -105,7 +91,7 @@ fn the_attachment_set_costs_fifty_two_bytes_per_sample() {
     // Motion plus reconstruction residual increases the set to 52 bytes,
     // above WebGPU's guaranteed 32-byte floor. Keep foliage compatible with
     // the same eight attachments rather than adding another target.
-    let bytes: u32 = GBUFFER_TARGET_FORMATS
+    let bytes: u32 = helio_frame_api::gbuffer::TARGET_FORMATS
         .iter()
         .map(|format| match format {
             wgpu::TextureFormat::Rgba8Unorm => 4,

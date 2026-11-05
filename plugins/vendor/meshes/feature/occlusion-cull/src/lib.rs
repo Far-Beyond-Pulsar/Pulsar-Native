@@ -822,7 +822,11 @@ impl RenderPass for OcclusionCullPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &["hiz", "object_batch", "indirect_dispatch"]
+        &[
+            helio_frame_api::depth::HIZ,
+            "object_batch",
+            "indirect_dispatch",
+        ]
     }
 
     fn declare_resources(&self, builder: &mut helio_core::graph::ResourceBuilder) {
@@ -1023,7 +1027,10 @@ impl RenderPass for OcclusionCullPass {
         // HiZ texture view changes (e.g. scene grows, graph reallocates on resize).
         let hiz_view = ctx
             .registry
-            .read_texture_view(helio_core::ResourceKey::new("hiz"), "OcclusionCull")
+            .read_texture_view(
+                helio_core::ResourceKey::new(helio_frame_api::depth::HIZ),
+                "OcclusionCull",
+            )
             .expect("OcclusionCull: 'hiz' view not routed by graph — is HiZBuildPass declared?");
 
         let key = (

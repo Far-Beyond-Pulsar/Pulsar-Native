@@ -67,6 +67,17 @@ fn face_count_offset(region: usize, face: usize) -> u64 {
 
 // ── Pass struct ───────────────────────────────────────────────────────────────
 
+/// The caster program's geometry (`shadow.wgsl`) with the lights' shadow
+/// views (`//!use shadow_atlas`: `LightMatrix`) resolved, ahead of the depth
+/// materials (`DepthMaterialBindings::shader_source`).
+pub fn caster_geometry() -> String {
+    helio_core::shader::resolve_with(
+        include_str!("../shaders/shadow.wgsl"),
+        &[helio_light_api::SHADOW_ATLAS_SNIPPET],
+    )
+    .into_owned()
+}
+
 pub struct ShadowPass {
     depth_materials: helio_pass_gbuffer::depth_material::DepthMaterialBindings,
     /// Shadow geometry pipeline (depth-only, front-face culled, depth-bias = 2.0).
@@ -184,7 +195,7 @@ impl ShadowPass {
         // ── Shader ────────────────────────────────────────────────────────────
         let depth_materials =
             helio_pass_gbuffer::depth_material::DepthMaterialBindings::new(device);
-        let source = depth_materials.shader_source(include_str!("../shaders/shadow.wgsl"));
+        let source = depth_materials.shader_source(&caster_geometry());
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shadow cutout"),
             source: wgpu::ShaderSource::Wgsl(source.into()),
@@ -531,13 +542,14 @@ impl ShadowPass {
 
 impl RenderPass for ShadowPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &[
-            "builtin_mesh_index",
-            "builtin_mesh_vertex",
-            "materials",
-            "skeletal_bone_palette",
-            "skeletal_skin_vertices",
-        ]
+        const LIST: &[&str] = &[
+            helio_mesh_api::MESH_INDICES.name(),
+            helio_mesh_api::MESH_VERTICES.name(),
+            helio_mats::MATERIALS.name(),
+            helio_mesh_api::SKELETAL_BONE_PALETTE,
+            helio_mesh_api::SKELETAL_SKIN_VERTICES,
+        ];
+        LIST
     }
 
     fn render_pass_descriptor<'a>(
@@ -632,19 +644,19 @@ impl RenderPass for ShadowPass {
         else {
             return Ok(());
         };
-        let Some(vertices) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_vertex")) else {
+        let Some(vertices) = ctx.scene_buffers.get(helio_mesh_api::MESH_VERTICES.key()) else {
             return Ok(());
         };
-        let Some(indices) = ctx.scene_buffers.get(BufferKey::of("builtin_mesh_index")) else {
+        let Some(indices) = ctx.scene_buffers.get(helio_mesh_api::MESH_INDICES.key()) else {
             return Ok(());
         };
         let desired = data.desired_matrices.unwrap_or(data.shadow_matrices);
         let skin = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_skin_vertices"));
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_SKIN_VERTICES));
         let palette = ctx
             .scene_buffers
-            .get(BufferKey::of("skeletal_bone_palette"));
+            .get(BufferKey::of(helio_mesh_api::SKELETAL_BONE_PALETTE));
         let key = [
             desired.clone(),
             batch.instances.clone(),
@@ -915,7 +927,7 @@ impl RenderPass for ShadowPass {
         if let Some(depth) = self.static_array_view.as_ref() {
             helio_core::cpu_scope!("Shadow: transmittance");
             ctx.begin_gpu_scope(&mut cmds, "Shadow: transmittance");
-            let materials = ctx.scene_buffers.get(BufferKey::of("materials"));
+            let materials = ctx.scene_buffers.get(helio_mats::MATERIALS.key());
             for &(face, static_dirty) in &selected {
                 // Glass is cached with the static layer: with none in the
                 // scene, only a rebuild has a stale tile to clear.

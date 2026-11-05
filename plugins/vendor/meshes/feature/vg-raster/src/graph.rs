@@ -201,7 +201,7 @@ fn record_phase(
     // Alpha-masked clusters need the material table; without it the cull emits
     // no masked bins either (it gets the same `materials` buffer).
     let masked = match (
-        ctx.scene_buffers.get(BufferKey::of("materials")),
+        ctx.scene_buffers.get(helio_mats::MATERIALS.key()),
         ctx.registry
             .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures()),
     ) {
