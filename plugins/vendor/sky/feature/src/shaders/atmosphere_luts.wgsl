@@ -318,7 +318,9 @@ fn irradiance_kernel(@builtin(local_invocation_index) li: u32) {
             0.315392 * (3.0 * moon.z * moon.z - 1.0), 1.092548 * moon.x * moon.z,
             0.546274 * (moon.x * moon.x - moon.y * moon.y));
         for (var c = 0u; c < 9u; c++) {
-            frame.irradiance[c].rgb += energy * y[c] * band[c] / ATMOSPHERE_PI;
+            var coefficient = frame.irradiance[c];
+            coefficient.rgb += energy * y[c] * band[c] / ATMOSPHERE_PI;
+            frame.irradiance[c] = coefficient;
         }
     }
 }
