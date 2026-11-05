@@ -127,6 +127,9 @@ fn clouds_in_front(uv: vec2<f32>, distance: f32) -> vec4<f32> {
 
 fn sky_is_night() -> bool {
     if frame.params.night_sky_enabled == 0u { return false; }
+    if frame.directional_light_count.x == 0u {
+        return frame.sun.xyz.y < 0.0;
+    }
     for (var i = 0u; i < frame.directional_light_count.x; i++) {
         if frame.directional_lights[i * 3u].y >= 0.0 { return false; }
     }
@@ -218,7 +221,6 @@ fn night_radiance(d: vec3<f32>) -> vec3<f32> {
 }
 
 fn emitter_disk_radiance(d: vec3<f32>) -> vec3<f32> {
-    let p = frame.params;
     var radiance = vec3<f32>(0.0);
     for (var i = 0u; i < frame.directional_light_count.x; i++) {
         let base = i * 3u;
