@@ -63,21 +63,43 @@ fn resolve() {
     if resolve_input.clock.y > 0.5 {
         params.clouds_enabled = 0u;
     }
-    // Sun: the first directional light with any intensity (direction_outer
-    // is the direction the light travels).
+    // Keep the first directional light as the atmosphere LUT's primary sun,
+    // while packing every directional light for clouds and emitter disks.
     var sun = vec3<f32>(0.0, 1.0, 0.0);
     var illuminance = vec3<f32>(0.0);
+    var has_primary_sun = false;
+    var directional_count = 0u;
     let rows = arrayLength(&lights) / LIGHT_ROW_VEC4S;
     for (var i = 0u; i < rows; i++) {
         let base = i * LIGHT_ROW_VEC4S;
         let colour = lights[base + 2u];
         let light_type = bitcast<u32>(lights[base + 3u].y);
-        if light_type == 0u && colour.w > 0.0 {
-            sun = -normalize(lights[base + 1u].xyz);
-            illuminance = colour.rgb * colour.w;
-            break;
+        let direction_outer = lights[base + 1u].xyz;
+        if light_type == 0u && colour.w > 0.0 && dot(direction_outer, direction_outer) > 1e-8 {
+            let toward_light = -normalize(direction_outer);
+            let energy = colour.rgb * colour.w;
+            if !has_primary_sun {
+                sun = toward_light;
+                illuminance = energy;
+                has_primary_sun = true;
+            }
+            if directional_count < 8u {
+                let optical = lights[base + 5u];
+                let emitter = lights[base + 6u];
+                let packed = directional_count * 3u;
+                frame.directional_lights[packed] = vec4<f32>(toward_light, 0.0);
+                frame.directional_lights[packed + 1u] = vec4<f32>(energy, 0.0);
+                frame.directional_lights[packed + 2u] = vec4<f32>(
+                    emitter.x,
+                    optical.w,
+                    f32(bitcast<u32>(optical.z)),
+                    f32(bitcast<u32>(optical.y)),
+                );
+                directional_count += 1u;
+            }
         }
     }
+    frame.directional_light_count = vec4<u32>(directional_count, 0u, 0u, 0u);
     var center = params.center;
     if params.placement == 0u { center = vec3<f32>(0.0, -params.bottom_radius * 1000.0, 0.0); }
     let camera = cameras[0].position_near.xyz;

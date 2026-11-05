@@ -3,13 +3,14 @@
 use gpui::prelude::*;
 use gpui::*;
 use ui::{
+    ActiveTheme, Disableable as _, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Disableable as _, Sizable,
+    h_flex, v_flex,
 };
 
-use crate::scene_edit::{components, objects};
-use crate::ui::world_settings::panel::sky_section::{component_property_rows, ClassProperties};
 use crate::WorldSettingsPanel;
+use crate::scene_edit::{components, objects};
+use crate::ui::world_settings::panel::sky_section::{ClassProperties, component_property_rows};
 
 const COMPONENTS: &[(&str, &str)] = &[
     ("LightComponent", "Light"),

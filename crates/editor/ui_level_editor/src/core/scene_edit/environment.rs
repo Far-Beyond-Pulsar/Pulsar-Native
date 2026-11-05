@@ -1,6 +1,6 @@
 //! Environment mixer creation and presets.
 
-use crate::commands::{execute_command, CommandResult, SceneCommand, TypedComponent};
+use crate::commands::{CommandResult, SceneCommand, TypedComponent, execute_command};
 use crate::scene_edit::{LightType, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 use engine_backend::scene::SceneWorldExt;
@@ -131,7 +131,7 @@ pub fn apply_preset(state: &mut LevelEditorState, preset: EnvironmentPreset) -> 
         changed |= crate::scene_edit::sky::create_sky(state).changed;
     }
 
-    ensure_sky_lights(state);
+    changed |= ensure_sky_lights(state);
     let Some((object_id, component_index)) =
         crate::scene_edit::sky::sky_directional_light(&state.scene.world(), 0)
     else {
@@ -178,10 +178,11 @@ pub fn apply_preset(state: &mut LevelEditorState, preset: EnvironmentPreset) -> 
     }
 }
 
-fn ensure_sky_lights(state: &mut LevelEditorState) {
+fn ensure_sky_lights(state: &mut LevelEditorState) -> bool {
     let Some(sky) = crate::scene_edit::sky::level_sky(&state.scene.world()) else {
-        return;
+        return false;
     };
+    let mut changed = false;
     for (ordinal, light) in [
         crate::scene_edit::sky::default_sun_light(),
         crate::scene_edit::sky::default_moon_light(),
@@ -192,13 +193,15 @@ fn ensure_sky_lights(state: &mut LevelEditorState) {
         if crate::scene_edit::sky::sky_directional_light(&state.scene.world(), ordinal).is_some() {
             continue;
         }
-        execute_command(
+        changed |= execute_command(
             state,
             SceneCommand::AddComponent {
                 id: sky.object_id.clone(),
                 class_name: "LightComponent".into(),
                 value: Some(Box::new(light)),
             },
-        );
+        )
+        .changed;
     }
+    changed
 }

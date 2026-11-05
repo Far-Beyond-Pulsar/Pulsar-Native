@@ -8,7 +8,7 @@
 use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::World;
 
-use crate::commands::{execute_command, CommandResult, SceneCommand, TypedComponent};
+use crate::commands::{CommandResult, SceneCommand, TypedComponent, execute_command};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 
@@ -50,16 +50,16 @@ pub fn sky_directional_light(world: &World, ordinal: usize) -> Option<(String, u
     let (_atmosphere, owner) = sky_component::level_atmosphere(world)?;
     let object_id = world.stable_id_of(owner)?.to_string();
     let mut found = 0usize;
-    for (component_index, instance) in
-        engine_backend::scene::attachments::instances(world, owner)
-            .into_iter()
-            .enumerate()
+    for (component_index, instance) in engine_backend::scene::attachments::instances(world, owner)
+        .into_iter()
+        .enumerate()
     {
         let Some(light) = world.get::<helio_component::LightComponent>(instance) else {
             continue;
         };
         if light.general.enabled
             && light.general.light_type == helio_component::LightType::Directional
+            && engine_backend::scene::attachments::is_enabled(world, instance)
         {
             if found == ordinal {
                 return Some((object_id, component_index));
@@ -84,8 +84,9 @@ pub fn default_moon_light() -> helio_component::LightComponent {
     moon.color.color = [0.68, 0.76, 1.0, 1.0];
     moon.intensity.intensity = 0.025;
     moon.advanced.rotation_offset = [18.0, 0.0, 112.0];
-    moon.advanced.emitter_disk_enabled = true;
-    moon.advanced.emitter_angular_radius_degrees = 0.26;
+    moon.emitter_disk.enabled = true;
+    moon.emitter_disk.texture = helio_component::EmitterDiskTexture::MoonSolarSystemScopeCCBY40;
+    moon.emitter_disk.angular_radius_degrees = 2.5;
     moon
 }
 

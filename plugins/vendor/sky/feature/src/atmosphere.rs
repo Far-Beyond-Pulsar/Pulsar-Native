@@ -42,9 +42,9 @@ use helio_core::{PassContext, PrepareContext, RenderPass, ResourceKey, Result as
 use pulsar_scenedb::gpu::BufferKey;
 
 use crate::clouds::{
-    CloudVolumes, ATMOSPHERE_CLOUDS, ATMOSPHERE_CLOUD_DEPTH, ATMOSPHERE_CLOUD_DETAIL,
-    ATMOSPHERE_CLOUD_PLANET_WEATHER, ATMOSPHERE_CLOUD_SHAPE, ATMOSPHERE_CLOUD_WEATHER,
-    CLOUD_SHADOW_FRAME, CLOUD_SHADOW_MAP,
+    ATMOSPHERE_CLOUD_DEPTH, ATMOSPHERE_CLOUD_DETAIL, ATMOSPHERE_CLOUD_PLANET_WEATHER,
+    ATMOSPHERE_CLOUD_SHAPE, ATMOSPHERE_CLOUD_WEATHER, ATMOSPHERE_CLOUDS, CLOUD_SHADOW_FRAME,
+    CLOUD_SHADOW_MAP, CloudVolumes,
 };
 
 pub use helio_frame_api::lighting::sky::{
@@ -1111,7 +1111,6 @@ pub struct AtmosphereCompositePass {
     moon_size: [u32; 2],
     moon_texture: Option<wgpu::Texture>,
     moon_view: Option<wgpu::TextureView>,
-    no_lights: wgpu::Buffer,
 }
 
 impl AtmosphereCompositePass {
@@ -1162,11 +1161,6 @@ impl AtmosphereCompositePass {
                     count: None,
                 },
                 sampled_texture(10, fragment, wgpu::TextureViewDimension::D2),
-                buffer_entry(
-                    11,
-                    fragment,
-                    wgpu::BufferBindingType::Storage { read_only: true },
-                ),
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1242,12 +1236,6 @@ impl AtmosphereCompositePass {
                 .expect("bundled CC BY moon albedo texture must decode")
                 .to_rgba8();
         let moon_size = [moon.width(), moon.height()];
-        let no_lights = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("No scene lights"),
-            size: 16,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
         Self {
             pipeline,
             layout,
@@ -1259,7 +1247,6 @@ impl AtmosphereCompositePass {
             moon_size,
             moon_texture: None,
             moon_view: None,
-            no_lights,
         }
     }
 }
@@ -1267,10 +1254,6 @@ impl AtmosphereCompositePass {
 impl RenderPass for AtmosphereCompositePass {
     fn name(&self) -> &'static str {
         "AtmosphereComposite"
-    }
-
-    fn scene_buffers(&self) -> &'static [&'static str] {
-        &["scene_lights"]
     }
 
     fn reads(&self) -> &'static [&'static str] {
@@ -1402,10 +1385,6 @@ impl RenderPass for AtmosphereCompositePass {
             self.moon_texture = Some(texture);
         }
         let moon = self.moon_view.as_ref().expect("moon texture initialized");
-        let lights = ctx
-            .scene_buffers
-            .get(BufferKey::of("scene_lights"))
-            .map_or(&self.no_lights, |handle| &handle.buffer);
         let group = self.cache.bind_group(
             ctx.device,
             &wgpu::BindGroupDescriptor {
@@ -1455,10 +1434,6 @@ impl RenderPass for AtmosphereCompositePass {
                     wgpu::BindGroupEntry {
                         binding: 10,
                         resource: wgpu::BindingResource::TextureView(moon),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 11,
-                        resource: lights.as_entire_binding(),
                     },
                 ],
             },

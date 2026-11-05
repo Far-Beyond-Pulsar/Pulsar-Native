@@ -871,9 +871,11 @@ mod tests {
         assert_eq!(records[0].class_name, "NotARealComponent");
         assert_eq!(records[0].data["x"], serde_json::json!(1));
         let instance = pulsar_scene_model::attachments::instances(world, sun)[0];
-        assert!(world
-            .get::<pulsar_scene_model::UnresolvedComponent>(instance)
-            .is_some());
+        assert!(
+            world
+                .get::<pulsar_scene_model::UnresolvedComponent>(instance)
+                .is_some()
+        );
         assert!(lights(world, "sun").is_empty());
     }
 
@@ -1126,7 +1128,7 @@ mod tests {
 
     /// Multiple directional lights retain their enabled state on load.
     #[test]
-    fn a_level_with_two_directional_lights_loads_with_one() {
+    fn a_level_with_two_directional_lights_loads_with_both() {
         use helio_component::components::LightType;
         let mut sun = LightComponent::default();
         sun.general.light_type = LightType::Directional;
@@ -1144,9 +1146,9 @@ mod tests {
             pulsar_scene_model::attachments::instances(world, world.entity_for("sun").unwrap());
         assert_eq!(
             crate::scene::level_rules::directional_lights(world),
-            [lights[0]]
+            [lights[0], lights[1]]
         );
-        assert!(!pulsar_scene_model::attachments::is_enabled(
+        assert!(pulsar_scene_model::attachments::is_enabled(
             world, lights[1]
         ));
         let kept = world.get::<LightComponent>(lights[1]).unwrap();

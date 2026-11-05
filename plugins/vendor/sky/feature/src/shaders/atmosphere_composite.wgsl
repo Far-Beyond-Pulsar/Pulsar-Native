@@ -29,10 +29,8 @@
 @group(0) @binding(8) var cloud_color: texture_2d<f32>;
 @group(0) @binding(9) var cloud_depth: texture_2d<f32>;
 @group(0) @binding(10) var moon_albedo: texture_2d<f32>;
-// SceneDB's packed LightComponent rows (128 bytes / eight vec4s).
-@group(0) @binding(11) var<storage, read> scene_lights: array<vec4<f32>>;
 
-const LIGHT_ROW_VEC4S: u32 = 8u;
+const SOLID_EMITTER_DISK: u32 = 253u;
 const TEXTURED_EMITTER_DISK: u32 = 254u;
 
 // A cloud footprint reaching the sky (`cloud_trace.wgsl`), km.
@@ -190,17 +188,16 @@ fn emitter_disk_radiance(d: vec3<f32>) -> vec3<f32> {
         return vec3<f32>(0.0);
     }
     var radiance = vec3<f32>(0.0);
-    let rows = arrayLength(&scene_lights) / LIGHT_ROW_VEC4S;
-    for (var i = 0u; i < rows; i++) {
-        let base = i * LIGHT_ROW_VEC4S;
-        let flags = scene_lights[base + 5u];
-        if bitcast<u32>(scene_lights[base + 3u].y) != 0u
-            || bitcast<u32>(flags.y) == 0u
-            || bitcast<u32>(flags.z) != TEXTURED_EMITTER_DISK {
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        let base = i * 3u;
+        let emitter = frame.directional_lights[base + 2u];
+        let emitter_type = u32(emitter.z);
+        if emitter.w < 0.5
+            || (emitter_type != SOLID_EMITTER_DISK && emitter_type != TEXTURED_EMITTER_DISK) {
             continue;
         }
-        let toward_light = -normalize(scene_lights[base + 1u].xyz);
-        let radius = max(scene_lights[base + 6u].x, 0.0001);
+        let toward_light = frame.directional_lights[base].xyz;
+        let radius = max(emitter.x, 0.0001);
         if dot(d, toward_light) < cos(radius) { continue; }
         let right = normalize(cross(toward_light, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(0.001, 0.0, 0.0));
         let up = normalize(cross(right, toward_light));
@@ -212,11 +209,20 @@ fn emitter_disk_radiance(d: vec3<f32>) -> vec3<f32> {
         let normal = normalize(right * x + up * y + toward_light * z);
         let uv = vec2<f32>(atan2(x, z) / (2.0 * ATMOSPHERE_PI) + 0.5,
             0.5 - asin(clamp(y, -1.0, 1.0)) / ATMOSPHERE_PI);
-        let albedo = textureSampleLevel(moon_albedo, lut_sampler, uv, 0.0).rgb;
-        let light_color = scene_lights[base + 2u];
-        let brightness = flags.w;
-        radiance += albedo * light_color.rgb * light_color.w * brightness
-            * max(dot(normal, normalize(frame.sun.xyz)), 0.08);
+        let light_energy = frame.directional_lights[base + 1u].rgb;
+        let brightness = emitter.y;
+        if emitter_type == TEXTURED_EMITTER_DISK {
+            let albedo = textureSampleLevel(moon_albedo, lut_sampler, uv, 0.0).rgb;
+            // The visible lunar hemisphere faces back toward the observer,
+            // opposite the ray from Earth to the Moon. Use the sun's radiance
+            // for the disk; the moon LightComponent's dim intensity controls
+            // moonlight on the scene separately.
+            let sunlit = max(dot(-normal, normalize(frame.sun.xyz)), 0.08);
+            radiance += albedo * frame.sun_illuminance.rgb * brightness * sunlit;
+        } else {
+            // A textureless emitter remains a visible, scalable solid disk.
+            radiance += light_energy * brightness;
+        }
     }
     return radiance;
 }

@@ -1,6 +1,7 @@
 mod advanced;
 mod attenuation;
 mod color;
+mod emitter_disk;
 mod general;
 mod intensity;
 mod light_function;
@@ -11,6 +12,8 @@ mod volumetrics;
 pub(super) use advanced::AdvancedLightProps;
 pub(super) use attenuation::AttenuationLightProps;
 pub(super) use color::ColorLightProps;
+pub(super) use emitter_disk::EmitterDiskProps;
+pub use emitter_disk::EmitterDiskTexture;
 pub(super) use general::GeneralLightProps;
 pub(super) use intensity::IntensityLightProps;
 pub(super) use light_function::LightFunctionProps;

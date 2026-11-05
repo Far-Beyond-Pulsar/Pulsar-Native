@@ -11,12 +11,6 @@ pub struct AdvancedLightProps {
     /// inheriting the object's world rotation.
     #[property(category = "Advanced")]
     pub rotation_offset: [f32; 3],
-    /// Draw the light as a textured disk in an enabled atmosphere's sky.
-    #[property(category = "Advanced")]
-    pub emitter_disk_enabled: bool,
-    /// Angular radius of the emitter disk, in degrees.
-    #[property(min = 0.01, max = 10.0, step = 0.01, category = "Advanced")]
-    pub emitter_angular_radius_degrees: f32,
     #[property(category = "Advanced")]
     pub affects_translucency: bool,
     #[property(category = "Advanced")]
@@ -33,8 +27,6 @@ impl Default for AdvancedLightProps {
     fn default() -> Self {
         Self {
             rotation_offset: [0.0; 3],
-            emitter_disk_enabled: false,
-            emitter_angular_radius_degrees: 0.26,
             affects_translucency: true,
             affects_reflections: true,
             affects_global_illumination: true,
@@ -54,15 +46,6 @@ impl AdvancedLightProps {
                 arr[1].as_f64().unwrap_or(0.0) as f32,
                 arr[2].as_f64().unwrap_or(0.0) as f32,
             ];
-        }
-        if let Some(v) = obj.get("emitter_disk_enabled").and_then(|v| v.as_bool()) {
-            self.emitter_disk_enabled = v;
-        }
-        if let Some(v) = obj
-            .get("emitter_angular_radius_degrees")
-            .and_then(|v| v.as_f64())
-        {
-            self.emitter_angular_radius_degrees = v as f32;
         }
         if let Some(v) = obj.get("affects_translucency").and_then(|v| v.as_bool()) {
             self.affects_translucency = v;

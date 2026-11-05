@@ -16,8 +16,8 @@
 
 use std::any::Any;
 
-use pulsar_scene_model::attachments;
 use pulsar_scene_model::SceneWorldExt;
+use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
 
 use helio_component::{LightComponent, LightType};
@@ -38,12 +38,6 @@ pub struct LevelSingletonRegistration {
 }
 
 inventory::collect!(LevelSingletonRegistration);
-
-/// Legacy refusal text retained for callers that still display it. Multiple
-/// directional lights are now valid and no level rule returns this message.
-#[deprecated(note = "levels support multiple directional lights")]
-pub const ONE_DIRECTIONAL_LIGHT: &str =
-    "This level already has a directional light; levels now support multiple directional lights.";
 
 fn singletons() -> impl Iterator<Item = &'static LevelSingletonRegistration> {
     inventory::iter::<LevelSingletonRegistration>.into_iter()
@@ -118,7 +112,10 @@ pub fn sort_in_level_order(world: &World, instances: &mut [Entity]) {
 
 /// Of `instances` (instance entities), the attached ones in level order (a
 /// level file's order).
-pub fn attached_in_level_order(world: &World, instances: impl Iterator<Item = Entity>) -> Vec<Entity> {
+pub fn attached_in_level_order(
+    world: &World,
+    instances: impl Iterator<Item = Entity>,
+) -> Vec<Entity> {
     let mut found: Vec<Entity> = instances
         .filter(|instance| attachments::owner_of(world, *instance).is_some())
         .collect();
