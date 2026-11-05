@@ -20,7 +20,10 @@ use crate::components::sidebar;
 use crate::utils::{
     actions::*,
     fs_metadata::FsMetadataManager,
-    helpers::{format_file_size, get_icon_color_for_file_type, get_icon_for_file_type},
+    helpers::{
+        format_file_size, format_modified, get_icon_color_for_file_type, get_icon_for_file_type,
+        type_label,
+    },
     operations::FileOperations,
     tree::FolderNode,
     types::*,
@@ -175,10 +178,7 @@ impl FileManagerDrawer {
         let folder_tree = crate::preload::take_preloaded_tree()
             .or_else(|| project_path.as_ref().and_then(|p| FolderNode::from_path(p)));
 
-        let view_mode = match Self::persisted_choice("view_mode", "grid").as_str() {
-            "list" => ViewMode::List,
-            _ => ViewMode::Grid,
-        };
+        let view_mode = ViewMode::from_key(&Self::persisted_choice("view_mode", "grid"));
         let sort_by = match Self::persisted_choice("sort_by", "name").as_str() {
             "modified" => SortBy::Modified,
             "size" => SortBy::Size,
@@ -581,8 +581,9 @@ pub fn render_file_content(
                     ));
             }
             let cd = cd.child(match d.view_mode {
-                ViewMode::Grid => render_grid_view(d, &items, w, cx).into_any_element(),
-                ViewMode::List => render_list_view(d, &items, w, cx).into_any_element(),
+                ViewMode::Grid => render_grid_view(d, &items, w, cx, false).into_any_element(),
+                ViewMode::Tiles => render_grid_view(d, &items, w, cx, true).into_any_element(),
+                _ => render_list_view(d, &items, w, cx).into_any_element(),
             });
             if sh {
                 cd.child(
@@ -612,19 +613,9 @@ pub fn render_file_content(
         })
 }
 
-pub fn render_grid_view(
-    d: &mut FileManagerDrawer,
-    items: &[FileItem],
-    w: &mut Window,
-    cx: &mut Context<FileManagerDrawer>,
-) -> impl IntoElement {
-    let items: Vec<FileItem> = items.to_vec();
-    let n = items.len();
-    if n == 0 {
-        return v_flex().flex_1().min_h_0().into_any_element();
-    }
-    let pw = d
-        .resizable_state
+/// Width of the pane that shows the folder's contents.
+fn pane_width(d: &FileManagerDrawer, w: &Window, cx: &App) -> f32 {
+    d.resizable_state
         .read(cx)
         .sizes()
         .get(1)
@@ -633,10 +624,64 @@ pub fn render_grid_view(
         .unwrap_or_else(|| {
             let vp: f32 = w.viewport_size().width.into();
             (vp - 250.0).max(100.0)
-        });
-    const CW: f32 = 100.0;
-    const CH: f32 = 144.0;
-    const G: f32 = 12.0;
+        })
+}
+
+/// Below this pane width the list-like views drop their Type and Modified columns.
+const WIDE_PANE: f32 = 560.0;
+const TYPE_COL: f32 = 150.0;
+const MODIFIED_COL: f32 = 140.0;
+const SIZE_COL: f32 = 80.0;
+
+impl FileManagerDrawer {
+    /// A column header was clicked: sort by it, or flip the order if it already is.
+    fn sort_by_column(&mut self, by: SortBy, cx: &mut Context<Self>) {
+        if self.sort_by == by {
+            self.sort_order = match self.sort_order {
+                SortOrder::Ascending => SortOrder::Descending,
+                SortOrder::Descending => SortOrder::Ascending,
+            };
+        } else {
+            self.sort_by = by;
+            self.sort_order = SortOrder::Ascending;
+        }
+        let by_key = match self.sort_by {
+            SortBy::Name => "name",
+            SortBy::Modified => "modified",
+            SortBy::Size => "size",
+            SortBy::Type => "type",
+        };
+        let order_key = match self.sort_order {
+            SortOrder::Ascending => "ascending",
+            SortOrder::Descending => "descending",
+        };
+        self.persist_preference("sort_by", ConfigValue::String(by_key.into()));
+        self.persist_preference("sort_order", ConfigValue::String(order_key.into()));
+        cx.notify();
+    }
+}
+
+pub fn render_grid_view(
+    d: &mut FileManagerDrawer,
+    items: &[FileItem],
+    w: &mut Window,
+    cx: &mut Context<FileManagerDrawer>,
+    tiles: bool,
+) -> impl IntoElement {
+    let items: Vec<FileItem> = items.to_vec();
+    let n = items.len();
+    if n == 0 {
+        return v_flex().flex_1().min_h_0().into_any_element();
+    }
+    let pw = pane_width(d, w, cx);
+    // Tiles are wide cards (icon beside a name and a line of details); the
+    // grid is tall cells with the icon above the name.
+    let (cw_min, ch, g): (f32, f32, f32) = if tiles {
+        (260.0, ViewMode::Tiles.row_height(), 8.0)
+    } else {
+        (100.0, 144.0, 12.0)
+    };
+    let (CW, CH, G) = (cw_min, ch, g);
     const HP: f32 = 16.0;
     let aw = (pw - HP).max(CW);
     let cols = (((aw + G) / (CW + G)).floor() as usize).max(1);
@@ -673,7 +718,20 @@ pub fn render_grid_view(
                                     (0..cols)
                                         .map(|off| {
                                             let idx = s + off;
-                                            if idx < e {
+                                            if idx < e && tiles {
+                                                div()
+                                                    .w(px(cw))
+                                                    .h(px(CH))
+                                                    .child(render_list_item(
+                                                        this,
+                                                        &items[idx],
+                                                        w,
+                                                        cx,
+                                                        ViewMode::Tiles,
+                                                        true,
+                                                    ))
+                                                    .into_any_element()
+                                            } else if idx < e {
                                                 render_grid_item(this, &items[idx], cw, w, cx)
                                                     .into_any_element()
                                             } else {
@@ -978,7 +1036,7 @@ pub fn render_grid_item(
 pub fn render_list_view(
     d: &mut FileManagerDrawer,
     items: &[FileItem],
-    _w: &mut Window,
+    w: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
 ) -> impl IntoElement {
     let items: Vec<FileItem> = items.to_vec();
@@ -986,12 +1044,15 @@ pub fn render_list_view(
     if n == 0 {
         return v_flex().flex_1().min_h_0().into_any_element();
     }
+    let mode = d.view_mode;
+    let wide = pane_width(d, w, cx) >= WIDE_PANE;
     let handle = d.list_scroll_handle.clone();
     if let Some(index) = d.take_pending_reveal(&items) {
         handle.scroll_to_item(index, gpui::ScrollStrategy::Center);
     }
     let scrollbar_state = d.list_scrollbar_state.clone();
-    div()
+    let row_height = mode.row_height();
+    let list = div()
         .relative()
         .flex_1()
         .min_h_0()
@@ -1007,8 +1068,8 @@ pub fn render_list_view(
                         .map(|i| {
                             div()
                                 .w_full()
-                                .h(px(40.0))
-                                .child(render_list_item(this, &items[i], w, cx))
+                                .h(px(row_height + 4.0))
+                                .child(render_list_item(this, &items[i], w, cx, mode, wide))
                                 .into_any_element()
                         })
                         .collect::<Vec<_>>()
@@ -1025,8 +1086,79 @@ pub fn render_list_view(
                 .right_0()
                 .bottom_0()
                 .child(Scrollbar::uniform_scroll(&scrollbar_state, &handle)),
-        )
+        );
+    if mode != ViewMode::Details {
+        return list.into_any_element();
+    }
+    v_flex()
+        .flex_1()
+        .min_h_0()
+        .child(render_details_header(d, wide, cx))
+        .child(list)
         .into_any_element()
+}
+
+/// The sortable column headers of the Details view. They line up with the
+/// columns of [`render_list_item`]: the row's left padding, icon box and gap
+/// are repeated before the Name header.
+fn render_details_header(
+    d: &FileManagerDrawer,
+    wide: bool,
+    cx: &mut Context<FileManagerDrawer>,
+) -> impl IntoElement {
+    let theme = cx.theme();
+    let (active, order) = (d.sort_by, d.sort_order);
+    let cell = |id: &'static str, label: &'static str, by: SortBy, width: Option<f32>| {
+        let arrow = if active == by {
+            match order {
+                SortOrder::Ascending => " ▲",
+                SortOrder::Descending => " ▼",
+            }
+        } else {
+            ""
+        };
+        let base = h_flex()
+            .id(id)
+            .h_full()
+            .items_center()
+            .cursor_pointer()
+            .text_xs()
+            .font_medium()
+            .text_color(if active == by {
+                theme.foreground
+            } else {
+                theme.muted_foreground
+            })
+            .hover(|e| e.text_color(theme.foreground))
+            .child(format!("{label}{arrow}"))
+            .on_click(cx.listener(move |d, _, _, cx| d.sort_by_column(by, cx)));
+        match width {
+            Some(width) => base.w(px(width)).flex_none(),
+            None => base.flex_1().min_w_0(),
+        }
+    };
+    h_flex()
+        .w_full()
+        .h(px(26.))
+        .px_2()
+        .gap_3()
+        .items_center()
+        .border_b_1()
+        .border_color(theme.border)
+        // Row padding (px_3 inside px_2) + icon box + gap.
+        .pl(px(8. + 12. + 20. + 12.))
+        .pr(px(8. + 12.))
+        .child(cell("hdr-name", "Name", SortBy::Name, None))
+        .when(wide, |e| {
+            e.child(cell("hdr-type", "Type", SortBy::Type, Some(TYPE_COL)))
+                .child(cell(
+                    "hdr-modified",
+                    "Date modified",
+                    SortBy::Modified,
+                    Some(MODIFIED_COL),
+                ))
+        })
+        .child(cell("hdr-size", "Size", SortBy::Size, Some(SIZE_COL)))
 }
 
 /// Marks a linked source, or the native asset built from it, whose source
@@ -1058,6 +1190,8 @@ pub fn render_list_item(
     item: &FileItem,
     _w: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
+    mode: ViewMode,
+    wide: bool,
 ) -> impl IntoElement {
     let sel = d.selected_items.contains(&item.path);
     let ren = d.renaming_item.as_ref() == Some(&item.path);
@@ -1089,9 +1223,9 @@ pub fn render_list_item(
     let mut row = h_flex()
         .id(SharedString::from(format!("list-item-{}", item.name)))
         .w_full()
-        .h(px(36.))
+        .h(px(mode.row_height()))
         .px_3()
-        .py_1p5()
+        .py_1()
         .gap_3()
         .items_center()
         .rounded_md()
@@ -1186,26 +1320,46 @@ pub fn render_list_item(
                 d.handle_external_drop_on_folder(&d4, ext.paths(), w, cx);
             }));
     }
-    row.child(
+    let box_px = match mode {
+        ViewMode::Compact => 18.0,
+        ViewMode::Details => 20.0,
+        ViewMode::Tiles => 36.0,
+        _ => 24.0,
+    };
+    let icon_px = match mode {
+        ViewMode::Compact | ViewMode::Details => 14.0,
+        ViewMode::Tiles => 20.0,
+        _ => 16.0,
+    };
+    let muted = cx.theme().muted_foreground;
+    let size_text = if item.is_folder {
+        "—".to_string()
+    } else {
+        format_file_size(item.size)
+    };
+    let modified_text = item
+        .modified
+        .map(format_modified)
+        .unwrap_or_else(|| "—".to_string());
+    let type_text = type_label(item);
+    let column = move |width: f32, text: String| {
         div()
-            .w(px(24.0))
-            .h(px(24.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_sm()
-            .bg(ic.opacity(0.15))
-            .child(Icon::new(icon).size_4().text_color(ic)),
-    )
-    .child(if ren {
+            .w(px(width))
+            .flex_none()
+            .truncate()
+            .text_xs()
+            .text_color(muted)
+            .child(text)
+    };
+    let name_block = if ren {
         div()
             .flex_1()
             .text_sm()
             .child(TextInput::new(&d.rename_input_state).w_full().xsmall())
             .into_any_element()
     } else {
-        div()
-            .flex_1()
+        let name = div()
+            .truncate()
             .text_sm()
             .font_weight(if sel {
                 gpui::FontWeight::SEMIBOLD
@@ -1213,22 +1367,57 @@ pub fn render_list_item(
                 gpui::FontWeight::NORMAL
             })
             .text_color(cx.theme().foreground)
-            .child(item.name.clone())
-            .into_any_element()
-    })
+            .child(item.name.clone());
+        if mode == ViewMode::Tiles {
+            // Name over a line of details: type, size, modified.
+            let mut parts = vec![type_text.clone()];
+            if !item.is_folder {
+                parts.push(size_text.clone());
+            }
+            if item.modified.is_some() {
+                parts.push(modified_text.clone());
+            }
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap_0p5()
+                .child(name)
+                .child(
+                    div()
+                        .truncate()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(parts.join(" · ")),
+                )
+                .into_any_element()
+        } else {
+            div().flex_1().min_w_0().child(name).into_any_element()
+        }
+    };
+    let columns = matches!(
+        mode,
+        ViewMode::List | ViewMode::Details | ViewMode::Compact
+    );
+    row.child(
+        div()
+            .w(px(box_px))
+            .h(px(box_px))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_sm()
+            .bg(ic.opacity(0.15))
+            .child(Icon::new(icon).size(px(icon_px)).text_color(ic)),
+    )
+    .child(name_block)
     .when(out_of_date, |e| e.child(out_of_date_badge(&item.name, cx)))
-    .when(!item.is_folder, |e| {
-        e.child(
-            div()
-                .px_2()
-                .py_0p5()
-                .rounded_sm()
-                .bg(cx.theme().muted.opacity(0.2))
-                .text_xs()
-                .font_family("monospace")
-                .text_color(cx.theme().muted_foreground)
-                .child(format_file_size(item.size)),
-        )
+    .when(columns && wide && mode != ViewMode::Compact, |e| {
+        e.child(column(TYPE_COL, type_text.clone()))
+            .child(column(MODIFIED_COL, modified_text.clone()))
+    })
+    .when(columns, |e| {
+        e.child(column(SIZE_COL, size_text.clone()).text_right())
     })
     .on_mouse_down(
         gpui::MouseButton::Left,
@@ -1367,14 +1556,30 @@ pub fn render_combined_toolbar(
                         .tooltip(t!("FileManager.ListView").to_string())
                         .selected(vm == ViewMode::List),
                 )
+                .child(
+                    Button::new("toggle-details")
+                        .icon(IconName::Table)
+                        .tooltip(ViewMode::Details.label())
+                        .selected(vm == ViewMode::Details),
+                )
+                .child(
+                    Button::new("toggle-compact")
+                        .icon(IconName::Menu)
+                        .tooltip(ViewMode::Compact.label())
+                        .selected(vm == ViewMode::Compact),
+                )
+                .child(
+                    Button::new("toggle-tiles")
+                        .icon(IconName::TableRows)
+                        .tooltip(ViewMode::Tiles.label())
+                        .selected(vm == ViewMode::Tiles),
+                )
                 .ghost()
                 .on_click(cx.listener(|d, s: &Vec<usize>, _w, cx| {
-                    if s.contains(&0) {
-                        d.view_mode = ViewMode::Grid;
-                        d.persist_preference("view_mode", ConfigValue::String("grid".into()));
-                    } else if s.contains(&1) {
-                        d.view_mode = ViewMode::List;
-                        d.persist_preference("view_mode", ConfigValue::String("list".into()));
+                    // Button order matches `ViewMode::ALL`.
+                    if let Some(mode) = s.first().and_then(|ix| ViewMode::ALL.get(*ix)) {
+                        d.view_mode = *mode;
+                        d.persist_preference("view_mode", ConfigValue::String(mode.key().into()));
                     }
                     cx.notify();
                 })),
