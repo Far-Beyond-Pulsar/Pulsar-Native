@@ -409,6 +409,21 @@ fn water_sun_specular(
     return specular * water_sun_radiance(light_dir);
 }
 
+fn water_all_sun_specular(
+    normal: vec3f, view_dir: vec3f, fallback_light_dir: vec3f,
+    alpha: f32, world_xz: vec2f, camera_distance: f32,
+) -> vec3f {
+    if atmosphere.planet.w < 0.5 {
+        return water_sun_specular(normal, view_dir, fallback_light_dir, alpha, world_xz, camera_distance);
+    }
+    var result = vec3f(0.0);
+    for (var i = 0u; i < atmosphere.directional_light_count.x; i++) {
+        let light_dir = atmosphere.directional_lights[i * 3u].xyz;
+        result += water_sun_specular(normal, view_dir, light_dir, alpha, world_xz, camera_distance);
+    }
+    return result;
+}
+
 /// Light scattered toward the eye by the medium itself.
 ///
 /// The HG term is normalized so 1.0 is isotropic — it brightens the water when
@@ -419,10 +434,21 @@ fn water_inscatter(view_dir: vec3f, sun_dir: vec3f, vol: WaterVolume) -> vec3f {
     // sunlight. Keep its authored clear-water scatter values; the demo's
     // directional light carries intensity 3 and a warm tint.
     let ambient = water_sky_ambient(sun_dir);
-    let sun_radiance = water_sun_radiance(sun_dir);
-    let sun_phase = clamp(helio_hg_phase(dot(view_dir, sun_dir), 0.35)
-        * 4.0 * HELIO_PI, 0.4, 2.0);
-    let direct = sun_radiance * (0.3 + 0.7 * sun_phase) * max(sun_dir.y, 0.0);
+    var direct = vec3f(0.0);
+    if atmosphere.planet.w >= 0.5 {
+        for (var i = 0u; i < atmosphere.directional_light_count.x; i++) {
+            let light_dir = atmosphere.directional_lights[i * 3u].xyz;
+            let light_radiance = water_sun_radiance(light_dir);
+            let phase = clamp(helio_hg_phase(dot(view_dir, light_dir), 0.35)
+                * 4.0 * HELIO_PI, 0.4, 2.0);
+            direct += light_radiance * (0.3 + 0.7 * phase) * max(light_dir.y, 0.0);
+        }
+    } else {
+        let sun_radiance = water_sun_radiance(sun_dir);
+        let phase = clamp(helio_hg_phase(dot(view_dir, sun_dir), 0.35)
+            * 4.0 * HELIO_PI, 0.4, 2.0);
+        direct = sun_radiance * (0.3 + 0.7 * phase) * max(sun_dir.y, 0.0);
+    }
     return vol.water_color.rgb * (ambient + direct);
 }
 
@@ -887,16 +913,31 @@ fn fs_above(in: VertexOutput) -> vec4f {
     // Ultra-Water's SSS (uSSS = 1.6, 0.06, 0.05): sunlight glowing through
     // the crests (k1, strongest looking into the sun on lit-from-behind
     // peaks), a view-facing term (k2) and a small diffuse lift.
-    let sss_sun = water_sun_radiance(light_dir);
-    let n_dot_l = dot(normal, light_dir);
     let n_dot_v = max(dot(normal, -view_dir), 1e-4);
     let crest_h = max(in.world_pos.y - vol.bounds_max.w, 0.0);
-    let sss_k1 = 1.6 * crest_h
-        * pow(clamp(dot(light_dir, -view_dir), 0.0, 1.0), 4.0)
-        * pow(0.5 - 0.5 * n_dot_l, 3.0);
-    let sss_k2 = 0.06 * pow(n_dot_v, 2.0);
-    let sss = (sss_k1 + sss_k2) * vol.water_color.rgb * sss_sun
-        + 0.05 * max(n_dot_l, 0.0) * vol.water_color.rgb * sss_sun;
+    var sss = vec3f(0.0);
+    if atmosphere.planet.w >= 0.5 {
+        for (var i = 0u; i < atmosphere.directional_light_count.x; i++) {
+            let light_dir = atmosphere.directional_lights[i * 3u].xyz;
+            let sss_sun = water_sun_radiance(light_dir);
+            let n_dot_l = dot(normal, light_dir);
+            let sss_k1 = 1.6 * crest_h
+                * pow(clamp(dot(light_dir, -view_dir), 0.0, 1.0), 4.0)
+                * pow(0.5 - 0.5 * n_dot_l, 3.0);
+            let sss_k2 = 0.06 * pow(n_dot_v, 2.0);
+            sss += (sss_k1 + sss_k2) * vol.water_color.rgb * sss_sun
+                + 0.05 * max(n_dot_l, 0.0) * vol.water_color.rgb * sss_sun;
+        }
+    } else {
+        let sss_sun = water_sun_radiance(light_dir);
+        let n_dot_l = dot(normal, light_dir);
+        let sss_k1 = 1.6 * crest_h
+            * pow(clamp(dot(light_dir, -view_dir), 0.0, 1.0), 4.0)
+            * pow(0.5 - 0.5 * n_dot_l, 3.0);
+        let sss_k2 = 0.06 * pow(n_dot_v, 2.0);
+        sss = (sss_k1 + sss_k2) * vol.water_color.rgb * sss_sun
+            + 0.05 * max(n_dot_l, 0.0) * vol.water_color.rgb * sss_sun;
+    }
     let through_water = refracted * transmittance
         + (inscatter + sss) * (1.0 - transmittance);
 
@@ -908,7 +949,7 @@ fn fs_above(in: VertexOutput) -> vec4f {
     // geometry reads as a hard analytic line.
     let fresnel = water_fresnel(normal, view_dir, alpha) * water_shore_factor(path, vol);
     var color   = mix(through_water, reflected, fresnel)
-                + water_sun_specular(
+                + water_all_sun_specular(
                     normal, view_dir, light_dir, alpha, in.surface_xz,
                     distance(in.world_pos, cameras[0].position_near.xyz));
 
@@ -928,11 +969,24 @@ fn fs_above(in: VertexOutput) -> vec4f {
     let foam_albedo = mix(vec3f(0.62, 0.78, 0.82), vec3f(0.95), foam_tint_mix);
     // Lit as Ultra-Water does: the sun's radiance on the lumpy normal, the sky
     // as ambient, and the sun shining through thin foam from behind the crest.
-    let foam_sun = water_sun_radiance(light_dir);
     let foam_ambient = water_sky_ambient(light_dir);
-    var foam_light = foam_sun * (0.15 + 0.85 * clamp(dot(foam_normal, light_dir) * 0.8 + 0.2, 0.0, 1.0))
-        * mix(foam_ao, 1.0, 0.4) + foam_ambient * 1.1 * foam_ao;
-    foam_light += foam_sun * pow(clamp(dot(light_dir, -view_dir), 0.0, 1.0), 4.0) * 0.4 * (1.0 - foam_solid);
+    var foam_light = foam_ambient * 1.1 * foam_ao;
+    if atmosphere.planet.w >= 0.5 {
+        for (var i = 0u; i < atmosphere.directional_light_count.x; i++) {
+            let foam_dir = atmosphere.directional_lights[i * 3u].xyz;
+            let foam_sun = water_sun_radiance(foam_dir);
+            foam_light += foam_sun * (0.15 + 0.85 * clamp(dot(foam_normal, foam_dir) * 0.8 + 0.2, 0.0, 1.0))
+                * mix(foam_ao, 1.0, 0.4);
+            foam_light += foam_sun * pow(clamp(dot(foam_dir, -view_dir), 0.0, 1.0), 4.0)
+                * 0.4 * (1.0 - foam_solid);
+        }
+    } else {
+        let foam_sun = water_sun_radiance(light_dir);
+        foam_light += foam_sun * (0.15 + 0.85 * clamp(dot(foam_normal, light_dir) * 0.8 + 0.2, 0.0, 1.0))
+            * mix(foam_ao, 1.0, 0.4);
+        foam_light += foam_sun * pow(clamp(dot(light_dir, -view_dir), 0.0, 1.0), 4.0)
+            * 0.4 * (1.0 - foam_solid);
+    }
     foam_light += local_lighting.diffuse * foam_ao;
     // Zero is the legacy value of this formerly-unused lane; interpret it as
     // Ultra-Water's default brightness so older volume rows remain visible.

@@ -34,9 +34,9 @@ fn water_local_lighting(
         var l: vec3f;
         var attenuation = 1.0;
         if light.light_type == 0u {
-            // The atmosphere already supplies the primary sun. Other
-            // directional lights (including a dim moon light) use the same
-            // water specular and foam response as local lights.
+            // The atmospheric surface path handles every directional light
+            // together. Keep this fallback for water scenes without sky.
+            if atmosphere.planet.w >= 0.5 { continue; }
             l = -normalize(light.direction_outer.xyz);
             if dot(l, primary_sun) > 0.9999 { continue; }
         } else {
