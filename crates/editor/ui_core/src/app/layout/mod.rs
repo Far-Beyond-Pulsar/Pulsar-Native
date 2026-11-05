@@ -280,6 +280,11 @@ impl PulsarApp {
     /// Restore the saved layout and start saving it. Called when the plugins
     /// are ready, which is after the window has painted.
     pub(super) fn restore_layout_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The plugins are loaded, so every default binding exists: bind the
+        // project's own keybindings over them.
+        if let Some(root) = self.state.project_path.clone() {
+            ui_keybindings::apply_project_keybindings(&root, cx);
+        }
         self.restore_layout(window, cx);
         self.state.layout_ready = true;
         self.start_tab_sleep_sweeper(window, cx);

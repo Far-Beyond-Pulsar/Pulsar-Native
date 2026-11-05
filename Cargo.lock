@@ -16584,6 +16584,7 @@ dependencies = [
  "ui_flamegraph",
  "ui_friends",
  "ui_git_manager",
+ "ui_keybindings",
  "ui_level_editor",
  "ui_loading_screen",
  "ui_log_viewer",
@@ -16772,6 +16773,22 @@ version = "0.1.0"
 dependencies = [
  "gpui-ce",
  "tracing",
+]
+
+[[package]]
+name = "ui_keybindings"
+version = "0.1.0"
+dependencies = [
+ "engine_state",
+ "gpui-ce",
+ "inventory",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ui",
+ "ui_common",
+ "window_manager",
 ]
 
 [[package]]

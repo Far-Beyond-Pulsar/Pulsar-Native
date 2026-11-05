@@ -29,6 +29,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/GRAPH_CANVAS.md` | Shared node-graph canvas in Graphy: `graphy-render` layout/scene/hit-test/draw data, `graphy-render-wgpu` renderer and visual system, `graphy-gpui` interaction engine and profile API |
 | `.agents/CODE_EDITOR_AI.md` | Code editor AI: shared editor LLM, Mockaco inline blocks and hunk review, the inline prompt (Ctrl+I), chat-panel buffer tools |
 | `.agents/INSPECTOR.md` | Properties panels: one virtualized list, search/collapse, `VirtualRows` for huge values (arrays, lists, layer stacks) |
+| `.agents/KEYBINDINGS.md` | Keyboard Shortcuts window, `.pulsar/keybindings.json` overrides, how unbinding reaches the keymap |
 | `.agents/ANIMATION.md` | Animation assets (`.animseq` v4, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators, runtime, notify/Montage event delivery, root motion, physics bone ownership, hot reload |
 
 ## Project data (`.pulsar/`)
@@ -37,6 +38,7 @@ runtime is the editor. For the full context, see `.agents/`.
 |---|---|
 | `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer, and for a rigged model the other files it made (`asset_import`) |
 | `.pulsar/cache/posedb/` | Derived Pose Search indexes, keyed by settings and source-content hash (never written beside the source); gitignored |
+| `.pulsar/keybindings.json` | The project's keybinding overrides over the defaults (`ui_keybindings`, see `.agents/KEYBINDINGS.md`) |
 | `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Legacy import options; linked entries migrate into `.pulsar/import_db.json`, while convert-in-place entries remain a fallback |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
