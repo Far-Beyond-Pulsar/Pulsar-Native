@@ -350,7 +350,10 @@ impl AtmosphereComponent {
             moon_enabled: u32::from(self.moon_enabled),
             moon_phase: self.moon_phase.clamp(0.0, 1.0),
             moon_brightness: self.moon_brightness.max(0.0),
-            moon_angular_radius: self.moon_angular_radius_deg.to_radians().clamp(0.001, 0.035),
+            moon_angular_radius: self
+                .moon_angular_radius_deg
+                .to_radians()
+                .clamp(0.001, 0.035),
             moonlight_intensity: self.moonlight_intensity.clamp(0.0, 0.2),
             night_reserved: 0.0,
             ..AtmosphereRow::earth()

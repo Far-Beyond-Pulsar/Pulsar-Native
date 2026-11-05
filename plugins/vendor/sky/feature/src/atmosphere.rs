@@ -1231,9 +1231,10 @@ impl AtmosphereCompositePass {
                 view_formats: &[],
             })
             .create_view(&Default::default());
-        let moon = image::load_from_memory(include_bytes!("../assets/solarsystemscope_moon_2k.jpg"))
-            .expect("bundled CC BY moon albedo texture must decode")
-            .to_rgba8();
+        let moon =
+            image::load_from_memory(include_bytes!("../assets/solarsystemscope_moon_2k.jpg"))
+                .expect("bundled CC BY moon albedo texture must decode")
+                .to_rgba8();
         let moon_size = [moon.width(), moon.height()];
         Self {
             pipeline,
@@ -1349,7 +1350,11 @@ impl RenderPass for AtmosphereCompositePass {
         if self.moon_texture.is_none() {
             let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("Solar System Scope moon color (CC BY 4.0)"),
-                size: wgpu::Extent3d { width: self.moon_size[0], height: self.moon_size[1], depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: self.moon_size[0],
+                    height: self.moon_size[1],
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -1358,10 +1363,23 @@ impl RenderPass for AtmosphereCompositePass {
                 view_formats: &[],
             });
             ctx.queue.write_texture(
-                wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
                 &self.moon_rgba,
-                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(self.moon_size[0] * 4), rows_per_image: Some(self.moon_size[1]) },
-                wgpu::Extent3d { width: self.moon_size[0], height: self.moon_size[1], depth_or_array_layers: 1 },
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.moon_size[0] * 4),
+                    rows_per_image: Some(self.moon_size[1]),
+                },
+                wgpu::Extent3d {
+                    width: self.moon_size[0],
+                    height: self.moon_size[1],
+                    depth_or_array_layers: 1,
+                },
             );
             self.moon_view = Some(texture.create_view(&Default::default()));
             self.moon_texture = Some(texture);
