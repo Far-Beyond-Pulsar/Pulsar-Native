@@ -3,11 +3,11 @@
 //! engine_backend's scene_join_rows with the light component).
 use std::sync::Arc;
 
-use engine_backend::scene::{attachments, SceneWorldExt, SpawnObject, Transform, Visibility};
+use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform, Visibility, attachments};
 use helio_component::components::{MeshAssetPath, ObjectMovability, StaticMeshComponent};
 use helio_pass_object_batch::scene_join::{
-    BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
-    ENTITY_GENERATIONS_KEY,
+    BufferHandle, BufferKey, ENTITY_GENERATIONS_KEY, SceneBufferProjection, SceneDerivation,
+    SceneDerivationContext,
 };
 use lights_component::LightComponent;
 use pulsar_scenedb::{Entity, SceneDb};

@@ -75,11 +75,11 @@
 use helio_core::{
     BufferHandle, BufferKey, SceneDerivation, SceneDerivationContext, SceneDerivationOutput,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use helio_vg_format::{
-    GpuVgInstance, VgAssetReadyRow, INST_LOD_SUPPRESS, VG_ASSET_READY_FLAG_READY,
+    GpuVgInstance, INST_LOD_SUPPRESS, VG_ASSET_READY_FLAG_READY, VgAssetReadyRow,
 };
 
 /// The VG instance rows (`GpuVgInstance`, 16 B each), one per VG-active
