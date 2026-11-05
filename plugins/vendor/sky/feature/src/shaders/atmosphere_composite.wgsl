@@ -29,6 +29,10 @@
 @group(0) @binding(8) var cloud_color: texture_2d<f32>;
 @group(0) @binding(9) var cloud_depth: texture_2d<f32>;
 @group(0) @binding(10) var moon_albedo: texture_2d<f32>;
+// The sky texture layer: an equirectangular panorama (linear light, mipped)
+// and its sampler (repeats around the horizon, clamps at the poles).
+@group(0) @binding(11) var sky_texture: texture_2d<f32>;
+@group(0) @binding(12) var sky_sampler: sampler;
 
 const SOLID_EMITTER_DISK: u32 = 253u;
 const TEXTURED_EMITTER_DISK: u32 = 254u;
@@ -220,6 +224,52 @@ fn night_radiance(d: vec3<f32>) -> vec3<f32> {
     return result;
 }
 
+// The panorama's orientation in the world: yaw about Y, then pitch about X,
+// then roll about Z (`sky_texture::rotation` is the CPU twin).
+fn sky_texture_rotation() -> mat3x3<f32> {
+    let p = frame.params;
+    let cy = cos(p.sky_texture_yaw);
+    let sy = sin(p.sky_texture_yaw);
+    let cx = cos(p.sky_texture_pitch);
+    let sx = sin(p.sky_texture_pitch);
+    let cz = cos(p.sky_texture_roll);
+    let sz = sin(p.sky_texture_roll);
+    let ry = mat3x3<f32>(vec3<f32>(cy, 0.0, -sy), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(sy, 0.0, cy));
+    let rx = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, cx, sx), vec3<f32>(0.0, -sx, cx));
+    let rz = mat3x3<f32>(vec3<f32>(cz, sz, 0.0), vec3<f32>(-sz, cz, 0.0), vec3<f32>(0.0, 0.0, 1.0));
+    return ry * rx * rz;
+}
+
+// 1 in the dark, 0 in daylight: the panorama is a night-sky layer and fades
+// out as the highest directional light climbs through twilight. It does not
+// depend on `night_sky_enabled`, which gates only the procedural stars.
+fn sky_darkness() -> f32 {
+    var highest = frame.sun.xyz.y;
+    if frame.directional_light_count.x > 0u {
+        highest = -1.0;
+        for (var i = 0u; i < frame.directional_light_count.x; i++) {
+            highest = max(highest, frame.directional_lights[i * 3u].y);
+        }
+    }
+    return 1.0 - smoothstep(-0.20, 0.06, highest);
+}
+
+// The sky texture layer along `d` (before the air in front of it): the
+// panorama's linear radiance times intensity and opacity. `pixel_angle` is
+// the angle one pixel spans, for the mip level.
+fn sky_texture_radiance(d: vec3<f32>, pixel_angle: f32) -> vec3<f32> {
+    let p = frame.params;
+    if p.sky_texture_source == 0u || p.sky_texture_opacity <= 0.0 { return vec3<f32>(0.0); }
+    let t = transpose(sky_texture_rotation()) * d;
+    let uv = vec2<f32>(
+        atan2(t.x, -t.z) / (2.0 * ATMOSPHERE_PI) + 0.5,
+        0.5 - asin(clamp(t.y, -1.0, 1.0)) / ATMOSPHERE_PI);
+    let width = f32(textureDimensions(sky_texture).x);
+    let lod = log2(max(pixel_angle * width / (2.0 * ATMOSPHERE_PI), 1.0));
+    let color = textureSampleLevel(sky_texture, sky_sampler, uv, lod).rgb;
+    return color * max(p.sky_texture_intensity, 0.0) * clamp(p.sky_texture_opacity, 0.0, 1.0);
+}
+
 fn emitter_disk_radiance(d: vec3<f32>) -> vec3<f32> {
     var radiance = vec3<f32>(0.0);
     for (var i = 0u; i < frame.directional_light_count.x; i++) {
@@ -295,6 +345,10 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
         // Every untextured directional emitter gets the atmosphere's normal
         // angular radius; textured or enlarged emitters use their own size.
         if ray_sphere(eye, d, frame.params.bottom_radius).x < 0.0 {
+            // Backdrop panorama under the air, the emitter disks and the stars.
+            let dims = textureDimensions(depth_texture);
+            let pixel_angle = 2.0 / (camera.proj[1][1] * f32(dims.y));
+            radiance += sky_texture_radiance(d, pixel_angle) * through * sky_darkness();
             radiance += directional_disk_radiance(d, through);
             radiance += emitter_disk_radiance(d) * through;
         }

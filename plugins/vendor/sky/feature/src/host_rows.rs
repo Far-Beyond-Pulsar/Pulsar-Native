@@ -160,20 +160,21 @@ pub struct AtmosphereComponent {
     pub shooting_star_speed: f32,
     #[gpu]
     pub shooting_star_length: f32,
+    /// Sky texture layer, see [`crate::sky_texture`].
     #[gpu]
-    pub moon_enabled: u32,
+    pub sky_texture_source: u32,
     #[gpu]
-    pub moon_phase: f32,
+    pub sky_texture_intensity: f32,
     #[gpu]
-    pub moon_brightness: f32,
+    pub sky_texture_opacity: f32,
     #[gpu]
-    pub moon_angular_radius: f32,
+    pub sky_texture_yaw: f32,
     #[gpu]
-    pub moonlight_intensity: f32,
+    pub sky_texture_pitch: f32,
     #[gpu]
-    pub night_reserved: f32,
+    pub sky_texture_roll: f32,
 }
-same_layout!(AtmosphereComponent, crate::AtmosphereRow, crate::ATMOSPHERES, "atmospheres"; center, placement, rayleigh_scattering, rayleigh_scale_height, mie_scattering, mie_scale_height, mie_absorption, mie_g, ozone_absorption, ozone_center, ground_albedo, ozone_width, bottom_radius, top_radius, sun_angular_radius, enabled, cloud_bottom, cloud_top, cloud_coverage, cloud_type, cloud_extinction, cloud_weather_scale, cloud_shape_scale, cloud_detail_scale, cloud_wind, clouds_enabled, cloud_albedo, cloud_erosion, cloud_pole, cloud_circulation, cloud_circulation_cells, cloud_synoptic_scale, cloud_storminess, cloud_mesoscale_scale, cloud_cirrus, cloud_cirrus_height, cloud_evolution, cloud_seed, cloud_voxel_size, cloud_voxel_fill, cloud_reserved, night_sky_enabled, star_count, star_brightness, star_twinkle_fraction, star_twinkle_speed, star_seed, shooting_stars_enabled, shooting_star_rate, shooting_star_speed, shooting_star_length, moon_enabled, moon_phase, moon_brightness, moon_angular_radius, moonlight_intensity, night_reserved);
+same_layout!(AtmosphereComponent, crate::AtmosphereRow, crate::ATMOSPHERES, "atmospheres"; center, placement, rayleigh_scattering, rayleigh_scale_height, mie_scattering, mie_scale_height, mie_absorption, mie_g, ozone_absorption, ozone_center, ground_albedo, ozone_width, bottom_radius, top_radius, sun_angular_radius, enabled, cloud_bottom, cloud_top, cloud_coverage, cloud_type, cloud_extinction, cloud_weather_scale, cloud_shape_scale, cloud_detail_scale, cloud_wind, clouds_enabled, cloud_albedo, cloud_erosion, cloud_pole, cloud_circulation, cloud_circulation_cells, cloud_synoptic_scale, cloud_storminess, cloud_mesoscale_scale, cloud_cirrus, cloud_cirrus_height, cloud_evolution, cloud_seed, cloud_voxel_size, cloud_voxel_fill, cloud_reserved, night_sky_enabled, star_count, star_brightness, star_twinkle_fraction, star_twinkle_speed, star_seed, shooting_stars_enabled, shooting_star_rate, shooting_star_speed, shooting_star_length, sky_texture_source, sky_texture_intensity, sky_texture_opacity, sky_texture_yaw, sky_texture_pitch, sky_texture_roll);
 
 impl Default for AtmosphereComponent {
     fn default() -> Self {

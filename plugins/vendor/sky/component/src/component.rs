@@ -9,6 +9,7 @@
 use engine_class_derive::{engine_class, register_world_component};
 use helio_pass_sky::AtmosphereRow;
 use helio_pass_sky::atmosphere::placement;
+use helio_pass_sky::sky_texture::{self, source as sky_source};
 use helio_pass_sky::{CloudLayer, CloudRepresentation, PlanetWeather};
 use pulsar_reflection::Reflectable;
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,32 @@ impl Default for AtmospherePlacement {
     }
 }
 
+/// Which panorama the sky texture layer shows.
+///
+/// The built-in panoramas are the galaxy and nebula layers of Toolbench's
+/// Deep-Space Skybox, CC0 1.0 (public domain; free for commercial use, no
+/// credit required). They are starless: the procedural stars, shooting stars
+/// and directional-light moon draw over them. Credits and license text:
+/// `plugins/vendor/sky/feature/assets/deep-space/`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Reflectable)]
+pub enum SkyTexturePreset {
+    /// Galaxy band with faint blue and red nebula clouds. Deep-Space Skybox
+    /// by Toolbench, CC0 1.0.
+    GalaxyAndNebula,
+    /// The dusty galaxy band alone. Deep-Space Skybox by Toolbench, CC0 1.0.
+    Galaxy,
+    /// Faint nebula clouds alone. Deep-Space Skybox by Toolbench, CC0 1.0.
+    Nebula,
+    /// Your own equirectangular panorama: set Texture File.
+    CustomFile,
+}
+
+impl Default for SkyTexturePreset {
+    fn default() -> Self {
+        Self::GalaxyAndNebula
+    }
+}
+
 /// Defaults are Earth's air (Hillaire 2020). Coefficients are per kilometre,
 /// heights and radii in kilometres.
 #[engine_class(category = "Rendering", clone, debug, serialize, deserialize)]
@@ -38,6 +65,7 @@ impl Default for AtmospherePlacement {
 #[category("Clouds", category_color = "#C9D3DE")]
 #[category("Weather", category_color = "#A9B8C8")]
 #[category("Night Sky", category_color = "#A5BCE8")]
+#[category("Sky Texture", category_color = "#8FA8E0")]
 #[category("Moon", category_color = "#C8C4B8")]
 #[category("Shooting Stars", category_color = "#E6C68D")]
 #[serde(default)]
@@ -186,6 +214,37 @@ pub struct AtmosphereComponent {
     /// Apparent trail length in radians.
     #[property(min = 0.005, max = 0.2, step = 0.005, category = "Shooting Stars")]
     pub shooting_star_length: f32,
+    /// Show a 360 degree sky panorama behind the atmosphere, clouds, stars,
+    /// moon and shooting stars. It does not replace or disable any of them,
+    /// and it only decorates the sky: scene lighting comes from the
+    /// directional lights, not from the texture. It fades out in daylight.
+    #[property(category = "Sky Texture")]
+    pub sky_texture_enabled: bool,
+    /// The panorama: a built-in galaxy/nebula preset (CC0, Deep-Space Skybox
+    /// by Toolbench) or your own file.
+    #[property(category = "Sky Texture")]
+    pub sky_texture_preset: SkyTexturePreset,
+    /// For Custom File: an equirectangular (2:1) .hdr, .exr, .png or .jpg,
+    /// relative to the project or absolute. .hdr/.exr are used as linear
+    /// light; other formats as sRGB. Wider than 4096 px is halved to fit.
+    #[property(category = "Sky Texture")]
+    pub sky_texture_file: String,
+    /// Brightness of the panorama. The built-in layers are physically faint,
+    /// so the default is well above 1.
+    #[property(min = 0.0, max = 1000.0, step = 0.5, category = "Sky Texture")]
+    pub sky_texture_intensity: f32,
+    /// How much of the panorama shows: 0 hides it, 1 adds it at full strength.
+    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Sky Texture")]
+    pub sky_texture_opacity: f32,
+    /// Turns the panorama around the vertical axis, in degrees.
+    #[property(min = -180.0, max = 180.0, step = 0.5, category = "Sky Texture")]
+    pub sky_texture_yaw_deg: f32,
+    /// Tilts the panorama toward or away from the horizon, in degrees.
+    #[property(min = -180.0, max = 180.0, step = 0.5, category = "Sky Texture")]
+    pub sky_texture_pitch_deg: f32,
+    /// Rolls the panorama about the view axis, in degrees.
+    #[property(min = -180.0, max = 180.0, step = 0.5, category = "Sky Texture")]
+    pub sky_texture_roll_deg: f32,
 }
 
 impl Default for AtmosphereComponent {
@@ -253,6 +312,51 @@ impl AtmosphereComponent {
             shooting_star_rate: row.shooting_star_rate,
             shooting_star_speed: row.shooting_star_speed,
             shooting_star_length: row.shooting_star_length,
+            sky_texture_enabled: row.sky_texture_source != sky_source::NONE,
+            sky_texture_preset: match row.sky_texture_source {
+                sky_source::GALAXY => SkyTexturePreset::Galaxy,
+                sky_source::NEBULA => SkyTexturePreset::Nebula,
+                code if code & sky_source::CUSTOM != 0 => SkyTexturePreset::CustomFile,
+                _ => SkyTexturePreset::GalaxyAndNebula,
+            },
+            sky_texture_file: sky_texture::custom_path(row.sky_texture_source)
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            sky_texture_intensity: row.sky_texture_intensity,
+            sky_texture_opacity: row.sky_texture_opacity,
+            sky_texture_yaw_deg: row.sky_texture_yaw.to_degrees(),
+            sky_texture_pitch_deg: row.sky_texture_pitch.to_degrees(),
+            sky_texture_roll_deg: row.sky_texture_roll.to_degrees(),
+        }
+    }
+
+    /// The sky texture source the row carries: nothing when the layer is
+    /// off (or a custom file is unnamed), otherwise the preset or the file,
+    /// resolved against the project folder when relative.
+    pub fn sky_texture_source(&self) -> u32 {
+        if !self.sky_texture_enabled {
+            return sky_source::NONE;
+        }
+        match self.sky_texture_preset {
+            SkyTexturePreset::GalaxyAndNebula => sky_source::GALAXY_NEBULA,
+            SkyTexturePreset::Galaxy => sky_source::GALAXY,
+            SkyTexturePreset::Nebula => sky_source::NEBULA,
+            SkyTexturePreset::CustomFile => {
+                let file = self.sky_texture_file.trim();
+                if file.is_empty() {
+                    return sky_source::NONE;
+                }
+                let path = std::path::Path::new(file);
+                let resolved = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    match engine_state::get_project_path() {
+                        Some(root) => std::path::PathBuf::from(root).join(path),
+                        None => path.to_path_buf(),
+                    }
+                };
+                sky_texture::custom_source(&resolved)
+            }
         }
     }
 
@@ -329,14 +433,14 @@ impl AtmosphereComponent {
             shooting_star_rate: self.shooting_star_rate.max(0.0),
             shooting_star_speed: self.shooting_star_speed.max(0.05),
             shooting_star_length: self.shooting_star_length.clamp(0.005, 0.2),
-            // Retired moon-specific fields stay zero for AtmosphereRow ABI
-            // compatibility. Sky emitters are authored by LightComponents.
-            moon_enabled: 0,
-            moon_phase: 0.0,
-            moon_brightness: 0.0,
-            moon_angular_radius: 0.0,
-            moonlight_intensity: 0.0,
-            night_reserved: 0.0,
+            // The words once reserved for a moon carry the sky texture layer.
+            // Sky emitters (the moon) are authored by LightComponents.
+            sky_texture_source: self.sky_texture_source(),
+            sky_texture_intensity: self.sky_texture_intensity.max(0.0),
+            sky_texture_opacity: self.sky_texture_opacity.clamp(0.0, 1.0),
+            sky_texture_yaw: self.sky_texture_yaw_deg.to_radians(),
+            sky_texture_pitch: self.sky_texture_pitch_deg.to_radians(),
+            sky_texture_roll: self.sky_texture_roll_deg.to_radians(),
             ..AtmosphereRow::earth()
         }
         .with_clouds(self.cloud_layer());

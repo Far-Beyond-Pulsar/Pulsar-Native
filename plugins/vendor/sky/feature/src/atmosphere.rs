@@ -171,14 +171,18 @@ pub struct AtmosphereRow {
     pub shooting_star_rate: f32,
     pub shooting_star_speed: f32,
     pub shooting_star_length: f32,
-    pub moon_enabled: u32,
-    /// 0 = new, 1 = full.
-    pub moon_phase: f32,
-    pub moon_brightness: f32,
-    pub moon_angular_radius: f32,
-    /// Approximate diffuse moonlight strength relative to the sun.
-    pub moonlight_intensity: f32,
-    pub night_reserved: f32,
+    /// The sky texture layer ([`crate::sky_texture::source`]): 0 none, a
+    /// preset, or a user file. Independent of `night_sky_enabled`.
+    pub sky_texture_source: u32,
+    /// Radiance multiplier of the panorama (linear light).
+    pub sky_texture_intensity: f32,
+    /// How much of the panorama is added over the atmosphere (0..1).
+    pub sky_texture_opacity: f32,
+    /// Orientation of the panorama in the world (radians): yaw about Y,
+    /// then pitch about X, then roll about Z.
+    pub sky_texture_yaw: f32,
+    pub sky_texture_pitch: f32,
+    pub sky_texture_roll: f32,
 }
 
 // SAFETY: a `#[repr(C)]` bytemuck `Pod` row: no padding bytes, any bit
@@ -229,12 +233,12 @@ impl AtmosphereRow {
             shooting_star_rate: 0.12,
             shooting_star_speed: 1.0,
             shooting_star_length: 0.06,
-            moon_enabled: 1,
-            moon_phase: 0.72,
-            moon_brightness: 18.0,
-            moon_angular_radius: 0.0045,
-            moonlight_intensity: 0.025,
-            night_reserved: 0.0,
+            sky_texture_source: 0,
+            sky_texture_intensity: 10.0,
+            sky_texture_opacity: 1.0,
+            sky_texture_yaw: 0.0,
+            sky_texture_pitch: 0.0,
+            sky_texture_roll: 0.0,
             ..Self::clear()
         }
     }
@@ -1111,6 +1115,9 @@ pub struct AtmosphereCompositePass {
     moon_size: [u32; 2],
     moon_texture: Option<wgpu::Texture>,
     moon_view: Option<wgpu::TextureView>,
+    /// Repeats around the horizon (u), clamps at the poles (v), trilinear.
+    sky_sampler: wgpu::Sampler,
+    sky_textures: crate::sky_texture::SkyTextureCache,
 }
 
 impl AtmosphereCompositePass {
@@ -1161,6 +1168,14 @@ impl AtmosphereCompositePass {
                     count: None,
                 },
                 sampled_texture(10, fragment, wgpu::TextureViewDimension::D2),
+                // The sky texture layer and its wrapping sampler.
+                sampled_texture(11, fragment, wgpu::TextureViewDimension::D2),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 12,
+                    visibility: fragment,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1247,6 +1262,16 @@ impl AtmosphereCompositePass {
             moon_size,
             moon_texture: None,
             moon_view: None,
+            sky_sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("Sky texture"),
+                address_mode_u: wgpu::AddressMode::Repeat,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                ..Default::default()
+            }),
+            sky_textures: crate::sky_texture::SkyTextureCache::new(device),
         }
     }
 }
@@ -1385,6 +1410,12 @@ impl RenderPass for AtmosphereCompositePass {
             self.moon_texture = Some(texture);
         }
         let moon = self.moon_view.as_ref().expect("moon texture initialized");
+        // The component publishes the requested source when it derives its
+        // row (a level has one sky); a texture still loading binds black.
+        let panorama = self
+            .sky_textures
+            .view(ctx.device, ctx.queue, crate::sky_texture::requested())
+            .clone();
         let group = self.cache.bind_group(
             ctx.device,
             &wgpu::BindGroupDescriptor {
@@ -1434,6 +1465,14 @@ impl RenderPass for AtmosphereCompositePass {
                     wgpu::BindGroupEntry {
                         binding: 10,
                         resource: wgpu::BindingResource::TextureView(moon),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 11,
+                        resource: wgpu::BindingResource::TextureView(&panorama),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 12,
+                        resource: wgpu::BindingResource::Sampler(&self.sky_sampler),
                     },
                 ],
             },
