@@ -67,14 +67,21 @@ fn march_from_space(eye: vec3<f32>, d: vec3<f32>, limit: f32) -> Scattering {
     out.radiance = vec3<f32>(0.0);
     out.transmittance = vec3<f32>(1.0);
     if end <= segment.x { return out; }
-    out = atmosphere_integrate(p, frame.sun.xyz, transmittance_lut, multi_scattering_lut, lut_sampler,
-        eye, d, segment.x, end, SPACE_STEPS, false);
-    if segment.z > 0.5 && limit >= segment.y {
-        let n = normalize(eye + d * segment.y);
-        let mu_s = dot(n, frame.sun.xyz);
-        out.radiance += out.transmittance
-            * atmosphere_sun_transmittance_lut(p, transmittance_lut, lut_sampler, p.bottom_radius, mu_s)
-            * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        let base = i * 3u;
+        let light_dir = frame.directional_lights[base].xyz;
+        let energy = frame.directional_lights[base + 1u].rgb;
+        let s = atmosphere_integrate(p, light_dir, transmittance_lut, multi_scattering_lut, lut_sampler,
+            eye, d, segment.x, end, SPACE_STEPS, false);
+        out.radiance += s.radiance * energy;
+        if i == 0u { out.transmittance = s.transmittance; }
+        if segment.z > 0.5 && limit >= segment.y {
+            let n = normalize(eye + d * segment.y);
+            let mu_s = dot(n, light_dir);
+            out.radiance += s.transmittance * energy
+                * atmosphere_sun_transmittance_lut(p, transmittance_lut, lut_sampler, p.bottom_radius, mu_s)
+                * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+        }
     }
     return out;
 }
@@ -116,6 +123,34 @@ fn clouds_in_front(uv: vec2<f32>, distance: f32) -> vec4<f32> {
     }
     if matched_weight > 1e-3 { return matched / matched_weight; }
     return unmatched;
+}
+
+fn sky_is_night() -> bool {
+    if frame.params.night_sky_enabled == 0u { return false; }
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        if frame.directional_lights[i * 3u].y >= 0.0 { return false; }
+    }
+    return true;
+}
+
+fn directional_disk_radiance(d: vec3<f32>, through: vec3<f32>) -> vec3<f32> {
+    var radiance = vec3<f32>(0.0);
+    let radius = max(frame.params.sun_angular_radius, 1e-5);
+    let solid_angle = max(2.0 * ATMOSPHERE_PI * (1.0 - cos(radius)), 1e-8);
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        let base = i * 3u;
+        let emitter = frame.directional_lights[base + 2u];
+        let kind = u32(emitter.z);
+        if emitter.w > 0.5 && (kind == SOLID_EMITTER_DISK || kind == TEXTURED_EMITTER_DISK) {
+            continue;
+        }
+        let light_dir = frame.directional_lights[base].xyz;
+        if dot(d, light_dir) <= cos(radius) { continue; }
+        let energy = frame.directional_lights[base + 1u].rgb;
+        let edge = clamp((dot(d, light_dir) - cos(radius)) / max(1.0 - cos(radius), 1e-7), 0.0, 1.0);
+        radiance += energy / solid_angle * (0.4 + 0.6 * sqrt(edge)) * through;
+    }
+    return radiance;
 }
 
 fn hash2(p: vec2<f32>, seed: u32) -> vec3<f32> {
@@ -184,9 +219,6 @@ fn night_radiance(d: vec3<f32>) -> vec3<f32> {
 
 fn emitter_disk_radiance(d: vec3<f32>) -> vec3<f32> {
     let p = frame.params;
-    if p.night_sky_enabled == 0u || dot(frame.sun.xyz, vec3<f32>(0.0, 1.0, 0.0)) >= 0.0 {
-        return vec3<f32>(0.0);
-    }
     var radiance = vec3<f32>(0.0);
     for (var i = 0u; i < frame.directional_light_count.x; i++) {
         let base = i * 3u;
@@ -213,12 +245,17 @@ fn emitter_disk_radiance(d: vec3<f32>) -> vec3<f32> {
         let brightness = emitter.y;
         if emitter_type == TEXTURED_EMITTER_DISK {
             let albedo = textureSampleLevel(moon_albedo, lut_sampler, uv, 0.0).rgb;
-            // The visible lunar hemisphere faces back toward the observer,
-            // opposite the ray from Earth to the Moon. Use the sun's radiance
-            // for the disk; the moon LightComponent's dim intensity controls
-            // moonlight on the scene separately.
-            let sunlit = max(dot(-normal, normalize(frame.sun.xyz)), 0.08);
-            radiance += albedo * frame.sun_illuminance.rgb * brightness * sunlit;
+            // Every other directional source illuminates the visible disk;
+            // the emitter light itself controls moonlight on the scene.
+            var disk_light = vec3<f32>(0.0);
+            for (var j = 0u; j < frame.directional_light_count.x; j++) {
+                if i == j { continue; }
+                let solar_base = j * 3u;
+                let solar_dir = frame.directional_lights[solar_base].xyz;
+                let solar_energy = frame.directional_lights[solar_base + 1u].rgb;
+                disk_light += solar_energy * max(dot(-normal, solar_dir), 0.08);
+            }
+            radiance += albedo * disk_light * brightness;
         } else {
             // A textureless emitter remains a visible, scalable solid disk.
             radiance += light_energy * brightness;
@@ -236,7 +273,6 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     let ndc = vec2<f32>(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
     let ray = atmosphere_view_ray(camera.view, camera.proj, ndc);
     let d = normalize(ray);
-    let sun = frame.sun_illuminance.rgb;
     let eye = frame.eye.xyz;
     let r = length(eye);
     let in_space = r > frame.params.top_radius;
@@ -246,25 +282,22 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
         var through = vec3<f32>(1.0);
         if in_space {
             let air = march_from_space(eye, d, 3.0e38);
-            radiance = air.radiance * sun;
+            radiance = air.radiance;
             through = air.transmittance;
         } else {
             through = transmittance(r, dot(eye / r, d));
             let angles = sky_view_direction_angles(frame, d);
             radiance = textureSampleLevel(sky_view_lut, lut_sampler,
-                sky_view_uv(frame.params, r, angles.x, angles.y), 0.0).rgb * sun;
+                sky_view_uv(frame.params, r, angles.x, angles.y), 0.0).rgb;
         }
-        // The sun's disk, through the air in front of it, unless the planet
-        // hides it.
-        let cos_sun = dot(d, frame.sun.xyz);
-        if cos_sun > frame.sun.w && ray_sphere(eye, d, frame.params.bottom_radius).x < 0.0 {
-            let solid_angle = 2.0 * ATMOSPHERE_PI * (1.0 - frame.sun.w);
-            let edge = clamp((cos_sun - frame.sun.w) / max(1.0 - frame.sun.w, 1e-7), 0.0, 1.0);
-            let limb = 0.4 + 0.6 * sqrt(edge);
-            radiance += sun / solid_angle * limb * through;
+        // Every untextured directional emitter gets the atmosphere's normal
+        // angular radius; textured or enlarged emitters use their own size.
+        if ray_sphere(eye, d, frame.params.bottom_radius).x < 0.0 {
+            radiance += directional_disk_radiance(d, through);
+            radiance += emitter_disk_radiance(d) * through;
         }
-        if dot(frame.sun.xyz, vec3<f32>(0.0, 1.0, 0.0)) < 0.0 {
-            radiance += night_radiance(d) + emitter_disk_radiance(d);
+        if sky_is_night() {
+            radiance += night_radiance(d);
         }
         let clouds = clouds_in_front(in.uv, CLOUD_UNLIMITED);
         return vec4<f32>(radiance * (1.0 - clouds.a) + clouds.rgb, 0.0);
@@ -274,7 +307,7 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     let clear = 1.0 - clouds.a;
     if in_space {
         let air = march_from_space(eye, d, distance);
-        return vec4<f32>(air.radiance * sun * clear + clouds.rgb, dot(air.transmittance, vec3<f32>(1.0 / 3.0)) * clear);
+        return vec4<f32>(air.radiance * clear + clouds.rgb, dot(air.transmittance, vec3<f32>(1.0 / 3.0)) * clear);
     }
     let range = frame.sun_illuminance.w;
     // Slices hold values at their centres; the first fades in from the eye.
@@ -284,5 +317,5 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     if slice < 0.0 {
         aerial = mix(vec4<f32>(0.0, 0.0, 0.0, 1.0), aerial, clamp(slice + 1.0, 0.0, 1.0));
     }
-    return vec4<f32>(aerial.rgb * sun * clear + clouds.rgb, aerial.a * clear);
+    return vec4<f32>(aerial.rgb * clear + clouds.rgb, aerial.a * clear);
 }

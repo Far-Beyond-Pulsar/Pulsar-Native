@@ -317,17 +317,24 @@ fn trace_clouds(d: vec3<f32>, limit: f32, uv: vec2<f32>, jitter: f32) -> CloudTr
     var air_radiance: vec3<f32>;
     var air_transmittance: f32;
     if length(eye) > frame.params.top_radius {
-        let sun = frame.sun.xyz;
         let air_segment = atmosphere_segment(frame.params, eye, d, false);
-        let air = atmosphere_integrate(frame.params, sun, transmittance_lut, multi_scattering_lut, lut_sampler,
-            eye, d, air_segment.x, max(min(out.front, air_segment.y), air_segment.x), CLOUD_SPACE_AIR_STEPS, false);
-        air_radiance = air.radiance * frame.sun_illuminance.rgb;
-        air_transmittance = dot(air.transmittance, vec3<f32>(1.0 / 3.0));
+        air_radiance = vec3<f32>(0.0);
+        air_transmittance = 1.0;
+        for (var i = 0u; i < frame.directional_light_count.x; i++) {
+            let base = i * 3u;
+            let air = atmosphere_integrate(frame.params, frame.directional_lights[base].xyz,
+                transmittance_lut, multi_scattering_lut, lut_sampler, eye, d, air_segment.x,
+                max(min(out.front, air_segment.y), air_segment.x), CLOUD_SPACE_AIR_STEPS, false);
+            air_radiance += air.radiance * frame.directional_lights[base + 1u].rgb;
+            if i == 0u {
+                air_transmittance = dot(air.transmittance, vec3<f32>(1.0 / 3.0));
+            }
+        }
     } else {
         let slice = aerial_slice(out.front, frame.sun_illuminance.w) * AERIAL_SLICES - 0.5;
         var aerial = textureSampleLevel(aerial_lut, lut_sampler, vec3<f32>(uv, (max(slice, 0.0) + 0.5) / AERIAL_SLICES), 0.0);
         if slice < 0.0 { aerial = mix(vec4<f32>(0.0, 0.0, 0.0, 1.0), aerial, clamp(slice + 1.0, 0.0, 1.0)); }
-        air_radiance = aerial.rgb * frame.sun_illuminance.rgb;
+        air_radiance = aerial.rgb;
         air_transmittance = aerial.a;
     }
     out.color = vec4<f32>(radiance * air_transmittance + air_radiance * (1.0 - transmittance), 1.0 - transmittance);

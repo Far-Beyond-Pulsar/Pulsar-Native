@@ -27,8 +27,6 @@ pub const LIGHT_SOURCES_BUFFER: &str = "light_sources";
 
 /// Bit of [`LightSourceRow::enabled`] set when the authored light is enabled.
 pub const LIGHT_SOURCE_ENABLED_BIT: u32 = 1 << 31;
-/// Marks a directional light as the preferred atmosphere/water sun.
-pub const LIGHT_SOURCE_PRIMARY_ATMOSPHERE_BIT: u32 = 1 << 30;
 /// Marks the existing optical metadata lanes as a solid sky emitter disk.
 pub const LIGHT_EMITTER_SOLID_DISK: u32 = 253;
 /// Marks the existing optical metadata lanes as a textured sky emitter disk.
@@ -111,13 +109,7 @@ impl LightSourceRow {
                 .clamp(0.01, 10.0)
                 .to_radians();
         }
-        row.enabled = (row.enabled
-            & !(LIGHT_SOURCE_ENABLED_BIT | LIGHT_SOURCE_PRIMARY_ATMOSPHERE_BIT))
-            | if light.advanced.primary_atmosphere_light {
-                LIGHT_SOURCE_PRIMARY_ATMOSPHERE_BIT
-            } else {
-                0
-            }
+        row.enabled = (row.enabled & !LIGHT_SOURCE_ENABLED_BIT)
             | if light.general.enabled {
                 LIGHT_SOURCE_ENABLED_BIT
             } else {

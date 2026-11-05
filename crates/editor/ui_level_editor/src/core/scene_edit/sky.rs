@@ -74,7 +74,6 @@ pub fn default_sun_light() -> helio_component::LightComponent {
     let mut sun = helio_component::LightComponent::default();
     sun.general.light_type = helio_component::LightType::Directional;
     sun.intensity.intensity = 2.0;
-    sun.advanced.primary_atmosphere_light = true;
     sun.advanced.rotation_offset = [35.0, 0.0, 0.0];
     sun
 }

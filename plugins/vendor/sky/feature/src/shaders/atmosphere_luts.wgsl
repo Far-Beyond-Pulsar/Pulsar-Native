@@ -63,13 +63,12 @@ fn resolve() {
     if resolve_input.clock.y > 0.5 {
         params.clouds_enabled = 0u;
     }
-    // Keep the first directional light as the atmosphere LUT's primary sun,
-    // while packing every directional light for clouds and emitter disks.
+    // `frame.sun` is only the angular-table reference axis. All illumination
+    // below is evaluated by summing the actual directional lights.
     var sun = vec3<f32>(0.0, 1.0, 0.0);
-    var illuminance = vec3<f32>(0.0);
     var has_primary_sun = false;
+    var illuminance = vec3<f32>(0.0);
     var directional_count = 0u;
-    var has_preferred_sun = false;
     let rows = arrayLength(&lights) / LIGHT_ROW_VEC4S;
     for (var i = 0u; i < rows; i++) {
         let base = i * LIGHT_ROW_VEC4S;
@@ -81,16 +80,9 @@ fn resolve() {
             let energy = colour.rgb * colour.w;
             if !has_primary_sun {
                 sun = toward_light;
-                illuminance = energy;
                 has_primary_sun = true;
             }
-            let primary_marker = (bitcast<u32>(lights[base + 3u].w) & 0x40000000u) != 0u;
-            if primary_marker && !has_preferred_sun {
-                sun = toward_light;
-                illuminance = energy;
-                has_primary_sun = true;
-                has_preferred_sun = true;
-            }
+            illuminance += energy;
             if directional_count < 8u {
                 let optical = lights[base + 5u];
                 let emitter = lights[base + 6u];
@@ -149,8 +141,8 @@ fn sun_transmittance(r: f32, mu_s: f32) -> vec3<f32> {
     return atmosphere_sun_transmittance_lut(frame.params, transmittance_lut, lut_sampler, r, mu_s);
 }
 
-fn integrate(o: vec3<f32>, d: vec3<f32>, t0: f32, t1: f32, steps: f32) -> Scattering {
-    return atmosphere_integrate(frame.params, frame.sun.xyz, transmittance_lut, multi_scattering_lut,
+fn integrate(sun: vec3<f32>, o: vec3<f32>, d: vec3<f32>, t0: f32, t1: f32, steps: f32) -> Scattering {
+    return atmosphere_integrate(frame.params, sun, transmittance_lut, multi_scattering_lut,
         lut_sampler, o, d, t0, t1, steps, true);
 }
 
@@ -241,15 +233,21 @@ fn sky_view_kernel(@builtin(global_invocation_id) id: vec3<u32>) {
     let segment = atmosphere_segment(frame.params, eye, d, true);
     var radiance = vec3<f32>(0.0);
     if segment.y > segment.x {
-        let s = integrate(eye, d, segment.x, segment.y, 32.0);
-        radiance = s.radiance;
-        if segment.z > 0.5 {
-            // The ground seen through the atmosphere (where no geometry
-            // draws it): sunlit Lambertian albedo.
-            let x = eye + d * segment.y;
-            let n = normalize(x);
-            let mu_s = dot(n, frame.sun.xyz);
-            radiance += s.transmittance * sun_transmittance(p.bottom_radius, mu_s) * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+        for (var i = 0u; i < frame.directional_light_count.x; i++) {
+            let base = i * 3u;
+            let light_dir = frame.directional_lights[base].xyz;
+            let energy = frame.directional_lights[base + 1u].rgb;
+            let s = integrate(light_dir, eye, d, segment.x, segment.y, 32.0);
+            radiance += s.radiance * energy;
+            if segment.z > 0.5 {
+                // The ground seen through the atmosphere (where no geometry
+                // draws it): each directional source lights the Lambertian ground.
+                let x = eye + d * segment.y;
+                let n = normalize(x);
+                let mu_s = dot(n, light_dir);
+                radiance += s.transmittance * energy * sun_transmittance(p.bottom_radius, mu_s)
+                    * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+            }
         }
     }
     textureStore(sky_view_out, vec2<i32>(id.xy), vec4<f32>(radiance, 1.0));
@@ -276,9 +274,16 @@ fn aerial_kernel(@builtin(global_invocation_id) id: vec3<u32>) {
         let a = clamp(t_prev, segment.x, max(segment.y, segment.x));
         let b = clamp(t, segment.x, max(segment.y, segment.x));
         if b > a {
-            let s = integrate(eye, d, a, b, 4.0);
-            radiance += throughput * s.radiance;
-            throughput *= s.transmittance;
+            var step_radiance = vec3<f32>(0.0);
+            var step_transmittance = vec3<f32>(1.0);
+            for (var i = 0u; i < frame.directional_light_count.x; i++) {
+                let base = i * 3u;
+                let s = integrate(frame.directional_lights[base].xyz, eye, d, a, b, 4.0);
+                step_radiance += s.radiance * frame.directional_lights[base + 1u].rgb;
+                if i == 0u { step_transmittance = s.transmittance; }
+            }
+            radiance += throughput * step_radiance;
+            throughput *= step_transmittance;
         }
         t_prev = t;
         let mean = dot(throughput, vec3<f32>(1.0 / 3.0));
@@ -330,34 +335,7 @@ fn irradiance_kernel(@builtin(local_invocation_index) li: u32) {
     for (var c = 0u; c < 9u; c++) {
         var sum = vec3<f32>(0.0);
         for (var t = 0u; t < 64u; t++) { sum += partial[t][c]; }
-        frame.irradiance[c] = vec4<f32>(sum * weight * band[c] * frame.sun_illuminance.rgb, 0.0);
-    }
-    // Additional directional lights are projected into the same diffuse SH
-    // used by deferred lighting. The primary direction was already included
-    // by the atmosphere integral above; every other directional light (for
-    // example, a dim moon) contributes according to its own transform and
-    // color/intensity.
-    let rows = arrayLength(&lights) / LIGHT_ROW_VEC4S;
-    for (var i = 0u; i < rows; i++) {
-        let base = i * LIGHT_ROW_VEC4S;
-        let colour = lights[base + 2u];
-        if bitcast<u32>(lights[base + 3u].y) != 0u || colour.w <= 0.0 {
-            continue;
-        }
-        let toward_light = -normalize(lights[base + 1u].xyz);
-        if dot(toward_light, normalize(frame.sun.xyz)) > 0.9999 {
-            continue;
-        }
-        let energy = colour.rgb * colour.w;
-        let y = array<f32, 9>(0.282095, 0.488603 * toward_light.y, 0.488603 * toward_light.z, 0.488603 * toward_light.x,
-            1.092548 * toward_light.x * toward_light.y, 1.092548 * toward_light.y * toward_light.z,
-            0.315392 * (3.0 * toward_light.z * toward_light.z - 1.0), 1.092548 * toward_light.x * toward_light.z,
-            0.546274 * (toward_light.x * toward_light.x - toward_light.y * toward_light.y));
-        for (var c = 0u; c < 9u; c++) {
-            let coefficient = frame.irradiance[c];
-            let updated = coefficient.rgb + energy * y[c] * band[c] / ATMOSPHERE_PI;
-            frame.irradiance[c] = vec4<f32>(updated, coefficient.a);
-        }
+        frame.irradiance[c] = vec4<f32>(sum * weight * band[c], 0.0);
     }
 }
 
