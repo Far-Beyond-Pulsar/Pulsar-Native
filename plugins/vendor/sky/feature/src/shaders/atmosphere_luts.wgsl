@@ -302,21 +302,27 @@ fn irradiance_kernel(@builtin(local_invocation_index) li: u32) {
         for (var t = 0u; t < 64u; t++) { sum += partial[t][c]; }
         frame.irradiance[c] = vec4<f32>(sum * weight * band[c] * frame.sun_illuminance.rgb, 0.0);
     }
-    // Approximate moonlight as a directional source projected into the same
-    // diffuse SH used by deferred lighting. This keeps the surface response
-    // consistent with the moon drawn in the sky composite.
-    let p = frame.params;
-    if p.night_sky_enabled != 0u && p.moon_enabled != 0u
-        && dot(frame.sun.xyz, vec3<f32>(0.0, 1.0, 0.0)) < 0.0 {
-        let sun = normalize(frame.sun.xyz);
-        let tangent = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), sun) + vec3<f32>(0.001, 0.0, 0.0));
-        let angle = clamp(p.moon_phase, 0.0, 1.0) * ATMOSPHERE_PI;
-        let moon = normalize(sun * cos(angle) + tangent * sin(angle));
-        let energy = frame.sun_illuminance.rgb * p.moonlight_intensity * mix(0.12, 1.0, clamp(p.moon_phase, 0.0, 1.0));
-        let y = array<f32, 9>(0.282095, 0.488603 * moon.y, 0.488603 * moon.z, 0.488603 * moon.x,
-            1.092548 * moon.x * moon.y, 1.092548 * moon.y * moon.z,
-            0.315392 * (3.0 * moon.z * moon.z - 1.0), 1.092548 * moon.x * moon.z,
-            0.546274 * (moon.x * moon.x - moon.y * moon.y));
+    // Additional directional lights are projected into the same diffuse SH
+    // used by deferred lighting. The primary direction was already included
+    // by the atmosphere integral above; every other directional light (for
+    // example, a dim moon) contributes according to its own transform and
+    // color/intensity.
+    let rows = arrayLength(&lights) / LIGHT_ROW_VEC4S;
+    for (var i = 0u; i < rows; i++) {
+        let base = i * LIGHT_ROW_VEC4S;
+        let colour = lights[base + 2u];
+        if bitcast<u32>(lights[base + 3u].y) != 0u || colour.w <= 0.0 {
+            continue;
+        }
+        let toward_light = -normalize(lights[base + 1u].xyz);
+        if dot(toward_light, normalize(frame.sun.xyz)) > 0.9999 {
+            continue;
+        }
+        let energy = colour.rgb * colour.w;
+        let y = array<f32, 9>(0.282095, 0.488603 * toward_light.y, 0.488603 * toward_light.z, 0.488603 * toward_light.x,
+            1.092548 * toward_light.x * toward_light.y, 1.092548 * toward_light.y * toward_light.z,
+            0.315392 * (3.0 * toward_light.z * toward_light.z - 1.0), 1.092548 * toward_light.x * toward_light.z,
+            0.546274 * (toward_light.x * toward_light.x - toward_light.y * toward_light.y));
         for (var c = 0u; c < 9u; c++) {
             let coefficient = frame.irradiance[c];
             let updated = coefficient.rgb + energy * y[c] * band[c] / ATMOSPHERE_PI;

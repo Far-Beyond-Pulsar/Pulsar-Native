@@ -920,7 +920,7 @@ fn fs_above(in: VertexOutput) -> vec4f {
     let foam_normal = normalize(normal - vec3f(foam.gradient.x, 0.0, foam.gradient.y)
         * (0.03 + 0.12 * foam_density));
     let local_lighting = water_local_lighting(
-        in.world_pos, normal, foam_normal, view_dir, alpha);
+        in.world_pos, normal, foam_normal, view_dir, alpha, light_dir);
     color += local_lighting.specular;
     let foam_ao = mix(0.45, 1.0, smoothstep(0.15, 0.75, foam.billow));
     let foam_solid = smoothstep(0.2, 0.9, foam_density * (0.55 + 0.7 * foam.billow));
@@ -1006,7 +1006,7 @@ fn fs_under(in: VertexOutput) -> vec4f {
 
     let escape_factor = select(0.0, 1.0, escapes);
     let local_lighting = water_local_lighting(
-        in.world_pos, normal, normal, view_dir, alpha);
+        in.world_pos, normal, normal, view_dir, alpha, light_dir);
     return vec4f(mix(below_color, above_color, (1.0 - fresnel) * escape_factor)
         + local_lighting.specular, 1.0);
 }

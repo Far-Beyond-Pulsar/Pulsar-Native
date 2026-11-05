@@ -19,31 +19,41 @@ struct WaterLocalLighting {
 
 fn water_local_lighting(
     world_pos: vec3f, normal: vec3f, foam_normal: vec3f,
-    view_dir: vec3f, alpha: f32,
+    view_dir: vec3f, alpha: f32, sun_direction: vec3f,
 ) -> WaterLocalLighting {
     var result = WaterLocalLighting(vec3f(0.0), vec3f(0.0));
     let no_v = max(dot(normal, -view_dir), 1e-4);
     let a = max(alpha, 0.015);
     let a2 = a * a;
+    let primary_sun = normalize(sun_direction);
     for (var i = 0u; i < arrayLength(&water_lights); i++) {
         let light = water_lights[i];
-        // The atmosphere already supplies the sun. Do not count it twice.
-        if light.light_type == 0u || light.color_intensity.w <= 0.0 {
+        if light.color_intensity.w <= 0.0 {
             continue;
         }
-        let to_light = light.position_range.xyz - world_pos;
-        let dist = length(to_light);
-        let range = light.position_range.w;
-        if range <= 0.0 || dist >= range { continue; }
-        let l = to_light / max(dist, 1e-4);
-        let relative_dist = dist / range;
-        var attenuation = max(1.0 - pow(relative_dist, 4.0), 0.0)
-            / (dist * dist + 0.0001);
-        if light.light_type == 2u {
-            let cos_angle = dot(-l, light.direction_outer.xyz);
-            let cone = clamp((cos_angle - light.direction_outer.w)
-                / max(light.inner_angle - light.direction_outer.w, 1e-5), 0.0, 1.0);
-            attenuation *= cone * cone * (3.0 - 2.0 * cone);
+        var l: vec3f;
+        var attenuation = 1.0;
+        if light.light_type == 0u {
+            // The atmosphere already supplies the primary sun. Other
+            // directional lights (including a dim moon light) use the same
+            // water specular and foam response as local lights.
+            l = -normalize(light.direction_outer.xyz);
+            if dot(l, primary_sun) > 0.9999 { continue; }
+        } else {
+            let to_light = light.position_range.xyz - world_pos;
+            let dist = length(to_light);
+            let range = light.position_range.w;
+            if range <= 0.0 || dist >= range { continue; }
+            l = to_light / max(dist, 1e-4);
+            let relative_dist = dist / range;
+            attenuation = max(1.0 - pow(relative_dist, 4.0), 0.0)
+                / (dist * dist + 0.0001);
+            if light.light_type == 2u {
+                let cos_angle = dot(-l, light.direction_outer.xyz);
+                let cone = clamp((cos_angle - light.direction_outer.w)
+                    / max(light.inner_angle - light.direction_outer.w, 1e-5), 0.0, 1.0);
+                attenuation *= cone * cone * (3.0 - 2.0 * cone);
+            }
         }
         let radiance = light.color_intensity.rgb * light.color_intensity.w * attenuation;
         result.diffuse += radiance * max(dot(foam_normal, l), 0.0) / HELIO_PI;
