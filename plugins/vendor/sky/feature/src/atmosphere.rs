@@ -157,6 +157,28 @@ pub struct AtmosphereRow {
     pub cloud_voxel_fill: f32,
     /// Unused: the row stays a whole number of vec4s.
     pub cloud_reserved: [f32; 2],
+    /// Night sky appears when the directional light is below the horizon.
+    pub night_sky_enabled: u32,
+    /// Approximate star count over the full celestial sphere.
+    pub star_count: f32,
+    pub star_brightness: f32,
+    /// Fraction of stars that twinkle (0..1).
+    pub star_twinkle_fraction: f32,
+    pub star_twinkle_speed: f32,
+    pub star_seed: u32,
+    pub shooting_stars_enabled: u32,
+    /// Shooting stars per minute across the visible sky.
+    pub shooting_star_rate: f32,
+    pub shooting_star_speed: f32,
+    pub shooting_star_length: f32,
+    pub moon_enabled: u32,
+    /// 0 = new, 1 = full.
+    pub moon_phase: f32,
+    pub moon_brightness: f32,
+    pub moon_angular_radius: f32,
+    /// Approximate diffuse moonlight strength relative to the sun.
+    pub moonlight_intensity: f32,
+    pub night_reserved: f32,
 }
 
 // SAFETY: a `#[repr(C)]` bytemuck `Pod` row: no padding bytes, any bit
@@ -168,7 +190,7 @@ unsafe impl pulsar_scenedb::Pod for AtmosphereRow {}
 pub const ATMOSPHERES: helio_core::BufferContract<AtmosphereRow> =
     helio_core::BufferContract::new("atmospheres");
 
-const _: () = assert!(std::mem::size_of::<AtmosphereRow>() == 240);
+const _: () = assert!(std::mem::size_of::<AtmosphereRow>() == 304);
 
 impl Default for AtmosphereRow {
     fn default() -> Self {
@@ -197,6 +219,22 @@ impl AtmosphereRow {
             top_radius: 6460.0,
             sun_angular_radius: 0.004675,
             enabled: 1,
+            night_sky_enabled: 1,
+            star_count: 1800.0,
+            star_brightness: 2.0,
+            star_twinkle_fraction: 0.16,
+            star_twinkle_speed: 1.3,
+            star_seed: 47,
+            shooting_stars_enabled: 1,
+            shooting_star_rate: 0.12,
+            shooting_star_speed: 1.0,
+            shooting_star_length: 0.06,
+            moon_enabled: 1,
+            moon_phase: 0.72,
+            moon_brightness: 18.0,
+            moon_angular_radius: 0.0045,
+            moonlight_intensity: 0.025,
+            night_reserved: 0.0,
             ..Self::clear()
         }
     }
@@ -1069,6 +1107,10 @@ pub struct AtmosphereCompositePass {
     /// A 1x1 zero texture: no clouds (no opacity, no light), bound while no
     /// cloud pass publishes any.
     no_clouds: wgpu::TextureView,
+    moon_rgba: Vec<u8>,
+    moon_size: [u32; 2],
+    moon_texture: Option<wgpu::Texture>,
+    moon_view: Option<wgpu::TextureView>,
 }
 
 impl AtmosphereCompositePass {
@@ -1118,6 +1160,7 @@ impl AtmosphereCompositePass {
                     },
                     count: None,
                 },
+                sampled_texture(10, fragment, wgpu::TextureViewDimension::D2),
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1188,6 +1231,10 @@ impl AtmosphereCompositePass {
                 view_formats: &[],
             })
             .create_view(&Default::default());
+        let moon = image::load_from_memory(include_bytes!("../assets/solarsystemscope_moon_2k.jpg"))
+            .expect("bundled CC BY moon albedo texture must decode")
+            .to_rgba8();
+        let moon_size = [moon.width(), moon.height()];
         Self {
             pipeline,
             layout,
@@ -1195,6 +1242,10 @@ impl AtmosphereCompositePass {
             cache: helio_core::gpu_cache::GpuCache::new(),
             active: false,
             no_clouds,
+            moon_rgba: moon.into_raw(),
+            moon_size,
+            moon_texture: None,
+            moon_view: None,
         }
     }
 }
@@ -1295,6 +1346,27 @@ impl RenderPass for AtmosphereCompositePass {
         let cloud_depth = registry
             .texture_binding(ATMOSPHERE_CLOUD_DEPTH)
             .unwrap_or(&self.no_clouds);
+        if self.moon_texture.is_none() {
+            let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Solar System Scope moon color (CC BY 4.0)"),
+                size: wgpu::Extent3d { width: self.moon_size[0], height: self.moon_size[1], depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            ctx.queue.write_texture(
+                wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                &self.moon_rgba,
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(self.moon_size[0] * 4), rows_per_image: Some(self.moon_size[1]) },
+                wgpu::Extent3d { width: self.moon_size[0], height: self.moon_size[1], depth_or_array_layers: 1 },
+            );
+            self.moon_view = Some(texture.create_view(&Default::default()));
+            self.moon_texture = Some(texture);
+        }
+        let moon = self.moon_view.as_ref().expect("moon texture initialized");
         let group = self.cache.bind_group(
             ctx.device,
             &wgpu::BindGroupDescriptor {
@@ -1340,6 +1412,10 @@ impl RenderPass for AtmosphereCompositePass {
                     wgpu::BindGroupEntry {
                         binding: 9,
                         resource: wgpu::BindingResource::TextureView(cloud_depth),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 10,
+                        resource: wgpu::BindingResource::TextureView(moon),
                     },
                 ],
             },

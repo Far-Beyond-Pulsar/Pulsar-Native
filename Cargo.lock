@@ -6115,6 +6115,7 @@ dependencies = [
  "helio-frame-api",
  "helio-pass-sky",
  "helio-scene-join",
+ "image",
  "naga",
  "pollster 0.4.0",
  "pulsar_reflection",

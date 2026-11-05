@@ -24,6 +24,7 @@ wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 pulsar_scenedb = { workspace = true }
 serde_json = { workspace = true }
+image = { workspace = true }
 
 [dev-dependencies]
 # The tests author atmospheres as host rows.

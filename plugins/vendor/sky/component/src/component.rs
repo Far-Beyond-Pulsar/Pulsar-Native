@@ -37,6 +37,9 @@ impl Default for AtmospherePlacement {
 #[category("Scattering", category_color = "#9FB7D1")]
 #[category("Clouds", category_color = "#C9D3DE")]
 #[category("Weather", category_color = "#A9B8C8")]
+#[category("Night Sky", category_color = "#A5BCE8")]
+#[category("Moon", category_color = "#C8C4B8")]
+#[category("Shooting Stars", category_color = "#E6C68D")]
 #[serde(default)]
 pub struct AtmosphereComponent {
     #[property(category = "Atmosphere")]
@@ -158,6 +161,44 @@ pub struct AtmosphereComponent {
     /// Which weather: each seed lays out other systems.
     #[property(min = 0.0, max = 65535.0, step = 1.0, category = "Weather")]
     pub cloud_seed: u32,
+    /// Draw stars and the moon while the directional light is below the horizon.
+    #[property(category = "Night Sky")]
+    pub night_sky_enabled: bool,
+    /// Approximate number of stars over the full sky.
+    #[property(min = 0.0, max = 20000.0, step = 100.0, category = "Night Sky")]
+    pub star_count: f32,
+    #[property(min = 0.0, max = 100.0, step = 0.1, category = "Night Sky")]
+    pub star_brightness: f32,
+    /// Fraction of the stars that twinkle.
+    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Night Sky")]
+    pub star_twinkle_fraction: f32,
+    #[property(min = 0.0, max = 10.0, step = 0.1, category = "Night Sky")]
+    pub star_twinkle_speed: f32,
+    #[property(min = 0.0, max = 65535.0, step = 1.0, category = "Night Sky")]
+    pub star_seed: u32,
+    #[property(category = "Shooting Stars")]
+    pub shooting_stars_enabled: bool,
+    /// Events per minute, visible hemisphere.
+    #[property(min = 0.0, max = 20.0, step = 0.01, category = "Shooting Stars")]
+    pub shooting_star_rate: f32,
+    #[property(min = 0.05, max = 20.0, step = 0.05, category = "Shooting Stars")]
+    pub shooting_star_speed: f32,
+    /// Apparent trail length in radians.
+    #[property(min = 0.005, max = 0.2, step = 0.005, category = "Shooting Stars")]
+    pub shooting_star_length: f32,
+    #[property(category = "Moon")]
+    pub moon_enabled: bool,
+    /// 0 = new moon, 1 = full moon.
+    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Moon")]
+    pub moon_phase: f32,
+    #[property(min = 0.0, max = 100.0, step = 0.1, category = "Moon")]
+    pub moon_brightness: f32,
+    /// Apparent angular radius in degrees.
+    #[property(min = 0.1, max = 2.0, step = 0.01, category = "Moon")]
+    pub moon_angular_radius_deg: f32,
+    /// Diffuse surface illumination relative to sunlight.
+    #[property(min = 0.0, max = 0.2, step = 0.001, category = "Moon")]
+    pub moonlight_intensity: f32,
 }
 
 impl Default for AtmosphereComponent {
@@ -215,6 +256,21 @@ impl AtmosphereComponent {
             cloud_cirrus_km: row.cloud_cirrus_height,
             cloud_evolution: row.cloud_evolution,
             cloud_seed: row.cloud_seed,
+            night_sky_enabled: row.night_sky_enabled != 0,
+            star_count: row.star_count,
+            star_brightness: row.star_brightness,
+            star_twinkle_fraction: row.star_twinkle_fraction,
+            star_twinkle_speed: row.star_twinkle_speed,
+            star_seed: row.star_seed,
+            shooting_stars_enabled: row.shooting_stars_enabled != 0,
+            shooting_star_rate: row.shooting_star_rate,
+            shooting_star_speed: row.shooting_star_speed,
+            shooting_star_length: row.shooting_star_length,
+            moon_enabled: row.moon_enabled != 0,
+            moon_phase: row.moon_phase,
+            moon_brightness: row.moon_brightness,
+            moon_angular_radius_deg: row.moon_angular_radius.to_degrees(),
+            moonlight_intensity: row.moonlight_intensity,
         }
     }
 
@@ -281,6 +337,22 @@ impl AtmosphereComponent {
             top_radius: bottom + self.thickness_km.max(0.001),
             sun_angular_radius: self.sun_angular_radius_deg.to_radians(),
             enabled: u32::from(self.enabled),
+            night_sky_enabled: u32::from(self.night_sky_enabled),
+            star_count: self.star_count.clamp(0.0, 20000.0),
+            star_brightness: self.star_brightness.max(0.0),
+            star_twinkle_fraction: self.star_twinkle_fraction.clamp(0.0, 1.0),
+            star_twinkle_speed: self.star_twinkle_speed.max(0.0),
+            star_seed: self.star_seed,
+            shooting_stars_enabled: u32::from(self.shooting_stars_enabled),
+            shooting_star_rate: self.shooting_star_rate.max(0.0),
+            shooting_star_speed: self.shooting_star_speed.max(0.05),
+            shooting_star_length: self.shooting_star_length.clamp(0.005, 0.2),
+            moon_enabled: u32::from(self.moon_enabled),
+            moon_phase: self.moon_phase.clamp(0.0, 1.0),
+            moon_brightness: self.moon_brightness.max(0.0),
+            moon_angular_radius: self.moon_angular_radius_deg.to_radians().clamp(0.001, 0.035),
+            moonlight_intensity: self.moonlight_intensity.clamp(0.0, 0.2),
+            night_reserved: 0.0,
             ..AtmosphereRow::earth()
         }
         .with_clouds(self.cloud_layer());

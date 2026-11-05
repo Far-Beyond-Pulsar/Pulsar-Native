@@ -104,7 +104,7 @@ fn resolve() {
     let phase = fract(frame.cloud_groups_offset.w + resolve_input.clock.x * max(params.cloud_evolution, 0.0) / WEATHER_PERIOD_S);
     frame.cloud_groups_offset = vec4<f32>(fract(frame.cloud_groups_offset.xyz - drift / max(params.cloud_weather_scale, 1e-3)), phase);
     let meso = drift / max(params.cloud_mesoscale_scale, 1e-3);
-    frame.cloud_meso_offset = vec4<f32>(fract(frame.cloud_meso_offset.xyz - CLOUD_MESO_TURN_A * meso), 0.0);
+    frame.cloud_meso_offset = vec4<f32>(fract(frame.cloud_meso_offset.xyz - CLOUD_MESO_TURN_A * meso), frame.cloud_meso_offset.w + resolve_input.clock.x);
     frame.cloud_meso_fine_offset = vec4<f32>(fract(frame.cloud_meso_fine_offset.xyz - CLOUD_MESO_TURN_B * (meso * CLOUD_MESO_RATIO)), 0.0);
     frame.cloud_shape_offset = vec4<f32>(fract(frame.cloud_shape_offset.xyz - drift / max(params.cloud_shape_scale, 1e-3)), 0.0);
     frame.cloud_detail_offset = vec4<f32>(fract(frame.cloud_detail_offset.xyz - drift / max(params.cloud_detail_scale, 1e-3)), 0.0);
@@ -301,6 +301,25 @@ fn irradiance_kernel(@builtin(local_invocation_index) li: u32) {
         var sum = vec3<f32>(0.0);
         for (var t = 0u; t < 64u; t++) { sum += partial[t][c]; }
         frame.irradiance[c] = vec4<f32>(sum * weight * band[c] * frame.sun_illuminance.rgb, 0.0);
+    }
+    // Approximate moonlight as a directional source projected into the same
+    // diffuse SH used by deferred lighting. This keeps the surface response
+    // consistent with the moon drawn in the sky composite.
+    let p = frame.params;
+    if p.night_sky_enabled != 0u && p.moon_enabled != 0u
+        && dot(frame.sun.xyz, vec3<f32>(0.0, 1.0, 0.0)) < 0.0 {
+        let sun = normalize(frame.sun.xyz);
+        let tangent = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), sun) + vec3<f32>(0.001, 0.0, 0.0));
+        let angle = clamp(p.moon_phase, 0.0, 1.0) * ATMOSPHERE_PI;
+        let moon = normalize(sun * cos(angle) + tangent * sin(angle));
+        let energy = frame.sun_illuminance.rgb * p.moonlight_intensity * mix(0.12, 1.0, clamp(p.moon_phase, 0.0, 1.0));
+        let y = array<f32, 9>(0.282095, 0.488603 * moon.y, 0.488603 * moon.z, 0.488603 * moon.x,
+            1.092548 * moon.x * moon.y, 1.092548 * moon.y * moon.z,
+            0.315392 * (3.0 * moon.z * moon.z - 1.0), 1.092548 * moon.x * moon.z,
+            0.546274 * (moon.x * moon.x - moon.y * moon.y));
+        for (var c = 0u; c < 9u; c++) {
+            frame.irradiance[c].rgb += energy * y[c] * band[c] / ATMOSPHERE_PI;
+        }
     }
 }
 

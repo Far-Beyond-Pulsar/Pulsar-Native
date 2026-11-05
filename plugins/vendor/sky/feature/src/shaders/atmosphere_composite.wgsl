@@ -28,6 +28,7 @@
 @group(0) @binding(7) var multi_scattering_lut: texture_2d<f32>;
 @group(0) @binding(8) var cloud_color: texture_2d<f32>;
 @group(0) @binding(9) var cloud_depth: texture_2d<f32>;
+@group(0) @binding(10) var moon_albedo: texture_2d<f32>;
 
 // A cloud footprint reaching the sky (`cloud_trace.wgsl`), km.
 const CLOUD_UNLIMITED: f32 = 60000.0;
@@ -114,6 +115,94 @@ fn clouds_in_front(uv: vec2<f32>, distance: f32) -> vec4<f32> {
     return unmatched;
 }
 
+fn hash2(p: vec2<f32>, seed: u32) -> vec3<f32> {
+    let h = vec3<f32>(
+        dot(p, vec2<f32>(127.1, 311.7)) + f32(seed) * 0.013,
+        dot(p, vec2<f32>(269.5, 183.3)) + f32(seed) * 0.017,
+        dot(p, vec2<f32>(419.2, 371.9)) + f32(seed) * 0.019);
+    return fract(sin(h) * 43758.5453);
+}
+
+fn night_radiance(d: vec3<f32>) -> vec3<f32> {
+    let p = frame.params;
+    if p.night_sky_enabled == 0u || dot(d, vec3<f32>(0.0, 1.0, 0.0)) < -0.02 {
+        return vec3<f32>(0.0);
+    }
+    let count = clamp(p.star_count, 0.0, 20000.0);
+    let gx = max(sqrt(max(count, 1.0) * 12.56637), 1.0);
+    let gy = gx * 0.5;
+    let lon = atan2(d.x, d.z) / (2.0 * ATMOSPHERE_PI) + 0.5;
+    let lat = asin(clamp(d.y, -1.0, 1.0)) / ATMOSPHERE_PI + 0.5;
+    let cell = vec2<f32>(gx, gy);
+    let q = vec2<f32>(lon, lat) * cell;
+    let base = floor(q);
+    let cell_uv = fract(q);
+    var result = vec3<f32>(0.0);
+    let occupancy = clamp(count / max(gx * gy, 1.0), 0.0, 1.0);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let id = base + vec2<f32>(f32(x), f32(y));
+            let h = hash2(id, p.star_seed);
+            if h.z > occupancy { continue; }
+            let jitter = h.xy;
+            let delta = (vec2<f32>(f32(x), f32(y)) + jitter - cell_uv) / cell;
+            let angular = length(vec2<f32>(delta.x * 6.2831853 * cos((lat - 0.5) * 3.14159265), delta.y * 3.14159265));
+            let radius = mix(0.00016, 0.00072, pow(h.y, 3.0));
+            if angular >= radius { continue; }
+            let twinkle = select(1.0, 0.58 + 0.42 * sin(frame.cloud_meso_offset.w * p.star_twinkle_speed * (1.5 + h.x * 3.0) + h.z * 6.2831853), h.x < p.star_twinkle_fraction);
+            let core = 1.0 - smoothstep(radius * 0.12, radius, angular);
+            let halo = exp(-angular * angular / max(radius * radius * 4.0, 1e-9)) * 0.22;
+            let temperature = mix(vec3<f32>(0.62, 0.76, 1.0), vec3<f32>(1.0, 0.82, 0.62), h.z);
+            result += temperature * (core + halo) * twinkle * p.star_brightness * mix(0.35, 1.0, h.y);
+        }
+    }
+    if p.shooting_stars_enabled != 0u && p.shooting_star_rate > 0.0 {
+        let period = 60.0 / max(p.shooting_star_rate, 0.001);
+        let slot = floor(frame.cloud_meso_offset.w / period);
+        let age = frame.cloud_meso_offset.w - slot * period;
+        let event = hash2(vec2<f32>(slot, 31.7), p.star_seed + 991u);
+        let start_lon = event.x * 6.2831853;
+        let start_lat = (event.y * 0.8 + 0.1) * 1.15;
+        let start = vec3<f32>(cos(start_lat) * sin(start_lon), sin(start_lat), cos(start_lat) * cos(start_lon));
+        let side = normalize(cross(start, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(0.001, 0.0, 0.0));
+        let travel = min(p.shooting_star_speed * age * 0.1, p.shooting_star_length);
+        let center = normalize(start + side * travel);
+        let along = dot(d - center, side);
+        let across = length(d - center - side * along);
+        let active = select(1.0, 0.0, age > 0.6 / max(p.shooting_star_speed, 0.05));
+        let trail = smoothstep(-p.shooting_star_length, -p.shooting_star_length * 0.65, along)
+            * (1.0 - smoothstep(-0.02, 0.0, along))
+            * exp(-across * across / 0.000008) * active;
+        let head = exp(-dot(d - center, d - center) / 0.000012) * active;
+        result += vec3<f32>(0.58, 0.76, 1.0) * (trail * 24.0 + head * 70.0);
+    }
+    return result;
+}
+
+fn moon_radiance(d: vec3<f32>) -> vec3<f32> {
+    let p = frame.params;
+    if p.night_sky_enabled == 0u || p.moon_enabled == 0u || dot(frame.sun.xyz, vec3<f32>(0.0, 1.0, 0.0)) >= 0.0 { return vec3<f32>(0.0); }
+    let sun = normalize(frame.sun.xyz);
+    let tangent = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), sun) + vec3<f32>(0.001, 0.0, 0.0));
+    let phase_angle = clamp(p.moon_phase, 0.0, 1.0) * ATMOSPHERE_PI;
+    let moon = normalize(sun * cos(phase_angle) + tangent * sin(phase_angle));
+    let right = normalize(cross(moon, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(0.001, 0.0, 0.0));
+    let up = normalize(cross(right, moon));
+    let radius = max(p.moon_angular_radius, 0.001);
+    let x = dot(d, right) / sin(radius);
+    let y = dot(d, up) / sin(radius);
+    let r2 = x * x + y * y;
+    if r2 > 1.0 || dot(d, moon) < cos(radius) { return vec3<f32>(0.0); }
+    let z = sqrt(max(1.0 - r2, 0.0));
+    let normal = normalize(right * x + up * y + moon * z);
+    let uv = vec2<f32>(atan2(x, z) / (2.0 * ATMOSPHERE_PI) + 0.5, 0.5 - asin(clamp(y, -1.0, 1.0)) / ATMOSPHERE_PI);
+    let albedo = textureSampleLevel(moon_albedo, lut_sampler, uv, 0.0).rgb;
+    let sunlight = max(dot(normal, sun), 0.0);
+    let phase_fill = mix(0.12, 1.0, clamp(p.moon_phase, 0.0, 1.0));
+    let earthshine = (1.0 - sunlight) * (1.0 - phase_fill) * 0.035;
+    return albedo * (sunlight * phase_fill + earthshine) * p.moon_brightness;
+}
+
 @fragment
 fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     if frame.planet.w < 0.5 { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
@@ -149,6 +238,9 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
             let edge = clamp((cos_sun - frame.sun.w) / max(1.0 - frame.sun.w, 1e-7), 0.0, 1.0);
             let limb = 0.4 + 0.6 * sqrt(edge);
             radiance += sun / solid_angle * limb * through;
+        }
+        if dot(frame.sun.xyz, vec3<f32>(0.0, 1.0, 0.0)) < 0.0 {
+            radiance += night_radiance(d) + moon_radiance(d);
         }
         let clouds = clouds_in_front(in.uv, CLOUD_UNLIMITED);
         return vec4<f32>(radiance * (1.0 - clouds.a) + clouds.rgb, 0.0);
