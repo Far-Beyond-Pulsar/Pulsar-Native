@@ -4,6 +4,7 @@
 //!use atmosphere
 //!use water_sky
 //!use water_query
+//!use water_lights
 //
 // Water surface — above-water and underwater views.
 //
@@ -72,6 +73,7 @@ struct OceanPhase { patches: array<vec4f, 4> }
 @group(0) @binding(25) var<uniform> atmosphere: AtmosphereFrame;
 @group(0) @binding(26) var<uniform> atmosphere_sky_table: array<vec4<f32>, 2304>;
 @group(0) @binding(27) var sky_view_lut: texture_2d<f32>;
+@group(0) @binding(28) var<storage, read> water_lights: array<WaterLight>;
 fn water_sky_lut(uv: vec2f) -> vec3f {
     return textureSampleLevel(sky_view_lut, shared_samp, uv, 0.0).rgb;
 }
@@ -917,6 +919,9 @@ fn fs_above(in: VertexOutput) -> vec4f {
     let foam_density = foam.density;
     let foam_normal = normalize(normal - vec3f(foam.gradient.x, 0.0, foam.gradient.y)
         * (0.03 + 0.12 * foam_density));
+    let local_lighting = water_local_lighting(
+        in.world_pos, normal, foam_normal, view_dir, alpha);
+    color += local_lighting.specular;
     let foam_ao = mix(0.45, 1.0, smoothstep(0.15, 0.75, foam.billow));
     let foam_solid = smoothstep(0.2, 0.9, foam_density * (0.55 + 0.7 * foam.billow));
     let foam_tint_mix = max(foam_solid, smoothstep(0.3, 0.9, foam.pattern) * 0.6);
@@ -928,6 +933,7 @@ fn fs_above(in: VertexOutput) -> vec4f {
     var foam_light = foam_sun * (0.15 + 0.85 * clamp(dot(foam_normal, light_dir) * 0.8 + 0.2, 0.0, 1.0))
         * mix(foam_ao, 1.0, 0.4) + foam_ambient * 1.1 * foam_ao;
     foam_light += foam_sun * pow(clamp(dot(light_dir, -view_dir), 0.0, 1.0), 4.0) * 0.4 * (1.0 - foam_solid);
+    foam_light += local_lighting.diffuse * foam_ao;
     // Zero is the legacy value of this formerly-unused lane; interpret it as
     // Ultra-Water's default brightness so older volume rows remain visible.
     let foam_brightness = select(0.85, vol.reflection_refraction.w, vol.reflection_refraction.w > 0.0);
@@ -999,7 +1005,10 @@ fn fs_under(in: VertexOutput) -> vec4f {
     below_color *= max(vol.water_color.rgb, vec3f(0.02));
 
     let escape_factor = select(0.0, 1.0, escapes);
-    return vec4f(mix(below_color, above_color, (1.0 - fresnel) * escape_factor), 1.0);
+    let local_lighting = water_local_lighting(
+        in.world_pos, normal, normal, view_dir, alpha);
+    return vec4f(mix(below_color, above_color, (1.0 - fresnel) * escape_factor)
+        + local_lighting.specular, 1.0);
 }
 
 // ── Combined entry point ─────────────────────────────────────────────────────
