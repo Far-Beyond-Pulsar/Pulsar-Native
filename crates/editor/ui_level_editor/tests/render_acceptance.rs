@@ -3964,8 +3964,7 @@ mod plugin_kinds {
     pub mod sky {
         use installed_plugins::sky_component::{level_atmosphere, AtmosphereComponent};
         use ui_level_editor::commands::{CommandResult, TypedComponent};
-        use ui_level_editor::extend::{add_object, level_component, LevelComponent};
-        use ui_level_editor::scene_edit::{ObjectType, Transform};
+        use ui_level_editor::extend::{level_component, LevelComponent};
         use ui_level_editor::LevelEditorState;
 
         pub const SKY_OBJECT_NAME: &str = "Sky";
@@ -3975,23 +3974,49 @@ mod plugin_kinds {
         }
 
         pub fn create_sky(state: &mut LevelEditorState) -> CommandResult {
-            add_object(
+            super::add_unselected(
                 state,
                 SKY_OBJECT_NAME,
-                ObjectType::Empty,
-                Transform::default(),
                 vec![TypedComponent::new(AtmosphereComponent::default())],
             )
         }
     }
 
     pub fn create_wind(state: &mut LevelEditorState) -> CommandResult {
-        add_object(
+        add_unselected(
             state,
             "Wind",
-            ObjectType::Empty,
-            Transform::default(),
             vec![TypedComponent::new(WindComponent::default())],
+        )
+    }
+
+    /// An object holding `components`, added as one undoable command and
+    /// not selected (what the World Settings' create buttons did here).
+    fn add_unselected(
+        state: &mut LevelEditorState,
+        name: &str,
+        components: Vec<TypedComponent>,
+    ) -> CommandResult {
+        use ui_level_editor::commands::{execute_command, SceneCommand};
+        execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: ui_level_editor::SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components,
+            },
         )
     }
 
