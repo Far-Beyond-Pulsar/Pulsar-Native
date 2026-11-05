@@ -162,7 +162,7 @@ fn night_radiance(d: vec3<f32>) -> vec3<f32> {
         let age = frame.cloud_meso_offset.w - slot * period;
         let event = hash2(vec2<f32>(slot, 31.7), p.star_seed + 991u);
         let start_lon = event.x * 6.2831853;
-        let start_lat = (event.y * 0.8 + 0.1) * 1.15;
+        let start_lat = (event.y - 0.5) * 2.3;
         let start = vec3<f32>(cos(start_lat) * sin(start_lon), sin(start_lat), cos(start_lat) * cos(start_lon));
         let side = normalize(cross(start, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(0.001, 0.0, 0.0));
         let travel = min(p.shooting_star_speed * age * 0.1, p.shooting_star_length);
