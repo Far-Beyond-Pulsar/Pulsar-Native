@@ -161,7 +161,7 @@ pub struct AtmosphereComponent {
     /// Which weather: each seed lays out other systems.
     #[property(min = 0.0, max = 65535.0, step = 1.0, category = "Weather")]
     pub cloud_seed: u32,
-    /// Draw stars and the moon while the directional light is below the horizon.
+    /// Draw stars and textured directional emitters while the sun is below the horizon.
     #[property(category = "Night Sky")]
     pub night_sky_enabled: bool,
     /// Approximate number of stars over the full sky.
@@ -186,19 +186,6 @@ pub struct AtmosphereComponent {
     /// Apparent trail length in radians.
     #[property(min = 0.005, max = 0.2, step = 0.005, category = "Shooting Stars")]
     pub shooting_star_length: f32,
-    #[property(category = "Moon")]
-    pub moon_enabled: bool,
-    /// 0 = new moon, 1 = full moon.
-    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Moon")]
-    pub moon_phase: f32,
-    #[property(min = 0.0, max = 100.0, step = 0.1, category = "Moon")]
-    pub moon_brightness: f32,
-    /// Apparent angular radius in degrees.
-    #[property(min = 0.1, max = 2.0, step = 0.01, category = "Moon")]
-    pub moon_angular_radius_deg: f32,
-    /// Diffuse surface illumination relative to sunlight.
-    #[property(min = 0.0, max = 0.2, step = 0.001, category = "Moon")]
-    pub moonlight_intensity: f32,
 }
 
 impl Default for AtmosphereComponent {
@@ -266,11 +253,6 @@ impl AtmosphereComponent {
             shooting_star_rate: row.shooting_star_rate,
             shooting_star_speed: row.shooting_star_speed,
             shooting_star_length: row.shooting_star_length,
-            moon_enabled: row.moon_enabled != 0,
-            moon_phase: row.moon_phase,
-            moon_brightness: row.moon_brightness,
-            moon_angular_radius_deg: row.moon_angular_radius.to_degrees(),
-            moonlight_intensity: row.moonlight_intensity,
         }
     }
 
@@ -347,14 +329,13 @@ impl AtmosphereComponent {
             shooting_star_rate: self.shooting_star_rate.max(0.0),
             shooting_star_speed: self.shooting_star_speed.max(0.05),
             shooting_star_length: self.shooting_star_length.clamp(0.005, 0.2),
-            moon_enabled: u32::from(self.moon_enabled),
-            moon_phase: self.moon_phase.clamp(0.0, 1.0),
-            moon_brightness: self.moon_brightness.max(0.0),
-            moon_angular_radius: self
-                .moon_angular_radius_deg
-                .to_radians()
-                .clamp(0.001, 0.035),
-            moonlight_intensity: self.moonlight_intensity.clamp(0.0, 0.2),
+            // Retired moon-specific fields stay zero for AtmosphereRow ABI
+            // compatibility. Sky emitters are authored by LightComponents.
+            moon_enabled: 0,
+            moon_phase: 0.0,
+            moon_brightness: 0.0,
+            moon_angular_radius: 0.0,
+            moonlight_intensity: 0.0,
             night_reserved: 0.0,
             ..AtmosphereRow::earth()
         }

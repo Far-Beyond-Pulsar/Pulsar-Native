@@ -23,7 +23,6 @@ const COMPONENTS: &[(&str, &str)] = &[
 const ADD_COMPONENTS: &[(&str, &str)] = &[
     ("LightComponent", "Point Light"),
     ("SpotLight", "Spot Light"),
-    ("DirectionalLight", "Directional Light"),
     ("GlobalFogComponent", "Global Fog"),
     ("LocalFogVolumeComponent", "Local Fog Volume"),
     ("PostProcessVolumeComponent", "Post Process"),
@@ -67,10 +66,6 @@ impl super::WorldSettingsPanelImpl {
         cx: &mut Context<WorldSettingsPanel>,
     ) -> AnyElement {
         let state = self.state.clone();
-        let has_sun = !engine_backend::scene::level_rules::directional_lights(
-            &self.state.read().scene.world(),
-        )
-        .is_empty();
         let presets = crate::scene_edit::environment::EnvironmentPreset::ALL
             .into_iter()
             .map(|preset| {
@@ -112,7 +107,6 @@ impl super::WorldSettingsPanelImpl {
                                     .label(format!("+ {label}"))
                                     .small()
                                     .ghost()
-                                    .disabled(class_name == "DirectionalLight" && has_sun)
                                     .on_click(cx.listener(move |panel, _event, _window, cx| {
                                         let result =
                                             crate::scene_edit::environment::create_component(
