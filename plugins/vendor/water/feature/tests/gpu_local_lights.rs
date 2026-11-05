@@ -27,7 +27,12 @@ const HELIO_PI: f32 = 3.14159265359;
 fn main() {
     let lit = water_local_lighting(vec3f(0.0), vec3f(0.0, 1.0, 0.0),
         vec3f(0.0, 1.0, 0.0), vec3f(0.0, -1.0, 0.0), 0.1);
-    output[0] = vec4f(lit.specular, 0.0);
+    let surface = water_hdr_color(vec4f(lit.specular, 1.0));
+    // Match the half-float surface target, where finite f32 highlights can
+    // otherwise overflow before post-processing ever sees them.
+    let rg = unpack2x16float(pack2x16float(surface.rg));
+    let ba = unpack2x16float(pack2x16float(surface.ba));
+    output[0] = vec4f(rg, ba.x, 0.0);
     output[1] = vec4f(lit.diffuse, 0.0);
 }
 "#
@@ -146,6 +151,13 @@ fn main() {
         assert!(
             evaluate(point).iter().all(|v| v.is_finite()),
             "coincident light must remain finite"
+        );
+        point[1] = 0.01;
+        point[11] = 10000.0;
+        let bright = evaluate(point);
+        assert!(
+            bright[0].is_finite() && bright[0] > 1000.0,
+            "near-field highlight must survive the half-float surface target: {bright:?}"
         );
     });
 }
