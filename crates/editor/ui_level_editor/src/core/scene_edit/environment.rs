@@ -159,16 +159,17 @@ pub fn apply_preset(state: &mut LevelEditorState, preset: EnvironmentPreset) -> 
             value: Box::new(intensity),
         },
     );
-    let transform_result = execute_command(
+    let rotation_result = execute_command(
         state,
-        SceneCommand::SetTransform {
+        SceneCommand::SetComponentProperty {
             id: object_id,
-            position: None,
-            rotation: Some(rotation),
-            scale: None,
+            class_name: "LightComponent".into(),
+            component_index,
+            prop_name: "advanced.rotation_offset".into(),
+            value: Box::new(rotation),
         },
     );
-    changed |= color_result.changed || intensity_result.changed || transform_result.changed;
+    changed |= color_result.changed || intensity_result.changed || rotation_result.changed;
 
     if changed {
         CommandResult::ok(vec![])
