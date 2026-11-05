@@ -43,8 +43,8 @@ struct Resolve {
 
 const LIGHT_ROW_VEC4S: u32 = 8u;
 
-// Picks the first enabled atmosphere and the first directional light, and
-// places the planet relative to the camera.
+// Picks the first enabled atmosphere, packs the active directional lights,
+// and places the planet relative to the camera.
 @compute @workgroup_size(1)
 fn resolve() {
     frame.planet = vec4<f32>(0.0);
@@ -82,8 +82,8 @@ fn resolve() {
                 sun = toward_light;
                 has_primary_sun = true;
             }
-            illuminance += energy;
-            if directional_count < 8u {
+            if directional_count < 32u {
+                illuminance += energy;
                 let optical = lights[base + 5u];
                 let emitter = lights[base + 6u];
                 let packed = directional_count * 3u;

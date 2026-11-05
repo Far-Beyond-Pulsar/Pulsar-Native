@@ -158,10 +158,9 @@ fn light_optical_depth(c: CloudLayerParams, x: vec3<f32>, weather: vec2<f32>, fo
     return od * c.extinction;
 }
 
-// Direct illumination from every directional light row. Atmosphere.resolve
-// still chooses one primary sun for the sky LUTs, but cloud scattering is
-// summed per light so a moon directional light illuminates the cloud volume
-// with its own direction and color/intensity.
+// Direct illumination is summed for every packed directional light so a moon
+// or additional sun illuminates the cloud volume with its own direction and
+// color/intensity.
 fn cloud_directional_radiance(
     c: CloudLayerParams, x: vec3<f32>, weather: vec2<f32>, footprint: f32, view_ray: vec3<f32>,
 ) -> vec3<f32> {
