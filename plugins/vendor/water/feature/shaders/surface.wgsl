@@ -1031,8 +1031,8 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) front: bool) -> @location(0)
     // side (the top face is the front face).
     if cam_above {
         if !front { discard; }
-        return water_hdr_color(fs_above(in));
+        return fs_above(in);
     }
     if front { discard; }
-    return water_hdr_color(fs_under(in));
+    return fs_under(in);
 }

@@ -17,15 +17,6 @@ struct WaterLocalLighting {
     diffuse: vec3f,
 }
 
-// The surface target is rgba16float. Near-field lights and sun glints can
-// exceed its finite range even when all shading arithmetic is finite.
-// Saturate at the storage boundary, before AA/bloom can spread infinities.
-fn water_hdr_color(color: vec4f) -> vec4f {
-    let magnitude = bitcast<vec3u>(color.rgb) & vec3u(0x7fffffffu);
-    let clean = select(color.rgb, vec3f(0.0), magnitude > vec3u(0x7f800000u));
-    return vec4f(clamp(clean, vec3f(0.0), vec3f(65504.0)), color.a);
-}
-
 fn water_local_lighting(
     world_pos: vec3f, normal: vec3f, foam_normal: vec3f,
     view_dir: vec3f, alpha: f32,
