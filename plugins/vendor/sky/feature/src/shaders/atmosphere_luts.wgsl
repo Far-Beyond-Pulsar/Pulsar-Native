@@ -253,8 +253,8 @@ fn sky_view_kernel(@builtin(global_invocation_id) id: vec3<u32>) {
     textureStore(sky_view_out, vec2<i32>(id.xy), vec4<f32>(radiance, 1.0));
 }
 
-// Aerial perspective: per froxel column, in-scattered radiance (unit sun)
-// and mean transmittance from the camera to each slice's distance.
+// Aerial perspective: per froxel column, summed in-scattered radiance from
+// all directional lights and mean transmittance to each slice's distance.
 @compute @workgroup_size(8, 8)
 fn aerial_kernel(@builtin(global_invocation_id) id: vec3<u32>) {
     if !atmosphere_active() || any(vec2<f32>(id.xy) >= vec2<f32>(AERIAL_SLICES)) { return; }
