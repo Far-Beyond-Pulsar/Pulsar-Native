@@ -18,6 +18,11 @@ pub const WATER_SKY_SNIPPET: helio_core::shader::ShaderSnippet = helio_core::wgs
     "../shaders/water_sky.wgsl"
 );
 
+pub const WATER_LIGHTS_SNIPPET: helio_core::shader::ShaderSnippet = helio_core::wgsl_snippet!(
+    "//!use water_lights",
+    "../shaders/water_lights.wgsl"
+);
+
 fn storage_read_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -803,6 +808,7 @@ impl WaterSimPass {
                     wgpu::TextureSampleType::Float { filterable: true },
                     wgpu::TextureViewDimension::D2,
                 ),
+                storage_read_entry(28),
             ],
         });
         let fallback_sky_view_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -818,6 +824,12 @@ impl WaterSimPass {
         let fallback_sky_view =
             fallback_sky_view_tex.create_view(&wgpu::TextureViewDescriptor::default());
         // Bound until an atmosphere publishes (planet.w = 0: no sky).
+        let fallback_lights = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Water No Local Lights"),
+            size: 128,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
         let fallback_atmosphere = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Water No Atmosphere"),
             size: helio_frame_api::lighting::sky::ATMOSPHERE_FRAME_BYTES,
@@ -1258,6 +1270,7 @@ impl WaterSimPass {
                 WATER_SHORE_SNIPPET,
                 helio_frame_api::lighting::sky::ATMOSPHERE_SNIPPET,
                 WATER_SKY_SNIPPET,
+                WATER_LIGHTS_SNIPPET,
             ],
         );
 
@@ -1881,6 +1894,7 @@ impl WaterSimPass {
             caustics_mip_pipeline,
             caustics_sampler,
             fallback_atmosphere,
+            fallback_lights,
             fallback_sky_table,
             _fallback_sky_view_tex: fallback_sky_view_tex,
             fallback_sky_view,
