@@ -67,7 +67,7 @@ fn singleton_held(world: &World, instance: Entity) -> Option<&'static LevelSingl
 
 /// Whether an edit of a `class_name` value (a property, the whole value)
 /// can break a rule, so an editor checks it ([`check_instance`]) after the
-/// write: a light can be turned into a second directional one.
+/// write. Lights can be turned directional without a level-wide limit.
 pub fn edits_are_checked(class_name: &str) -> bool {
     class_name == "LightComponent"
 }
@@ -79,8 +79,7 @@ pub fn is_directional(light: &LightComponent) -> bool {
 }
 
 /// Every casting directional light: the enabled `LightComponent` instances
-/// whose light is enabled and directional. Never more than
-/// one in a level the editor built or the loader repaired. In level order.
+/// whose light is enabled and directional, in level order.
 pub fn directional_lights(world: &World) -> Vec<Entity> {
     let mut found: Vec<Entity> = world
         .query::<&LightComponent>()
@@ -95,7 +94,7 @@ pub fn directional_lights(world: &World) -> Vec<Entity> {
 
 /// Sort component instances in level order: their objects depth first in
 /// hierarchy order (the order a level file lists them), then each object's
-/// component list. "The first" of several is the first in this order.
+/// component list.
 pub fn sort_in_level_order(world: &World, instances: &mut [Entity]) {
     if instances.len() < 2 {
         return;
