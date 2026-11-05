@@ -292,8 +292,8 @@ impl RuntimeLevel {
         for id in &report.unresolved {
             tracing::warn!(object = %id, "Placed class instance has no class in this project");
         }
-        // One sky and one directional light per level; extras are kept but
-        // disabled, logged.
+        // Plugin singleton rules are repaired on load; directional lights
+        // are unrestricted.
         crate::scene::level_rules::enforce_on_load(world);
         // Components are hydrated now: everything that defines a space (a sublevel
         // placement is a component) gets its slot.
@@ -1124,9 +1124,7 @@ mod tests {
         );
     }
 
-    /// One directional light per level: a file with two loads with the
-    /// first casting and the second kept as authored, its instance
-    /// disabled.
+    /// Multiple directional lights retain their enabled state on load.
     #[test]
     fn a_level_with_two_directional_lights_loads_with_one() {
         use helio_component::components::LightType;
