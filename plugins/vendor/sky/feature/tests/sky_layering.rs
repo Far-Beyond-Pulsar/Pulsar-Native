@@ -23,7 +23,7 @@ fn composite_layers_the_panorama_under_the_procedural_sky() {
     let disks = COMPOSITE
         .find("radiance += directional_disk_radiance(d, through)")
         .unwrap();
-    let stars = COMPOSITE.find("radiance += night_radiance(d)").unwrap();
+    let stars = COMPOSITE.find("radiance += night_radiance(d, ").unwrap();
     assert!(
         texture < disks && disks < stars,
         "panorama, then emitter disks, then stars"
@@ -43,10 +43,9 @@ fn composite_layers_the_panorama_under_the_procedural_sky() {
 fn composite_keeps_every_directional_light() {
     for function in [
         "fn march_from_space",
-        "fn sky_is_night",
+        "fn sky_daylight",
         "fn directional_disk_radiance",
         "fn emitter_disk_radiance",
-        "fn sky_darkness",
     ] {
         assert!(
             body_of(COMPOSITE, function).contains("directional_light_count.x"),
@@ -156,4 +155,16 @@ fn builtin_presets_decode_and_the_combination_is_brighter() {
 #[test]
 fn a_missing_custom_file_is_an_error_not_a_panic() {
     assert!(decode(custom_source(Path::new("definitely/not/here.hdr"))).is_err());
+}
+
+#[test]
+fn night_follows_light_brightness_not_a_horizon_test() {
+    let daylight = body_of(COMPOSITE, "fn sky_daylight");
+    // Brightness (luminance) of every light, weighted by elevation.
+    assert!(daylight.contains("luminance"));
+    assert!(daylight.contains("daylight +="));
+    assert!(!COMPOSITE.contains("sky_is_night"));
+    // Stars and the texture share the same fade.
+    assert!(COMPOSITE.contains("night_radiance(d, "));
+    assert!(COMPOSITE.contains("* sky_darkness()"));
 }

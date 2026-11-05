@@ -343,6 +343,13 @@ impl SkyTextureCache {
         if self.loaded.as_ref().is_some_and(|l| l.code == code) {
             return &self.loaded.as_ref().expect("checked").view;
         }
+        if self.frames % 600 == 0 {
+            tracing::info!(
+                "sky texture {code:#x}: not resident yet (decoding: {}, failed: {})",
+                self.pending.is_some(),
+                self.failed.contains(&code)
+            );
+        }
         if self.failed.contains(&code) {
             return &self.fallback;
         }
@@ -359,6 +366,7 @@ impl SkyTextureCache {
         };
         match polled {
             Some((modified, Ok(Ok(image)))) => {
+                tracing::info!("sky texture {code:#x} loaded ({}x{}, {} mips)", image.width, image.height, image.mips.len());
                 self.pending = None;
                 self.loaded = Some(upload(device, queue, code, modified, &image));
             }
@@ -373,6 +381,11 @@ impl SkyTextureCache {
                 self.pending = None;
             }
             None => {
+                tracing::info!(
+                    "sky texture {code:#x}: decoding on a worker thread (built-in presets embedded: {}, file: {:?})",
+                    presets_available(),
+                    custom_path(code)
+                );
                 let (sender, receiver) = mpsc::channel();
                 std::thread::Builder::new()
                     .name("sky-texture-load".into())
@@ -455,7 +468,10 @@ static REQUESTED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::n
 /// when it derives its row (a level has one sky) and the composite pass reads
 /// it with [`requested`] to keep the right panorama resident.
 pub fn set_requested(code: u32) {
-    REQUESTED.store(code, std::sync::atomic::Ordering::Relaxed);
+    let previous = REQUESTED.swap(code, std::sync::atomic::Ordering::Relaxed);
+    if previous != code {
+        tracing::info!("sky texture requested: {previous:#x} -> {code:#x}");
+    }
 }
 
 /// The source last published with [`set_requested`].

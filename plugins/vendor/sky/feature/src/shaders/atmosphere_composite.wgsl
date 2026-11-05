@@ -129,15 +129,25 @@ fn clouds_in_front(uv: vec2<f32>, distance: f32) -> vec4<f32> {
     return unmatched;
 }
 
-fn sky_is_night() -> bool {
-    if frame.params.night_sky_enabled == 0u { return false; }
-    if frame.directional_light_count.x == 0u {
-        return frame.sun.xyz.y < 0.0;
-    }
+// How much the scene's directional lights light the day: each light's
+// luminance, scaled by how far above the horizon it stands, summed over all of
+// them. The sun (~2) is daylight; a dim moon light (0.025) is not, whether or
+// not it is up. Light below the horizon contributes nothing.
+fn sky_daylight() -> f32 {
+    var daylight = 0.0;
     for (var i = 0u; i < frame.directional_light_count.x; i++) {
-        if frame.directional_lights[i * 3u].y >= 0.0 { return false; }
+        let base = i * 3u;
+        let luminance = dot(frame.directional_lights[base + 1u].rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+        daylight += luminance * smoothstep(-0.05, 0.15, frame.directional_lights[base].y);
     }
-    return true;
+    return daylight;
+}
+
+// 1 when the lights leave the sky dark, 0 in full daylight, with a smooth
+// twilight between. The stars, shooting stars and the sky texture all fade by
+// this, so they follow the lights' brightness rather than a horizon test.
+fn sky_darkness() -> f32 {
+    return 1.0 - smoothstep(0.05, 0.6, sky_daylight());
 }
 
 fn directional_disk_radiance(d: vec3<f32>, through: vec3<f32>) -> vec3<f32> {
@@ -168,7 +178,10 @@ fn hash2(p: vec2<f32>, seed: u32) -> vec3<f32> {
     return fract(sin(h) * 43758.5453);
 }
 
-fn night_radiance(d: vec3<f32>) -> vec3<f32> {
+// `pixel_angle`: the angle one pixel spans. A star is never drawn thinner than
+// about a pixel (its light spread to match), or sampling a sub-pixel star
+// would make it blink between pixels as the camera moves.
+fn night_radiance(d: vec3<f32>, pixel_angle: f32) -> vec3<f32> {
     let p = frame.params;
     if p.night_sky_enabled == 0u || dot(d, vec3<f32>(0.0, 1.0, 0.0)) < -0.02 {
         return vec3<f32>(0.0);
@@ -192,13 +205,15 @@ fn night_radiance(d: vec3<f32>) -> vec3<f32> {
             let jitter = h.xy;
             let delta = (vec2<f32>(f32(x), f32(y)) + jitter - cell_uv) / cell;
             let angular = length(vec2<f32>(delta.x * 6.2831853 * cos((lat - 0.5) * 3.14159265), delta.y * 3.14159265));
-            let radius = mix(0.00016, 0.00072, pow(h.y, 3.0));
+            let true_radius = mix(0.00016, 0.00072, pow(h.y, 3.0));
+            let radius = max(true_radius, pixel_angle * 0.9);
+            let spread = (true_radius * true_radius) / (radius * radius);
             if angular >= radius { continue; }
             let twinkle = select(1.0, 0.58 + 0.42 * sin(frame.cloud_meso_offset.w * p.star_twinkle_speed * (1.5 + h.x * 3.0) + h.z * 6.2831853), h.x < p.star_twinkle_fraction);
             let core = 1.0 - smoothstep(radius * 0.12, radius, angular);
             let halo = exp(-angular * angular / max(radius * radius * 4.0, 1e-9)) * 0.22;
             let temperature = mix(vec3<f32>(0.62, 0.76, 1.0), vec3<f32>(1.0, 0.82, 0.62), h.z);
-            result += temperature * (core + halo) * twinkle * p.star_brightness * mix(0.35, 1.0, h.y);
+            result += temperature * (core + halo) * twinkle * p.star_brightness * mix(0.35, 1.0, h.y) * spread;
         }
     }
     if p.shooting_stars_enabled != 0u && p.shooting_star_rate > 0.0 {
@@ -238,20 +253,6 @@ fn sky_texture_rotation() -> mat3x3<f32> {
     let rx = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, cx, sx), vec3<f32>(0.0, -sx, cx));
     let rz = mat3x3<f32>(vec3<f32>(cz, sz, 0.0), vec3<f32>(-sz, cz, 0.0), vec3<f32>(0.0, 0.0, 1.0));
     return ry * rx * rz;
-}
-
-// 1 in the dark, 0 in daylight: the panorama is a night-sky layer and fades
-// out as the highest directional light climbs through twilight. It does not
-// depend on `night_sky_enabled`, which gates only the procedural stars.
-fn sky_darkness() -> f32 {
-    var highest = frame.sun.xyz.y;
-    if frame.directional_light_count.x > 0u {
-        highest = -1.0;
-        for (var i = 0u; i < frame.directional_light_count.x; i++) {
-            highest = max(highest, frame.directional_lights[i * 3u].y);
-        }
-    }
-    return 1.0 - smoothstep(-0.20, 0.06, highest);
 }
 
 // The sky texture layer along `d` (before the air in front of it): the
@@ -352,8 +353,11 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
             radiance += directional_disk_radiance(d, through);
             radiance += emitter_disk_radiance(d) * through;
         }
-        if sky_is_night() {
-            radiance += night_radiance(d);
+        // Procedural stars fade by the lights' brightness (they are gated by
+        // `night_sky_enabled` inside), independent of the sky texture.
+        let darkness = sky_darkness();
+        if darkness > 0.001 {
+            radiance += night_radiance(d, abs(2.0 / (camera.proj[1][1] * f32(textureDimensions(depth_texture).y)))) * darkness;
         }
         let clouds = clouds_in_front(in.uv, CLOUD_UNLIMITED);
         return vec4<f32>(radiance * (1.0 - clouds.a) + clouds.rgb, 0.0);

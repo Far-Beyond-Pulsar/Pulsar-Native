@@ -66,6 +66,13 @@ fn atmosphere_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_n
     // SAFETY: SceneDB reaches this only through the authored component's own
     // `ComponentId`, with a pointer to a live value.
     let authored = unsafe { &*(data as *const AtmosphereComponent) };
+    // The pass reads the row on the GPU; the CPU needs the sky texture to keep
+    // resident (a level has one sky), so announce it alongside the row.
+    helio_pass_sky::sky_texture::set_requested(if authored.enabled {
+        authored.sky_texture_source()
+    } else {
+        helio_pass_sky::sky_texture::source::NONE
+    });
     pulsar_scenedb::gpu::write_derived_row(
         mirror,
         row,
@@ -75,6 +82,7 @@ fn atmosphere_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_n
 }
 
 fn atmosphere_clear(mirror: &GpuMirrorHandle, row: u32) {
+    helio_pass_sky::sky_texture::set_requested(helio_pass_sky::sky_texture::source::NONE);
     pulsar_scenedb::gpu::clear_derived_row::<AtmosphereSourceRow>(mirror, row);
 }
 
