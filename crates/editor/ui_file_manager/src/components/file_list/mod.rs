@@ -719,9 +719,13 @@ pub fn render_grid_view(
                                         .map(|off| {
                                             let idx = s + off;
                                             if idx < e && tiles {
+                                                // Keep column widths independent of each tile's
+                                                // text and of the other items in this row.
                                                 div()
                                                     .w(px(cw))
                                                     .h(px(CH))
+                                                    .flex_none()
+                                                    .min_w_0()
                                                     .child(render_list_item(
                                                         this,
                                                         &items[idx],
@@ -738,6 +742,7 @@ pub fn render_grid_view(
                                                 div()
                                                     .w(px(cw))
                                                     .h(px(CH))
+                                                    .flex_none()
                                                     .invisible()
                                                     .into_any_element()
                                             }
@@ -894,6 +899,7 @@ pub fn render_grid_item(
     div()
         .w(px(cw))
         .h(px(144.0))
+        .flex_none()
         .rounded_lg()
         .overflow_hidden()
         .border_1()
@@ -1394,10 +1400,7 @@ pub fn render_list_item(
             div().flex_1().min_w_0().child(name).into_any_element()
         }
     };
-    let columns = matches!(
-        mode,
-        ViewMode::List | ViewMode::Details | ViewMode::Compact
-    );
+    let columns = matches!(mode, ViewMode::List | ViewMode::Details | ViewMode::Compact);
     row.child(
         div()
             .w(px(box_px))

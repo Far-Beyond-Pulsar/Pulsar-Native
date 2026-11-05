@@ -28,6 +28,30 @@ fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     Some((Arc::new(device), Arc::new(queue)))
 }
 
+#[test]
+fn billboard_aspect_fit_shader_and_texture_bindings_validate() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let camera = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Billboard test cameras"),
+        size: 368 * 2,
+        usage: wgpu::BufferUsages::STORAGE,
+        mapped_at_creation: false,
+    });
+    // A non-square source exercises the vertex-stage texture dimensions
+    // binding used by aspect fitting as well as shader/pipeline validation.
+    let _pass = helio_pass_billboard::BillboardPass::new_with_sprite_rgba(
+        &device,
+        &queue,
+        &camera,
+        wgpu::TextureFormat::Rgba16Float,
+        &[255; 8 * 4 * 4],
+        8,
+        4,
+    );
+}
+
 /// A two-triangle mesh in two material sections.
 fn mesh(movability: ObjectMovability) -> StaticMeshComponent {
     let vertex = |x: f32, y: f32| helio_mesh_api::PackedVertex {
