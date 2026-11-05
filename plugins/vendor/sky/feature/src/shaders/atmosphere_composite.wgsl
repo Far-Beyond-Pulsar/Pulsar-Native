@@ -169,11 +169,11 @@ fn night_radiance(d: vec3<f32>) -> vec3<f32> {
         let center = normalize(start + side * travel);
         let along = dot(d - center, side);
         let across = length(d - center - side * along);
-        let active = select(1.0, 0.0, age > 0.6 / max(p.shooting_star_speed, 0.05));
+        let event_live = select(1.0, 0.0, age > 0.6 / max(p.shooting_star_speed, 0.05));
         let trail = smoothstep(-p.shooting_star_length, -p.shooting_star_length * 0.65, along)
             * (1.0 - smoothstep(-0.02, 0.0, along))
-            * exp(-across * across / 0.000008) * active;
-        let head = exp(-dot(d - center, d - center) / 0.000012) * active;
+            * exp(-across * across / 0.000008) * event_live;
+        let head = exp(-dot(d - center, d - center) / 0.000012) * event_live;
         result += vec3<f32>(0.58, 0.76, 1.0) * (trail * 24.0 + head * 70.0);
     }
     return result;
