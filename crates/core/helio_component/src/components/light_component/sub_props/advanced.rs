@@ -11,6 +11,10 @@ pub struct AdvancedLightProps {
     /// inheriting the object's world rotation.
     #[property(category = "Advanced")]
     pub rotation_offset: [f32; 3],
+    /// Prefer this directional light for atmosphere, water, and other systems
+    /// that need one primary sky light. Other directional lights still render.
+    #[property(category = "Advanced")]
+    pub primary_atmosphere_light: bool,
     #[property(category = "Advanced")]
     pub affects_translucency: bool,
     #[property(category = "Advanced")]
@@ -27,6 +31,7 @@ impl Default for AdvancedLightProps {
     fn default() -> Self {
         Self {
             rotation_offset: [0.0; 3],
+            primary_atmosphere_light: false,
             affects_translucency: true,
             affects_reflections: true,
             affects_global_illumination: true,
@@ -46,6 +51,12 @@ impl AdvancedLightProps {
                 arr[1].as_f64().unwrap_or(0.0) as f32,
                 arr[2].as_f64().unwrap_or(0.0) as f32,
             ];
+        }
+        if let Some(v) = obj
+            .get("primary_atmosphere_light")
+            .and_then(|v| v.as_bool())
+        {
+            self.primary_atmosphere_light = v;
         }
         if let Some(v) = obj.get("affects_translucency").and_then(|v| v.as_bool()) {
             self.affects_translucency = v;

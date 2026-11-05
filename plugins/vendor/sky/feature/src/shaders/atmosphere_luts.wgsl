@@ -69,6 +69,7 @@ fn resolve() {
     var illuminance = vec3<f32>(0.0);
     var has_primary_sun = false;
     var directional_count = 0u;
+    var has_preferred_sun = false;
     let rows = arrayLength(&lights) / LIGHT_ROW_VEC4S;
     for (var i = 0u; i < rows; i++) {
         let base = i * LIGHT_ROW_VEC4S;
@@ -82,6 +83,13 @@ fn resolve() {
                 sun = toward_light;
                 illuminance = energy;
                 has_primary_sun = true;
+            }
+            let primary_marker = (bitcast<u32>(lights[base + 3u].w) & 0x40000000u) != 0u;
+            if primary_marker && !has_preferred_sun {
+                sun = toward_light;
+                illuminance = energy;
+                has_primary_sun = true;
+                has_preferred_sun = true;
             }
             if directional_count < 8u {
                 let optical = lights[base + 5u];
