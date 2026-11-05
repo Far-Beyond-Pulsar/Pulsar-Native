@@ -77,8 +77,9 @@ fn close(a: [f32; 2], b: [f32; 2]) -> bool {
 fn equirect_mapping_covers_the_whole_sky() {
     let id = rotation(0.0, 0.0, 0.0);
     assert!(close(direction_to_uv(id, [0.0, 0.0, -1.0]), [0.5, 0.5]));
-    assert!(close(direction_to_uv(id, [0.0, 1.0, 0.0]), [0.5, 0.0]));
-    assert!(close(direction_to_uv(id, [0.0, -1.0, 0.0]), [0.5, 1.0]));
+    // u is arbitrary at the poles; only the row matters there.
+    assert!(direction_to_uv(id, [0.0, 1.0, 0.0])[1].abs() < 1e-4);
+    assert!((direction_to_uv(id, [0.0, -1.0, 0.0])[1] - 1.0).abs() < 1e-4);
     assert!(close(direction_to_uv(id, [1.0, 0.0, 0.0]), [0.75, 0.5]));
     assert!(close(direction_to_uv(id, [-1.0, 0.0, 0.0]), [0.25, 0.5]));
 }
