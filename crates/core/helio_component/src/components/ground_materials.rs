@@ -14,6 +14,9 @@ use ui::input::{Input, InputEvent, InputState};
 /// Names of ground materials, registered by the plugin whose ground has
 /// them (`inventory::submit!`).
 pub struct GroundMaterialNames {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     /// The name of material `id`, if this registration names it.
     pub name: fn(u32) -> Option<&'static str>,
     /// The material a word names, if this registration knows it.
@@ -22,18 +25,20 @@ pub struct GroundMaterialNames {
 
 inventory::collect!(GroundMaterialNames);
 
+impl pulsar_plugins::Registration for GroundMaterialNames {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
 /// The registered name of ground material `id`.
 pub fn ground_material_name(id: u32) -> Option<&'static str> {
-    inventory::iter::<GroundMaterialNames>
-        .into_iter()
-        .find_map(|names| (names.name)(id))
+    pulsar_plugins::registered::<GroundMaterialNames>().find_map(|names| (names.name)(id))
 }
 
 /// The ground material a registered name stands for.
 pub fn ground_material_id(word: &str) -> Option<u32> {
-    inventory::iter::<GroundMaterialNames>
-        .into_iter()
-        .find_map(|names| (names.id)(word))
+    pulsar_plugins::registered::<GroundMaterialNames>().find_map(|names| (names.id)(word))
 }
 
 /// Ground material ids, edited as a line of names or ids. Serialized as the

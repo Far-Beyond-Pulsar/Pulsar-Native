@@ -1,0 +1,15 @@
+# The `pulsar.foliage` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its kind is absent (see
+# crates/core/pulsar_plugins). The runtime module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.foliage"
+name = "Foliage"
+description = "Foliage and the level's wind: their components, rows, settings and the renderer feature that places and draws them"
+enabled_by_default = true
+requires = []
+
+[modules]
+# What a game built for the project links.
+runtime = ["foliage_component"]
+# What the editor links in addition.
+editor = ["foliage_plugin"]

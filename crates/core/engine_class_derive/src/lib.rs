@@ -1605,6 +1605,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
 
         pulsar_world_registry::inventory::submit! {
             pulsar_world_registry::WorldComponentRegistration {
+                origin: ::core::env!("CARGO_PKG_NAME"),
                 class_name: #class_name,
                 component_type: pulsar_scenedb::component_id::<#self_ty>,
                 default_value: #default_fn_name,

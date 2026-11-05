@@ -1,0 +1,93 @@
+[package]
+name = "installed_plugins"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The installed plugins: every plugin under plugins/vendor that describes itself (pulsar-plugin.toml), its runtime modules and, with `editor`, its editor modules. Generated from the descriptors. The editor links it; a project enables its plugins (pulsar_plugins); a game built for a project links only that project's runtime modules."
+
+[dependencies]
+pulsar_plugins = { workspace = true }
+# BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
+# by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
+decals_component = { workspace = true }
+decals_plugin = { workspace = true, optional = true }
+fog_component = { workspace = true }
+fog_plugin = { workspace = true, optional = true }
+foliage_component = { workspace = true }
+foliage_plugin = { workspace = true, optional = true }
+gi_component = { workspace = true }
+gi_plugin = { workspace = true, optional = true }
+lens_component = { workspace = true }
+lens_plugin = { workspace = true, optional = true }
+lights_component = { workspace = true }
+lights_plugin = { workspace = true, optional = true }
+materials_component = { workspace = true }
+materials_plugin = { workspace = true, optional = true }
+meshes_component = { workspace = true }
+meshes_plugin = { workspace = true, optional = true }
+particles_component = { workspace = true }
+particles_plugin = { workspace = true, optional = true }
+portals_component = { workspace = true }
+portals_plugin = { workspace = true, optional = true }
+post_component = { workspace = true }
+post_plugin = { workspace = true, optional = true }
+sky_component = { workspace = true }
+sky_plugin = { workspace = true, optional = true }
+splines_component = { workspace = true }
+splines_plugin = { workspace = true, optional = true }
+sprites_component = { workspace = true }
+sprites_plugin = { workspace = true, optional = true }
+voxel_component = { workspace = true }
+voxel_plugin = { workspace = true, optional = true }
+water_component = { workspace = true }
+water_plugin = { workspace = true, optional = true }
+# END installed plugins
+
+[features]
+default = ["editor"]
+# The editor plugins: what the editor links in addition to the runtime.
+# BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
+# by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
+editor = [
+    "dep:decals_plugin",
+    "dep:fog_plugin",
+    "dep:foliage_plugin",
+    "dep:gi_plugin",
+    "dep:lens_plugin",
+    "dep:lights_plugin",
+    "dep:materials_plugin",
+    "dep:meshes_plugin",
+    "dep:particles_plugin",
+    "dep:portals_plugin",
+    "dep:post_plugin",
+    "dep:sky_plugin",
+    "dep:splines_plugin",
+    "dep:sprites_plugin",
+    "dep:voxel_plugin",
+    "dep:water_plugin",
+]
+# END installed plugins
+
+[dev-dependencies]
+toml = { workspace = true }
+# The absent-plugins test (tests/absent_plugins.rs): a project's levels,
+# registries and renderer, as the editor and the game run them.
+engine_backend = { path = "../../crates/core/engine_backend", default-features = false, features = ["render"] }
+engine_state = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_settings = { workspace = true }
+pulsar_scenedb = { workspace = true }
+helio = { workspace = true }
+helio-core = { workspace = true }
+helio-presets = { workspace = true }
+helio-mats = { workspace = true }
+helio_component = { workspace = true }
+wgpu = { workspace = true }
+pollster = "1.0"
+glam = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+image = { workspace = true }
+
+[lints]
+workspace = true

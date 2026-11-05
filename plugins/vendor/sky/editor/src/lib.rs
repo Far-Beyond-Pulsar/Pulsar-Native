@@ -3,7 +3,7 @@
 //! The plugin's identity ([`SkyPlugin`]). The component, its methods, row,
 //! level rule and the renderer feature's registrations are the component
 //! crate's (`sky_component`), which this crate links: the editor links this
-//! crate (`use sky_plugin as _`) and knows no sky type. World Settings and
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no sky type. World Settings and
 //! the inspector edit the component through its reflected properties.
 
 use plugin_editor_api::*;
@@ -22,12 +22,14 @@ impl SkyPlugin {
 
 impl EditorPlugin for SkyPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = sky_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Sky".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "The level's sky: the atmosphere component (air, sun disc, clouds and weather), its row and the renderer feature that draws it and publishes the sky's lighting inputs".into(),
+            description: descriptor.description,
         }
     }
 

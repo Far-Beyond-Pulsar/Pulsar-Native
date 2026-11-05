@@ -10,6 +10,8 @@ description = "Meshes (pulsar.meshes): the registrations of the plugin's Helio f
 name = "meshes_component"
 
 [dependencies]
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
 # The game's slim feature set (as pulsar_game): linking the plugin must not
 # pull the editor's features into a game build. A path dependency because
 # the workspace table cannot opt out of default features.

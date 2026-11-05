@@ -14,9 +14,14 @@
 //!   settings (`helio_pass_foliage_place::FOLIAGE`), its scene rows, the
 //!   one-wind level rule and the realtime redraw while foliage sways.
 //!
-//! Everything registers through `inventory` once the crate is linked: hosts
-//! link it (the game: `extern crate foliage_component`; the editor through
-//! the plugin's editor crate, `foliage_plugin`) and know no foliage type.
+//! Everything registers through `inventory` once the crate is linked: hosts link it
+//! without naming it (a game built for a project links the runtime modules
+//! of the plugins its `Pulsar.toml` enables, the editor every installed
+//! plugin through `installed_plugins`; `pulsar_plugins`) and know no foliage type.
+
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 pub mod foliage;
 pub mod wind;
@@ -184,6 +189,7 @@ fn derivation(
 
 inventory::submit! {
     engine_backend::scene::helio_bridge::SceneRowsRegistration {
+        origin: pulsar_plugins::origin!(),
         register_columns,
         derivation,
     }
@@ -216,6 +222,7 @@ pub fn level_wind(world: &World) -> Option<(Entity, Entity)> {
 // A level has one global wind, edited in World Settings like the sky.
 inventory::submit! {
     engine_backend::scene::level_rules::LevelSingletonRegistration {
+        origin: pulsar_plugins::origin!(),
         class_name: WIND_CLASS_NAME,
         refusal: ONE_WIND,
         instances: winds,
@@ -272,6 +279,7 @@ fn foliage_in_wind(world: &World) -> bool {
 // The answer reads both components: re-checked when either changes.
 inventory::submit! {
     engine_backend::subsystems::render::AnimatedContentRegistration {
+        origin: pulsar_plugins::origin!(),
         watch: |world| world.open_change_cursor::<FoliageComponent>(),
         animated: foliage_in_wind,
     }
@@ -279,6 +287,7 @@ inventory::submit! {
 
 inventory::submit! {
     engine_backend::subsystems::render::AnimatedContentRegistration {
+        origin: pulsar_plugins::origin!(),
         watch: |world| world.open_change_cursor::<WindComponent>(),
         animated: foliage_in_wind,
     }
@@ -299,6 +308,7 @@ fn configure_renderer(config: helio::RendererConfig) -> helio::RendererConfig {
 
 inventory::submit! {
     engine_backend::subsystems::render::RenderFeatureRegistration {
+        origin: pulsar_plugins::origin!(),
         features: render_features,
         configure: configure_renderer,
     }
@@ -306,6 +316,7 @@ inventory::submit! {
 
 inventory::submit! {
     pulsar_settings::project::rendering::SettingsGroupRegistration {
+        origin: pulsar_plugins::origin!(),
         group: &helio_pass_foliage_place::FOLIAGE,
     }
 }

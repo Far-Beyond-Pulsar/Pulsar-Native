@@ -22,6 +22,24 @@ pub const KINDS: &[(&str, &str)] = &[
     ("wind", "LevelEditor.Create.Wind"),
 ];
 
+/// The component class an object of `kind` holds (`None`: no component).
+fn class_of(kind: &str) -> Option<&'static str> {
+    Some(match kind.split('_').next()? {
+        "light" => "LightComponent",
+        "mesh" => "StaticMeshComponent",
+        "sky" => sky_component::ATMOSPHERE_CLASS,
+        "wind" => foliage_component::WIND_CLASS_NAME,
+        _ => return None,
+    })
+}
+
+/// Whether the Create menu offers `kind`: its component's class is
+/// registered (a disabled plugin's kinds are absent).
+pub fn available(kind: &str) -> bool {
+    class_of(kind)
+        .is_none_or(|class| pulsar_world_registry::component_id_for_class(class).is_some())
+}
+
 /// Add an object of `kind` (one of [`KINDS`]) at the origin and select it.
 pub fn create(state: &mut LevelEditorState, kind: &str) -> CommandResult {
     let result = match kind {

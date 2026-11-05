@@ -130,6 +130,7 @@ fn test_gizmo_from_json(data: &serde_json::Value) -> Result<Box<dyn EngineClass>
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
+        origin: env!("CARGO_PKG_NAME"),
         class_name: "TestGizmo",
         component_type: pulsar_scenedb::component_id::<TestGizmo>,
         default_value: pulsar_world_registry::values::erased::default_value::<TestGizmo>,

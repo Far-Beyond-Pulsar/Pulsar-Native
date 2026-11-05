@@ -14,6 +14,9 @@ use pulsar_scenedb::World;
 
 /// A payload every scene may publish.
 pub struct ScenePayloadRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     /// The payload contract's key.
     pub key: &'static str,
     /// The scene's payload, or `None` when it has nothing to publish under
@@ -32,6 +35,12 @@ pub struct ScenePayloadRegistration {
 
 inventory::collect!(ScenePayloadRegistration);
 
+impl pulsar_plugins::Registration for ScenePayloadRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
 /// What the scene publishes this frame.
 #[derive(Default)]
 pub struct ScenePayloads {
@@ -46,7 +55,7 @@ pub struct ScenePayloads {
 /// Every registered payload `world` publishes.
 pub fn scene_payloads(world: &World) -> ScenePayloads {
     let mut out = ScenePayloads::default();
-    for registration in inventory::iter::<ScenePayloadRegistration> {
+    for registration in pulsar_plugins::registered::<ScenePayloadRegistration>() {
         if let Some(payload) = (registration.publish)(world, &mut out.problems) {
             out.temporal |= registration.temporal;
             out.payloads.push((registration.key, payload));
@@ -57,7 +66,6 @@ pub fn scene_payloads(world: &World) -> ScenePayloads {
 
 /// Whether any registered content of `world` is still settling.
 pub fn scene_settling(world: &World) -> bool {
-    inventory::iter::<ScenePayloadRegistration>
-        .into_iter()
+    pulsar_plugins::registered::<ScenePayloadRegistration>()
         .any(|registration| (registration.settling)(world))
 }

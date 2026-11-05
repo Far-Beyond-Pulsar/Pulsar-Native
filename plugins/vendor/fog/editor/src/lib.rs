@@ -3,7 +3,7 @@
 //! The plugin's identity ([`FogPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`fog_component`), which this crate links: the editor links this
-//! crate (`use fog_plugin as _`) and knows no fog type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no fog type. The
 //! inspector edits the components through their reflected properties.
 
 use plugin_editor_api::*;
@@ -22,12 +22,14 @@ impl FogPlugin {
 
 impl EditorPlugin for FogPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = fog_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Fog".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "Global and local fog media: their components, rows and the renderer feature that integrates and composites them (volumetric fog)".into(),
+            description: descriptor.description,
         }
     }
 

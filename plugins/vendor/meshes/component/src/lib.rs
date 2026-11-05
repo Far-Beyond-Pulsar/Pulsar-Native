@@ -5,9 +5,10 @@
 //! object batch (first in the frame's prepare slot), its culling around the
 //! depth pyramid, the drawers (the G-buffer, shadow-caster, forward and
 //! transparent phases) and virtual geometry. Everything registers through
-//! `inventory` once the crate is linked: hosts link it (the game:
-//! `extern crate meshes_component`; the editor through the plugin's editor
-//! crate, `meshes_plugin`) and the engine's pipelines carry the meshes
+//! `inventory` once the crate is linked: hosts link it
+//! without naming it (a game built for a project links the runtime modules
+//! of the plugins its `Pulsar.toml` enables, the editor every installed
+//! plugin through `installed_plugins`; `pulsar_plugins`) and the engine's pipelines carry the meshes
 //! without naming them.
 //!
 //! Still the engine's (see docs/architecture/plugin-migration.md, "As built,
@@ -17,6 +18,10 @@
 //! installation, the authored LOD selection, the VG host and mesh picking,
 //! which core crates (asset import, cooking, class records, the scene
 //! loader) read by type.
+
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 /// The meshes' features.
 fn render_features() -> helio_feature_api::FeatureSet {
@@ -39,6 +44,7 @@ fn configure_renderer(config: helio::RendererConfig) -> helio::RendererConfig {
 
 inventory::submit! {
     engine_backend::subsystems::render::RenderFeatureRegistration {
+        origin: pulsar_plugins::origin!(),
         features: render_features,
         configure: configure_renderer,
     }

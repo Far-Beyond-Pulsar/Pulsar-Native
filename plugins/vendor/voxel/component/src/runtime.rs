@@ -638,6 +638,7 @@ impl pulsar_scenedb::Subsystem for VoxelWorlds {
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::SceneSubsystemRegistration {
+        origin: pulsar_plugins::origin!(),
         name: VoxelWorlds::NAME,
         install: |scene| scene.register_subsystem(VoxelWorlds::default()),
     }
@@ -733,6 +734,7 @@ pub fn scene_sun(world: &World) -> Option<Vec3> {
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::ScenePayloadRegistration {
+        origin: pulsar_plugins::origin!(),
         key: VOXEL_FRAME.key(),
         publish: |world, problems| {
             publish_frame(world, problems).map(|frame| frame as Arc<dyn std::any::Any + Send + Sync>)

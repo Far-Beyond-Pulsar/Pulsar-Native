@@ -2,7 +2,7 @@
 //!
 //! The plugin's identity ([`LightsPlugin`]). The components and every
 //! registration are the component crate's (`lights_component`), which this
-//! crate links: the editor links this crate (`use lights_plugin as _`).
+//! crate links: the editor links this crate (through `installed_plugins`, as an installed plugin's editor module).
 
 use plugin_editor_api::*;
 
@@ -20,12 +20,14 @@ impl LightsPlugin {
 
 impl EditorPlugin for LightsPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = lights_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Lights".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "Lights and reflection captures: the light list, shadow views, the lighting models, IES profiles and light icons".into(),
+            description: descriptor.description,
         }
     }
 

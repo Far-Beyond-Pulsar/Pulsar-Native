@@ -708,9 +708,10 @@ fn light_toggling() -> Outcome {
             })
             .collect();
         for entity in entities {
-            store
-                .world
-                .insert(entity, pulsar_game::scene::LightComponent::default());
+            store.world.insert(
+                entity,
+                installed_plugins::lights_component::LightComponent::default(),
+            );
         }
     }
     let mut toggles = 0u32;
@@ -726,7 +727,7 @@ fn light_toggling() -> Outcome {
                 .filter_map(|e| {
                     store
                         .world
-                        .get::<pulsar_game::scene::LightComponent>(e)
+                        .get::<installed_plugins::lights_component::LightComponent>(e)
                         .map(|l| l.general.enabled)
                 })
                 .collect();

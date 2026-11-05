@@ -163,6 +163,7 @@ fn gizmo_methods() -> Vec<MethodMetadata> {
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
+        origin: env!("CARGO_PKG_NAME"),
         class_name: "DispatchGizmo",
         component_type: pulsar_scenedb::component_id::<DispatchGizmo>,
         default_value: pulsar_world_registry::values::erased::default_value::<DispatchGizmo>,

@@ -3,7 +3,7 @@
 //! The plugin's identity ([`LensPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`lens_component`), which this crate links: the editor links this
-//! crate (`use lens_plugin as _`) and knows no camera lenses type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no camera lenses type. The
 //! inspector edits the components through their reflected properties.
 
 use plugin_editor_api::*;
@@ -22,12 +22,14 @@ impl LensPlugin {
 
 impl EditorPlugin for LensPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = lens_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Camera Lens".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "A camera's physically based lens: its component, presets, rows and the renderer features that resolve the image through it and draw its flare".into(),
+            description: descriptor.description,
         }
     }
 

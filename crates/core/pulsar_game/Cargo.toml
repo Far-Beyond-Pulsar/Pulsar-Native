@@ -73,30 +73,15 @@ engine_backend  = { path = "../engine_backend", default-features = false, featur
 # generated game's script crate could not name them.
 helio_component = { workspace = true }
 skeletal_assets = { workspace = true }
-# Voxel worlds (`pulsar.voxel`): levels with voxel terrain need its
-# components, scene subsystems and render feature registered (`src/lib.rs`
-# links it).
-voxel_component = { workspace = true }
-decals_component = { workspace = true }
-lens_component = { workspace = true }
-particles_component = { workspace = true }
-portals_component = { workspace = true }
-splines_component = { workspace = true }
-sprites_component = { workspace = true }
-fog_component = { workspace = true }
-post_component = { workspace = true }
-water_component = { workspace = true }
-foliage_component = { workspace = true }
-gi_component = { workspace = true }
-sky_component = { workspace = true }
-meshes_component = { workspace = true }
-lights_component = { workspace = true }
-materials_component = { workspace = true }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+# Every installed plugin's runtime modules: the tests run a game built for a
+# project with every plugin (they name `installed_plugins::<module>` where
+# they need a plugin's type).
+installed_plugins = { workspace = true }
 helio-mats = { workspace = true }
 # The plugin pass lists test (tests/plugin_pass_lists.rs) builds Helio's
 # presets with the linked plugins' features, as the engine does.

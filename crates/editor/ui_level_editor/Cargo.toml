@@ -5,6 +5,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
+# Which plugins the project enables: the tools and panels of a disabled one
+# are absent.
+pulsar_plugins = { workspace = true }
 lights_component.workspace = true
 helio-mesh-api = { workspace = true }
 # UI framework
@@ -105,14 +108,10 @@ winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
 helio-vg-format = { workspace = true }
-# The kinds the render acceptance test draws (the editor links their plugins).
-decals_component.workspace = true
-particles_component.workspace = true
-lens_component.workspace = true
-# GI's feature, as the editor links it (ui_core links its plugin).
-gi_component.workspace = true
-# The meshes' features, as the editor links them (ui_core links the plugin).
-meshes_component.workspace = true
+# Every installed plugin, editor modules included: the acceptance tests draw the
+# kinds and the inspector tests show them as the editor does (it links every
+# installed plugin).
+installed_plugins = { workspace = true, features = ["editor"] }
 helio-presets.workspace = true
 tempfile = { workspace = true }
 # Headless `TestAppContext` window for the properties-panel layout budget test

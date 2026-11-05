@@ -3,7 +3,7 @@
 //! The plugin's identity ([`SpritesPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`sprites_component`), which this crate links: the editor links this
-//! crate (`use sprites_plugin as _`) and knows no 2D sprites type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no 2D sprites type. The
 //! inspector edits the components through their reflected properties.
 //!
 //! The sprite placement helper is still the level editor's
@@ -25,12 +25,14 @@ impl SpritesPlugin {
 
 impl EditorPlugin for SpritesPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = sprites_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Sprites".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "2D sprites drawn over the scene: their component, rows, image binding and the renderer feature that culls, batches and draws them".into(),
+            description: descriptor.description,
         }
     }
 

@@ -20,6 +20,7 @@
 //! suite: it asserts element/Taffy node counts and cache behaviour, which are
 //! deterministic, rather than wall-clock time, which is not.
 
+// Every installed plugin, editor modules included, as the editor links them.
 use super::{LevelEditorState, PropertiesPanelWrapper};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use gpui::{
@@ -27,6 +28,7 @@ use gpui::{
     InteractiveElement as _, IntoElement as _, IntoElement, ParentElement as _, Render,
     StyleRefinement, Styled as _, TestAppContext, VisualTestContext, Window,
 };
+use installed_plugins as _;
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

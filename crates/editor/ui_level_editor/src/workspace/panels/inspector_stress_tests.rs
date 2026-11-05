@@ -10,11 +10,15 @@
 //! cargo test -p ui_level_editor --lib inspector_stress -- --ignored --nocapture --test-threads=1
 //! ```
 
+// The voxel inspectors (the stack and generator editors) are its editor
+// module's: every installed plugin, editor modules included, as the editor
+// links them.
 use super::perf_tests::RENDER_LOCK;
 use gpui::{
     div, px, size, AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, Styled as _, TestAppContext, VisualTestContext, Window,
 };
+use installed_plugins as _;
 use std::time::Instant;
 use ui_common::inspector_model::{CardDesc, PropDesc};
 use ui_common::{Inspector, InspectorRow};

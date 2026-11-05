@@ -3,7 +3,7 @@
 //! The plugin's identity ([`WaterPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`water_component`), which this crate links: the editor links this
-//! crate (`use water_plugin as _`) and knows no water type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no water type. The
 //! inspector edits the components through their reflected properties.
 
 use plugin_editor_api::*;
@@ -22,12 +22,14 @@ impl WaterPlugin {
 
 impl EditorPlugin for WaterPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = water_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Water".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "Water volumes: their component, rows and the renderer feature that simulates, lights and draws them, with their caustics as the frame's transmission".into(),
+            description: descriptor.description,
         }
     }
 

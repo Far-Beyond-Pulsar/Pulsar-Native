@@ -6,6 +6,8 @@ publish = false
 description = "All engine and project settings registrations for Pulsar Engine"
 
 [dependencies]
+# The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
+pulsar_plugins = { workspace = true }
 pulsar-config.workspace = true
 # The renderer's settings, described by Helio.
 helio-settings.workspace = true

@@ -24,6 +24,9 @@ use pulsar_scenedb::{Entity, World};
 /// foliage plugin's global wind, the lights plugin's casting directional
 /// light). Submitted by the plugin's component crate.
 pub struct LevelSingletonRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     /// The component's class name.
     pub class_name: &'static str,
     /// Why adding a second one is refused.
@@ -49,8 +52,14 @@ pub struct LevelSingletonRegistration {
 
 inventory::collect!(LevelSingletonRegistration);
 
+impl pulsar_plugins::Registration for LevelSingletonRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
 fn singletons() -> impl Iterator<Item = &'static LevelSingletonRegistration> {
-    inventory::iter::<LevelSingletonRegistration>.into_iter()
+    pulsar_plugins::registered::<LevelSingletonRegistration>()
 }
 
 /// The registered singleton `class_name` names, or `value` is.
@@ -123,8 +132,14 @@ pub struct NewComponent<'a> {
     pub enabled: bool,
 }
 
-/// Whether `components` may all be added to the level, in order. `Err`
-/// carries the message to show; nothing should be added then.
+/// Why a component of a class nothing registers is refused: its plugin is
+/// not enabled for the project (or not installed), so its kind is absent.
+pub const NOT_REGISTERED: &str =
+    "This component's plugin is not enabled for the project, so it cannot be added";
+
+/// Whether `components` may all be added to the level, in order: each class
+/// is registered, and no level singleton gets a second one. `Err` carries
+/// the message to show; nothing should be added then.
 pub fn check_new_components(
     world: &World,
     components: &[NewComponent<'_>],
@@ -133,6 +148,9 @@ pub fn check_new_components(
         .map(|singleton| (singleton.class_name, (singleton.instances)(world).len()))
         .collect();
     for component in components {
+        if pulsar_world_registry::component_id_for_class(component.class_name).is_none() {
+            return Err(NOT_REGISTERED);
+        }
         if let Some(singleton) = singleton_of(component.class_name, component.value)
             .filter(|singleton| component.enabled || !singleton.enabled_only)
         {

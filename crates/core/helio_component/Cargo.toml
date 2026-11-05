@@ -19,6 +19,8 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+# The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
+pulsar_plugins = { workspace = true }
 helio-mesh-api = { workspace = true }
 engine_class_derive = { workspace = true }
 # M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here — this

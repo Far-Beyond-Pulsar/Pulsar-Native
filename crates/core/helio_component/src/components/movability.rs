@@ -59,10 +59,19 @@ impl ObjectMovability {
 /// how to read it off an instance. Submitted by the component's crate
 /// (`inventory::submit!`), so [`object_movability`] names no kind.
 pub struct MovabilityRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     pub of: fn(&pulsar_scenedb::World, pulsar_scenedb::Entity) -> Option<ObjectMovability>,
 }
 
 inventory::collect!(MovabilityRegistration);
+
+impl pulsar_plugins::Registration for MovabilityRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
 
 /// What may change about `object` at runtime: the least mobile of a
 /// `helio::Movability` placed on the object itself and the movability its
@@ -82,8 +91,7 @@ pub fn object_movability(
                 .get::<super::StaticMeshComponent>(instance)
                 .map(|mesh| mesh.movability)
                 .or_else(|| {
-                    inventory::iter::<MovabilityRegistration>
-                        .into_iter()
+                    pulsar_plugins::registered::<MovabilityRegistration>()
                         .find_map(|registration| (registration.of)(world, instance))
                 })
                 .map(helio::Movability::from)

@@ -9,9 +9,14 @@
 //!   through the renderer's editor debug lines ([`SplineLines`], an
 //!   `engine_backend` editor line set). Splines have no Helio feature.
 //!
-//! Everything registers through `inventory` once the crate is linked: hosts
-//! link it (the game: `extern crate splines_component`; the editor through
-//! the plugin's editor crate, `splines_plugin`) and know no spline type.
+//! Everything registers through `inventory` once the crate is linked: hosts link it
+//! without naming it (a game built for a project links the runtime modules
+//! of the plugins its `Pulsar.toml` enables, the editor every installed
+//! plugin through `installed_plugins`; `pulsar_plugins`) and know no spline type.
+
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 pub mod component;
 
@@ -31,6 +36,7 @@ fn new_spline_lines(
 
 inventory::submit! {
     engine_backend::subsystems::render::EditorLinesRegistration {
+        origin: pulsar_plugins::origin!(),
         name: "splines",
         new: new_spline_lines,
     }

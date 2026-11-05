@@ -32,6 +32,17 @@ impl EnvironmentPreset {
     }
 }
 
+/// Whether the environment entry `name` (a component class, or a light
+/// shape: `DirectionalLight`, `SpotLight`) can be added: its class is
+/// registered (a disabled plugin's components are absent).
+pub fn available(name: &str) -> bool {
+    let class = match name {
+        "DirectionalLight" | "SpotLight" => "LightComponent",
+        other => other,
+    };
+    pulsar_world_registry::component_id_for_class(class).is_some()
+}
+
 /// Add an environment component as a separate, named scene object and select it.
 pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> CommandResult {
     let mut object_type = ObjectType::Empty;

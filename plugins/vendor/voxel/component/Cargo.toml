@@ -11,6 +11,8 @@ description = "Voxel worlds (pulsar.voxel): the voxel terrain components, their 
 name = "voxel_component"
 
 [dependencies]
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
 lights_component = { workspace = true }
 engine_class_derive = { workspace = true }
 # Enum properties get a dropdown editor, which needs the GPUI-typed prims (as helio-component).

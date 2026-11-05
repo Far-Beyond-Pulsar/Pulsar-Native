@@ -77,6 +77,9 @@ pub struct ObjectJoinContext {
 /// them in the same frame. The plugin's component crate submits one with
 /// `inventory::submit!`; the engine names no kind.
 pub struct ObjectJoinRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     /// For diagnostics and tests.
     pub name: &'static str,
     /// Registers the join's source-row columns (initial capacities; they
@@ -86,6 +89,12 @@ pub struct ObjectJoinRegistration {
 }
 
 inventory::collect!(ObjectJoinRegistration);
+
+impl pulsar_plugins::Registration for ObjectJoinRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
 
 /// The meshes' scene join and every plugin's object join over this
 /// engine's rows, for `RendererBuilder::with_scene_derivation`. `editor`
@@ -101,8 +110,7 @@ pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<DerivationGroup> {
     };
     let mut joins: Vec<Box<dyn SceneDerivation>> = vec![Box::new(SceneJoin::new(device, scene))];
     joins.extend(
-        inventory::iter::<ObjectJoinRegistration>
-            .into_iter()
+        pulsar_plugins::registered::<ObjectJoinRegistration>()
             .map(|registration| (registration.derivation)(device, &context)),
     );
     Box::new(DerivationGroup::new("SceneJoins", joins))
@@ -172,6 +180,9 @@ pub fn row_join_keys() -> RowJoinKeys {
 /// neither: the plugin's component crate submits one with
 /// `inventory::submit!`.
 pub struct SceneRowsRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     /// Registers the kind's source-row columns (initial capacities; they
     /// grow).
     pub register_columns: fn(&mut SceneGpuStore, &Arc<wgpu::Device>),
@@ -181,6 +192,12 @@ pub struct SceneRowsRegistration {
 
 inventory::collect!(SceneRowsRegistration);
 
+impl pulsar_plugins::Registration for SceneRowsRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
 /// Every other kind's row join over this engine's rows (each kind's
 /// feature crate's `scene_rows`), for `RendererBuilder::with_scene_derivation`,
 /// after [`scene_join`] (a kind may read what an object join published,
@@ -188,10 +205,10 @@ inventory::collect!(SceneRowsRegistration);
 /// every plugin's kind ([`SceneRowsRegistration`]).
 pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
     let keys = row_join_keys();
-    let joins: Vec<Box<dyn SceneDerivation>> = inventory::iter::<SceneRowsRegistration>
-        .into_iter()
-        .map(|registration| (registration.derivation)(device, keys))
-        .collect();
+    let joins: Vec<Box<dyn SceneDerivation>> =
+        pulsar_plugins::registered::<SceneRowsRegistration>()
+            .map(|registration| (registration.derivation)(device, keys))
+            .collect();
     Box::new(DerivationGroup::new("EnvironmentJoins", joins))
 }
 
@@ -252,7 +269,7 @@ pub fn ensure_gpu_mirror(
     // material rows passes draw are the join's outputs, not SceneDB's.
     StaticMeshDraw::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
     // Every object join's source rows (a plugin's lights').
-    for registration in inventory::iter::<ObjectJoinRegistration> {
+    for registration in pulsar_plugins::registered::<ObjectJoinRegistration>() {
         (registration.register_columns)(&mut gpu_store, &device);
     }
     ComponentOwner::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
@@ -271,7 +288,7 @@ pub fn ensure_gpu_mirror(
         &device,
     );
     // Every plugin's kind's source rows.
-    for registration in inventory::iter::<SceneRowsRegistration> {
+    for registration in pulsar_plugins::registered::<SceneRowsRegistration>() {
         (registration.register_columns)(&mut gpu_store, &device);
     }
 
@@ -474,12 +491,21 @@ impl helio_core::CoordinateSpaceAllocator for SpaceTable {
 /// (`inventory::submit!`); each renderer makes its own ([`SpaceSync`]) and
 /// installs its derivation.
 pub struct SpaceProducerRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     /// For diagnostics.
     pub name: &'static str,
     pub new: fn() -> Box<dyn SpaceProducer>,
 }
 
 inventory::collect!(SpaceProducerRegistration);
+
+impl pulsar_plugins::Registration for SpaceProducerRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
 
 /// One renderer's space producer ([`SpaceProducerRegistration`]).
 pub trait SpaceProducer: Send + Sync {
@@ -520,8 +546,7 @@ impl Default for SpaceSync {
     fn default() -> Self {
         Self {
             last: Vec::new(),
-            producers: inventory::iter::<SpaceProducerRegistration>
-                .into_iter()
+            producers: pulsar_plugins::registered::<SpaceProducerRegistration>()
                 .map(|registration| (registration.new)())
                 .collect(),
         }

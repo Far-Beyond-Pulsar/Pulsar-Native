@@ -17,10 +17,19 @@ pub const NS: &str = "project";
 /// settings of a feature it adds to the renderer), described as Helio
 /// describes its own.
 pub struct SettingsGroupRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     pub group: &'static helio_settings::Group,
 }
 
 inventory::collect!(SettingsGroupRegistration);
+
+impl pulsar_plugins::Registration for SettingsGroupRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
 
 /// Every rendering settings group: Helio's, then the plugins'.
 pub fn groups() -> Vec<&'static helio_settings::Group> {
@@ -28,8 +37,7 @@ pub fn groups() -> Vec<&'static helio_settings::Group> {
         .iter()
         .copied()
         .chain(
-            inventory::iter::<SettingsGroupRegistration>
-                .into_iter()
+            pulsar_plugins::registered::<SettingsGroupRegistration>()
                 .map(|registration| registration.group),
         )
         .collect()

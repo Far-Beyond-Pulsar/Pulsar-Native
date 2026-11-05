@@ -19,15 +19,13 @@
 use std::collections::HashMap;
 
 use engine_backend::scene::SceneWorldExt;
-// GI's feature registers with the renderer as in the editor.
-use gi_component as _;
-// The meshes' features register with the renderer as in the editor.
+// Every installed plugin registers with the renderer, as in the editor.
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::{
     LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent,
     StaticMeshMaterialSlot, StaticMeshMaterialSlots,
 };
-use meshes_component as _;
+use installed_plugins as _;
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
@@ -1982,7 +1980,7 @@ const SUN: f32 = 20.0;
 /// `DecalComponent::fade_by` (its method), called as a script calls them.
 #[test]
 fn decals_reach_the_frame_and_scripts_set_their_opacity() {
-    use decals_component::{DecalComponent, DecalLayers};
+    use installed_plugins::decals_component::{DecalComponent, DecalLayers};
     use pulsar_script_vm::{Host, NativeRegistry, Value};
     use ui_level_editor::commands::TypedComponent;
 
@@ -2126,7 +2124,7 @@ fn half_change(frame: &Frame, reference: &Frame, left: bool) -> (usize, f32, f32
 /// restores its side of the frame while the other keeps drawing.
 #[test]
 fn particle_emitters_reach_the_frame_from_one_pool() {
-    use particles_component::{ParticleEmitterComponent, ParticleEmitterShape};
+    use installed_plugins::particles_component::{ParticleEmitterComponent, ParticleEmitterShape};
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2398,7 +2396,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
 #[test]
 fn a_realtime_viewport_keeps_rendering_animated_content() {
     use foliage_component::FoliageComponent;
-    use particles_component::ParticleEmitterComponent;
+    use installed_plugins::particles_component::ParticleEmitterComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -3103,7 +3101,7 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
 /// distance blurs, and disabling the lens restores the frame.
 #[test]
 fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
-    use lens_component::CameraLensComponent;
+    use installed_plugins::lens_component::CameraLensComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -3183,7 +3181,7 @@ fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
 /// inside the frame (the defocus test above) leaves it untouched.
 #[test]
 fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
-    use lens_component::{
+    use installed_plugins::lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensProjectionModel,
         LensRegionShape,
     };
@@ -3258,7 +3256,7 @@ fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
 /// against the same lens with its effect switched off.
 #[test]
 fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
-    use lens_component::{
+    use installed_plugins::lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice, LensPreset,
         LensRegionShape,
     };

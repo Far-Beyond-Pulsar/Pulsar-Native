@@ -8,6 +8,8 @@
 //! construction); only the window surface is replaced by an offscreen
 //! texture. Needs a GPU adapter (lavapipe works); skips without one.
 
+// A game built for a project with every plugin links them all.
+use installed_plugins as _;
 use std::path::Path;
 use std::sync::Arc;
 

@@ -256,10 +256,19 @@ impl std::fmt::Debug for BoundTexture {
 /// for the component with [`TEXTURE_ASSET_KIND`]. Submitted by the plugin's
 /// component crate; run by [`register_texture_assets`].
 pub struct TextureBindingRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     pub register: fn(),
 }
 
 inventory::collect!(TextureBindingRegistration);
+
+impl pulsar_plugins::Registration for TextureBindingRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
 
 /// Registers the texture asset kind with SceneDB: its loader and payload
 /// size, and how the registered components take in a loaded image
@@ -276,7 +285,7 @@ pub fn register_texture_assets() {
                 .downcast_ref::<LoadedTexture>()
                 .map_or(0, |_| std::mem::size_of::<LoadedTexture>())
         });
-        for registration in inventory::iter::<TextureBindingRegistration> {
+        for registration in pulsar_plugins::registered::<TextureBindingRegistration>() {
             (registration.register)();
         }
     });

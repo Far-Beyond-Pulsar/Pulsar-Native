@@ -10,6 +10,10 @@
 //! `helio_component`: core crates (the importer, the cooker, the class and
 //! prefab records) read them by type, as batch 4 found for the meshes.
 
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
+
 pub mod sampler;
 
 /// The materials' features: the texture table.
@@ -28,6 +32,7 @@ fn configure_renderer(config: helio::RendererConfig) -> helio::RendererConfig {
 
 inventory::submit! {
     engine_backend::subsystems::render::RenderFeatureRegistration {
+        origin: pulsar_plugins::origin!(),
         features: render_features,
         configure: configure_renderer,
     }

@@ -19,6 +19,8 @@
 //! editor's, x8). The noise floor is the editor rendering it twice.
 //! Needs a GPU adapter; skips without one.
 
+// A game built for a project with every plugin links them all.
+use installed_plugins as _;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -228,7 +230,7 @@ fn editor() -> HelioRenderer {
 fn level_sun() -> Option<Vec3> {
     let mut scene = engine_backend::scene::new_scene();
     RuntimeLevel::load_into(&level_path(), &mut scene.world).expect("the example planet loads");
-    voxel_component::runtime::scene_sun(&scene.world)
+    installed_plugins::voxel_component::runtime::scene_sun(&scene.world)
 }
 
 /// The level's saved camera.

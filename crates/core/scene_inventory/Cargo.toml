@@ -28,20 +28,9 @@ physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = [
 # The input plugin is linked the same way; its PlayerInputComponent is a scene
 # component.
 input_plugin = { path = "../../../plugins/vendor/input_plugin", default-features = false, features = ["builtin"] }
-# The voxel plugin's component crate is linked the same way; its terrain
-# components are scene components.
-voxel_component = { workspace = true }
-decals_component = { workspace = true }
-lens_component = { workspace = true }
-particles_component = { workspace = true }
-portals_component = { workspace = true }
-splines_component = { workspace = true }
-sprites_component = { workspace = true }
-fog_component = { workspace = true }
-post_component = { workspace = true }
-water_component = { workspace = true }
-foliage_component = { workspace = true }
-sky_component = { workspace = true }
+# Every installed object-kind plugin's runtime modules (generated from their
+# pulsar-plugin.toml): their components are scene components.
+installed_plugins = { workspace = true }
 
 [lints]
 workspace = true

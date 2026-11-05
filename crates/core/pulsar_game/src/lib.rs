@@ -71,7 +71,6 @@ pub mod script_refs;
 pub mod scene {
     pub use engine_backend::scene::{Name, Transform, Visibility};
     pub use helio_component::components::{MeshAssetPath, StaticMeshComponent};
-    pub use lights_component::LightComponent;
     /// Components attach to objects as instance entities (Pulsar-Native#1035):
     /// `attach_value` adds one, `attachments` finds and edits them.
     pub use pulsar_world_registry::pulsar_scene_model::attachments;
@@ -82,30 +81,11 @@ pub mod scene {
 // that path is this crate.
 extern crate self as pulsar_game;
 
-// Linked for its link-time registrations only (components, scene
-// subsystems, payload publishers, the render feature and its settings):
-// a game runs levels with voxel terrain without naming a voxel type.
-extern crate voxel_component;
-// The leaf kinds' plugins, the same way (Phase B batch 1).
-extern crate decals_component;
-extern crate lens_component;
-extern crate particles_component;
-extern crate portals_component;
-extern crate splines_component;
-extern crate sprites_component;
-// The media and placement kinds' plugins (Phase B batch 2).
-extern crate fog_component;
-extern crate foliage_component;
-extern crate post_component;
-extern crate water_component;
-// The lighting plugins (Phase B batch 3).
-extern crate gi_component;
-extern crate sky_component;
-// The meshes (Phase B batch 4).
-extern crate lights_component;
-extern crate meshes_component;
-// The materials (Phase B batch 6).
-extern crate materials_component;
+// No object kind's plugin is linked here: a game built for a project links
+// the project's enabled plugins' runtime modules
+// (`engine_backend::services::core_project_builder`), and their components,
+// scene subsystems, payload publishers, render features and settings register
+// through `inventory`.
 
 // Compile-time drift guard: exported actors must match the pinned crates
 #[cfg(test)]

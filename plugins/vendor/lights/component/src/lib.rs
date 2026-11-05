@@ -14,9 +14,14 @@
 //!   the light binning, the lighting models, the billboards) and their
 //!   settings ([`helio_light_api::SHADOWS`]) with the engine.
 //!
-//! Everything registers through `inventory` once the crate is linked: hosts
-//! link it (the game: `extern crate lights_component`; the editor through the
-//! plugin's editor crate, `lights_plugin`) and know no light type.
+//! Everything registers through `inventory` once the crate is linked: hosts link it
+//! without naming it (a game built for a project links the runtime modules
+//! of the plugins its `Pulsar.toml` enables, the editor every installed
+//! plugin through `installed_plugins`; `pulsar_plugins`) and know no light type.
+
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 mod light;
 mod reflection_capture;
@@ -65,6 +70,7 @@ pub fn directional_lights(world: &World) -> Vec<Entity> {
 // directional light is allowed (it casts nothing until it is the only one).
 inventory::submit! {
     LevelSingletonRegistration {
+        origin: pulsar_plugins::origin!(),
         class_name: LIGHT_CLASS,
         refusal: ONE_DIRECTIONAL_LIGHT,
         instances: directional_lights,
@@ -99,6 +105,7 @@ fn light_join(
 
 inventory::submit! {
     ObjectJoinRegistration {
+        origin: pulsar_plugins::origin!(),
         name: "lights",
         register_columns: |store, device| {
             LightSourceRow::register_gpu_columns_growable(store, 64, device);
@@ -128,6 +135,7 @@ fn configure_renderer(config: helio::RendererConfig) -> helio::RendererConfig {
 
 inventory::submit! {
     engine_backend::subsystems::render::RenderFeatureRegistration {
+        origin: pulsar_plugins::origin!(),
         features: render_features,
         configure: configure_renderer,
     }
@@ -135,6 +143,7 @@ inventory::submit! {
 
 inventory::submit! {
     pulsar_settings::project::rendering::SettingsGroupRegistration {
+        origin: pulsar_plugins::origin!(),
         group: &helio_light_api::SHADOWS,
     }
 }
@@ -142,6 +151,7 @@ inventory::submit! {
 // What an object's light instances author fixes the object.
 inventory::submit! {
     helio_component::components::MovabilityRegistration {
+        origin: pulsar_plugins::origin!(),
         of: |world, instance| {
             world
                 .get::<LightComponent>(instance)

@@ -19,9 +19,14 @@
 //! selected portal maps) are the overlay's payloads ([`PORTAL_DEBUG_TEXTS`],
 //! [`PORTAL_DEBUG_GEOMETRY`]), which an editor publishes for its viewport.
 //!
-//! Everything registers through `inventory` once the crate is linked: hosts
-//! link it (the game: `extern crate portals_component`; the editor through
-//! the plugin's editor crate, `portals_plugin`) and know no portal type.
+//! Everything registers through `inventory` once the crate is linked: hosts link it
+//! without naming it (a game built for a project links the runtime modules
+//! of the plugins its `Pulsar.toml` enables, the editor every installed
+//! plugin through `installed_plugins`; `pulsar_plugins`) and know no portal type.
+
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 pub mod component;
 pub mod projection;
@@ -43,6 +48,7 @@ fn new_portal_sync() -> Box<dyn engine_backend::scene::SpaceProducer> {
 
 inventory::submit! {
     engine_backend::scene::SpaceProducerRegistration {
+        origin: pulsar_plugins::origin!(),
         name: "portals",
         new: new_portal_sync,
     }
@@ -66,6 +72,7 @@ fn configure_renderer(config: helio::RendererConfig) -> helio::RendererConfig {
 
 inventory::submit! {
     engine_backend::subsystems::render::RenderFeatureRegistration {
+        origin: pulsar_plugins::origin!(),
         features: render_features,
         configure: configure_renderer,
     }
@@ -73,6 +80,7 @@ inventory::submit! {
 
 inventory::submit! {
     pulsar_settings::project::rendering::SettingsGroupRegistration {
+        origin: pulsar_plugins::origin!(),
         group: &helio_pass_portal_cull::settings::PORTALS,
     }
 }

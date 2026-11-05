@@ -6,7 +6,7 @@
 //! linked. The components, their methods and runtime, the file formats and
 //! the renderer feature's registrations are the component crate's
 //! (`voxel_component`), which this crate links: the editor links this crate
-//! (`use voxel_plugin as _`) and knows no voxel type.
+//! (through `installed_plugins`, as an installed plugin's editor module) and knows no voxel type.
 //!
 //! The sculpt tool and the terrain panel are still the level editor's
 //! (`ui_level_editor`), acting through the component's methods.
@@ -27,14 +27,14 @@ impl VoxelPlugin {
 
 impl EditorPlugin for VoxelPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = voxel_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Voxel Worlds".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "Destructible voxel terrain: its components, runtime, file formats, \
-                          ready-made worlds and the renderer feature that draws it"
-                .into(),
+            description: descriptor.description,
         }
     }
 

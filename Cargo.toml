@@ -125,6 +125,11 @@ members = [
     "plugins/vendor/lights/component",
     "plugins/vendor/lights/editor",
     "plugins/vendor/lights/examples",
+    # The installed plugins (Phase C step 2): every plugin under
+    # plugins/vendor with a pulsar-plugin.toml, generated from those
+    # descriptors. The editor links it; a project enables its plugins
+    # (`pulsar_plugins`); a game links only its project's.
+    "plugins/installed",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -296,6 +301,10 @@ materials_plugin                   = { path = "plugins/vendor/materials/editor",
 lights_component                   = { path = "plugins/vendor/lights/component" }
 lights_plugin                      = { path = "plugins/vendor/lights/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
+pulsar_plugins                     = { path = "crates/core/pulsar_plugins" }
+# Every installed plugin's modules (runtime; `editor` adds the editor
+# plugins). Hosts link the set, never a plugin by name.
+installed_plugins                  = { path = "plugins/installed", default-features = false }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
 pulsar_auth                        = { path = "crates/core/pulsar_auth" }

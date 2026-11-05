@@ -16,6 +16,8 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
 engine_class_derive = { workspace = true }
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 gpui-ce = { workspace = true }

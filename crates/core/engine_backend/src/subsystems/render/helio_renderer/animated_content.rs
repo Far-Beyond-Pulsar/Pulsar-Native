@@ -21,11 +21,20 @@ use pulsar_scenedb::{ChangeCursor, ChangeRead, World};
 /// component crate; an answer that reads several components submits one
 /// registration for each.
 pub struct AnimatedContentRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
     pub watch: fn(&World) -> ChangeCursor,
     pub animated: fn(&World) -> bool,
 }
 
 inventory::collect!(AnimatedContentRegistration);
+
+impl pulsar_plugins::Registration for AnimatedContentRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
 
 /// The last answer, and cursors on the components it was computed from.
 #[derive(Default)]
@@ -55,8 +64,7 @@ impl AnimatedContent {
                 world.open_change_cursor::<attachments::ComponentOwner>(),
             ];
             self.cursors.extend(
-                inventory::iter::<AnimatedContentRegistration>
-                    .into_iter()
+                pulsar_plugins::registered::<AnimatedContentRegistration>()
                     .map(|registration| (registration.watch)(world)),
             );
             self.live = self.check(world);
@@ -90,8 +98,7 @@ impl AnimatedContent {
 /// reads the frame clock, or a plugin's animated content.
 pub(super) fn animated(world: &World) -> bool {
     animated_graph_materials(world)
-        || inventory::iter::<AnimatedContentRegistration>
-            .into_iter()
+        || pulsar_plugins::registered::<AnimatedContentRegistration>()
             .any(|registration| (registration.animated)(world))
 }
 

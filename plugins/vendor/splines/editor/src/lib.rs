@@ -3,7 +3,7 @@
 //! The plugin's identity ([`SplinesPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`splines_component`), which this crate links: the editor links this
-//! crate (`use splines_plugin as _`) and knows no splines type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no splines type. The
 //! inspector edits the components through their reflected properties.
 //!
 //! The spline tool mode, panel and assistant tools are still the level
@@ -25,14 +25,14 @@ impl SplinesPlugin {
 
 impl EditorPlugin for SplinesPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = splines_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Splines".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description:
-                "Authored curves: their component, its methods and the editor lines that show them"
-                    .into(),
+            description: descriptor.description,
         }
     }
 

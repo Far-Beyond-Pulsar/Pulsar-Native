@@ -2,7 +2,7 @@
 //!
 //! The plugin's identity ([`MaterialsPlugin`]). The components and every
 //! registration are the component crate's (`materials_component`), which this
-//! crate links: the editor links this crate (`use materials_plugin as _`).
+//! crate links: the editor links this crate (through `installed_plugins`, as an installed plugin's editor module).
 
 use plugin_editor_api::*;
 
@@ -20,12 +20,14 @@ impl MaterialsPlugin {
 
 impl EditorPlugin for MaterialsPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = materials_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Materials".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "Materials: the material row and texture table every kind draws with, the PBR evaluation and the Radiant material templates".into(),
+            description: descriptor.description,
         }
     }
 

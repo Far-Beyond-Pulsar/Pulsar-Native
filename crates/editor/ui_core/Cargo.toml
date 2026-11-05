@@ -58,24 +58,6 @@ skeletal_animation_plugin = { path = "../../../plugins/vendor/skm_editor", featu
 physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = ["builtin"] }
 ui_editor_plugin = { path = "../../../plugins/vendor/ui_editor", features = ["builtin"] }
 input_plugin = { path = "../../../plugins/vendor/input_plugin", features = ["builtin"] }
-# Voxel worlds (`pulsar.voxel`): the editor plugin crate, which links the
-# plugin's component crate; both register everything through `inventory`.
-voxel_plugin = { workspace = true }
-decals_plugin = { workspace = true }
-lens_plugin = { workspace = true }
-particles_plugin = { workspace = true }
-portals_plugin = { workspace = true }
-splines_plugin = { workspace = true }
-sprites_plugin = { workspace = true }
-fog_plugin = { workspace = true }
-post_plugin = { workspace = true }
-water_plugin = { workspace = true }
-foliage_plugin = { workspace = true }
-gi_plugin = { workspace = true }
-meshes_plugin = { workspace = true }
-lights_plugin = { workspace = true }
-materials_plugin = { workspace = true }
-sky_plugin = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

@@ -158,7 +158,23 @@ impl Default for ToolModeRegistry {
 /// hook in here (or from an equivalent function in its own crate called from
 /// this one) rather than by editing `builtin()`.
 pub fn register_tool_modes(registry: &mut ToolModeRegistry) {
-    registry.register(Box::new(super::spline::SplineMode::default()));
-    registry.register(Box::new(super::voxel_sculpt::VoxelSculptMode::default()));
-    registry.register(Box::new(super::terrain::TerrainMode::default()));
+    // Each mode is its plugin's: absent while the project disables it. They
+    // still live here (Phase C step 3 moves them into their plugins' editor
+    // crates, as registrations carrying their origin).
+    let modes: [(&str, fn() -> Box<dyn ToolMode>); 3] = [
+        ("pulsar.splines", || {
+            Box::new(super::spline::SplineMode::default())
+        }),
+        ("pulsar.voxel", || {
+            Box::new(super::voxel_sculpt::VoxelSculptMode::default())
+        }),
+        ("pulsar.voxel", || {
+            Box::new(super::terrain::TerrainMode::default())
+        }),
+    ];
+    for (plugin, mode) in modes {
+        if pulsar_plugins::is_enabled(plugin) {
+            registry.register(mode());
+        }
+    }
 }

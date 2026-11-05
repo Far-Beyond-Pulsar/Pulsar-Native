@@ -366,8 +366,13 @@ impl WorldSettingsPanelImpl {
             cx,
         );
         let pipeline_section = self.render_pipeline_section(cx);
-        let sky_section = self.render_sky_section(window, cx);
-        let wind_section = self.render_wind_section(window, cx);
+        // A disabled plugin's sections are absent (the sky's, the wind's).
+        let sky_section =
+            crate::scene_edit::environment::available(sky_component::ATMOSPHERE_CLASS)
+                .then(|| self.render_sky_section(window, cx));
+        let wind_section =
+            crate::scene_edit::environment::available(foliage_component::WIND_CLASS_NAME)
+                .then(|| self.render_wind_section(window, cx));
         let environment_tools = self.render_environment_tools(cx);
         let state = self.state.read();
         let settings = &state.scene.world_settings;
@@ -392,10 +397,12 @@ impl WorldSettingsPanelImpl {
                         .gap_4()
                         .child(self.render_section_title("Render Pipeline"))
                         .child(pipeline_section)
-                        .child(self.render_section_title("Sky"))
-                        .child(sky_section)
-                        .child(self.render_section_title("Wind"))
-                        .child(wind_section)
+                        .when_some(sky_section, |this, section| {
+                            this.child(self.render_section_title("Sky")).child(section)
+                        })
+                        .when_some(wind_section, |this, section| {
+                            this.child(self.render_section_title("Wind")).child(section)
+                        })
                         .child(self.render_section_title("Environment Mixer"))
                         .child(environment_tools)
                         .child(self.render_section_title("General"))

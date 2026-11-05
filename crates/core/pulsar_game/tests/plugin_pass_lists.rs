@@ -18,22 +18,9 @@ use helio_core::GpuCameraUniforms;
 use helio_presets::Preset;
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 
-// Linked for their registrations, as the game links them.
-use decals_component as _;
-use fog_component as _;
-use foliage_component as _;
-use gi_component as _;
-use lens_component as _;
-use lights_component as _;
-use materials_component as _;
-use meshes_component as _;
-use particles_component as _;
-use portals_component as _;
-use post_component as _;
-use sky_component as _;
-use splines_component as _;
-use sprites_component as _;
-use water_component as _;
+// Every installed plugin, linked for its registrations, as a game built for
+// a project with every plugin links them.
+use installed_plugins as _;
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     pollster::block_on(async {

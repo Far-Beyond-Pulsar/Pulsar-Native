@@ -73,7 +73,10 @@ impl LevelEditorMenus {
     fn create_menu() -> EditorMenu {
         let mut menu = EditorMenu::new(t!("LevelEditor.Menu.Create"));
         let mut last_group = None;
-        for &(kind, label) in crate::scene_edit::create::KINDS {
+        for &(kind, label) in crate::scene_edit::create::KINDS
+            .iter()
+            .filter(|(kind, _)| crate::scene_edit::create::available(kind))
+        {
             // Separators between objects, lights, meshes and environment.
             let this_group = match kind.split('_').next() {
                 Some("light") => "light",

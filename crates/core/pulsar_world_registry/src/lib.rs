@@ -372,6 +372,11 @@ use serde_json::Value;
 /// by hand.
 pub struct WorldComponentRegistration {
     pub class_name: &'static str,
+    /// The package that declares the class (`env!("CARGO_PKG_NAME")` where
+    /// `#[register_world_component]` expands): while that package's plugin
+    /// is disabled the class is not registered (`pulsar_plugins`), and its
+    /// stored instances load as `UnresolvedComponent`s, kept verbatim.
+    pub origin: &'static str,
     /// This class's `pulsar_scenedb::ComponentId`, as a function pointer
     /// rather than a precomputed value -- `component_id::<T>()` isn't
     /// `const fn` (it allocates on a type's first-ever call, via a global
@@ -840,6 +845,7 @@ mod tests {
 
     inventory::submit! {
         WorldComponentRegistration {
+            origin: env!("CARGO_PKG_NAME"),
             class_name: "TestComponent",
             component_type: pulsar_scenedb::component_id::<TestComponent>,
             default_value: test_default,

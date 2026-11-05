@@ -1,0 +1,15 @@
+# The `pulsar.decals` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its kind is absent (see
+# crates/core/pulsar_plugins). The runtime module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.decals"
+name = "Decals"
+description = "Decals projected onto surfaces: their component, rows, image binding and the renderer feature that draws them"
+enabled_by_default = true
+requires = []
+
+[modules]
+# What a game built for the project links.
+runtime = ["decals_component"]
+# What the editor links in addition.
+editor = ["decals_plugin"]

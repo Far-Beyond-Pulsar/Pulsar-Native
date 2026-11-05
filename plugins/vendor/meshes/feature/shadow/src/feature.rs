@@ -2,7 +2,8 @@
 //! the faces its casters made stale (`ShadowDirtyPass`: casters that moved,
 //! and the faces whose light's matrices changed, from the lights'
 //! [`LightDirtyFlags`]); then it opens the phase, rendering the stale faces
-//! into the tiled atlas.
+//! into the tiled atlas. The phase's views are the lights' shadow faces:
+//! without the lights plugin (no [`LightDirtyFlags`]) both build nothing.
 
 use std::sync::Arc;
 
@@ -29,11 +30,15 @@ impl Feature for ShadowDrawers {
                 "Passes: Scene Prep",
                 "Marks which shadow faces need re-rendering this frame.",
                 |build| {
-                    let dirty = build
+                    // The phase draws the lights' shadow faces: without the
+                    // lights plugin there are none, and nothing to draw.
+                    let Some(dirty) = build
                         .env
                         .shared_existing::<LightDirtyFlags>()
                         .map(|flags| Arc::clone(&flags.0))
-                        .ok_or_else(|| missing("Shadow Dirty Flags", "Shadow Matrices"))?;
+                    else {
+                        return Ok(());
+                    };
                     let pass = ShadowDirtyPass::new(build.env.device, dirty);
                     build.graph.add_pass(Box::new(pass));
                     Ok(())
@@ -54,6 +59,10 @@ impl Feature for ShadowDrawers {
                         .setting::<ShadowSettings>()
                         .copied()
                         .unwrap_or_default();
+                    if build.env.shared_existing::<LightDirtyFlags>().is_none() {
+                        // No shadow faces (no lights plugin): nothing to draw.
+                        return Ok(());
+                    }
                     let (_, atlas_size) =
                         settings.atlas(build.env.device.limits().max_texture_dimension_2d)?;
                     let (face_dirty, face_geom_count, face_pages) = build

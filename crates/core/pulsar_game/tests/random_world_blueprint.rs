@@ -9,13 +9,13 @@ use std::sync::Arc;
 
 use blueprint_compiler::{authored::expand_graph, compile, ClassSource, VariableSource};
 use graphy_blueprint::codec::deserialize_blueprint;
-use pulsar_scenedb::World;
-use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Value, Vm};
-use voxel_component::world::terrain_world;
-use voxel_component::{
+use installed_plugins::voxel_component::world::terrain_world;
+use installed_plugins::voxel_component::{
     VoxelAir, VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent,
     VoxelTerrainLayersComponent, VoxelTerrainStack,
 };
+use pulsar_scenedb::World;
+use pulsar_script_vm::{Budget, Host, NativeRegistry, Program, Value, Vm};
 
 const EXAMPLE: &str = include_str!("../../../../assets/examples/random_world.blueprint.json");
 
@@ -88,10 +88,12 @@ fn build(program: &Program, seed: i64) -> (VoxelTerrainStack, VoxelAir) {
         .unwrap_or_else(|e| panic!("seed {seed}: begin_play failed: {e}"));
     // The generator accepts it: the planet builds (off the thread, as the
     // scene's steps build it).
-    assert!(voxel_component::runtime::wait_for_voxel_worlds(
-        &mut world,
-        std::time::Duration::from_secs(300)
-    ));
+    assert!(
+        installed_plugins::voxel_component::runtime::wait_for_voxel_worlds(
+            &mut world,
+            std::time::Duration::from_secs(300)
+        )
+    );
     terrain_world(&world, terrain).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
     let air = world.get::<VoxelTerrainComponent>(terrain).unwrap().air;
     (

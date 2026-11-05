@@ -16,9 +16,14 @@
 //!   below; and the terrain's material names for ground-material lists
 //!   (foliage's ground).
 //!
-//! Everything registers through `inventory` once the crate is linked: hosts
-//! link it (the game: `extern crate voxel_component`; the editor through the
-//! plugin's editor crate, `voxel_plugin`) and know no voxel type.
+//! Everything registers through `inventory` once the crate is linked: hosts link it
+//! without naming it (a game built for a project links the runtime modules
+//! of the plugins its `Pulsar.toml` enables, the editor every installed
+//! plugin through `installed_plugins`; `pulsar_plugins`) and know no voxel type.
+
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 pub mod component;
 mod component_runtime;
@@ -54,6 +59,7 @@ fn configure_renderer(config: helio::RendererConfig) -> helio::RendererConfig {
 
 inventory::submit! {
     engine_backend::subsystems::render::RenderFeatureRegistration {
+        origin: pulsar_plugins::origin!(),
         features: render_features,
         configure: configure_renderer,
     }
@@ -61,6 +67,7 @@ inventory::submit! {
 
 inventory::submit! {
     pulsar_settings::project::rendering::SettingsGroupRegistration {
+        origin: pulsar_plugins::origin!(),
         group: &helio_pass_voxel_planet::settings::VOXEL_RESIDENCY,
     }
 }
@@ -73,6 +80,7 @@ fn material_name(id: u32) -> Option<&'static str> {
 
 inventory::submit! {
     helio_component::GroundMaterialNames {
+        origin: pulsar_plugins::origin!(),
         name: material_name,
         id: material::from_name,
     }

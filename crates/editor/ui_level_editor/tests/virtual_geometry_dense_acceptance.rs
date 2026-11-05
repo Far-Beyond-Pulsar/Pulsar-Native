@@ -18,7 +18,7 @@
 //! prints the measured numbers.
 
 // The meshes' features register with the renderer as in the editor.
-use meshes_component as _;
+use installed_plugins as _;
 use std::time::{Duration, Instant};
 
 use engine_backend::scene::SceneWorldExt;

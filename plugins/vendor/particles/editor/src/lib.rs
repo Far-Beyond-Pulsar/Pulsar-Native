@@ -3,7 +3,7 @@
 //! The plugin's identity ([`ParticlesPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`particles_component`), which this crate links: the editor links this
-//! crate (`use particles_plugin as _`) and knows no GPU particle emitters type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no GPU particle emitters type. The
 //! inspector edits the components through their reflected properties.
 
 use plugin_editor_api::*;
@@ -22,12 +22,14 @@ impl ParticlesPlugin {
 
 impl EditorPlugin for ParticlesPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = particles_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Particles".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "GPU particle emitters: their component, rows and the renderer feature that simulates and draws them (Corona)".into(),
+            description: descriptor.description,
         }
     }
 

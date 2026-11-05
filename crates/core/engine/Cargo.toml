@@ -57,6 +57,9 @@ window_manager.workspace = true
 blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"], optional = true }
 render_bps_plugin = { path = "../../../plugins/vendor/render_bps", features = ["builtin"], optional = true }
 trait_editor_plugin = { path = "../../../plugins/trait_editor", features = ["builtin"] }
+# The installed plugins, with their editor modules: the editor has every one,
+# the project it opens enables some (`pulsar_plugins`).
+installed_plugins = { workspace = true, features = ["editor"] }
 plugin_typescript = { workspace = true, optional = true }
 pulsar_std = { workspace = true }
 tracing-appender = "0.2.4"

@@ -4,6 +4,8 @@
 //! Its own test binary: the project path the loader resolves against is a
 //! process global.
 
+// A game built for a project with every plugin links them all.
+use installed_plugins as _;
 use std::path::Path;
 use std::time::Duration;
 

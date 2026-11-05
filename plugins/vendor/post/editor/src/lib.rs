@@ -3,7 +3,7 @@
 //! The plugin's identity ([`PostPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`post_component`), which this crate links: the editor links this
-//! crate (`use post_plugin as _`) and knows no post-process type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no post-process type. The
 //! inspector edits the components through their reflected properties.
 
 use plugin_editor_api::*;
@@ -22,12 +22,14 @@ impl PostPlugin {
 
 impl EditorPlugin for PostPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = post_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Post-Process Volumes".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "Post-process volumes and camera baselines: their components, rows and the renderer feature that blends them into the frame's post settings".into(),
+            description: descriptor.description,
         }
     }
 

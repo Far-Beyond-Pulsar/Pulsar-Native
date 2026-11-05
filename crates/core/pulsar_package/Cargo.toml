@@ -44,7 +44,9 @@ engine_backend = { workspace = true }
 plugin_typescript = { workspace = true, optional = true }
 
 [dev-dependencies]
-lights_component = { workspace = true }
+# A sample plugin component for the cooked level (every installed plugin's
+# runtime modules, as a game built for a project with all of them links).
+installed_plugins = { workspace = true }
 helio_component = { workspace = true }
 tempfile = { workspace = true }
 

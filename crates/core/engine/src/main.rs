@@ -54,6 +54,10 @@ use render_bps_plugin as _;
 #[cfg(feature = "typescript")]
 use plugin_typescript as _;
 use trait_editor_plugin as _;
+// The installed plugins (every object kind's runtime and editor modules,
+// generated from their pulsar-plugin.toml); the project the editor opens
+// enables some of them (`pulsar_plugins`).
+use installed_plugins as _;
 
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]

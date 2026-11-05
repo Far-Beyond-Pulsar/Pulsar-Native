@@ -67,6 +67,15 @@ impl super::WorldSettingsPanelImpl {
         cx: &mut Context<WorldSettingsPanel>,
     ) -> AnyElement {
         let state = self.state.clone();
+        // A disabled plugin's components are absent: not offered.
+        let addable: Vec<_> = ADD_COMPONENTS
+            .iter()
+            .filter(|(class_name, _)| crate::scene_edit::environment::available(class_name))
+            .collect();
+        // The starter setups add a sky and a sun.
+        let presets_available =
+            crate::scene_edit::environment::available(sky_component::ATMOSPHERE_CLASS)
+                && crate::scene_edit::environment::available("DirectionalLight");
         let has_sun =
             !lights_component::directional_lights(&self.state.read().scene.world()).is_empty();
         let presets = crate::scene_edit::environment::EnvironmentPreset::ALL
@@ -90,7 +99,9 @@ impl super::WorldSettingsPanelImpl {
                     .text_color(cx.theme().muted_foreground)
                     .child("Starter setups add a sky and sun when missing, then tune the sun."),
             )
-            .child(h_flex().gap_2().children(presets))
+            .when(presets_available, |this| {
+                this.child(h_flex().gap_2().children(presets))
+            })
             .child(
                 v_flex()
                     .gap_1()
@@ -100,7 +111,7 @@ impl super::WorldSettingsPanelImpl {
                             .text_color(cx.theme().muted_foreground)
                             .child("Add component"),
                     )
-                    .children(ADD_COMPONENTS.chunks(4).map(|group| {
+                    .children(addable.chunks(4).map(|group| {
                         h_flex()
                             .gap_2()
                             .children(group.iter().map(|(class_name, label)| {
@@ -243,6 +254,9 @@ impl super::WorldSettingsPanelImpl {
                 "Missing · creates global wind",
             ),
         ] {
+            if !crate::scene_edit::environment::available(class_name) {
+                continue;
+            }
             if let Some((object_id, object_name, component_index)) =
                 find_component(&world, class_name)
             {

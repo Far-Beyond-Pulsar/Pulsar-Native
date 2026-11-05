@@ -10,9 +10,14 @@
 //!   (`helio_pass_sprite_batch::SpriteFeature`), its scene rows and how a
 //!   sprite takes in a loaded image, with the engine.
 //!
-//! Everything registers through `inventory` once the crate is linked: hosts
-//! link it (the game: `extern crate sprites_component`; the editor through
-//! the plugin's editor crate, `sprites_plugin`) and know no sprite type.
+//! Everything registers through `inventory` once the crate is linked: hosts link it
+//! without naming it (a game built for a project links the runtime modules
+//! of the plugins its `Pulsar.toml` enables, the editor every installed
+//! plugin through `installed_plugins`; `pulsar_plugins`) and know no sprite type.
+
+// The plugin's descriptor (`../pulsar-plugin.toml`): linking this crate
+// installs the plugin; a project enables it or not (`pulsar_plugins`).
+pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 pub mod component;
 
@@ -99,6 +104,7 @@ fn register_texture_binding() {
 
 inventory::submit! {
     helio_component::texture_assets::TextureBindingRegistration {
+        origin: pulsar_plugins::origin!(),
         register: register_texture_binding,
     }
 }
@@ -121,6 +127,7 @@ fn derivation(
 
 inventory::submit! {
     engine_backend::scene::helio_bridge::SceneRowsRegistration {
+        origin: pulsar_plugins::origin!(),
         register_columns,
         derivation,
     }
@@ -133,6 +140,7 @@ fn render_features() -> helio_feature_api::FeatureSet {
 
 inventory::submit! {
     engine_backend::subsystems::render::RenderFeatureRegistration {
+        origin: pulsar_plugins::origin!(),
         features: render_features,
         configure: |config| config,
     }

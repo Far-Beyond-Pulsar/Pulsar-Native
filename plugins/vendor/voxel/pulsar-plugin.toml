@@ -1,0 +1,16 @@
+# The `pulsar.voxel` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its kind is absent (see
+# crates/core/pulsar_plugins). The runtime module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.voxel"
+name = "Voxel Worlds"
+description = "Destructible voxel terrain: its components, runtime, file formats, ready-made worlds and the renderer feature that draws it"
+enabled_by_default = true
+# Required because its component crate reads the atmosphere, fog, post volume, wind and light components (presets, the sun, its fog and sky rows).
+requires = ["pulsar.sky", "pulsar.fog", "pulsar.post", "pulsar.foliage", "pulsar.lights"]
+
+[modules]
+# What a game built for the project links.
+runtime = ["voxel_component"]
+# What the editor links in addition.
+editor = ["voxel_plugin"]

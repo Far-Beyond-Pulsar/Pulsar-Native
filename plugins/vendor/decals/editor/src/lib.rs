@@ -3,7 +3,7 @@
 //! The plugin's identity ([`DecalsPlugin`]). The components, their methods,
 //! rows and the renderer feature's registrations are the component crate's
 //! (`decals_component`), which this crate links: the editor links this
-//! crate (`use decals_plugin as _`) and knows no decals type. The
+//! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no decals type. The
 //! inspector edits the components through their reflected properties.
 
 use plugin_editor_api::*;
@@ -22,12 +22,14 @@ impl DecalsPlugin {
 
 impl EditorPlugin for DecalsPlugin {
     fn metadata(&self) -> PluginMetadata {
+        // The plugin's identity is its descriptor's (pulsar-plugin.toml).
+        let descriptor = decals_component::plugin_descriptor();
         PluginMetadata {
-            id: PluginId::new(Self::ID),
-            name: "Decals".into(),
+            id: PluginId::new(descriptor.id),
+            name: descriptor.name,
             version: "0.1.0".into(),
             author: "Pulsar Team".into(),
-            description: "Decals projected onto surfaces: their component, rows, image binding and the renderer feature that draws them".into(),
+            description: descriptor.description,
         }
     }
 

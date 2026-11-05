@@ -12,30 +12,9 @@ use ui_git_manager as _;
 use ui_multiplayer as _;
 use ui_plugin_manager as _;
 use ui_settings as _;
-// The voxel plugin is linked statically: its inspector editors, and its
-// component crate's components, scene subsystems, render feature and
-// settings, register through `inventory`.
-use voxel_plugin as _;
-// The leaf kinds' plugins, the same way.
-use decals_plugin as _;
-use lens_plugin as _;
-use particles_plugin as _;
-use portals_plugin as _;
-use splines_plugin as _;
-use sprites_plugin as _;
-// The media and placement kinds' plugins (Phase B batch 2).
-use fog_plugin as _;
-use foliage_plugin as _;
-use post_plugin as _;
-use water_plugin as _;
-// The lighting plugins (Phase B batch 3).
-use gi_plugin as _;
-use sky_plugin as _;
-// The meshes (Phase B batch 4).
-use lights_plugin as _;
-use meshes_plugin as _;
-// The materials (Phase B batch 6).
-use materials_plugin as _;
+// The object kinds' plugins are not this crate's: the editor binary links
+// the installed plugins (`installed_plugins`, generated from each plugin's
+// pulsar-plugin.toml) and the project enables them (`pulsar_plugins`).
 
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");

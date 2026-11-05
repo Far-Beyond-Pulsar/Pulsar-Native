@@ -1,0 +1,16 @@
+# The `pulsar.fog` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its kind is absent (see
+# crates/core/pulsar_plugins). The runtime module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.fog"
+name = "Fog"
+description = "Global and local fog media: their components, rows and the renderer feature that integrates and composites them (volumetric fog)"
+enabled_by_default = true
+# Required because its fog modes are the post settings' (`post_component::FogMode`).
+requires = ["pulsar.post"]
+
+[modules]
+# What a game built for the project links.
+runtime = ["fog_component"]
+# What the editor links in addition.
+editor = ["fog_plugin"]

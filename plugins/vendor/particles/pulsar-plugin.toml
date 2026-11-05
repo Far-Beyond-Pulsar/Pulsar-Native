@@ -1,0 +1,15 @@
+# The `pulsar.particles` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its kind is absent (see
+# crates/core/pulsar_plugins). The runtime module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.particles"
+name = "Particles"
+description = "GPU particle emitters: their component, rows and the renderer feature that simulates and draws them (Corona)"
+enabled_by_default = true
+requires = []
+
+[modules]
+# What a game built for the project links.
+runtime = ["particles_component"]
+# What the editor links in addition.
+editor = ["particles_plugin"]

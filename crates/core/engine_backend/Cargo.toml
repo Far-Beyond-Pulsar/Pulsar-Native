@@ -27,6 +27,8 @@ toml = { workspace = true }
 workspace = true
 
 [dependencies]
+# The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
+pulsar_plugins = { workspace = true }
 helio-pass-vg = { workspace = true }
 helio-pass-object-batch = { workspace = true, optional = true }
 helio-mesh-api = { workspace = true }
