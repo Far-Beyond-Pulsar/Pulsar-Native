@@ -6,6 +6,10 @@
 //! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no water type. The
 //! inspector edits the components through their reflected properties.
 
+/// The plugin's level editor UI, registered through the level editor's
+/// extension points (`ui_level_editor::extend`).
+pub mod level_editor;
+
 use plugin_editor_api::*;
 
 /// Links the component crate, so its registrations come with this crate.

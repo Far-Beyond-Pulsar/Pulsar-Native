@@ -944,10 +944,12 @@ fn history_level_replacement_and_viewports_need_no_resync() {
 
 #[test]
 fn environment_components_reach_the_frame() {
-    use fog_component::{GlobalFogComponent, LocalFogVolumeComponent};
-    use post_component::{CameraPostProcessComponent, PostProcessVolumeComponent};
+    use installed_plugins::fog_component::{GlobalFogComponent, LocalFogVolumeComponent};
+    use installed_plugins::post_component::{
+        CameraPostProcessComponent, PostProcessVolumeComponent,
+    };
+    use installed_plugins::water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
-    use water_component::WaterVolumeComponent;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -1063,7 +1065,7 @@ fn environment_components_reach_the_frame() {
 /// camera stands 4 m from the origin, 0.7 m up.
 #[test]
 fn foliage_reaches_the_frame() {
-    use foliage_component::FoliageComponent;
+    use installed_plugins::foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -1235,7 +1237,7 @@ fn transform(
 fn add_light(
     state: &mut LevelEditorState,
     position: [f32; 3],
-    light_type: lights_component::LightType,
+    light_type: installed_plugins::lights_component::LightType,
     intensity: f32,
 ) -> String {
     let id = add_object(state, "Light", ObjectType::Light(LightType::Point));
@@ -1450,7 +1452,7 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
 /// inspector open or closed, through the editor's producers to the frame.
 #[test]
 fn mesh_and_light_variations_reach_the_frame() {
-    use lights_component::LightType as Kind;
+    use installed_plugins::lights_component::LightType as Kind;
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
@@ -1850,7 +1852,7 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
     let light = add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        lights_component::LightType::Point,
+        installed_plugins::lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -1917,7 +1919,7 @@ fn sky_brightness(frame: &Frame) -> f64 {
 /// sky lights up; disabling or removing it makes the sky black again.
 #[test]
 fn the_sky_is_the_levels_atmosphere() {
-    use ui_level_editor::scene_edit::sky;
+    use plugin_kinds::sky;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -1936,7 +1938,7 @@ fn the_sky_is_the_levels_atmosphere() {
     add_light(
         &mut state,
         [1.0e4, 0.0, 0.0],
-        lights_component::LightType::Directional,
+        installed_plugins::lights_component::LightType::Directional,
         SUN,
     );
     let mut renderer = harness.renderer(&state);
@@ -2003,7 +2005,7 @@ fn decals_reach_the_frame_and_scripts_set_their_opacity() {
     add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        lights_component::LightType::Point,
+        installed_plugins::lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -2262,13 +2264,14 @@ fn particle_emitters_reach_the_frame_from_one_pool() {
 /// Edit the level's global wind in place, as its World Settings rows do.
 fn set_global_wind(
     state: &mut LevelEditorState,
-    edit: impl FnOnce(&mut foliage_component::WindComponent),
+    edit: impl FnOnce(&mut installed_plugins::foliage_component::WindComponent),
 ) {
     let mut world = state.scene.world_mut();
-    let (instance, _) = foliage_component::level_wind(&world).expect("the level has a wind");
+    let (instance, _) =
+        installed_plugins::foliage_component::level_wind(&world).expect("the level has a wind");
     edit(
         &mut world
-            .get_mut::<foliage_component::WindComponent>(instance)
+            .get_mut::<installed_plugins::foliage_component::WindComponent>(instance)
             .unwrap(),
     );
 }
@@ -2283,7 +2286,7 @@ fn set_global_wind(
 /// foliage LOD cross-fade dither), so an unchanged frame is identical.
 #[test]
 fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
-    use foliage_component::FoliageComponent;
+    use installed_plugins::foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2325,7 +2328,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
             components: vec![TypedComponent::new(foliage)],
         },
     );
-    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    assert!(plugin_kinds::create_wind(&mut state).changed);
     set_global_wind(&mut state, |wind| wind.speed = 8.0);
 
     let mut renderer = harness.renderer(&state);
@@ -2395,7 +2398,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
 /// the viewport goes idle again.
 #[test]
 fn a_realtime_viewport_keeps_rendering_animated_content() {
-    use foliage_component::FoliageComponent;
+    use installed_plugins::foliage_component::FoliageComponent;
     use installed_plugins::particles_component::ParticleEmitterComponent;
     use ui_level_editor::commands::TypedComponent;
 
@@ -2486,7 +2489,7 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     let water = add(
         &mut state,
         "Lake",
-        TypedComponent::new(water_component::WaterVolumeComponent::default()),
+        TypedComponent::new(installed_plugins::water_component::WaterVolumeComponent::default()),
     );
     assert!(keeps_rendering(&mut renderer), "live water went idle");
     assert!(components::set_component_enabled(
@@ -2502,7 +2505,7 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     foliage.general.enabled = true;
     foliage.wind.wind_speed = 0.0;
     add(&mut state, "meadow", TypedComponent::new(foliage));
-    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    assert!(plugin_kinds::create_wind(&mut state).changed);
     assert!(
         keeps_rendering(&mut renderer),
         "foliage in a wind went idle"
@@ -2610,8 +2613,8 @@ fn roughness(heights: &[f32]) -> f32 {
 /// it stands still with Realtime off.
 #[test]
 fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
+    use installed_plugins::water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
-    use water_component::WaterVolumeComponent;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -2715,9 +2718,9 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
 /// stays put); moving it displaces the water where it goes.
 #[test]
 fn bodies_on_the_water_sim_channel_push_the_water() {
+    use installed_plugins::water_component::WaterVolumeComponent;
     use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
-    use water_component::WaterVolumeComponent;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -2878,8 +2881,8 @@ fn assert_color(what: &str, actual: [u8; 4], expected: [u8; 3]) {
 /// restores the 3D frame.
 #[test]
 fn sprites_draw_in_2d_over_the_3d_scene() {
-    use sprites_component::SpriteComponent;
-    use ui_level_editor::scene_edit::sprite::create_sprite;
+    use installed_plugins::sprites_component::SpriteComponent;
+    use plugin_kinds::create_sprite;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -3784,11 +3787,11 @@ fn diag_portal_lighting() {
                 add_light(
                     state,
                     [1.0e4, 0.0, 0.0],
-                    lights_component::LightType::Directional,
+                    installed_plugins::lights_component::LightType::Directional,
                     SUN,
                 );
             }
-            assert!(ui_level_editor::scene_edit::sky::create_sky(state).changed);
+            assert!(plugin_kinds::sky::create_sky(state).changed);
         };
         let render = |state: &LevelEditorState| {
             let mut renderer = harness.renderer(state);
@@ -3913,7 +3916,7 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
             let light = add_light(
                 &mut state,
                 [x, radius * 1.5, radius * 4.0],
-                lights_component::LightType::Point,
+                installed_plugins::lights_component::LightType::Point,
                 BRIGHT,
             );
             set_light(&mut state, &light, "range", Box::new(1200.0f32));
@@ -3944,4 +3947,68 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
         "a light beside the portal lit the content it shows, which is far from it \
          ({beside_portal:+.2} against {beside_content:+.2} for a light beside the content)"
     );
+}
+
+/// The sky, wind and sprite plugins' create entries, through the shell's
+/// generic add path (their editor crates depend on the shell, so its tests
+/// do not link them; `installed_plugins`' `tests/level_editor.rs` tests the
+/// entries themselves).
+mod plugin_kinds {
+    use installed_plugins::foliage_component::WindComponent;
+    use installed_plugins::sprites_component::SpriteComponent;
+    use ui_level_editor::commands::{CommandResult, TypedComponent};
+    use ui_level_editor::extend::add_object;
+    use ui_level_editor::scene_edit::{ObjectType, Transform};
+    use ui_level_editor::LevelEditorState;
+
+    pub mod sky {
+        use installed_plugins::sky_component::{level_atmosphere, AtmosphereComponent};
+        use ui_level_editor::commands::{CommandResult, TypedComponent};
+        use ui_level_editor::extend::{add_object, level_component, LevelComponent};
+        use ui_level_editor::scene_edit::{ObjectType, Transform};
+        use ui_level_editor::LevelEditorState;
+
+        pub const SKY_OBJECT_NAME: &str = "Sky";
+
+        pub fn level_sky(world: &pulsar_scenedb::World) -> Option<LevelComponent> {
+            level_component(world, level_atmosphere)
+        }
+
+        pub fn create_sky(state: &mut LevelEditorState) -> CommandResult {
+            add_object(
+                state,
+                SKY_OBJECT_NAME,
+                ObjectType::Empty,
+                Transform::default(),
+                vec![TypedComponent::new(AtmosphereComponent::default())],
+            )
+        }
+    }
+
+    pub fn create_wind(state: &mut LevelEditorState) -> CommandResult {
+        add_object(
+            state,
+            "Wind",
+            ObjectType::Empty,
+            Transform::default(),
+            vec![TypedComponent::new(WindComponent::default())],
+        )
+    }
+
+    pub fn create_sprite(
+        state: &mut LevelEditorState,
+        position: [f32; 2],
+        sprite: SpriteComponent,
+    ) -> CommandResult {
+        add_object(
+            state,
+            "Sprite",
+            ObjectType::Empty,
+            Transform {
+                position: [f64::from(position[0]), f64::from(position[1]), 0.0],
+                ..Transform::default()
+            },
+            vec![TypedComponent::new(sprite)],
+        )
+    }
 }

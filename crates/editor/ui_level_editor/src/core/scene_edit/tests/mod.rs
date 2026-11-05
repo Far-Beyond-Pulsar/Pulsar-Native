@@ -5,4 +5,3 @@ mod components;
 mod create;
 mod level_rules;
 mod objects;
-mod voxel_world;

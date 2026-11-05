@@ -1,0 +1,5 @@
+# lights plugin, level editor UI - ar
+
+LevelEditor.Create.DirectionalLight: "ضوء اتجاهي"
+LevelEditor.Create.PointLight: "ضوء نقطي"
+LevelEditor.Create.SpotLight: "ضوء موجّه"

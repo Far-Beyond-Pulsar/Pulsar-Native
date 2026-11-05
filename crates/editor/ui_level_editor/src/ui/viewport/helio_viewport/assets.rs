@@ -206,9 +206,13 @@ impl HelioViewport {
         }
         let after =
             crate::scene_edit::history::capture_history_subset(&state.scene.world(), &[id.clone()]);
-        state
-            .scene
-            .commit_labeled_checkpoint(before, after, Some("LevelEditor.Undo.Add"));
+        state.scene.commit_labeled_checkpoint(
+            before,
+            after,
+            Some(crate::scene_edit::history::UndoLabel::Key(
+                "LevelEditor.Undo.Add",
+            )),
+        );
         state.scene.bump_revision(true);
         let _ = execute_command(&mut state, SceneCommand::SelectObject { id: Some(id) });
         true

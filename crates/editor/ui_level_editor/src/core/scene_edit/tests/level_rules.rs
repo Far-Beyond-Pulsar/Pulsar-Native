@@ -5,8 +5,59 @@ use lights_component::{LightComponent, LightType};
 use sky_component::AtmosphereComponent;
 
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
-use crate::scene_edit::{components, objects, sky, wind, ObjectType, SceneObjectData, Transform};
+use crate::scene_edit::{components, objects, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
+
+/// The sky and wind plugins' create entries and World Settings lookups,
+/// through the shell's generic add and level-component paths (their editor
+/// crates are not linked into this crate's tests).
+mod sky {
+    use crate::commands::{CommandResult, TypedComponent};
+    use crate::extend::{add_object, level_component, LevelComponent};
+    use crate::scene_edit::{ObjectType, Transform};
+    use crate::state::LevelEditorState;
+    use sky_component::{level_atmosphere, AtmosphereComponent};
+
+    pub const SKY_OBJECT_NAME: &str = "Sky";
+
+    pub fn level_sky(world: &pulsar_scenedb::World) -> Option<LevelComponent> {
+        level_component(world, level_atmosphere)
+    }
+
+    pub fn create_sky(state: &mut LevelEditorState) -> CommandResult {
+        add_object(
+            state,
+            SKY_OBJECT_NAME,
+            ObjectType::Empty,
+            Transform::default(),
+            vec![TypedComponent::new(AtmosphereComponent::default())],
+        )
+    }
+}
+
+mod wind {
+    use crate::commands::{CommandResult, TypedComponent};
+    use crate::extend::{add_object, level_component, LevelComponent};
+    use crate::scene_edit::{ObjectType, Transform};
+    use crate::state::LevelEditorState;
+    use foliage_component::{level_wind as find, WindComponent};
+
+    pub const WIND_OBJECT_NAME: &str = "Wind";
+
+    pub fn level_wind(world: &pulsar_scenedb::World) -> Option<LevelComponent> {
+        level_component(world, find)
+    }
+
+    pub fn create_wind(state: &mut LevelEditorState) -> CommandResult {
+        add_object(
+            state,
+            WIND_OBJECT_NAME,
+            ObjectType::Empty,
+            Transform::default(),
+            vec![TypedComponent::new(WindComponent::default())],
+        )
+    }
+}
 
 fn object(name: &str) -> SceneObjectData {
     SceneObjectData {

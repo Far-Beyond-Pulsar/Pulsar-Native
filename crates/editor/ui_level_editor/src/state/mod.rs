@@ -28,23 +28,17 @@
 
 pub mod build;
 pub mod editor;
-pub mod foliage_sets;
 pub mod hierarchy;
 pub mod overlays;
 pub mod play;
 pub mod scene;
-pub mod spline;
-pub mod terrain;
-pub mod voxel;
 
 pub use build::BuildDomain;
 pub use editor::EditorDomain;
 pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
 pub use play::{PieControl, PieStartRequest, PlayDomain, MAX_PIE_PROBLEMS};
-pub use scene::SceneDomain;
-pub use spline::SplineDomain;
-pub use terrain::TerrainDomain;
+pub use scene::{SceneDomain, SceneEdit};
 
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
@@ -179,23 +173,14 @@ impl Default for LevelEditorState {
 }
 
 impl LevelEditorState {
-    /// Persisted foliage edits must participate in the level's dirty state.
-    pub(crate) fn edit_terrain(&mut self, edit: impl FnOnce(&mut terrain::TerrainDomain)) {
-        let before = self.editor.terrain.foliage_sets.clone();
-        edit(&mut self.editor.terrain);
-        if before != self.editor.terrain.foliage_sets {
-            self.scene.has_unsaved_changes = true;
-        }
-    }
-
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Clone only the state required by read-only tool UI queries. In
-    /// particular, do not duplicate voxel undo/redo snapshots just to build a
+    /// particular, do not duplicate a plugin's stroke history just to build a
     /// few toolbar controls.
-    pub(crate) fn clone_for_tool_query(&self) -> Self {
+    pub fn clone_for_tool_query(&self) -> Self {
         Self {
             scene: self.scene.clone_for_tool_query(),
             editor: self.editor.clone_for_tool_query(),

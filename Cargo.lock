@@ -4060,7 +4060,10 @@ name = "fog_plugin"
 version = "0.1.0"
 dependencies = [
  "fog_component",
+ "inventory",
  "plugin_editor_api",
+ "pulsar_plugins",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -4142,8 +4145,20 @@ dependencies = [
 name = "foliage_plugin"
 version = "0.1.0"
 dependencies = [
+ "engine_state",
  "foliage_component",
+ "gpui-ce",
+ "inventory",
+ "parking_lot",
  "plugin_editor_api",
+ "pulsar_plugins",
+ "rust-i18n",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ui",
+ "ui_common",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -7384,6 +7399,7 @@ dependencies = [
  "materials_plugin",
  "meshes_component",
  "meshes_plugin",
+ "parking_lot",
  "particles_component",
  "particles_plugin",
  "pollster 1.0.1",
@@ -7404,6 +7420,7 @@ dependencies = [
  "sprites_plugin",
  "tempfile",
  "toml 1.1.4+spec-1.1.0",
+ "ui_level_editor",
  "voxel_component",
  "voxel_plugin",
  "water_component",
@@ -8085,8 +8102,14 @@ dependencies = [
 name = "lights_plugin"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
+ "inventory",
  "lights_component",
  "plugin_editor_api",
+ "pulsar_plugins",
+ "pulsar_scenedb",
+ "rust-i18n",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -8587,8 +8610,13 @@ dependencies = [
 name = "meshes_plugin"
 version = "0.1.0"
 dependencies = [
+ "helio_component",
+ "inventory",
  "meshes_component",
  "plugin_editor_api",
+ "pulsar_plugins",
+ "rust-i18n",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -11268,8 +11296,17 @@ dependencies = [
 name = "portals_plugin"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio_component",
+ "inventory",
  "plugin_editor_api",
  "portals_component",
+ "pulsar_plugins",
+ "pulsar_scenedb",
+ "ui",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -11340,8 +11377,11 @@ dependencies = [
 name = "post_plugin"
 version = "0.1.0"
 dependencies = [
+ "inventory",
  "plugin_editor_api",
  "post_component",
+ "pulsar_plugins",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -14369,8 +14409,12 @@ dependencies = [
 name = "sky_plugin"
 version = "0.1.0"
 dependencies = [
+ "inventory",
  "plugin_editor_api",
+ "pulsar_plugins",
+ "rust-i18n",
  "sky_component",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -14655,8 +14699,24 @@ dependencies = [
 name = "splines_plugin"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "engine_backend",
+ "glam 0.33.5",
+ "gpui-ce",
+ "inventory",
+ "parking_lot",
  "plugin_editor_api",
+ "pulsar_plugins",
+ "pulsar_scenedb",
+ "rust-i18n",
+ "serde_json",
  "splines_component",
+ "tool_registry",
+ "tool_registry_macros",
+ "tracing",
+ "ui",
+ "ui_common",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -14725,8 +14785,12 @@ dependencies = [
 name = "sprites_plugin"
 version = "0.1.0"
 dependencies = [
+ "inventory",
  "plugin_editor_api",
+ "pulsar_plugins",
  "sprites_component",
+ "ui",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -17029,6 +17093,7 @@ dependencies = [
  "chrono",
  "core-foundation-sys",
  "core-graphics2 0.6.1",
+ "decals_component",
  "device_query 4.0.1",
  "editor_task_queue 0.1.0",
  "engine_backend",
@@ -17036,10 +17101,10 @@ dependencies = [
  "engine_state",
  "fog_component",
  "foliage_component",
+ "gi_component",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
- "helio-asset-compat",
  "helio-core",
  "helio-mesh-api",
  "helio-pass-buffer-view",
@@ -17049,11 +17114,16 @@ dependencies = [
  "helio_component",
  "image",
  "installed_plugins",
+ "inventory",
+ "lens_component",
  "lights_component",
+ "materials_component",
+ "meshes_component",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "parking_lot",
+ "particles_component",
  "plugin_editor_api",
  "plugin_manager",
  "png",
@@ -17673,13 +17743,24 @@ dependencies = [
 name = "voxel_plugin"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
+ "glam 0.33.5",
  "gpui-ce",
  "helio-pass-voxel-planet",
  "helio_component",
+ "inventory",
+ "parking_lot",
  "plugin_editor_api",
+ "profiling 0.1.0",
+ "pulsar_plugins",
  "pulsar_reflection",
+ "pulsar_scenedb",
+ "rust-i18n",
  "serde_json",
+ "tracing",
  "ui",
+ "ui_common",
+ "ui_level_editor",
  "voxel_component",
 ]
 
@@ -17892,7 +17973,10 @@ dependencies = [
 name = "water_plugin"
 version = "0.1.0"
 dependencies = [
+ "inventory",
  "plugin_editor_api",
+ "pulsar_plugins",
+ "ui_level_editor",
  "water_component",
 ]
 

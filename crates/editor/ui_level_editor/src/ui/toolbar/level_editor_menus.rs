@@ -68,30 +68,27 @@ impl LevelEditorMenus {
             )
     }
 
-    /// Create: what used to be the global Game Engine menu's objects and
-    /// lights, each added at the origin as one undo step and selected.
+    /// Create: the registered create entries (the shell's objects, the
+    /// plugins' lights, meshes and environment), each added at the origin as
+    /// one undo step and selected.
     fn create_menu() -> EditorMenu {
         let mut menu = EditorMenu::new(t!("LevelEditor.Menu.Create"));
         let mut last_group = None;
-        for &(kind, label) in crate::scene_edit::create::KINDS
-            .iter()
-            .filter(|(kind, _)| crate::scene_edit::create::available(kind))
-        {
-            // Separators between objects, lights, meshes and environment.
-            let this_group = match kind.split('_').next() {
-                Some("light") => "light",
-                Some("mesh") => "mesh",
-                Some("sky" | "wind") => "environment",
-                _ => "object",
+        for entry in crate::extend::create_entries() {
+            let Some(label) = entry.menu_label else {
+                continue;
             };
+            // Separators between objects, lights, meshes and environment
+            // (each a hundred of `order`).
+            let this_group = entry.order.div_euclid(100);
             if last_group.is_some_and(|last| last != this_group) {
                 menu = menu.separator();
             }
             last_group = Some(this_group);
             menu = menu.action(
-                t!(label),
+                label(),
                 AddObjectOfType {
-                    object_type: kind.to_string(),
+                    object_type: entry.id.to_string(),
                 },
             );
         }

@@ -132,6 +132,40 @@ pub fn generator_settings_component(id: &str, version: u32) -> Option<String> {
     terrain::find(id, version).and_then(|generator| generator.info().settings_component)
 }
 
+/// Give the terrain `instance` (on `owner`) its generator's settings
+/// component when the object has none, so the settings exist and show at
+/// once (what choosing a generator does, in the editor or a script; other
+/// settings components are kept).
+pub fn ensure_generator_settings(
+    world: &mut World,
+    owner: Entity,
+    instance: Entity,
+) -> Result<(), String> {
+    use pulsar_scene_model::{NewInstance, attachments};
+    let Some(terrain) = world.get::<VoxelTerrainComponent>(instance) else {
+        return Ok(());
+    };
+    let Some(class) =
+        generator_settings_component(&terrain.generator.id, terrain.generator.version)
+    else {
+        return Ok(());
+    };
+    let held = attachments::instances(world, owner)
+        .iter()
+        .any(|other| attachments::meta(world, *other).is_some_and(|meta| meta.class_name == class));
+    if held {
+        return Ok(());
+    }
+    pulsar_world_registry::attach_component(
+        world,
+        owner,
+        NewInstance::new(class.clone()),
+        pulsar_world_registry::ComponentPayload::Default,
+    )
+    .map(|_| ())
+    .map_err(|error| format!("Could not attach {class}: {error}"))
+}
+
 /// The generator settings (JSON) of a terrain instance: its owner object's
 /// settings component serialized when present, else `generator_parameters`.
 pub fn generator_settings(

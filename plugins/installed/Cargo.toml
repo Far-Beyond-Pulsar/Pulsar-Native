@@ -88,6 +88,11 @@ glam = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 image = { workspace = true }
+# The level editor as the editor assembles it (tests/level_editor.rs): the
+# shell with every installed plugin's editor module registering through its
+# extension points.
+ui_level_editor = { workspace = true }
+parking_lot = { workspace = true }
 
 [lints]
 workspace = true

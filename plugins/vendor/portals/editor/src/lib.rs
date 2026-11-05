@@ -6,9 +6,12 @@
 //! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no portals type. The
 //! inspector edits the components through their reflected properties.
 //!
-//! The portal diagnostics overlay is still the level editor's
-//! (`ui_level_editor`): it pairs portals through the component crate and
+//! The portal diagnostics overlay is this crate's ([`level_editor`]): it pairs portals through the component crate and
 //! publishes what the overlay draws as the overlay's view payload.
+
+/// The plugin's level editor UI, registered through the level editor's
+/// extension points (`ui_level_editor::extend`).
+pub mod level_editor;
 
 use plugin_editor_api::*;
 

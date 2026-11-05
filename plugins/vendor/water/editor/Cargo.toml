@@ -15,6 +15,11 @@ builtin = []
 [dependencies]
 water_component = { workspace = true }
 plugin_editor_api = { workspace = true }
+# The level editor UI: registrations through its extension points
+# (`ui_level_editor::extend`), each naming its origin.
+ui_level_editor = { workspace = true }
+inventory = { workspace = true }
+pulsar_plugins = { workspace = true }
 
 [lints]
 workspace = true

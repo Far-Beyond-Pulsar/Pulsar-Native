@@ -70,12 +70,12 @@ where
                     .p(px(2.0))
                     .gap_1();
 
-                for (opt_label_key, opt_value) in options {
+                for (opt_label, opt_value) in options {
                     let is_sel = opt_value == selected;
                     let state_clone = state_arc.clone();
                     let opt_val_static = opt_value;
                     let btn = Button::new(format!("{id}_{opt_value}"))
-                        .label(t!(opt_label_key))
+                        .label(opt_label.clone())
                         .small()
                         .on_click(move |_, _, _| {
                             let mut st = state_clone.write();
@@ -95,7 +95,7 @@ where
             }
             ToolWidget::Slider {
                 id,
-                label_key,
+                label,
                 value,
                 min,
                 max,
@@ -113,7 +113,7 @@ where
                         div()
                             .text_xs()
                             .text_color(theme.muted_foreground)
-                            .child(format!("{}:", t!(label_key))),
+                            .child(format!("{label}:")),
                     )
                     .child(
                         h_flex()
@@ -163,11 +163,11 @@ where
 
                 container = container.child(slider_widget);
             }
-            ToolWidget::Toggle { id, label_key, on } => {
+            ToolWidget::Toggle { id, label, on } => {
                 let state_clone = state_arc.clone();
                 let mut btn =
                     Button::new(id)
-                        .label(t!(label_key))
+                        .label(label.clone())
                         .small()
                         .on_click(move |_, _, _| {
                             let mut st = state_clone.write();
@@ -180,11 +180,11 @@ where
                 let btn = if on { btn.primary() } else { btn.ghost() };
                 container = container.child(btn);
             }
-            ToolWidget::Action { id, label_key } => {
+            ToolWidget::Action { id, label } => {
                 let state_clone = state_arc.clone();
                 let mut btn = Button::new(id)
                     .icon(IconName::Plus)
-                    .label(t!(label_key))
+                    .label(label.clone())
                     .small()
                     .ghost()
                     .on_click(move |_, _, _| {

@@ -7,7 +7,9 @@
 //! - their Helio features are not in the renderer's feature set, so none of
 //!   their passes is in a graph, and the frame's stand-ins take their place
 //!   (`Unlit` for the lighting model, no material texture table input);
-//! - their settings groups and tool modes are absent;
+//! - their settings groups are absent, and so is their level editor UI: the
+//!   editor crates' tool modes, Create entries, environment mixer entries
+//!   and starter setups are simply not registered (`ui_level_editor::extend`);
 //! - a mesh still renders, unlit, with its own albedo.
 //!
 //! Re-enabling them (another project) brings them back. A game built for
@@ -152,6 +154,9 @@ fn a_disabled_plugin_is_absent() {
         "{groups:?}"
     );
 
+    // Their level editor UI is not registered; the others' is.
+    level_editor_ui(false);
+
     // A level holding them loads; their instances keep their data verbatim.
     let level = write_level(off.path());
     let scene = RuntimeLevel::load(&level).expect("the level loads").scene();
@@ -198,10 +203,70 @@ fn a_disabled_plugin_is_absent() {
     for id in ABSENT_FEATURES {
         assert!(features.contains(id), "{id} is back in the feature set");
     }
+    level_editor_ui(true);
     // A project that does not list them has every plugin's default (on).
     let silent = project(None);
     engine_state::set_project_path(silent.path().display().to_string());
     assert!(registered("LightComponent"));
+}
+
+/// The disabled plugins' level editor UI is registered (`present`) or not;
+/// the enabled plugins' always is.
+fn level_editor_ui(present: bool) {
+    use ui_level_editor::extend;
+    let state = ui_level_editor::LevelEditorState::new();
+    let modes: Vec<_> = state
+        .editor
+        .tool_mode_registry
+        .modes()
+        .iter()
+        .map(|mode| mode.id().0)
+        .collect();
+    for (mode, disabled) in [
+        ("level_edit", false),
+        ("spline", false),
+        ("foliage", false),
+        ("voxel_sculpt", true),
+        ("terrain", true),
+    ] {
+        assert_eq!(
+            modes.contains(&mode),
+            present || !disabled,
+            "{mode}: {modes:?}"
+        );
+    }
+    let entries: Vec<_> = extend::create_entries()
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect();
+    for (entry, disabled) in [
+        ("light_point", true),
+        ("light_directional", true),
+        ("environment_reflection_capture", true),
+        ("mesh_cube", false),
+        ("sky", false),
+        ("wind", false),
+        ("environment_global_fog", false),
+    ] {
+        assert_eq!(
+            entries.contains(&entry),
+            present || !disabled,
+            "{entry}: {entries:?}"
+        );
+    }
+    // The starter setups are the lights'.
+    assert_eq!(!extend::environment_presets().is_empty(), present);
+    let listed: Vec<_> = extend::environment_listings()
+        .into_iter()
+        .map(|listing| listing.class_name)
+        .collect();
+    assert_eq!(listed.contains(&"LightComponent"), present, "{listed:?}");
+    assert!(listed.contains(&"GlobalFogComponent"), "{listed:?}");
+    let sections: Vec<_> = extend::level_component_sections()
+        .into_iter()
+        .map(|section| section.class_name)
+        .collect();
+    assert_eq!(sections, ["AtmosphereComponent", "WindComponent"]);
 }
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {

@@ -6,8 +6,15 @@
 //! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no splines type. The
 //! inspector edits the components through their reflected properties.
 //!
-//! The spline tool mode, panel and assistant tools are still the level
-//! editor's (`ui_level_editor`), acting through the component's methods.
+//! The spline tool mode, its panel and the assistant's spline tools are
+//! this crate's ([`level_editor`]), acting through the component's methods.
+
+// The level editor UI's text (`locales/`).
+rust_i18n::i18n!("locales", fallback = "en");
+
+/// The plugin's level editor UI, registered through the level editor's
+/// extension points (`ui_level_editor::extend`).
+pub mod level_editor;
 
 use plugin_editor_api::*;
 

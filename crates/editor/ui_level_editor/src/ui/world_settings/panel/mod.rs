@@ -1,6 +1,7 @@
-//! Level-wide settings: the level's sky (its one `AtmosphereComponent`,
-//! [`sky_section`]), its global wind (its one `WindComponent`,
-//! [`wind_section`]) and the persisted gameplay and simulation settings.
+//! Level-wide settings: the components a level holds once (the plugins'
+//! [`crate::extend::LevelComponentSection`]s: its sky, its global wind;
+//! [`level_component_section`]), the environment mixer and the persisted
+//! gameplay and simulation settings.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -23,9 +24,8 @@ use crate::WorldSettingsPanel;
 
 mod environment_section;
 mod input_section;
+mod level_component_section;
 mod pipeline_section;
-mod sky_section;
-mod wind_section;
 
 #[derive(Clone, Debug)]
 enum BlueprintCatalogState {
@@ -58,18 +58,10 @@ pub struct WorldSettingsPanelImpl {
     /// The player input mapping picker and the project's mappings.
     mapping_picker: Entity<SearchableList<String>>,
     mapping_catalog: BlueprintCatalogState,
-    /// The Sky section's property rows (#1057).
-    sky_property_state: ui_common::PropertyStateManager,
-    atmosphere_properties: Option<Arc<sky_section::ClassProperties>>,
-    /// Why the last "Create Sky" did nothing, if it did nothing.
-    sky_message: Option<String>,
-    /// The Wind section's property rows (#1123).
-    wind_property_state: ui_common::PropertyStateManager,
-    wind_properties: Option<Arc<sky_section::ClassProperties>>,
-    /// Why the last "Create Wind" did nothing, if it did nothing.
-    wind_message: Option<String>,
+    /// The level component sections' widget state, by class.
+    level_components: HashMap<&'static str, level_component_section::SectionState>,
     environment_property_state: ui_common::PropertyStateManager,
-    environment_properties: HashMap<String, Arc<sky_section::ClassProperties>>,
+    environment_properties: HashMap<String, Arc<level_component_section::ClassProperties>>,
     environment_selection: Option<environment_section::EnvironmentSelection>,
     environment_sidebar_scroll: gpui::UniformListScrollHandle,
     environment_detail_scroll: gpui::ScrollHandle,
@@ -222,12 +214,7 @@ impl WorldSettingsPanelImpl {
             pipeline_ids,
             mapping_picker,
             mapping_catalog: BlueprintCatalogState::Loading,
-            sky_property_state: ui_common::PropertyStateManager::new(),
-            atmosphere_properties: None,
-            sky_message: None,
-            wind_property_state: ui_common::PropertyStateManager::new(),
-            wind_properties: None,
-            wind_message: None,
+            level_components: HashMap::new(),
             environment_property_state: ui_common::PropertyStateManager::default(),
             environment_properties: HashMap::new(),
             environment_selection: None,
@@ -366,13 +353,18 @@ impl WorldSettingsPanelImpl {
             cx,
         );
         let pipeline_section = self.render_pipeline_section(cx);
-        // A disabled plugin's sections are absent (the sky's, the wind's).
-        let sky_section =
-            crate::scene_edit::environment::available(sky_component::ATMOSPHERE_CLASS)
-                .then(|| self.render_sky_section(window, cx));
-        let wind_section =
-            crate::scene_edit::environment::available(foliage_component::WIND_CLASS_NAME)
-                .then(|| self.render_wind_section(window, cx));
+        // The registered level components' sections (a disabled plugin's
+        // are not registered).
+        let level_sections: Vec<(&'static str, AnyElement)> =
+            crate::extend::level_component_sections()
+                .into_iter()
+                .map(|section| {
+                    (
+                        section.title,
+                        self.render_level_component_section(section, window, cx),
+                    )
+                })
+                .collect();
         let environment_tools = self.render_environment_tools(cx);
         let state = self.state.read();
         let settings = &state.scene.world_settings;
@@ -397,12 +389,9 @@ impl WorldSettingsPanelImpl {
                         .gap_4()
                         .child(self.render_section_title("Render Pipeline"))
                         .child(pipeline_section)
-                        .when_some(sky_section, |this, section| {
-                            this.child(self.render_section_title("Sky")).child(section)
-                        })
-                        .when_some(wind_section, |this, section| {
-                            this.child(self.render_section_title("Wind")).child(section)
-                        })
+                        .children(level_sections.into_iter().flat_map(|(title, section)| {
+                            [self.render_section_title(title).into_any_element(), section]
+                        }))
                         .child(self.render_section_title("Environment Mixer"))
                         .child(environment_tools)
                         .child(self.render_section_title("General"))

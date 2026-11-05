@@ -159,8 +159,9 @@ pub struct LevelSnapshot {
     class_names: HashMap<ObjectId, String>,
     editor_camera: Option<LevelEditorCameraState>,
     world_settings: WorldSettingsData,
-    /// None for world-only saves, which preserve the existing palette.
-    pub foliage_sets: Option<crate::state::foliage_sets::FoliageSetLibrary>,
+    /// The plugins' editor data by key ([`crate::extend::EditorData`]).
+    /// None for world-only saves, which preserve the file's.
+    pub editor_data: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 /// Capture what [`write_level`] writes. `registry` should be the project's
@@ -191,7 +192,7 @@ pub fn snapshot_level(
         class_names,
         editor_camera,
         world_settings,
-        foliage_sets: None,
+        editor_data: None,
     }
 }
 
@@ -204,7 +205,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         class_names,
         editor_camera,
         world_settings,
-        foliage_sets,
+        editor_data,
     } = snapshot;
     if let Some(parent_dir) = path.parent() {
         virtual_fs::create_dir_all(parent_dir)
@@ -223,8 +224,11 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
     if let Some(camera) = editor_camera {
         editor.get_or_insert_with(Default::default).camera = Some(camera);
     }
-    if let Some(foliage_sets) = foliage_sets {
-        editor.get_or_insert_with(Default::default).foliage_sets = foliage_sets;
+    if let Some(editor_data) = editor_data {
+        editor
+            .get_or_insert_with(Default::default)
+            .plugins
+            .extend(editor_data);
     }
     // Legacy `blueprint_bindings` are no longer written: loading migrates
     // them to `ClassInstance`. Only entries the migration could not express

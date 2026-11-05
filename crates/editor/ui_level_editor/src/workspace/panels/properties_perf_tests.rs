@@ -28,10 +28,28 @@ use gpui::{
     InteractiveElement as _, IntoElement as _, IntoElement, ParentElement as _, Render,
     StyleRefinement, Styled as _, TestAppContext, VisualTestContext, Window,
 };
-use installed_plugins as _;
+// Every installed plugin's components, registered as the editor has them
+// (their runtime crates; not `installed_plugins`, whose editor modules
+// would link a second copy of this crate into its unit tests).
+use decals_component as _;
+use fog_component as _;
+use foliage_component as _;
+use gi_component as _;
+use lens_component as _;
+use lights_component as _;
+use materials_component as _;
+use meshes_component as _;
+use particles_component as _;
+use portals_component as _;
+use post_component as _;
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
+use sky_component as _;
+use splines_component as _;
+use sprites_component as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use voxel_component as _;
+use water_component as _;
 
 /// Hosts the panel the way the dock does: behind `.cached(...)`, so a notify
 /// on the panel (or an entity it reads) rebuilds it through the cached-view

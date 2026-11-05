@@ -6,8 +6,12 @@
 //! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no 2D sprites type. The
 //! inspector edits the components through their reflected properties.
 //!
-//! The sprite placement helper is still the level editor's
-//! (`ui_level_editor::core::scene_edit::sprite`), attaching the component.
+//! Placing a sprite (the hierarchy's quick-add) is this crate's
+//! ([`level_editor`]), attaching the component.
+
+/// The plugin's level editor UI, registered through the level editor's
+/// extension points (`ui_level_editor::extend`).
+pub mod level_editor;
 
 use plugin_editor_api::*;
 

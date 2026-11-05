@@ -6,6 +6,13 @@
 //! crate (through `installed_plugins`, as an installed plugin's editor module) and knows no foliage type. The
 //! inspector edits the components through their reflected properties.
 
+// The level editor UI's text (`locales/`).
+rust_i18n::i18n!("locales", fallback = "en");
+
+/// The plugin's level editor UI, registered through the level editor's
+/// extension points (`ui_level_editor::extend`).
+pub mod level_editor;
+
 use plugin_editor_api::*;
 
 /// Links the component crate, so its registrations come with this crate.

@@ -23,6 +23,26 @@ pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 gpui-ce = { workspace = true }
 ui = { workspace = true }
 serde_json = { workspace = true }
+# The level editor UI: registrations through its extension points
+# (`ui_level_editor::extend`), each naming its origin.
+ui_level_editor = { workspace = true }
+inventory = { workspace = true }
+pulsar_plugins = { workspace = true }
+rust-i18n = { workspace = true }
+ui_common = { workspace = true }
+engine_backend = { workspace = true }
+glam = { workspace = true }
+pulsar_scenedb = { workspace = true }
+tracing = { workspace = true }
+profiling = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+# The inspector tests (tests/inspector.rs): the shared inspector and a
+# headless window.
+gpui-ce = { workspace = true, features = ["test-support"] }
+ui_common = { workspace = true }
+pulsar_reflection = { workspace = true }
 
 [lints]
 workspace = true

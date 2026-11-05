@@ -1,0 +1,7 @@
+# splines plugin, level editor UI - hi
+
+LevelEditor.Spline.PointCount: "बिंदु"
+LevelEditor.SplinePanel.Clear: "स्प्लाइन साफ़ करें"
+LevelEditor.SplinePanel.Title: "स्प्लाइन"
+LevelEditor.ToolMode.Spline: "स्प्लाइन"
+LevelEditor.ToolMode.SplineDesc: "बिंदु रखने के लिए क्लिक करें, साफ़ करने के लिए Shift-क्लिक करें"

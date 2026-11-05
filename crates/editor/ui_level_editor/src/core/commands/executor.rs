@@ -1,16 +1,18 @@
 use super::{CommandResult, SceneCommand};
-use crate::scene_edit::history::capture_history_subset;
+use crate::scene_edit::history::{capture_history_subset, UndoLabel};
 use crate::state::LevelEditorState;
 use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 
-/// Locale key naming a command's undo entry in the Edit menu.
-fn command_label(cmd: &SceneCommand) -> Option<&'static str> {
-    Some(match cmd {
+/// What a command's undo entry is called in the Edit menu.
+fn command_label(cmd: &SceneCommand) -> Option<UndoLabel> {
+    if let SceneCommand::Extension(command) = cmd {
+        return Some(UndoLabel::Text(command.label()));
+    }
+    Some(UndoLabel::Key(match cmd {
         SceneCommand::AddObject { .. }
         | SceneCommand::AddObjectWithComponents { .. }
         | SceneCommand::InstantiateClass { .. } => "LevelEditor.Undo.Add",
-        SceneCommand::AddVoxelWorld { .. } => "LevelEditor.Undo.AddVoxelWorld",
         SceneCommand::RemoveObject { .. } => "LevelEditor.Undo.Delete",
         SceneCommand::DuplicateObject { .. } => "LevelEditor.Undo.Duplicate",
         SceneCommand::ReparentObject { .. } => "LevelEditor.Undo.Reparent",
@@ -23,7 +25,7 @@ fn command_label(cmd: &SceneCommand) -> Option<&'static str> {
         SceneCommand::RemoveComponent { .. } => "LevelEditor.Undo.RemoveComponent",
         SceneCommand::SelectObject { .. } => return None,
         _ => "LevelEditor.Undo.Edit",
-    })
+    }))
 }
 
 fn command_scope(world: &pulsar_scenedb::World, cmd: &SceneCommand) -> Vec<String> {
@@ -57,7 +59,7 @@ fn command_scope(world: &pulsar_scenedb::World, cmd: &SceneCommand) -> Vec<Strin
         SceneCommand::SetMovability { ids, .. } => ids.clone(),
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
-        SceneCommand::AddVoxelWorld { .. } => voxel_component::presets::objects_changed_by(world),
+        SceneCommand::Extension(command) => command.scope(world),
     }
 }
 
@@ -830,35 +832,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 }
             }
 
-            SceneCommand::AddVoxelWorld { preset } => {
-                let setup =
-                    voxel_component::presets::add_voxel_world(&mut state.scene.world_mut(), preset);
-                let setup = match setup {
-                    Ok(setup) => setup,
-                    Err(error) => {
-                        tracing::error!("Could not add the voxel world: {error}");
-                        return CommandResult::noop("The voxel world could not be added");
-                    }
-                };
-                state.scene.select_object(Some(setup.terrain.clone()));
-                state.scene.pending_selection_sync = true;
-                state.editor.camera_request =
-                    setup
-                        .camera
-                        .map(|camera| crate::scene_edit::LevelEditorCameraState {
-                            position: camera.position,
-                            yaw: camera.yaw,
-                            pitch: camera.pitch,
-                        });
-                state.scene.bump_revision(true);
-                let mut ids = vec![setup.terrain];
-                for id in setup.added.into_iter().chain(setup.changed) {
-                    if !ids.contains(&id) {
-                        ids.push(id);
-                    }
-                }
-                CommandResult::ok(ids)
-            }
+            SceneCommand::Extension(command) => command.apply(state),
         }
     })();
 

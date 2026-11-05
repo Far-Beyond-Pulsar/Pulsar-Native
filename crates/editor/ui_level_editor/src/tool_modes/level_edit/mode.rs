@@ -18,16 +18,16 @@ impl ToolMode for LevelEditMode {
         ToolModeId::LEVEL_EDIT
     }
 
-    fn label_key(&self) -> &'static str {
-        "LevelEditor.ToolMode.LevelEdit"
+    fn label(&self) -> String {
+        rust_i18n::t!("LevelEditor.ToolMode.LevelEdit").to_string()
     }
 
     fn icon(&self) -> ui::IconName {
         ui::IconName::BoxIso
     }
 
-    fn description_key(&self) -> &'static str {
-        "LevelEditor.ToolMode.LevelEditDesc"
+    fn description(&self) -> String {
+        rust_i18n::t!("LevelEditor.ToolMode.LevelEditDesc").to_string()
     }
 
     fn on_mode_entered(&mut self, _ctx: &mut ToolModeContext) {}

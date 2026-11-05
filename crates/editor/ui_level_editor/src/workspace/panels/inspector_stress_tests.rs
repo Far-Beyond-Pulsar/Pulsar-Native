@@ -10,15 +10,13 @@
 //! cargo test -p ui_level_editor --lib inspector_stress -- --ignored --nocapture --test-threads=1
 //! ```
 
-// The voxel inspectors (the stack and generator editors) are its editor
-// module's: every installed plugin, editor modules included, as the editor
-// links them.
+// The voxel inspectors' tests (the features list, the layers stack) are
+// the voxel plugin's (`voxel_plugin`'s `tests/inspector.rs`).
 use super::perf_tests::RENDER_LOCK;
 use gpui::{
     div, px, size, AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, Styled as _, TestAppContext, VisualTestContext, Window,
 };
-use installed_plugins as _;
 use std::time::Instant;
 use ui_common::inspector_model::{CardDesc, PropDesc};
 use ui_common::{Inspector, InspectorRow};
@@ -437,139 +435,4 @@ pulsar_reflection::inventory::submit! {
         serialize_json: ser_nested,
         deserialize_json: de_nested,
     }
-}
-
-// ── Helio's list editor (the voxel Features list) ───────────────────────────
-
-use voxel_component::{VoxelFeatureGrowth, VoxelFeatureSpawn};
-
-/// The real `features` property of the voxel terrain: its type and a value.
-fn features_host(
-    cx: &mut TestAppContext,
-    spawns: usize,
-    growths: usize,
-) -> (VisualTestContext, gpui::Entity<ArrayHost>) {
-    let instance = pulsar_reflection::REGISTRY
-        .create_instance("VoxelTerrainComponent")
-        .expect("voxel terrain registered");
-    let ty = instance
-        .get_properties()
-        .into_iter()
-        .find(|p| p.name == "features")
-        .expect("features property")
-        .type_info;
-    let value: Vec<VoxelFeatureSpawn> = (0..spawns)
-        .map(|_| VoxelFeatureSpawn {
-            growths: vec![VoxelFeatureGrowth::default(); growths],
-            ..Default::default()
-        })
-        .collect();
-    typed_host(cx, ty, Box::new(value))
-}
-
-fn list_editor_of(host: &gpui::Entity<ArrayHost>, vcx: &VisualTestContext) -> gpui::AnyView {
-    host.read_with(vcx, |h, _| h.state.editor_view("Comp#0", "items"))
-        .expect("list editor built")
-}
-
-#[gpui::test]
-fn the_features_list_puts_its_cards_into_the_panel_list(cx: &mut TestAppContext) {
-    let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (mut vcx, host) = features_host(cx, 3, 2);
-    draw(&mut vcx);
-    // card header + the property row + one header per feature
-    assert_eq!(host.read_with(&vcx, |h, _| h.inspector.item_count()), 2 + 3);
-    let _ = list_editor_of(&host, &vcx);
-}
-
-#[gpui::test]
-#[ignore = "manual measurement; see module docs"]
-fn the_features_list_with_thousands_of_nested_items(cx: &mut TestAppContext) {
-    let t = Instant::now();
-    let growths: usize = std::env::var("GROWTHS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(50);
-    let (mut vcx, host) = features_host(cx, 200, growths);
-    let first = draw(&mut vcx);
-    let setup = ms(t);
-    let items = host.read_with(&vcx, |h, _| h.inspector.item_count());
-    let mut worst: f64 = 0.0;
-    let mut total = 0.0;
-    for _ in 0..200 {
-        host.update(&mut vcx, |h, cx| {
-            h.inspector.scroll_by(px(97.));
-            cx.notify();
-        });
-        let d = draw(&mut vcx);
-        worst = worst.max(d);
-        total += d;
-    }
-    eprintln!(
-        "features 200 spawns x 50 growths: setup {setup:.1}ms first draw {first:.1}ms, {items} items, \
-         scroll mean {:.2}ms worst {worst:.2}ms",
-        total / 200.0
-    );
-}
-
-// ── Terrain layers stack ────────────────────────────────────────────────────
-
-use voxel_component::VoxelTerrainStack;
-
-fn stack_host(
-    cx: &mut TestAppContext,
-    stack: VoxelTerrainStack,
-) -> (VisualTestContext, gpui::Entity<ArrayHost>) {
-    let instance = pulsar_reflection::REGISTRY
-        .create_instance("VoxelTerrainLayersComponent")
-        .expect("layers component registered");
-    let ty = instance
-        .get_properties()
-        .into_iter()
-        .find(|p| p.type_info.type_id == std::any::TypeId::of::<VoxelTerrainStack>())
-        .expect("a stack property")
-        .type_info;
-    typed_host(cx, ty, Box::new(stack))
-}
-
-#[gpui::test]
-fn the_layers_stack_offers_headings_and_cards_not_one_giant_row(cx: &mut TestAppContext) {
-    let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let stack = VoxelTerrainStack::earth();
-    let (layers, rules) = (stack.layers.len(), stack.rules.len());
-    let (mut vcx, host) = stack_host(cx, stack);
-    draw(&mut vcx);
-    let items = host.read_with(&vcx, |h, _| h.inspector.item_count());
-    // card header + property row + 5 headings + layer and rule cards
-    // (+ the validation line when there is one)
-    assert!(items >= 2 + 5 + layers + rules, "{items} items");
-    assert!(items <= 2 + 5 + layers + rules + 1, "{items} items");
-}
-
-#[gpui::test]
-#[ignore = "manual measurement; see module docs"]
-fn the_layers_stack_with_hundreds_of_layers(cx: &mut TestAppContext) {
-    let mut stack = VoxelTerrainStack::earth();
-    let template = stack.layers.clone();
-    while stack.layers.len() < 300 {
-        stack.layers.extend(template.iter().cloned());
-    }
-    let (mut vcx, host) = stack_host(cx, stack);
-    let first = draw(&mut vcx);
-    let items = host.read_with(&vcx, |h, _| h.inspector.item_count());
-    let mut worst: f64 = 0.0;
-    let mut total = 0.0;
-    for _ in 0..200 {
-        host.update(&mut vcx, |h, cx| {
-            h.inspector.scroll_by(px(97.));
-            cx.notify();
-        });
-        let d = draw(&mut vcx);
-        worst = worst.max(d);
-        total += d;
-    }
-    eprintln!(
-        "layers stack, 300+ layers: first draw {first:.1}ms, {items} items, scroll mean {:.2}ms worst {worst:.2}ms",
-        total / 200.0
-    );
 }

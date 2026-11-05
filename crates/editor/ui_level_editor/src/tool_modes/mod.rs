@@ -7,9 +7,6 @@
 pub mod dispatcher;
 pub mod level_edit;
 pub mod registry;
-pub mod spline;
-pub mod terrain;
-pub mod voxel_sculpt;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -19,9 +16,6 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 pub use dispatcher::*;
 pub use level_edit::*;
 pub use registry::*;
-pub use spline::*;
-pub use terrain::TerrainMode;
-pub use voxel_sculpt::VoxelSculptMode;
 
 use crate::state::LevelEditorState;
 
@@ -114,7 +108,8 @@ impl PartialEq for ToolPointerResult {
 pub enum ToolWidget {
     Slider {
         id: &'static str,
-        label_key: &'static str,
+        /// The mode's own (translated) text.
+        label: String,
         value: f32,
         min: f32,
         max: f32,
@@ -122,12 +117,14 @@ pub enum ToolWidget {
     },
     Segmented {
         id: &'static str,
-        options: Vec<(&'static str, &'static str)>,
+        /// `(text, value)` per option.
+        options: Vec<(String, &'static str)>,
         selected: &'static str,
     },
     Toggle {
         id: &'static str,
-        label_key: &'static str,
+        /// The mode's own (translated) text.
+        label: String,
         on: bool,
     },
     /// A one-shot command button. Unlike the other widgets it carries no
@@ -139,7 +136,8 @@ pub enum ToolWidget {
     /// mode's controls changed.
     Action {
         id: &'static str,
-        label_key: &'static str,
+        /// The mode's own (translated) text.
+        label: String,
     },
     Divider,
 }
@@ -161,13 +159,16 @@ pub struct StatusReadout {
 /// panel entities directly, keeping the trait object-safe and GPUI-agnostic
 /// (§4.1's contract). The shell (`ui/panel.rs`'s `LevelEditorPanel::sync_mode_layout`)
 /// reconciles the actual dock area to match whenever the active mode changes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ModeLayout {
     /// Whether the right-hand dock (Hierarchy / Properties / World Settings)
     /// should be visible while this mode is active. `false` lets a mode that
     /// wants the whole window for itself (e.g. a full-viewport paint tool)
     /// ask for a cleaner canvas.
     pub show_right_dock: bool,
+    /// The right dock's width while this mode is active (`None`: the
+    /// editor's default).
+    pub dock_width: Option<f32>,
 }
 
 impl Default for ModeLayout {
@@ -177,6 +178,7 @@ impl Default for ModeLayout {
     fn default() -> Self {
         Self {
             show_right_dock: true,
+            dock_width: None,
         }
     }
 }
@@ -206,14 +208,14 @@ pub trait ToolMode: Send + Sync {
     /// Unique identifier for this tool mode.
     fn id(&self) -> ToolModeId;
 
-    /// Localization key for the mode's display label.
-    fn label_key(&self) -> &'static str;
+    /// The mode's display label (the mode translates its own text).
+    fn label(&self) -> String;
 
     /// Icon representing this mode in the toolbar and mode indicator.
     fn icon(&self) -> ui::IconName;
 
-    /// Localization key for the mode's description tooltip.
-    fn description_key(&self) -> &'static str;
+    /// The mode's description tooltip.
+    fn description(&self) -> String;
 
     /// Called when switching into this mode.
     fn on_mode_entered(&mut self, ctx: &mut ToolModeContext);

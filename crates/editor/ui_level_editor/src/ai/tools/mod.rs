@@ -37,20 +37,29 @@ mod classes;
 mod components;
 mod objects;
 mod scene;
-mod splines;
 mod view;
 
-type StateArc = Arc<parking_lot::RwLock<LevelEditorState>>;
+pub type StateArc = Arc<parking_lot::RwLock<LevelEditorState>>;
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-fn tool_registry() -> &'static ToolRegistry {
-    static REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
+/// The shell's tools and every enabled plugin's
+/// ([`crate::extend::AiToolNamespace`]), rebuilt when the project's plugins
+/// change.
+fn tool_registry() -> Arc<ToolRegistry> {
+    static REGISTRY: OnceLock<parking_lot::Mutex<(u64, Option<Arc<ToolRegistry>>)>> =
+        OnceLock::new();
+    let mut cached = REGISTRY.get_or_init(Default::default).lock();
+    let generation = pulsar_plugins::generation();
+    if cached.0 != generation || cached.1.is_none() {
         let mut registry = ToolRegistry::new();
         registry.merge_plugin(&PluginToolRegistry::from_namespace(module_path!()));
-        registry
-    })
+        for namespace in crate::extend::ai_tool_namespaces() {
+            registry.merge_plugin(&PluginToolRegistry::from_namespace(namespace.namespace));
+        }
+        *cached = (generation, Some(Arc::new(registry)));
+    }
+    cached.1.clone().expect("built above")
 }
 
 fn is_level_file(file_path: &Path) -> bool {
@@ -104,7 +113,7 @@ pub fn execute_ai_tool(
 /// The live editor the call is for. Tools only ever act on this in-memory
 /// state -- what the user sees -- never on the level file; the file path in
 /// the context just picks among open editors (see `sessions::find_editor`).
-fn open_scene(ctx: &ToolContext) -> Result<StateArc> {
+pub fn open_scene(ctx: &ToolContext) -> Result<StateArc> {
     sessions::find_editor(ctx.current_file.as_deref()).map_err(|e| anyhow!(e))
 }
 
@@ -112,7 +121,7 @@ fn open_scene(ctx: &ToolContext) -> Result<StateArc> {
 /// Play-In-Editor runs: stopping Play restores the pre-Play level, so an edit
 /// made now would silently vanish, and a save would write the game's
 /// runtime state into the level file.
-fn edit_scene(ctx: &ToolContext) -> Result<StateArc> {
+pub fn edit_scene(ctx: &ToolContext) -> Result<StateArc> {
     let state = open_scene(ctx)?;
     if !state.read().scene.is_edit_mode() {
         bail!(
@@ -123,7 +132,7 @@ fn edit_scene(ctx: &ToolContext) -> Result<StateArc> {
     Ok(state)
 }
 
-fn command_json(result: &CommandResult) -> Value {
+pub fn command_json(result: &CommandResult) -> Value {
     if result.changed {
         json!({ "changed": true, "affected_ids": result.affected_ids })
     } else {
@@ -131,7 +140,7 @@ fn command_json(result: &CommandResult) -> Value {
     }
 }
 
-fn require_object(state: &LevelEditorState, id: &str) -> Result<SceneObjectData> {
+pub fn require_object(state: &LevelEditorState, id: &str) -> Result<SceneObjectData> {
     scene_edit::objects::get_object(&state.scene.world(), id).ok_or_else(|| {
         anyhow!("No object with id '{id}'. Use level_editor_list_objects to find ids.")
     })
@@ -664,17 +673,8 @@ mod tests {
         let components = call("level_editor_get_components", json!({ "id": id }));
         assert_eq!(components["components"].as_array().unwrap().len(), 1);
 
-        // Splines and deletion.
-        let spline = call(
-            "level_editor_create_spline",
-            json!({ "points": [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.0, 10.0]] }),
-        );
-        let spline_id = spline["id"].as_str().unwrap().to_string();
-        let edited = call(
-            "level_editor_edit_spline",
-            json!({ "id": spline_id, "append_points": [[0.0, 0.0, 10.0]], "closed": true }),
-        );
-        assert_eq!(edited["point_count"], 4);
+        // Deletion. (The spline tools are the splines plugin's:
+        // `installed_plugins`' `tests/level_editor.rs`.)
         call(
             "level_editor_delete_objects",
             json!({ "filter": { "root_only": true } }),

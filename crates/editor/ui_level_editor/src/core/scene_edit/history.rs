@@ -40,33 +40,24 @@ pub struct SceneHistorySnapshot {
 pub struct SceneHistoryDelta {
     pub(crate) before: SceneHistorySnapshot,
     pub(crate) after: SceneHistorySnapshot,
-    /// Locale key naming the edit for the Edit menu ("Undo Move").
-    pub(crate) label: Option<&'static str>,
+    /// What the Edit menu calls it ("Undo Move").
+    pub(crate) label: Option<UndoLabel>,
 }
 
-/// Compact journal for voxel authoring. A sculpt stroke appends to the terrain
-/// edit log; retaining only that appended range avoids cloning the terrain's
-/// complete component (and its accumulated edit history) on every stroke.
+/// An undo entry's name: the shell's locale key, or a plugin's own
+/// (translated) text.
 #[derive(Clone, Debug)]
-pub struct VoxelEditJournal {
-    pub(crate) entries: Vec<VoxelEditJournalEntry>,
+pub enum UndoLabel {
+    Key(&'static str),
+    Text(String),
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct VoxelEditJournalEntry {
-    /// The terrain's object, for scoping the history entry.
-    pub(crate) id: ObjectId,
-    /// The terrain component instance itself (Pulsar-Native#1035).
-    pub(crate) instance: engine_backend::scene::attachments::ComponentInstanceId,
-    pub(crate) before_len: usize,
-    pub(crate) before_revision: u64,
-    pub(crate) edits: Vec<voxel_component::data::VoxelBrushEdit>,
-    pub(crate) after_revision: u64,
-}
-
-impl VoxelEditJournal {
-    pub(crate) fn ids(&self) -> Vec<ObjectId> {
-        self.entries.iter().map(|entry| entry.id.clone()).collect()
+impl UndoLabel {
+    pub fn text(&self) -> String {
+        match self {
+            Self::Key(key) => rust_i18n::t!(*key).to_string(),
+            Self::Text(text) => text.clone(),
+        }
     }
 }
 

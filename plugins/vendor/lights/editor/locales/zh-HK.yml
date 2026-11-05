@@ -1,0 +1,5 @@
+# lights plugin, level editor UI - zh-HK
+
+LevelEditor.Create.DirectionalLight: "平行光"
+LevelEditor.Create.PointLight: "點光源"
+LevelEditor.Create.SpotLight: "聚光燈"

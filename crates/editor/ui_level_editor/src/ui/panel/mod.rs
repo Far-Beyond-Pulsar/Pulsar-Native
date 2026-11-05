@@ -10,7 +10,6 @@ mod handlers;
 mod lifecycle;
 pub(crate) mod pie;
 mod playback_host;
-pub(crate) mod spline;
 pub(crate) mod split_viewports;
 mod workspace_sync;
 

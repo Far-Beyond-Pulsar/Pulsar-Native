@@ -531,7 +531,7 @@ pub fn level_editor_select_object(ctx: &ToolContext, id: Option<String>) -> Resu
         require_object(&state, id)?;
     }
     execute_command(&mut state, SceneCommand::SelectObject { id: id.clone() });
-    crate::core::splines::sync_selection(&mut state);
+    crate::extend::follow_selection(&mut state);
     Ok(json!({ "selected_id": id }))
 }
 

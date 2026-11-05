@@ -1,0 +1,5 @@
+# lights plugin, level editor UI - ko
+
+LevelEditor.Create.DirectionalLight: "디렉셔널 라이트"
+LevelEditor.Create.PointLight: "포인트 라이트"
+LevelEditor.Create.SpotLight: "스포트 라이트"

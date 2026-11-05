@@ -1,0 +1,7 @@
+# splines plugin, level editor UI - uk
+
+LevelEditor.Spline.PointCount: "Точки"
+LevelEditor.SplinePanel.Clear: "Очистити сплайн"
+LevelEditor.SplinePanel.Title: "Сплайн"
+LevelEditor.ToolMode.Spline: "Сплайн"
+LevelEditor.ToolMode.SplineDesc: "Клік — додати точку, Shift+клік — очистити"

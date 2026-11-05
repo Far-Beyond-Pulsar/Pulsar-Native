@@ -1,124 +1,65 @@
 //! What the level editor's Create menu adds (Pulsar-Native#1012): one object
 //! of a kind, with the components that make it what its name says, as one
 //! undoable command. The new object is selected.
+//!
+//! The menu lists the registered [`crate::extend::CreateEntry`]s, grouped by
+//! hundreds of their `order` (objects 0.., lights 100.., meshes 200..,
+//! environment 300..). The shell adds the three kinds it knows itself (an
+//! empty object, a folder, a camera); every other entry is a plugin's.
 
-use crate::commands::{execute_command, CommandResult, SceneCommand, TypedComponent};
-use crate::scene_edit::{LightType, MeshType, ObjectType, SceneObjectData, Transform};
+use crate::commands::CommandResult;
+use crate::extend::{add_object, CreateEntry};
+use crate::scene_edit::{ObjectType, Transform};
 use crate::state::LevelEditorState;
 
-/// Every kind [`create`] knows, in menu order, with its locale key.
-pub const KINDS: &[(&str, &str)] = &[
-    ("empty", "LevelEditor.Create.Empty"),
-    ("folder", "LevelEditor.Create.Folder"),
-    ("camera", "LevelEditor.Create.Camera"),
-    ("light_point", "LevelEditor.Create.PointLight"),
-    ("light_spot", "LevelEditor.Create.SpotLight"),
-    ("light_directional", "LevelEditor.Create.DirectionalLight"),
-    ("mesh_cube", "LevelEditor.Create.Cube"),
-    ("mesh_sphere", "LevelEditor.Create.Sphere"),
-    ("mesh_cylinder", "LevelEditor.Create.Cylinder"),
-    ("mesh_plane", "LevelEditor.Create.Plane"),
-    ("sky", "LevelEditor.Create.Sky"),
-    ("wind", "LevelEditor.Create.Wind"),
-];
-
-/// The component class an object of `kind` holds (`None`: no component).
-fn class_of(kind: &str) -> Option<&'static str> {
-    Some(match kind.split('_').next()? {
-        "light" => "LightComponent",
-        "mesh" => "StaticMeshComponent",
-        "sky" => sky_component::ATMOSPHERE_CLASS,
-        "wind" => foliage_component::WIND_CLASS_NAME,
-        _ => return None,
-    })
+/// Add an object of the registered create entry `id` and select it.
+pub fn create(state: &mut LevelEditorState, id: &str) -> CommandResult {
+    crate::extend::create(state, id)
 }
 
-/// Whether the Create menu offers `kind`: its component's class is
-/// registered (a disabled plugin's kinds are absent).
-pub fn available(kind: &str) -> bool {
-    class_of(kind)
-        .is_none_or(|class| pulsar_world_registry::component_id_for_class(class).is_some())
+fn shell_object(
+    state: &mut LevelEditorState,
+    name: &str,
+    object_type: ObjectType,
+) -> CommandResult {
+    add_object(state, name, object_type, Transform::default(), vec![])
 }
 
-/// Add an object of `kind` (one of [`KINDS`]) at the origin and select it.
-pub fn create(state: &mut LevelEditorState, kind: &str) -> CommandResult {
-    let result = match kind {
-        "sky" => super::sky::create_sky(state),
-        "wind" => super::wind::create_wind(state),
-        _ => {
-            let Some((name, object_type, components)) = object_for(kind) else {
-                return CommandResult::noop("Unknown object kind");
-            };
-            execute_command(
-                state,
-                SceneCommand::AddObjectWithComponents {
-                    data: SceneObjectData {
-                        id: String::new(),
-                        name: name.to_string(),
-                        object_type,
-                        transform: Transform::default(),
-                        visible: true,
-                        locked: false,
-                        parent: None,
-                        children: vec![],
-                        scene_path: String::new(),
-                        props: Default::default(),
-                        component_instances: None,
-                    },
-                    parent_id: None,
-                    components,
-                },
-            )
-        }
-    };
-    if let Some(id) = result.affected_ids.first() {
-        execute_command(
-            state,
-            SceneCommand::SelectObject {
-                id: Some(id.clone()),
-            },
-        );
+inventory::submit! {
+    CreateEntry {
+        origin: pulsar_plugins::origin!(),
+        id: "empty",
+        menu_label: Some(|| rust_i18n::t!("LevelEditor.Create.Empty").to_string()),
+        environment_label: None,
+        quick_add: None,
+        offered: None,
+        order: 0,
+        create: |state| shell_object(state, "Empty", ObjectType::Empty),
     }
-    result
 }
 
-fn object_for(kind: &str) -> Option<(&'static str, ObjectType, Vec<TypedComponent>)> {
-    let light = |name, light_type, kind| {
-        let mut light = lights_component::LightComponent::default();
-        light.general.enabled = true;
-        light.general.light_type = light_type;
-        (
-            name,
-            ObjectType::Light(kind),
-            vec![TypedComponent::new(light)],
-        )
-    };
-    let mesh = |name, file: &str, kind| {
-        let mesh = helio_component::StaticMeshComponent::for_mesh_asset(&format!(
-            "meshes/primitives/{file}"
-        ));
-        (
-            name,
-            ObjectType::Mesh(kind),
-            vec![TypedComponent::new(mesh)],
-        )
-    };
-    use lights_component::LightType as Helio;
-    Some(match kind {
-        "empty" => ("Empty", ObjectType::Empty, vec![]),
-        "folder" => ("Folder", ObjectType::Folder, vec![]),
-        "camera" => ("Camera", ObjectType::Camera, vec![]),
-        "light_point" => light("Point Light", Helio::Point, LightType::Point),
-        "light_spot" => light("Spot Light", Helio::Spot, LightType::Spot),
-        "light_directional" => light(
-            "Directional Light",
-            Helio::Directional,
-            LightType::Directional,
-        ),
-        "mesh_cube" => mesh("Cube", "SM_Cube.fbx", MeshType::Cube),
-        "mesh_sphere" => mesh("Sphere", "SM_Sphere.fbx", MeshType::Sphere),
-        "mesh_cylinder" => mesh("Cylinder", "SM_Cylinder.fbx", MeshType::Cylinder),
-        "mesh_plane" => mesh("Plane", "SM_Plane.fbx", MeshType::Plane),
-        _ => return None,
-    })
+inventory::submit! {
+    CreateEntry {
+        origin: pulsar_plugins::origin!(),
+        id: "folder",
+        menu_label: Some(|| rust_i18n::t!("LevelEditor.Create.Folder").to_string()),
+        environment_label: None,
+        quick_add: None,
+        offered: None,
+        order: 10,
+        create: |state| shell_object(state, "Folder", ObjectType::Folder),
+    }
+}
+
+inventory::submit! {
+    CreateEntry {
+        origin: pulsar_plugins::origin!(),
+        id: "camera",
+        menu_label: Some(|| rust_i18n::t!("LevelEditor.Create.Camera").to_string()),
+        environment_label: None,
+        quick_add: None,
+        offered: None,
+        order: 20,
+        create: |state| shell_object(state, "Camera", ObjectType::Camera),
+    }
 }

@@ -72,15 +72,9 @@ pub struct EditorDomain {
 
     // ── Tool Modes ────────────────────────────────────────────────────────
     pub tool_mode_registry: crate::tool_modes::ToolModeRegistry,
-    /// Terrain tool (foliage brush) settings persist across mode switches.
-    pub terrain: super::terrain::TerrainDomain,
-    /// Spline tool selection, drawing plane and viewport display preferences.
-    /// Authored curves live on scene objects and save with the level.
-    pub spline: super::spline::SplineDomain,
-    /// Voxel sculpt brush settings.
-    pub voxel: super::voxel::VoxelSculptDomain,
-    /// The sculpt stroke in progress, recorded as one undo step.
-    pub voxel_stroke: Option<super::voxel::VoxelStroke>,
+    /// The plugins' tool states (a sculpt brush, the spline tool's
+    /// selection, the foliage palette): they persist across mode switches.
+    pub plugins: crate::extend::PluginStates,
     /// Where an edit asked the viewport camera to go (a new voxel world's
     /// view of its ground); the viewport takes it on its next poll.
     pub camera_request: Option<crate::scene_edit::LevelEditorCameraState>,
@@ -118,10 +112,7 @@ impl Default for EditorDomain {
             realtime_viewport: true,
             viewport_debug_mode: 0,
             tool_mode_registry,
-            spline: super::spline::SplineDomain::default(),
-            terrain: super::terrain::TerrainDomain::default(),
-            voxel: super::voxel::VoxelSculptDomain::default(),
-            voxel_stroke: None,
+            plugins: Default::default(),
             camera_request: None,
         }
     }
@@ -129,7 +120,7 @@ impl Default for EditorDomain {
 
 impl EditorDomain {
     /// Copy the editor inputs needed by read-only tool UI queries without
-    /// copying the in-progress voxel stroke (which owns history snapshots).
+    /// copying plugin state that holds history (an in-progress stroke).
     pub(crate) fn clone_for_tool_query(&self) -> Self {
         Self {
             current_tool: self.current_tool,
@@ -148,10 +139,7 @@ impl EditorDomain {
             realtime_viewport: self.realtime_viewport,
             viewport_debug_mode: self.viewport_debug_mode,
             tool_mode_registry: self.tool_mode_registry.clone(),
-            terrain: self.terrain.clone(),
-            spline: self.spline.clone(),
-            voxel: self.voxel,
-            voxel_stroke: None,
+            plugins: self.plugins.clone_for_tool_query(),
             camera_request: None,
         }
     }

@@ -245,12 +245,7 @@ impl LevelEditorPanel {
             return;
         };
 
-        let width = match current {
-            crate::tool_modes::ToolModeId::SPLINE => px(380.0),
-            crate::tool_modes::ToolModeId::TERRAIN => px(380.0),
-            crate::tool_modes::ToolModeId::VOXEL_SCULPT => px(360.0),
-            _ => px(320.0),
-        };
+        let width = px(layout.dock_width.unwrap_or(320.0));
 
         workspace.update(cx, |ws, cx| {
             let dock_area = ws.dock_area().clone();

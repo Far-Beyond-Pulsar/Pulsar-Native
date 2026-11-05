@@ -134,10 +134,9 @@ pub fn with_world_component<T>(
     Some(f(value))
 }
 
-/// Follow-ups to a successful property edit of the instance at `index`.
-/// Choosing a voxel terrain's generator attaches that generator's settings
-/// component when the object has none, so its settings appear at once;
-/// other settings components are kept.
+/// Follow-ups to a successful property edit of the instance at `index`:
+/// the registered [`crate::extend::PropertyFollowUp`]s of the class's
+/// property (choosing a voxel terrain's generator attaches its settings).
 pub fn after_property_edit(
     world: &mut World,
     object_id: &str,
@@ -145,35 +144,13 @@ pub fn after_property_edit(
     index: usize,
     prop_name: &str,
 ) {
-    if class_name != "VoxelTerrainComponent" || prop_name != "generator" {
-        return;
-    }
-    let Some(terrain) = instance_at(world, object_id, index)
-        .and_then(|instance| world.get::<voxel_component::VoxelTerrainComponent>(instance))
-    else {
+    let Some(instance) = instance_at(world, object_id, index) else {
         return;
     };
-    let Some(class) = voxel_component::world::generator_settings_component(
-        &terrain.generator.id,
-        terrain.generator.version,
-    ) else {
-        return;
-    };
-    if get_component_class_names(world, object_id).contains(&class) {
-        return;
-    }
     let Some(owner) = world.entity_for(object_id) else {
         return;
     };
-    match pulsar_world_registry::attach_component(
-        world,
-        owner,
-        attach::NewInstance::new(class.clone()),
-        pulsar_world_registry::ComponentPayload::Default,
-    ) {
-        Ok(_) => {}
-        Err(error) => tracing::warn!("Could not attach {class} to '{object_id}': {error}"),
-    }
+    crate::extend::follow_property_edit(world, class_name, prop_name, owner, instance);
 }
 
 // ── Attach / remove / enable / reorder ─────────────────────────────────────

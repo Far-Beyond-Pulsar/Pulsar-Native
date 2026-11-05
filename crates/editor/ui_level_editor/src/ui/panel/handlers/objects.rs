@@ -87,7 +87,7 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) {
         let mut state = self.shared_state.write();
-        crate::state::voxel::VoxelStroke::finish(&mut state, true);
+        crate::extend::finish_interactions(&mut state, true);
         if state.scene.undo() {
             state.scene.bump_revision(true);
             drop(state);
@@ -110,6 +110,17 @@ impl LevelEditorPanel {
             self.sync_gizmo_to_helio();
         }
         cx.notify();
+    }
+
+    /// The Edit menu's Undo, for a plugin's panel (the spline panel's
+    /// buttons).
+    pub fn undo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.on_undo(&crate::ui::actions::Undo, window, cx);
+    }
+
+    /// The Edit menu's Redo, for a plugin's panel.
+    pub fn redo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.on_redo(&crate::ui::actions::Redo, window, cx);
     }
 
     pub(in crate::ui::panel) fn on_select_object(

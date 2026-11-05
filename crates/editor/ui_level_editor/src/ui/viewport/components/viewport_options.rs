@@ -27,7 +27,7 @@ fn overlay_menu(state_arc: Arc<parking_lot::RwLock<LevelEditorState>>) -> impl I
         .ghost()
         .popup_menu(move |menu, _, _| {
             let state = state_arc.read();
-            let options: [(&str, bool, fn(&mut crate::state::OverlayDomain, bool)); 5] = [
+            let options: [(&str, bool, fn(&mut crate::state::OverlayDomain, bool)); 4] = [
                 (
                     "Performance",
                     state.overlays.state.show_performance_overlay,
@@ -48,14 +48,36 @@ fn overlay_menu(state_arc: Arc<parking_lot::RwLock<LevelEditorState>>) -> impl I
                     state.overlays.state.show_camera_mode_selector,
                     crate::state::OverlayDomain::set_show_camera_mode_selector,
                 ),
-                (
-                    "Portal links",
-                    state.overlays.state.show_portal_debug_overlay,
-                    |overlays, show| overlays.state.show_portal_debug_overlay = show,
-                ),
             ];
+            // The plugins' debug overlays, shown by id.
+            let plugin_overlays: Vec<(&'static str, &'static str, bool)> =
+                crate::extend::viewport::debug_overlays()
+                    .map(|overlay| {
+                        (
+                            overlay.id,
+                            overlay.menu_label,
+                            state.overlays.state.debug_overlays.contains(&overlay.id),
+                        )
+                    })
+                    .collect();
             drop(state);
             let mut menu = menu;
+            for (id, label, enabled) in plugin_overlays {
+                let state = state_arc.clone();
+                let handler = move |_: &mut Window, _: &mut App| {
+                    let mut state = state.write();
+                    let shown = &mut state.overlays.state.debug_overlays;
+                    shown.retain(|shown| *shown != id);
+                    if !enabled {
+                        shown.push(id);
+                    }
+                };
+                menu = if enabled {
+                    menu.menu_handler_with_icon(label, IconName::Check, handler)
+                } else {
+                    menu.menu_handler(label, handler)
+                };
+            }
             for (label, enabled, set_enabled) in options {
                 let state = state_arc.clone();
                 let handler = move |_: &mut Window, _: &mut App| {
