@@ -109,6 +109,16 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
 
+      # The workspace's test binaries (every plugin's GPU tests and examples)
+      # outgrew the hosted runner: on #1587 the runner lost communication
+      # while nextest linked them. Free the preinstalled SDKs this job never
+      # uses (~25 GB), and build the tests with line tables only (full
+      # debuginfo is most of the target dir and of the linker's memory).
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update
@@ -411,7 +421,32 @@ jobs:
       # .config/nextest.toml; this bounds the whole step.
       - name: Run tests
         timeout-minutes: 60
-        run: cargo nextest run --profile ci --all --no-fail-fast
+        # Line tables were not enough: on #1587 and #1588 the linker died with
+        # a bus error and the runner ran out of disk, with ~93 GB free at the
+        # start. Build without debuginfo (a panic still names its test), and
+        # link the plugins' `*-examples` packages (~70 binaries, each linking
+        # the whole renderer) in a second step, after this one's linked test
+        # binaries are deleted.
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: cargo nextest run --profile ci --workspace --exclude '*-examples' --no-fail-fast
+
+      # Keep the compiled libraries (so nothing recompiles), drop the linked
+      # executables. Proc-macro .so files stay: the next build loads them.
+      - name: Free the linked test binaries
+        if: ${{ !cancelled() }}
+        run: |
+          find target/debug/deps -maxdepth 1 -type f -perm -u+x ! -name '*.so' -delete
+          df -h /
+
+      - name: Run the examples' tests
+        if: ${{ !cancelled() }}
+        timeout-minutes: 45
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: cargo nextest run --profile ci --package '*-examples' --no-fail-fast
 
   # Windows and macOS: compile only, no tests. Runs on main, nightly and by
   # hand, never per pull request: a Windows or macOS minute costs 2x or 10x a
