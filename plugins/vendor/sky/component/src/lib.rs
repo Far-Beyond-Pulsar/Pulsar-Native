@@ -68,6 +68,24 @@ fn atmosphere_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_n
     let authored = unsafe { &*(data as *const AtmosphereComponent) };
     // The pass reads the row on the GPU; the CPU needs the sky texture to keep
     // resident (a level has one sky), so announce it alongside the row.
+    {
+        // Diagnostic: one line whenever the sky texture's authored state changes.
+        static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
+        let state = (authored.sky_texture_enabled as u64)
+            | ((authored.enabled as u64) << 1)
+            | ((authored.sky_texture_source() as u64) << 2);
+        if LAST.swap(state, std::sync::atomic::Ordering::Relaxed) != state {
+            tracing::info!(
+                "atmosphere row derived: enabled={}, sky_texture_enabled={}, preset={:?}, source={:#x}, intensity={}, opacity={}",
+                authored.enabled,
+                authored.sky_texture_enabled,
+                authored.sky_texture_preset,
+                authored.sky_texture_source(),
+                authored.sky_texture_intensity,
+                authored.sky_texture_opacity,
+            );
+        }
+    }
     helio_pass_sky::sky_texture::set_requested(if authored.enabled {
         authored.sky_texture_source()
     } else {
