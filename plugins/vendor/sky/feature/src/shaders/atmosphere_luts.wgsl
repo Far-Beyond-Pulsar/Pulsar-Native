@@ -80,10 +80,10 @@ fn resolve() {
             let energy = colour.rgb * colour.w;
             if !has_primary_sun {
                 sun = toward_light;
+                illuminance = energy;
                 has_primary_sun = true;
             }
             if directional_count < 32u {
-                illuminance += energy;
                 let optical = lights[base + 5u];
                 let emitter = lights[base + 6u];
                 let packed = directional_count * 3u;
