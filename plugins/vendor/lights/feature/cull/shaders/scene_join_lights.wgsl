@@ -76,7 +76,15 @@ fn cs_join_lights(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let t = transforms[index];
     let relative = object_relative(t, u.origin_hi, u.origin_lo);
-    let direction = object_rotation(t) * vec3<f32>(0.0, -1.0, 0.0);
+    // The authored row carries a per-light local direction. This allows
+    // multiple LightComponents on one sky object to have independent emitter
+    // directions while inheriting the object's world rotation.
+    let local_direction = normalize(vec3<f32>(
+        light.direction_outer[0],
+        light.direction_outer[1],
+        light.direction_outer[2],
+    ));
+    let direction = object_rotation(t) * local_direction;
     light.position_range[0] = relative.x;
     light.position_range[1] = relative.y;
     light.position_range[2] = relative.z;

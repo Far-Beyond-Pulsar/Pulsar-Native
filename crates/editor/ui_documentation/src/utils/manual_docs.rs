@@ -29,6 +29,8 @@ pub struct ManualDocsState {
     pub expanded_folders: HashSet<PathBuf>,
     pub selected_file: Option<PathBuf>,
     pub current_markdown: String,
+    /// The text last read from or written to disk; the editor differs from it when unsaved.
+    pub saved_markdown: String,
     pub markdown_preview: String,
     pub editor_input_state: Entity<InputState>,
     pub view_mode: ViewMode,
@@ -73,6 +75,7 @@ impl ManualDocsState {
             expanded_folders: HashSet::new(),
             selected_file: None,
             current_markdown: String::new(),
+            saved_markdown: String::new(),
             markdown_preview: String::new(),
             editor_input_state,
             view_mode: ViewMode::Split,
@@ -169,6 +172,7 @@ impl ManualDocsState {
             self.editor_input_state.update(cx, |editor, cx| {
                 editor.set_value(content.clone(), window, cx);
             });
+            self.saved_markdown = content.clone();
             self.current_markdown = content.clone();
             self.markdown_preview = self.resolve_image_urls(&content);
         }
@@ -234,7 +238,8 @@ impl ManualDocsState {
 
         fs::write(path, &self.current_markdown)?;
 
-        self.markdown_preview = self.current_markdown.clone();
+        self.saved_markdown = self.current_markdown.clone();
+        self.markdown_preview = self.resolve_image_urls(&self.current_markdown.clone());
 
         Ok(())
     }
@@ -293,5 +298,12 @@ impl ManualDocsState {
 
     pub fn set_view_mode(&mut self, mode: ViewMode) {
         self.view_mode = mode;
+    }
+}
+
+impl ManualDocsState {
+    /// The open file has edits that are not on disk.
+    pub fn is_dirty(&self) -> bool {
+        self.selected_file.is_some() && self.current_markdown != self.saved_markdown
     }
 }

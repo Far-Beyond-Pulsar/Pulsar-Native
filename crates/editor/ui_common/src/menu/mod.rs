@@ -632,7 +632,6 @@ impl Render for AppTitleBar {
                     .px_2()
                     .gap_2()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(self.child.clone()(window, cx))
                     .child({
                         let theme_picker = self.theme_picker.clone();
                         ui::popover::Popover::<crate::theme_dropdown::ThemePicker>::new(
@@ -702,7 +701,20 @@ impl Render for AppTitleBar {
                             ),
                         ),
                     )
-                    .child(self.profile_dropdown.clone()),
+                    // Keep the profile avatar and custom project status together
+                    // in one group beside the window controls.
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .rounded_md()
+                            .px_2()
+                            .py(px(2.))
+                            .bg(cx.theme().muted.opacity(0.35))
+                            .child(self.profile_dropdown.clone())
+                            .child(self.child.clone()(window, cx)),
+                    ),
             )
     }
 }

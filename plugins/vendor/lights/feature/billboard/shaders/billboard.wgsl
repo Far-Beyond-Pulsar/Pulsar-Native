@@ -55,17 +55,19 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
     let inst = instances[instance_index];
     // In the frame's space, like the camera.
     let world_pos    = inst.world_pos_pad.xyz;
-    let scale        = inst.scale_flags.xy;
+    // Fit the source image inside the requested bounds without stretching.
+    let dimensions = vec2<f32>(textureDimensions(sprite_tex));
+    let scale = dimensions * min(abs(inst.scale_flags.x) / dimensions.x,
+                                 abs(inst.scale_flags.y) / dimensions.y);
     let screen_scale = inst.scale_flags.z > 0.5;
 
     // Build camera-facing (billboard) basis vectors
     let cam_pos = cameras[0].position_near.xyz;
-    let to_cam  = normalize(cam_pos - world_pos);
-
-    // Right and up vectors perpendicular to the view direction
-    let world_up = vec3<f32>(0.0, 1.0, 0.0);
-    let right    = normalize(cross(world_up, to_cam));
-    let up       = cross(to_cam, right);
+    // Parallel to the image plane, including camera roll. Facing the eye
+    // instead distorts off-axis icons and degenerates when looking down/up.
+    let view = cameras[0].view;
+    let right = vec3<f32>(view[0].x, view[1].x, view[2].x);
+    let up = vec3<f32>(view[0].y, view[1].y, view[2].y);
 
     // Offset in world space using the quad's local position
     var offset = right * quad_position.x * scale.x
@@ -86,8 +88,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) in
 
     var out: VertexOut;
     out.clip_pos = cameras[0].view_proj * vec4<f32>(final_pos, 1.0); // view_proj at offset 128
-    // An instance at the eye has no facing direction (normalize(0) is NaN):
-    // collapse it outside the clip volume instead of emitting NaN vertices.
+    // An instance at the eye cannot be projected: collapse it outside
+    // the clip volume.
     let rel = cam_pos - world_pos;
     if !(dot(rel, rel) > 1e-8) {
         out.clip_pos = vec4<f32>(0.0, 0.0, -1.0, 1.0);
