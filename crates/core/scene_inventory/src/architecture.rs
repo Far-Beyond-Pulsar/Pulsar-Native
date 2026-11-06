@@ -90,13 +90,19 @@ pub const RECORD_BOUNDARY_FILES: &[(&str, &str)] = &[
 ];
 
 /// Source roots of the renderer: the editor's Helio bridge, the Helio
-/// crates, and the voxel plugin (its component, world and feature crates).
+/// crates and the engine's shared render components. Every plugin's
+/// renderer parts are too: its Helio feature crates and its standalone host
+/// (`plugins/vendor/<kind>/feature/`, `.../host/`, [`PLUGIN_RENDERER_DIRS`]);
+/// a plugin's component, editor and world crates are not the renderer.
 pub const RENDERER_ROOTS: &[&str] = &[
     "crates/core/engine_backend/src/subsystems/render/",
     "crates/renderer/helio/crates/",
     "crates/core/helio_component/",
-    "plugins/vendor/voxel/",
 ];
+
+/// The directories of a plugin (`plugins/vendor/<kind>/<dir>/`) that are
+/// renderer: its Helio features and its standalone host.
+pub const PLUGIN_RENDERER_DIRS: &[&str] = &["feature", "host"];
 
 /// The renderer's `World::query` call sites, with why each is not a
 /// per-frame scan that discovers or projects render components. Rendering
@@ -104,33 +110,32 @@ pub const RENDERER_ROOTS: &[&str] = &[
 pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
     (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/interaction.rs",
-        1,
-        "picking: runs on a pointer event, not per frame",
-    ),
-    (
-        "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs",
         2,
-        "voxel path: VoxelSceneRead runs when the world revision changes (enabled meshes; lights, for the sun and the camera-relative gate)",
+        "picking and the nearest hit under a ray: run on a pointer event, not per frame",
     ),
     (
-        "crates/renderer/helio/crates/helio-components/src/lib.rs",
-        3,
-        "bake_scene_from_world: an explicit one-shot bake input, not the frame path",
-    ),
-    (
-        "plugins/vendor/voxel/component/src/world.rs",
+        "crates/core/engine_backend/src/subsystems/render/helio_renderer/camera_ground.rs",
         1,
-        "journals_to_compact: the editor's level save folds long voxel edit journals, once per save, not the frame path",
+        "the camera's ground: the instances of components with a `ground_altitude` method (by method, no kind named), found again only when the world revision changes",
     ),
     (
-        "crates/renderer/helio/crates/helio-components/src/ray_tracing.rs",
+        "plugins/vendor/meshes/host/src/lib.rs",
         3,
-        "HLFS acceleration structure: one full build, then change cursors",
+        "bake_scene_from_world: a standalone host's explicit one-shot bake input, not the frame path",
+    ),
+    (
+        "plugins/vendor/meshes/host/src/ray_tracing.rs",
+        3,
+        "a standalone host's HLFS acceleration structure: one full build, then change cursors",
     ),
 ];
 
 fn in_renderer(path: &str) -> bool {
     RENDERER_ROOTS.iter().any(|root| path.starts_with(root))
+        || path
+            .strip_prefix("plugins/vendor/")
+            .and_then(|rest| rest.split('/').nth(1))
+            .is_some_and(|dir| PLUGIN_RENDERER_DIRS.contains(&dir))
 }
 
 /// Retired patterns that still have production call sites.
@@ -239,6 +244,11 @@ pub const WORLD_RUNTIME_ROOTS: &[&str] = &[
 /// `runtime` module, or a plugin's registrations never reach the editor.
 pub const WORLD_STATE_SITES: &[(&str, usize, &str)] = &[
     (
+        "crates/core/pulsar_scene_model/src/frames.rs",
+        1,
+        "the SpaceDefiner inventory list: kinds that define coordinate spaces, statically linked plugins only (a DLL plugin defines none)",
+    ),
+    (
         "crates/core/pulsar_scene_model/src/motion.rs",
         1,
         "the MotionGate inventory list, read through the runtime's motion_gates",
@@ -261,8 +271,18 @@ pub const WORLD_STATE_SITES: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/core/pulsar_world_registry/src/runtime.rs",
-        7,
-        "the runtime itself: registration lists, OWN, ATTACHED, the host table",
+        11,
+        "the runtime itself: registration lists, OWN, ATTACHED, the host table, and each list's plugin gate (a disabled plugin's registrations skipped)",
+    ),
+    (
+        "crates/core/pulsar_world_registry/src/scene_payloads.rs",
+        1,
+        "the scene payload inventory list, read through pulsar_plugins::registered (the plugin gate); statically linked plugins only",
+    ),
+    (
+        "crates/core/pulsar_world_registry/src/scene_subsystems.rs",
+        1,
+        "the scene subsystem inventory list, read through pulsar_plugins::registered (the plugin gate); statically linked plugins only",
     ),
     (
         "crates/core/pulsar_world_registry/src/unfinished.rs",

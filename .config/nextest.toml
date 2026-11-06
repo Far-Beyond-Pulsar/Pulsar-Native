@@ -1,14 +1,47 @@
-# Hosted CI runners have no GPU adapter. These helio_component test binaries
-# require one and panic without it, so the `ci` profile leaves them out by
-# name rather than letting them count as passed. Run them on a GPU machine
-# with `cargo test -p helio_component` (Pulsar-Native#1036).
+# Hosted CI runners have no GPU: wgpu falls back to lavapipe (Mesa's CPU
+# Vulkan). The `ci` profile leaves out, by name, the test binaries that render
+# real frames or need a real adapter, rather than letting them count as passed:
+#
+# - meshes_component's GPU mirror and content-dedup suites need an adapter and
+#   panic without one (Pulsar-Native#1036);
+# - the voxel planet's chunk, cloud, volume, foliage and pass-graph suites, GI's
+#   probe tracers, the level editor's render acceptance and dense VG suites and
+#   the game's render-parity tests render full frames: on lavapipe they take
+#   1-7 minutes each and most die with SIGSEGV inside the driver (the p16 run
+#   lost ~90 tests that way and hit the step's 60-minute limit); the chunk
+#   bit-identity tests also bind 147 MB terrain tables, past lavapipe's 128 MB
+#   storage binding limit;
+# - one level-editor test saves a level with the renderer's voxel chunks.
+#
+# Everything else (the CPU tests of the same crates included) still runs. Run
+# the GPU suites on a GPU machine: `cargo test -p <package> --test <binary>`.
 [profile.ci]
 default-filter = """
-not (package(helio_component) & (
-    binary(static_mesh_component_gpu_mirror)
-    | binary(content_dedup)
-    | binary(content_dedup_benchmarks)
-))
+not (
+    (package(meshes_component) & (
+        binary(static_mesh_component_gpu_mirror)
+        | binary(content_dedup)
+        | binary(content_dedup_benchmarks)
+    ))
+    | (package(helio-pass-voxel-planet) & (
+        binary(chunks)
+        | binary(clouds)
+        | binary(volumes)
+        | binary(foliage_on_voxels)
+        | binary(voxel_pass_graph)
+    ))
+    | (package(helio-pass-gi) & (binary(gi_tests) | binary(mesh_tests)))
+    | (package(ui_level_editor) & (
+        binary(render_acceptance)
+        | binary(virtual_geometry_dense_acceptance)
+    ))
+    | (package(pulsar_game) & (
+        binary(voxel_render_parity)
+        | (binary(runtime_render_parity) & test(=every_runtime_renders_the_same_level))
+    ))
+    | (package(installed_plugins) & binary(level_editor)
+        & test(=a_level_save_keeps_the_renderers_voxel_chunks))
+)
 """
 
 # A test that hangs must not hold a runner. On 2026-10-13 a single physics_plugin

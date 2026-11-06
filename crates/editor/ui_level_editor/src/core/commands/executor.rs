@@ -826,7 +826,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     }
                 }
                 if affected.is_empty() {
-                    CommandResult::noop("No mesh or light to change")
+                    CommandResult::noop("Nothing with a movability to change")
                 } else {
                     state.scene.bump_revision(true);
                     CommandResult::ok(affected)

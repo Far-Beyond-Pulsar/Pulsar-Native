@@ -1198,7 +1198,8 @@ fn every_pass_of_the_editor_graph_runs() {
         "LensFlare",
         "PostProcess",
         "DebugDraw",
-        "PerfOverlay",
+        // Not the performance overlay: since the scene-driven graph it is a
+        // member only while one of its modes is on (it is off here).
     ] {
         assert!(
             activity.iter().any(|(name, _)| name == expected),

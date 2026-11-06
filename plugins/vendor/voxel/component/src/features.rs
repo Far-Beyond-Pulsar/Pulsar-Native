@@ -236,6 +236,33 @@ pub struct VoxelFeatureSpawn {
     pub far_height_m: f64,
 }
 
+// A terrain's feature list as a property value, registered for JSON so the
+// properties card can compare it: an unregistered value reads as changed, and
+// every sculpt stamp repainted the terrain's card. `Vec`'s own type info; a
+// registration entry rather than `pulsar_type` (which implements a trait the
+// orphan rule keeps off `Vec`).
+pulsar_reflection::inventory::submit! {
+    pulsar_reflection::RuntimeTypeRegistration {
+        type_info: <Vec<VoxelFeatureSpawn> as pulsar_reflection::Reflectable>::type_info,
+        serialize_json: |value: &dyn std::any::Any| {
+            let spawns = value.downcast_ref::<Vec<VoxelFeatureSpawn>>().ok_or_else(|| {
+                pulsar_reflection::ReflectError::TypeMismatch {
+                    expected: "Vec<VoxelFeatureSpawn>",
+                    found: format!("{:?}", value.type_id()),
+                }
+            })?;
+            serde_json::to_value(spawns)
+                .map_err(|e| pulsar_reflection::ReflectError::SerializationFailed(e.to_string()))
+        },
+        deserialize_json: |value: serde_json::Value| {
+            let spawns: Vec<VoxelFeatureSpawn> = serde_json::from_value(value).map_err(|e| {
+                pulsar_reflection::ReflectError::DeserializationFailed(e.to_string())
+            })?;
+            Ok(Box::new(spawns) as Box<dyn std::any::Any>)
+        },
+    }
+}
+
 impl Default for VoxelFeatureSpawn {
     /// `feature_recipe::SpawnRecipe::default()`.
     fn default() -> Self {

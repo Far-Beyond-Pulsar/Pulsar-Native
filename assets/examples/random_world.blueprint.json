@@ -1553,6 +1553,78 @@
             "name": "exec_out",
             "pin_type": "Output",
             "data_type": "Execution",
+            "connected_to": [
+              "earth_own_hills.exec"
+            ]
+          }
+        ]
+      },
+      "earth_own_hills": {
+        "id": "earth_own_hills",
+        "node_type": "native::VoxelTerrainLayersComponent::remove_layers_of_kind",
+        "position": {
+          "x": 3120.0,
+          "y": 200.0
+        },
+        "properties": {
+          "kind": "Hills"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "earth_air.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "kind",
+            "name": "kind",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "u32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
             "connected_to": []
           }
         ]
@@ -1812,6 +1884,14 @@
         "source_node": "earth",
         "source_pin": "exec_out",
         "target_node": "earth_air",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c_earth_own_hills",
+        "source_node": "earth_air",
+        "source_pin": "exec_out",
+        "target_node": "earth_own_hills",
         "target_pin": "exec",
         "connection_type": "Execution"
       }

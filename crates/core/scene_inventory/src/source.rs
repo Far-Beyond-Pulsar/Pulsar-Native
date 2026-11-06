@@ -558,15 +558,11 @@ pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
             .unwrap_or_default();
     let mut cache = HashMap::new();
     let mut out = Vec::new();
-    // Helio's pass crates, and the voxel plugin's feature crate.
-    let groups = [
-        helio.join("passes/2d"),
-        helio.join("passes/3d"),
-        root.join("plugins/vendor/voxel"),
-    ];
-    for group in groups {
-        let Ok(entries) = fs::read_dir(&group) else {
-            continue;
+    // Helio's pass crates, and every plugin's feature crates
+    // (`plugins/vendor/<kind>/feature`, or the crates under it).
+    let children = |group: &Path| -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(group) else {
+            return Vec::new();
         };
         let mut dirs: Vec<PathBuf> = entries
             .flatten()
@@ -574,6 +570,20 @@ pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
             .filter(|p| p.is_dir())
             .collect();
         dirs.sort();
+        dirs
+    };
+    let mut candidates = children(&helio.join("passes/2d"));
+    candidates.extend(children(&helio.join("passes/3d")));
+    for plugin in children(&root.join("plugins/vendor")) {
+        let feature = plugin.join("feature");
+        if feature.join("Cargo.toml").is_file() {
+            candidates.push(feature);
+        } else {
+            candidates.extend(children(&feature));
+        }
+    }
+    {
+        let dirs = candidates;
         for dir in dirs {
             let Some(package) = package_name(&dir, &mut cache) else {
                 continue;

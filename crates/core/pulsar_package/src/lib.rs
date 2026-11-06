@@ -30,6 +30,9 @@
 pub mod compile;
 pub mod cook;
 
+// Links every installed plugin's registrations (record migrations among them).
+use installed_plugins as _;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

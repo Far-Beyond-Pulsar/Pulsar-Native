@@ -1049,6 +1049,22 @@ impl VoxelTerrainLayersComponent {
         Ok(())
     }
 
+    /// Remove every layer of `kind` (Hills, Mountains, Craters, ...), as a
+    /// script does before adding its own; returns how many it removed.
+    #[world_method(category = "Voxel")]
+    fn remove_layers_of_kind(
+        world: &mut World,
+        entity: Entity,
+        kind: String,
+    ) -> Result<u32, String> {
+        let kind: VoxelLayerKind = serde_json::from_value(serde_json::Value::String(kind.clone()))
+            .map_err(|_| format!("unknown layer kind {kind:?}"))?;
+        let mut component = layers_mut(world, entity)?;
+        let before = component.stack.layers.len();
+        component.stack.layers.retain(|l| l.kind != kind);
+        Ok((before - component.stack.layers.len()) as u32)
+    }
+
     #[world_method(category = "Voxel")]
     fn set_layer_enabled(
         world: &mut World,
