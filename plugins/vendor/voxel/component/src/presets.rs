@@ -18,13 +18,10 @@
 use engine_backend::scene::{
     EditorCamera, Name, ObjectType, RuntimeLevel, SceneWorldExt, SpawnObject, Transform, Visibility,
 };
-use fog_component::GlobalFogComponent;
-use foliage_component::{FoliageComponent, FoliageForm};
-use lights_component::LightComponent;
-use post_component::PostProcessVolumeComponent;
 use pulsar_scene_model::{NewInstance, attachments};
 use pulsar_scenedb::{Entity, World};
 
+use crate::others::{self, ATMOSPHERE, FOLIAGE, GLOBAL_FOG, POST_VOLUME, WIND};
 use crate::{VoxelTerrainComponent, VoxelTerrainLayersComponent};
 
 /// A ready-made voxel world.
@@ -113,13 +110,17 @@ impl Plan {
             .query::<&VoxelTerrainComponent>()
             .filter_map(|(instance, _)| attachments::owner_of(world, instance))
             .min_by_key(|owner| world.stable_id_of(*owner).map(str::to_string));
-        let mut replaced = sky_component::atmospheres(world);
-        replaced.extend(foliage_component::winds(world));
-        replaced.extend(attached::<GlobalFogComponent>(world, |_| true));
+        let mut replaced = others::instances_of(world, ATMOSPHERE);
+        replaced.extend(others::instances_of(world, WIND));
+        replaced.extend(others::instances_of(world, GLOBAL_FOG));
         // Ground cover belongs to the voxel world it grows on.
-        replaced.extend(attached::<FoliageComponent>(world, |foliage| {
-            foliage.general.kind == FoliageForm::Block
-        }));
+        replaced.extend(
+            others::instances_of(world, FOLIAGE)
+                .into_iter()
+                .filter(|foliage| {
+                    others::variant(world, *foliage, FOLIAGE, "kind") == Some("Block")
+                }),
+        );
         if let Some(owner) = terrain_owner {
             replaced.extend(
                 attachments::instances(world, owner)
@@ -134,12 +135,12 @@ impl Plan {
         }
         Self {
             terrain_owner,
-            sun: lights_component::directional_lights(world).first().copied(),
-            look: attached::<PostProcessVolumeComponent>(world, |volume| {
-                volume.enabled && volume.unbound
-            })
-            .into_iter()
-            .find(|instance| attachments::is_enabled(world, *instance)),
+            sun: others::suns(world).first().copied(),
+            look: others::instances_of(world, POST_VOLUME)
+                .into_iter()
+                .find(|instance| {
+                    attachments::is_enabled(world, *instance) && is_look(world, *instance)
+                }),
             replaced,
         }
     }
@@ -160,15 +161,21 @@ impl Plan {
     }
 }
 
-/// The attached `T` instances `keep` selects.
-fn attached<T: pulsar_scenedb::Component>(world: &World, keep: impl Fn(&T) -> bool) -> Vec<Entity> {
-    world
-        .query::<&T>()
-        .filter(|(instance, value)| {
-            keep(value) && attachments::owner_of(world, *instance).is_some()
-        })
-        .map(|(instance, _)| instance)
-        .collect()
+/// Whether a post-process volume is a level's look: enabled and unbound.
+fn is_look(world: &World, volume: Entity) -> bool {
+    others::property_is(
+        world,
+        volume,
+        POST_VOLUME,
+        "enabled",
+        serde_json::json!(true),
+    ) && others::property_is(
+        world,
+        volume,
+        POST_VOLUME,
+        "unbound",
+        serde_json::json!(true),
+    )
 }
 
 /// The ids of the existing objects [`add_voxel_world`] would change or
@@ -209,15 +216,20 @@ pub fn add_voxel_world(
         let has_terrain = instances
             .iter()
             .any(|instance| source.get::<VoxelTerrainComponent>(*instance).is_some());
+        let class =
+            |instance: Entity| attachments::meta(source, instance).map(|m| m.class_name.as_str());
         let light = instances.iter().find(|instance| {
-            source
-                .get::<LightComponent>(**instance)
-                .is_some_and(lights_component::is_directional)
+            class(**instance) == Some(others::LIGHT) && others::is_sun(source, **instance)
         });
         let look = instances.iter().find(|instance| {
-            source
-                .get::<PostProcessVolumeComponent>(**instance)
-                .is_some_and(|volume| volume.unbound)
+            class(**instance) == Some(POST_VOLUME)
+                && others::property_is(
+                    source,
+                    **instance,
+                    POST_VOLUME,
+                    "unbound",
+                    serde_json::json!(true),
+                )
         });
         match (light, plan.sun, look, plan.look) {
             (Some(light), Some(sun), _, _) => {
@@ -350,6 +362,8 @@ fn set_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use foliage_component::FoliageComponent;
+    use lights_component::LightComponent;
     use sky_component::AtmosphereComponent;
 
     fn level_of(world: &World) -> Vec<(String, Vec<String>)> {

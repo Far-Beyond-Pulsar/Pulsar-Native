@@ -142,6 +142,10 @@ pub struct FoliagePlacePass {
     ground_args: Arc<wgpu::Buffer>,
     /// The ground: its tiling, and who answers its queries.
     ground: Arc<GroundLink>,
+    /// The ground a terrain offered ([`Self::set_ground`]), grown on while it is
+    /// present (`GroundGeometry::present`); the built-in one meanwhile.
+    offered: Option<Arc<GroundLink>>,
+    built_in: Arc<GroundLink>,
     /// The chart the resident tiles lie on.
     chart: Option<u64>,
     /// The renderer's world origin the frames were written for.
@@ -631,6 +635,7 @@ impl FoliagePlacePass {
             })
             .collect();
 
+        let built_in = Arc::new(GroundLink::built_in(Box::new(PlaneGround)));
         Self {
             blade_arena,
             tile_table,
@@ -648,7 +653,9 @@ impl FoliagePlacePass {
             queries,
             hits,
             ground_args,
-            ground: Arc::new(GroundLink::built_in(Box::new(PlaneGround))),
+            ground: built_in.clone(),
+            offered: None,
+            built_in,
             chart: None,
             world_origin: None,
             batch: 0,
@@ -717,9 +724,27 @@ impl FoliagePlacePass {
     /// Grow on `ground` from now on (`contract::ground`): its chart tiles the bands, and
     /// its answers place the tufts. Every resident tile is placed again.
     pub fn set_ground(&mut self, ground: Arc<GroundLink>) {
+        self.offered = Some(ground.clone());
+        self.grow_on(ground);
+    }
+
+    /// Grow on `ground` (the active one) from now on: every resident tile is
+    /// placed again.
+    fn grow_on(&mut self, ground: Arc<GroundLink>) {
         self.ground = ground;
         self.chart = None;
         self.asked.clear();
+    }
+
+    /// The offered ground while it is present, else the built-in one.
+    fn follow_present_ground(&mut self) {
+        let want = match &self.offered {
+            Some(offered) if offered.geometry().present() => offered.clone(),
+            _ => self.built_in.clone(),
+        };
+        if !Arc::ptr_eq(&want, &self.ground) {
+            self.grow_on(want);
+        }
     }
 
     /// The ground this pass grows on.
@@ -1100,6 +1125,7 @@ impl RenderPass for FoliagePlacePass {
         let position_near = ctx.camera_data.position_near;
         let camera = glam::Vec3::new(position_near[0], position_near[1], position_near[2]);
         let eye = world_origin + camera.as_dvec3();
+        self.follow_present_ground();
         let Some(chart) = self.ground.geometry().chart(eye) else {
             // The ground cannot tile yet (not loaded): draw what is resident.
             self.place_tile_count = 0;

@@ -22,6 +22,8 @@
 pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 pub mod component;
+pub mod ground;
+pub use ground::{AirPreset, same_sky, sky_for_air, sky_on_ground};
 
 pub use component::*;
 

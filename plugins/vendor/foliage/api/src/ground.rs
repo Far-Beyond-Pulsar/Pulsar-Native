@@ -204,6 +204,12 @@ pub trait GroundGeometry: Send + Sync {
     fn tile_frame(&self, chart: u64, coord: [i32; 2], span: u32) -> Option<TileFrame>;
     /// Where world point `p` lies on `chart` (metres), to find the tiles under a change.
     fn locate(&self, chart: u64, p: DVec3) -> Option<[f64; 2]>;
+    /// Whether the ground has any content (a terrain exists in the scene). A ground
+    /// without any hands placement to its built-in ground until it has; one that has
+    /// content but cannot tile yet (loading) is present and has no [`Self::chart`].
+    fn present(&self) -> bool {
+        true
+    }
 }
 
 /// A chart and the eye's place on it ([`GroundGeometry::chart`]).
@@ -222,6 +228,9 @@ impl<T: GroundGeometry> GroundGeometry for std::sync::Arc<T> {
     }
     fn locate(&self, chart: u64, p: DVec3) -> Option<[f64; 2]> {
         (**self).locate(chart, p)
+    }
+    fn present(&self) -> bool {
+        (**self).present()
     }
 }
 

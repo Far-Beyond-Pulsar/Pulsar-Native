@@ -35,6 +35,9 @@ const CHART_HYSTERESIS: f64 = 1.0 / 16.0;
 pub struct PlanetGround {
     grid: RwLock<Option<(Grid, VolumeTransform)>>,
     face: Mutex<Option<u8>>,
+    /// The scene has no voxel volume ([`Self::set_absent`]): foliage grows on its
+    /// built-in ground meanwhile.
+    absent: std::sync::atomic::AtomicBool,
 }
 
 impl PlanetGround {
@@ -45,6 +48,12 @@ impl PlanetGround {
             *self.face.lock().expect("planet ground") = None;
         }
         *current = Some((grid, transform));
+    }
+
+    /// Whether the scene has no voxel volume (the pass says each frame).
+    pub fn set_absent(&self, absent: bool) {
+        self.absent
+            .store(absent, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Foliage grows on `grid` in the world's frame.
@@ -63,6 +72,10 @@ impl PlanetGround {
 }
 
 impl GroundGeometry for PlanetGround {
+    fn present(&self) -> bool {
+        !self.absent.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     fn chart(&self, eye: DVec3) -> Option<GroundChart> {
         let (grid, transform) = self.grid()?;
         let eye = transform.to_local(eye);

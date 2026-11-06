@@ -28,6 +28,7 @@ pulsar_plugins::installed!("../pulsar-plugin.toml");
 pub mod component;
 mod component_runtime;
 pub mod features;
+pub mod others;
 pub mod presets;
 pub mod runtime;
 pub mod sculpt;

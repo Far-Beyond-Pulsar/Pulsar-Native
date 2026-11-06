@@ -22,6 +22,8 @@
 pulsar_plugins::installed!("../pulsar-plugin.toml");
 
 pub mod component;
+pub mod ground;
+pub use ground::{haze_for_air, haze_on_ground};
 
 pub use component::*;
 

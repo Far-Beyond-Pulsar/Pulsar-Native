@@ -491,7 +491,11 @@ impl ChunkPass {
         }
         self.settling = self.settling.saturating_sub(1);
         // No volumes published: the chunks and storage go.
-        let Some(frame) = ctx.scene_buffers.payload(&VOXEL_FRAME) else {
+        let frame = ctx.scene_buffers.payload(&VOXEL_FRAME);
+        // Without volumes the scene has no voxel ground: foliage grows on its own.
+        self.planet_ground
+            .set_absent(frame.as_ref().is_none_or(|frame| frame.volumes.is_empty()));
+        let Some(frame) = frame else {
             self.shown = None;
             self.world = None;
             self.held.clear();

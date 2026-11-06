@@ -710,19 +710,15 @@ fn publish_frame(world: &World, problems: &mut Vec<String>) -> Option<Arc<Planet
 /// the direction it travels, its owner's rotation of -Y. The light must be
 /// lit the way the scene join lights it: enabled, and its owner visible.
 pub fn scene_sun(world: &World) -> Option<Vec3> {
-    use pulsar_scene_model::attachments::ComponentOwner;
-    let (_, (_, owner)) = world
-        .query::<(&lights_component::LightComponent, &ComponentOwner)>()
-        .find(|(_, (light, owner))| {
-            owner.is_enabled()
-                && light.general.enabled
-                && light.general.light_type == lights_component::LightType::Directional
-                && world
-                    .get::<pulsar_scene_model::Visibility>(owner.entity())
-                    .is_none_or(|visibility| visibility.visible)
-        })?;
-    let transform =
-        pulsar_scene_model::hierarchy_transform::world_transform_of(world, owner.entity())?;
+    // The level's suns by name (`crate::others`): voxel links no light type.
+    let owner = crate::others::suns(world).into_iter().find_map(|sun| {
+        let owner = pulsar_scene_model::attachments::owner_of(world, sun)?;
+        world
+            .get::<pulsar_scene_model::Visibility>(owner)
+            .is_none_or(|visibility| visibility.visible)
+            .then_some(owner)
+    })?;
+    let transform = pulsar_scene_model::hierarchy_transform::world_transform_of(world, owner)?;
     let rotation = glam::Quat::from_euler(
         glam::EulerRot::YXZ,
         transform.rotation[1].to_radians(),
