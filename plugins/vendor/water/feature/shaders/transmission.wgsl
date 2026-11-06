@@ -55,7 +55,7 @@ fn water_caustics_light(world_pos: vec3<f32>) -> vec3<f32> {
     }
     let vol = water_volumes[0];
     let depth = vol.bounds_max.w - world_pos.y;
-    if depth <= 0.0 || vol.caustics_params.x <= 0.5 {
+    if depth <= 0.0 || vol.caustics_params.x <= 0.5 || !water_volume_contains(vol, world_pos) {
         return vec3<f32>(0.0);
     }
     let uv = fract((world_pos.xz + water_caustics_phase.xy) / 12.0);

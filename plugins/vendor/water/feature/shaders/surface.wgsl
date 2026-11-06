@@ -1058,9 +1058,11 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) front: bool) -> @location(0)
     // the underwater look. Far from the surface the answer is obvious; near
     // it, compare with the exact displaced height at the camera.
     let vol = volumes[in.vol_index];
+    // A lake or pool draws inside its box only.
+    if !water_volume_covers(vol, in.surface_xz) { discard; }
     let cam = cameras[0].position_near.xyz;
     let rest = vol.bounds_max.w;
-    var cam_above = cam.y > rest;
+    var cam_above = cam.y > rest || !water_volume_contains(vol, cam);
     if abs(cam.y - rest) < 24.0 {
         cam_above = cam.y > water_surface_at(cam.xz, vol, in.vol_index);
     }

@@ -162,6 +162,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var submersion = 0.0;
     for (var i = 0u; i < arrayLength(&volumes); i++) {
         let v = volumes[i];
+        // A lake or pool submerges only a camera inside its box.
+        if !water_volume_contains(v, cam_pos) { continue; }
         // Against the DISPLACED surface, not the flat plane — otherwise the
         // test is wrong precisely when the camera is at the waterline. The
         // old volume floor is not a boundary for the continuous global ocean.

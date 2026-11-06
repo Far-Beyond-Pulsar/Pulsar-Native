@@ -43,7 +43,7 @@ pub const WATER_VOLUME_SNIPPET: helio_core::shader::ShaderSnippet =
 /// 12 ssr_params              → (enable, max_steps, step_size, thickness)
 /// 13 sim_dynamics            → (spring, damping, wave_scale, _)
 /// 14 wind_params             → (dir_x, dir_z, strength, own_wind)
-/// 15 world_phase             → (x, z, _, _)  [world origin mod WATER_WORLD_PERIOD]
+/// 15 world_phase             → (x, z, bounded, _)  [world origin mod WATER_WORLD_PERIOD; bounded 1: a lake or pool, clipped to its XZ box]
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct GpuWaterVolume {

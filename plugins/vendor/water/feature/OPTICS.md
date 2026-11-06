@@ -82,10 +82,14 @@ intersection fade, and blend after the water surface. They do not yet write
 Ultra-Water's per-surface water tags, so droplets crossing the interface lack
 its tag-aware underwater compositing behavior.
 
-The legacy volume row supplies ocean height and optical parameters; its XZ
-AABB does not cap the ocean, the caustics field, or the underwater surface
-query. The row's local interaction heightfield remains confined to its authored
-XZ bounds. Terrain-derived shoreline depth/travel-time is opt-in through
+A volume row supplies the water's height and optical parameters. An ocean
+(the default) is not capped by its XZ AABB: the surface, the caustics field and
+the underwater surface query reach the horizon. A bounded volume (a lake or
+pool, `world_phase.z` = 1, `WaterVolumeComponent::bounded`) draws its surface,
+submerges the camera and lights caustics only inside its box
+(`water_volume_covers` / `water_volume_contains` in `water_volume.wgsl`). The
+row's local interaction heightfield remains confined to its authored XZ bounds
+either way. Terrain-derived shoreline depth/travel-time is opt-in through
 `WaterShoreMap`, since generic Helio scenes do not expose a terrain-height query.
 
 ## Remaining Ultra-Water differences

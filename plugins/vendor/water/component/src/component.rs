@@ -54,6 +54,12 @@ pub struct WaterVolumeComponent {
     /// position (0 = surface sits exactly at the object's own Y).
     #[property(category = "Bounds")]
     pub surface_height_offset: f32,
+    /// A lake or pool: the surface, the underwater medium and the caustics
+    /// stay inside the box (`size` around the owner). Off: an ocean, whose
+    /// surface reaches the horizon at the owner's height (the box only bounds
+    /// the local interaction heightfield).
+    #[property(category = "Bounds")]
+    pub bounded: bool,
 
     // ── Waves ───────────────────────────────────────────────────────────
     /// Peak wave displacement in metres, above and below the rest height.
@@ -186,6 +192,7 @@ impl Default for WaterVolumeComponent {
             enabled: true,
             size: [200.0, 60.0, 200.0],
             surface_height_offset: 0.0,
+            bounded: false,
             wave_amplitude: 0.5,
             wave_frequency: 0.3,
             wave_speed: 1.5,
@@ -296,7 +303,8 @@ impl WaterVolumeComponent {
                 self.wind_strength,
                 if self.use_global_wind { 0.0 } else { 1.0 },
             ],
-            world_phase: [0.0; 4],
+            // z: bounded (`water_volume_covers`); the join writes xy.
+            world_phase: [0.0, 0.0, if self.bounded { 1.0 } else { 0.0 }, 0.0],
         }
     }
 }

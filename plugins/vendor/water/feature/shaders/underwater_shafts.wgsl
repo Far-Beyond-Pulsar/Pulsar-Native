@@ -82,7 +82,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         return vec4f(0.0, 0.0, 0.0, dist);
     }
     let vol = volumes[0];
-    if vol.fog_params.y <= 1e-4 || vol.caustics_params.x <= 0.5 {
+    if vol.fog_params.y <= 1e-4 || vol.caustics_params.x <= 0.5
+        || !water_volume_contains(vol, cam) {
         return vec4f(0.0, 0.0, 0.0, dist);
     }
 

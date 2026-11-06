@@ -21,5 +21,19 @@ struct WaterVolume {
     ssr_params:            vec4f,  // x = enable, y = max steps, z = step size, w = thickness
     sim_dynamics:          vec4f,  // x = spring, y = damping, z = wave scale
     wind_params:           vec4f,  // xy = direction (XZ), z = strength, w = own wind
-    world_phase:           vec4f,  // xy = the frame's world origin XZ mod WATER_WORLD_PERIOD
+    world_phase:           vec4f,  // xy = the frame's world origin XZ mod WATER_WORLD_PERIOD, z = 1 bounded
+}
+
+// Whether the water of `vol` reaches the world point `xz`: everywhere for an
+// ocean, inside its XZ box for a bounded volume (a lake or pool).
+fn water_volume_covers(vol: WaterVolume, xz: vec2f) -> bool {
+    return vol.world_phase.z < 0.5
+        || (all(xz >= vol.bounds_min.xz) && all(xz <= vol.bounds_max.xz));
+}
+
+// Whether `point` is inside the water body's extent: an ocean has no floor
+// or sides; a bounded volume ends at its box.
+fn water_volume_contains(vol: WaterVolume, point: vec3f) -> bool {
+    return water_volume_covers(vol, point.xz)
+        && (vol.world_phase.z < 0.5 || point.y >= vol.bounds_min.y);
 }
