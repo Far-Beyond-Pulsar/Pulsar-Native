@@ -211,6 +211,121 @@ pub(crate) fn shafts_scratch(
     (texture, view)
 }
 
+/// The caustics projection: the refracted-sun grid that lands the ocean
+/// slopes' light on the caustics slices (`shaders/caustics.wgsl`): its
+/// bind group layout (water volumes, ocean slopes, sampler, slice
+/// parameters) and its additive, 4x MSAA `Rgba16Float` pipeline. The pass
+/// draws with it; the caustics test drives the same one.
+pub struct CausticsProjection {
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub pipeline: wgpu::RenderPipeline,
+}
+
+impl CausticsProjection {
+    pub fn new(device: &wgpu::Device) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("WaterCaustics Render BGL"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let caustics_pl_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Water Caustics PL"),
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
+        });
+        let caustics_shader = helio_core::shader::module_with(
+            device,
+            "Water Caustics Shader",
+            helio_core::include_wgsl!("../shaders/caustics.wgsl"),
+            &[crate::WATER_VOLUME_SNIPPET],
+        );
+        let vbl = vec4_vbl();
+        let caustics_pipeline = helio_core::shader::create_render_pipeline(
+            device,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("Water Caustics Pipeline"),
+                layout: Some(&caustics_pl_layout),
+                vertex: wgpu::VertexState {
+                    module: &caustics_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[Some(vbl.clone())],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &caustics_shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::One,
+                                dst_factor: wgpu::BlendFactor::One,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent::OVER,
+                        }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 4,
+                    ..Default::default()
+                },
+                multiview_mask: None,
+                cache: None,
+            },
+        );
+        Self {
+            bind_group_layout,
+            pipeline: caustics_pipeline,
+        }
+    }
+}
+
 impl WaterSimPass {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -230,20 +345,22 @@ impl WaterSimPass {
             "WaterSim Drop FS",
             helio_core::include_wgsl!("../shaders/drop.frag.wgsl"),
         );
-        let update_frag = helio_core::shader::module(
+        let update_frag = helio_core::shader::module_with(
             device,
             "WaterSim Update FS",
             helio_core::include_wgsl!("../shaders/update.frag.wgsl"),
+            &[crate::WATER_VOLUME_SNIPPET],
         );
         let normal_frag = helio_core::shader::module(
             device,
             "WaterSim Normal FS",
             helio_core::include_wgsl!("../shaders/normal.frag.wgsl"),
         );
-        let hitbox_frag = helio_core::shader::module(
+        let hitbox_frag = helio_core::shader::module_with(
             device,
             "WaterSim Hitbox FS",
             helio_core::include_wgsl!("../shaders/hitbox.frag.wgsl"),
+            &[crate::WATER_VOLUME_SNIPPET],
         );
 
         let sim_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -519,49 +636,6 @@ impl WaterSimPass {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-
-        let caustics_render_bgl =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("WaterCaustics Render BGL"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2Array,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
 
         let render_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Water Render BGL"),
@@ -1108,6 +1182,7 @@ impl WaterSimPass {
             "Water Underwater Tint Shader",
             helio_core::include_wgsl!("../shaders/underwater_fog.wgsl"),
             &[
+                crate::WATER_VOLUME_SNIPPET,
                 WATER_SHORE_SNIPPET,
                 helio_frame_api::lighting::sky::ATMOSPHERE_SNIPPET,
                 WATER_SKY_SNIPPET,
@@ -1195,7 +1270,7 @@ impl WaterSimPass {
             device,
             "Water Half-Resolution Shafts Shader",
             helio_core::include_wgsl!("../shaders/underwater_shafts.wgsl"),
-            &[WATER_SHORE_SNIPPET],
+            &[crate::WATER_VOLUME_SNIPPET, WATER_SHORE_SNIPPET],
         );
         let shafts_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Water Half-Resolution Shafts PL"),
@@ -1234,22 +1309,12 @@ impl WaterSimPass {
             },
         );
 
-        let caustics_pl_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Water Caustics PL"),
-            bind_group_layouts: &[Some(&caustics_render_bgl)],
-            immediate_size: 0,
-        });
         let render_pl_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Water Render PL"),
             bind_group_layouts: &[Some(&render_bgl)],
             immediate_size: 0,
         });
 
-        let caustics_shader = helio_core::shader::module(
-            device,
-            "Water Caustics Shader",
-            helio_core::include_wgsl!("../shaders/caustics.wgsl"),
-        );
         // One module, two fragment entry points: `fs_above` and `fs_under` share
         // the vertex stage and every helper, so the surface can only be shaded
         // one way. They used to be separate files with the whole coordinate and
@@ -1259,6 +1324,7 @@ impl WaterSimPass {
             "Water Surface Shader",
             helio_core::include_wgsl!("../shaders/surface.wgsl"),
             &[
+                crate::WATER_VOLUME_SNIPPET,
                 helio_pass_hiz::HIZ_SNIPPET,
                 WATER_SHORE_SNIPPET,
                 helio_frame_api::lighting::sky::ATMOSPHERE_SNIPPET,
@@ -1268,48 +1334,7 @@ impl WaterSimPass {
 
         let vbl = vec4_vbl();
 
-        let caustics_pipeline = helio_core::shader::create_render_pipeline(
-            &device,
-            wgpu::RenderPipelineDescriptor {
-                label: Some("Water Caustics Pipeline"),
-                layout: Some(&caustics_pl_layout),
-                vertex: wgpu::VertexState {
-                    module: &caustics_shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[Some(vbl.clone())],
-                    compilation_options: Default::default(),
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &caustics_shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba16Float,
-                        blend: Some(wgpu::BlendState {
-                            color: wgpu::BlendComponent {
-                                src_factor: wgpu::BlendFactor::One,
-                                dst_factor: wgpu::BlendFactor::One,
-                                operation: wgpu::BlendOperation::Add,
-                            },
-                            alpha: wgpu::BlendComponent::OVER,
-                        }),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    cull_mode: None,
-                    ..Default::default()
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState {
-                    count: 4,
-                    ..Default::default()
-                },
-                multiview_mask: None,
-                cache: None,
-            },
-        );
+        let caustics = CausticsProjection::new(device);
 
         // Bake Ultra-Water's tileable lace/billow foam material once per pass
         // lifetime, then build its mip chain with ordinary render passes.
@@ -1612,10 +1637,11 @@ impl WaterSimPass {
                 },
             ],
         });
-        let spray_shader = helio_core::shader::module(
+        let spray_shader = helio_core::shader::module_with(
             device,
             "Water Spray Shader",
             helio_core::include_wgsl!("../shaders/spray.wgsl"),
+            &[crate::WATER_VOLUME_SNIPPET],
         );
         let spray_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Water Spray PL"),
@@ -1897,9 +1923,9 @@ impl WaterSimPass {
             foam_mip_bgl,
             foam_mip_pipeline,
             foam_baked: false,
-            caustics_render_bgl,
+            caustics_render_bgl: caustics.bind_group_layout,
             render_bgl,
-            caustics_pipeline,
+            caustics_pipeline: caustics.pipeline,
             surface_pipeline,
             _pre_aa_fallback_tex: pre_aa_fallback_tex,
             pre_aa_fallback_view,

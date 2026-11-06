@@ -20,20 +20,13 @@ enable wgpu_binding_array;
 //!use specular_aa
 //!use material_surface
 
-// The G-buffer's `Globals` layout: graph `time` nodes read `time`.
-struct Globals {
+// The viewer's clock: its frame, and the time graph `time` nodes read (the
+// template's `radiant_graph_time` reads `globals.time` from the tag below).
+struct ViewerClock {
     frame: u32,
-    delta_time: f32,
-    light_count: u32,
-    ambient_intensity: f32,
-    ambient_color: vec4<f32>,
-    csm_splits: vec4<f32>,
-    debug_mode: u32,
-    screen_width: f32,
-    screen_height: f32,
     time: f32, // RADIANT_GLOBALS_TIME
 }
-@group(0) @binding(1) var<uniform> globals: Globals;
+@group(0) @binding(1) var<uniform> globals: ViewerClock;
 
 @group(1) @binding(0) var<storage, read> materials: array<GpuMaterial>;
 @group(1) @binding(1) var<storage, read> material_textures: array<MaterialTextureData>;
@@ -99,14 +92,13 @@ struct VertexOutput {
 }
 "#;
 
-/// Byte offsets inside the viewer program's `Globals` (the G-buffer's layout):
-/// `frame: u32` is first and `time: f32` follows `screen_height`.
+/// Byte offsets inside the viewer program's clock (`ViewerClock`).
 const GLOBALS_FRAME_OFFSET: u64 = 0;
-const GLOBALS_TIME_OFFSET: u64 = 60;
-/// Room for the whole `Globals` block.
-pub const GLOBALS_SIZE: u64 = 256;
+const GLOBALS_TIME_OFFSET: u64 = 4;
+/// The clock's size (a uniform block's 16-byte minimum).
+pub const GLOBALS_SIZE: u64 = 16;
 
-/// Layout of the `Globals` buffer the program reads at group 0, binding 1.
+/// Layout of the clock buffer the program reads at group 0, binding 1.
 /// Graph `time` nodes reach the clock through it.
 pub fn globals_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

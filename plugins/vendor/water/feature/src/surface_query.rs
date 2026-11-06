@@ -160,6 +160,7 @@ impl WaterSurfaceQueries {
             "Water Surface Query Shader",
             helio_core::include_wgsl!("../shaders/surface.wgsl"),
             &[
+                crate::WATER_VOLUME_SNIPPET,
                 helio_pass_hiz::HIZ_SNIPPET,
                 crate::pipeline::WATER_SHORE_SNIPPET,
                 helio_frame_api::lighting::sky::ATMOSPHERE_SNIPPET,

@@ -1,28 +1,10 @@
 //!use helio_prelude
+//!use water_volume
 // Wave-driven caustics by refracted triangle area-ratio splatting, following
 // Ultra-Water's three-depth raster pipeline. The source grid samples the 12 m
 // FFT cascade with cubic B-spline filtering; 4x MSAA resolves thin folds by
 // coverage. Near energy is written to R; mid/deep energy shares an independent
 // 256² texture in R/G. Each tile has its own repeat/mip chain.
-
-struct WaterVolume {
-    bounds_min:            vec4f,
-    bounds_max:            vec4f,
-    wave_params:           vec4f,
-    wave_direction:        vec4f,
-    water_color:           vec4f,
-    extinction:            vec4f,
-    reflection_refraction: vec4f,
-    caustics_params:       vec4f,
-    fog_params:            vec4f,
-    sim_params:            vec4f,
-    shadow_params:         vec4f,
-    sun_direction:         vec4f,
-    ssr_params:            vec4f,
-    sim_dynamics:          vec4f,
-    wind_params:           vec4f,
-    world_phase:           vec4f,
-}
 
 struct SliceParameters {
     // x depth (m), y source cells, z slope mip, w source-space landing margin.

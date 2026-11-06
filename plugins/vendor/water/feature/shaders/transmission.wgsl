@@ -1,32 +1,13 @@
 //!use helio_prelude
+//!use water_volume
 
 // The light water focuses onto what lies under it (caustics), at each pixel:
 // the frame's `transmission` lighting input. A fullscreen draw rather than a
 // compute pass, so the caustics' footprint (screen-space derivatives of the
 // world position) is the one the lit pixels see.
 
-// Matches `GpuWaterVolume` (gpu_types.rs).
-struct GpuWaterVolume {
-    bounds_min: vec4<f32>,
-    bounds_max: vec4<f32>,
-    wave_params: vec4<f32>,
-    wave_direction: vec4<f32>,
-    water_color: vec4<f32>,
-    extinction: vec4<f32>,
-    reflection_refraction: vec4<f32>,
-    caustics_params: vec4<f32>,  // x=enabled, y=intensity, z=scale, w=speed
-    fog_params: vec4<f32>,
-    _pad0: vec4<f32>,
-    _pad1: vec4<f32>,
-    _pad2: vec4<f32>,
-    _pad3: vec4<f32>,
-    _pad4: vec4<f32>,
-    _pad5: vec4<f32>,
-    world_phase: vec4<f32>,
-}
-
 @group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
-@group(0) @binding(1) var<storage, read> water_volumes: array<GpuWaterVolume>;
+@group(0) @binding(1) var<storage, read> water_volumes: array<WaterVolume>;
 // The frame's world origin XZ reduced to the caustics' 12 m tile.
 @group(0) @binding(2) var<uniform> water_caustics_phase: vec4<f32>;
 // `helio_frame_api::lighting::VIEW_REMAPS`: a remapped pixel's caustics are

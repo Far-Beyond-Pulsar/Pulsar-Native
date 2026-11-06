@@ -1,4 +1,5 @@
 //!use helio_prelude
+//!use water_volume
 //!use water_shore_surface
 //!use helio_hiz
 //!use atmosphere
@@ -29,25 +30,6 @@
 //   8  depth_texture    texture_depth_2d (copy of the scene depth buffer)
 //   9  depth_sampler    sampler          (nearest, clamp)
 //   10 gbuffer_normal   texture_2d<f32>  (unused here)
-
-struct WaterVolume {
-    bounds_min:            vec4f,  // xyz = min corner
-    bounds_max:            vec4f,  // xyz = max corner, w = surface_height
-    wave_params:           vec4f,  // x = wave_amplitude (metres), y = freq, z = speed, w = steepness
-    wave_direction:        vec4f,
-    water_color:           vec4f,  // xyz = medium colour, w = Jacobian foam bias
-    extinction:            vec4f,  // xyz = absorption per metre, w = Jacobian foam scale
-    reflection_refraction: vec4f,  // x = reflection_str, y = refraction_str, z = fresnel_power, w = foam brightness
-    caustics_params:       vec4f,
-    fog_params:            vec4f,
-    sim_params:            vec4f,  // x = ior, y = caustic_intensity, z = fresnel_min, w = density
-    shadow_params:         vec4f,
-    sun_direction:         vec4f,
-    ssr_params:            vec4f,  // x = enable, y = max_steps, z = step_size, w = thickness
-    sim_dynamics:          vec4f,
-    wind_params:           vec4f,
-    world_phase:           vec4f,  // xy = the frame's world origin XZ mod 270 m (GpuWaterVolume::world_phase)
-}
 
 @group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(1) var<storage, read> volumes:        array<WaterVolume>;

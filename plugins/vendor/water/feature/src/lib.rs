@@ -87,7 +87,7 @@ pub(crate) const MAX_SIM_STEPS_PER_FRAME: u32 = 8;
 /// Tessellated source-water grid for one area-ratio caustics splat. The grid
 /// extends beyond the 12 m tile by `margin` source cells so refracted triangles
 /// from outside the tile can land inside its edges without drawing 3x3 tiles.
-fn make_caustics_grid(
+pub fn make_caustics_grid(
     device: &wgpu::Device,
     cells: u32,
     margin: u32,

@@ -88,10 +88,11 @@ impl WaterTransmissionPass {
                 ),
             ],
         });
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "Water transmission",
             helio_core::include_wgsl!("../shaders/transmission.wgsl"),
+            &[crate::WATER_VOLUME_SNIPPET],
         );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Water transmission"),

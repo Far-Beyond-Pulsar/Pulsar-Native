@@ -1,4 +1,5 @@
 //!use helio_prelude
+//!use water_volume
 //!use water_shore_surface
 // Half-resolution underwater light shafts: Ultra-Water's `UnderwaterPass`
 // SHAFTS pass. Per pixel the view ray is marched through the water column and
@@ -10,14 +11,6 @@
 // in-scattered sun (without the sun colour and strength), a is the distance
 // the composite uses to upsample without halos.
 
-struct WaterVolume {
-    bounds_min: vec4f, bounds_max: vec4f, wave_params: vec4f,
-    wave_direction: vec4f, water_color: vec4f, extinction: vec4f,
-    reflection_refraction: vec4f, caustics_params: vec4f, fog_params: vec4f,
-    sim_params: vec4f, shadow_params: vec4f, sun_direction: vec4f,
-    ssr_params: vec4f, sim_dynamics: vec4f, wind_params: vec4f,
-    world_phase: vec4f,
-}
 struct OceanPhase { patches: array<vec4f, 4> }
 struct VertexOutput { @builtin(position) position: vec4f, @location(0) uv: vec2f }
 

@@ -1,3 +1,4 @@
+//!use water_volume
 // update.frag.wgsl — one step of the shallow-water wave propagation.
 //
 // Texture layout (Rgba16Float):
@@ -45,25 +46,6 @@ struct UpdateUniforms {
 }
 @group(0) @binding(2) var<uniform> u: UpdateUniforms;
 
-/// `GpuWaterVolume` (16 vec4s); only the dynamics are read here.
-struct WaterVolume {
-    bounds_min:            vec4<f32>,
-    bounds_max:            vec4<f32>,
-    wave_params:           vec4<f32>,  // z = wave speed
-    wave_direction:        vec4<f32>,
-    water_color:           vec4<f32>,
-    extinction:            vec4<f32>,
-    reflection_refraction: vec4<f32>,
-    caustics_params:       vec4<f32>,
-    fog_params:            vec4<f32>,
-    sim_params:            vec4<f32>,
-    shadow_params:         vec4<f32>,
-    sun_direction:         vec4<f32>,
-    ssr_params:            vec4<f32>,
-    sim_dynamics:          vec4<f32>,  // x = spring, y = damping, z = wave scale
-    wind_params:           vec4<f32>,  // xy = direction (XZ), z = strength
-    world_phase:           vec4<f32>,
-}
 @group(0) @binding(3) var<storage, read> volumes: array<WaterVolume>;
 
 /// One volume's dynamics: its row's, or the pass-wide ones for a row that

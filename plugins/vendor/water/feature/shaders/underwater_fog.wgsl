@@ -1,4 +1,5 @@
 //!use helio_prelude
+//!use water_volume
 //!use water_shore_surface
 //!use atmosphere
 //!use water_sky
@@ -26,25 +27,6 @@
 //   5  depth_samp    sampler  nearest clamp
 //   6  water_interaction texture array  (legacy volume-local height)
 //   7  water_samp    sampler  linear
-
-struct WaterVolume {
-    bounds_min:            vec4f,
-    bounds_max:            vec4f,  // w = surface_height
-    wave_params:           vec4f,  // x = wave_amplitude
-    wave_direction:        vec4f,
-    water_color:           vec4f,  // xyz = medium colour
-    extinction:            vec4f,  // xyz = absorption per metre
-    reflection_refraction: vec4f,
-    caustics_params:       vec4f,
-    fog_params:            vec4f,  // x = density, y = god_rays_intensity
-    sim_params:            vec4f,
-    shadow_params:         vec4f,
-    sun_direction:         vec4f,
-    ssr_params:            vec4f,
-    sim_dynamics:          vec4f,
-    wind_params:           vec4f,
-    world_phase:           vec4f,
-}
 
 @group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(1) var<storage, read> volumes:    array<WaterVolume>;

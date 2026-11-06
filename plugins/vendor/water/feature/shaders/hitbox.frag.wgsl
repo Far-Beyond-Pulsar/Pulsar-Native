@@ -1,3 +1,4 @@
+//!use water_volume
 // hitbox.frag.wgsl — AABB-based water displacement (replaces sphere.frag).
 //
 // For each hitbox we compute how much water the AABB *was* displacing (old bounds)
@@ -49,14 +50,6 @@ struct HitboxUniforms {
 @group(0) @binding(3) var<storage, read> hitboxes: array<GpuWaterHitbox>;
 @group(0) @binding(4) var<storage, read> previous: array<GpuWaterHitbox>;
 
-/// `GpuWaterVolume` (16 vec4s); only the bounds and world phase are read
-/// here.
-struct WaterVolume {
-    bounds_min: vec4<f32>,
-    bounds_max: vec4<f32>,  // w = rest height of the surface
-    _rest: array<vec4<f32>, 13>,
-    world_phase: vec4<f32>, // xy = the frame's world origin XZ mod 270 m
-}
 @group(0) @binding(5) var<storage, read> volumes: array<WaterVolume>;
 
 /// Cascade 0's tile, in metres (`CASCADE_PATCH_SIZES[0]`).

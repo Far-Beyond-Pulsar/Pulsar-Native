@@ -18,6 +18,9 @@ impl Feature for WaterFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<WaterSimPass>();
+        registrar.swappable::<WaterTransmissionPass>();
         registrar.node(
             pass_node(
                 "water_transmission",

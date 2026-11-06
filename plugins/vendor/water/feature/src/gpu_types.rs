@@ -6,6 +6,17 @@
 
 use bytemuck::{Pod, Zeroable};
 
+/// [`GpuWaterVolume`] in WGSL (`//!use water_volume`): `struct WaterVolume`,
+/// field for field. Every water shader that reads the volumes' rows (the
+/// surface, caustics, simulation update and hitboxes, spray, underwater fog
+/// and shafts, transmission) takes the row from here and declares only its
+/// own binding of it; so do the snippets that read a row
+/// ([`crate::pipeline::WATER_SHORE_SNIPPET`],
+/// [`crate::surface_query::WATER_QUERY_SNIPPET`]) through
+/// the shaders that compose them.
+pub const WATER_VOLUME_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use water_volume", "../shaders/water_volume.wgsl");
+
 /// GPU water volume descriptor (256 bytes, 16-byte aligned).
 ///
 /// Defines a water volume's bounds, wave parameters, visual properties,

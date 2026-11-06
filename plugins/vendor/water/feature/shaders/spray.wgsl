@@ -1,18 +1,11 @@
 //!use helio_prelude
+//!use water_volume
 
 // Camera-facing breaker spray and impact droplets. Shore emitters are a
 // deterministic packed set over the authored map; each vertex evaluates the
 // same travel-time phase and breaking envelope as surface.wgsl. No per-frame
 // CPU emitter simulation is required.
 
-struct WaterVolume {
-    bounds_min: vec4f, bounds_max: vec4f, wave_params: vec4f,
-    wave_direction: vec4f, water_color: vec4f, extinction: vec4f,
-    reflection_refraction: vec4f, caustics_params: vec4f, fog_params: vec4f,
-    sim_params: vec4f, shadow_params: vec4f, sun_direction: vec4f,
-    ssr_params: vec4f, sim_dynamics: vec4f, wind_params: vec4f,
-    world_phase: vec4f,
-}
 struct ShoreParams { center_extent: vec4f, state: vec4f }
 struct OceanPhase { patches: array<vec4f, 4> }
 struct SprayParams { amount: f32, size: f32, max_distance: f32, emitter_count: u32 }
