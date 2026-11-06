@@ -83,8 +83,8 @@ pub struct GpuWaterVolume {
     pub shadow_params: [f32; 4],
 
     /// Direction toward the sun (dx, dy, dz) and 1 in `w` when the scene
-    /// has one. Water's row join writes the lights' directional light here
-    /// (`helio_frame_api::lighting::DIRECTIONAL_LIGHT`); hosts that write
+    /// has one. Water's row join writes the lights' primary sun here (the
+    /// first of `helio_light_api::DIRECTIONAL_LIGHTS`); hosts that write
     /// rows themselves author it.
     pub sun_direction: [f32; 4],
 

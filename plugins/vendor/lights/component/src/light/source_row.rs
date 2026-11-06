@@ -27,6 +27,10 @@ pub const LIGHT_SOURCES_BUFFER: &str = "light_sources";
 
 /// Bit of [`LightSourceRow::enabled`] set when the authored light is enabled.
 pub const LIGHT_SOURCE_ENABLED_BIT: u32 = 1 << 31;
+/// Marks the existing optical metadata lanes as a solid sky emitter disk.
+pub const LIGHT_EMITTER_SOLID_DISK: u32 = 253;
+/// Marks the existing optical metadata lanes as a textured sky emitter disk.
+pub const LIGHT_EMITTER_TEXTURED_DISK: u32 = 254;
 
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
@@ -85,6 +89,26 @@ pub struct LightSourceRow {
 impl LightSourceRow {
     pub fn of(light: &LightComponent) -> Self {
         let mut row: Self = bytemuck::cast(light.to_gpu_mirror().to_helio_gpu_light());
+        let rotation = light.advanced.rotation_offset.map(f32::to_radians);
+        let local_direction =
+            glam::Quat::from_euler(glam::EulerRot::XYZ, rotation[0], rotation[1], rotation[2])
+                * glam::Vec3::NEG_Y;
+        row.direction_outer[..3].copy_from_slice(&local_direction.to_array());
+        if light.emitter_disk.enabled {
+            row.flare_enabled = 1;
+            row.flare_type = match light.emitter_disk.texture {
+                super::EmitterDiskTexture::None => LIGHT_EMITTER_SOLID_DISK,
+                super::EmitterDiskTexture::MoonSolarSystemScopeCCBY40 => {
+                    LIGHT_EMITTER_TEXTURED_DISK
+                }
+            };
+            row.flare_intensity = 18.0;
+            row.flare_scale = light
+                .emitter_disk
+                .angular_radius_degrees
+                .clamp(0.01, 10.0)
+                .to_radians();
+        }
         row.enabled = (row.enabled & !LIGHT_SOURCE_ENABLED_BIT)
             | if light.general.enabled {
                 LIGHT_SOURCE_ENABLED_BIT

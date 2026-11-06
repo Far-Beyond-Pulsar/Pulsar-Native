@@ -105,8 +105,8 @@ fn environment_light(
     )
 }
 
-/// The level has no sun yet (one sun: a second directional light is not
-/// offered).
+/// The level has no sun yet (several directional lights are allowed; the
+/// Create menu offers the first).
 fn no_sun(world: &World) -> bool {
     lights_component::directional_lights(world).is_empty()
 }
@@ -215,73 +215,150 @@ struct Sun {
     rotation: [f32; 3],
 }
 
-/// Ensure a sky (when the project has one to add) and a sun exist, then
-/// tune the sun through normal undoable component and transform commands.
+/// The sky object's class (the sky plugin's, named, not linked): the sky
+/// rig's lights sit on the object that holds it.
+const SKY_CLASS: &str = "AtmosphereComponent";
+
+/// The object holding the level's sky (`SKY_CLASS`), by its stable id.
+fn sky_object(world: &World) -> Option<String> {
+    let instance = world
+        .query::<&engine_backend::scene::attachments::ComponentMeta>()
+        .find(|(_, meta)| meta.class_name == SKY_CLASS)
+        .map(|(instance, _)| instance)?;
+    let owner = engine_backend::scene::attachments::owner_of(world, instance)?;
+    world.stable_id_of(owner).map(str::to_string)
+}
+
+/// The `ordinal`th enabled directional light on the sky object, as its
+/// selection address (object id, component index).
+fn sky_directional_light(world: &World, ordinal: usize) -> Option<(String, usize)> {
+    let object_id = sky_object(world)?;
+    let owner = world.entity_for(&object_id)?;
+    engine_backend::scene::attachments::instances(world, owner)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, instance)| {
+            world
+                .get::<LightComponent>(*instance)
+                .is_some_and(lights_component::is_directional)
+                && engine_backend::scene::attachments::is_enabled(world, *instance)
+        })
+        .nth(ordinal)
+        .map(|(component_index, _)| (object_id.clone(), component_index))
+}
+
+/// The sky rig's sun: directional, 2 lux·sr, 35° up.
+pub fn default_sun_light() -> LightComponent {
+    let mut sun = LightComponent::default();
+    sun.general.light_type = Shape::Directional;
+    sun.intensity.intensity = 2.0;
+    sun.advanced.rotation_offset = [35.0, 0.0, 0.0];
+    sun
+}
+
+/// The sky rig's moon: a dim, cool directional light drawn as a textured
+/// disk.
+pub fn default_moon_light() -> LightComponent {
+    let mut moon = LightComponent::default();
+    moon.general.light_type = Shape::Directional;
+    moon.color.color = [0.68, 0.76, 1.0, 1.0];
+    moon.intensity.intensity = 0.025;
+    moon.advanced.rotation_offset = [18.0, 0.0, 112.0];
+    moon.emitter_disk.enabled = true;
+    moon.emitter_disk.texture = lights_component::EmitterDiskTexture::MoonSolarSystemScopeCCBY40;
+    moon.emitter_disk.angular_radius_degrees = 2.5;
+    moon
+}
+
+/// The sky rig's lights: a sun and a moon on the sky object, each added
+/// when missing.
+fn ensure_sky_lights(state: &mut LevelEditorState) -> bool {
+    let Some(sky) = sky_object(&state.scene.world()) else {
+        return false;
+    };
+    let mut changed = false;
+    for (ordinal, light) in [default_sun_light(), default_moon_light()]
+        .into_iter()
+        .enumerate()
+    {
+        if sky_directional_light(&state.scene.world(), ordinal).is_some() {
+            continue;
+        }
+        changed |= execute_command(
+            state,
+            SceneCommand::AddComponent {
+                id: sky.clone(),
+                class_name: "LightComponent".into(),
+                value: Some(Box::new(light)),
+            },
+        )
+        .changed;
+    }
+    changed
+}
+
+/// Ensure the sky rig (a sky, when the project has one to add, with its sun
+/// and moon) exists, then tune the sun through normal undoable component
+/// commands. Without a sky plugin, the sun is a directional light of its own.
 fn apply_sun(state: &mut LevelEditorState, sun: Sun) -> CommandResult {
     // The sky plugin's entry, when enabled: refused when the level has one.
     let mut changed = create(state, "sky").changed;
+    changed |= ensure_sky_lights(state);
 
-    let existing = lights_component::directional_lights(&state.scene.world())
-        .first()
-        .and_then(|instance| {
-            let world = state.scene.world();
-            let owner = engine_backend::scene::attachments::owner_of(&world, *instance)?;
-            let id = world.stable_id_of(owner)?.to_string();
-            let index = engine_backend::scene::attachments::instances(&world, owner)
-                .iter()
-                .position(|candidate| candidate == instance)?;
-            Some((id, index))
-        });
-
-    let (object_id, component_index) = match existing {
+    let rigged = sky_directional_light(&state.scene.world(), 0);
+    let (object_id, component_index) = match rigged {
         Some(sun) => sun,
         None => {
-            let result = create(state, "light_directional");
-            changed |= result.changed;
-            let Some(id) = result.affected_ids.first().cloned() else {
-                return result;
-            };
-            let index = ui_level_editor::scene_edit::components::get_component_class_names(
-                &state.scene.world(),
-                &id,
-            )
-            .iter()
-            .position(|name| name == "LightComponent")
-            .unwrap_or(0);
-            (id, index)
+            let existing = lights_component::directional_lights(&state.scene.world())
+                .first()
+                .and_then(|instance| {
+                    let world = state.scene.world();
+                    let owner = engine_backend::scene::attachments::owner_of(&world, *instance)?;
+                    let id = world.stable_id_of(owner)?.to_string();
+                    let index = engine_backend::scene::attachments::instances(&world, owner)
+                        .iter()
+                        .position(|candidate| candidate == instance)?;
+                    Some((id, index))
+                });
+            match existing {
+                Some(sun) => sun,
+                None => {
+                    let result = create(state, "light_directional");
+                    changed |= result.changed;
+                    let Some(id) = result.affected_ids.first().cloned() else {
+                        return result;
+                    };
+                    let index = ui_level_editor::scene_edit::components::get_component_class_names(
+                        &state.scene.world(),
+                        &id,
+                    )
+                    .iter()
+                    .position(|name| name == "LightComponent")
+                    .unwrap_or(0);
+                    (id, index)
+                }
+            }
         }
     };
 
-    let color_result = execute_command(
-        state,
-        SceneCommand::SetComponentProperty {
-            id: object_id.clone(),
-            class_name: "LightComponent".into(),
-            component_index,
-            prop_name: "color.color".into(),
-            value: Box::new(sun.color),
-        },
-    );
-    let intensity_result = execute_command(
-        state,
-        SceneCommand::SetComponentProperty {
-            id: object_id.clone(),
-            class_name: "LightComponent".into(),
-            component_index,
-            prop_name: "intensity.intensity".into(),
-            value: Box::new(sun.intensity),
-        },
-    );
-    let transform_result = execute_command(
-        state,
-        SceneCommand::SetTransform {
-            id: object_id,
-            position: None,
-            rotation: Some(sun.rotation),
-            scale: None,
-        },
-    );
-    changed |= color_result.changed || intensity_result.changed || transform_result.changed;
+    let mut set = |state: &mut LevelEditorState, prop: &str, value: Box<dyn std::any::Any + Send>| {
+        execute_command(
+            state,
+            SceneCommand::SetComponentProperty {
+                id: object_id.clone(),
+                class_name: "LightComponent".into(),
+                component_index,
+                prop_name: prop.into(),
+                value,
+            },
+        )
+        .changed
+    };
+    changed |= set(state, "color.color", Box::new(sun.color));
+    changed |= set(state, "intensity.intensity", Box::new(sun.intensity));
+    // The light's own direction (the rig's lights share the sky object's
+    // transform).
+    changed |= set(state, "advanced.rotation_offset", Box::new(sun.rotation));
 
     if changed {
         CommandResult::ok(vec![])

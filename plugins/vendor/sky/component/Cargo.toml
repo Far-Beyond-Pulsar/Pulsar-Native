@@ -26,6 +26,7 @@ pulsar_scenedb_derive = { workspace = true }
 pulsar_world_registry = { workspace = true }
 pulsar_scene_model = { workspace = true }
 helio_component = { workspace = true }
+engine_state = { workspace = true }
 # The game's slim feature set (as pulsar_game): linking the plugin must not
 # pull the editor's features into a game build. A path dependency because
 # the workspace table cannot opt out of default features.

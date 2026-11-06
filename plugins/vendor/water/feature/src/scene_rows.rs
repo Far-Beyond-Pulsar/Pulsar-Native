@@ -2,8 +2,8 @@
 //!
 //! - Water volumes, packed into [`MAX_WATER_VOLUMES`] rows: bounds from the
 //!   owner-oriented box, the surface height following the owner's Y, the
-//!   sun the lights' directional light (`helio_light_api::
-//!   DIRECTIONAL_LIGHT`, which this join names; `w` 0 without one), the
+//!   sun the lights' primary sun (the first of `helio_light_api::
+//!   DIRECTIONAL_LIGHTS`, which this join names; `w` 0 without one), the
 //!   level's global wind (the foliage api's wind rows) unless the volume opts
 //!   out (`wind_params.w`), and the frame's phase in the water's world tiling.
 //! - Water hitboxes, packed into [`MAX_WATER_HITBOXES`] rows: bodies that push
@@ -42,7 +42,7 @@ pub struct WaterRowSources {
 /// the host's keys say.
 pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, sources: WaterRowSources) -> RowJoin {
     let keys = RowJoinKeys {
-        directional_light: Some(BufferKey::of(helio_light_api::DIRECTIONAL_LIGHT)),
+        directional_light: Some(BufferKey::of(helio_light_api::DIRECTIONAL_LIGHTS)),
         ..keys
     };
     RowJoin::new(

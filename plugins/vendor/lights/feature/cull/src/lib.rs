@@ -13,7 +13,7 @@
 pub mod directional;
 pub mod feature;
 pub mod scene_rows;
-pub use directional::{DirectionalLightDerivation, DirectionalLightPick};
+pub use directional::{DirectionalLightsDerivation, DirectionalLightsPick};
 pub use feature::LightCullFeature;
 
 use bytemuck::{Pod, Zeroable};

@@ -1,7 +1,7 @@
 //! The lights' scene rows: one `GpuLight` row per placed light instance,
 //! positioned and oriented by its owner, published as the frame's light list
-//! ([`crate::LIGHT_LIST`]), with its directional light
-//! ([`crate::DIRECTIONAL_LIGHT`]); and, in editor mode, a
+//! ([`crate::LIGHT_LIST`]), with its directional lights
+//! ([`crate::DIRECTIONAL_LIGHTS`]); and, in editor mode, a
 //! billboard per light as `"billboard_instances"`. A light is placed when it
 //! is attached, enabled, and its owner current and visible.
 
@@ -18,7 +18,7 @@ const BILLBOARD_ROW_BYTES: u64 = std::mem::size_of::<helio_pass_billboard::Billb
 const WORKGROUP: u32 = 64;
 
 pub const LIGHTS_KEY: BufferKey = BufferKey::of(crate::LIGHT_LIST);
-pub const DIRECTIONAL_LIGHT_KEY: BufferKey = BufferKey::of(crate::DIRECTIONAL_LIGHT);
+pub const DIRECTIONAL_LIGHTS_KEY: BufferKey = BufferKey::of(crate::DIRECTIONAL_LIGHTS);
 pub const BILLBOARDS_KEY: BufferKey = helio_pass_billboard::BILLBOARD_INSTANCES.key();
 
 /// The light join's shader as compiled (shader validation without a device).
@@ -60,7 +60,7 @@ pub struct LightJoin {
     /// Bound in place of the hidden flags while none are registered.
     empty: wgpu::Buffer,
     lights: JoinOutput,
-    directional: crate::DirectionalLightPick,
+    directional: crate::DirectionalLightsPick,
     billboard_rows: JoinOutput,
     bind: Option<(Vec<wgpu::Buffer>, wgpu::BindGroup)>,
     last_inputs: Option<u64>,
@@ -103,7 +103,7 @@ impl LightJoin {
                 mapped_at_creation: false,
             }),
             lights: JoinOutput::new(device, "Light Join Lights", LIGHT_ROW_BYTES),
-            directional: crate::DirectionalLightPick::new(device),
+            directional: crate::DirectionalLightsPick::new(device),
             billboard_rows: JoinOutput::new(device, "Light Join Billboards", BILLBOARD_ROW_BYTES),
             bind: None,
             last_inputs: None,
@@ -240,7 +240,7 @@ impl SceneDerivation for LightJoin {
 
         let mut buffers = vec![
             (LIGHTS_KEY, self.lights.handle()),
-            (DIRECTIONAL_LIGHT_KEY, self.directional.handle()),
+            (DIRECTIONAL_LIGHTS_KEY, self.directional.handle()),
         ];
         if self.billboards {
             buffers.push((BILLBOARDS_KEY, self.billboard_rows.handle()));

@@ -5,10 +5,11 @@
 //!   registers itself ([`LevelSingletonRegistration`]): the sky plugin's
 //!   atmosphere (#1057: the atmosphere pass draws the first enabled row, so
 //!   a second would only fight the first), the foliage plugin's global wind
-//!   (#1123), the lights plugin's casting directional light (whatever reads
-//!   the sun takes the first). Adding a second, or a change that makes one
+//!   (#1123). Adding a second, or a change that makes one
 //!   (a property edit, enabling an instance, where the registration says
 //!   those count), is refused with the registration's message.
+//! - Directional lights are not level singletons: the renderer supports
+//!   several enabled directional lights (the sky draws each as an emitter).
 //!
 //! Editors check a prospective change with these functions before applying
 //! it and report the returned message. A level file that already breaks a
@@ -21,8 +22,7 @@ use pulsar_scene_model::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};
 
 /// Something a level holds at most one of (the sky plugin's atmosphere, the
-/// foliage plugin's global wind, the lights plugin's casting directional
-/// light). Submitted by the plugin's component crate.
+/// foliage plugin's global wind). Submitted by the plugin's component crate.
 pub struct LevelSingletonRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
@@ -186,8 +186,8 @@ pub fn check_new_component(
 }
 
 /// Whether a copy of `source` (an attached instance) may be added to the
-/// level: a level's only plugin singleton (its sky, its casting directional
-/// light) cannot be duplicated (the copy keeps the source's enabled state).
+/// level: a level's only plugin singleton (its sky) cannot be duplicated
+/// (the copy keeps the source's enabled state).
 pub fn check_copy(world: &World, source: Entity) -> Result<(), &'static str> {
     if let Some(singleton) = singleton_held(world, source) {
         return Err(singleton.refusal);
@@ -238,7 +238,7 @@ pub struct Demotion {
 
 /// Repair a freshly loaded level that breaks a rule, keeping the first
 /// instance (file order) and disabling the rest (extra plugin singletons:
-/// skies, global winds, casting directional lights); each is logged as a
+/// skies, global winds); each is logged as a
 /// warning naming its object. Disabling keeps the authored value: the
 /// instance stays attached and is saved as it was, only switched off.
 pub fn enforce_on_load(world: &mut World) -> Vec<Demotion> {

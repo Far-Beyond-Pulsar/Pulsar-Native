@@ -26,6 +26,13 @@ pulsar_scenedb_derive = { workspace = true, optional = true }
 # `#[derive(SceneStore)]` expands to `::serde_json`, `::wgpu` and reflection paths.
 serde_json = { workspace = true, optional = true }
 
+[dev-dependencies]
+pollster = "=0.4.0"
+
+[[test]]
+name = "aspect_fit"
+path = "tests/aspect_fit.rs"
+
 [[test]]
 name = "scene_component"
 path = "tests/scene_component.rs"

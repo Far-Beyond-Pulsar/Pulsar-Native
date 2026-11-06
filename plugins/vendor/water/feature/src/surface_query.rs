@@ -165,6 +165,8 @@ impl WaterSurfaceQueries {
                 crate::pipeline::WATER_SHORE_SNIPPET,
                 helio_frame_api::lighting::sky::ATMOSPHERE_SNIPPET,
                 crate::pipeline::WATER_SKY_SNIPPET,
+                crate::pipeline::WATER_LIGHTS_SNIPPET,
+                helio_light_api::LIGHT_LIST_SNIPPET,
                 WATER_QUERY_SNIPPET,
             ],
         );

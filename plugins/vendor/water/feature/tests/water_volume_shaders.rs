@@ -2,7 +2,7 @@
 //! one declaration (`WATER_VOLUME_SNIPPET`) and the snippets its pass
 //! composes it with, as the passes build them.
 
-use helio_pass_water_sim::pipeline::{WATER_SHORE_SNIPPET, WATER_SKY_SNIPPET};
+use helio_pass_water_sim::pipeline::{WATER_LIGHTS_SNIPPET, WATER_SHORE_SNIPPET, WATER_SKY_SNIPPET};
 use helio_pass_water_sim::surface_query::WATER_QUERY_SNIPPET;
 use helio_pass_water_sim::WATER_VOLUME_SNIPPET;
 
@@ -66,6 +66,8 @@ fn the_water_shaders_validate_with_the_volume_row() {
             WATER_SHORE_SNIPPET,
             atmosphere,
             WATER_SKY_SNIPPET,
+            WATER_LIGHTS_SNIPPET,
+            helio_light_api::LIGHT_LIST_SNIPPET,
         ],
     );
     validate(
@@ -77,6 +79,8 @@ fn the_water_shaders_validate_with_the_volume_row() {
             WATER_SHORE_SNIPPET,
             atmosphere,
             WATER_SKY_SNIPPET,
+            WATER_LIGHTS_SNIPPET,
+            helio_light_api::LIGHT_LIST_SNIPPET,
             WATER_QUERY_SNIPPET,
         ],
     );

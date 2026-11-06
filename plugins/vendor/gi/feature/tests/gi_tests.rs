@@ -18,14 +18,17 @@ fn read(gpu: &Gpu, buffer: &wgpu::Buffer) -> Vec<u32> {
     common::read(&gpu.device, &gpu.queue, buffer)
 }
 
-/// The lights' directional light straight down, illuminance `e`
-/// (`helio_light_api::DIRECTIONAL_LIGHT`).
+/// The lights' directional lights: one straight down, illuminance `e`
+/// (`helio_light_api::DIRECTIONAL_LIGHTS`).
 fn sun_down(gpu: &Gpu, e: f32) -> wgpu::Buffer {
     use wgpu::util::DeviceExt;
-    let row = helio_light_api::DirectionalLightRow {
+    let mut row = helio_light_api::DirectionalLights::default();
+    row.lights[0] = helio_light_api::DirectionalLight {
         toward: [0.0, 1.0, 0.0, 1.0],
         radiance: [e, e, e, 0.0],
+        disk: [0.0; 4],
     };
+    row.count[0] = 1;
     gpu.device
         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sun"),

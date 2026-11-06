@@ -8,7 +8,9 @@ mod gizmo_geometry;
 mod gpu_trace;
 pub mod host_parts;
 mod interaction;
-pub use interaction::{content_triangles, ContentGeometryRegistration, SceneInteraction};
+pub use interaction::{
+    content_triangles, ContentGeometryRegistration, SceneInteraction, ViewIconRegistration,
+};
 pub mod pipelines;
 pub mod project_settings;
 pub mod render_features;

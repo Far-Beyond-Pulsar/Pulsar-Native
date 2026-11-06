@@ -186,6 +186,12 @@ impl SceneInteraction {
                     return None;
                 }
                 let transform = world_transform_of(world, entity)?;
+                // An object with an editor icon (a light's billboard) picks
+                // by its icon, not by a box around nothing.
+                if let Some(size) = view_icon(world, entity) {
+                    let distance = icon_hit(self.view, transform, size, origin, direction)?;
+                    return Some((distance, Some(entity) != selected, id.0.clone()));
+                }
                 let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
                 let broad_phase = ray_aabb(origin, direction, min, max)?;
                 let (has_geometry, triangle_hit) =
@@ -952,6 +958,53 @@ fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
     let t = (p - o).dot(n) / denominator;
     (t >= 0.0 && t.is_finite()).then_some(o + d * t)
 }
+/// A kind's editor icon (the lights' billboards): a camera-facing quad
+/// drawn at a constant size on screen, which picking tests instead of a box.
+/// The kind's component crate submits one; picking names no kind.
+pub struct ViewIconRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    /// `object`'s icon, when it has one of this kind: its width and height
+    /// in world units per unit of view depth.
+    pub icon: fn(world: &World, object: Entity) -> Option<[f32; 2]>,
+}
+
+inventory::collect!(ViewIconRegistration);
+
+impl pulsar_plugins::Registration for ViewIconRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
+/// `object`'s editor icon size (the first [`ViewIconRegistration`] that has
+/// one).
+fn view_icon(world: &World, object: Entity) -> Option<Vec2> {
+    pulsar_plugins::registered::<ViewIconRegistration>()
+        .find_map(|registration| (registration.icon)(world, object))
+        .map(Vec2::from_array)
+}
+
+/// A ray against an icon of `size` (world units per unit of depth) facing
+/// the camera at the object's position. Object scale/rotation do not affect
+/// icons. Ray distance lets meshes occlude the icon.
+fn icon_hit(view: View, transform: Transform, size: Vec2, origin: Vec3, direction: Vec3) -> Option<f32> {
+    let center = view.relative(transform.position);
+    let depth = (center - view.position).dot(view.forward);
+    if depth <= 0.001 || depth >= view.far {
+        return None;
+    }
+    let hit = ray_plane_intersection(origin, direction, center, view.forward)?;
+    // Projection rows are scaled camera right/up in either projection mode.
+    let right = view.matrix.row(0).truncate().normalize_or_zero();
+    let up = view.matrix.row(1).truncate().normalize_or_zero();
+    let half_size = size * (0.5 * depth);
+    let offset = hit - center;
+    (offset.dot(right).abs() <= half_size.x && offset.dot(up).abs() <= half_size.y)
+        .then_some((hit - origin).dot(direction))
+}
+
 fn is_pickable(object_type: ObjectType) -> bool {
     matches!(object_type, ObjectType::Mesh(_) | ObjectType::Light(_))
 }

@@ -1,5 +1,6 @@
 //!use helio_prelude
 //!use atmosphere
+//!use light_list
 // Atmosphere LUT kernels (see atmosphere_common.wgsl). Every kernel reads
 // the frame `resolve` wrote; all leave their outputs untouched while no
 // atmosphere is active.
@@ -17,9 +18,9 @@ struct Resolve {
 
 @group(0) @binding(0) var<uniform> resolve_input: Resolve;
 @group(0) @binding(1) var<storage, read> atmospheres: array<AtmosphereParams>;
-// The lights' directional light (`helio_light_api::DIRECTIONAL_LIGHT`): [0]
-// toward it with w 1 (zero: none), [1] its radiance.
-@group(0) @binding(2) var<storage, read> directional_light: array<vec4<f32>, 2>;
+// The lights' directional lights (`helio_light_api::DIRECTIONAL_LIGHTS`,
+// `//!use light_list`), the first the primary sun.
+@group(0) @binding(2) var<storage, read> directional: DirectionalLights;
 @group(0) @binding(3) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(4) var<storage, read_write> frame: AtmosphereFrame;
 @group(0) @binding(5) var lut_sampler: sampler;
@@ -33,8 +34,8 @@ struct Resolve {
 @group(1) @binding(6) var aerial_out: texture_storage_3d<rgba16float, write>;
 @group(1) @binding(7) var<storage, read_write> sky_table_out: array<vec4<f32>>;
 
-// Picks the first enabled atmosphere and the light list's sun, and
-// places the planet relative to the camera.
+// Picks the first enabled atmosphere, packs the active directional lights,
+// and places the planet relative to the camera.
 @compute @workgroup_size(1)
 fn resolve() {
     frame.planet = vec4<f32>(0.0);
@@ -53,13 +54,23 @@ fn resolve() {
     if resolve_input.clock.y > 0.5 {
         params.clouds_enabled = 0u;
     }
-    // Sun: the lights' directional light.
+    // `frame.sun` is only the angular-table reference axis. All illumination
+    // below is evaluated by summing the actual directional lights.
     var sun = vec3<f32>(0.0, 1.0, 0.0);
     var illuminance = vec3<f32>(0.0);
-    if directional_light[0].w > 0.5 {
-        sun = directional_light[0].xyz;
-        illuminance = directional_light[1].rgb;
+    let directional_count = min(directional.count.x, MAX_DIRECTIONAL_LIGHTS);
+    if directional_count > 0u {
+        sun = directional.lights[0].toward.xyz;
+        illuminance = directional.lights[0].radiance.rgb;
     }
+    for (var i = 0u; i < directional_count; i++) {
+        let light = directional.lights[i];
+        let packed = i * 3u;
+        frame.directional_lights[packed] = vec4<f32>(light.toward.xyz, 0.0);
+        frame.directional_lights[packed + 1u] = vec4<f32>(light.radiance.rgb, 0.0);
+        frame.directional_lights[packed + 2u] = light.disk;
+    }
+    frame.directional_light_count = vec4<u32>(directional_count, 0u, 0u, 0u);
     var center = params.center;
     if params.placement == 0u { center = vec3<f32>(0.0, -params.bottom_radius * 1000.0, 0.0); }
     let camera = cameras[0].position_near.xyz;
@@ -86,7 +97,7 @@ fn resolve() {
     let phase = fract(frame.cloud_groups_offset.w + resolve_input.clock.x * max(params.cloud_evolution, 0.0) / WEATHER_PERIOD_S);
     frame.cloud_groups_offset = vec4<f32>(fract(frame.cloud_groups_offset.xyz - drift / max(params.cloud_weather_scale, 1e-3)), phase);
     let meso = drift / max(params.cloud_mesoscale_scale, 1e-3);
-    frame.cloud_meso_offset = vec4<f32>(fract(frame.cloud_meso_offset.xyz - CLOUD_MESO_TURN_A * meso), 0.0);
+    frame.cloud_meso_offset = vec4<f32>(fract(frame.cloud_meso_offset.xyz - CLOUD_MESO_TURN_A * meso), frame.cloud_meso_offset.w + resolve_input.clock.x);
     frame.cloud_meso_fine_offset = vec4<f32>(fract(frame.cloud_meso_fine_offset.xyz - CLOUD_MESO_TURN_B * (meso * CLOUD_MESO_RATIO)), 0.0);
     frame.cloud_shape_offset = vec4<f32>(fract(frame.cloud_shape_offset.xyz - drift / max(params.cloud_shape_scale, 1e-3)), 0.0);
     frame.cloud_detail_offset = vec4<f32>(fract(frame.cloud_detail_offset.xyz - drift / max(params.cloud_detail_scale, 1e-3)), 0.0);
@@ -101,8 +112,8 @@ fn sun_transmittance(r: f32, mu_s: f32) -> vec3<f32> {
     return atmosphere_sun_transmittance_lut(frame.params, transmittance_lut, lut_sampler, r, mu_s);
 }
 
-fn integrate(o: vec3<f32>, d: vec3<f32>, t0: f32, t1: f32, steps: f32) -> Scattering {
-    return atmosphere_integrate(frame.params, frame.sun.xyz, transmittance_lut, multi_scattering_lut,
+fn integrate(sun: vec3<f32>, o: vec3<f32>, d: vec3<f32>, t0: f32, t1: f32, steps: f32) -> Scattering {
+    return atmosphere_integrate(frame.params, sun, transmittance_lut, multi_scattering_lut,
         lut_sampler, o, d, t0, t1, steps, true);
 }
 
@@ -193,22 +204,28 @@ fn sky_view_kernel(@builtin(global_invocation_id) id: vec3<u32>) {
     let segment = atmosphere_segment(frame.params, eye, d, true);
     var radiance = vec3<f32>(0.0);
     if segment.y > segment.x {
-        let s = integrate(eye, d, segment.x, segment.y, 32.0);
-        radiance = s.radiance;
-        if segment.z > 0.5 {
-            // The ground seen through the atmosphere (where no geometry
-            // draws it): sunlit Lambertian albedo.
-            let x = eye + d * segment.y;
-            let n = normalize(x);
-            let mu_s = dot(n, frame.sun.xyz);
-            radiance += s.transmittance * sun_transmittance(p.bottom_radius, mu_s) * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+        for (var i = 0u; i < frame.directional_light_count.x; i++) {
+            let base = i * 3u;
+            let light_dir = frame.directional_lights[base].xyz;
+            let energy = frame.directional_lights[base + 1u].rgb;
+            let s = integrate(light_dir, eye, d, segment.x, segment.y, 32.0);
+            radiance += s.radiance * energy;
+            if segment.z > 0.5 {
+                // The ground seen through the atmosphere (where no geometry
+                // draws it): each directional source lights the Lambertian ground.
+                let x = eye + d * segment.y;
+                let n = normalize(x);
+                let mu_s = dot(n, light_dir);
+                radiance += s.transmittance * energy * sun_transmittance(p.bottom_radius, mu_s)
+                    * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+            }
         }
     }
     textureStore(sky_view_out, vec2<i32>(id.xy), vec4<f32>(radiance, 1.0));
 }
 
-// Aerial perspective: per froxel column, in-scattered radiance (unit sun)
-// and mean transmittance from the camera to each slice's distance.
+// Aerial perspective: per froxel column, summed in-scattered radiance from
+// all directional lights and mean transmittance to each slice's distance.
 @compute @workgroup_size(8, 8)
 fn aerial_kernel(@builtin(global_invocation_id) id: vec3<u32>) {
     if !atmosphere_active() || any(vec2<f32>(id.xy) >= vec2<f32>(AERIAL_SLICES)) { return; }
@@ -228,9 +245,16 @@ fn aerial_kernel(@builtin(global_invocation_id) id: vec3<u32>) {
         let a = clamp(t_prev, segment.x, max(segment.y, segment.x));
         let b = clamp(t, segment.x, max(segment.y, segment.x));
         if b > a {
-            let s = integrate(eye, d, a, b, 4.0);
-            radiance += throughput * s.radiance;
-            throughput *= s.transmittance;
+            var step_radiance = vec3<f32>(0.0);
+            var step_transmittance = vec3<f32>(1.0);
+            for (var i = 0u; i < frame.directional_light_count.x; i++) {
+                let base = i * 3u;
+                let s = integrate(frame.directional_lights[base].xyz, eye, d, a, b, 4.0);
+                step_radiance += s.radiance * frame.directional_lights[base + 1u].rgb;
+                if i == 0u { step_transmittance = s.transmittance; }
+            }
+            radiance += throughput * step_radiance;
+            throughput *= step_transmittance;
         }
         t_prev = t;
         let mean = dot(throughput, vec3<f32>(1.0 / 3.0));
@@ -282,7 +306,7 @@ fn irradiance_kernel(@builtin(local_invocation_index) li: u32) {
     for (var c = 0u; c < 9u; c++) {
         var sum = vec3<f32>(0.0);
         for (var t = 0u; t < 64u; t++) { sum += partial[t][c]; }
-        frame.irradiance[c] = vec4<f32>(sum * weight * band[c] * frame.sun_illuminance.rgb, 0.0);
+        frame.irradiance[c] = vec4<f32>(sum * weight * band[c], 0.0);
     }
 }
 

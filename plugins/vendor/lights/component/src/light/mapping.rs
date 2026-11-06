@@ -114,6 +114,7 @@ impl LightComponent {
             light.shadows.apply_from_component_data(obj);
             light.volumetrics.apply_from_component_data(obj);
             light.light_function.apply_from_component_data(obj);
+            light.emitter_disk.apply_from_component_data(obj);
             light.performance.apply_from_component_data(obj);
             light.advanced.apply_from_component_data(obj);
         }

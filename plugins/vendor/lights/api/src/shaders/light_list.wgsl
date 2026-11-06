@@ -50,18 +50,28 @@ const LIGHT_NO_SHADOW: u32 = 0xffffffffu;
 const LIGHT_TILE_SIZE: u32 = 16u;
 const LIGHT_MAX_PER_TILE: u32 = 64u;
 
-// The directional light published with the list (`helio_light_api::
-// DIRECTIONAL_LIGHT`, bound as `array<vec4<f32>>`): `[0]` toward it with
-// w 1 (zero: none), `[1]` its radiance (colour times intensity).
+// The directional lights published with the list (`helio_light_api::
+// DIRECTIONAL_LIGHTS`), in list order; the first is the primary sun.
+const MAX_DIRECTIONAL_LIGHTS: u32 = 32u;
 struct DirectionalLight {
+    // Toward it, w 1.
     toward:   vec4<f32>,
+    // Colour times intensity (rgb).
     radiance: vec4<f32>,
+    // Its emitter disk (the flare words): angular radius, brightness,
+    // texture kind, enabled.
+    disk:     vec4<f32>,
+}
+struct DirectionalLights {
+    lights: array<DirectionalLight, 32>,
+    // x: how many of `lights` are live.
+    count:  vec4<u32>,
 }
 
 // Whether `light` is a sun: a directional light with intensity and a
-// direction. The lights' directional-light kernel picks the first such light
-// (`helio_pass_light_cull::directional`) into `DIRECTIONAL_LIGHT`, for every
-// host; a reader wanting the sun reads that row, never scans the list.
+// direction. The lights' directional-lights kernel picks such lights
+// (`helio_pass_light_cull::directional`) into `DIRECTIONAL_LIGHTS`, for every
+// host; a reader wanting them reads that row, never scans the list.
 fn light_is_sun(light: GpuLight) -> bool {
     return light.light_type == LIGHT_DIRECTIONAL && light.color_intensity.w > 0.0
         && dot(light.direction_outer.xyz, light.direction_outer.xyz) > 0.0;

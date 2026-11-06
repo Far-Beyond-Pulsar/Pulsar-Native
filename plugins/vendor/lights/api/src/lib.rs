@@ -2,7 +2,7 @@
 //! of the lights, and the only place it reads it from.
 //!
 //! - the light list ([`LIGHT_LIST`], [`GpuLight`]) and the directional
-//!   light published with it ([`DIRECTIONAL_LIGHT`]);
+//!   lights published with it ([`DIRECTIONAL_LIGHTS`]);
 //! - the screen-tile binning ([`binning`]: [`ClusterLightGrid`]);
 //! - the shadow views ([`shadows`]): their per-face matrices, atlas budget,
 //!   settings ([`ShadowSettings`], host group [`SHADOWS`]) and the

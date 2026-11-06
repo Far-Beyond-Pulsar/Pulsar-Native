@@ -17,6 +17,7 @@ const ALL_LOCALES: &[(&str, &str)] = &[
     ("ru", "Русский (Russian)"),
     ("it", "Italiano (Italian)"),
     ("de", "Deutsch (German)"),
+    ("pl", "Polski (Polish)"),
     ("pt-BR", "Português (Portuguese)"),
     ("fr", "Français (French)"),
     ("fr-CA", "Français (Canadian French)"),

@@ -76,3 +76,21 @@ pub fn cloud_join(base: &Path, component: &str) -> PathBuf {
         base.join(component)
     }
 }
+
+/// `2026-11-05 14:32` in local time.
+pub fn format_modified(time: std::time::SystemTime) -> String {
+    chrono::DateTime::<chrono::Local>::from(time)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
+}
+
+/// What the Type column shows: the registered file type, else the extension.
+pub fn type_label(item: &FileItem) -> String {
+    if item.file_type_def.is_some() || item.is_folder {
+        return item.display_name().to_string();
+    }
+    match item.path.extension().and_then(|e| e.to_str()) {
+        Some(ext) if !ext.is_empty() => format!("{} file", ext.to_uppercase()),
+        _ => "File".to_string(),
+    }
+}

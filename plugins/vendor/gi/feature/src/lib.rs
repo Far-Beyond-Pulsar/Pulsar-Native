@@ -288,6 +288,7 @@ impl GiPass {
                 GI_COMMON_SNIPPET,
                 GI_SAMPLE_SNIPPET,
                 sun_transmittance::SNIPPET,
+                helio_light_api::LIGHT_LIST_SNIPPET,
             ],
         );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -332,8 +333,8 @@ impl GiPass {
             ),
             fallback_directional: buffer(
                 device,
-                "GI no directional light",
-                std::mem::size_of::<helio_light_api::DirectionalLightRow>() as u64,
+                "GI no directional lights",
+                std::mem::size_of::<helio_light_api::DirectionalLights>() as u64,
                 wgpu::BufferUsages::STORAGE,
             ),
             sun_transmittance: None,
@@ -403,7 +404,7 @@ impl GiPass {
     /// integrated, the probes that came in reset, this frame's rays, the
     /// hits cleared for the tracers. `atmosphere` and `sky_table` are the
     /// atmosphere's, `directional` the lights' directional light
-    /// (`helio_light_api::DIRECTIONAL_LIGHT`) (none: no atmosphere, no sun);
+    /// (`helio_light_api::DIRECTIONAL_LIGHTS`) (none: no atmosphere, no sun);
     /// `sun` the sun's transmittance map and its frame (none: unshadowed).
     pub fn record(
         &mut self,
@@ -604,7 +605,7 @@ impl RenderPass for GiPass {
         let directional = ctx
             .scene_buffers
             .get(helio_core::BufferKey::of(
-                helio_light_api::DIRECTIONAL_LIGHT,
+                helio_light_api::DIRECTIONAL_LIGHTS,
             ))
             .map(|h| h.buffer.clone());
         let sun = self.sun_transmittance.and_then(|sun| {

@@ -1,6 +1,6 @@
 //! The light list's row: the GPU light ABI ([`GpuLight`]) and the SceneDB
 //! row engines author it as ([`LightRow`], under [`SCENE_LIGHTS`]), and the
-//! directional light published with it ([`DirectionalLightRow`]).
+//! directional lights published with it ([`DirectionalLights`]).
 //!
 //! Every pass that shades against lights (the lights' own lighting models
 //! and shadow views, the meshes' forward and transparent drawers, the voxel
@@ -19,24 +19,48 @@ pub const LIGHT_LIST: &str = "scene_lights";
 /// `BufferHandle::row_capacity()`, never this constant.
 pub const MAX_LIGHTS: u32 = DEFAULT_AUTO_REGISTER_CAPACITY;
 
-/// The lights' directional light, published with the light list: one
-/// [`DirectionalLightRow`] (zero, or absent: no directional light). It is
-/// the sun of whatever reads one (water, media, GI without an atmosphere):
-/// the first enabled directional light with intensity, chosen once by the
-/// lights, so no reader scans the list for it.
-pub const DIRECTIONAL_LIGHT: &str = "directional_light";
+/// The lights' directional lights, published with the light list: one
+/// [`DirectionalLights`] row (zero, or absent: none). A level may hold any
+/// number of directional lights (a sky rig's sun and moon, a second sun);
+/// the lights pick them once, in list order, so no reader scans the list.
+/// The first is the primary sun: the one a reader that wants one sun (water,
+/// media, GI without an atmosphere, the sky's angular tables) uses.
+pub const DIRECTIONAL_LIGHTS: &str = "directional_lights";
 
-/// [`DIRECTIONAL_LIGHT`]'s row. In WGSL two `vec4<f32>`: `[0]` toward the
-/// light and 1, `[1]` its radiance (colour times intensity) and 0.
+/// The most directional lights [`DIRECTIONAL_LIGHTS`] carries; later ones
+/// are left out.
+pub const MAX_DIRECTIONAL_LIGHTS: usize = 32;
+
+/// One directional light of [`DIRECTIONAL_LIGHTS`].
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct DirectionalLightRow {
-    /// Unit direction toward the light (xyz), 1 when there is one.
+pub struct DirectionalLight {
+    /// Unit direction toward the light (xyz), and 1.
     pub toward: [f32; 4],
     /// Linear RGB colour times intensity (xyz).
     pub radiance: [f32; 4],
+    /// Its emitter disk (the light's flare words): angular radius, brightness,
+    /// texture kind, enabled.
+    pub disk: [f32; 4],
 }
 
+/// [`DIRECTIONAL_LIGHTS`]'s row (WGSL `DirectionalLights`, light list
+/// snippet). The lights come first, so the row starts with the primary sun's
+/// `toward` (w 1; 0 without one) for readers that bind it as
+/// `array<vec4<f32>>`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct DirectionalLights {
+    pub lights: [DirectionalLight; MAX_DIRECTIONAL_LIGHTS],
+    /// x: how many of `lights` are live.
+    pub count: [u32; 4],
+}
+
+impl Default for DirectionalLights {
+    fn default() -> Self {
+        bytemuck::Zeroable::zeroed()
+    }
+}
 use bytemuck::{Pod, Zeroable};
 
 /// GPU light type discriminant.

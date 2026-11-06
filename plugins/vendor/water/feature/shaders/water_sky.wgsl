@@ -12,7 +12,9 @@ fn sky_color(ray: vec3f, light_dir: vec3f) -> vec3f {
         let dir = normalize(vec3f(ray.x, abs(ray.y), ray.z));
         let angles = sky_view_direction_angles(atmosphere, dir);
         let uv = sky_view_uv(atmosphere.params, length(atmosphere.eye.xyz), angles.x, angles.y);
-        return water_sky_lut(uv) * atmosphere.sun_illuminance.rgb;
+        // The sky-view LUT already contains the summed radiance of all
+        // directional lights in the atmosphere.
+        return water_sky_lut(uv);
     }
     let up      = clamp(ray.y, 0.0, 1.0);
     let horizon = vec3f(0.80, 0.90, 1.00);
@@ -26,8 +28,16 @@ fn sky_color(ray: vec3f, light_dir: vec3f) -> vec3f {
 /// illuminance / pi), reddened by the air it crosses at a low sun.
 fn water_sun_radiance(sun_dir: vec3f) -> vec3f {
     if atmosphere.planet.w >= 0.5 {
-        return atmosphere.sun_illuminance.rgb
-            * atmosphere_transmittance_towards(atmosphere, vec3f(0.0), sun_dir) / HELIO_PI;
+        let light_direction = normalize(sun_dir);
+        var energy = vec3f(0.0);
+        for (var i = 0u; i < atmosphere.directional_light_count.x; i++) {
+            let base = i * 3u;
+            let light_dir = normalize(atmosphere.directional_lights[base].xyz);
+            if dot(light_direction, light_dir) > 0.9999 {
+                energy += atmosphere.directional_lights[base + 1u].rgb;
+            }
+        }
+        return energy * atmosphere_transmittance_towards(atmosphere, vec3f(0.0), light_direction) / HELIO_PI;
     }
     return vec3f(3.0, 2.82, 2.46) / HELIO_PI;
 }

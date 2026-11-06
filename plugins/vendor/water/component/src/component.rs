@@ -15,8 +15,8 @@
 //! unless the volume opts out (`use_global_wind` off), and the simulation
 //! advances on the renderer's frame clock, so water freezes with a paused
 //! game or a viewport whose Realtime is off (Pulsar-Native#1065). The sun
-//! that lights the water is the lights' directional light
-//! (`helio_frame_api::lighting::DIRECTIONAL_LIGHT`; one per level), which
+//! that lights the water is the lights' primary sun (the first of
+//! `helio_light_api::DIRECTIONAL_LIGHTS`), which
 //! the join writes into the row; volumes do not author their own.
 //!
 //! Objects push the water through the simulation's hitboxes, which the

@@ -298,6 +298,7 @@ pub struct WaterSimPass {
     pub(crate) caustics_sampler: wgpu::Sampler,
     /// Zeroed atmosphere frame / sky table, bound until a sky publishes.
     pub(crate) fallback_atmosphere: wgpu::Buffer,
+    pub(crate) fallback_lights: wgpu::Buffer,
     pub(crate) fallback_sky_table: wgpu::Buffer,
     pub(crate) _fallback_sky_view_tex: wgpu::Texture,
     pub(crate) fallback_sky_view: wgpu::TextureView,
@@ -816,7 +817,11 @@ impl WaterSimPass {
 
 impl RenderPass for WaterSimPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["water_hitboxes", "water_volumes"]
+        &[
+            "water_hitboxes",
+            "water_volumes",
+            helio_light_api::LIGHT_LIST,
+        ]
     }
 
     fn name(&self) -> &'static str {
@@ -1963,6 +1968,12 @@ impl RenderPass for WaterSimPass {
                     ))
                     .unwrap_or(&self.fallback_sky_view);
 
+                let lights_buf = ctx
+                    .scene_buffers
+                    .get(BufferKey::of(helio_light_api::LIGHT_LIST))
+                    .map(|handle| &handle.buffer)
+                    .unwrap_or(&self.fallback_lights);
+
                 // Rebuilt whenever anything it binds changes.
                 let render_bg = self
                     .render_bg
@@ -2099,6 +2110,10 @@ impl RenderPass for WaterSimPass {
                                 wgpu::BindGroupEntry {
                                     binding: 27,
                                     resource: wgpu::BindingResource::TextureView(sky_view_tex),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 28,
+                                    resource: lights_buf.as_entire_binding(),
                                 },
                             ],
                         },

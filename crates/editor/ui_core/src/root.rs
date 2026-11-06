@@ -7,6 +7,7 @@ use gpui::{
 };
 use rust_i18n::t;
 use std::path::PathBuf;
+use std::time::Duration;
 use ui::{
     h_flex, notification::Notification, v_flex, ActiveTheme as _, ContextModal as _, Icon,
     IconName, Root, StyledExt as _,
@@ -38,6 +39,114 @@ struct EditorWindowShell {
     _subscriptions: Vec<Subscription>,
 }
 
+#[derive(Debug, Clone)]
+struct GitSyncStatus {
+    ahead: usize,
+    behind: usize,
+}
+
+struct GitSyncIndicator {
+    status: Option<GitSyncStatus>,
+}
+
+enum GitSyncIndicatorEvent {
+    OpenGitManager,
+}
+
+impl gpui::EventEmitter<GitSyncIndicatorEvent> for GitSyncIndicator {}
+
+impl GitSyncIndicator {
+    fn new(project_path: PathBuf, cx: &mut Context<Self>) -> Self {
+        let poll_path = project_path.clone();
+        cx.spawn(async move |this, cx| loop {
+            let path = poll_path.clone();
+            let status = cx
+                .background_executor()
+                .spawn(async move {
+                    match ui_git_manager::probe_repository(&path) {
+                        Ok(ui_git_manager::RepositoryProbe::Repository(state)) => {
+                            Some(GitSyncStatus {
+                                ahead: state.ahead,
+                                behind: state.behind,
+                            })
+                        }
+                        Ok(ui_git_manager::RepositoryProbe::NotARepository) | Err(_) => None,
+                    }
+                })
+                .await;
+
+            if this
+                .update(cx, |this, cx| {
+                    if this.status.as_ref().map(|s| (s.ahead, s.behind))
+                        != status.as_ref().map(|s| (s.ahead, s.behind))
+                    {
+                        this.status = status;
+                        cx.notify();
+                    }
+                })
+                .is_err()
+            {
+                break;
+            }
+
+            cx.background_executor().timer(Duration::from_secs(5)).await;
+        })
+        .detach();
+
+        Self { status: None }
+    }
+}
+
+impl Render for GitSyncIndicator {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(status) = self.status.as_ref() else {
+            return div().into_any_element();
+        };
+        let behind = status.behind;
+        let ahead = status.ahead;
+        let danger = cx.theme().danger;
+        let success = cx.theme().success;
+        h_flex()
+            .items_center()
+            .gap_1()
+            .child(
+                div()
+                    .id("git-sync-behind")
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .rounded_md()
+                    .px_2()
+                    .py_1()
+                    .bg(danger.opacity(0.18))
+                    .text_color(danger)
+                    .child(Icon::new(IconName::ArrowDown).size(px(14.)))
+                    .child(behind.to_string())
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.emit(GitSyncIndicatorEvent::OpenGitManager);
+                    })),
+            )
+            .child(
+                div()
+                    .id("git-sync-ahead")
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .rounded_md()
+                    .px_2()
+                    .py_1()
+                    .bg(success.opacity(0.18))
+                    .text_color(success)
+                    .child(Icon::new(IconName::ArrowUp).size(px(14.)))
+                    .child(ahead.to_string())
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.emit(GitSyncIndicatorEvent::OpenGitManager);
+                    })),
+            )
+            .into_any_element()
+    }
+}
+
 impl EditorWindowShell {
     fn new(
         title: impl Into<SharedString>,
@@ -58,12 +167,19 @@ impl EditorWindowShell {
                 })
             })
             .unwrap_or_default();
-        let title_bar = cx
-            .new(|cx| AppTitleBar::new_with_asset_file_types(title, asset_file_types, window, cx));
         let global_toolbar = cx.new(|cx| ui_level_editor::GlobalToolbarView::new(window, cx));
         let friends_popover = cx.new(|cx| ui_friends::FriendsPopover::new(window, cx));
+        let project_path = engine_state::get_project_path()
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let git_sync_indicator = cx.new(|cx| GitSyncIndicator::new(project_path.clone(), cx));
+        let titlebar_indicator = git_sync_indicator.clone();
+        let title_bar = cx.new(|cx| {
+            AppTitleBar::new_with_asset_file_types(title, asset_file_types, window, cx)
+                .child(move |_, _| titlebar_indicator.clone())
+        });
 
-        let subscriptions = vec![cx.subscribe_in(
+        let mut subscriptions = vec![cx.subscribe_in(
             &title_bar,
             window,
             |this, _, event: &AppTitleBarEvent, window, cx| match event {
@@ -76,6 +192,22 @@ impl EditorWindowShell {
                 }
             },
         )];
+
+        {
+            let path = project_path.clone();
+            let indicator_entity = git_sync_indicator.clone();
+            subscriptions.push(cx.subscribe(
+                &indicator_entity,
+                move |_, _, event: &GitSyncIndicatorEvent, cx| match event {
+                    GitSyncIndicatorEvent::OpenGitManager => {
+                        let project_path = path.clone();
+                        WindowRegistry::update_global(cx, |_, cx| {
+                            ui_git_manager::GitManagerWindow::open_scoped(Some(project_path), cx);
+                        });
+                    }
+                },
+            ));
+        }
 
         Self {
             title_bar,
