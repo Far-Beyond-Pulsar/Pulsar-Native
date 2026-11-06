@@ -1145,9 +1145,10 @@ fn foliage_reaches_the_frame() {
     let change = with.difference(&before);
     println!("PHASE4 foliage vs without: {change:?}");
     // The scene has no light, so the blades shade dark: depth is what shows
-    // them drawn.
+    // them drawn, over 5% of the depth buffer (render resolution: under TSR
+    // it is smaller than the output).
     assert!(
-        change.depth_texels > (SIZE * SIZE / 20) as usize,
+        change.depth_texels > with.depth.len() / 20,
         "foliage drew no blades: {change:?}"
     );
 
@@ -2415,7 +2416,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
     let difference = changed.difference(&pose);
     println!("WIND global wind changed: {difference:?}");
     assert!(
-        difference.depth_texels > (SIZE * SIZE / 100) as usize,
+        difference.depth_texels > changed.depth.len() / 100,
         "changing the global wind did not change the foliage: {difference:?}"
     );
 }
@@ -2634,14 +2635,17 @@ fn roughness(heights: &[f32]) -> f32 {
     heights.iter().map(|h| h.abs()).sum::<f32>() / heights.len() as f32
 }
 
-/// Water dynamics (#1065): each volume simulates with its own wind, read
-/// back from the simulation: a windy lake moves while a calm pond beside it
-/// stays flat, the pond's waves start when its own wind does (nothing on
-/// the pass is touched), and the simulation advances on the frame clock, so
-/// it stands still with Realtime off.
+/// Water dynamics (#1065): each volume simulates on its own layers, read
+/// back from the simulation: a body pushing the lake moves the lake while
+/// the calm pond beside it stays flat, a body in the pond moves the pond,
+/// and the simulation advances on the frame clock, so it stands still with
+/// Realtime off. Wind seas come from the spectral ocean, not this solver
+/// (OPTICS.md: the volume solver carries local disturbances), so a volume's
+/// own wind shows on its surface, not in these layers.
 #[test]
-fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
+fn water_volumes_simulate_their_own_disturbances_on_the_frame_clock() {
     use installed_plugins::water_component::WaterVolumeComponent;
+    use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2656,15 +2660,13 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
     engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
     let harness = Harness::new(device, queue, 1.0);
     let mut state = LevelEditorState::new();
-    let water = |wind_strength: f32| WaterVolumeComponent {
+    let water = WaterVolumeComponent {
         size: [20.0, 4.0, 20.0],
         use_global_wind: false,
-        wind_direction_x: 1.0,
-        wind_direction_z: 0.3,
-        wind_strength,
+        wind_strength: 0.0,
         ..Default::default()
     };
-    let add = |state: &mut LevelEditorState, name: &str, x: f32, water: WaterVolumeComponent| {
+    let add = |state: &mut LevelEditorState, name: &str, x: f32| {
         execute_command(
             state,
             SceneCommand::AddObjectWithComponents {
@@ -2685,44 +2687,60 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
                     component_instances: None,
                 },
                 parent_id: None,
-                components: vec![TypedComponent::new(water)],
+                components: vec![TypedComponent::new(water.clone())],
             },
         )
         .affected_ids[0]
             .clone()
     };
+    // A 1 m cube (SM_Cube is 200 units across) half under the surface, on
+    // the WaterSim collision channel.
+    let body = |state: &mut LevelEditorState, position: [f32; 3]| {
+        let id = drop_matte_mesh(state);
+        let placed = execute_command(
+            state,
+            SceneCommand::SetTransform {
+                id: id.clone(),
+                position: Some(position.map(f64::from)),
+                rotation: None,
+                scale: Some([0.005; 3]),
+            },
+        );
+        assert!(placed.changed);
+        let mut physics = PhysicsComponent::default();
+        physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
+        components::add_component_value(
+            &mut state.scene.world_mut(),
+            &id,
+            "PhysicsComponent",
+            Some(Box::new(physics)),
+        )
+        .expect("physics attached");
+        id
+    };
     // The lake takes the first water row (layers 0..3), the pond the
     // second (layers 3..6).
-    add(&mut state, "lake", 0.0, water(5.0));
+    add(&mut state, "lake", 0.0);
+    add(&mut state, "pond", 100.0);
+    let swimmer = body(&mut state, [2.0, 0.0, 2.0]);
     let mut renderer = harness.renderer(&state);
     renderer.set_frame_delta_override(Some(1.0 / 60.0));
-    harness.frames(&mut renderer, || {});
-    let pond = add(&mut state, "pond", 100.0, water(0.0));
     harness.frames(&mut renderer, || {});
     harness.frames(&mut renderer, || {});
 
     let lake_waves = roughness(&water_heights(&harness, &renderer, 0));
     let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
     println!("WATER lake {lake_waves} pond {pond_waves}");
-    assert!(lake_waves > 1e-4, "the windy lake is flat: {lake_waves}");
-    assert_eq!(pond_waves, 0.0, "the calm pond moved");
+    assert!(lake_waves > 1e-4, "the pushed lake is flat: {lake_waves}");
+    assert_eq!(pond_waves, 0.0, "the pond moved with the lake");
 
-    // The pond's own wind rises: its waves start.
-    let instance = first_instance(&state, &pond);
-    state
-        .scene
-        .world_mut()
-        .get_mut::<WaterVolumeComponent>(instance)
-        .unwrap()
-        .wind_strength = 5.0;
+    // The body swims over to the pond: the pond's own layers move.
+    move_to(&mut state, &swimmer, [102.0, 0.0, 2.0]);
     harness.frames(&mut renderer, || {});
     harness.frames(&mut renderer, || {});
     let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
-    println!("WATER pond in its own wind {pond_waves}");
-    assert!(
-        pond_waves > 1e-4,
-        "the pond's wind did not move it: {pond_waves}"
-    );
+    println!("WATER pond pushed {pond_waves}");
+    assert!(pond_waves > 1e-4, "the body did not move the pond: {pond_waves}");
 
     // Realtime off freezes the frame clock, and the water with it.
     renderer.set_viewport_realtime(false);
@@ -3307,10 +3325,14 @@ fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     let harness = Harness::new(device, queue, radius);
 
     // Renders the mesh through `lens`, in focus so only the lens' own
-    // elements change the frame.
+    // elements change the frame. A bright wall behind it fills the frame to
+    // its corners, where a prescription's falloff shows.
     let render = |lens: CameraLensComponent| {
         let mut state = LevelEditorState::new();
         drop_mesh(&mut state);
+        let wall = drop_mesh(&mut state);
+        move_to(&mut state, &wall, [0.0, 0.0, -radius * 3.0]);
+        transform(&mut state, &wall, None, Some([12.0, 12.0, 0.05]));
         let mut renderer = harness.renderer(&state);
         execute_command(
             &mut state,
@@ -3370,9 +3392,17 @@ fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     }];
     let mut bare = baked.clone();
     bare.elements.clear();
-    let baked = render(focused(baked));
     let bare = render(focused(bare));
-    let change = baked.difference(&bare);
+    // The bundled bank is traced on a background thread the lens starts
+    // (`start_baking`; minutes in a debug build): wait for it to arrive.
+    let start = std::time::Instant::now();
+    let change = loop {
+        let change = render(focused(baked.clone())).difference(&bare);
+        if change.color_pixels > 0 || start.elapsed() > std::time::Duration::from_secs(600) {
+            break change;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    };
     println!("LENS thin-lens prescription vs none: {change:?}");
     assert!(
         change.color_pixels > 0,
