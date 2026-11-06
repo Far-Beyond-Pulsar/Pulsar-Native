@@ -512,3 +512,206 @@ fn a_static_model_still_imports_to_a_plain_mesh_with_no_extra_outputs() {
     assert!(helio_component::mesh_cache::decode_asset(&bytes).is_some());
     assert!(SkeletalMeshAsset::peek_id(&bytes).is_none());
 }
+
+/// An independent reference: convert endpoint derivatives to Bezier control
+/// points and evaluate with de Casteljau in f64 (rather than the runtime's
+/// f32 Hermite basis).
+fn cubic_reference<const N: usize>(time: f32, times: &[f32], values: &[[f32; N]]) -> [f32; N] {
+    if time <= times[0] {
+        return values[1];
+    }
+    if time >= times[times.len() - 1] {
+        return values[(times.len() - 1) * 3 + 1];
+    }
+    let next = times.partition_point(|t| *t <= time);
+    let a = next - 1;
+    let dt = (times[next] - times[a]) as f64;
+    let u = (time - times[a]) as f64 / dt;
+    std::array::from_fn(|i| {
+        let p0 = values[a * 3 + 1][i] as f64;
+        let p1 = p0 + dt * values[a * 3 + 2][i] as f64 / 3.0;
+        let p3 = values[next * 3 + 1][i] as f64;
+        let p2 = p3 - dt * values[next * 3][i] as f64 / 3.0;
+        let lerp = |a: f64, b: f64| a * (1.0 - u) + b * u;
+        lerp(
+            lerp(lerp(p0, p1), lerp(p1, p2)),
+            lerp(lerp(p1, p2), lerp(p2, p3)),
+        ) as f32
+    })
+}
+
+#[test]
+fn cubic_gltf_survives_import_save_reopen_sampling_and_skinning() {
+    use skeletal_assets::animation::KeyInterpolation;
+    use skeletal_assets::assets::save_animseq_asset;
+    use skeletal_assets::runtime::clip::CompiledClip;
+    use skeletal_assets::runtime::pose::{BoneTransform, RuntimeSkeleton};
+
+    let project = Project::new();
+    let source = project.root().join("cubic.gltf");
+    std::fs::write(&source, include_str!("fixtures/cubic_spline.gltf")).unwrap();
+    let imported = importer_for("gltf")
+        .unwrap()
+        .import(
+            &source,
+            &project.root().join("cubic.mesh"),
+            &OptionValues::new(),
+            &Previous {
+                project_root: project.root(),
+                outputs: &[],
+            },
+        )
+        .unwrap();
+    let skeleton = load_skeleton_asset(&path_of(&imported, project.root(), "skeleton")).unwrap();
+    let mesh = load_skmesh_asset(&imported.asset).unwrap();
+    let path = path_of(&imported, project.root(), "animseq");
+    let sequence = load_animseq_asset(&path).unwrap();
+    assert_eq!(sequence.version, 5);
+    save_animseq_asset(&path, &sequence).unwrap();
+    let sequence = load_animseq_asset(&path).unwrap();
+    let root = sequence.clip.track("Root").unwrap();
+    let arm = sequence.clip.track("Arm").unwrap();
+    assert_eq!(
+        root.keyframes.len(),
+        8,
+        "only the union of authored channel timestamps"
+    );
+    assert_eq!(arm.keyframes.len(), 3, "bones have independent timing");
+    assert_eq!(root.keyframes[1].out_tangent.rotation, [1.0, 0.0, 2.0, 1.0]);
+    assert_eq!(root.keyframes[6].in_tangent.rotation, [0.0, 1.0, -1.0, 2.0]);
+    assert_eq!(
+        root.keyframes[1].rotation_interpolation,
+        KeyInterpolation::CubicSpline
+    );
+    assert_eq!(
+        root.keyframes[6].rotation_interpolation,
+        KeyInterpolation::Step
+    );
+    assert_eq!(arm.keyframes[0].scale_interpolation, KeyInterpolation::Step);
+    assert_eq!(
+        arm.keyframes[0].rotation_interpolation,
+        KeyInterpolation::Linear
+    );
+    let runtime_skeleton =
+        RuntimeSkeleton::new(skeleton.id.to_string(), &skeleton.skeleton()).unwrap();
+    let compiled = CompiledClip::compile(&sequence, &runtime_skeleton);
+    let rotation_values = [
+        [0.0; 4],
+        [0.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 2.0, 1.0],
+        [0.0, 1.0, -1.0, 2.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0; 4],
+    ];
+    let translation_values: Vec<[f32; 3]> = [
+        [0., 0., 0.],
+        [0.1, 0., 0.],
+        [0.2, 0., 0.],
+        [1., 2., 0.],
+        [2., 0., -1.],
+    ]
+    .into_iter()
+    .flat_map(|p| [[1., -1., 2.], p, [2., 1., -1.]])
+    .collect();
+    let scale_values: Vec<[f32; 3]> = [[1., 1., 1.], [0., 2., -1.], [-1., 1., 3.]]
+        .into_iter()
+        .flat_map(|p| [[-1., 1., 0.], p, [1., 0., -2.]])
+        .collect();
+    // Check exact endpoints, asynchronous knots, the sub-microsecond interval,
+    // and the samples produced at several playback frame rates.
+    let mut times = vec![0.0, 0.25, 0.5, 0.5000001, 0.50000024, 1.0, 1.5, 2.0, 3.0];
+    for fps in [24, 60, 144] {
+        times.extend((0..=3 * fps).map(|f| f as f32 / fps as f32));
+    }
+    for time in times {
+        let translation =
+            cubic_reference(time, &[0.0, 0.5, 0.50000024, 1.0, 3.0], &translation_values);
+        let scale = cubic_reference(time, &[0.5, 1.5, 3.0], &scale_values);
+        let q = glam::Quat::from_array(cubic_reference(time, &[0.25, 2.0], &rotation_values))
+            .normalize();
+        let rt = compiled.sample_bone(0, time, BoneTransform::IDENTITY);
+        assert!(
+            rt.rotation.dot(q) > 1.0 - 2e-6,
+            "rotation at {time}: {:?} != {q:?}",
+            rt.rotation
+        );
+        assert!((rt.rotation.length() - 1.0).abs() < 2e-6);
+        assert!(
+            rt.translation.distance(glam::Vec3::from_array(translation)) < 2e-5,
+            "translation at {time}"
+        );
+        assert!(
+            rt.scale.distance(glam::Vec3::from_array(scale)) < 2e-5,
+            "scale at {time}: {:?} != {scale:?}",
+            rt.scale
+        );
+        let pose = root.sample(time).unwrap();
+        near(
+            pose.translation,
+            Vec3::new(translation[0], translation[1], translation[2]),
+        );
+        near(pose.scale, Vec3::new(scale[0], scale[1], scale[2]));
+        let root_matrix = glam::Mat4::from_scale_rotation_translation(
+            glam::Vec3::from_array(scale),
+            q,
+            glam::Vec3::from_array(translation),
+        );
+        assert!(pose.to_matrix().approx_eq(
+            &skeletal_assets::math::Mat4(root_matrix.to_cols_array()),
+            2e-5
+        ));
+        // Vertex zero is attached entirely to Root. This exercises the real
+        // asset pose -> joint palette -> skinned geometry path.
+        let world = evaluate_world_transforms(&skeleton.skeleton(), &sequence.clip, time);
+        let posed = skin_lod(&mesh.lods[0], &joint_matrices(&mesh, &world));
+        let expected =
+            root_matrix.transform_point3(glam::Vec3::from_array(mesh.lods[0].vertices[0].position));
+        near(
+            posed[0].position,
+            Vec3::new(expected.x, expected.y, expected.z),
+        );
+        let arm_pose = compiled.sample_bone(1, time, BoneTransform::IDENTITY);
+        let arm_scale = if time < 1.0 {
+            1.0
+        } else if time < 3.0 {
+            2.0
+        } else {
+            0.5
+        };
+        assert_eq!(arm_pose.scale, glam::Vec3::splat(arm_scale));
+        let arm_translation = cubic_reference(
+            time,
+            &[0.0, 3.0],
+            &[
+                [0.0; 3],
+                [1.0, 0.0, 0.0],
+                [2.0, 1.0, 0.0],
+                [-1.0, 2.0, 1.0],
+                [2.0, 1.0, 0.0],
+                [0.0; 3],
+            ],
+        );
+        let arm_rotation = glam::Quat::from_rotation_z(std::f32::consts::PI * time / 3.0);
+        assert!(
+            arm_pose
+                .translation
+                .distance(glam::Vec3::from_array(arm_translation))
+                < 2e-5
+        );
+        assert!(arm_pose.rotation.dot(arm_rotation).abs() > 1.0 - 2e-6);
+        let arm_matrix = root_matrix
+            * glam::Mat4::from_scale_rotation_translation(
+                glam::Vec3::splat(arm_scale),
+                arm_rotation,
+                glam::Vec3::from_array(arm_translation),
+            )
+            * glam::Mat4::from_translation(glam::Vec3::new(-1.0, 0.0, 0.0));
+        let shared = glam::Vec3::from_array(mesh.lods[0].vertices[2].position);
+        let expected = root_matrix.transform_point3(shared) * 0.25
+            + arm_matrix.transform_point3(shared) * 0.75;
+        near(
+            posed[2].position,
+            Vec3::new(expected.x, expected.y, expected.z),
+        );
+    }
+}
