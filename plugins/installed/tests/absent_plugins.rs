@@ -40,11 +40,17 @@ const SIZE: u32 = 128;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 fn project(enabled: Option<bool>) -> tempfile::TempDir {
+    project_listing(&DISABLED, enabled)
+}
+
+/// A project whose `Pulsar.toml` sets each of `ids` to `enabled` (or names
+/// none of them).
+fn project_listing(ids: &[&str], enabled: Option<bool>) -> tempfile::TempDir {
     let project = tempfile::tempdir().unwrap();
     let mut file = String::from("# a test project\n");
     if let Some(enabled) = enabled {
         file.push_str("[plugins]\n");
-        for id in DISABLED {
+        for id in ids {
             file.push_str(&format!("\"{id}\" = {enabled}\n"));
         }
     }
@@ -213,6 +219,164 @@ fn a_disabled_plugin_is_absent() {
     let silent = project(None);
     engine_state::set_project_path(silent.path().display().to_string());
     assert!(registered("LightComponent"));
+
+    meshes_absent();
+}
+
+/// A project without the meshes (Phase C step 3 part B): no mesh class,
+/// feature, importer, content geometry or skinned access; their create
+/// entries are absent; a level holding a mesh keeps it verbatim; every
+/// preset builds without a mesh pass, the spine clearing the G-buffer.
+fn meshes_absent() {
+    let off = project_listing(&["pulsar.meshes"], Some(false));
+    engine_state::set_project_path(off.path().display().to_string());
+    assert!(!pulsar_plugins::is_enabled("pulsar.meshes"));
+    for class in [
+        "StaticMeshComponent",
+        "SkeletalMeshComponent",
+        "LODComponent",
+        "VirtualGeometryComponent",
+    ] {
+        assert!(!registered(class), "{class} is registered");
+    }
+    assert!(registered("LightComponent"), "the lights stay");
+    let features = render_features::plugin_features();
+    for id in [
+        "helio.mesh.batch",
+        "helio.mesh.cull",
+        "helio.mesh.gbuffer",
+        "helio.mesh.shadow",
+    ] {
+        assert!(!features.contains(id), "{id} is in the feature set");
+    }
+    assert!(
+        asset_import::importer_for("fbx").is_none(),
+        "a model importer is registered"
+    );
+    assert!(helio_mesh_api::skinning::skinned_mesh_access().is_none());
+    let entries: Vec<_> = ui_level_editor::extend::create_entries()
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect();
+    assert!(!entries.contains(&"mesh_cube"), "{entries:?}");
+    assert!(entries.contains(&"light_point"), "{entries:?}");
+
+    // The level loads; its mesh is kept as it was, and adding one is refused.
+    // (Only the cube: the other plugins are enabled here, and the shared
+    // level's light and voxel records are placeholders their classes refuse.)
+    let level = write_level(off.path());
+    let mut cube_only: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&level).unwrap()).unwrap();
+    cube_only["components"]["cube"]
+        .as_array_mut()
+        .unwrap()
+        .truncate(1);
+    std::fs::write(&level, cube_only.to_string()).unwrap();
+    let scene = RuntimeLevel::load(&level).expect("the level loads").scene();
+    {
+        let scene = scene.read();
+        let cube = scene.world.entity_for("cube").unwrap();
+        let records = pulsar_world_registry::component_records(&scene.world, cube);
+        assert_eq!(records[0].class_name, "StaticMeshComponent");
+        assert_eq!(records[0].data["mesh_asset"], json!("meshes/cube.fbx"));
+        let instances = attachments::instances(&scene.world, cube);
+        assert!(scene
+            .world
+            .get::<attachments::UnresolvedComponent>(instances[0])
+            .is_some());
+        assert_eq!(
+            level_rules::check_new_component(&scene.world, "StaticMeshComponent", None, true),
+            Err(level_rules::NOT_REGISTERED)
+        );
+    }
+
+    // No mesh pass in any preset's graph; the spine clears the G-buffer.
+    if let Some((device, queue)) = device() {
+        for (preset, passes) in preset_passes(&device, &queue) {
+            for name in [
+                "ObjectBatch",
+                "GBuffer",
+                "Shadow",
+                "IndirectDispatch",
+                "OcclusionCull",
+            ] {
+                assert!(!passes.contains(&name), "{preset}: {name} is in the graph");
+            }
+            if passes.contains(&"DeferredLight") {
+                assert!(
+                    passes.contains(&"GBufferClear"),
+                    "{preset}: nothing writes the G-buffer: {passes:?}"
+                );
+            }
+        }
+    } else {
+        eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: absent meshes graphs");
+    }
+
+    // Enabled again: back.
+    let on = project_listing(&["pulsar.meshes"], Some(true));
+    engine_state::set_project_path(on.path().display().to_string());
+    assert!(registered("StaticMeshComponent"));
+    assert!(asset_import::importer_for("fbx").is_some());
+    assert!(helio_mesh_api::skinning::skinned_mesh_access().is_some());
+}
+
+/// Every engine preset's graph over the enabled plugins' features: its
+/// name and pass names.
+fn preset_passes(
+    device: &Arc<wgpu::Device>,
+    queue: &Arc<wgpu::Queue>,
+) -> Vec<(String, Vec<&'static str>)> {
+    let buffer = |label: &str, size: u64| {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    };
+    let camera = buffer(
+        "Scene Camera Buffer",
+        (std::mem::size_of::<GpuCameraUniforms>() * 2) as u64,
+    );
+    let debug_camera = buffer("Debug Camera Buffer", 64);
+    let cull_stats = buffer("Cull Stats Buffer", 64);
+    let gpu_context = EngineGpuContext::new(Arc::clone(device), Arc::clone(queue));
+    let store = SceneGpuStore::new(
+        &gpu_context,
+        SceneGpuConfig {
+            classes: Vec::new(),
+            tombstone_headroom: 0,
+            max_cells_metadata: 0,
+        },
+    );
+    let scene_db = GpuMirrorHandle::new(Arc::new(store), Arc::clone(queue));
+    let features = render_features::plugin_features();
+    let config = render_features::configure(RendererConfig::new(SIZE, SIZE, FORMAT));
+    Preset::ALL
+        .into_iter()
+        .map(|preset| {
+            let graph = preset.with_features(&features).build(PassBuildContext {
+                device,
+                queue,
+                config: config.clone(),
+                debug_state: Arc::new(Mutex::new(DebugDrawState::default())),
+                camera_buffer: &camera,
+                debug_camera_buffer: &debug_camera,
+                cull_stats_buffer: &cull_stats,
+                owns_device: false,
+                scene_db: scene_db.clone(),
+            });
+            let passes = graph
+                .build_order_declarations()
+                .into_iter()
+                .map(|(pass, _)| pass.pass)
+                .collect();
+            (preset.name().to_string(), passes)
+        })
+        .collect()
 }
 
 /// The materials' assets are served (`present`) or not: the material asset
@@ -220,7 +384,7 @@ fn a_disabled_plugin_is_absent() {
 /// meshes through the materials' api only.
 fn material_assets(project: &Path, present: bool) {
     use helio_component::asset_component::{asset_sources_for_file, load_asset_now};
-    use helio_component::components::{StaticMeshMaterialSlot, resolve_slot_material};
+    use installed_plugins::meshes_component::components::{StaticMeshMaterialSlot, resolve_slot_material};
     use helio_mats::asset::{MATERIAL_ASSET_KIND, SurfaceMaterialDocument, SurfaceValues};
     let red = [1.0, 0.0, 0.0, 1.0];
     let file = project.join("materials/red.mat");
@@ -445,7 +609,7 @@ fn render_with_stand_ins(scene: &SharedScene) {
         let instance = attachments::instances(&scene.world, cube)[0];
         scene
             .world
-            .get::<helio_component::components::StaticMeshComponent>(instance)
+            .get::<installed_plugins::meshes_component::components::StaticMeshComponent>(instance)
             .expect("the cube's mesh is registered (the meshes plugin is enabled)")
             .bounds_local[3]
     };

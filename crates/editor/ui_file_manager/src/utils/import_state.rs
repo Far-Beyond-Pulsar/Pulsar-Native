@@ -188,6 +188,54 @@ pub(crate) fn handle_unlink_source(
 #[cfg(test)]
 mod tests {
     use asset_import::{FileImportState, ImportDb, ImportRecord, LinkStatus};
+
+    /// Model formats are importable through a plugin's importer (the
+    /// meshes'); this crate links none, so its tests register a stand-in
+    /// that only claims `.fbx` and `.obj`.
+    struct ModelFormats;
+
+    impl asset_import::Importer for ModelFormats {
+        fn id(&self) -> &'static str {
+            "mesh"
+        }
+        fn handles(&self, ext: &str) -> bool {
+            matches!(ext, "fbx" | "obj")
+        }
+        fn options_schema(&self, _ext: &str) -> Option<asset_import::OptionsSchema> {
+            None
+        }
+        fn asset_path(&self, dir: &std::path::Path, source: &std::path::Path) -> std::path::PathBuf {
+            dir.join(source.file_stem().unwrap_or_default())
+                .with_extension("mesh")
+        }
+        fn stored_options(
+            &self,
+            _asset: &std::path::Path,
+            _ext: &str,
+            _saved: Option<&serde_json::Value>,
+        ) -> asset_import::OptionValues {
+            Default::default()
+        }
+        fn serialize_options(&self, _options: &asset_import::OptionValues) -> serde_json::Value {
+            serde_json::Value::Null
+        }
+        fn import(
+            &self,
+            _source: &std::path::Path,
+            _asset: &std::path::Path,
+            _options: &asset_import::OptionValues,
+            _previous: &asset_import::Previous,
+        ) -> Result<asset_import::Imported, String> {
+            Err("not in these tests".into())
+        }
+    }
+
+    inventory::submit! {
+        asset_import::ImporterRegistration {
+            origin: "ui_file_manager",
+            importer: &ModelFormats,
+        }
+    }
     use gpui::{
         point, px, size, AppContext as _, Bounds, TestAppContext, VisualTestContext, WindowBounds,
         WindowOptions,

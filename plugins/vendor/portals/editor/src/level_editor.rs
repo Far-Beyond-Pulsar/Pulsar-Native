@@ -245,15 +245,15 @@ fn select_portal_debug_view(
     }
 }
 
-/// Snapshot nearby static triangles and map them through the selected portal
-/// pair. This is a deliberate, bounded editor-only inspection payload.
+/// Snapshot nearby content triangles (every kind's content geometry: the
+/// meshes') and map them through the selected portal pair. This is a
+/// deliberate, bounded editor-only inspection payload.
 fn portal_ghost_geometry(
     world: &pulsar_scenedb::World,
     source: portals_component::Portal,
     target: portals_component::Portal,
 ) -> Vec<[f64; 3]> {
     use glam::{DMat4, DVec3};
-    use helio_component::components::StaticMeshComponent;
 
     const MAX_GHOST_VERTICES: usize = 90_000;
     const RADIUS_SQUARED: f64 = 12_000.0;
@@ -270,40 +270,34 @@ fn portal_ghost_geometry(
     let map = source_world * DMat4::from_rotation_y(std::f64::consts::PI) * target_world.inverse();
     let target_position = target_world.transform_point3(DVec3::ZERO);
     let mut vertices = Vec::new();
-    'meshes: for (_instance, owner, component) in
-        engine_backend::scene::attachments::enabled_components::<StaticMeshComponent>(world)
-    {
-        let Some(owner_world) =
-            engine_backend::scene::hierarchy_transform::world_matrix_of(world, owner)
-        else {
-            continue;
-        };
-        let center = owner_world.transform_point3(DVec3::ZERO);
-        if center.distance_squared(target_position) > RADIUS_SQUARED {
-            continue;
-        }
-        for triangle in component.indices.chunks_exact(3) {
-            if vertices.len() + 3 > MAX_GHOST_VERTICES {
-                break 'meshes;
-            }
-            let Some(triangle_vertices) = triangle
-                .iter()
-                .map(|index| component.vertices.get(*index as usize))
-                .collect::<Option<Vec<_>>>()
-            else {
-                continue;
+    // Each object's placement, once: whether it is near, and where.
+    let mut placements: std::collections::HashMap<pulsar_scenedb::Entity, Option<DMat4>> =
+        Default::default();
+    engine_backend::subsystems::render::helio_renderer::content_triangles(
+        world,
+        &mut |object, triangle| {
+            let placement = *placements.entry(object).or_insert_with(|| {
+                engine_backend::scene::hierarchy_transform::world_matrix_of(world, object)
+                    .filter(|owner_world| {
+                        owner_world
+                            .transform_point3(DVec3::ZERO)
+                            .distance_squared(target_position)
+                            <= RADIUS_SQUARED
+                    })
+            });
+            let Some(owner_world) = placement else {
+                return true;
             };
-            for vertex in triangle_vertices {
-                let local = DVec3::new(
-                    f64::from(vertex.position[0]),
-                    f64::from(vertex.position[1]),
-                    f64::from(vertex.position[2]),
-                );
-                let mapped = map.transform_point3(owner_world.transform_point3(local));
+            if vertices.len() + 3 > MAX_GHOST_VERTICES {
+                return false;
+            }
+            for corner in triangle {
+                let mapped = map.transform_point3(owner_world.transform_point3(corner.as_dvec3()));
                 vertices.push(mapped.to_array());
             }
-        }
-    }
+            true
+        },
+    );
     vertices
 }
 

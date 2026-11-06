@@ -15,10 +15,10 @@
 use std::path::Path;
 use std::time::Duration;
 
-use helio_component::components::{
+use meshes_component::components::{
     StaticMeshComponent, StaticMeshMaterialSlot, mesh_reads_time, resolve_slot_material,
 };
-use helio_component::mesh_materials::{material_asset_id_of, resolve_material, slot_material_id};
+use meshes_component::mesh_materials::{material_asset_id_of, resolve_material, slot_material_id};
 use materials_component::assets::material_sources_for_file;
 use pulsar_scenedb::{AssetState, Entity, World};
 

@@ -1,3 +1,6 @@
+
+// The meshes' model importer registers itself with the import service.
+use meshes_component as _;
 use std::path::Path;
 
 use asset_import::{importer_for, ImportOutput, Imported, OptionValues, Previous};
@@ -122,7 +125,7 @@ fn each_skin_gets_its_own_assets_joint_palette_and_animation_bindings() {
         .unwrap();
     assert!(static_output.source_skin.is_none());
     let bytes = std::fs::read(root.join(&static_output.path)).unwrap();
-    let (plain, _) = helio_component::mesh_cache::decode_asset(&bytes).unwrap();
+    let (plain, _) = meshes_component::mesh_cache::decode_asset(&bytes).unwrap();
     let positions: Vec<_> = plain
         .geometry
         .indices

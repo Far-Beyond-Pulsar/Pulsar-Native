@@ -189,7 +189,7 @@ impl SceneInteraction {
                 let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
                 let broad_phase = ray_aabb(origin, direction, min, max)?;
                 let (has_geometry, triangle_hit) =
-                    mesh_hit_distance(world, entity, transform, self.view, origin, direction);
+                    content_hit_distance(world, entity, transform, self.view, origin, direction);
                 let distance = if has_geometry {
                     triangle_hit?
                 } else {
@@ -246,7 +246,7 @@ impl SceneInteraction {
                 let transform = world_transform_of(world, entity)?;
                 let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
                 let broad_phase = ray_aabb(relative_origin, direction, min, max)?;
-                let (has_geometry, triangle_hit) = mesh_hit_distance(
+                let (has_geometry, triangle_hit) = content_hit_distance(
                     world,
                     entity,
                     transform,
@@ -735,11 +735,61 @@ impl SceneInteraction {
     }
 }
 
-/// Test the ray against the loaded SceneDB mesh payload. The AABB above is a
-/// broad phase only: treating it as the hit made empty space inside concave
-/// meshes selectable. Transform the ray into each mesh's local space so the
-/// triangle test stays well-conditioned under rotation and non-uniform scale.
-fn mesh_hit_distance(
+/// A kind's content geometry, as the editor's picking, framing and debug
+/// views read it (the meshes' triangles): its box in an object's local
+/// space, a ray against it, and its triangles. The kind's component crate
+/// submits one; the readers name no kind. How others do it: Unreal's
+/// primitive components answer `LineTraceComponent` and give `Bounds`;
+/// Bevy's picking backends (the mesh backend among them) each test their
+/// own content. Ours is a backend per kind, by registration.
+pub struct ContentGeometryRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    /// The box around `object`'s enabled content of this kind, in the
+    /// object's local space; `None` without any (or none loaded yet).
+    pub local_bounds: fn(world: &World, object: Entity) -> Option<(Vec3, Vec3)>,
+    /// A ray in `object`'s local space (`origin`, `direction`; the
+    /// direction's length makes the hit parameter a world distance) against
+    /// its content of this kind: `None` when it has no content to test
+    /// (picking falls back to the box), `Some(None)` for a miss, `Some(t)`
+    /// for the nearest hit.
+    pub hit: fn(world: &World, object: Entity, origin: Vec3, direction: Vec3) -> Option<Option<f32>>,
+    /// Every enabled triangle of this kind in `world`, in its object's local
+    /// space, until `visit` returns `false`: `visit(object, triangle)`.
+    pub triangles: fn(world: &World, visit: &mut dyn FnMut(Entity, [Vec3; 3]) -> bool),
+}
+
+/// Every content triangle in `world` (every [`ContentGeometryRegistration`]),
+/// in its object's local space, until `visit` returns `false`.
+pub fn content_triangles(world: &World, visit: &mut dyn FnMut(Entity, [Vec3; 3]) -> bool) {
+    let mut going = true;
+    for registration in pulsar_plugins::registered::<ContentGeometryRegistration>() {
+        (registration.triangles)(world, &mut |object, triangle| {
+            going = going && visit(object, triangle);
+            going
+        });
+        if !going {
+            return;
+        }
+    }
+}
+
+inventory::collect!(ContentGeometryRegistration);
+
+impl pulsar_plugins::Registration for ContentGeometryRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
+/// Test the ray against the object's content (every [`ContentGeometryRegistration`]).
+/// The AABB above is a broad phase only: treating it as the hit made empty
+/// space inside concave meshes selectable. The ray goes into the object's
+/// local space so the content's test stays well-conditioned under rotation
+/// and non-uniform scale. Returns whether the object has content to test,
+/// and the nearest hit.
+fn content_hit_distance(
     world: &World,
     entity: Entity,
     transform: Transform,
@@ -747,45 +797,33 @@ fn mesh_hit_distance(
     origin: Vec3,
     direction: Vec3,
 ) -> (bool, Option<f32>) {
-    let meshes = crate::scene::attachments::enabled_components_of::<
-        helio_component::components::StaticMeshComponent,
-    >(world, entity);
-    let has_geometry = meshes.iter().any(|(_, mesh)| {
-        mesh.vertices.len() >= 3 && (mesh.indices.is_empty() || mesh.indices.len() >= 3)
-    });
-    if !has_geometry {
-        return (false, None);
-    }
     let rotation = rotation_matrix(transform);
     let scale = Vec3::from_array(transform.scale);
-    if scale.abs().min_element() <= 1e-8 || !scale.is_finite() {
-        return (true, None);
-    }
+    let degenerate = scale.abs().min_element() <= 1e-8 || !scale.is_finite();
     let object_origin = view.relative(transform.position);
     let inverse = |v: Vec3| (rotation.transpose() * v) / scale;
-    let local_origin = inverse(origin - object_origin);
-    let local_direction = inverse(direction);
-    let hit = meshes
-        .into_iter()
-        .filter_map(|(_, mesh)| {
-            let positions = &mesh.vertices;
-            let indices = &mesh.indices;
-            if positions.len() < 3 {
-                return None;
-            }
-            helio_component::mesh_spatial::raycast_mesh(
-                mesh.geometry_key,
-                positions,
-                indices,
-                local_origin,
-                local_direction,
-            )
-        })
-        .filter(|t| *t >= 0.0 && t.is_finite())
-        // local_direction is the inverse transform of a unit world direction,
-        // so the Möller–Trumbore parameter remains world distance.
-        .min_by(f32::total_cmp);
-    (has_geometry, hit)
+    let (local_origin, local_direction) = if degenerate {
+        (Vec3::ZERO, Vec3::Z)
+    } else {
+        (inverse(origin - object_origin), inverse(direction))
+    };
+    let mut has_content = false;
+    let mut nearest: Option<f32> = None;
+    for registration in pulsar_plugins::registered::<ContentGeometryRegistration>() {
+        let Some(hit) = (registration.hit)(world, entity, local_origin, local_direction) else {
+            continue;
+        };
+        has_content = true;
+        if degenerate {
+            continue;
+        }
+        // The local direction is the inverse transform of a unit world
+        // direction, so a hit parameter is a world distance.
+        if let Some(t) = hit.filter(|t| *t >= 0.0 && t.is_finite()) {
+            nearest = Some(nearest.map_or(t, |best| best.min(t)));
+        }
+    }
+    (has_content, nearest)
 }
 
 fn projected_ring_angle(
@@ -928,8 +966,9 @@ fn local_half_extent(object_type: &ObjectType) -> Vec3 {
     }
 }
 
-/// Box of what the object draws, in `view`'s coordinates: its enabled mesh instances'
-/// local bounding spheres, or, without one, a unit box for its type.
+/// Box of what the object draws, in `view`'s coordinates: its content's
+/// local boxes ([`ContentGeometryRegistration::local_bounds`]: its enabled mesh
+/// instances' bounding spheres), or, without any, a unit box for its type.
 fn object_bounds(
     world: &World,
     entity: Entity,
@@ -937,18 +976,10 @@ fn object_bounds(
     transform: Transform,
     view: View,
 ) -> (Vec3, Vec3) {
-    let meshes = crate::scene::attachments::enabled_components_of::<
-        helio_component::components::StaticMeshComponent,
-    >(world, entity);
     let mut local: Option<(Vec3, Vec3)> = None;
-    for (_, mesh) in meshes {
-        let [x, y, z, radius] = mesh.bounds_local;
-        // No geometry loaded yet: the type's box below.
-        if !(radius > 0.0) {
-            continue;
-        }
-        let (center, extent) = (Vec3::new(x, y, z), Vec3::splat(radius));
-        let (min, max) = (center - extent, center + extent);
+    for (min, max) in pulsar_plugins::registered::<ContentGeometryRegistration>()
+        .filter_map(|registration| (registration.local_bounds)(world, entity))
+    {
         local = Some(match local {
             Some((lo, hi)) => (lo.min(min), hi.max(max)),
             None => (min, max),
@@ -1009,51 +1040,6 @@ fn ray_aabb(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f32> 
 mod tests {
     use super::*;
     use crate::scene::{MeshType, SpawnObject};
-
-    #[test]
-    fn scene_pick_does_not_select_empty_aabb_space_inside_mesh_bounds() {
-        let mut world = World::new();
-        spawn_cube(&mut world, "triangle", -3.0);
-        let entity = world.entity_for("triangle").unwrap();
-        {
-            let mut transform = world.get_mut::<Transform>(entity).unwrap();
-            transform.rotation = [0.0, 35.0, 0.0];
-            transform.scale = [-2.0, 0.5, 1.5];
-        }
-        let vertex = |position| {
-            helio_mesh_api::PackedVertex::from_components(
-                position,
-                [0.0, 0.0, 1.0],
-                [0.0; 2],
-                [1.0, 0.0, 0.0],
-                1.0,
-            )
-        };
-        let mesh = helio_component::components::StaticMeshComponent {
-            bounds_local: [0.0, 0.0, 0.0, 2.0],
-            vertices: vec![
-                vertex([-1.0, -1.0, 0.0]),
-                vertex([1.0, -1.0, 0.0]),
-                vertex([-1.0, 1.0, 0.0]),
-            ],
-            indices: vec![0, 1, 2],
-            geometry_key: helio_component::components::MeshGeometryKey(0x705),
-            ..Default::default()
-        };
-        pulsar_world_registry::attach_value(&mut world, entity, mesh).unwrap();
-
-        let interaction = SceneInteraction::default();
-        assert_eq!(
-            interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
-            Some("triangle".into())
-        );
-        // This ray is inside the component's broad-phase box but in the
-        // missing corner of its triangle, so it must not select the mesh.
-        assert_eq!(
-            interaction.pick(&world, DVec3::ZERO, Vec3::new(0.8, 0.8, -3.0)),
-            None
-        );
-    }
 
     fn setup(mode: GizmoType) -> (World, SceneInteraction, Entity) {
         let mut world = World::new();
@@ -1418,57 +1404,6 @@ mod tests {
         assert_eq!(
             interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
             Some("near".into())
-        );
-    }
-
-    /// A mesh object attached a `StaticMeshComponent` whose local bounding
-    /// sphere has `radius`, at `z`.
-    fn spawn_mesh(world: &mut World, id: &str, z: f64, radius: f32) -> Entity {
-        spawn_cube(world, id, z);
-        let owner = world.entity_for(id).unwrap();
-        let mesh = helio_component::components::StaticMeshComponent {
-            bounds_local: [0.0, 0.0, 0.0, radius],
-            ..Default::default()
-        };
-        pulsar_world_registry::attach_value(world, owner, mesh).unwrap();
-        owner
-    }
-
-    /// A click on a mesh's visible extent picks it, not only a click within
-    /// a unit box around its origin.
-    #[test]
-    fn a_mesh_is_picked_anywhere_in_its_bounds() {
-        let mut world = World::new();
-        spawn_mesh(&mut world, "wide", -10.0, 5.0);
-        let towards_its_side = Vec3::new(3.0, 0.0, -10.0);
-        assert_eq!(
-            SceneInteraction::default().pick(&world, DVec3::ZERO, towards_its_side),
-            Some("wide".into())
-        );
-        // Outside its bounds nothing is hit.
-        assert_eq!(
-            SceneInteraction::default().pick(&world, DVec3::ZERO, Vec3::new(12.0, 0.0, -10.0)),
-            None
-        );
-    }
-
-    /// A duplicate starts on its source. A click there keeps the selected
-    /// one of the two, so the copy the editor selected can be picked and
-    /// dragged instead of always resolving to the same object.
-    #[test]
-    fn overlapping_objects_keep_the_selected_one() {
-        let mut world = World::new();
-        spawn_mesh(&mut world, "a", -10.0, 1.0);
-        let copy = spawn_mesh(&mut world, "b", -10.0, 1.0);
-        let interaction = SceneInteraction::default();
-        assert_eq!(
-            interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
-            Some("a".into())
-        );
-        world.select(Some(copy));
-        assert_eq!(
-            interaction.pick(&world, DVec3::ZERO, -Vec3::Z),
-            Some("b".into())
         );
     }
 

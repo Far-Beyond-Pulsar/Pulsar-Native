@@ -16,16 +16,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use helio_component::components::{
-    MESH_ASSET_KIND, ObjectMovability, StaticMeshComponent, mesh_asset_residency,
+use meshes_component::components::{
+    MESH_ASSET_KIND, StaticMeshComponent, mesh_asset_residency,
     mesh_source_for_file, prefetch_mesh_asset,
 };
+use helio_component::components::ObjectMovability;
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{AssetState, World};
 
 fn primitive(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../assets/meshes/primitives")
+        .join("../../../../assets/meshes/primitives")
         .join(name)
 }
 
@@ -45,7 +46,7 @@ fn set_mesh_asset(world: &mut World, entity: pulsar_scenedb::Entity, path: &str)
         world,
         entity,
         "mesh_asset",
-        Box::new(helio_component::components::MeshAssetPath::new(path)),
+        Box::new(meshes_component::components::MeshAssetPath::new(path)),
     )
     .unwrap_or_else(|_| panic!("mesh_asset write to {path} refused"));
 }

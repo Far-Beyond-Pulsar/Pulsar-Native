@@ -19,8 +19,13 @@ use glam::{DVec3, Vec3};
 use helio::{Camera, Renderer};
 
 use super::camera_ground::{CameraGround, GroundQueries};
-use crate::scene::{SharedScene, SpaceSync, VirtualGeometryHost};
-use pulsar_settings::project::virtual_geometry::VirtualGeometrySettings;
+use super::host_parts::RenderHostPart;
+use crate::scene::{SharedScene, SpaceSync};
+
+/// A change applied to a renderer's host parts when they are made (and to
+/// the existing ones): what a test or tool sets on a plugin's part, by key
+/// (a later setup with the same key replaces it).
+pub type HostPartSetup = (&'static str, Arc<dyn Fn(&mut dyn RenderHostPart) + Send + Sync>);
 
 /// Who owns the renderer's device.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -43,8 +48,9 @@ pub struct SceneRendererOptions {
     /// [`super::pipelines`]); `None`, an unregistered id or the default build
     /// the engine's default graph.
     pub pipeline: Option<String>,
-    /// Virtual-geometry settings in place of the project's (tests, tools).
-    pub virtual_geometry: Option<VirtualGeometrySettings>,
+    /// Applied to the plugins' render-host parts when they are made
+    /// (tests, tools: a plugin's settings in place of the project's).
+    pub host_part_setups: Vec<HostPartSetup>,
 }
 
 impl SceneRendererOptions {
@@ -55,7 +61,7 @@ impl SceneRendererOptions {
             device,
             // The level's pipeline (World Settings).
             pipeline: super::pipelines::level_pipeline(),
-            virtual_geometry: None,
+            host_part_setups: Vec::new(),
         }
     }
 }
@@ -118,10 +124,8 @@ pub struct SceneRenderer {
     last_errors: Vec<String>,
     /// The ground under cameras, as the scene's content reports it.
     ground: GroundQueries,
-    /// Builds, caches and streams the cluster assets of meshes whose owner
-    /// has a `VirtualGeometryComponent`; its runtime feeds the graph.
-    virtual_geometry: VirtualGeometryHost,
-    virtual_geometry_override: Option<VirtualGeometrySettings>,
+    /// The plugins' per-renderer state (`RenderHostPartRegistration`).
+    host_parts: Vec<Box<dyn RenderHostPart>>,
     /// The registered pipeline id the graph was built from (`None`: the
     /// default).
     pipeline: Option<String>,
@@ -155,10 +159,15 @@ impl SceneRenderer {
                 [width, height],
             )
         };
-        let mut virtual_geometry = VirtualGeometryHost::new();
-        let mut config = helio_pass_vg::with_virtual_geometry(
+        let mut host_parts = super::host_parts::new_parts();
+        for part in &mut host_parts {
+            for (_, setup) in &options.host_part_setups {
+                setup(part.as_mut());
+            }
+        }
+        let mut config = host_parts.iter_mut().fold(
             super::project_settings::renderer_config(width, height, format, &settings),
-            virtual_geometry.runtime(),
+            |config, part| part.configure(config),
         );
         if let Some(quality) = super::project_settings::tsr_quality(&settings, scene_quality) {
             config = config.with_tsr_quality(quality);
@@ -175,27 +184,17 @@ impl SceneRenderer {
             // Parent-relative transforms become world-space first, under the
             // same key, so the joins below read them unchanged.
             .with_scene_derivation(crate::scene::hierarchy_resolve(&device))
-            // Meshes and lights: Helio joins the authored rows on the GPU.
-            .with_scene_derivation(crate::scene::scene_join(&device, options.editor_mode))
-            // Virtual geometry: which assets are ready, then which instances
-            // are VG-active (both before the authored LOD, which they
-            // suppress).
-            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(
-                &virtual_geometry,
-                &device,
-            ))
-            .with_scene_derivation(crate::scene::virtual_geometry_instances(
-                &mut virtual_geometry,
-                &device,
-            ))
-            .with_scene_derivation(crate::scene::authored_lod_selection(
-                &device,
-                scene_db,
-                // Pulsar's derivations record into one encoder: they share
-                // one staging pool.
-                crate::gpu::Uploads::new(&device),
-            ))
-            .with_scene_derivation(crate::scene::environment_join(&device));
+            // Every plugin's object join (the meshes', the lights'): the
+            // authored rows joined on the GPU.
+            .with_scene_derivation(crate::scene::scene_join(&device, options.editor_mode));
+        // The plugins' host parts' derivations (the meshes' virtual
+        // geometry and authored LOD), between the object and row joins.
+        for part in &mut host_parts {
+            for derivation in part.derivations(&device, &scene_db) {
+                builder = builder.with_scene_derivation(derivation);
+            }
+        }
+        let mut builder = builder.with_scene_derivation(crate::scene::environment_join(&device));
         // What the plugins' space producers project each frame (`spaces`).
         for derivation in spaces.derivations(&device) {
             builder = builder.with_scene_derivation(derivation);
@@ -232,8 +231,7 @@ impl SceneRenderer {
             read: None,
             last_errors: Vec::new(),
             ground: GroundQueries::default(),
-            virtual_geometry,
-            virtual_geometry_override: options.virtual_geometry,
+            host_parts,
             pipeline,
             view_payloads: Vec::new(),
         }
@@ -256,15 +254,25 @@ impl SceneRenderer {
         self.pipeline.as_deref()
     }
 
-    /// The virtual-geometry streaming runtime (readiness, settings).
-    pub fn virtual_geometry_runtime(&self) -> &helio_vg_stream::VgRuntime {
-        self.virtual_geometry.runtime()
+    /// This renderer's host part of type `T` (a plugin's), if one was made.
+    pub fn host_part<T: RenderHostPart>(&self) -> Option<&T> {
+        self.host_parts
+            .iter()
+            .find_map(|part| part.as_any().downcast_ref::<T>())
     }
 
-    /// Use `settings` instead of the project's virtual-geometry settings
-    /// (`None` restores them); takes effect next frame.
-    pub fn set_virtual_geometry_settings(&mut self, settings: Option<VirtualGeometrySettings>) {
-        self.virtual_geometry_override = settings;
+    /// This renderer's host part of type `T` (a plugin's), if one was made.
+    pub fn host_part_mut<T: RenderHostPart>(&mut self) -> Option<&mut T> {
+        self.host_parts
+            .iter_mut()
+            .find_map(|part| part.as_any_mut().downcast_mut::<T>())
+    }
+
+    /// Apply `setup` to every host part now.
+    pub fn set_up_host_parts(&mut self, setup: &(dyn Fn(&mut dyn RenderHostPart) + Send + Sync)) {
+        for part in &mut self.host_parts {
+            setup(part.as_mut());
+        }
     }
 
     /// Whether the renderer or the scene's content needs more frames to
@@ -301,7 +309,7 @@ impl SceneRenderer {
         match &self.read {
             Some((read_at, read)) if *read_at == revision => read.clone(),
             _ => {
-                let read = Arc::new(SceneRead::of(&store.world));
+                let read = Arc::new(SceneRead::of(&store.world, &self.host_parts));
                 self.read = Some((revision, read.clone()));
                 read
             }
@@ -326,12 +334,11 @@ impl SceneRenderer {
     /// content publishes. `size` is the frame's in pixels.
     pub fn prepare_frame(&mut self, view: &FrameView, size: [u32; 2]) -> PreparedFrame {
         profiling::profile_scope!("helio_frame_prepare");
-        // Build and stream the virtual-geometry assets the scene asks for.
-        crate::scene::sync_virtual_geometry(
-            &mut self.virtual_geometry,
-            &self.scene,
-            self.virtual_geometry_override,
-        );
+        // The plugins' per-renderer state (the virtual-geometry assets the
+        // scene asks for, built and streamed).
+        for part in &mut self.host_parts {
+            part.prepare_frame(&self.scene);
+        }
         let read = self.scene_read();
         // The CPU payloads the scene's content publishes for the features
         // (a voxel world's volumes), by contract key.
@@ -370,14 +377,14 @@ impl SceneRenderer {
         let camera = match view.projection {
             FrameProjection::Perspective { fov_y, near, far } => {
                 // The planes the scene's ground certifies (a voxel world's
-                // empty space around the eye): they say nothing about
-                // authored meshes, whose close plane is kept.
+                // empty space around the eye): they say nothing about other
+                // content (authored meshes), whose close plane is kept.
                 let certified = {
                     let mut scene = self.scene.write();
                     self.ground.clip_range(&mut scene.world, view.eye)
                 };
                 let (near, far) = match certified {
-                    Some((terrain_near, far)) if read.authored_meshes => {
+                    Some((terrain_near, far)) if read.keeps_near_plane => {
                         (terrain_near.min(near), far)
                     }
                     Some(range) => range,
@@ -494,23 +501,19 @@ pub(super) fn ortho_depth_range(half_height: f32) -> f32 {
 /// on both sides of the focus is in front of the near plane.
 const ORTHO_STANDOFF: f32 = 4096.0;
 
-/// What the frame reads from the scene: whether any enabled static mesh
-/// exists. Read once per world revision.
+/// What the frame reads from the scene: whether it holds content the
+/// ground's certified planes say nothing about (a host part's:
+/// [`RenderHostPart::keeps_near_plane`]). Read once per world revision.
 #[derive(Clone)]
 struct SceneRead {
-    authored_meshes: bool,
+    keeps_near_plane: bool,
 }
 
 impl SceneRead {
-    fn of(world: &pulsar_scenedb::World) -> Self {
-        use pulsar_scene_model::attachments::ComponentOwner;
-        let authored_meshes = world
-            .query::<(
-                &helio_component::components::StaticMeshComponent,
-                &ComponentOwner,
-            )>()
-            .any(|(_, (_, owner))| owner.is_enabled());
-        Self { authored_meshes }
+    fn of(world: &pulsar_scenedb::World, parts: &[Box<dyn RenderHostPart>]) -> Self {
+        Self {
+            keeps_near_plane: parts.iter().any(|part| part.keeps_near_plane(world)),
+        }
     }
 }
 

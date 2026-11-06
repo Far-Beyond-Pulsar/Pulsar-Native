@@ -42,6 +42,8 @@ helio-scene-join = { workspace = true }
 helio-pass-sprite-batch = { workspace = true }
 
 [dev-dependencies]
+# A mesh to place their rows by (tests only; the crate links no mesh).
+meshes_component = { workspace = true }
 glam = { workspace = true }
 helio-core = { workspace = true }
 engine_state = { workspace = true }

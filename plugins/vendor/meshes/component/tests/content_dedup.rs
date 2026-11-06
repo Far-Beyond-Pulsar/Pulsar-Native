@@ -14,7 +14,7 @@
 
 #![cfg(feature = "gpu")]
 
-use helio_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
+use meshes_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
 use helio_mesh_api::PackedVertex;
 use pulsar_scenedb::gpu::{
     EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
@@ -89,8 +89,8 @@ fn write_mesh_asset(name: &str, vert_count: usize) -> String {
             .collect(),
         indices: (0..vert_count as u32).collect(),
     };
-    let id = helio_component::mesh_cache::content_id_for_bytes(&mesh);
-    let bytes = helio_component::mesh_cache::encode(&mesh, id);
+    let id = meshes_component::mesh_cache::content_id_for_bytes(&mesh);
+    let bytes = meshes_component::mesh_cache::encode(&mesh, id);
     let rel = format!("{name}.mesh");
     std::fs::write(root.join(&rel), bytes).expect("write test mesh asset");
     rel
@@ -121,7 +121,7 @@ fn vertices_pool(
 
 fn spawn_with_asset(world: &mut World, asset: &str, _vert_count: usize) -> Entity {
     let e = world.spawn();
-    let upload = helio_component::subsystems::load_mesh_upload(&project_root().join(asset))
+    let upload = meshes_component::mesh_files::load_mesh_upload(&project_root().join(asset))
         .expect("load fixture mesh");
     world.insert(
         e,
@@ -147,7 +147,7 @@ fn ten_entities_referencing_the_same_asset_share_one_gpu_allocation() {
         .collect();
 
     let expected_id = pulsar_scenedb::handle_ledger::HandleId(
-        helio_component::mesh_cache::content_id_for_path(&project_root().join(&asset)).unwrap(),
+        meshes_component::mesh_cache::content_id_for_path(&project_root().join(&asset)).unwrap(),
     );
     let vpool = vertices_pool(&store);
     assert_eq!(
@@ -239,10 +239,10 @@ fn file_mutation_between_hydrates_mints_a_new_id_and_the_old_refcount_falls() {
         ],
         indices: vec![0, 1, 2],
     };
-    let id_v1 = helio_component::mesh_cache::content_id_for_bytes(&mesh_v1);
+    let id_v1 = meshes_component::mesh_cache::content_id_for_bytes(&mesh_v1);
     std::fs::write(
         root.join(&rel),
-        helio_component::mesh_cache::encode(&mesh_v1, id_v1),
+        meshes_component::mesh_cache::encode(&mesh_v1, id_v1),
     )
     .unwrap();
 
@@ -265,11 +265,11 @@ fn file_mutation_between_hydrates_mints_a_new_id_and_the_old_refcount_falls() {
         ],
         indices: vec![0, 1, 2, 3, 4],
     };
-    let id_v2 = helio_component::mesh_cache::content_id_for_bytes(&mesh_v2);
+    let id_v2 = meshes_component::mesh_cache::content_id_for_bytes(&mesh_v2);
     assert_ne!(id_v1, id_v2);
     std::fs::write(
         root.join(&rel),
-        helio_component::mesh_cache::encode(&mesh_v2, id_v2),
+        meshes_component::mesh_cache::encode(&mesh_v2, id_v2),
     )
     .unwrap();
 

@@ -11,7 +11,7 @@ fn gpu() -> (wgpu::Device, wgpu::Queue) {
 
 #[test]
 fn gpu_mesh_upload_preserves_uv0_uv1_normals_and_stride() {
-    use helio_component::components::StaticMeshComponent;
+    use meshes_component::components::StaticMeshComponent;
     use pulsar_scenedb::gpu::*;
     use std::sync::Arc;
     let (device, queue) = gpu();
@@ -98,8 +98,8 @@ fn gpu_mesh_upload_preserves_uv0_uv1_normals_and_stride() {
 #[test]
 fn fbx_import_and_native_cache_preserve_uvs_normals_and_sections() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../assets/meshes/primitives/SM_Cube.fbx");
-    let asset = helio_component::subsystems::load_mesh_asset_upload(&path).expect("bundled FBX");
+        .join("../../../../assets/meshes/primitives/SM_Cube.fbx");
+    let asset = meshes_component::mesh_files::load_mesh_asset_upload(&path).expect("bundled FBX");
     assert!(!asset.sections.is_empty());
     assert!(asset
         .geometry
@@ -107,8 +107,8 @@ fn fbx_import_and_native_cache_preserve_uvs_normals_and_sections() {
         .iter()
         .any(|v| v.tex_coords0 != asset.geometry.vertices[0].tex_coords0));
     assert!(asset.geometry.vertices.iter().all(|v| v.normal != 0));
-    let bytes = helio_component::mesh_cache::encode_asset(&asset, 123);
-    let (decoded, id) = helio_component::mesh_cache::decode_asset(&bytes).unwrap();
+    let bytes = meshes_component::mesh_cache::encode_asset(&asset, 123);
+    let (decoded, id) = meshes_component::mesh_cache::decode_asset(&bytes).unwrap();
     assert_eq!(id, 123);
     assert_eq!(decoded.sections, asset.sections);
     assert_eq!(decoded.geometry.indices, asset.geometry.indices);
@@ -128,7 +128,7 @@ fn fbx_import_and_native_cache_preserve_uvs_normals_and_sections() {
 #[ignore = "set PULSAR_MATERIAL_TEST_MESH to inspect a local FBX without checking it into source control"]
 fn inspect_local_mesh_uvs_and_sections() {
     let path = std::env::var("PULSAR_MATERIAL_TEST_MESH").expect("PULSAR_MATERIAL_TEST_MESH");
-    let asset = helio_component::subsystems::load_mesh_asset_upload(std::path::Path::new(&path))
+    let asset = meshes_component::mesh_files::load_mesh_asset_upload(std::path::Path::new(&path))
         .expect("import FBX");
     let vertices = &asset.geometry.vertices;
     let mut min = [f32::INFINITY; 2];

@@ -13,8 +13,6 @@ serde_json = { workspace = true }
 # Transform GPU-mirror test (scene/world_store.rs), same pinned version
 # `helio-component` already uses for the identical purpose.
 pollster = "=0.4.0"
-# The movement scaling report drives the object batch behind the join.
-helio-pass-object-batch = { workspace = true }
 helio-core = { workspace = true }
 
 [build-dependencies]
@@ -26,8 +24,8 @@ workspace = true
 [dependencies]
 # The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
 pulsar_plugins = { workspace = true }
-helio-pass-vg = { workspace = true }
-helio-pass-object-batch = { workspace = true, optional = true }
+# The sublevel actor row the engine's sublevel displays author (a scene
+# row the meshes' api defines: `sublevels.rs`).
 helio-mesh-api = { workspace = true }
 helio-scene-join = { workspace = true, optional = true }
 inventory = { workspace = true }
@@ -68,12 +66,7 @@ pulsar_script_object_model.workspace = true
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true
 helio_component.workspace = true
-helio-vg-stream.workspace = true
-helio-vg-format.workspace = true
 helio-mats = { workspace = true, optional = true }
-psgc = { path = "../../third-party/psgc/crates/psgc", optional = true }
-image = { workspace = true, optional = true }
-helio-pass-forward-lit = { workspace = true, optional = true }
 helio-pass-postprocess = { workspace = true, optional = true }
 engine_fs.workspace = true
 
@@ -90,7 +83,6 @@ flume = { workspace = true, optional = true }
 
 # Helio rendering (wgpu-based)
 helio = { workspace = true, optional = true }
-helio-asset-compat = { workspace = true, optional = true }
 helio-presets = { workspace = true, optional = true }
 helio-scene-derivations = { workspace = true, optional = true }
 helio-graph-asset = { workspace = true, optional = true }
@@ -133,7 +125,7 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-asset-compat", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-forward-lit", "dep:helio-pass-postprocess", "dep:helio-pass-object-batch", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-pass-tsr", "dep:helio-mats", "dep:psgc", "dep:image"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-postprocess", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-pass-tsr", "dep:helio-mats"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]

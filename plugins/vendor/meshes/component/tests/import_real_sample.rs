@@ -5,6 +5,9 @@
 //! Outputs go to `SKM_OUT_DIR` (default: a temp folder) for the plugin's
 //! `render_real_sample` test to draw.
 
+// The meshes' model importer registers itself with the import service.
+use meshes_component as _;
+
 use std::path::{Path, PathBuf};
 
 use asset_import::{importer_for, Imported, OptionValues, Previous};

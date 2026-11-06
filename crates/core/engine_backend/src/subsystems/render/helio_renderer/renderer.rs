@@ -587,11 +587,11 @@ pub struct HelioRenderer {
     /// Gizmo drags that moved their object, taken by the UI for undo.
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
 
-    // ── Virtual geometry ──
-    /// Replaces the project's virtual-geometry settings (tests, tools); the
-    /// scene renderer owns the streaming host.
-    virtual_geometry_override:
-        Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
+    // ── Host parts ──
+    /// Applied to the plugins' render-host parts of every scene renderer
+    /// this makes (tests, tools: a plugin's settings in place of the
+    /// project's).
+    host_part_setups: Vec<super::scene_renderer::HostPartSetup>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -686,24 +686,32 @@ struct HelioInner {
 use super::project_settings::{ProjectGraphSettings, ProjectGraphSettingsCache};
 
 impl HelioRenderer {
-    /// The virtual-geometry streaming runtime (readiness, settings), once
-    /// the renderer is built.
-    pub fn virtual_geometry_runtime(&self) -> Option<&helio_vg_stream::VgRuntime> {
-        self.inner
-            .as_ref()
-            .map(|inner| inner.scene.virtual_geometry_runtime())
+    /// The scene renderer's host part of type `T` (a plugin's), once the
+    /// renderer is built.
+    pub fn host_part<T: super::host_parts::RenderHostPart>(&self) -> Option<&T> {
+        self.inner.as_ref()?.scene.host_part::<T>()
     }
 
-    /// Use `settings` instead of the project's `project.virtual_geometry` ones
-    /// (`None` restores them). Tests and tools; takes effect next frame.
-    pub fn set_virtual_geometry_settings(
+    /// The scene renderer's host part of type `T` (a plugin's), once the
+    /// renderer is built.
+    pub fn host_part_mut<T: super::host_parts::RenderHostPart>(&mut self) -> Option<&mut T> {
+        self.inner.as_mut()?.scene.host_part_mut::<T>()
+    }
+
+    /// Apply `setup` to the host parts now and to those of every scene
+    /// renderer this makes later; a later setup under the same `key`
+    /// replaces it. Tests and tools (a plugin's settings in place of the
+    /// project's).
+    pub fn set_up_host_parts(
         &mut self,
-        settings: Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
+        key: &'static str,
+        setup: Arc<dyn Fn(&mut dyn super::host_parts::RenderHostPart) + Send + Sync>,
     ) {
-        self.virtual_geometry_override = settings;
         if let Some(inner) = self.inner.as_mut() {
-            inner.scene.set_virtual_geometry_settings(settings);
+            inner.scene.set_up_host_parts(setup.as_ref());
         }
+        self.host_part_setups.retain(|(existing, _)| *existing != key);
+        self.host_part_setups.push((key, setup));
     }
 
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
@@ -735,7 +743,7 @@ impl HelioRenderer {
             animated_content: Default::default(),
             static_drag_warning: Arc::new(Mutex::new(None)),
             completed_drags: Arc::new(Mutex::new(Vec::new())),
-            virtual_geometry_override: None,
+            host_part_setups: Vec::new(),
             reset_taa_next_frame: false,
             device_loss: None,
             reported_device_loss: false,
@@ -969,7 +977,7 @@ impl HelioRenderer {
                     editor_mode: true,
                     device: DeviceOwner::Host,
                     pipeline: self.requested_pipeline.get(),
-                    virtual_geometry: self.virtual_geometry_override,
+                    host_part_setups: self.host_part_setups.clone(),
                 },
             );
             scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);

@@ -2,8 +2,8 @@
 //! scene-join-shaped inputs: which static-mesh instances become VG-active,
 //! with which flags, and which objects the authored LOD must skip.
 
-use helio_component::components::VgOverrideGpu;
-use helio_component::virtual_geometry_instances::{
+use meshes_component::components::VgOverrideGpu;
+use meshes_component::virtual_geometry_instances::{
     LOD_SUPPRESSED_KEY, VG_ASSET_READY_FLAG_READY, VG_ASSET_READY_KEY, VG_INSTANCE_COUNT_KEY,
     VG_INSTANCES_KEY, VgAssetReadyRow, VgInstanceKeys, VirtualGeometryInstances,
 };

@@ -15,7 +15,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform};
-use helio_component::components::{MeshAssetPath, ObjectMovability, StaticMeshComponent};
+use helio_component::components::ObjectMovability;
+use meshes_component::components::{MeshAssetPath, StaticMeshComponent};
 use helio_core::{GpuCameraUniforms, PrepareContext, ResourceRegistry};
 use helio_pass_object_batch::scene_join::{
     BufferHandle, SceneBufferProjection, SceneDerivation, ENTITY_GENERATIONS_KEY, MATERIALS_KEY,
@@ -47,7 +48,7 @@ fn mesh() -> StaticMeshComponent {
         mesh_asset: MeshAssetPath::new(""),
         vertices: vec![vertex(0.0, 0.0), vertex(1.0, 0.0), vertex(0.0, 1.0)],
         indices: vec![0, 1, 2],
-        mesh_sections: vec![helio_component::mesh_cache::MeshSection {
+        mesh_sections: vec![meshes_component::mesh_cache::MeshSection {
             first_index: 0,
             index_count: 3,
             material_slot: 0,

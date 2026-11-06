@@ -7,7 +7,9 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
-crates/renderer/helio 9c86ca4c9a1badb5e25db915a60aa7bdb5cea955 Far-Beyond-Pulsar/Helio#387 (rewrite phase C step 3 part B; the stacked rewrite PRs land together)
+plugins/vendor/physics_plugin 4825d870586f949412ee8fcf8baa3e50e709d9d3 Far-Beyond-Pulsar/Plugin_Physics#6 (rewrite phase C step 3 part B; lands with Pulsar-Native#1592)
+plugins/vendor/blueprint_editor e98fb5363c5eb224eb10b80215b72acbcc60796b Far-Beyond-Pulsar/Plugin_Blueprints#40 (rewrite phase C step 3 part B; lands with Pulsar-Native#1592)
+crates/renderer/helio 4b9a9db4a57f1c52175f19950c0a2c39e22f5dd5 Far-Beyond-Pulsar/Helio#387 (rewrite phase C step 3 part B; the stacked rewrite PRs land together)
 crates/renderer/helio 53248a956ff476487e7c04e54830a6d867d9d53d Far-Beyond-Pulsar/Helio#386 (rewrite phase C step 3; the stacked rewrite PRs land together)
 crates/renderer/helio b3e0911c87b35b230a33427a8abb74c8ca53f4cb Far-Beyond-Pulsar/Helio#385 (rewrite phase C step 2; the stacked rewrite PRs land together)
 crates/renderer/helio 6214f73a48d2f9b9777abaadf585fe2e24e81e3f Far-Beyond-Pulsar/Helio#384 (rewrite phase C step 1; the stacked rewrite PRs land together)

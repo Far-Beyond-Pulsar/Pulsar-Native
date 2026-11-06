@@ -21,6 +21,9 @@ ui_common         = { workspace = true }
 helio_component   = { workspace = true }
 # Material graph previews (the materials' one compiler).
 materials_component = { workspace = true }
+# Mesh assets: the viewer shows `.mesh` files and their slots (it becomes
+# the meshes plugin's editor; plan doc, Phase C step 1).
+meshes_component = { workspace = true }
 helio-mats        = { workspace = true }
 pollster          = "0.4"
 engine_state      = { workspace = true }

@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use helio_component::components::StaticMeshComponent;
+use meshes_component::components::StaticMeshComponent;
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
     EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore, TextureStore,

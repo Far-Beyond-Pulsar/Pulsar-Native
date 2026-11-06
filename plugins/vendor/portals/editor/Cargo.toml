@@ -24,7 +24,6 @@ gpui-ce = { workspace = true }
 ui = { workspace = true }
 engine_backend = { workspace = true }
 glam = { workspace = true }
-helio_component = { workspace = true }
 pulsar_scenedb = { workspace = true }
 
 [lints]

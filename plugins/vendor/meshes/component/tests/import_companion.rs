@@ -3,6 +3,9 @@
 //! companion here is a stub: the pipeline must not need to know what a
 //! companion makes.
 
+// The meshes' model importer registers itself with the import service.
+use meshes_component as _;
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -61,7 +64,7 @@ fn accepted_companions_run_record_outputs_and_fill_only_empty_slots() {
     let root = dir.path();
     let source = root.join("cube.fbx");
     std::fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/meshes/primitives/SM_Cube.fbx"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../assets/meshes/primitives/SM_Cube.fbx"),
         &source,
     )
     .unwrap();
@@ -86,12 +89,12 @@ fn accepted_companions_run_record_outputs_and_fill_only_empty_slots() {
         .iter()
         .any(|o| o.path == "made.thing" && o.kind == "thing"));
     let mesh = std::fs::read(root.join("cube.mesh")).unwrap();
-    let (decoded, _) = helio_component::mesh_cache::decode_asset(&mesh).unwrap();
+    let (decoded, _) = meshes_component::mesh_cache::decode_asset(&mesh).unwrap();
     assert_eq!(decoded.material_slots[0].material_asset, "made.thing");
 
     // The user reassigns the slot; a reimport (which re-runs the companion)
     // leaves their choice alone.
-    helio_component::mesh_cache::set_default_materials(
+    meshes_component::mesh_cache::set_default_materials(
         &root.join("cube.mesh"),
         &["mine.mat".into()],
     )
@@ -102,7 +105,7 @@ fn accepted_companions_run_record_outputs_and_fill_only_empty_slots() {
     let id = asset_import::submit_reimport(root.to_path_buf(), "cube.fbx").unwrap();
     assert_eq!(wait(id), TaskStatus::Succeeded);
     let (decoded, _) =
-        helio_component::mesh_cache::decode_asset(&std::fs::read(root.join("cube.mesh")).unwrap())
+        meshes_component::mesh_cache::decode_asset(&std::fs::read(root.join("cube.mesh")).unwrap())
             .unwrap();
     assert_eq!(decoded.material_slots[0].material_asset, "mine.mat");
 }

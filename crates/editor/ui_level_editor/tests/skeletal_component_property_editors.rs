@@ -7,8 +7,8 @@ use ui_common::PROPERTY_EDITOR_REGISTRY;
 
 #[test]
 fn skeletal_mesh_component_properties_all_have_editors() {
-    // linking helio_component registers the class
-    let _ = helio_component::SkeletalMeshComponent::default();
+    // linking the meshes plugin registers the class
+    let _ = installed_plugins::meshes_component::SkeletalMeshComponent::default();
     let instance = REGISTRY
         .create_instance("SkeletalMeshComponent")
         .expect("SkeletalMeshComponent is registered");
@@ -50,7 +50,7 @@ fn skeletal_mesh_component_properties_all_have_editors() {
 #[test]
 fn asset_ref_properties_round_trip_through_the_runtime_registry() {
     use pulsar_reflection::{AnimationGraphAssetKind, AssetRef, RUNTIME_TYPE_REGISTRY};
-    let _ = helio_component::SkeletalMeshComponent::default();
+    let _ = installed_plugins::meshes_component::SkeletalMeshComponent::default();
     let instance = REGISTRY.create_instance("SkeletalMeshComponent").unwrap();
     let props = instance.get_properties();
     let prop = props.iter().find(|p| p.name == "animation_graph").unwrap();

@@ -61,7 +61,7 @@ fn register_mesh_material_binding() {
 
 /// The asset id of the material `path` names, without declaring it.
 pub fn material_asset_id_of(path: &str) -> AssetId {
-    crate::asset_component::asset_source(path).map_or(AssetId::ZERO, |source| {
+    helio_component::asset_component::asset_source(path).map_or(AssetId::ZERO, |source| {
         AssetId::of(MATERIAL_ASSET_KIND, &source)
     })
 }
@@ -69,11 +69,11 @@ pub fn material_asset_id_of(path: &str) -> AssetId {
 /// The asset id of the material `path` names, declared so the world can
 /// load it. [`AssetId::ZERO`] for an empty path.
 pub fn slot_material_asset_id(path: &str) -> AssetId {
-    let Some(source) = crate::asset_component::asset_source(path) else {
+    let Some(source) = helio_component::asset_component::asset_source(path) else {
         return AssetId::ZERO;
     };
     register_mesh_material_binding();
-    crate::asset_component::declared_asset_id(MATERIAL_ASSET_KIND, &source)
+    helio_component::asset_component::declared_asset_id(MATERIAL_ASSET_KIND, &source)
 }
 
 /// The material a slot draws with, as an asset: none for an explicit

@@ -22,6 +22,18 @@ inventory = { workspace = true }
 pulsar_plugins = { workspace = true }
 rust-i18n = { workspace = true }
 helio_component = { workspace = true }
+# Asset-browser thumbnails (`thumbnails`): source models through the
+# meshes' snapshot renderer, `.mesh` files rasterised on the CPU.
+ui_common = { workspace = true }
+helio_snapshot = { workspace = true }
+pulsar_reflection = { workspace = true }
+image = { workspace = true }
+glam = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+helio-mesh-api = { workspace = true }
 
 [lints]
 workspace = true

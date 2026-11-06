@@ -48,7 +48,7 @@ impl FileManagerDrawer {
         let abs = path.to_path_buf();
         let root = self.thumbnail_cache_root.clone();
         let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<image::RgbaImage>>>(1);
-        ui_common::asset_thumbnails::register_mesh_thumbnail_renderer();
+        ui_common::asset_thumbnails::register_thumbnail_renderers();
         engine_fs::thumbnails::service().request(abs.clone(), root, move |rgba| {
             let _ = smol::block_on(tx.send(rgba));
         });

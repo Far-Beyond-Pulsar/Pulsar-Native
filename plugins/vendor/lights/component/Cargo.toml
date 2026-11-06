@@ -49,6 +49,8 @@ helio-pass-light-cull = { workspace = true }
 helio-pass-shadow-matrix = { workspace = true }
 
 [dev-dependencies]
+# A mesh to place their rows by (tests only; the crate links no mesh).
+meshes_component = { workspace = true }
 pollster = "=0.4.0"
 glam = { workspace = true }
 helio-core = { workspace = true }

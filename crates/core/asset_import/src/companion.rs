@@ -234,38 +234,6 @@ pub fn run_companions(
     (outputs, assignments)
 }
 
-/// Make each `(slot, material)` the native mesh's default for that slot, for
-/// slots that have none: what the user assigned stays.
-pub fn assign_default_materials(
-    native_asset: &Path,
-    assignments: &[(u32, String)],
-) -> Result<(), String> {
-    if assignments.is_empty() || native_asset.extension().is_none_or(|ext| ext != "mesh") {
-        return Ok(());
-    }
-    let bytes = std::fs::read(native_asset).map_err(|error| error.to_string())?;
-    let (decoded, _) = helio_component::mesh_cache::decode_asset(&bytes)
-        .ok_or_else(|| format!("{} is not a valid .mesh", native_asset.display()))?;
-    let mut materials: Vec<String> = decoded
-        .material_slots
-        .iter()
-        .map(|slot| slot.material_asset.clone())
-        .collect();
-    let mut changed = false;
-    for (slot, material) in assignments {
-        if let Some(current) = materials.get_mut(*slot as usize) {
-            if current.is_empty() {
-                *current = material.clone();
-                changed = true;
-            }
-        }
-    }
-    if changed {
-        helio_component::mesh_cache::set_default_materials(native_asset, &materials)?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

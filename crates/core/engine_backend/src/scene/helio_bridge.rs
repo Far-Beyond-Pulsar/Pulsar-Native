@@ -2,11 +2,12 @@
 //!
 //! SceneDB owns all world and asset state; component values mirror their own
 //! GPU rows on every write. Helio receives the cloneable GPU mirror during
-//! renderer construction, and the object joins ([`scene_join`]: the meshes',
-//! then every plugin's, [`ObjectJoinRegistration`], such as the lights')
-//! turn the authored rows (mesh and light instances, their owner links, the
-//! owner objects' transforms and visibility) into the object, material and
-//! light rows its passes draw, on the GPU, whenever they change. This module keeps no frame projection, render-row
+//! renderer construction, and the object joins ([`scene_join`]: every
+//! plugin's [`ObjectJoinRegistration`], in their order: the meshes', the
+//! lights') turn the authored rows (mesh and light instances, their owner
+//! links, the owner objects' transforms and visibility) into the object,
+//! material and light rows its passes draw, on the GPU, whenever they
+//! change. This module keeps no frame projection, render-row
 //! subscription, material table or per-frame input assembly
 //! (Pulsar-Native#1035, Phase 2). Every other kind's row join
 //! ([`environment_join`]) does the same for its rows (Phase 4); each kind's
@@ -16,44 +17,27 @@
 //! ([`SpaceProducerRegistration`]).
 use std::sync::Arc;
 
-use helio_component::components::{
-    LODComponent, SkeletalMeshComponent, StaticMeshComponent, StaticMeshDraw,
-    VirtualGeometryComponent, MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
-    SKELETAL_PALETTE_HANDLES_BUFFER, SKELETAL_SKIN_HANDLES_BUFFER,
-};
-use helio_pass_object_batch::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
+use helio_core::ENTITY_GENERATIONS_KEY;
 use helio_scene_derivations::hierarchy_resolve::{HierarchyResolve, HierarchyResolveKeys};
 use helio_scene_join::{DerivationGroup, RowJoinKeys, SceneDerivation};
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
-use crate::scene::{AuthoredLodKeys, AuthoredLodSelection};
 use pulsar_scene_model::attachments::ComponentOwner;
 use pulsar_scene_model::{ObjectFrame, ObjectHidden, ObjectParent, TransformRow};
 
-/// Where this engine's authored rows live, for Helio's scene join. The
-/// names are the buffers the components below register: the instance owner
-/// links (`ComponentOwner`), object visibility (`Visibility`'s derived
-/// `ObjectHidden`) and transforms (`Transform`'s derived `TransformRow`:
-/// the f64 position as an f32 pair), the mesh geometry
-/// handles and derived draw rows (`StaticMeshComponent`, `StaticMeshDraw`).
-pub fn scene_join_keys() -> SceneJoinKeys {
-    // A var-len field's handle table is its pool key + `::handles`.
-    SceneJoinKeys {
-        owners: BufferKey::of("component_owners"),
-        generations: ENTITY_GENERATIONS_KEY,
-        hidden: BufferKey::of("object_hidden"),
-        transforms: BufferKey::of("object_transforms"),
-        vertex_handles: BufferKey::of("builtin_mesh_vertex::handles"),
-        index_handles: BufferKey::of("builtin_mesh_index::handles"),
-        mesh_bounds: BufferKey::of(MESH_BOUNDS_BUFFER),
-        mesh_flags: BufferKey::of(MESH_FLAGS_BUFFER),
-        section_handles: BufferKey::of("static_mesh_draw_sections::handles"),
-        skin_handles: BufferKey::of(SKELETAL_SKIN_HANDLES_BUFFER),
-        palette_handles: BufferKey::of(SKELETAL_PALETTE_HANDLES_BUFFER),
-        mesh_sections: BufferKey::of(MESH_SECTIONS_BUFFER),
-    }
+/// Where this engine's object rows live: the instance owner links
+/// (`ComponentOwner`), entity generations, object visibility (`Visibility`'s
+/// derived `ObjectHidden`) and transforms (`Transform`'s derived
+/// `TransformRow`: the f64 position as an f32 pair).
+fn object_keys() -> (BufferKey, BufferKey, BufferKey, BufferKey) {
+    (
+        BufferKey::of("component_owners"),
+        ENTITY_GENERATIONS_KEY,
+        BufferKey::of("object_hidden"),
+        BufferKey::of("object_transforms"),
+    )
 }
 
 /// The rows an object join reads ([`ObjectJoinRegistration`]): this
@@ -71,17 +55,25 @@ pub struct ObjectJoinContext {
 
 /// A plugin's object join: a derivation turning its instances' source rows
 /// into the rows its passes read, placed by their owners, installed in the
-/// engine's scene-join group after the meshes' join and ahead of the
-/// authored LOD selection and every row join ([`environment_join`]), so the
-/// rows it publishes (the lights' list and directional light) are there for
-/// them in the same frame. The plugin's component crate submits one with
-/// `inventory::submit!`; the engine names no kind.
+/// engine's scene-join group in `order` (the meshes' first), ahead of the
+/// render-host parts' derivations (`RenderHostPartRegistration`) and every
+/// row join ([`environment_join`]), so the rows it publishes (the lights'
+/// list and directional light) are there for them in the same frame. The
+/// plugin's component crate submits one with `inventory::submit!`; the
+/// engine names no kind.
 pub struct ObjectJoinRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
     /// For diagnostics and tests.
     pub name: &'static str,
+    /// Where the join runs in the group: lower first. A join reading
+    /// another's output runs after it.
+    pub order: i32,
+    /// The rows of each instance's local bounding sphere (`[center.xyz,
+    /// radius]`) this join's kind authors, when row joins may place their
+    /// rows by an owner's content ([`row_join_keys`]).
+    pub owner_bounds: Option<BufferKey>,
     /// Registers the join's source-row columns (initial capacities; they
     /// grow) with the GPU mirror ([`ensure_gpu_mirror`]).
     pub register_columns: fn(&mut SceneGpuStore, &Arc<wgpu::Device>),
@@ -100,44 +92,33 @@ impl pulsar_plugins::Registration for ObjectJoinRegistration {
 /// engine's rows, for `RendererBuilder::with_scene_derivation`. `editor`
 /// lets a join add editor-only rows.
 pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<DerivationGroup> {
-    let scene = scene_join_keys();
-    let context = ObjectJoinContext {
-        owners: scene.owners,
-        generations: scene.generations,
-        hidden: scene.hidden,
-        transforms: scene.transforms,
-        editor,
-    };
-    let mut joins: Vec<Box<dyn SceneDerivation>> = vec![Box::new(SceneJoin::new(device, scene))];
-    joins.extend(
-        pulsar_plugins::registered::<ObjectJoinRegistration>()
-            .map(|registration| (registration.derivation)(device, &context)),
-    );
-    Box::new(DerivationGroup::new("SceneJoins", joins))
+    Box::new(DerivationGroup::new(
+        "SceneJoins",
+        object_joins()
+            .into_iter()
+            .map(|registration| (registration.derivation)(device, &object_join_context(editor)))
+            .collect(),
+    ))
 }
 
-/// Per-render-view authored mesh LOD selection. Installed after
-/// [`scene_join`] so its output can be consumed by the same renderer frame.
-/// `uploads`: the staging pool of the renderer's scene derivations.
-pub fn authored_lod_selection(
-    device: &wgpu::Device,
-    mirror: GpuMirrorHandle,
-    uploads: crate::gpu::Uploads,
-) -> Box<AuthoredLodSelection> {
-    Box::new(AuthoredLodSelection::new(
-        device,
-        AuthoredLodKeys {
-            owners: BufferKey::of("component_owners"),
-            generations: ENTITY_GENERATIONS_KEY,
-            hidden: BufferKey::of("object_hidden"),
-            transforms: BufferKey::of("object_transforms"),
-            level_handles: BufferKey::of("lod_component_levels::handles"),
-            levels: BufferKey::of("lod_component_levels"),
-            camera: helio_core::CAMERA_BUFFER_KEY,
-        },
-        Some(mirror),
-        uploads,
-    ))
+/// The rows an object join reads, for a renderer that is the editor's or
+/// not.
+pub fn object_join_context(editor: bool) -> ObjectJoinContext {
+    let (owners, generations, hidden, transforms) = object_keys();
+    ObjectJoinContext {
+        owners,
+        generations,
+        hidden,
+        transforms,
+        editor,
+    }
+}
+
+/// Every enabled plugin's object join, in order.
+fn object_joins() -> Vec<&'static ObjectJoinRegistration> {
+    let mut joins: Vec<_> = pulsar_plugins::registered::<ObjectJoinRegistration>().collect();
+    joins.sort_by_key(|registration| (registration.order, registration.name));
+    joins
 }
 
 /// Where this engine's parent-relative transforms and parent links live, for
@@ -146,7 +127,7 @@ pub fn authored_lod_selection(
 /// joins.
 pub fn hierarchy_resolve_keys() -> HierarchyResolveKeys {
     HierarchyResolveKeys {
-        transforms: scene_join_keys().transforms,
+        transforms: object_keys().3,
         parents: BufferKey::of("object_parent"),
         frames: BufferKey::of("object_frame"),
     }
@@ -158,20 +139,31 @@ pub fn hierarchy_resolve(device: &wgpu::Device) -> Box<HierarchyResolve> {
     Box::new(HierarchyResolve::new(device, hierarchy_resolve_keys()))
 }
 
-/// The rows every kind's row join reads: the same owner, visibility,
-/// transform and mesh bounds rows as the scene join. No directional light:
-/// a kind whose rows take a sun names the lights' (water does).
+/// The rows every kind's row join reads: the same owner, visibility and
+/// transform rows as the object joins, and the instances' bounding spheres
+/// an object join's kind authors (its `owner_bounds`: the meshes'), which
+/// row joins may place by. With no such kind enabled the key names rows
+/// nobody writes, and a placement by an owner's content finds none. No
+/// directional light: a kind whose rows take a sun names the lights' (water
+/// does).
 pub fn row_join_keys() -> RowJoinKeys {
-    let scene = scene_join_keys();
+    let (owners, generations, hidden, transforms) = object_keys();
     RowJoinKeys {
-        owners: scene.owners,
-        generations: scene.generations,
-        hidden: scene.hidden,
-        transforms: scene.transforms,
-        mesh_bounds: scene.mesh_bounds,
+        owners,
+        generations,
+        hidden,
+        transforms,
+        mesh_bounds: object_joins()
+            .into_iter()
+            .find_map(|registration| registration.owner_bounds)
+            .unwrap_or(NO_OWNER_BOUNDS),
         directional_light: None,
     }
 }
+
+/// The bounds key [`row_join_keys`] names when no enabled kind authors
+/// owner bounds.
+pub const NO_OWNER_BOUNDS: BufferKey = BufferKey::of("owner_bounds_none");
 
 /// A plugin's kind of scene rows: the source rows its components derive
 /// (SceneDB columns, registered with the GPU mirror by
@@ -256,19 +248,8 @@ pub fn ensure_gpu_mirror(
 
     // These are SceneDB component columns. Capacities are initial capacities
     // only; growable registration remains the sole owner of GPU storage and
-    // deduplication behavior.
-    StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
-    // Authored mesh LOD levels are source rows consumed by the per-view LOD
-    // resolver; they are separate from Helio's meshlet/virtual-geometry LOD.
-    LODComponent::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    // Per-instance virtual-geometry overrides, joined to mesh instances by the
-    // VirtualGeometryInstances derivation (`vg_instance_overrides`).
-    VirtualGeometryComponent::register_gpu_columns_growable(&mut gpu_store, 256, &device);
-    SkeletalMeshComponent::register_gpu_columns_growable(&mut gpu_store, 128, &device);
-    // The scene join's inputs (see `scene_join_keys`); the object and
-    // material rows passes draw are the join's outputs, not SceneDB's.
-    StaticMeshDraw::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
-    // Every object join's source rows (a plugin's lights').
+    // deduplication behavior. Every object join's source rows (the meshes',
+    // the lights').
     for registration in pulsar_plugins::registered::<ObjectJoinRegistration>() {
         (registration.register_columns)(&mut gpu_store, &device);
     }
@@ -404,33 +385,10 @@ fn install_derived_cache() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use helio_pass_object_batch::scene_join as join;
-
     #[test]
     fn a_new_scene_does_not_have_a_gpu_mirror() {
         let scene_db = pulsar_scenedb::SceneDb::new();
         assert!(!scene_db.world.has_gpu_mirror());
-    }
-
-    /// The join reads these rows with fixed layouts; a drift here must fail
-    /// a test, not draw garbage.
-    #[test]
-    fn the_rows_the_scene_join_reads_have_its_layouts() {
-        use std::mem::size_of;
-        assert_eq!(size_of::<ComponentOwner>() as u64, join::OWNER_ROW_BYTES);
-        assert_eq!(size_of::<ObjectHidden>() as u64, join::HIDDEN_ROW_BYTES);
-        assert_eq!(size_of::<TransformRow>() as u64, join::TRANSFORM_ROW_BYTES);
-        assert_eq!(
-            size_of::<pulsar_scenedb::gpu::VarLenHandle>() as u64,
-            join::HANDLE_ROW_BYTES
-        );
-        assert_eq!(
-            size_of::<helio_component::components::MeshSectionDraw>() as u64,
-            join::MESH_SECTION_ROW_BYTES
-        );
-        assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
-        assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);
     }
 }
 
@@ -640,80 +598,4 @@ pub fn first_fixed_in_group(
         .into_iter()
         .filter(|descendant| frame_above(world, *descendant) == space)
         .find_map(fixed)
-}
-
-// ── Virtual geometry ────────────────────────────────────────────────────────
-//
-// Plan: `.agents/plans/virtual-geometry.md`. A host owns one
-// [`VirtualGeometryHost`]; it hands its runtime to `helio_pass_vg::with_virtual_geometry`
-// (the graph passes), installs the two derivations below between the scene
-// join and the authored-LOD selection, and calls [`sync_virtual_geometry`]
-// every frame.
-
-pub use helio_component::virtual_geometry_host::{VgAssetReadyPublisher, VirtualGeometryHost};
-pub use helio_component::virtual_geometry_instances::VirtualGeometryInstances;
-
-/// The `vg_asset_ready` publisher, for `RendererBuilder::with_scene_derivation`
-/// right after [`scene_join`].
-pub fn virtual_geometry_asset_ready(
-    host: &VirtualGeometryHost,
-    device: &wgpu::Device,
-) -> Box<VgAssetReadyPublisher> {
-    host.asset_ready_derivation(device)
-}
-
-/// The `VirtualGeometryInstances` derivation, after
-/// [`virtual_geometry_asset_ready`] and before [`authored_lod_selection`].
-pub fn virtual_geometry_instances(
-    host: &mut VirtualGeometryHost,
-    device: &wgpu::Device,
-) -> Box<VirtualGeometryInstances> {
-    host.instances_derivation(device)
-}
-
-/// The project's `project.virtual_geometry` settings as the runtime's.
-pub fn virtual_geometry_runtime_settings(
-    settings: pulsar_settings::project::virtual_geometry::VirtualGeometrySettings,
-) -> helio_vg_stream::VgRuntimeSettings {
-    use pulsar_settings::project::virtual_geometry::VirtualGeometryMode;
-    let settings = settings.sanitized();
-    helio_vg_stream::VgRuntimeSettings {
-        mode: match settings.mode {
-            VirtualGeometryMode::Auto => helio_vg_format::VgMode::Auto,
-            VirtualGeometryMode::ForceNonRtFallback => helio_vg_format::VgMode::ForceNonRtFallback,
-            VirtualGeometryMode::ForceHwRaster => helio_vg_format::VgMode::ForceHwRaster,
-            VirtualGeometryMode::Off => helio_vg_format::VgMode::Off,
-        },
-        tau_px: settings.tau_pixels,
-        page_budget_mb: settings.page_budget_mb,
-        max_visible_clusters: settings.max_visible_clusters,
-        two_phase_occlusion: settings.two_phase_occlusion,
-        tier3: settings.tier3,
-        ..helio_vg_stream::VgRuntimeSettings::default()
-    }
-}
-
-/// Per-frame host service: reads the project's virtual-geometry settings
-/// (or `override_settings`), then lets `host` build / stream the assets the
-/// scene's `VirtualGeometryComponent`s ask for. Cheap on frames with nothing
-/// to do.
-pub fn sync_virtual_geometry(
-    host: &mut VirtualGeometryHost,
-    scene: &crate::scene::SharedScene,
-    override_settings: Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
-) {
-    let settings = override_settings.unwrap_or_else(|| {
-        pulsar_settings::project::virtual_geometry::VirtualGeometrySettings::from_config(
-            engine_state::settings::global_config(),
-        )
-    });
-    let scene = scene.read();
-    let Some(mirror) = scene.world.gpu_mirror() else {
-        return;
-    };
-    host.sync(
-        &scene.world,
-        mirror,
-        virtual_geometry_runtime_settings(settings),
-    );
 }

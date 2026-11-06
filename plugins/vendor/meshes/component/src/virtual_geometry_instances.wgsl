@@ -14,7 +14,7 @@ struct Override {
     lod_error_scale: f32,
 }
 
-/// `helio_component::virtual_geometry_instances::VgAssetReadyRow`.
+/// `meshes_component::virtual_geometry_instances::VgAssetReadyRow`.
 struct AssetReady {
     vertex_offset: u32,
     vertex_count: u32,

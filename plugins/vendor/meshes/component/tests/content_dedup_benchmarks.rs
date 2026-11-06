@@ -16,7 +16,7 @@
 
 #![cfg(feature = "gpu")]
 
-use helio_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
+use meshes_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
 use helio_mesh_api::PackedVertex;
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
@@ -69,10 +69,10 @@ fn bm3_bulk_hydrate_10k_entities_one_shared_asset() {
         ],
         indices: (0..36u32).collect(),
     };
-    let id = helio_component::mesh_cache::content_id_for_bytes(&mesh);
+    let id = meshes_component::mesh_cache::content_id_for_bytes(&mesh);
     std::fs::write(
         root.join("bm3_asset.mesh"),
-        helio_component::mesh_cache::encode(&mesh, id),
+        meshes_component::mesh_cache::encode(&mesh, id),
     )
     .unwrap();
 
@@ -100,7 +100,7 @@ fn bm3_bulk_hydrate_10k_entities_one_shared_asset() {
     let start = Instant::now();
     for _ in 0..N {
         let e = world.spawn();
-        let upload = helio_component::subsystems::load_mesh_upload(&root.join("bm3_asset.mesh"))
+        let upload = meshes_component::mesh_files::load_mesh_upload(&root.join("bm3_asset.mesh"))
             .expect("load bench mesh");
         world.insert(
             e,
@@ -162,13 +162,13 @@ fn bm4_memoized_content_id_lookup_vs_cold_hash() {
     std::fs::write(&path, &v1).unwrap();
 
     let cold_start = Instant::now();
-    let id_cold = helio_component::mesh_cache::content_id_for_path(&path).unwrap();
+    let id_cold = meshes_component::mesh_cache::content_id_for_path(&path).unwrap();
     let cold_elapsed = cold_start.elapsed();
 
     const WARM_CALLS: u32 = 10_000;
     let warm_start = Instant::now();
     for _ in 0..WARM_CALLS {
-        let id_warm = helio_component::mesh_cache::content_id_for_path(&path).unwrap();
+        let id_warm = meshes_component::mesh_cache::content_id_for_path(&path).unwrap();
         assert_eq!(id_warm, id_cold);
     }
     let warm_elapsed = warm_start.elapsed();

@@ -21,9 +21,10 @@ use std::collections::HashMap;
 use engine_backend::scene::SceneWorldExt;
 // Every installed plugin registers with the renderer, as in the editor.
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
-use helio_component::components::{
-    LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent,
-    StaticMeshMaterialSlot, StaticMeshMaterialSlots,
+use helio_component::components::ObjectMovability;
+use installed_plugins::meshes_component::components::{
+    LODLevel, MeshAssetPath, MeshGeometryKey, StaticMeshComponent, StaticMeshMaterialSlot,
+    StaticMeshMaterialSlots,
 };
 use installed_plugins as _;
 use pulsar_reflection::REGISTRY;
@@ -405,8 +406,8 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
 
 /// The bright, opaque, emissive surface every acceptance mesh draws with, so
 /// it shows against the empty scene without depending on lights.
-fn emissive_surface() -> helio_component::mesh_cache::ImportedSurfaceMaterial {
-    helio_component::mesh_cache::ImportedSurfaceMaterial {
+fn emissive_surface() -> installed_plugins::meshes_component::mesh_cache::ImportedSurfaceMaterial {
+    installed_plugins::meshes_component::mesh_cache::ImportedSurfaceMaterial {
         base_color: [1.0, 0.5, 0.1, 1.0],
         roughness: 0.7,
         metallic: 0.0,
@@ -420,7 +421,7 @@ fn emissive_surface() -> helio_component::mesh_cache::ImportedSurfaceMaterial {
 /// sections and bounds, every slot overridden with [`emissive_surface`].
 fn typed_mesh() -> StaticMeshComponent {
     let upload =
-        helio_component::subsystems::load_mesh_asset_upload(std::path::Path::new(&mesh_asset()))
+        installed_plugins::meshes_component::mesh_files::load_mesh_asset_upload(std::path::Path::new(&mesh_asset()))
             .expect("SM_Cube.fbx loads");
     let radius = upload
         .geometry

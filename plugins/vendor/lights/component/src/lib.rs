@@ -107,6 +107,10 @@ inventory::submit! {
     ObjectJoinRegistration {
         origin: pulsar_plugins::origin!(),
         name: "lights",
+        // After the meshes' join: a light reads no mesh row, but the
+        // meshes' join is the group's first by convention.
+        order: 100,
+        owner_bounds: None,
         register_columns: |store, device| {
             LightSourceRow::register_gpu_columns_growable(store, 64, device);
         },

@@ -275,8 +275,8 @@ impl RuntimeLevel {
                 }
             };
             // Legacy shapes were migrated with the file
-            // (`pulsar_class::records`): MaterialOverrideComponent folded,
-            // flat data nested, a bare `props.mesh_asset` made a mesh.
+            // (`pulsar_class::records`: flat data nested, and the plugins'
+            // migrations, such as the meshes').
             hydrate_components(world, entity, &obj.id, &instances)?;
         }
 
@@ -407,9 +407,8 @@ fn migrate_scene_file(file: &mut SceneFile, registry: &pulsar_class::ClassRegist
     let records = &report.records;
     if records.changed() {
         tracing::info!(
-            material_overrides = records.material_overrides.len(),
+            plugins = records.plugins.len(),
             nested = records.nested.len(),
-            mesh_asset_props = records.mesh_asset_props.len(),
             stripped_props = records.stripped_props.len(),
             retired_fields = records.retired_fields.len(),
             "Migrated legacy component records"

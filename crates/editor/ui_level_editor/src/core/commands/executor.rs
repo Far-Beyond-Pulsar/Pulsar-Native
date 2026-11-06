@@ -787,11 +787,11 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                             components::get_component_class_names(&world, id)
                                 .into_iter()
                                 .enumerate()
+                                // Every component that authors a movability (a
+                                // mesh, a light: a `movability` property of
+                                // that type) and holds another one.
                                 .filter(|(index, class_name)| {
-                                    matches!(
-                                        class_name.as_str(),
-                                        "StaticMeshComponent" | "LightComponent"
-                                    ) && components::read_live_component_property(
+                                    components::read_live_component_property(
                                         &world,
                                         id,
                                         class_name,
@@ -800,14 +800,15 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                                     )
                                     .and_then(|value| {
                                         value
-                                    .downcast_ref::<helio_component::components::ObjectMovability>()
-                                    .copied()
-                                    }) != Some(movability)
+                                            .downcast_ref::<helio_component::components::ObjectMovability>()
+                                            .copied()
+                                    })
+                                    .is_some_and(|current| current != movability)
                                 })
                                 .collect();
                         for (index, class_name) in targets {
                             // Typed setter; `movability` is a flat property
-                            // name on both classes (lights via `#[sub_props]`).
+                            // name (lights' via `#[sub_props]`).
                             if components::update_live_component_property(
                                 &mut world,
                                 id,

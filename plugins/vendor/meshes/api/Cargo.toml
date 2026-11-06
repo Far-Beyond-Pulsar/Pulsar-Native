@@ -19,6 +19,9 @@ bytemuck = { workspace = true, features = ["derive"] }
 glam = { workspace = true }
 helio-core = { workspace = true }
 pulsar_scenedb = { workspace = true }
+# The skinned mesh access other kinds drive (`skinning`), gated per project.
+inventory = { workspace = true }
+pulsar_plugins = { workspace = true }
 wgpu = { workspace = true }
 helio-components = { workspace = true, optional = true }
 pulsar_scenedb_derive = { workspace = true, optional = true }

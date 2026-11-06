@@ -67,12 +67,8 @@ input_plugin    = { path = "../../../plugins/vendor/input_plugin", default-featu
 # doesn't allow members to opt out of default features.
 engine_backend  = { path = "../engine_backend", default-features = false, features = ["render"] }
 
-# Component vocabulary re-exported to gameplay scripts (#653,
-# `pulsar_game::scene`): StaticMeshComponent / LightComponent are what user
-# script crates attach to make entities visible -- without this direct dep a
-# generated game's script crate could not name them.
+# Cameras, movability (`StaticMoveWatch`): the engine's shared pieces.
 helio_component = { workspace = true }
-skeletal_assets = { workspace = true }
 
 [lints]
 workspace = true

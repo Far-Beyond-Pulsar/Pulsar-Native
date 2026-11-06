@@ -4,7 +4,7 @@
 //! (fbx/obj/gltf/usd) is converted with the chosen import options into an
 //! engine-native `.mesh` asset written into the project. **The source file
 //! itself is not brought into the project** — only the native asset. Components
-//! reference the `.mesh` asset and [`crate::subsystems::load_mesh_upload`] loads
+//! reference the `.mesh` asset and [`crate::mesh_files::load_mesh_upload`] loads
 //! it directly, with no per-load conversion or import options.
 //!
 //! Format (`PMSH`): a small header (magic + version + vertex/index counts)
@@ -29,7 +29,7 @@
 //! MEANS; it's just a stable identity two components can compare.
 //!
 //! v1 files (no id in the header) decode fine — [`decode`] computes the
-//! same hash on the fly and [`crate::subsystems::load_mesh_upload`]
+//! same hash on the fly and [`crate::mesh_files::load_mesh_upload`]
 //! opportunistically rewrites the file as the current format (v5) so the NEXT
 //! load reads the content id and local bounds directly. A failed rewrite (read-only project
 //! dir, etc.) never fails the load itself; the in-memory id from that one
@@ -37,12 +37,12 @@
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use bytemuck::Zeroable;
 use helio_mesh_api::{MeshUpload, PackedVertex};
+pub use asset_import::options::{FieldConstraints, ImportField, OptionsSchema};
 use pulsar_reflection::{RUNTIME_TYPE_REGISTRY, RuntimeTypeInfo, TypeStructure};
 
 const MAGIC: &[u8; 4] = b"PMSH";
@@ -183,44 +183,6 @@ impl Default for MeshAssetUpload {
 // Engine-native import-schema types (bridge from solid_rs::configurator).
 // ---------------------------------------------------------------------------
 
-/// UI constraints for an import field.
-#[derive(Debug, Clone, Default)]
-pub struct FieldConstraints {
-    pub min: Option<f64>,
-    pub max: Option<f64>,
-    pub step: Option<f64>,
-}
-
-/// A single configurable import option — the engine-native equivalent of
-/// [`solid_rs::configurator::OptionField`] but expressed in terms of the
-/// reflection system so the gpui property editors can render it generically.
-pub struct ImportField {
-    pub key: String,
-    pub label: String,
-    pub doc: String,
-    pub type_info: &'static RuntimeTypeInfo,
-    pub default: Box<dyn Any + Send>,
-    pub constraints: FieldConstraints,
-}
-
-impl fmt::Debug for ImportField {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ImportField")
-            .field("key", &self.key)
-            .field("label", &self.label)
-            .field("doc", &self.doc)
-            .field("type_info", &self.type_info)
-            .field("default", &"<dyn Any>")
-            .field("constraints", &self.constraints)
-            .finish()
-    }
-}
-
-/// An ordered set of [`ImportField`]s describing a loader's import options.
-#[derive(Debug)]
-pub struct OptionsSchema {
-    pub fields: Vec<ImportField>,
-}
 
 // ---------------------------------------------------------------------------
 // Conversion from solid_rs schema types
@@ -1299,7 +1261,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mesh-import-event-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let source = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../assets/meshes/primitives/SM_Cube.fbx");
+            .join("../../../../assets/meshes/primitives/SM_Cube.fbx");
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let record = std::sync::Arc::clone(&seen);
         let _subscription = pulsar_events::subscribe_asset_updates(

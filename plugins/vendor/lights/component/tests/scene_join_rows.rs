@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform, Visibility, attachments};
-use helio_component::components::{MeshAssetPath, ObjectMovability, StaticMeshComponent};
+use helio_component::components::ObjectMovability;
+use meshes_component::components::{MeshAssetPath, StaticMeshComponent};
 use helio_pass_object_batch::scene_join::{
     BufferHandle, BufferKey, ENTITY_GENERATIONS_KEY, SceneBufferProjection, SceneDerivation,
     SceneDerivationContext,
@@ -39,12 +40,12 @@ fn mesh(movability: ObjectMovability) -> StaticMeshComponent {
         ],
         indices: vec![0, 1, 2, 2, 1, 3],
         mesh_sections: vec![
-            helio_component::mesh_cache::MeshSection {
+            meshes_component::mesh_cache::MeshSection {
                 first_index: 0,
                 index_count: 3,
                 material_slot: 0,
             },
-            helio_component::mesh_cache::MeshSection {
+            meshes_component::mesh_cache::MeshSection {
                 first_index: 3,
                 index_count: 3,
                 material_slot: 0,

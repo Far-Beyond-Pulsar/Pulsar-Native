@@ -1,24 +1,21 @@
-//! Rendering components for Pulsar Engine
+//! Pulsar's shared rendering-side engine pieces: the generic asset seams
+//! (which component an asset becomes, who loads an asset kind, what a
+//! changed file reloads), images (texture assets, cooking, residency in a
+//! scene's texture store), cameras, movability and its motion gate, ground
+//! material names, reflected lists and sublevel displays.
 //!
-//! This crate provides rendering-related components that integrate with the
-//! engine's reflection system for automatic UI generation.
+//! No object kind's component lives here: every kind is its plugin's
+//! (meshes: `meshes_component`, materials: `materials_component`, ...).
 
-pub mod anim_source;
 pub mod asset_component;
 pub mod components;
 pub mod cooked_texture;
-pub mod mesh_cache;
-pub mod mesh_materials;
-pub mod mesh_spatial;
-pub mod mesh_thumbnail;
 mod motion_gate;
 mod static_move_watch;
+pub mod subsystems;
 pub mod texture_assets;
 pub mod texture_detail;
 pub use static_move_watch::StaticMoveWatch;
-pub mod subsystems;
-pub mod virtual_geometry_host;
-pub mod virtual_geometry_instances;
 
 pub use asset_component::*;
 pub use components::*;

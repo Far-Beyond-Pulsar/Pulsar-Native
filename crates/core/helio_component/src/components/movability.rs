@@ -3,7 +3,7 @@
 //! Editor-facing twin of [`helio::Movability`]: a reflected enum the
 //! properties panel shows as a dropdown, with each variant's doc comment as
 //! its tooltip. It reaches the renderer as the movable flag of the mesh's
-//! derived draw row ([`super::StaticMeshDraw`]), which passes key their
+//! derived draw row (the meshes' `StaticMeshDraw`), which passes key their
 //! caches on; CPU checks read it through [`object_movability`].
 
 use pulsar_reflection::Reflectable;
@@ -55,7 +55,7 @@ impl ObjectMovability {
     }
 }
 
-/// A component that authors its object's movability (a light instance):
+/// A component that authors its object's movability (a mesh or light instance):
 /// how to read it off an instance. Submitted by the component's crate
 /// (`inventory::submit!`), so [`object_movability`] names no kind.
 pub struct MovabilityRegistration {
@@ -75,8 +75,8 @@ impl pulsar_plugins::Registration for MovabilityRegistration {
 
 /// What may change about `object` at runtime: the least mobile of a
 /// `helio::Movability` placed on the object itself and the movability its
-/// component instances author (its meshes', and every
-/// [`MovabilityRegistration`]'s: a plugin's lights; Pulsar-Native#837).
+/// component instances author (every [`MovabilityRegistration`]'s: the
+/// meshes', the lights'; Pulsar-Native#837).
 /// `None` when nothing authors one. Read from the authored values; nothing
 /// projects them.
 pub fn object_movability(
@@ -87,13 +87,8 @@ pub fn object_movability(
     let authored = pulsar_scene_model::attachments::instances(world, object)
         .into_iter()
         .filter_map(|instance| {
-            world
-                .get::<super::StaticMeshComponent>(instance)
-                .map(|mesh| mesh.movability)
-                .or_else(|| {
-                    pulsar_plugins::registered::<MovabilityRegistration>()
-                        .find_map(|registration| (registration.of)(world, instance))
-                })
+            pulsar_plugins::registered::<MovabilityRegistration>()
+                .find_map(|registration| (registration.of)(world, instance))
                 .map(helio::Movability::from)
         });
     own.into_iter()

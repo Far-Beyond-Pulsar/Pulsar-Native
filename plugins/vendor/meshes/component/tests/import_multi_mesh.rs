@@ -1,6 +1,9 @@
 //! A source with several meshes becomes one native mesh per source mesh, not
 //! one merged mesh.
 
+// The meshes' model importer registers itself with the import service.
+use meshes_component as _;
+
 use std::sync::Arc;
 
 use asset_import::{ImportDb, ImportMode, OptionValues};
@@ -80,13 +83,13 @@ fn each_mesh_of_a_source_gets_its_own_file() {
     // Each file holds only its own geometry, with the node transform baked in.
     let read = |name: &str| {
         let bytes = std::fs::read(root.join(name)).unwrap();
-        helio_component::mesh_cache::decode_asset(&bytes).unwrap().0
+        meshes_component::mesh_cache::decode_asset(&bytes).unwrap().0
     };
     let crate_mesh = read("props_Crate.mesh");
     let barrel = read("props_Barrel.mesh");
     assert_eq!(crate_mesh.geometry.vertices.len(), 3);
     assert_eq!(barrel.geometry.vertices.len(), 3);
-    let min_x = |m: &helio_component::mesh_cache::MeshAssetUpload| {
+    let min_x = |m: &meshes_component::mesh_cache::MeshAssetUpload| {
         m.geometry
             .vertices
             .iter()

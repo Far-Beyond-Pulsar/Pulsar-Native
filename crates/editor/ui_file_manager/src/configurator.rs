@@ -24,7 +24,7 @@ use ui_common::reflected_properties_panel::PropertyStateManager;
 use ui_common::render_property_row_runtime;
 use window_manager::{default_window_options, PulsarWindow};
 
-use helio_component::mesh_cache::{self, ImportField};
+use asset_import::{ImportField, OptionsSchema};
 
 /// Parameters for opening the import configurator as its own window: one
 /// window per source format, covering every source of that format.
@@ -34,7 +34,7 @@ pub struct ImportConfiguratorParams {
     pub sources: Vec<PathBuf>,
     /// Lower-case extension all `sources` share (e.g. `fbx`).
     pub ext: String,
-    pub schema: mesh_cache::OptionsSchema,
+    pub schema: OptionsSchema,
     /// Extra work plugins offer for these sources, each with whether the user
     /// has it switched on.
     pub companions: Vec<(asset_import::CompanionOffer, bool)>,

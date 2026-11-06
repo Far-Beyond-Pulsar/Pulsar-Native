@@ -429,7 +429,11 @@ impl TickLoop {
         // apply at the next frame's animation phase.
         {
             let mut store = self.scene_store.write();
-            helio_component::run_animation_phase(&mut store.world, time.delta.as_secs_f32());
+            for phase in engine_backend::scene::game_hooks::tick_phases() {
+                if let Some(before_systems) = phase.before_systems {
+                    before_systems(&mut store.world, time.delta.as_secs_f32());
+                }
+            }
         }
 
         // Phase 1: ECS systems. Short write scope -- the renderer takes this
@@ -543,15 +547,16 @@ impl TickLoop {
                 .scripts
                 .as_ref()
                 .map(|d| d.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
-            helio_component::flush_animation_notifies(
-                &mut store.world,
-                &self.events,
-                |owner, variable| {
-                    driver
-                        .as_ref()
-                        .and_then(|d| d.entity_variable(owner, variable))
-                },
-            );
+            let resolve = |owner, variable: &str| {
+                driver
+                    .as_ref()
+                    .and_then(|d| d.entity_variable(owner, variable))
+            };
+            for phase in engine_backend::scene::game_hooks::tick_phases() {
+                if let Some(after_scripts) = phase.after_scripts {
+                    after_scripts(&mut store.world, &self.events, &resolve);
+                }
+            }
         }
 
         // Flush 3 (after scripts): what scripts sent (`event::*`,

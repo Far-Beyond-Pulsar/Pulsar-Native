@@ -1,5 +1,8 @@
-//! Asset-browser thumbnails for native `.mesh` assets.
+//! Asset-browser thumbnails of the meshes' files: source models (FBX, glTF,
+//! OBJ, USD, ...) drawn by the meshes' snapshot renderer, and native
+//! `.mesh` assets drawn by the CPU rasteriser below.
 //!
+//! Native `.mesh` thumbnails:
 //! A small CPU rasteriser (z-buffered, one directional light) over the mesh's
 //! own triangles. Each section is tinted with the base colour of the material
 //! its slot resolves to — the mesh's default material when one is assigned —
@@ -11,7 +14,7 @@ use std::path::Path;
 
 use glam::{Vec2, Vec3};
 
-use crate::components::{StaticMeshMaterialSlot, resolve_slot_material};
+use meshes_component::components::{StaticMeshMaterialSlot, resolve_slot_material};
 
 const SIZE: u32 = 128;
 const BACKGROUND: [u8; 4] = [0, 0, 0, 255];
@@ -23,6 +26,40 @@ pulsar_reflection::inventory::submit! {
     }
 }
 
+/// A source model's thumbnail: the meshes' snapshot renderer.
+fn render_model_thumbnail(path: &Path) -> Option<image::RgbaImage> {
+    match helio_snapshot::render_preview(
+        path,
+        helio_snapshot::SnapshotConfig {
+            width: 128,
+            height: 128,
+            fit_margin: 1.12,
+            ..Default::default()
+        },
+    ) {
+        Ok(image) => Some(image),
+        Err(error) => {
+            tracing::warn!("mesh thumbnail render failed for {:?}: {error}", path);
+            None
+        }
+    }
+}
+
+macro_rules! model_thumbnails {
+    ($($extension:literal),*) => {$(
+        pulsar_reflection::inventory::submit! {
+            ui_common::asset_thumbnails::ThumbnailRendererRegistration {
+                extension: $extension,
+                render: render_model_thumbnail,
+            }
+        }
+    )*};
+}
+
+model_thumbnails!(
+    "fbx", "gltf", "glb", "obj", "usd", "usda", "usdc", "usdz", "uasset", "umap"
+);
+
 fn edge(a: Vec2, b: Vec2, p: Vec2) -> f32 {
     (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x)
 }
@@ -33,7 +70,7 @@ fn encode(channel: f32) -> u8 {
 }
 
 pub fn render_mesh_thumbnail(path: &Path) -> Option<image::RgbaImage> {
-    let asset = crate::subsystems::load_mesh_asset_upload(path)?;
+    let asset = meshes_component::mesh_files::load_mesh_asset_upload(path)?;
     let vertices = &asset.geometry.vertices;
     if vertices.is_empty() || asset.geometry.indices.is_empty() {
         return None;
@@ -162,7 +199,7 @@ pub fn render_mesh_thumbnail(path: &Path) -> Option<image::RgbaImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh_cache::{
+    use meshes_component::mesh_cache::{
         ImportedSurfaceMaterial, MeshAssetUpload, MeshMaterialSlot, MeshSection, encode_asset,
     };
     use helio_mesh_api::{MeshUpload, PackedVertex};
@@ -195,7 +232,7 @@ mod tests {
                 },
                 ..Default::default()
             }],
-            bounds: crate::mesh_cache::MeshLocalBounds::from_geometry(&MeshUpload {
+            bounds: meshes_component::mesh_cache::MeshLocalBounds::from_geometry(&MeshUpload {
                 vertices: vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)],
                 indices: vec![0, 1, 2],
             })

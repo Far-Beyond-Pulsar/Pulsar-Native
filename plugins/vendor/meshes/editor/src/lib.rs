@@ -10,6 +10,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 /// The plugin's level editor UI, registered through the level editor's
 /// extension points (`ui_level_editor::extend`).
 pub mod level_editor;
+pub mod thumbnails;
 
 use plugin_editor_api::*;
 

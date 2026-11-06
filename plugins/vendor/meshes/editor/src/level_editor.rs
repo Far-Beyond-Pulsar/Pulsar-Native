@@ -2,7 +2,7 @@
 //! registered through the level editor's extension points
 //! (`ui_level_editor::extend`). Each add is one undoable command.
 
-use helio_component::StaticMeshComponent;
+use meshes_component::StaticMeshComponent;
 use ui_level_editor::LevelEditorState;
 use ui_level_editor::commands::{CommandResult, TypedComponent};
 use ui_level_editor::extend::{CreateEntry, add_object};

@@ -30,8 +30,11 @@ pub mod level_rules;
 pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
-#[cfg(feature = "render")]
-mod authored_lod;
+pub mod component_events;
+pub mod game_hooks;
+pub use component_events::{
+    component_asset_events, ComponentEventCatalog, ComponentEventsRegistration,
+};
 #[cfg(feature = "render")]
 // Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
 // and Helio's scene join over the authored rows.
@@ -41,17 +44,11 @@ pub mod sublevel_display;
 pub mod sublevels;
 
 #[cfg(feature = "render")]
-pub use authored_lod::{
-    AuthoredLodKeys, AuthoredLodSelection, LodSelectionRow, LOD_SELECTIONS_KEY,
-};
-#[cfg(feature = "render")]
 pub use helio_bridge::{
-    authored_lod_selection, ensure_gpu_mirror, environment_join, first_fixed_in_group,
-    hierarchy_resolve, hierarchy_resolve_keys, row_join_keys, scene_join, scene_join_keys,
-    sync_virtual_geometry, virtual_geometry_asset_ready, virtual_geometry_instances,
-    virtual_geometry_runtime_settings, ObjectJoinContext, ObjectJoinRegistration,
-    SceneRowsRegistration, SpaceProducer, SpaceProducerRegistration, SpaceSync, SpaceTable,
-    VgAssetReadyPublisher, VirtualGeometryHost, VirtualGeometryInstances,
+    ensure_gpu_mirror, environment_join, first_fixed_in_group, hierarchy_resolve,
+    hierarchy_resolve_keys, object_join_context, row_join_keys, scene_join, ObjectJoinContext,
+    ObjectJoinRegistration, SceneRowsRegistration, SpaceProducer, SpaceProducerRegistration,
+    SpaceSync, SpaceTable, NO_OWNER_BOUNDS,
 };
 #[cfg(feature = "render")]
 pub mod editor_postprocess;

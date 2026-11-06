@@ -83,6 +83,9 @@ helio-presets = { workspace = true }
 helio-mats = { workspace = true }
 helio_component = { workspace = true }
 plugin_editor_api = { workspace = true }
+# The absent meshes: no model importer, no skinned access.
+asset_import = { workspace = true }
+helio-mesh-api = { workspace = true }
 wgpu = { workspace = true }
 pollster = "1.0"
 glam = { workspace = true }

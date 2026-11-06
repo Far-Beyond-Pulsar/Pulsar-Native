@@ -1,7 +1,7 @@
 //! Default material assignment for native `.mesh` assets.
 //!
 //! The viewer edits the asset's own per-slot default materials (stored in the
-//! `.mesh` metadata by `helio_component::mesh_cache::set_default_materials`).
+//! `.mesh` metadata by `meshes_component::mesh_cache::set_default_materials`).
 //! Placed `StaticMeshComponent`s inherit them for any slot they do not
 //! override, so a mesh can ship with its materials already applied.
 
@@ -65,7 +65,7 @@ impl AssetViewerPanel {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    helio_component::subsystems::load_mesh_asset_upload(&path)
+                    meshes_component::mesh_files::load_mesh_asset_upload(&path)
                         .ok_or_else(|| format!("Could not read native mesh {}", path.display()))
                 })
                 .await;
@@ -98,7 +98,7 @@ impl AssetViewerPanel {
 
     fn populate_mesh_materials(
         &mut self,
-        asset: helio_component::mesh_cache::MeshAssetUpload,
+        asset: meshes_component::mesh_cache::MeshAssetUpload,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -156,12 +156,12 @@ impl AssetViewerPanel {
             .iter()
             .enumerate()
             .map(|(index, row)| {
-                let slot = helio_component::components::StaticMeshMaterialSlot {
+                let slot = meshes_component::components::StaticMeshMaterialSlot {
                     imported_surface: self.slot_surfaces.get(index).copied().unwrap_or_default(),
                     material_asset: row.material.clone(),
                     ..Default::default()
                 };
-                helio_component::components::resolve_slot_material(Some(&slot), None)
+                meshes_component::components::resolve_slot_material(Some(&slot), None)
                     .row
                     .base_color
             })
@@ -298,7 +298,7 @@ impl AssetViewerPanel {
             .iter()
             .map(|row| row.material.clone())
             .collect();
-        if let Err(error) = helio_component::mesh_cache::set_default_materials(path, &assignments) {
+        if let Err(error) = meshes_component::mesh_cache::set_default_materials(path, &assignments) {
             log::error!("Could not save default materials for {:?}: {error}", path);
         }
     }

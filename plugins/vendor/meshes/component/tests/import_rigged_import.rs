@@ -1,6 +1,9 @@
 //! Import of a rigged glTF into the linked skeletal assets. The model is built
 //! here, byte by byte, so no binary fixture is committed.
 
+// The meshes' model importer registers itself with the import service.
+use meshes_component as _;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -490,7 +493,7 @@ fn a_static_model_still_imports_to_a_plain_mesh_with_no_extra_outputs() {
     let root = project.root().to_path_buf();
     let source = root.join("cube.fbx");
     let cube =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/meshes/primitives/SM_Cube.fbx");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../assets/meshes/primitives/SM_Cube.fbx");
     std::fs::copy(cube, &source).unwrap();
     let options = Arc::new(Mutex::new(OptionValues::new()));
 
@@ -509,6 +512,6 @@ fn a_static_model_still_imports_to_a_plain_mesh_with_no_extra_outputs() {
     assert!(extras.is_empty(), "{extras:?}");
     // It is readable as the same kind of file it always was.
     let bytes = std::fs::read(root.join("cube.mesh")).unwrap();
-    assert!(helio_component::mesh_cache::decode_asset(&bytes).is_some());
+    assert!(meshes_component::mesh_cache::decode_asset(&bytes).is_some());
     assert!(SkeletalMeshAsset::peek_id(&bytes).is_none());
 }

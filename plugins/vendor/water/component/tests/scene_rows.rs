@@ -393,7 +393,7 @@ fn water_takes_the_scenes_sun_and_the_global_wind() {
 /// it was) and its row carries its identity.
 #[test]
 fn bodies_on_the_water_sim_channel_become_water_hitboxes() {
-    use helio_component::components::StaticMeshComponent;
+    use meshes_component::components::StaticMeshComponent;
     use pulsar_physics::{CollisionChannel, PhysicsComponent};
     type HitboxRow = helio_pass_water_sim::GpuWaterHitbox;
     let Some((device, queue)) = device() else {

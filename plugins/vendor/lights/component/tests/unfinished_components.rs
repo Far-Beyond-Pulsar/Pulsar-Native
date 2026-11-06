@@ -4,7 +4,7 @@
 
 // Link the components into this test binary.
 #[allow(unused_imports)]
-use helio_component::components::StaticMeshComponent as _;
+use meshes_component as _;
 #[allow(unused_imports)]
 use lights_component::ReflectionCaptureComponent as _;
 

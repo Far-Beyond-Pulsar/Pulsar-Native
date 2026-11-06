@@ -35,6 +35,8 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+# A mesh to place their rows by (tests only; the crate links no mesh).
+meshes_component = { workspace = true }
 pollster = "=0.4.0"
 engine_state = { workspace = true }
 image = { workspace = true }

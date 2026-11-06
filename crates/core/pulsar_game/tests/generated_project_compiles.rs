@@ -160,8 +160,9 @@ fn generated_project_compiles_against_current_pins() {
 }
 
 /// A project that disables plugins builds without them (Phase C step 2): its
-/// Pulsar.toml turns off the voxel, lights and materials plugins, the
-/// generated game links none of their crates, and it compiles.
+/// Pulsar.toml turns off the voxel, lights, materials and meshes plugins,
+/// the generated game links none of their crates, and it compiles (its
+/// starter script attaches its cube by class name, linking no plugin).
 #[test]
 #[ignore = "heavy: cargo-checks a whole generated game project; run via `just ci-drift-check`"]
 fn a_project_without_some_plugins_compiles_without_them() {
@@ -169,24 +170,29 @@ fn a_project_without_some_plugins_compiles_without_them() {
     std::fs::write(
         project.path().join("Pulsar.toml"),
         "[plugins]\n\"pulsar.voxel\" = false\n\"pulsar.lights\" = false\n\
-         \"pulsar.materials\" = false\n",
+         \"pulsar.materials\" = false\n\"pulsar.meshes\" = false\n",
     )
     .unwrap();
     generate_project(project.path(), "absent_probe");
     let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
-    for absent in ["voxel_component", "lights_component", "materials_component"] {
+    for absent in [
+        "voxel_component",
+        "lights_component",
+        "materials_component",
+        "meshes_component",
+    ] {
         assert!(!manifest.contains(absent), "{absent} is linked");
     }
     assert!(
-        manifest.contains("meshes_component"),
-        "the meshes are linked"
+        manifest.contains("decals_component"),
+        "the other plugins are linked"
     );
 
     let status =
         cargo_check(project.path()).unwrap_or_else(|e| panic!("failed to spawn cargo check: {e}"));
     assert!(
         status.success(),
-        "a project without the voxel, lights and materials plugins does not compile"
+        "a project without the voxel, lights, materials and meshes plugins does not compile"
     );
     // Nothing of theirs is in the game's dependency graph.
     let tree = Command::new(cargo_exe())
@@ -199,6 +205,7 @@ fn a_project_without_some_plugins_compiles_without_them() {
         "voxel_component ",
         "lights_component ",
         "materials_component ",
+        "meshes_component ",
     ] {
         assert!(
             !tree.contains(absent),

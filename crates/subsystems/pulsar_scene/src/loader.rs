@@ -1,26 +1,15 @@
 //! Scene file helpers shared with `engine_backend`: component instance
-//! records from a scene object's props, the legacy material-override
-//! migration, and transform composition.
+//! records from a scene object's props, and transform composition. Legacy
+//! record shapes are migrated with the file (`pulsar_class::records`).
 //!
 //! The legacy import adapter that dispatched records through
 //! `ComponentRuntimeBehavior::sync_component` straight into a Helio scene
 //! is gone (Pulsar-Native#1035, Phase 4): every scene is hydrated into
 //! SceneDB, and components reach the renderer through their data.
-//!
-//! ## Linker note
-//!
-//! `helio_component` types are re-exported below to create a live code
-//! reference. Without it the linker can silently drop `helio_component`'s
-//! `#[used]` inventory statics (its world-component and GPU registrations).
 
 use std::collections::HashMap;
 
 use serde_json::Value;
-
-// ── Force helio_component into the binary ────────────────────────────────────
-// Re-exporting these types creates a live symbol reference that prevents the
-// linker from dropping helio_component's #[used] inventory statics.
-pub use helio_component::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 
 // ── Shared public API (called by engine_backend) ─────────────────────────
 
@@ -41,7 +30,7 @@ pub fn component_instances_from_props(
     let Some(arr) = arr else {
         return Vec::new();
     };
-    let mut records: Vec<_> = arr
+    let records: Vec<_> = arr
         .iter()
         .enumerate()
         .filter_map(|(fi, entry)| {
@@ -59,34 +48,6 @@ pub fn component_instances_from_props(
             Some((idx, cls, dat))
         })
         .collect();
-    migrate_legacy_material_override_records(&mut records);
     records
 }
 
-/// Fold the retired single-material override into StaticMeshComponent's
-/// hidden one-load migration field. This keeps old scene archives readable
-/// while ensuring newly saved components use only mesh-owned material slots.
-pub fn migrate_legacy_material_override_records(records: &mut Vec<(usize, String, Value)>) {
-    let Some(override_index) = records
-        .iter()
-        .position(|(_, class_name, _)| class_name == "MaterialOverrideComponent")
-    else {
-        return;
-    };
-    let legacy_data = records[override_index].2.clone();
-    let Some((_, _, mesh_data)) = records
-        .iter_mut()
-        .find(|(_, class_name, _)| class_name == "StaticMeshComponent")
-    else {
-        records.remove(override_index);
-        return;
-    };
-    let Some(mesh_object) = mesh_data.as_object_mut() else {
-        records.remove(override_index);
-        return;
-    };
-    mesh_object
-        .entry("legacy_material_override")
-        .or_insert(legacy_data);
-    records.remove(override_index);
-}

@@ -164,9 +164,9 @@ pub fn resolve_slot_material(
     let id = slot.map_or(pulsar_scenedb::AssetId::ZERO, slot_material_id);
     let loaded = slot
         .filter(|_| !id.is_zero())
-        .and_then(|slot| crate::asset_component::asset_source(slot.effective_material_asset()))
+        .and_then(|slot| helio_component::asset_component::asset_source(slot.effective_material_asset()))
         .and_then(|source| {
-            match crate::asset_component::load_asset_now(
+            match helio_component::asset_component::load_asset_now(
                 helio_mats::asset::MATERIAL_ASSET_KIND,
                 &source,
             ) {

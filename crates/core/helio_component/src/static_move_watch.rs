@@ -163,49 +163,39 @@ mod tests {
         assert_eq!(watch.poll(&replacement), vec![fixed]);
     }
 
+    /// A component that authors its object's movability, as a plugin's
+    /// (a mesh, a light) does through `MovabilityRegistration`.
+    struct AuthoredMovability(crate::components::ObjectMovability);
+
+    inventory::submit! {
+        crate::components::MovabilityRegistration {
+            origin: pulsar_plugins::origin!(),
+            of: |world, instance| world.get::<AuthoredMovability>(instance).map(|authored| authored.0),
+        }
+    }
+
     /// The movability its component instances author fixes an object; one
-    /// movable instance does not free it. (A plugin's instances, a light,
-    /// author it through `MovabilityRegistration`: the lights' tests.)
+    /// movable instance does not free it.
     #[test]
     fn an_object_is_fixed_through_its_component_instances() {
-        use crate::components::{ObjectMovability, StaticMeshComponent};
+        use crate::components::ObjectMovability;
         let mut world = World::new();
-        let attach = |world: &mut World, object, class: &str| {
-            pulsar_scene_model::attachments::spawn_instance(
+        let attach = |world: &mut World, object, movability| {
+            let instance = pulsar_scene_model::attachments::spawn_instance(
                 world,
                 object,
-                pulsar_scene_model::NewInstance::new(class),
+                pulsar_scene_model::NewInstance::new("AuthoredMovability"),
             )
-            .unwrap()
+            .unwrap();
+            world.insert(instance, AuthoredMovability(movability));
         };
         let object = world.spawn();
         world.insert(object, Transform::default());
-        let mesh = attach(&mut world, object, "StaticMeshComponent");
-        world.insert(
-            mesh,
-            StaticMeshComponent {
-                movability: ObjectMovability::Static,
-                ..Default::default()
-            },
-        );
-        let movable = attach(&mut world, object, "StaticMeshComponent");
-        world.insert(
-            movable,
-            StaticMeshComponent {
-                movability: ObjectMovability::Movable,
-                ..Default::default()
-            },
-        );
+        attach(&mut world, object, ObjectMovability::Static);
+        attach(&mut world, object, ObjectMovability::Movable);
         let free = world.spawn();
         world.insert(free, Transform::default());
-        let free_mesh = attach(&mut world, free, "StaticMeshComponent");
-        world.insert(
-            free_mesh,
-            StaticMeshComponent {
-                movability: ObjectMovability::Movable,
-                ..Default::default()
-            },
-        );
+        attach(&mut world, free, ObjectMovability::Movable);
         let mut watch = StaticMoveWatch::new(&world);
 
         nudge(&mut world, object);

@@ -1,5 +1,7 @@
-//! Virtual geometry project settings (plan:
-//! `.agents/plans/virtual-geometry.md` sections 3 item 5 and 7).
+//! Virtual geometry project settings, the meshes' (plan:
+//! `.agents/plans/virtual-geometry.md` sections 3 item 5 and 7), registered
+//! with the project's settings through
+//! `pulsar_settings::project::ProjectSettingsRegistration`.
 //!
 //! [`register`] adds the `project.virtual_geometry` namespace. It is purely
 //! additive: a settings file written before it existed has no such keys, and

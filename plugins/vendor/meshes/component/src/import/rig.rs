@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use engine_fs::virtual_fs;
 use helio_asset_compat::{ConvertedScene, ImportedClip, ImportedKey, ImportedRig};
-use helio_component::mesh_cache;
+use crate::mesh_cache;
 use plugin_editor_api::SourceSurface;
 use skeletal_assets::animation::{
     AnimationClip, BoneTrack, KeyInterpolation, Keyframe, KeyframeTangent,
@@ -34,8 +34,8 @@ use skeletal_assets::skmesh::{
     SkeletalMeshAsset, SkinnedVertex, SKMESH_EXTENSION,
 };
 
-use crate::db::{relative_key, ImportOutput};
-use crate::importer::{Imported, ImportedPart, Previous};
+use asset_import::db::{relative_key, ImportOutput};
+use asset_import::{Imported, ImportedPart, Previous};
 
 /// [`ImportOutput::kind`] of the skeleton.
 pub const KIND_SKELETON: &str = "skeleton";

@@ -4,7 +4,8 @@
 
 use engine_backend::scene::frames::make_frame;
 use engine_backend::scene::{first_fixed_in_group, SceneWorldExt, SpawnObject};
-use helio_component::components::{ObjectMovability, StaticMeshComponent};
+use helio_component::components::ObjectMovability;
+use meshes_component::components::StaticMeshComponent;
 use pulsar_scenedb::{Entity, World};
 
 fn object(world: &mut World, parent: Option<Entity>) -> Entity {

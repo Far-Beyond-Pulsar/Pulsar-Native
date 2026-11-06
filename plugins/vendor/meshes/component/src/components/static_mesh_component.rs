@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::asset_component::AssetComponentRegistration;
+use helio_component::asset_component::AssetComponentRegistration;
 use crate::mesh_cache::{MeshAssetUpload, MeshMaterialSlot, MeshSection};
-use crate::subsystems::{load_mesh_asset_upload, resolve_asset_path};
+use crate::mesh_files::load_mesh_asset_upload;
+use helio_component::subsystems::resolve_asset_path;
 use pulsar_scenedb::gpu::{BufferKey, GpuMirrorHandle, InternedGpuLease};
 use pulsar_scenedb::handle_ledger::HandleId;
 use pulsar_scenedb::{AssetId, AssetPayload, AssetView, Prefetch, Residency};
@@ -105,7 +106,7 @@ impl pulsar_scenedb::handle_ledger::ContentAddressed for MeshAssetPath {
             return HandleId::ZERO;
         };
         let abs_path =
-            crate::subsystems::resolve_asset_path(std::path::Path::new(&project_root), path);
+            helio_component::subsystems::resolve_asset_path(std::path::Path::new(&project_root), path);
         crate::mesh_cache::content_id_for_path(&abs_path)
             .map(HandleId)
             .unwrap_or(HandleId::ZERO)
@@ -356,7 +357,7 @@ pub fn mesh_source_for_file(abs: &std::path::Path) -> String {
 
 // A changed mesh file reloads its mesh asset.
 inventory::submit! {
-    crate::asset_component::AssetReloadRegistration {
+    helio_component::asset_component::AssetReloadRegistration {
         origin: pulsar_plugins::origin!(),
         kind: plugin_editor_api::AssetKind::Mesh,
         sources_for_file: |path| vec![mesh_source_for_file(path)],
@@ -1125,11 +1126,11 @@ pub struct StaticMeshComponent {
 
     /// What may change about this mesh at runtime (Pulsar-Native#837). It
     /// sets the movable flag of the mesh's draw rows ([`super::StaticMeshDraw`])
-    /// and the object's [`super::object_movability`]; levels saved before it
+    /// and the object's [`helio_component::components::object_movability`]; levels saved before it
     /// load as Static, which is how their rows were already flagged.
     #[property]
     #[serde(default)]
-    pub movability: super::ObjectMovability,
+    pub movability: helio_component::components::ObjectMovability,
 
     /// The mesh asset `mesh_asset` names, as the world resolves it
     /// (SceneDB#84): set from `mesh_asset` when a value is decoded or

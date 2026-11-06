@@ -45,6 +45,8 @@ helio-water-api = { workspace = true }
 helio-pass-water-sim = { workspace = true }
 
 [dev-dependencies]
+# A mesh to place their rows by (tests only; the crate links no mesh).
+meshes_component = { workspace = true }
 lights_component = { workspace = true }
 helio-light-api = { workspace = true }
 pollster = "=0.4.0"

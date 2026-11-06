@@ -1,17 +1,16 @@
 //! Whether the scene holds content that moves on its own (Pulsar-Native
-//! #1123, #1109): surfaces whose shader graph reads `time`, and what
-//! plugins register ([`AnimatedContentRegistration`]: particle emitters,
-//! foliage in a wind, water). While the viewport is realtime such
+//! #1123, #1109): what plugins register ([`AnimatedContentRegistration`]:
+//! meshes whose shader graph reads `time`, particle emitters, foliage in a
+//! wind, water). While the viewport is realtime such
 //! content changes every frame with no scene write, so the editor renderer
 //! keeps rendering instead of going idle.
 //!
 //! The answer depends only on the authored components, so it is
 //! re-checked only when one of the components it reads changed (through
 //! SceneDB change cursors), never per frame, and not when an object merely
-//! moves: a drag changes the world every frame (Pulsar-Native#995), and the
-//! check walks every mesh's material slots.
+//! moves: a drag changes the world every frame (Pulsar-Native#995), and a
+//! check may walk every mesh's material slots.
 
-use helio_component::components::{mesh_reads_time, StaticMeshComponent};
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::{ChangeCursor, ChangeRead, World};
 
@@ -59,10 +58,8 @@ impl AnimatedContent {
             None => true,
         };
         if fresh {
-            self.cursors = vec![
-                world.open_change_cursor::<StaticMeshComponent>(),
-                world.open_change_cursor::<attachments::ComponentOwner>(),
-            ];
+            // Enabling or disabling an instance writes its owner link.
+            self.cursors = vec![world.open_change_cursor::<attachments::ComponentOwner>()];
             self.cursors.extend(
                 pulsar_plugins::registered::<AnimatedContentRegistration>()
                     .map(|registration| (registration.watch)(world)),
@@ -94,19 +91,11 @@ impl AnimatedContent {
     }
 }
 
-/// Animated content in `world`: a mesh drawn with a shader graph that
-/// reads the frame clock, or a plugin's animated content.
+/// Animated content in `world`: a plugin's (a mesh drawn with a shader
+/// graph that reads the frame clock, a particle emitter, ...).
 pub(super) fn animated(world: &World) -> bool {
-    animated_graph_materials(world)
-        || pulsar_plugins::registered::<AnimatedContentRegistration>()
-            .any(|registration| (registration.animated)(world))
-}
-
-fn animated_graph_materials(world: &World) -> bool {
-    world
-        .query::<&StaticMeshComponent>()
-        .filter(|(instance, _)| attachments::is_enabled(world, *instance))
-        .any(|(_, mesh)| mesh_reads_time(mesh))
+    pulsar_plugins::registered::<AnimatedContentRegistration>()
+        .any(|registration| (registration.animated)(world))
 }
 
 #[cfg(test)]
@@ -130,13 +119,10 @@ mod tests {
         }
         assert_eq!(content.checks, 1);
 
-        // An edit of a component the answer reads checks again.
-        pulsar_world_registry::attach_value(&mut world, object, StaticMeshComponent::default())
-            .unwrap();
-        assert!(
-            !content.live(&world),
-            "a mesh without a timed graph is still"
-        );
+        // Attaching a component (its owner link) checks again.
+        let instance = world.spawn();
+        world.insert(instance, attachments::ComponentOwner::new(object, true));
+        assert!(!content.live(&world), "nothing animated was added");
         assert_eq!(content.checks, 2);
 
         // A new world is checked from scratch.

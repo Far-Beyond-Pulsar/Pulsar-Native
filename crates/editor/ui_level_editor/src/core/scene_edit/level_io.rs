@@ -310,14 +310,11 @@ pub(crate) fn log_record_migrations(
     records: &pulsar_class::records::RecordMigrations,
     path: &Path,
 ) {
-    for id in &records.material_overrides {
-        tracing::info!(object = %id, path = %path.display(), "Folded MaterialOverrideComponent into the mesh's material slots");
+    for (id, what) in &records.plugins {
+        tracing::info!(object = %id, path = %path.display(), "{what}");
     }
     for (id, class) in &records.nested {
         tracing::info!(object = %id, class = %class, path = %path.display(), "Rewrote flat component data to the class's shape");
-    }
-    for id in &records.mesh_asset_props {
-        tracing::info!(object = %id, path = %path.display(), "Turned props.mesh_asset into a StaticMeshComponent");
     }
     for (id, keys) in &records.stripped_props {
         tracing::info!(object = %id, path = %path.display(), ?keys, "Removed component copies from object props");

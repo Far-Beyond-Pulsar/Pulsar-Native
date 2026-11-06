@@ -10,7 +10,7 @@
 //! buffers, and uniforms and tables go through the shared upload pool only
 //! when their bytes change.
 
-use crate::gpu::{BindGroupCache, ReadbackRing, Uploads};
+use engine_backend::gpu::{BindGroupCache, ReadbackRing, Uploads};
 use helio_core::{
     BufferHandle, BufferKey, SceneDerivation, SceneDerivationContext, SceneDerivationOutput,
 };
@@ -130,8 +130,8 @@ pub struct AuthoredLodSelection {
 }
 
 struct ActiveLodAsset {
-    _mesh: Arc<helio_component::components::LoadedMesh>,
-    _gpu: helio_component::components::LoadedMeshGpuLease,
+    _mesh: Arc<crate::components::LoadedMesh>,
+    _gpu: crate::components::LoadedMeshGpuLease,
 }
 
 /// Demand copies in flight at once: the frames the GPU may run behind, plus
@@ -761,14 +761,14 @@ impl AuthoredLodSelection {
         };
         self.active_assets.retain(|asset, active| {
             self.requested_assets.contains(asset)
-                && helio_component::components::mesh_asset_content_version(*asset)
+                && crate::components::mesh_asset_content_version(*asset)
                     == Some(active._mesh.content_id)
         });
         for asset in self.requested_assets.iter().copied() {
             if self.active_assets.contains_key(&asset) {
                 continue;
             }
-            let Some(residency) = helio_component::components::mesh_asset_residency(asset) else {
+            let Some(residency) = crate::components::mesh_asset_residency(asset) else {
                 continue;
             };
             if !residency.is_resident() {
@@ -777,7 +777,7 @@ impl AuthoredLodSelection {
             let Ok(mesh) = residency.get() else {
                 continue;
             };
-            match helio_component::components::acquire_mesh_asset_gpu_lease(mirror, asset, &mesh) {
+            match crate::components::acquire_mesh_asset_gpu_lease(mirror, asset, &mesh) {
                 Ok(gpu) => {
                     self.active_assets.insert(
                         asset,
@@ -829,7 +829,7 @@ impl AuthoredLodSelection {
             // Prefetch starts on SceneDB's asset loader workers. The
             // SceneDB residency cache still owns the RAM budget; this
             // view retains only asset identities, never every payload.
-            drop(helio_component::components::prefetch_mesh_asset(asset));
+            drop(crate::components::prefetch_mesh_asset(asset));
         }
         self.requested_assets = rows;
         if self.lod_selection_signature != Some(selection_signature) {
@@ -912,7 +912,7 @@ const _: [(); SECTION_ROW_BYTES as usize] = [(); std::mem::size_of::<AssetSectio
 mod tests {
     use super::*;
     use bytemuck::{Pod, Zeroable};
-    use helio_component::components::LODLevelGpu;
+    use crate::components::LODLevelGpu;
     use helio_core::GpuCameraUniforms;
     use std::sync::Arc;
 

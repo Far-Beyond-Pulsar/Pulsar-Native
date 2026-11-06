@@ -154,7 +154,7 @@ name = "LODComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::lod_component"
+owner = "meshes_component::components::lod_component"
 disposition = "render, Phase 4: each render view selects an authored mesh asset by camera distance and bias, requests its SceneDB residency, leases shared GPU geometry while selected, and patches static draw rows. A generation marker rebuilds draw grouping when selection or residency changes; an unavailable level falls back to the base static mesh. Independent of meshlet/virtual-geometry LOD"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_mesh)"
@@ -165,10 +165,10 @@ name = "VirtualGeometryComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::virtual_geometry_component"
+owner = "meshes_component::components::virtual_geometry_component"
 disposition = "render, virtual geometry (.agents/plans/virtual-geometry.md): optional per-instance overrides (enabled, tier lock, lod error scale, force root only, shadow caster) for a static mesh's virtual-geometry rendering; a mesh without it uses the global defaults. Its derived VgOverrideGpu row is written on every insert, write, removal and replay; the VirtualGeometryInstances derivation joins it on the GPU to the owner's mesh instances. A VG-active instance's authored LODComponent is inert (plan item 7). The default deferred graph draws it (helio-presets virtual_geometry): VirtualGeometryHost builds and streams the mesh's .vgeo, and the cluster passes shade into the G-buffer. Not declared unfinished (no tracking issue)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/helio_component/src/components/virtual_geometry_component.rs (tests); crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
+test = "plugins/vendor/meshes/component/src/components/virtual_geometry_component.rs (tests); plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs; crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs"
 status = "verified"
 
 [[class]]
@@ -343,7 +343,7 @@ name = "SkeletalMeshComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::skeletal_mesh_component"
+owner = "meshes_component::components::skeletal_mesh_component"
 disposition = "render: a skinned mesh named by typed asset ids (mesh, skeleton, animation) that SceneDB loads and binds; it writes the shared mesh pools plus its skin stream and bone palette, and a derived StaticMeshDraw row, so the scene join draws it like a static mesh with the palette applied in mesh space. Its tick advances playback; a physics pose can replace the animated one"
 target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
 test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
@@ -354,7 +354,7 @@ name = "StaticMeshComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-owner = "helio_component::components::static_mesh_component"
+owner = "meshes_component::components::static_mesh_component"
 disposition = "render: its pools and derived draw rows (static_mesh_draw_*) follow every write; the scene join builds draw and material rows on the GPU (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
@@ -415,16 +415,16 @@ status = "verified"
 
 [[schema]]
 type = "StaticMeshDraw"
-path = "helio_component::components::static_mesh_draw::StaticMeshDraw"
+path = "meshes_component::components::static_mesh_draw::StaticMeshDraw"
 buffers = ["static_mesh_draw_bounds", "static_mesh_draw_flags", "static_mesh_draw_sections"]
 clears_on_remove = false
 releases_var_len = true
 registered = true
 writer = "StaticMeshComponent's second GPU registration (bounds, movable flag, sections with materials resolved from the slots), on every insert, write, removal and replay"
-owner = "helio_component::components::static_mesh_draw"
+owner = "meshes_component::components::static_mesh_draw"
 disposition = "keep: the scene join's per-instance mesh draw input (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -466,7 +466,7 @@ writer = "pulsar_scene_model::attachments (spawn_instance, set_enabled); written
 owner = "pulsar_scene_model::attachments"
 disposition = "keep: the instance-to-object link of D1; the scene join reads it to place, enable and generation-check every mesh and light instance (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -639,13 +639,13 @@ status = "verified"
 
 [[schema]]
 type = "SkeletalMeshComponent"
-path = "helio_component::components::skeletal_mesh_component::SkeletalMeshComponent"
+path = "meshes_component::components::skeletal_mesh_component::SkeletalMeshComponent"
 buffers = ["builtin_mesh_index", "builtin_mesh_vertex", "skeletal_bone_palette", "skeletal_skin_vertices"]
 clears_on_remove = true
 releases_var_len = true
 registered = true
 writer = "its own SceneDB dispatch (geometry in the shared mesh pools, skin vertices, current and previous bone palettes) and the derived StaticMeshDraw registration (bounds, movable flag, one section per mesh section), on every insert, write, removal and replay"
-owner = "helio_component::components::skeletal_mesh_component"
+owner = "meshes_component::components::skeletal_mesh_component"
 disposition = "keep: the authored skinned mesh instance; the scene join draws it from its own rows joined to its owner"
 target_contract = "SceneDB#84; 03-gpu-reflection-and-rendering.md"
 test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
@@ -653,13 +653,13 @@ status = "unverified"
 
 [[schema]]
 type = "StaticMeshComponent"
-path = "helio_component::components::static_mesh_component::StaticMeshComponent"
+path = "meshes_component::components::static_mesh_component::StaticMeshComponent"
 buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
 clears_on_remove = true
 releases_var_len = true
 registered = true
 writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; a mesh_asset write names the mesh by AssetId and SceneDB's asset table loads the geometry off the write path and binds it; each slot's material is counted as a reference by the handle collector and bound into `materials` the same way, and the draw reads only what was bound (SceneDB#84)"
-owner = "helio_component::components::static_mesh_component"
+owner = "meshes_component::components::static_mesh_component"
 disposition = "keep: the authored mesh instance; the scene join draws it from its own rows joined to its owner (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
@@ -667,16 +667,16 @@ status = "verified"
 
 [[schema]]
 type = "VirtualGeometryComponent"
-path = "helio_component::components::virtual_geometry_component::VirtualGeometryComponent"
+path = "meshes_component::components::virtual_geometry_component::VirtualGeometryComponent"
 buffers = ["vg_instance_overrides"]
 clears_on_remove = true
 releases_var_len = true
 registered = true
 writer = "its own SceneDB var-len dispatch: one VgOverrideGpu row (authored flags, tier lock, sanitised error scale) refreshed on decode and on every write of an authored property, freed on removal"
-owner = "helio_component::components::virtual_geometry_component"
+owner = "meshes_component::components::virtual_geometry_component"
 disposition = "keep: the per-instance virtual-geometry overrides; the VirtualGeometryInstances derivation reads them (vg_instance_overrides, vg_instance_overrides::handles)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
+test = "plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[schema]]
@@ -886,7 +886,7 @@ writer = "none in Pulsar: Helio's scene join publishes rows of this layout (`sta
 owner = "helio_pass_gbuffer::components"
 disposition = "replaced for Pulsar (Phase 2): the layout is the object-batch pass input the join writes; the component itself remains a Helio demo/pass-owned type (D2 migration scope, Phase 4)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[schema]]
@@ -1818,7 +1818,7 @@ consumers = ["engine_backend"]
 owner = "pulsar_scene_model::components::Transform"
 disposition = "keep: an object's world transform; the scene join places mesh and light instances by it"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -1828,7 +1828,7 @@ consumers = ["engine_backend"]
 owner = "helio_component StaticMeshComponent (interned index pool handle table)"
 disposition = "keep: a mesh instance's index range; the scene join reads it per instance"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -1838,27 +1838,27 @@ consumers = ["engine_backend", "helio_component"]
 owner = "helio_component StaticMeshComponent (interned vertex pool handle table)"
 disposition = "keep: a mesh instance's vertex range; the scene join reads it per instance"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
 key = "vg_instance_overrides"
 producers = ["VirtualGeometryComponent"]
 consumers = ["helio_component"]
-owner = "helio_component::components::virtual_geometry_component (VgOverrideGpu pool)"
+owner = "meshes_component::components::virtual_geometry_component (VgOverrideGpu pool)"
 disposition = "keep: a VirtualGeometryComponent's one override row; the VirtualGeometryInstances derivation scatters it to its owner object"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
+test = "plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
 key = "vg_instance_overrides::handles"
 producers = []
 consumers = ["helio_component"]
-owner = "helio_component::components::virtual_geometry_component (handle table, keyed by component entity)"
+owner = "meshes_component::components::virtual_geometry_component (handle table, keyed by component entity)"
 disposition = "keep: the range of a VirtualGeometryComponent's override row; a zero count means no component"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
+test = "plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
@@ -1868,7 +1868,7 @@ consumers = ["helio_component"]
 owner = "helio_component::virtual_geometry_instances (VirtualGeometryInstances scene derivation output)"
 disposition = "keep: execution data. One GpuVgInstance row per VG-active static-mesh instance (asset slot, flags incl. INST_LOD_SUPPRESS and INST_CONE_CULL, error scale, first-section row in static_objects), compacted in instance order and rebuilt on the GPU only when an input changed; the virtual-geometry passes read it by key. Valid rows: vg_instance_count"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
+test = "plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
@@ -1878,7 +1878,7 @@ consumers = ["helio_component"]
 owner = "helio_component::virtual_geometry_instances (VirtualGeometryInstances scene derivation output)"
 disposition = "keep: execution data. Word 0 is the number of valid rows in vg_instances"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs"
+test = "plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs"
 status = "unverified"
 
 [[buffer]]
@@ -1888,7 +1888,7 @@ consumers = ["engine_backend", "helio_component"]
 owner = "helio_component::virtual_geometry_instances (output); engine_backend::scene::authored_lod (reader)"
 disposition = "keep: a generic per-object-entity flag buffer; non-zero makes the authored-LOD selection skip the object because another system (virtual geometry) draws its detail (plan item 7). Neither side knows the other's types"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs; crates/core/engine_backend/src/scene/authored_lod.rs (gpu_selection_changes_with_the_current_view_camera)"
+test = "plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs; crates/core/engine_backend/src/scene/authored_lod.rs (gpu_selection_changes_with_the_current_view_camera)"
 status = "unverified"
 
 [[buffer]]
@@ -1908,7 +1908,7 @@ consumers = ["helio_component"]
 owner = "helio_component::virtual_geometry_host (VgAssetReadyPublisher scene derivation output, rows from helio_vg_stream::VgRuntime); helio_component::virtual_geometry_instances (reader)"
 disposition = "keep: per-asset readiness rows (VgAssetReadyRow: interned vertex offset, asset slot, ready flag) sorted by vertex offset; an instance is VG-active only once its asset's root pages are resident"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/helio_component/tests/virtual_geometry_instances_gpu.rs (test-built rows); crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (published from the runtime)"
+test = "plugins/vendor/meshes/component/tests/virtual_geometry_instances_gpu.rs (test-built rows); crates/editor/ui_level_editor/tests/virtual_geometry_acceptance.rs (published from the runtime)"
 status = "verified"
 
 [[buffer]]
@@ -1918,7 +1918,7 @@ consumers = []
 owner = "helio_component::components::light_component::source_row"
 disposition = "keep: a light instance in its own space, derived from LightComponent on every write; the scene join's light input"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -1935,40 +1935,40 @@ status = "verified"
 key = "static_mesh_draw_bounds"
 producers = ["StaticMeshDraw"]
 consumers = []
-owner = "helio_component::components::static_mesh_draw"
+owner = "meshes_component::components::static_mesh_draw"
 disposition = "keep: a mesh instance's local bounds; the scene join transforms them for culling"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
 key = "static_mesh_draw_flags"
 producers = ["StaticMeshDraw"]
 consumers = []
-owner = "helio_component::components::static_mesh_draw"
+owner = "meshes_component::components::static_mesh_draw"
 disposition = "keep: a mesh instance's object-row flags (movable); static/movable edits reach the draw rows through it"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
 key = "static_mesh_draw_sections"
 producers = ["StaticMeshDraw"]
 consumers = []
-owner = "helio_component::components::static_mesh_draw"
+owner = "meshes_component::components::static_mesh_draw"
 disposition = "keep: one draw section with its resolved material per mesh section; one output object row per pool slot"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
 key = "static_mesh_draw_sections::handles"
 producers = []
 consumers = ["engine_backend", "helio_component"]
-owner = "helio_component::components::static_mesh_draw"
+owner = "meshes_component::components::static_mesh_draw"
 disposition = "keep: a mesh instance's section range in the sections pool"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2288,7 +2288,7 @@ consumers = ["engine_backend", "helio-presets", "helio-pass-object-batch", "heli
 owner = "helio-scene-derivations scene join (execution output; Helio demos still insert StaticObjectComponent)"
 disposition = "keep: draw rows are joined on the GPU from authored mesh instances, owner transform and visibility each frame the inputs change (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
 status = "verified"
 
 [[buffer]]
@@ -2935,9 +2935,9 @@ status = "verified"
 
 [[site]]
 pattern = "asset-kind"
-file = "crates/core/helio_component/src/components/skeletal_mesh_component.rs"
+file = "plugins/vendor/meshes/component/src/components/skeletal_mesh_component.rs"
 count = 3
-owner = "helio_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
+owner = "meshes_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
 disposition = "keep: the skeletal mesh, skeleton and animation sequence kinds. Their loaders decode the asset files on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh or pose"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
@@ -2945,9 +2945,9 @@ status = "unverified"
 
 [[site]]
 pattern = "asset-binding"
-file = "crates/core/helio_component/src/components/skeletal_mesh_component.rs"
+file = "plugins/vendor/meshes/component/src/components/skeletal_mesh_component.rs"
 count = 3
-owner = "helio_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
+owner = "meshes_component::components::skeletal_mesh_component (register_skeletal_mesh_assets)"
 disposition = "keep: binds a loaded skeletal mesh, skeleton or animation into SkeletalMeshComponent and refreshes its pose; the world calls them for every component naming the asset, on load and on reload"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "none: no test covers SkeletalMeshComponent yet; the rigged import is covered by crates/core/asset_import/tests/rigged_import.rs"
@@ -2955,9 +2955,9 @@ status = "unverified"
 
 [[site]]
 pattern = "asset-kind"
-file = "crates/core/helio_component/src/components/static_mesh_component.rs"
+file = "plugins/vendor/meshes/component/src/components/static_mesh_component.rs"
 count = 1
-owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
+owner = "meshes_component::components::static_mesh_component (register_mesh_assets)"
 disposition = "keep: the mesh kind. Its loader reads and decodes the mesh file on a SceneDB worker; a missing or corrupt file fails the asset and its components show no mesh"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/core/helio_component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"
@@ -2965,9 +2965,9 @@ status = "verified"
 
 [[site]]
 pattern = "asset-binding"
-file = "crates/core/helio_component/src/components/static_mesh_component.rs"
+file = "plugins/vendor/meshes/component/src/components/static_mesh_component.rs"
 count = 1
-owner = "helio_component::components::static_mesh_component (register_mesh_assets)"
+owner = "meshes_component::components::static_mesh_component (register_mesh_assets)"
 disposition = "keep: binds a loaded mesh into StaticMeshComponent (vertices, indices, interned geometry); a failed load binds the empty mesh. The world calls it for every component naming the asset, on load and on reload"
 target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
 test = "crates/core/helio_component/tests/static_mesh_assets.rs (mesh_assets_load_replace_and_survive_bad_input)"

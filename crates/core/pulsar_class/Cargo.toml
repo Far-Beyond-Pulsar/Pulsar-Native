@@ -11,6 +11,8 @@ pulsar_reflection     = { workspace = true }
 pulsar_world_registry = { workspace = true }
 engine_class_derive   = { workspace = true }
 inventory             = { workspace = true }
+# Plugins' record migrations are gated by their origin.
+pulsar_plugins        = { workspace = true }
 serde                 = { workspace = true, features = ["derive"] }
 serde_json            = { workspace = true }
 tracing               = { workspace = true }

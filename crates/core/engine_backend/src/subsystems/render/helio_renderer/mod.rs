@@ -6,7 +6,9 @@ pub mod core;
 pub mod fly_camera;
 mod gizmo_geometry;
 mod gpu_trace;
+pub mod host_parts;
 mod interaction;
+pub use interaction::{content_triangles, ContentGeometryRegistration, SceneInteraction};
 pub mod pipelines;
 pub mod project_settings;
 pub mod render_features;
@@ -20,6 +22,7 @@ pub use core::{
     RenderSpikeLogConfig,
 };
 pub use fly_camera::FlyCamera;
+pub use host_parts::{RenderHostPart, RenderHostPartRegistration};
 pub use render_features::{
     EditorLines, EditorLinesRegistration, RenderFeatureRegistration, ViewOverscanRegistration,
 };
@@ -29,6 +32,6 @@ pub use renderer::{
     ViewportDebugLegend, ViewportDebugView, CAMERA_PIVOT_DISTANCE,
 };
 pub use scene_renderer::{
-    DeviceOwner, FrameCrop, FrameProjection, FrameView, PreparedFrame, SceneRenderer,
-    SceneRendererOptions,
+    DeviceOwner, FrameCrop, FrameProjection, FrameView, HostPartSetup, PreparedFrame,
+    SceneRenderer, SceneRendererOptions,
 };

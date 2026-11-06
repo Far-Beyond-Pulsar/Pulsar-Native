@@ -493,7 +493,7 @@ pub(crate) fn load_vertex_density(
     let linked = linked_native_asset(path);
     let path = linked.as_deref().unwrap_or(path);
     let (positions, indices) = if path.extension().and_then(|ext| ext.to_str()) == Some("mesh") {
-        let asset = helio_component::subsystems::load_mesh_asset_upload(path)
+        let asset = meshes_component::mesh_files::load_mesh_asset_upload(path)
             .ok_or_else(|| native_mesh_error(path))?;
         let positions = asset
             .geometry
@@ -1249,7 +1249,7 @@ impl AssetViewerPanel {
             .native_mesh_asset
             .as_deref()
             .cloned()
-            .or_else(|| helio_component::subsystems::load_mesh_asset_upload(path));
+            .or_else(|| meshes_component::mesh_files::load_mesh_asset_upload(path));
         let Some(asset) = asset else {
             let error = native_mesh_error(path);
             log::error!("{error}");

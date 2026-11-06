@@ -23,12 +23,12 @@ use std::time::{Duration, Instant};
 
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
-use helio_component::components::{
+use installed_plugins::meshes_component::components::{
     MeshAssetPath, MeshGeometryKey, StaticMeshComponent, StaticMeshMaterialSlot,
     StaticMeshMaterialSlots, VirtualGeometryComponent,
 };
-use helio_component::mesh_cache::MeshSection;
-use pulsar_settings::project::virtual_geometry::{VirtualGeometryMode, VirtualGeometrySettings};
+use installed_plugins::meshes_component::mesh_cache::MeshSection;
+use installed_plugins::meshes_component::vg_settings::{VirtualGeometryMode, VirtualGeometrySettings};
 use std::collections::HashMap;
 use ui_level_editor::commands::{execute_command, SceneCommand};
 use ui_level_editor::scene_edit::{MeshType, ObjectType, Transform};
@@ -115,7 +115,7 @@ fn crowd_mesh() -> StaticMeshComponent {
         material_slots: StaticMeshMaterialSlots {
             slots: vec![StaticMeshMaterialSlot {
                 name: "crowd".into(),
-                surface_override: Some(helio_component::mesh_cache::ImportedSurfaceMaterial {
+                surface_override: Some(installed_plugins::meshes_component::mesh_cache::ImportedSurfaceMaterial {
                     base_color: [0.9, 0.55, 0.2, 1.0],
                     roughness: 0.7,
                     metallic: 0.0,
@@ -382,8 +382,7 @@ impl Harness {
         let start = Instant::now();
         loop {
             let _ = self.frames(renderer, 4);
-            if renderer
-                .virtual_geometry_runtime()
+            if installed_plugins::meshes_component::host_part::virtual_geometry_runtime(&renderer)
                 .expect("the viewport renderer is built")
                 .any_ready()
             {
@@ -409,8 +408,7 @@ impl Harness {
         let start = Instant::now();
         loop {
             let _ = self.frames(renderer, 6);
-            let stats = renderer
-                .virtual_geometry_runtime()
+            let stats = installed_plugins::meshes_component::host_part::virtual_geometry_runtime(&renderer)
                 .expect("the viewport renderer is built")
                 .tier3_stats();
             if done(stats.frames_rt) {
@@ -472,10 +470,9 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     renderer.set_editor_camera_state(harness.camera);
 
     // ── NonRT: the baseline, and the proof that tiles go dense ───────────
-    renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
     harness.until_ready(&mut renderer);
-    let runtime = renderer
-        .virtual_geometry_runtime()
+    let runtime = installed_plugins::meshes_component::host_part::virtual_geometry_runtime(&renderer)
         .expect("the viewport renderer is built")
         .clone();
     let nonrt = validated(&harness, "ForceNonRtFallback", || {
@@ -531,7 +528,7 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     );
 
     // ── Auto ─────────────────────────────────────────────────────────────
-    renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::Auto)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(settings(VirtualGeometryMode::Auto)));
     if !harness.rt {
         let frame = validated(&harness, "Auto (no RT)", || {
             harness.frames(&mut renderer, 12)
@@ -623,7 +620,7 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     assert!(after.dense_tiles_processed > 0, "{after:?}");
 
     // ── ForceNonRtFallback after RT: the RT machinery goes quiet ─────────
-    renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
     let _ = harness.frames(&mut renderer, 4);
     let quiet_from = runtime.tier3_stats();
     let forced = validated(&harness, "ForceNonRtFallback after RT", || {
@@ -650,7 +647,7 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
 
     // ── Off and ForceHwRaster never run Tier 3 at all ────────────────────
     for mode in [VirtualGeometryMode::ForceHwRaster, VirtualGeometryMode::Off] {
-        renderer.set_virtual_geometry_settings(Some(settings(mode)));
+        installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(settings(mode)));
         let from = runtime.tier3_stats();
         validated(&harness, mode.as_str(), || {
             let _ = harness.frames(&mut renderer, 8);
@@ -674,10 +671,9 @@ fn auto_without_ray_queries_is_the_fallback() {
     let state = scene();
     let mut renderer = HelioRenderer::new(state.scene.shared_scene());
     renderer.set_editor_camera_state(harness.camera);
-    renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::Auto)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(settings(VirtualGeometryMode::Auto)));
     harness.until_ready(&mut renderer);
-    let runtime = renderer
-        .virtual_geometry_runtime()
+    let runtime = installed_plugins::meshes_component::host_part::virtual_geometry_runtime(&renderer)
         .expect("the viewport renderer is built")
         .clone();
     let frame = validated(&harness, "Auto without RT", || {
@@ -708,10 +704,9 @@ fn dense_mask_is_stable_on_a_static_scene_and_the_peel_drops_nothing() {
     let state = scene();
     let mut renderer = HelioRenderer::new(state.scene.shared_scene());
     renderer.set_editor_camera_state(harness.camera);
-    renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
     harness.until_ready(&mut renderer);
-    let runtime = renderer
-        .virtual_geometry_runtime()
+    let runtime = installed_plugins::meshes_component::host_part::virtual_geometry_runtime(&renderer)
         .expect("the viewport renderer is built")
         .clone();
     let mailbox = renderer.editor_mailbox();
@@ -782,7 +777,7 @@ fn tier_view_paints_resolved_dense_tiles() {
     let state = scene();
     let mut renderer = HelioRenderer::new(state.scene.shared_scene());
     renderer.set_editor_camera_state(harness.camera);
-    renderer.set_virtual_geometry_settings(Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(settings(VirtualGeometryMode::ForceNonRtFallback)));
     harness.until_ready(&mut renderer);
     let mailbox = renderer.editor_mailbox();
     mailbox.set_viewport_debug_mode(helio_vg_format::debug_view::VgDebugView::DenseMask.id());

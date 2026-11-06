@@ -473,10 +473,12 @@ fn packaged_game_runs_from_a_clean_directory() {
     // name the same file, which loads once and is shared.
     let cache = shipped.path().join("asset-cache");
     assert!(std::fs::read_dir(&cache).unwrap().next().is_some());
+    // The meshes plugin's line of the report (`ContentReportRegistration`).
+    let meshes = &report.world["meshes"];
+    let (components, bound) = (meshes["components"].as_u64(), meshes["bound"].as_u64());
     assert!(
-        report.meshes.components >= 2 && report.meshes.bound == report.meshes.components,
-        "floor and minion meshes bound: {:?}",
-        report.meshes
+        components.is_some_and(|components| components >= 2) && bound == components,
+        "floor and minion meshes bound: {meshes}"
     );
     let text = log.text();
     let loaded: Vec<&str> = text

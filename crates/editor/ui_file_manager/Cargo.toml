@@ -20,7 +20,6 @@ engine_fs = { workspace = true, features = ["editor"] }
 # Reflection system
 pulsar_reflection = { workspace = true }
 engine_state.workspace = true
-helio_component.workspace = true
 asset_import.workspace = true
 parking_lot = { workspace = true }
 tracing.workspace = true
@@ -41,6 +40,8 @@ notify = { workspace = true }
 rust-i18n.workspace = true
 
 [dev-dependencies]
+# The tests' stand-in model importer (`asset_import::ImporterRegistration`).
+inventory = { workspace = true }
 tempfile = { workspace = true }
 # Headless `TestAppContext` windows for the import-action test
 # (`utils/import_state.rs`). Test binaries only.
