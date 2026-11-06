@@ -132,6 +132,23 @@ impl Frame {
         }
     }
 
+    /// With `RENDER_ACCEPTANCE_DUMP_DIR` set, writes where this frame's depth
+    /// differs from `reference` (white) as `<name>.png`.
+    fn dump_depth_change(&self, reference: &Frame, name: &str) {
+        let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") else {
+            return;
+        };
+        let side = (self.depth.len() as f64).sqrt() as u32;
+        let mask: Vec<u8> = reference
+            .depth
+            .iter()
+            .zip(&self.depth)
+            .map(|(a, b)| if depth_differs(*a, *b) { 255 } else { 0 })
+            .collect();
+        let path = std::path::Path::new(&dir).join(format!("{name}.png"));
+        image::save_buffer(&path, &mask, side, side, image::ColorType::L8).expect("write dump");
+    }
+
     /// With `RENDER_ACCEPTANCE_DUMP_DIR` set, writes the color image as `<name>.png`.
     fn dump(&self, name: &str) {
         let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") else {
@@ -983,8 +1000,10 @@ fn environment_components_reach_the_frame() {
     camera.view_id = 0;
     camera.settings.exposure_compensation = -3.0;
     let mut water = WaterVolumeComponent::default();
-    // A pool around the mesh, its surface through the mesh's centre.
+    // A pool around the mesh, its surface through the mesh's centre: a
+    // bounded volume (an ocean reaches the horizon wherever its owner is).
     water.size = [radius * 3.0; 3];
+    water.bounded = true;
 
     let cases: Vec<(&str, TypedComponent)> = vec![
         ("global fog", TypedComponent::new(fog)),
@@ -998,6 +1017,7 @@ fn environment_components_reach_the_frame() {
         drop_mesh(&mut state);
         let mut renderer = harness.renderer(&state);
         let before = harness.frames(&mut renderer, || {});
+        before.dump(&format!("environment_{}_before", label.replace(' ', "_")));
         let added = execute_command(
             &mut state,
             SceneCommand::AddObjectWithComponents {
@@ -1035,6 +1055,7 @@ fn environment_components_reach_the_frame() {
             // is the frame without it.
             move_to(&mut state, &id, [radius * 100.0, 0.0, 0.0]);
             let away = harness.frames(&mut renderer, || {});
+            away.dump(&format!("environment_{tag}_away"));
             let change = away.difference(&before);
             println!("PHASE4   {label} moved away vs without: {change:?}");
             assert!(
@@ -1051,6 +1072,7 @@ fn environment_components_reach_the_frame() {
             false
         ));
         let disabled = harness.frames(&mut renderer, || {});
+        disabled.dump(&format!("environment_{tag}_disabled"));
         let change = disabled.difference(&before);
         println!("PHASE4   {label} disabled vs without: {change:?}");
         assert!(
@@ -1119,6 +1141,7 @@ fn foliage_reaches_the_frame() {
     let id = added.affected_ids[0].clone();
     let with = settled(&mut renderer);
     with.dump("environment_foliage");
+    with.dump_depth_change(&before, "environment_foliage_depth");
     let change = with.difference(&before);
     println!("PHASE4 foliage vs without: {change:?}");
     // The scene has no light, so the blades shade dark: depth is what shows
@@ -1545,8 +1568,10 @@ fn mesh_and_light_variations_reach_the_frame() {
         let id = add_light(&mut state, [0.0, radius * 2.5, 0.0], Kind::Point, BRIGHT);
         let mut renderer = harness.renderer(&state);
         let shadowed = harness.frames(&mut renderer, || {});
+        shadowed.dump("light_shadows_on");
         set_light(&mut state, &id, "cast_shadows", Box::new(false));
         let unshadowed = harness.frames(&mut renderer, || {});
+        unshadowed.dump("light_shadows_off");
         let change = unshadowed.difference(&shadowed);
         println!(
             "PHASE7 cast_shadows off vs on: {change:?}, brightness {} -> {}",

@@ -93,10 +93,10 @@ fn sample_cascade_shadow(layer: u32, cascade_idx: u32, cascade_scale: f32, world
         return 1.0;
     }
     // LessEqual comparison samplers treat a receiver slightly nearer to the
-    // light as lit. Keep this depth-space bias per cascade so coarse cascades
-    // can compensate for their lower depth precision without moving the
-    // receiver far enough in world space to detach its shadow.
-    let receiver_depth = max(0.0, ndc.z - shadow_config.cascades[cascade_idx].depth_bias);
+    // light as lit. A cascade keeps its depth-space bias (coarse cascades
+    // compensate for lower depth precision); a local light's face biases in
+    // world space (`shadow_receiver_depth`).
+    let receiver_depth = shadow_receiver_depth(layer, world_pos, ndc.z, shadow_config.cascades[cascade_idx].depth_bias);
     let theta = hash22(frag_coord) * 6.28318530718;
 
     // OPTIMIZATION: Adaptive PCF sample count based on cascade distance

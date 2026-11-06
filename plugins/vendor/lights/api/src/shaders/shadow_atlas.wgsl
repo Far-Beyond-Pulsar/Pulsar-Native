@@ -46,6 +46,31 @@ fn budget_valid(layer:u32,disabled:u32)->bool {
     let m=shadow_matrices[layer];
     return m.policy.w==0u || (m.policy.w==2u && m.atlas.z>0.0 && (m.policy.y&disabled)==0u);
 }
+// Texels of a local light's face a receiver is moved toward the light before
+// its depth is compared (`shadow_receiver_depth`): the PCF kernel's radius.
+const SHADOW_RECEIVER_TEXELS: f32 = 2.0;
+
+// The depth a receiver at `world_pos` (projected to `ndc_z`) compares against
+// face `layer`, biased toward the light. A directional cascade is
+// orthographic, its depth linear: `ortho_bias` in depth. A local light's face
+// is a forward perspective (near plane 5 cm), whose depths crowd toward 1
+// with distance (a caster and its receiver tens of metres away differ by
+// ~1e-5), so a constant depth bias swallows every shadow: the receiver moves
+// `SHADOW_RECEIVER_TEXELS` of the face's footprint at its distance toward the
+// light, in world space, and is projected again (Unity HDRP and Unreal bias
+// local lights in world units for the same reason).
+fn shadow_receiver_depth(layer:u32,world_pos:vec3f,ndc_z:f32,ortho_bias:f32)->f32 {
+    let m=shadow_matrices[layer].mat;
+    // Row 3 is the view depth's gradient for a perspective face, zero for an
+    // orthographic one.
+    let row3=vec3f(m[0][3],m[1][3],m[2][3]);
+    if dot(row3,row3)<1e-12 {return max(0.0,ndc_z-ortho_bias);}
+    let w=dot(row3,world_pos)+m[3][3];
+    let focal=length(vec3f(m[0][0],m[1][0],m[2][0]));
+    let texel=2.0*w/(max(focal,1e-6)*budget_resolution(layer));
+    let clip=m*vec4f(world_pos-normalize(row3)*(SHADOW_RECEIVER_TEXELS*texel),1.0);
+    return clamp(clip.z/max(clip.w,1e-6),0.0,1.0);
+}
 fn budget_strength(layer:u32)->f32 {
     let m=shadow_matrices[layer];return select(m.atlas.w,1.0,m.policy.w==0u);
 }

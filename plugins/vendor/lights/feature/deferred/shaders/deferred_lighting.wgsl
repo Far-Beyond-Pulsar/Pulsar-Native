@@ -362,7 +362,7 @@ fn sample_cascade_shadow(
         return 1.0;
     }
 
-    let receiver_depth = max(0.0, ndc.z - shadow_config.cascades[cascade_idx].depth_bias);
+    let receiver_depth = shadow_receiver_depth(layer, world_pos, ndc.z, shadow_config.cascades[cascade_idx].depth_bias);
 
     let filter_radius = (2.0 / budget_resolution(layer)) * cascade_scale;
 
