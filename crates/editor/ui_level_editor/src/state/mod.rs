@@ -75,6 +75,10 @@ pub struct LevelEditorState {
     /// Shared progress for scene hydration and Helio renderer initialization.
     /// Every viewport in this editor reads the same task set for its overlay.
     pub editor_loading: EditorLoadingProgress,
+
+    /// Ephemeral placement override consumed by `extend::add_object` during a
+    /// context-menu create action. It is never persisted with the level.
+    pub(crate) pending_create_position: Option<[f64; 3]>,
 }
 
 #[derive(Clone, Default)]
@@ -168,6 +172,7 @@ impl Default for LevelEditorState {
             build: BuildDomain::default(),
             play: PlayDomain::default(),
             editor_loading: EditorLoadingProgress::default(),
+            pending_create_position: None,
         }
     }
 }
@@ -189,6 +194,7 @@ impl LevelEditorState {
             build: self.build.clone(),
             play: self.play.clone(),
             editor_loading: self.editor_loading.clone(),
+            pending_create_position: None,
         }
     }
 }

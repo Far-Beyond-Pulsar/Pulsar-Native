@@ -71,6 +71,9 @@ actions!(
 #[action(namespace = level_editor)]
 pub struct AddObjectOfType {
     pub object_type: String,
+    /// World-space placement point captured when a viewport context menu opens.
+    #[serde(default)]
+    pub world_position: Option<[f64; 3]>,
 }
 
 #[derive(gpui::Action, Clone, PartialEq, Deserialize, JsonSchema)]

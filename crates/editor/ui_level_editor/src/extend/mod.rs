@@ -142,6 +142,10 @@ pub fn add_object(
     transform: Transform,
     components: Vec<TypedComponent>,
 ) -> CommandResult {
+    let mut transform = transform;
+    if let Some(position) = state.pending_create_position {
+        transform.position = position;
+    }
     let result = execute_command(
         state,
         SceneCommand::AddObjectWithComponents {

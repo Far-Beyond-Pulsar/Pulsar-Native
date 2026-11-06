@@ -89,6 +89,7 @@ impl LevelEditorMenus {
                 label(),
                 AddObjectOfType {
                     object_type: entry.id.to_string(),
+                world_position: None,
                 },
             );
         }
