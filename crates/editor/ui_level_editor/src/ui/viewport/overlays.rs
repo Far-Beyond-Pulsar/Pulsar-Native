@@ -4,9 +4,8 @@ use super::*;
 
 use crate::ui::toolbar::view_mode_dropdown::ViewModePickerState;
 use rust_i18n::t;
-use ui::button::Button;
 use ui::IconName;
-use ui::StyledExt as _;
+use ui::button::Button;
 
 impl ViewportPanel {
     /// The view-mode picker this viewport shows: its own when it was split off,
@@ -153,7 +152,6 @@ impl ViewportPanel {
                     .top(px(view.overlays.positions.viewport.1))
                     .left(px(view.overlays.positions.viewport.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
                     .child(components::viewport_options::render_viewport_options(
                         state,
@@ -173,7 +171,6 @@ impl ViewportPanel {
                     .top(px(view.overlays.positions.camera.1))
                     .right(px(view.overlays.positions.camera.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
                     .child(components::camera_selector::render_camera_selector(
                         view,
@@ -208,7 +205,6 @@ impl ViewportPanel {
                         .max_h(px(360.0))
                         .overflow_y_scroll()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                         .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
                         .child((overlay.panel)(&overlay_context, cx)),
                 );
@@ -342,7 +338,6 @@ impl ViewportPanel {
                     .left(relative(0.5))
                     .ml(px(-16.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
                     .child(
                         Button::new("viewport_camera_sync")

@@ -17,6 +17,14 @@ pub fn create(state: &mut LevelEditorState, id: &str) -> CommandResult {
     crate::extend::create(state, id)
 }
 
+/// Add an object at a viewport context-menu's captured world-space point.
+pub fn create_at(state: &mut LevelEditorState, id: &str, position: [f64; 3]) -> CommandResult {
+    state.pending_create_position = Some(position);
+    let result = crate::extend::create(state, id);
+    state.pending_create_position = None;
+    result
+}
+
 fn shell_object(
     state: &mut LevelEditorState,
     name: &str,

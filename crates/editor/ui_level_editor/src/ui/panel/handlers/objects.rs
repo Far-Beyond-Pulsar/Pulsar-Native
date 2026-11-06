@@ -39,7 +39,11 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) {
         let mut state = self.shared_state.write();
-        crate::scene_edit::create::create(&mut state, &action.object_type);
+        if let Some(position) = action.world_position {
+            crate::scene_edit::create::create_at(&mut state, &action.object_type, position);
+        } else {
+            crate::scene_edit::create::create(&mut state, &action.object_type);
+        }
         drop(state);
         cx.notify();
     }
