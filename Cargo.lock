@@ -18046,9 +18046,11 @@ dependencies = [
 name = "water-examples"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "env_logger",
  "glam 0.33.5",
  "helio",
+ "helio-asset-compat",
  "helio-bake",
  "helio-components",
  "helio-core",
@@ -18059,10 +18061,14 @@ dependencies = [
  "helio-mesh-api",
  "helio-mesh-host",
  "helio-pass-debug-overlay",
+ "helio-pass-flare",
  "helio-pass-forward-lit",
  "helio-pass-gi",
+ "helio-pass-lens",
  "helio-pass-perf-overlay",
+ "helio-pass-postprocess",
  "helio-pass-sky",
+ "helio-pass-tsr",
  "helio-pass-water-sim",
  "helio-presets",
  "image",

@@ -18,6 +18,9 @@ name = "oil_rig_night"
 path = "oil_rig_night.rs"
 
 [dependencies]
+helio-asset-compat = { workspace = true }
+helio-pass-tsr = { workspace = true }
+helio-pass-postprocess = { workspace = true }
 helio-light-host = { workspace = true }
 helio-light-api = { workspace = true }
 helio-mesh-host = { workspace = true }
@@ -35,6 +38,9 @@ helio-pass-forward-lit = { workspace = true }
 helio-pass-perf-overlay = { workspace = true }
 helio-pass-gi = { workspace = true }
 helio-pass-sky = { workspace = true, features = ["host-rows"] }
+helio-pass-lens = { workspace = true }
+helio-pass-flare = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
 helio-pass-water-sim = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg"] }
@@ -47,3 +53,7 @@ pulsar_scenedb_derive = { workspace = true }
 scenedb-inspector-agent = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
+
+[[bin]]
+name = "coastal_showcase"
+path = "coastal_showcase.rs"

@@ -1,7 +1,12 @@
 //! The sky's scene rows: the atmosphere components' rows (a row join, see
 //! `helio_scene_join::RowJoin`); a planet placed at its owner is centred on
 //! the owner's position.
-use helio_scene_join::{placement::*, BufferKey, RowJoin, RowJoinKeys, RowTable};
+use helio_scene_join::{BufferKey, Placement, RowJoin, RowJoinKeys, RowTable};
+
+/// An atmosphere centred on its owner (`rows_atmospheres.wgsl`): reads the owner's
+/// transform without writing positions (the pass rebases the centre).
+const ATMOSPHERE_PLACEMENT: Placement =
+    Placement::new("atmospheres", include_str!("rows_atmospheres.wgsl")).reads_owner();
 
 /// Words of the atmosphere row ([`crate::AtmosphereRow`]).
 const ATMOSPHERE_WORDS: u32 = (std::mem::size_of::<crate::AtmosphereRow>() / 4) as u32;
@@ -23,7 +28,8 @@ pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, atmospheres: BufferK
             atmospheres,
             ATMOSPHERE_SOURCE_ROW_BYTES,
             ATMOSPHERE_WORDS,
-            CENTRED,
-        )],
+            0,
+        )
+        .placed_by(ATMOSPHERE_PLACEMENT)],
     )
 }

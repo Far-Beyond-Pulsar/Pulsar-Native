@@ -105,7 +105,7 @@ fn emitter_vertex(vertex: u32, instance: u32) -> VertexOutput {
     let cell_size = max(max(shore_params.center_extent.z, shore_params.center_extent.w) / 512.0, 1e-4);
     for (var band = 0u; band < 3u; band++) {
         let damp = select(1.0, smoothstep(2.0, 26.0, depth), band == 0u)
-                 * select(1.0, smoothstep(-0.4, 2.0, depth) * mix(0.55, 1.0, smoothstep(0.0, 10.0, depth)), band > 0u);
+                 * select(1.0, smoothstep(0.0, 2.0, depth) * mix(0.55, 1.0, smoothstep(0.0, 10.0, depth)), band > 0u);
         let spectrum_uv = fract((world_xz + ocean_phase.patches[band].xy) / PATCHES[band]);
         let lod = max(log2(max(cell_size, 1e-4) * 256.0 / PATCHES[band]) + 1.0, 0.0);
         height += textureSampleLevel(ocean_displacement, ocean_sampler, spectrum_uv, i32(band), lod).y * damp;

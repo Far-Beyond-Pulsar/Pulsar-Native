@@ -15,7 +15,7 @@ mod common;
 use common::{
     box_mesh, make_material, new_scene_db_with_gpu_mirror, point_light, scene_db_handle,
     spawn_light, spawn_material, spawn_mesh, spawn_object, spawn_sky, spawn_water_volume,
-    WaterVolumeDescriptor,
+    SurfaceCapture, WaterVolumeDescriptor,
 };
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
@@ -23,6 +23,24 @@ use helio::{
 };
 use helio_pass_water_sim::WaterSimPass;
 use pulsar_scenedb::{Entity, SceneDb};
+
+/// Small authored objects placed at the waterline for reflection and refraction
+/// captures. Keep this data separate from the renderer so the scene can be
+/// restyled without changing the water setup.
+#[derive(Clone, Copy)]
+struct WaterlineProp {
+    position: [f32; 3],
+    half_extents: [f32; 3],
+    color: [f32; 4],
+    roughness: f32,
+}
+
+const WATERLINE_PROPS: &[WaterlineProp] = &[
+    WaterlineProp { position: [-7.0, 0.55, 23.0], half_extents: [1.0, 0.55, 0.8], color: [0.72, 0.24, 0.08, 1.0], roughness: 0.42 },
+    WaterlineProp { position: [-7.0, 1.75, 23.0], half_extents: [0.72, 0.62, 0.62], color: [0.82, 0.57, 0.18, 1.0], roughness: 0.34 },
+    WaterlineProp { position: [7.0, 0.6, 20.0], half_extents: [0.78, 0.6, 0.78], color: [0.05, 0.34, 0.48, 1.0], roughness: 0.22 },
+    WaterlineProp { position: [16.0, 0.45, 7.0], half_extents: [0.52, 0.45, 0.52], color: [0.9, 0.36, 0.08, 1.0], roughness: 0.28 },
+];
 
 use winit::{
     application::ApplicationHandler,
@@ -33,6 +51,7 @@ use winit::{
 };
 
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 
 fn main() {
@@ -53,6 +72,7 @@ struct AppState {
     queue: Arc<wgpu::Queue>,
     surface_format: wgpu::TextureFormat,
     renderer: Renderer,
+    capture: SurfaceCapture,
     last_frame: std::time::Instant,
 
     cam_pos: glam::Vec3,
@@ -89,6 +109,7 @@ impl ApplicationHandler for App {
         );
 
         let size = window.inner_size();
+        let capture = SurfaceCapture::from_env();
         let mut graphics = pollster::block_on(helio::HelioGraphicsContext::new(
             window.clone(),
             size.width.max(1),
@@ -96,6 +117,7 @@ impl ApplicationHandler for App {
             helio::HelioGraphicsConfig {
                 vr_support: true,
                 application_name: "Oil Rig Night".into(),
+                surface_usage: capture.usage(),
                 ..Default::default()
             },
         ))
@@ -118,7 +140,45 @@ impl ApplicationHandler for App {
             .expect("Helio renderer");
         let surface = graphics.surface;
 
-        spawn_sky(&mut scene_db.world, [0.02, 0.03, 0.08]);
+        let sky_id = spawn_sky(&mut scene_db.world, [1.0, 0.92, 0.78]);
+        let time_of_day = std::env::var("WATER_TIME_OF_DAY").unwrap_or_else(|_| "night".into());
+        let (sun_direction, sun_color, sun_intensity, ambient) = match time_of_day.as_str() {
+            "dawn" => ([0.15, -0.18, -0.97], [1.0, 0.48, 0.24], 1.1, [0.10, 0.075, 0.09]),
+            "day" => ([0.12, -0.96, -0.25], [1.0, 0.97, 0.9], 2.0, [0.15, 0.18, 0.22]),
+            "sunset" => ([0.25, -0.12, -0.96], [1.0, 0.36, 0.17], 0.8, [0.09, 0.055, 0.08]),
+            _ => ([0.2, -0.9, -0.3], [0.36, 0.47, 0.72], 0.025, [0.045, 0.06, 0.08]),
+        };
+        // A real directional emitter drives atmospheric scattering and cloud
+        // lighting. The HDR panorama below is a separate appearance layer.
+        let sun = helio_light_api::GpuLight {
+            position_range: [0.0, 0.0, 0.0, f32::MAX],
+            direction_outer: [sun_direction[0], sun_direction[1], sun_direction[2], 0.0],
+            color_intensity: [sun_color[0], sun_color[1], sun_color[2], sun_intensity],
+            shadow_index: u32::MAX,
+            light_type: helio_light_api::LightType::Directional as u32,
+            ..Default::default()
+        };
+        spawn_light(&mut scene_db.world, sun);
+        if let Some(mut sky) = scene_db
+            .world
+            .get_mut::<helio_pass_sky::host_rows::AtmosphereComponent>(sky_id)
+        {
+            sky.clouds_enabled = 1;
+            sky.cloud_bottom = 1.2;
+            sky.cloud_top = 5.5;
+            sky.cloud_coverage = 0.72;
+            sky.cloud_type = 0.78;
+            sky.cloud_wind = [7.0, 0.0, -3.0];
+            sky.night_sky_enabled = u32::from(time_of_day == "night");
+            sky.shooting_stars_enabled = u32::from(time_of_day == "night");
+            if time_of_day == "sunset" {
+                if let Ok(hdri) = std::env::var("WATER_HDRI_PATH") {
+                    sky.sky_texture_source = helio_pass_sky::sky_texture::custom_source(Path::new(&hdri));
+                    sky.sky_texture_intensity = 1.0;
+                    sky.sky_texture_opacity = 0.8;
+                }
+            }
+        }
 
         // Ocean water volume — mid-ocean night, Beaufort 4 (~25 km/h). Static
         // appearance goes in the SceneDB descriptor; the heightfield sim's own
@@ -182,6 +242,27 @@ impl ApplicationHandler for App {
             &mut scene_db.world,
             make_material([0.25, 0.25, 0.25, 1.0], 0.6, 1.0, [0.02, 0.02, 0.02], 0.15),
         );
+
+        // A compact, data-driven prop set at the waterline. These are ordinary
+        // SceneDB objects, so the water's reflection capture and refraction see
+        // them through the same scene path as the rig.
+        let prop_mesh = spawn_mesh(
+            &mut scene_db.world,
+            box_mesh([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]),
+        );
+        for prop in WATERLINE_PROPS {
+            let material = spawn_material(
+                &mut scene_db.world,
+                make_material(prop.color, prop.roughness, 1.0, [0.0; 3], 0.0),
+            );
+            let transform = glam::Mat4::from_scale_rotation_translation(
+                glam::Vec3::from_array(prop.half_extents),
+                glam::Quat::IDENTITY,
+                glam::Vec3::from_array(prop.position),
+            );
+            let radius = glam::Vec3::from_array(prop.half_extents).length();
+            let _ = spawn_object(&mut scene_db.world, prop_mesh, material, transform, radius);
+        }
 
         // Platform base
         let platform_mesh = spawn_mesh(
@@ -266,10 +347,16 @@ impl ApplicationHandler for App {
 
         // Optional faint moon as directional component-like sky bloom (general ambient control)
         renderer.set_feature_live(helio::AmbientLight {
-            color: [0.045, 0.06, 0.08],
-            intensity: 0.08,
+            color: ambient,
+            intensity: if time_of_day == "night" { 0.08 } else { 0.25 },
         });
         renderer.set_clear_color([0.0025, 0.0035, 0.01, 1.0]);
+
+        let (cam_pos, cam_yaw, cam_pitch) = match std::env::var("WATER_CAPTURE_VIEW").as_deref() {
+            Ok("underwater") => (glam::Vec3::new(0.0, -2.0, 30.0), 0.0, 0.12),
+            Ok("side") => (glam::Vec3::new(-24.0, 7.0, 30.0), 0.52, -0.12),
+            _ => (glam::Vec3::new(0.0, 9.0, 35.0), 0.0, -0.15),
+        };
 
         self.state = Some(AppState {
             window,
@@ -278,10 +365,11 @@ impl ApplicationHandler for App {
             queue,
             surface_format: format,
             renderer,
+            capture,
             last_frame: std::time::Instant::now(),
-            cam_pos: glam::Vec3::new(0.0, 9.0, 35.0),
-            cam_yaw: std::f32::consts::PI,
-            cam_pitch: -0.15,
+            cam_pos,
+            cam_yaw,
+            cam_pitch,
             keys: HashSet::new(),
             cursor_grabbed: false,
             mouse_delta: (0.0, 0.0),
@@ -348,7 +436,7 @@ impl ApplicationHandler for App {
                 state.surface.configure(
                     &state.device,
                     &wgpu::SurfaceConfiguration {
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        usage: state.capture.usage(),
                         format: state.surface_format,
                         width: s.width,
                         height: s.height,
@@ -436,7 +524,11 @@ impl AppState {
         );
 
         common::flush_scene_db(&self.scene_db, &self.queue);
-        if let Err(e) = self.renderer.render_window_frame(&camera, &self.surface) {
+        if let Err(e) = self.capture.render_window_frame(
+            &mut self.renderer,
+            &camera,
+            &self.surface,
+        ) {
             log::error!("Render error: {:?}", e);
         }
     }

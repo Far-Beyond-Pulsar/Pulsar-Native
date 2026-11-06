@@ -20,8 +20,10 @@ pub mod ocean_fft;
 mod reflection_capture;
 pub mod shoreline;
 pub mod surface_query;
+pub mod reactivity;
 pub mod transmission;
 pub use components::WATER_HITBOXES;
+pub use reactivity::WaterReactivityPass;
 pub use components::WATER_VOLUMES;
 pub use components::{WaterHitboxRow, WaterVolumeRow};
 pub use gpu_types::*;
@@ -892,6 +894,7 @@ impl RenderPass for WaterSimPass {
             "water_caustics_deep",
             "water_planar_reflection",
             "water_planar_reflection_camera",
+            reactivity::WATER_SURFACE_DEPTH,
             helio_frame_api::color::SCENE_COLOR,
         ]
     }
@@ -920,6 +923,15 @@ impl RenderPass for WaterSimPass {
         frame.write(
             helio_core::ResourceKey::new("water_sim_sampler"),
             sampler,
+            "WaterSim",
+        );
+        // The surface's own depth: where it drew this frame. TSR's reactivity
+        // pass (`WaterReactivityPass`) reads it to say where the water is.
+        let surface_depth: &'a wgpu::TextureView =
+            unsafe { std::mem::transmute(&self.water_depth_view) };
+        frame.write(
+            helio_core::ResourceKey::new(reactivity::WATER_SURFACE_DEPTH),
+            surface_depth,
             "WaterSim",
         );
         if let Some(capture) = self.reflection_capture.as_ref() {
@@ -2147,7 +2159,9 @@ impl RenderPass for WaterSimPass {
                             view: &self.water_depth_view,
                             depth_ops: Some(wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(helio_core::depth::CLEAR),
-                                store: wgpu::StoreOp::Discard,
+                                // Kept: `WaterReactivityPass` reads where the
+                                // surface drew to tell TSR where the water is.
+                                store: wgpu::StoreOp::Store,
                             }),
                             stencil_ops: None,
                         }),
