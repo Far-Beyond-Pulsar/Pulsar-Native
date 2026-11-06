@@ -10,6 +10,8 @@ pub struct BillboardRow {
     /// pass row: metres from the frame's world origin
     /// (`Renderer::world_origin`).
     pub world_pos: [f32; 4],
+    /// xy: bounds the source image fits inside, preserving its aspect ratio;
+    /// z > 0.5: multiply size by view depth; w: reserved.
     pub scale_flags: [f32; 4],
     pub color: [f32; 4],
 }

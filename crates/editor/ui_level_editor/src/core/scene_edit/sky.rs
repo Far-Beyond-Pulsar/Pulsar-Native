@@ -8,7 +8,7 @@
 use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::World;
 
-use crate::commands::{execute_command, CommandResult, SceneCommand, TypedComponent};
+use crate::commands::{CommandResult, SceneCommand, TypedComponent, execute_command};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 
@@ -44,9 +44,55 @@ pub fn level_sky(world: &World) -> Option<LevelSky> {
     })
 }
 
-/// Add the level's sky: an object named [`SKY_OBJECT_NAME`] holding a
-/// default (Earth) `AtmosphereComponent`, as one undoable command. Refused
-/// with a message when the level already has one.
+/// Selection address of the `ordinal`th directional light attached to the
+/// unified Sky object.
+pub fn sky_directional_light(world: &World, ordinal: usize) -> Option<(String, usize)> {
+    let (_atmosphere, owner) = sky_component::level_atmosphere(world)?;
+    let object_id = world.stable_id_of(owner)?.to_string();
+    let mut found = 0usize;
+    for (component_index, instance) in engine_backend::scene::attachments::instances(world, owner)
+        .into_iter()
+        .enumerate()
+    {
+        let Some(light) = world.get::<lights_component::LightComponent>(instance) else {
+            continue;
+        };
+        if light.general.enabled
+            && light.general.light_type == lights_component::LightType::Directional
+            && engine_backend::scene::attachments::is_enabled(world, instance)
+        {
+            if found == ordinal {
+                return Some((object_id, component_index));
+            }
+            found += 1;
+        }
+    }
+    None
+}
+
+pub fn default_sun_light() -> lights_component::LightComponent {
+    let mut sun = lights_component::LightComponent::default();
+    sun.general.light_type = lights_component::LightType::Directional;
+    sun.intensity.intensity = 2.0;
+    sun.advanced.rotation_offset = [35.0, 0.0, 0.0];
+    sun
+}
+
+pub fn default_moon_light() -> lights_component::LightComponent {
+    let mut moon = lights_component::LightComponent::default();
+    moon.general.light_type = lights_component::LightType::Directional;
+    moon.color.color = [0.68, 0.76, 1.0, 1.0];
+    moon.intensity.intensity = 0.025;
+    moon.advanced.rotation_offset = [18.0, 0.0, 112.0];
+    moon.emitter_disk.enabled = true;
+    moon.emitter_disk.texture = lights_component::EmitterDiskTexture::MoonSolarSystemScopeCCBY40;
+    moon.emitter_disk.angular_radius_degrees = 2.5;
+    moon
+}
+
+/// Add the unified sky rig: an object named [`SKY_OBJECT_NAME`] with an
+/// atmosphere, a sun light, and a dim textured moon light, as one undoable
+/// command. Refused when the level already has a sky.
 pub fn create_sky(state: &mut LevelEditorState) -> CommandResult {
     execute_command(
         state,
@@ -65,9 +111,11 @@ pub fn create_sky(state: &mut LevelEditorState) -> CommandResult {
                 component_instances: None,
             },
             parent_id: None,
-            components: vec![TypedComponent::new(
-                sky_component::AtmosphereComponent::default(),
-            )],
+            components: vec![
+                TypedComponent::new(sky_component::AtmosphereComponent::default()),
+                TypedComponent::new(default_sun_light()),
+                TypedComponent::new(default_moon_light()),
+            ],
         },
     )
 }

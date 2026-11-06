@@ -6,6 +6,11 @@ use serde_json::Value;
 // Fields added later load from levels saved before them.
 #[serde(default)]
 pub struct AdvancedLightProps {
+    /// Per-light Euler rotation offset in degrees. This lets multiple lights
+    /// attached to one object keep independent directions while still
+    /// inheriting the object's world rotation.
+    #[property(category = "Advanced")]
+    pub rotation_offset: [f32; 3],
     #[property(category = "Advanced")]
     pub affects_translucency: bool,
     #[property(category = "Advanced")]
@@ -21,6 +26,7 @@ pub struct AdvancedLightProps {
 impl Default for AdvancedLightProps {
     fn default() -> Self {
         Self {
+            rotation_offset: [0.0; 3],
             affects_translucency: true,
             affects_reflections: true,
             affects_global_illumination: true,
@@ -32,6 +38,15 @@ impl Default for AdvancedLightProps {
 
 impl AdvancedLightProps {
     pub(crate) fn apply_from_component_data(&mut self, obj: &serde_json::Map<String, Value>) {
+        if let Some(arr) = obj.get("rotation_offset").and_then(|v| v.as_array())
+            && arr.len() >= 3
+        {
+            self.rotation_offset = [
+                arr[0].as_f64().unwrap_or(0.0) as f32,
+                arr[1].as_f64().unwrap_or(0.0) as f32,
+                arr[2].as_f64().unwrap_or(0.0) as f32,
+            ];
+        }
         if let Some(v) = obj.get("affects_translucency").and_then(|v| v.as_bool()) {
             self.affects_translucency = v;
         }
