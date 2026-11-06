@@ -25,6 +25,9 @@ wgpu = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 pulsar_scenedb = { workspace = true }
 serde_json = { workspace = true }
+image = { workspace = true, features = ["hdr", "exr"] }
+half = "2"
+tracing = { workspace = true }
 
 [dev-dependencies]
 # The tests author atmospheres as host rows.
@@ -32,3 +35,8 @@ helio-pass-sky = { path = ".", features = ["host-rows"] }
 helio-components = { workspace = true }
 pollster = "=0.4.0"
 naga = { version = "30", features = ["wgsl-in"] }
+
+[build-dependencies]
+sha2 = "0.10"
+ureq = "2.12"
+zip = { version = "2", default-features = false, features = ["deflate"] }

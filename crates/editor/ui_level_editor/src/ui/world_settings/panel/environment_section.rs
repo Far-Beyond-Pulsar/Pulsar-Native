@@ -3,13 +3,14 @@
 use gpui::prelude::*;
 use gpui::*;
 use ui::{
+    ActiveTheme, Disableable as _, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Disableable as _, Sizable,
+    h_flex, v_flex,
 };
 
-use crate::scene_edit::{components, objects};
-use crate::ui::world_settings::panel::sky_section::{component_property_rows, ClassProperties};
 use crate::WorldSettingsPanel;
+use crate::scene_edit::{components, objects};
+use crate::ui::world_settings::panel::sky_section::{ClassProperties, component_property_rows};
 
 const COMPONENTS: &[(&str, &str)] = &[
     ("LightComponent", "Light"),
@@ -23,7 +24,6 @@ const COMPONENTS: &[(&str, &str)] = &[
 const ADD_COMPONENTS: &[(&str, &str)] = &[
     ("LightComponent", "Point Light"),
     ("SpotLight", "Spot Light"),
-    ("DirectionalLight", "Directional Light"),
     ("GlobalFogComponent", "Global Fog"),
     ("LocalFogVolumeComponent", "Local Fog Volume"),
     ("PostProcessVolumeComponent", "Post Process"),
@@ -76,8 +76,6 @@ impl super::WorldSettingsPanelImpl {
         let presets_available =
             crate::scene_edit::environment::available(sky_component::ATMOSPHERE_CLASS)
                 && crate::scene_edit::environment::available("DirectionalLight");
-        let has_sun =
-            !lights_component::directional_lights(&self.state.read().scene.world()).is_empty();
         let presets = crate::scene_edit::environment::EnvironmentPreset::ALL
             .into_iter()
             .map(|preset| {
@@ -121,7 +119,6 @@ impl super::WorldSettingsPanelImpl {
                                     .label(format!("+ {label}"))
                                     .small()
                                     .ghost()
-                                    .disabled(class_name == "DirectionalLight" && has_sun)
                                     .on_click(cx.listener(move |panel, _event, _window, cx| {
                                         let result =
                                             crate::scene_edit::environment::create_component(

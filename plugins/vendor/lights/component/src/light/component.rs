@@ -1,9 +1,9 @@
 use engine_class_derive::engine_class;
 
 use super::sub_props::{
-    AdvancedLightProps, AttenuationLightProps, ColorLightProps, GeneralLightProps,
-    IntensityLightProps, LightFunctionProps, PerformanceLightProps, ShadowLightProps,
-    VolumetricLightProps,
+    AdvancedLightProps, AttenuationLightProps, ColorLightProps, EmitterDiskProps,
+    GeneralLightProps, IntensityLightProps, LightFunctionProps, PerformanceLightProps,
+    ShadowLightProps, VolumetricLightProps,
 };
 
 #[engine_class(category = "Rendering", default, clone, debug, serialize, deserialize)]
@@ -14,6 +14,7 @@ use super::sub_props::{
 #[category("Shadows", category_color = "#A78BFA", default_collapsed = true)]
 #[category("Volumetrics", category_color = "#7EE787", default_collapsed = true)]
 #[category("Light Function", category_color = "#22D3EE", default_collapsed = true)]
+#[category("Emitter Disk", category_color = "#D5C9FF")]
 #[category("Performance", category_color = "#FB7185", default_collapsed = true)]
 #[category("Advanced", category_color = "#9CA3AF", default_collapsed = true)]
 // Fields added later load from levels saved before them.
@@ -33,6 +34,8 @@ pub struct LightComponent {
     pub volumetrics: VolumetricLightProps,
     #[sub_props]
     pub light_function: LightFunctionProps,
+    #[sub_props]
+    pub emitter_disk: EmitterDiskProps,
     #[sub_props]
     pub performance: PerformanceLightProps,
     #[sub_props]

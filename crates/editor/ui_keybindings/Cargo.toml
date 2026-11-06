@@ -1,0 +1,22 @@
+[package]
+name = "ui_keybindings"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-ce.workspace = true
+ui = { workspace = true }
+ui_common = { workspace = true }
+window_manager = { workspace = true }
+inventory.workspace = true
+engine_state = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing.workspace = true
+
+[dev-dependencies]
+gpui-ce = { workspace = true, features = ["test-support"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 //! Environment mixer creation and presets.
 
-use crate::commands::{execute_command, CommandResult, SceneCommand, TypedComponent};
+use crate::commands::{CommandResult, SceneCommand, TypedComponent, execute_command};
 use crate::scene_edit::{LightType, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 use engine_backend::scene::SceneWorldExt;
@@ -45,31 +45,30 @@ pub fn available(name: &str) -> bool {
 
 /// Add an environment component as a separate, named scene object and select it.
 pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> CommandResult {
+    if class_name == "AtmosphereComponent" {
+        let result = crate::scene_edit::sky::create_sky(state);
+        if let Some(id) = result.affected_ids.first() {
+            execute_command(
+                state,
+                SceneCommand::SelectObject {
+                    id: Some(id.clone()),
+                },
+            );
+        }
+        return result;
+    }
     let mut object_type = ObjectType::Empty;
     let components = match class_name {
-        "AtmosphereComponent" => vec![TypedComponent::new(
-            sky_component::AtmosphereComponent::default(),
-        )],
         "WindComponent" => vec![TypedComponent::new(
             foliage_component::WindComponent::default(),
         )],
         "LightComponent" => vec![TypedComponent::new(
             lights_component::LightComponent::default(),
         )],
-        "DirectionalLight" | "SpotLight" => {
+        "SpotLight" => {
             let mut light = lights_component::LightComponent::default();
-            let (light_type, object_light_type) = if class_name == "DirectionalLight" {
-                (
-                    lights_component::LightType::Directional,
-                    LightType::Directional,
-                )
-            } else {
-                (lights_component::LightType::Spot, LightType::Spot)
-            };
-            light.general.light_type = light_type;
-            if light_type == lights_component::LightType::Directional {
-                light.intensity.intensity = 2.0;
-            }
+            let object_light_type = LightType::Spot;
+            light.general.light_type = lights_component::LightType::Spot;
             object_type = ObjectType::Light(object_light_type);
             vec![TypedComponent::new(light)]
         }
@@ -91,10 +90,8 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
         _ => return CommandResult::noop("Unknown environment component"),
     };
     let name = match class_name {
-        "AtmosphereComponent" => "Sky",
         "WindComponent" => "Wind",
         "LightComponent" => "Point Light",
-        "DirectionalLight" => "Directional Light",
         "SpotLight" => "Spot Light",
         "GlobalFogComponent" => "Global Fog",
         "LocalFogVolumeComponent" => "Local Fog Volume",
@@ -137,41 +134,19 @@ pub fn create_component(state: &mut LevelEditorState, class_name: &str) -> Comma
     result
 }
 
-/// Ensure a sky and sun exist, then apply a starter sun setup through normal
-/// undoable component and transform commands.
+/// Ensure the unified sky rig exists, then apply a starter sun setup through
+/// normal undoable component and transform commands.
 pub fn apply_preset(state: &mut LevelEditorState, preset: EnvironmentPreset) -> CommandResult {
     let mut changed = false;
     if crate::scene_edit::sky::level_sky(&state.scene.world()).is_none() {
         changed |= crate::scene_edit::sky::create_sky(state).changed;
     }
 
-    let sun = lights_component::directional_lights(&state.scene.world())
-        .first()
-        .and_then(|instance| {
-            let world = state.scene.world();
-            let owner = engine_backend::scene::attachments::owner_of(&world, *instance)?;
-            let id = world.stable_id_of(owner)?.to_string();
-            let index = engine_backend::scene::attachments::instances(&world, owner)
-                .iter()
-                .position(|candidate| candidate == instance)?;
-            Some((id, index))
-        });
-
-    let (object_id, component_index) = match sun {
-        Some(sun) => sun,
-        None => {
-            let result = crate::scene_edit::create::create(state, "light_directional");
-            changed |= result.changed;
-            let Some(id) = result.affected_ids.first().cloned() else {
-                return result;
-            };
-            let index =
-                crate::scene_edit::components::get_component_class_names(&state.scene.world(), &id)
-                    .iter()
-                    .position(|name| name == "LightComponent")
-                    .unwrap_or(0);
-            (id, index)
-        }
+    changed |= ensure_sky_lights(state);
+    let Some((object_id, component_index)) =
+        crate::scene_edit::sky::sky_directional_light(&state.scene.world(), 0)
+    else {
+        return CommandResult::noop("The Sky object has no sun light");
     };
 
     let (color, intensity, rotation) = preset.sun();
@@ -195,20 +170,49 @@ pub fn apply_preset(state: &mut LevelEditorState, preset: EnvironmentPreset) -> 
             value: Box::new(intensity),
         },
     );
-    let transform_result = execute_command(
+    let rotation_result = execute_command(
         state,
-        SceneCommand::SetTransform {
+        SceneCommand::SetComponentProperty {
             id: object_id,
-            position: None,
-            rotation: Some(rotation),
-            scale: None,
+            class_name: "LightComponent".into(),
+            component_index,
+            prop_name: "advanced.rotation_offset".into(),
+            value: Box::new(rotation),
         },
     );
-    changed |= color_result.changed || intensity_result.changed || transform_result.changed;
+    changed |= color_result.changed || intensity_result.changed || rotation_result.changed;
 
     if changed {
         CommandResult::ok(vec![])
     } else {
         CommandResult::noop("This environment preset is already applied")
     }
+}
+
+fn ensure_sky_lights(state: &mut LevelEditorState) -> bool {
+    let Some(sky) = crate::scene_edit::sky::level_sky(&state.scene.world()) else {
+        return false;
+    };
+    let mut changed = false;
+    for (ordinal, light) in [
+        crate::scene_edit::sky::default_sun_light(),
+        crate::scene_edit::sky::default_moon_light(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if crate::scene_edit::sky::sky_directional_light(&state.scene.world(), ordinal).is_some() {
+            continue;
+        }
+        changed |= execute_command(
+            state,
+            SceneCommand::AddComponent {
+                id: sky.object_id.clone(),
+                class_name: "LightComponent".into(),
+                value: Some(Box::new(light)),
+            },
+        )
+        .changed;
+    }
+    changed
 }
