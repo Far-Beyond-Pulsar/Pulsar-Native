@@ -26,8 +26,9 @@
 //! # Placement
 //!
 //! Runs after current-frame shadows on the graphics encoder. Optional scene
-//! lights/shadow atlas illuminate pass-owned SceneDB world media. Legacy PP fog
-//! remains an adapter. Publishes `fog_accum` and `fog_parameters` for compositing.
+//! lights/shadow atlas illuminate pass-owned SceneDB world media (the global and
+//! local media rows: the fog is the fog plugin's, not the post-process
+//! settings'). Publishes `fog_accum` and `fog_parameters` for compositing.
 //!
 //! # Owned resources
 //!
@@ -79,25 +80,12 @@ const FMT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 /// `ActiveMedia` up to its trailing `lights` array: 32 header words plus the
 /// volume, global and local lists of 64 each (volumetric_fog.wgsl).
-const ACTIVE_MEDIA_HEADER_BYTES: u64 = (32 + 64 * 3) * 4;
+const ACTIVE_MEDIA_HEADER_BYTES: u64 = (32 + 64 * 2) * 4;
 /// Stride of a `"scene_lights"` row (the shader's full 128-byte `GpuLight`).
 const LIGHT_ROW_BYTES: u64 = 128;
-// FogVolume's WGSL opaque prefix/suffix must agree with the PP row ABI.
-const _: () =
-    assert!(helio_pass_postprocess::GpuPostProcessUniforms::FOG_BLOCK_OFFSET.is_multiple_of(16));
-
-/// Assemble the legacy PP row layout from its Rust ABI: the opaque words
-/// before and after the fog block follow wherever PP places it.
+/// The volumetric fog shader with the snippets it reads ahead of it.
 pub fn shader_source() -> String {
-    use helio_pass_postprocess::GpuPostProcessUniforms as Uniforms;
-    let head = Uniforms::FOG_BLOCK_OFFSET / 16;
-    let tail = (std::mem::size_of::<Uniforms>() as u64
-        - Uniforms::FOG_BLOCK_OFFSET
-        - Uniforms::FOG_BLOCK_SIZE)
-        / 16;
-    let source = include_str!("../shaders/volumetric_fog.wgsl")
-        .replace("__PP_HEAD_VEC4__", &head.to_string())
-        .replace("__PP_TAIL_VEC4__", &tail.to_string());
+    let source = include_str!("../shaders/volumetric_fog.wgsl");
     // The terrain's sun occlusion (`//!use sun_occlusion`), the frame's
     // sun transmittance (`//!use sun_transmittance`) and the lights' row and
     // shadow atlas and lookup (`//!use light_list`, `//!use shadow_atlas`,
@@ -185,7 +173,7 @@ pub struct VolumetricFogPass {
     integrate_g0_bgl: wgpu::BindGroupLayout,
     integrate_bgl: wgpu::BindGroupLayout,
 
-    /// GPU-resolved view range plus the optional legacy global fog adapter.
+    /// The GPU-resolved view range (`cs_resolve`).
     fog_uniform_buf: wgpu::Buffer,
     globals_buf: wgpu::Buffer,
     shadow_sampler: wgpu::Sampler,
@@ -197,7 +185,6 @@ pub struct VolumetricFogPass {
     fallback_global: wgpu::Buffer,
     fallback_local: wgpu::Buffer,
     fallback_settings: wgpu::Buffer,
-    fallback_volumes: wgpu::Buffer,
     fallback_lights: wgpu::Buffer,
     fallback_shadow: wgpu::TextureView,
     /// Cleared to the far plane on first use: a zeroed depth reads as fully
@@ -225,7 +212,7 @@ pub struct VolumetricFogPass {
     write_idx: usize,
 
     inject_bg: [Option<wgpu::BindGroup>; 2],
-    inject_bg_key: Option<[wgpu::Buffer; 8]>,
+    inject_bg_key: Option<[wgpu::Buffer; 6]>,
     inject_shadow: Option<(
         wgpu::TextureView,
         wgpu::TextureView,
@@ -427,7 +414,6 @@ impl VolumetricFogPass {
                     count: None,
                 },
                 storage3d(9),   // scatter out
-                storage_ro(11), // SceneDB post-process volumes
                 storage_ro(14), // global world media
                 storage_ro(15), // local world media
                 storage_rw(19), // per-cluster light lists
@@ -447,13 +433,10 @@ impl VolumetricFogPass {
             label: Some("Fog SceneDB Resolve BGL"),
             entries: &[
                 storage_ro(0),
-                uniform(1),
                 uniform(2),
-                storage_ro(11), // bounded media extents grow the grid range
                 storage_rw(12),
                 storage_ro(15),
                 storage_ro(16),
-                storage_ro(17),
                 storage_rw(18),
             ],
         });
@@ -463,7 +446,6 @@ impl VolumetricFogPass {
                 uniform(1),
                 uniform(2),
                 storage_ro(3),
-                storage_ro(11),
                 storage_rw(12),
                 storage_rw(13),
                 storage_ro(14),
@@ -571,7 +553,8 @@ impl VolumetricFogPass {
 
         let fog_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Volumetric Fog Uniforms"),
-            size: helio_pass_postprocess::GpuPostProcessUniforms::FOG_BLOCK_SIZE,
+            // The shader's `FogUniforms`: 16 words.
+            size: 64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -645,12 +628,6 @@ impl VolumetricFogPass {
                 | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let fallback_volumes = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Fog Empty SceneDB Volumes"),
-            size: std::mem::size_of::<helio_pass_postprocess::GpuPostProcessVolume>() as u64,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
         let fallback_lights = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Fog Empty Lights"),
             size: 128,
@@ -694,7 +671,6 @@ impl VolumetricFogPass {
             fallback_local,
             fallback_settings,
             active_media_buf,
-            fallback_volumes,
             fallback_lights,
             fallback_shadow,
             fallback_shadow_cleared: false,
@@ -808,7 +784,7 @@ fn orthographic(camera: &helio_core::GpuCameraUniforms) -> bool {
 
 impl RenderPass for VolumetricFogPass {
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["post_process_volumes", helio_light_api::LIGHT_LIST]
+        &[helio_light_api::LIGHT_LIST]
     }
 
     fn name(&self) -> &'static str {
@@ -825,7 +801,6 @@ impl RenderPass for VolumetricFogPass {
             helio_light_api::STATIC_SHADOW_ATLAS,
             helio_light_api::SHADOW_TRANSMITTANCE,
             helio_light_api::SHADOW_MATRICES,
-            helio_pass_postprocess::POST_SETTINGS,
             helio_light_api::SUN_OCCLUSION_MAPS,
             helio_light_api::SUN_OCCLUSION_PAGES,
             helio_light_api::SUN_OCCLUSION_FRAME,
@@ -984,9 +959,6 @@ impl RenderPass for VolumetricFogPass {
             });
             self.fallback_shadow_cleared = true;
         }
-        let postprocess_buf = ctx.registry.get(helio_core::ResourceKey::new(
-            helio_pass_postprocess::POST_SETTINGS,
-        ));
         let shadow_atlas = ctx
             .registry
             .get(helio_core::ResourceKey::new(helio_light_api::SHADOW_ATLAS))
@@ -1036,11 +1008,6 @@ impl RenderPass for VolumetricFogPass {
             .get(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST))
             .map(|handle| &handle.buffer)
             .unwrap_or(&self.fallback_lights);
-        let volumes_buf = ctx
-            .scene_buffers
-            .get(helio_core::BufferKey::of("post_process_volumes"))
-            .map(|handle| &handle.buffer)
-            .unwrap_or(&self.fallback_volumes);
         let resolve_scene = |name, fallback| {
             ctx.scene_buffers
                 .get(helio_core::BufferKey::of(name))
@@ -1050,7 +1017,6 @@ impl RenderPass for VolumetricFogPass {
         let global_buf = resolve_scene("global_fog_media", &self.fallback_global);
         let local_buf = resolve_scene("local_fog_media", &self.fallback_local);
         let settings_buf = resolve_scene("volumetric_fog_settings", &self.fallback_settings);
-        let legacy_buf = resolve_scene("fog_components", &self.fallback_global);
         let shadow_matrices = ctx
             .registry
             .get::<helio_light_api::ShadowMatricesFrameData<'_>>(helio_light_api::shadow_matrices())
@@ -1066,11 +1032,9 @@ impl RenderPass for VolumetricFogPass {
             camera_buf.clone(),
             lights_buf.clone(),
             shadow_matrices.clone(),
-            volumes_buf.clone(),
             global_buf.clone(),
             local_buf.clone(),
             settings_buf.clone(),
-            legacy_buf.clone(),
         ];
         if self.inject_bg_key.as_ref() != Some(&key)
             || self
@@ -1129,13 +1093,10 @@ impl RenderPass for VolumetricFogPass {
                 &self.resolve_bgl,
                 &[
                     (0, camera_buf),
-                    (1, &self.fog_uniform_buf),
                     (2, &self.globals_buf),
-                    (11, volumes_buf),
                     (12, &self.active_media_buf),
                     (15, local_buf),
                     (16, settings_buf),
-                    (17, legacy_buf),
                     (18, &self.resolved_fog_buf),
                 ],
             ));
@@ -1146,7 +1107,6 @@ impl RenderPass for VolumetricFogPass {
                     (1, &self.fog_uniform_buf),
                     (2, &self.globals_buf),
                     (3, lights_buf),
-                    (11, volumes_buf),
                     (12, &self.active_media_buf),
                     (13, &self.indirect_buf),
                     (14, global_buf),
@@ -1172,10 +1132,6 @@ impl RenderPass for VolumetricFogPass {
                         wgpu::BindGroupEntry {
                             binding: 19,
                             resource: self.clusters_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 11,
-                            resource: volumes_buf.as_entire_binding(),
                         },
                         wgpu::BindGroupEntry {
                             binding: 12,
@@ -1311,19 +1267,6 @@ impl RenderPass for VolumetricFogPass {
         };
 
         let mut cmds = ctx.graphics_cmds();
-
-        // Optional legacy adapter. Native world media require no PP resources.
-        if let Some(postprocess_buf) = postprocess_buf {
-            cmds.copy_buffer_to_buffer(
-                postprocess_buf,
-                helio_pass_postprocess::GpuPostProcessUniforms::FOG_BLOCK_OFFSET,
-                &self.fog_uniform_buf,
-                0,
-                64,
-            );
-        } else {
-            cmds.clear_buffer(&self.fog_uniform_buf, 0, None);
-        }
 
         if let Some(query) = &self.timing_query {
             cmds.write_timestamp(query, 0);

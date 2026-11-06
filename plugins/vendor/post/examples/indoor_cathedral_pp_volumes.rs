@@ -28,7 +28,7 @@ use helio::{
 };
 use helio_bake::BakeConfig;
 use helio_pass_perf_overlay::PerfOverlayMode;
-use helio_pass_postprocess::{FogMode, PostProcessSettings, PostProcessVolumeDescriptor};
+use helio_pass_postprocess::{PostProcessSettings, PostProcessVolumeDescriptor};
 use pulsar_scenedb::{Entity, SceneDb};
 
 use std::io::{self, BufRead};
@@ -526,32 +526,29 @@ impl ApplicationHandler for App {
             },
         );
 
-        // Volume 4: the hero effect — a bounded pocket beneath the central
-        // ceiling arches. It overlaps the chandelier and stained-glass lights
-        // so their shadows become visible as shafts instead of a flat haze.
-        spawn_post_process_volume(
-            &mut scene_db.world,
-            PostProcessVolumeDescriptor {
-                bounds_min: [-9.0, 10.0, -13.0],
-                bounds_max: [9.0, 17.0, 1.0],
-                priority: 20.0,
-                blend_radius: 3.0,
-                blend_weight: 1.0,
-                unbound: false,
-                settings: PostProcessSettings {
-                    fog_enabled: true,
-                    fog_mode: FogMode::HeightBased,
-                    fog_density: 0.075,
-                    fog_height_falloff: 0.16,
-                    fog_height: 9.0,
-                    fog_start_distance: 0.0,
-                    fog_max_distance: 180.0,
-                    fog_scattering_anisotropy: 0.68,
-                    fog_color: [0.58, 0.68, 0.86],
-                    ..PostProcessSettings::default()
-                },
-                ..Default::default()
-            },
+        // The hero effect: a bounded fog pocket beneath the central ceiling
+        // arches (the fog plugin's local medium). It overlaps the chandelier
+        // and stained-glass lights so their shadows become visible as shafts
+        // instead of a flat haze.
+        let pocket = scene_db.world.spawn();
+        scene_db.world.insert(
+            pocket,
+            helio_pass_volumetric_fog::host_rows::LocalFogVolumeComponent::from(
+                helio_pass_volumetric_fog::LocalFogVolumeRow::new(
+                    [-9.0, 10.0, -13.0],
+                    [9.0, 17.0, 1.0],
+                    helio_pass_volumetric_fog::GlobalFogRow {
+                        enabled: 1,
+                        mode: helio_pass_volumetric_fog::components::fog_mode::HEIGHT,
+                        extinction: 0.075,
+                        height_falloff: 0.16,
+                        height: 9.0,
+                        anisotropy: 0.68,
+                        albedo: [0.58, 0.68, 0.86],
+                        ..Default::default()
+                    },
+                ),
+            ),
         );
 
         // Volume 2: Cool cyan entrance zone

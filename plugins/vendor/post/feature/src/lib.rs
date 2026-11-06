@@ -1,7 +1,7 @@
 //! Post-process volumes: the camera's post-process baseline and the volumes
 //! around it (SceneDB rows), blended on the GPU into the frame's post
-//! settings (`helio_pass_postprocess::POST_SETTINGS`), which the tone map and
-//! fog read. Without this feature the tone map uses its defaults.
+//! settings (`helio_pass_postprocess::POST_SETTINGS`), which the tone map
+//! reads. Without this feature the tone map uses its defaults.
 
 mod components;
 pub mod feature;

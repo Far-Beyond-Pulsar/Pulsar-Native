@@ -88,16 +88,6 @@ fn blend_settings(base: GpuPostProcessUniforms, vol: GpuPostProcessUniforms, t: 
     if overridden(mask, 37u) { r.blend_weight_vignette = base.blend_weight_vignette + (vol.blend_weight_vignette - base.blend_weight_vignette) * t; }
     if overridden(mask, 38u) { r.blend_weight_grain = base.blend_weight_grain + (vol.blend_weight_grain - base.blend_weight_grain) * t; }
     if overridden(mask, 39u) { r.blend_weight_exposure = base.blend_weight_exposure + (vol.blend_weight_exposure - base.blend_weight_exposure) * t; }
-    if overridden(mask, 40u) { r.fog_enabled = select(base.fog_enabled, vol.fog_enabled, t >= 0.5); }
-    if overridden(mask, 41u) { r.fog_mode = select(base.fog_mode, vol.fog_mode, t >= 0.5); }
-    if overridden(mask, 42u) { r.fog_density = base.fog_density + (vol.fog_density - base.fog_density) * t; }
-    if overridden(mask, 43u) { r.fog_height_falloff = base.fog_height_falloff + (vol.fog_height_falloff - base.fog_height_falloff) * t; }
-    if overridden(mask, 44u) { r.fog_start_distance = base.fog_start_distance + (vol.fog_start_distance - base.fog_start_distance) * t; }
-    if overridden(mask, 45u) { r.fog_max_distance = base.fog_max_distance + (vol.fog_max_distance - base.fog_max_distance) * t; }
-    if overridden(mask, 46u) { r.fog_height = base.fog_height + (vol.fog_height - base.fog_height) * t; }
-    if overridden(mask, 47u) { r.fog_scattering_anisotropy = base.fog_scattering_anisotropy + (vol.fog_scattering_anisotropy - base.fog_scattering_anisotropy) * t; }
-    if overridden(mask, 48u) { r.fog_color = base.fog_color + (vol.fog_color - base.fog_color) * t; }
-    if overridden(mask, 49u) { r.fog_emissive = base.fog_emissive + (vol.fog_emissive - base.fog_emissive) * t; }
     if overridden(mask, 50u) { r.hdr_output_mode = select(base.hdr_output_mode, vol.hdr_output_mode, t >= 0.5); }
     if overridden(mask, 51u) { r.hdr_max_nits = base.hdr_max_nits + (vol.hdr_max_nits - base.hdr_max_nits) * t; }
     if overridden(mask, 52u) { r.hdr_ui_brightness = base.hdr_ui_brightness + (vol.hdr_ui_brightness - base.hdr_ui_brightness) * t; }
@@ -207,39 +197,13 @@ fn cs_volume_blend(@builtin(local_invocation_index) lid: u32) {
     }
 
     var result = baseline;
-    var medium = baseline;
-    var bounded_range = 0.0;
-    var bounded_fog = false;
     let position = cameras[0].position_near.xyz;
     for (var n = 0u; n < count; n++) {
         // Bounds in the frame's space, as the environment join writes them.
         let v = pp_volumes[active_rows[n]];
         let weight = volume_weight(position, v);
         if weight > 0.0 { result = blend_settings(result, v.settings, weight, v.override_mask); }
-        if v.unbound != 0u {
-            medium = blend_settings(medium, v.settings, clamp(v.blend_weight, 0.0, 1.0), v.override_mask);
-        } else if overridden(v.override_mask, 53u) && v.settings.fog_enabled != 0u && v.settings.fog_density > 0.0 {
-            // Bounded media are evaluated in world space by the fog pass, not
-            // at the camera; they only extend the integration range here.
-            bounded_fog = true;
-            bounded_range = max(bounded_range, v.settings.fog_max_distance);
-        }
     }
-    result.fog_enabled = medium.fog_enabled;
-    result.fog_mode = medium.fog_mode;
-    result.fog_height_falloff = medium.fog_height_falloff;
-    result.fog_start_distance = medium.fog_start_distance;
-    result.fog_height = medium.fog_height;
-    result.fog_scattering_anisotropy = medium.fog_scattering_anisotropy;
-    result.fog_color = medium.fog_color;
-    result.fog_emissive = medium.fog_emissive;
-    result.fog_density = select(0.0, medium.fog_density, medium.fog_enabled != 0u);
-    var range = select(0.0, medium.fog_max_distance, medium.fog_enabled != 0u);
-    if bounded_fog {
-        result.fog_enabled = 1u;
-        range = max(range, bounded_range);
-    }
-    result.fog_max_distance = max(range, 1.0);
     blend_output = result;
 }
 

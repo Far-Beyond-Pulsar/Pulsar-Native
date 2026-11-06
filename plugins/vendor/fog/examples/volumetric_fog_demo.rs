@@ -39,7 +39,7 @@ use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererConfig,
 };
-use helio_pass_postprocess::FogMode;
+use helio_pass_volumetric_fog::components::fog_mode;
 use helio_pass_volumetric_fog::host_rows::GlobalFogComponent;
 use pulsar_scenedb::SceneDb;
 
@@ -100,7 +100,7 @@ struct AppState {
     // Medium state, written to the haze component every frame.
     fog_enabled: bool,
     shafts_enabled: bool,
-    fog_mode: FogMode,
+    fog_mode: u32,
     fog_density: f32,
     fog_anisotropy: f32,
 }
@@ -177,7 +177,7 @@ impl ApplicationHandler for App {
             haze,
             fog_enabled: true,
             shafts_enabled: true,
-            fog_mode: FogMode::Uniform,
+            fog_mode: fog_mode::UNIFORM,
             fog_density: 0.04,
             fog_anisotropy: 0.35,
         });
@@ -325,11 +325,7 @@ impl AppState {
                     dirty = true;
                 }
                 KeyCode::KeyM => {
-                    self.fog_mode = match self.fog_mode {
-                        FogMode::Uniform => FogMode::HeightBased,
-                        FogMode::HeightBased => FogMode::Smoke,
-                        FogMode::Smoke => FogMode::Uniform,
-                    };
+                    self.fog_mode = (self.fog_mode + 1) % fog_mode::COUNT;
                     dirty = true;
                 }
                 _ => {}
@@ -338,7 +334,7 @@ impl AppState {
 
         if dirty {
             println!(
-                "fog={} shafts={} mode={:?} density={:.3} g={:.2}",
+                "fog={} shafts={} mode={} density={:.3} g={:.2}",
                 self.fog_enabled,
                 self.shafts_enabled,
                 self.fog_mode,
@@ -420,7 +416,7 @@ impl AppState {
             self.haze,
             hall_haze(GlobalFogComponent {
                 enabled: self.fog_enabled as u32,
-                mode: self.fog_mode as u32,
+                mode: self.fog_mode,
                 extinction: self.fog_density,
                 albedo: [0.62, 0.70, 0.85],
                 anisotropy: self.fog_anisotropy,

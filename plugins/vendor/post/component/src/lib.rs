@@ -38,7 +38,7 @@ pub const CAMERA_POST_PROCESS_SOURCES_BUFFER: &str = "camera_postprocess_sources
 
 /// A post-process volume: its local size, then the pass row after its
 /// bounds: priority, blend radius, blend weight, unbound flag (`params`, as
-/// bits), override mask, settings and lens blocks.
+/// bits), override mask and settings.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[gpu(layout = packed, buffer = "post_process_volume_sources")]
@@ -51,8 +51,6 @@ pub struct PostProcessVolumeSourceRow {
     pub mask: [u32; 4],
     #[gpu]
     pub settings: [u32; 116],
-    #[gpu]
-    pub lens: [f32; 16],
 }
 
 /// A camera's post-process baseline (`CameraPostProcessRow`, bit for bit:
@@ -66,8 +64,6 @@ pub struct CameraPostProcessSourceRow {
     pub header: [u32; 4],
     #[gpu]
     pub settings: [u32; 116],
-    #[gpu]
-    pub lens: [f32; 16],
 }
 
 /// `bytes`, which must be exactly a `T`, as a `T`.
@@ -200,15 +196,15 @@ mod tests {
 
     #[test]
     fn rows_have_the_documented_word_counts() {
-        assert_eq!(std::mem::size_of::<PostProcessVolumeSourceRow>(), 144 * 4);
-        assert_eq!(std::mem::size_of::<CameraPostProcessSourceRow>(), 136 * 4);
+        assert_eq!(std::mem::size_of::<PostProcessVolumeSourceRow>(), 128 * 4);
+        assert_eq!(std::mem::size_of::<CameraPostProcessSourceRow>(), 120 * 4);
         assert_eq!(
             std::mem::size_of::<helio_pass_post_volumes::PostProcessVolumeRow>(),
-            148 * 4
+            132 * 4
         );
         assert_eq!(
             std::mem::size_of::<helio_pass_post_volumes::CameraPostProcessRow>(),
-            136 * 4
+            120 * 4
         );
         assert_eq!(
             std::mem::size_of::<PostProcessVolumeSourceRow>() as u64,

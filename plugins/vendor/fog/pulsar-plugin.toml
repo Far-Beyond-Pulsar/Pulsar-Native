@@ -6,8 +6,8 @@ id = "pulsar.fog"
 name = "Fog"
 description = "Global and local fog media: their components, rows and the renderer feature that integrates and composites them (volumetric fog)"
 enabled_by_default = true
-# Required because its fog modes are the post settings' (`post_component::FogMode`).
-requires = ["pulsar.post"]
+# The fog owns its media and modes (`FogMode`); it needs no other plugin.
+requires = []
 
 [modules]
 # What a game built for the project links.

@@ -54,7 +54,6 @@ pub struct FogCompositePass {
     /// counts as a possible medium.
     global_media: helio_core::SceneBufferLiveness,
     local_media: helio_core::SceneBufferLiveness,
-    legacy_media: helio_core::SceneBufferLiveness,
     /// Some source may have held a medium last frame.
     medium_last_frame: bool,
     /// No source can have held a medium this frame or last, so the grid is
@@ -167,7 +166,8 @@ impl FogCompositePass {
         // so the medium texture's contents are never read.
         let fallback_parameters = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Fog Composite Neutral Parameters"),
-            size: std::mem::size_of::<helio_pass_postprocess::GpuFogUniforms>() as u64,
+            // The fog pass's `FogUniforms` (16 words).
+            size: 64,
             usage: wgpu::BufferUsages::UNIFORM,
             mapped_at_creation: false,
         });
@@ -199,7 +199,6 @@ impl FogCompositePass {
             bind_group_key: None,
             global_media: helio_core::SceneBufferLiveness::default(),
             local_media: helio_core::SceneBufferLiveness::default(),
-            legacy_media: helio_core::SceneBufferLiveness::default(),
             medium_last_frame: true,
             fog_quiet: false,
         }
@@ -258,18 +257,12 @@ impl RenderPass for FogCompositePass {
 
     fn prepare(&mut self, ctx: &PrepareContext) -> HelioResult<()> {
         // Mirrors VolumetricFogPass's classification (`cs_classify`): a medium
-        // comes from the resolved post-process fog block, weighted volume rows,
-        // or global/local media rows. Unknown row contents count as a medium.
-        let mut medium = ctx
-            .registry
-            .get::<bool>(ResourceKey::new(
-                helio_pass_postprocess::FOG_SETTINGS_MAYBE_ACTIVE,
-            ))
-            .unwrap_or(true);
+        // comes from the global or local media rows. Unknown row contents
+        // count as a medium.
+        let mut medium = false;
         for (liveness, key) in [
             (&mut self.global_media, "global_fog_media"),
             (&mut self.local_media, "local_fog_media"),
-            (&mut self.legacy_media, "fog_components"),
         ] {
             let rows = ctx.scene_buffers.get(BufferKey::of(key));
             liveness.update(ctx.device, ctx.queue, rows);

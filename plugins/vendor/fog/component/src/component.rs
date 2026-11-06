@@ -4,7 +4,26 @@
 //! writes pass rows.
 use engine_class_derive::{engine_class, register_world_component};
 use helio_pass_volumetric_fog::GlobalFogRow as GlobalMedium;
-pub use post_component::FogMode;
+use helio_pass_volumetric_fog::components::fog_mode;
+use pulsar_reflection::Reflectable;
+use serde::{Deserialize, Serialize};
+
+/// How a medium's density varies through it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Reflectable)]
+pub enum FogMode {
+    /// Constant density everywhere inside the medium.
+    Uniform,
+    /// Density decays exponentially with height above the medium's base.
+    HeightBased,
+    /// Animated world-space billows with height falloff.
+    Smoke,
+}
+
+impl Default for FogMode {
+    fn default() -> Self {
+        Self::Uniform
+    }
+}
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Medium", category_color = "#D18F6F")]
@@ -59,9 +78,9 @@ impl MediumProps {
         GlobalMedium {
             enabled: 1,
             mode: match self.mode {
-                FogMode::Uniform => 0,
-                FogMode::HeightBased => 1,
-                FogMode::Smoke => 2,
+                FogMode::Uniform => fog_mode::UNIFORM,
+                FogMode::HeightBased => fog_mode::HEIGHT,
+                FogMode::Smoke => fog_mode::SMOKE,
             },
             extinction: self.extinction,
             albedo: self.albedo,

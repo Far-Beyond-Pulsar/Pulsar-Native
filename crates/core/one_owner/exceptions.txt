@@ -4,7 +4,3 @@
 # The list may only shrink: the test fails on a copy missing here and on a
 # line whose copy is gone.
 
-# Fog reads the post-process volumes' rows for the post settings' fog block:
-# waits on the post plugin splitting that block out of the post settings ABI
-# (a media contract), or a post api crate.
-plugins/vendor/fog/feature/src/lib.rs | "post_process_volumes" | waits on the fog block leaving the post settings

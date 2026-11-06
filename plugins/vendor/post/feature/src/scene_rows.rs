@@ -5,10 +5,10 @@
 use helio_scene_join::{placement::*, BufferKey, RowJoin, RowJoinKeys, RowTable};
 
 /// `PostProcessVolumeSourceRow`: local size vec4, then the pass row after
-/// its bounds (140 words).
-pub const POST_PROCESS_VOLUME_SOURCE_ROW_BYTES: u64 = 144 * 4;
+/// its bounds (128 words).
+pub const POST_PROCESS_VOLUME_SOURCE_ROW_BYTES: u64 = 128 * 4;
 /// `CameraPostProcessSourceRow`: the `CameraPostProcessRow` pass row.
-pub const CAMERA_POST_PROCESS_SOURCE_ROW_BYTES: u64 = 136 * 4;
+pub const CAMERA_POST_PROCESS_SOURCE_ROW_BYTES: u64 = 120 * 4;
 
 pub const POST_PROCESS_VOLUMES_KEY: BufferKey = BufferKey::of("post_process_volumes");
 pub const CAMERA_POST_PROCESS_KEY: BufferKey = BufferKey::of("camera_postprocess");
@@ -32,7 +32,7 @@ pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, sources: PostRowSour
                 POST_PROCESS_VOLUMES_KEY,
                 sources.post_process_volumes,
                 POST_PROCESS_VOLUME_SOURCE_ROW_BYTES,
-                148,
+                132,
                 OWNER_AABB | GATE_HIDDEN,
             ),
             RowTable::new(
@@ -40,7 +40,7 @@ pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, sources: PostRowSour
                 CAMERA_POST_PROCESS_KEY,
                 sources.camera_post_process,
                 CAMERA_POST_PROCESS_SOURCE_ROW_BYTES,
-                136,
+                120,
                 0,
             ),
         ],

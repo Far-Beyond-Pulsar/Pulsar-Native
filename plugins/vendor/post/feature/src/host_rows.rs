@@ -39,26 +39,21 @@ pub struct PostProcessVolumeComponent {
     pub override_mask_2: u32,
     #[gpu]
     pub override_mask_3: u32,
-    /// `crate::GpuPostProcessUniforms`'s raw bytes, split at byte 464:
-    /// reflection registers `[u32; 116]` and `[f32; 16]` but no 132-word
-    /// array. `settings` is bytes 0..464 (including the first eight words of
-    /// the lens block); `lens` is the remaining 64 bytes as raw bits, not
-    /// numeric floats. The packed derive needs `pulsar_scenedb::Pod` per
-    /// field, which `GpuPostProcessUniforms` lacks; `bytemuck::cast` between
-    /// the outer structs only needs equal size -- see `layout_matches_gpu_abi`.
+    /// `crate::GpuPostProcessUniforms`'s raw bytes (464): the packed derive
+    /// needs `pulsar_scenedb::Pod` per field, which `GpuPostProcessUniforms`
+    /// lacks; `bytemuck::cast` between the outer structs only needs equal
+    /// size -- see `layout_matches_gpu_abi`.
     #[gpu]
     pub settings: [u32; 116],
-    #[gpu]
-    pub lens: [f32; 16],
 }
 
-same_layout!(PostProcessVolumeComponent, crate::PostProcessVolumeRow, crate::POST_PROCESS_VOLUMES, "post_process_volumes"; bounds_min, bounds_max, priority, blend_radius, blend_weight, unbound, override_mask_0, override_mask_1, override_mask_2, override_mask_3, settings, lens);
+same_layout!(PostProcessVolumeComponent, crate::PostProcessVolumeRow, crate::POST_PROCESS_VOLUMES, "post_process_volumes"; bounds_min, bounds_max, priority, blend_radius, blend_weight, unbound, override_mask_0, override_mask_1, override_mask_2, override_mask_3, settings);
 
 /// Optional per-view baseline: the camera's own post-process settings,
 /// including lens flare. The first enabled row matching the camera's view id
 /// (u32 bits of `jitter_frame.w`) wins; with none, the resolver's project
 /// defaults apply. PP volumes then override on top. Removing the component
-/// clears its packed row. `settings`/`lens` split the uniforms exactly as
+/// clears its packed row. `settings` holds the uniforms' bytes as
 /// [`PostProcessVolumeComponent`] does.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
@@ -74,11 +69,9 @@ pub struct CameraPostProcessComponent {
     pub _pad1: u32,
     #[gpu]
     pub settings: [u32; 116],
-    #[gpu]
-    pub lens: [f32; 16],
 }
 
-same_layout!(CameraPostProcessComponent, crate::CameraPostProcessRow, crate::CAMERA_POSTPROCESS, "camera_postprocess"; view_id, enabled, _pad0, _pad1, settings, lens);
+same_layout!(CameraPostProcessComponent, crate::CameraPostProcessRow, crate::CAMERA_POSTPROCESS, "camera_postprocess"; view_id, enabled, _pad0, _pad1, settings);
 
 impl From<helio_pass_postprocess::GpuPostProcessVolume> for PostProcessVolumeComponent {
     fn from(value: helio_pass_postprocess::GpuPostProcessVolume) -> Self {

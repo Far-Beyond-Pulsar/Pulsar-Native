@@ -6,7 +6,7 @@
 use engine_class_derive::{engine_class, register_world_component};
 use helio_component::LensFlareProps;
 use helio_pass_postprocess::{
-    ExposureMode as HelioExposureMode, FogMode as HelioFogMode, PostProcessSettings,
+    ExposureMode as HelioExposureMode, PostProcessSettings,
     PostProcessVolumeDescriptor,
 };
 use helio_pass_postprocess::{
@@ -49,21 +49,6 @@ impl Default for TonemapOperator {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Reflectable)]
-pub enum FogMode {
-    /// Constant density everywhere inside the fog region.
-    Uniform,
-    /// Density decays exponentially with world height above `fog_height`.
-    HeightBased,
-    /// Animated world-space billows with height falloff.
-    Smoke,
-}
-impl Default for FogMode {
-    fn default() -> Self {
-        Self::Uniform
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Reflectable)]
 pub enum HdrOutputMode {
     /// Tonemap → sRGB (standard display).
     Ldr,
@@ -94,7 +79,6 @@ impl Default for HdrOutputMode {
 #[category("Motion Blur", category_color = "#3AA0FF")]
 #[category("Blend Weights", category_color = "#8F8F8F")]
 #[category("HDR Output", category_color = "#D18F6F")]
-#[category("Volumetric Fog", category_color = "#D18F6F")]
 #[category("Advanced Color Grading", category_color = "#2FA88A")]
 #[category("Lens Flare", category_color = "#E0B040")]
 #[category("Overrides", category_color = "#8F8F8F")]
@@ -179,9 +163,6 @@ pub struct PostProcessOverrides {
     pub override_motion_blur: bool,
     #[property(category = "Overrides")]
     pub override_hdr_output: bool,
-    /// Legacy PP fog. Prefer Global/Local fog components for world media.
-    #[property(category = "Overrides")]
-    pub override_volumetric_fog: bool,
     #[property(category = "Overrides")]
     pub override_lens_flare: bool,
 }
@@ -198,7 +179,6 @@ impl Default for PostProcessOverrides {
             override_film_grain: true,
             override_motion_blur: true,
             override_hdr_output: true,
-            override_volumetric_fog: true,
             override_lens_flare: false,
         }
     }
@@ -207,7 +187,7 @@ impl Default for PostProcessOverrides {
 impl PostProcessOverrides {
     pub fn mask(&self) -> [u32; 4] {
         use helio_pass_postprocess::PostProcessProperty as P;
-        let groups: [(bool, &[usize]); 11] = [
+        let groups: [(bool, &[usize]); 10] = [
             (
                 self.override_exposure,
                 &[
@@ -306,21 +286,6 @@ impl PostProcessOverrides {
                 &[P::HDR_OUTPUT_MODE, P::HDR_MAX_NITS, P::HDR_UI_BRIGHTNESS],
             ),
             (
-                self.override_volumetric_fog,
-                &[
-                    P::FOG_ENABLED,
-                    P::FOG_MODE,
-                    P::FOG_DENSITY,
-                    P::FOG_HEIGHT_FALLOFF,
-                    P::FOG_START_DISTANCE,
-                    P::FOG_MAX_DISTANCE,
-                    P::FOG_HEIGHT,
-                    P::FOG_SCATTERING_ANISOTROPY,
-                    P::FOG_COLOR,
-                    P::FOG_EMISSIVE,
-                ],
-            ),
-            (
                 self.override_lens_flare,
                 &[
                     P::LENS_ENABLED,
@@ -372,7 +337,6 @@ impl PostProcessOverrides {
 #[category("Motion Blur", category_color = "#3AA0FF")]
 #[category("Blend Weights", category_color = "#8F8F8F")]
 #[category("HDR Output", category_color = "#D18F6F")]
-#[category("Volumetric Fog", category_color = "#D18F6F")]
 #[category("Advanced Color Grading", category_color = "#2FA88A")]
 #[category("Lens Flare", category_color = "#E0B040")]
 pub struct PostProcessSettingsProps {
@@ -503,31 +467,6 @@ pub struct PostProcessSettingsProps {
     #[property(min = 0.0, max = 1000.0, step = 1.0, category = "HDR Output")]
     pub hdr_ui_brightness: f32,
 
-    // ── Volumetric Fog ──────────────────────────────────────────────────
-    #[property(category = "Volumetric Fog")]
-    pub fog_enabled: bool,
-    #[property(category = "Volumetric Fog")]
-    pub fog_mode: FogMode,
-    #[property(min = 0.0, max = 1.0, step = 0.001, category = "Volumetric Fog")]
-    pub fog_density: f32,
-    #[property(min = 0.0, max = 1.0, step = 0.001, category = "Volumetric Fog")]
-    pub fog_height_falloff: f32,
-    #[property(min = 0.0, max = 100000.0, step = 10.0, category = "Volumetric Fog")]
-    pub fog_start_distance: f32,
-    #[property(min = 0.0, max = 100000.0, step = 10.0, category = "Volumetric Fog")]
-    pub fog_max_distance: f32,
-    #[property(category = "Volumetric Fog")]
-    pub fog_height: f32,
-    /// Henyey-Greenstein g: 0 = isotropic, >0 forward-scattering (sun haze),
-    /// <0 back-scattering.
-    #[property(min = -0.999, max = 0.999, step = 0.001, category = "Volumetric Fog")]
-    pub fog_scattering_anisotropy: f32,
-    #[property(category = "Volumetric Fog")]
-    pub fog_color: [f32; 3],
-    /// Self-illumination, added independently of any light (lava glow, etc.).
-    #[property(category = "Volumetric Fog")]
-    pub fog_emissive: [f32; 3],
-
     // ── Advanced Color Grading ──────────────────────────────────────────
     #[property(category = "Advanced Color Grading")]
     pub lift_color: [f32; 3],
@@ -600,16 +539,6 @@ impl Default for PostProcessSettingsProps {
             hdr_output_mode: HdrOutputMode::Ldr,
             hdr_max_nits: 1000.0,
             hdr_ui_brightness: 200.0,
-            fog_enabled: false,
-            fog_mode: FogMode::Uniform,
-            fog_density: 0.02,
-            fog_height_falloff: 0.05,
-            fog_start_distance: 0.0,
-            fog_max_distance: 1000.0,
-            fog_height: 0.0,
-            fog_scattering_anisotropy: 0.0,
-            fog_color: [0.5, 0.6, 0.7],
-            fog_emissive: [0.0, 0.0, 0.0],
             lift_color: [0.0; 3],
             gamma_color: [0.0; 3],
             gain_color: [1.0; 3],
@@ -689,20 +618,6 @@ impl PostProcessSettingsProps {
             },
             hdr_max_nits: self.hdr_max_nits,
             hdr_ui_brightness: self.hdr_ui_brightness,
-            fog_enabled: self.fog_enabled,
-            fog_mode: match self.fog_mode {
-                FogMode::Uniform => HelioFogMode::Uniform,
-                FogMode::HeightBased => HelioFogMode::HeightBased,
-                FogMode::Smoke => HelioFogMode::Smoke,
-            },
-            fog_density: self.fog_density,
-            fog_height_falloff: self.fog_height_falloff,
-            fog_start_distance: self.fog_start_distance,
-            fog_max_distance: self.fog_max_distance,
-            fog_height: self.fog_height,
-            fog_scattering_anisotropy: self.fog_scattering_anisotropy,
-            fog_color: self.fog_color,
-            fog_emissive: self.fog_emissive,
             lift_color: self.lift_color,
             gamma_color: self.gamma_color,
             gain_color: self.gain_color,

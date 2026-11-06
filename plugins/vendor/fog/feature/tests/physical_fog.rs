@@ -353,12 +353,6 @@ fn native_media_world_space_overlap_transmittance_quality_edits_and_tombstones()
     global_bytes[12..16].copy_from_slice(&[192, 108, 128, 1]);
     let globals = buffer(&device, bytemuck::cast_slice(&global_bytes), uniform);
     let lights = buffer(&device, &[0; 128], storage);
-    let volumes = buffer(
-        &device,
-        &vec![0; std::mem::size_of::<helio_pass_postprocess::GpuPostProcessVolume>()],
-        storage,
-    );
-    let legacy = buffer(&device, &[0; 64], storage);
     let indices = buffer(&device, &[0; 1920], storage);
     let indirect = buffer(&device, &[0; 40], storage);
     let resolved = buffer(&device, &[0; 64], storage);
@@ -379,13 +373,10 @@ fn native_media_world_space_overlap_transmittance_quality_edits_and_tombstones()
             &resolve,
             &[
                 (0, &scene.camera),
-                (1, &fog),
                 (2, &globals),
-                (11, &volumes),
                 (12, &indices),
                 (15, &l.buffer),
                 (16, &s.buffer),
-                (17, &legacy),
                 (18, &resolved),
             ],
         );
@@ -396,7 +387,6 @@ fn native_media_world_space_overlap_transmittance_quality_edits_and_tombstones()
                 (1, &fog),
                 (2, &globals),
                 (3, &lights),
-                (11, &volumes),
                 (12, &indices),
                 (13, &indirect),
                 (14, &g.buffer),
@@ -409,7 +399,6 @@ fn native_media_world_space_overlap_transmittance_quality_edits_and_tombstones()
             &[
                 (1, &fog),
                 (2, &globals),
-                (11, &volumes),
                 (12, &indices),
                 (14, &g.buffer),
                 (15, &l.buffer),
@@ -584,18 +573,13 @@ fn point_shadow_cube_matches_real_matrix_producer_and_shadow_strength_adapter() 
         compare: Some(wgpu::CompareFunction::LessEqual),
         ..Default::default()
     });
-    let fog = buffer(&device, &[0; 64], wgpu::BufferUsages::UNIFORM);
+
     let globals = buffer(
         &device,
         &[0; helio_pass_volumetric_fog::FOG_GLOBALS_BYTES],
         wgpu::BufferUsages::UNIFORM,
     );
     let indices = buffer(&device, &[0; 1920], storage);
-    let volumes = buffer(
-        &device,
-        &vec![0; std::mem::size_of::<helio_pass_postprocess::GpuPostProcessVolume>()],
-        storage,
-    );
     let global = buffer(
         &device,
         &[0; std::mem::size_of::<GlobalFogComponent>()],
@@ -609,11 +593,9 @@ fn point_shadow_cube_matches_real_matrix_producer_and_shadow_strength_adapter() 
     let output = buffer(&device, &[0; 96], storage | wgpu::BufferUsages::COPY_SRC);
     let mut entries: Vec<_> = [
         (0, &scene.camera),
-        (1, &fog),
         (2, &globals),
         (3, &lights),
         (4, &matrices),
-        (11, &volumes),
         (12, &indices),
         (14, &global),
         (15, &local),

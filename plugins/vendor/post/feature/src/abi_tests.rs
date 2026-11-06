@@ -173,8 +173,8 @@ fn resolver_matches_the_rust_blender_property_by_property() {
         PostProcessProperty::set(&mut override_mask, property, true);
         resolve_mask(override_mask)
     };
-    // With no override the resolver still derives the fog medium; that part is
-    // the reference every property is compared against.
+    // With no override the resolver returns the baseline: the reference every
+    // property is compared against.
     let reference = resolve_mask(PostProcessProperty::NONE).0;
 
     // The bytes of the removed lens vignette and local exposure's pad stay
@@ -187,6 +187,10 @@ fn resolver_matches_the_rust_blender_property_by_property() {
             ..off!(GpuPostProcessUniforms, reserved_lens_vignette) + 4,
     ];
     for property in 0..PostProcessProperty::COUNT {
+        // The fog block's retired numbers override nothing.
+        if PostProcessProperty::RETIRED.contains(&property) {
+            continue;
+        }
         let (gpu, cpu) = resolve(property);
         assert_eq!(
             gpu, cpu,
@@ -199,19 +203,12 @@ fn resolver_matches_the_rust_blender_property_by_property() {
                 "property {property} wrote a reserved word"
             );
         }
-        // The medium's density and range only show once its block is enabled.
-        let gated = [
-            PostProcessProperty::FOG_DENSITY,
-            PostProcessProperty::FOG_MAX_DISTANCE,
-        ];
-        if !gated.contains(&property) {
-            assert!(gpu != reference, "property {property} overrides nothing");
-        }
+        assert!(gpu != reference, "property {property} overrides nothing");
     }
 
     // Named properties land on their fields: only those bytes change.
     use std::mem::{offset_of, size_of};
-    let fields: [(usize, usize, usize); 11] = [
+    let fields: [(usize, usize, usize); 10] = [
         (
             PostProcessProperty::BLOOM_TINT,
             offset_of!(GpuPostProcessUniforms, bloom_tint),
@@ -226,11 +223,6 @@ fn resolver_matches_the_rust_blender_property_by_property() {
             PostProcessProperty::BLEND_WEIGHT_EXPOSURE,
             offset_of!(GpuPostProcessUniforms, blend_weight_exposure),
             4,
-        ),
-        (
-            PostProcessProperty::FOG_COLOR,
-            offset_of!(GpuPostProcessUniforms, fog_color),
-            12,
         ),
         (
             PostProcessProperty::GAIN_COLOR,
@@ -277,9 +269,9 @@ fn resolver_matches_the_rust_blender_property_by_property() {
             offset + len
         );
     }
-    assert_eq!(size_of::<GpuPostProcessUniforms>(), 528);
-    assert_eq!(offset_of!(GpuPostProcessUniforms, fog_enabled), 272);
-    assert_eq!(offset_of!(GpuPostProcessUniforms, lens_enabled), 432);
+    assert_eq!(size_of::<GpuPostProcessUniforms>(), 464);
+    assert_eq!(offset_of!(GpuPostProcessUniforms, hdr_output_mode), 272);
+    assert_eq!(offset_of!(GpuPostProcessUniforms, lens_enabled), 368);
     assert_eq!(
         offset_of!(GpuPostProcessUniforms, local_exposure_highlight_contrast),
         192

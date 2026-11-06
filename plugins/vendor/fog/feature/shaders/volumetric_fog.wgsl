@@ -30,8 +30,10 @@
 //     one shadow tap per froxel enough. Without it this would need many more.
 
 // ── Fog config ──────────────────────────────────────────────────────────────
-// Byte-identical to GpuFogUniforms (64 bytes at the PP fog block).
-// The legacy block supplies a compatibility medium and the resolved view range.
+// A medium's evaluation parameters (`world_config` converts a world medium),
+// and the pass's resolved state: `cs_resolve` writes the view range into one
+// (`resolved_fog`), which the later kernels read as `fog`. It carries no medium
+// of its own: every medium is a global or local media row.
 
 struct FogUniforms {
     fog_enabled:               u32,
@@ -108,20 +110,6 @@ struct FogGlobals {
 /// rgb = in-scattered radiance * density, a = extinction.
 @group(0) @binding(9) var                scatter_out:     texture_storage_3d<rgba16float, write>;
 
-// SceneDB PP row. Only its fog block is interpreted; shader_source() derives
-// the opaque head and tail from the current Rust PP ABI.
-struct FogVolume {
-    bounds_min: vec4<f32>,
-    bounds_max: vec4<f32>,
-    priority: f32,
-    blend_radius: f32,
-    blend_weight: f32,
-    unbound: u32,
-    _pad: vec4<f32>,
-    before_fog: array<vec4<u32>, __PP_HEAD_VEC4__>,
-    medium: FogUniforms,
-    after_fog: array<vec4<u32>, __PP_TAIL_VEC4__>,
-}
 struct WorldMedium {
     enabled: u32, mode: u32, extinction: f32, height_falloff: f32,
     height: f32, anisotropy: f32, _pad: vec2<f32>,
@@ -140,7 +128,7 @@ struct RenderSettings {
     light_samples: u32, history_epoch: u32, _pad: vec2<u32>,
 }
 struct ActiveMedia {
-    volume_count: u32,
+    _reserved_header: u32,
     light_count: u32,
     previous_range: f32,
     history_compatible: u32,
@@ -159,14 +147,12 @@ struct ActiveMedia {
     previous_light_hash: u32,
     last_active: u32,
     _reserved: array<u32, 12>,
-    volumes: array<u32, 64>,
     globals: array<u32, 64>,
     locals: array<u32, 64>,
     // Every active light row, in row order; the buffer holds one slot per
     // SceneDB light row, so the list never overflows (Pulsar-Native#838).
     lights: array<u32>,
 }
-@group(0) @binding(11) var<storage, read> volumes: array<FogVolume>;
 @group(0) @binding(12) var<storage, read_write> media_list: ActiveMedia;
 // Distinct layout for classification: this buffer is never bound while used
 // as an indirect-dispatch argument (STORAGE_WRITE and INDIRECT conflict).
@@ -176,7 +162,6 @@ struct ActiveMedia {
 @group(0) @binding(14) var<storage, read> global_media: array<WorldMedium>;
 @group(0) @binding(15) var<storage, read> local_media: array<LocalMedium>;
 @group(0) @binding(16) var<storage, read> render_settings: array<RenderSettings>;
-@group(0) @binding(17) var<storage, read> legacy_media: array<FogUniforms>;
 @group(0) @binding(18) var<storage, read_write> resolved_fog: FogUniforms;
 struct Cluster { count: u32, lights: array<u32, 64> }
 @group(0) @binding(19) var<storage, read_write> clusters: array<Cluster>;
@@ -190,7 +175,6 @@ fn finite_clamp(v: f32, lo: f32, hi: f32) -> f32 {
 // read only row headers; lowest-row selection keeps results deterministic.
 const SCAN_THREADS: u32 = 256u;
 const NONE_ROW: u32 = 0xffffffffu;
-var<workgroup> wg_legacy_row: atomic<u32>;
 var<workgroup> wg_exact_row: atomic<u32>;
 var<workgroup> wg_fallback_row: atomic<u32>;
 /// Farthest distance (f32 bits; positive floats order as u32) from the camera to
@@ -205,7 +189,6 @@ fn farthest_corner_distance(camera: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> 
 @compute @workgroup_size(256)
 fn cs_resolve(@builtin(local_invocation_index) lid: u32) {
     if lid == 0u {
-        atomicStore(&wg_legacy_row, NONE_ROW);
         atomicStore(&wg_exact_row, NONE_ROW);
         atomicStore(&wg_fallback_row, NONE_ROW);
         atomicStore(&wg_media_far, 0u);
@@ -216,18 +199,10 @@ fn cs_resolve(@builtin(local_invocation_index) lid: u32) {
     // a volume would otherwise shear it off slice by slice until nothing is
     // left. The grid range grows to hold every active volume.
     let camera = cameras[0].position_near.xyz;
-    for (var i = lid; i < arrayLength(&volumes); i += SCAN_THREADS) {
-        if legacy_volume_active(volumes[i]) {
-            atomicMax(&wg_media_far, bitcast<u32>(farthest_corner_distance(camera, volumes[i].bounds_min.xyz, volumes[i].bounds_max.xyz)));
-        }
-    }
     for (var i = lid; i < arrayLength(&local_media); i += SCAN_THREADS) {
         if local_medium_active(local_media[i]) {
             atomicMax(&wg_media_far, bitcast<u32>(farthest_corner_distance(camera, local_media[i].bounds_min.xyz, local_media[i].bounds_max.xyz)));
         }
-    }
-    for (var i = lid; i < arrayLength(&legacy_media); i += SCAN_THREADS) {
-        if legacy_media[i].fog_enabled != 0u { atomicMin(&wg_legacy_row, i); }
     }
     for (var i = lid; i < arrayLength(&render_settings); i += SCAN_THREADS) {
         if render_settings[i].occupied == 0u { continue; }
@@ -238,19 +213,15 @@ fn cs_resolve(@builtin(local_invocation_index) lid: u32) {
     workgroupBarrier();
     if lid != 0u { return; }
 
-    var config = fog;
-    let legacy_row = atomicLoad(&wg_legacy_row);
-    if legacy_row != NONE_ROW { config = legacy_media[legacy_row]; }
+    // No medium of its own: only the range is resolved here.
+    var config = FogUniforms(0u, 0u, 0.0, 0.0, 0.0, 1000.0, 0.0, 0.0, vec3<f32>(0.0), 0.0, vec3<f32>(0.0), 0.0);
     // Exact view matches beat the all-view fallback; lowest row wins ties.
     var selected = atomicLoad(&wg_exact_row);
     if selected == NONE_ROW { selected = atomicLoad(&wg_fallback_row); }
     var quality = 0u;
     var epoch = 0u;
-    // The post-process fog block's range applies only when that fog is on.
-    // Disabled, the resolver reports a 1-unit placeholder range; using it
-    // would confine global and local media to the first unit of the grid.
-    var range = select(1000.0, config.fog_max_distance,
-        config.fog_enabled != 0u && config.fog_max_distance > MEDIA_NEAR);
+    // The volumetric settings' range when a row selects one, else 1 km.
+    var range = 1000.0;
     media_list.render_enabled = fog_globals.enabled;
     media_list.temporal_blend = finite_clamp(fog_globals.temporal_blend, 0.01, 1.0);
     media_list.history_rejection = 0.8;
@@ -291,10 +262,6 @@ fn cs_resolve(@builtin(local_invocation_index) lid: u32) {
 fn world_medium_active(m: WorldMedium) -> bool {
     return m.enabled != 0u && (m.extinction > 0.0 || any(m.emission > vec3<f32>(0.0)));
 }
-fn legacy_volume_active(v: FogVolume) -> bool {
-    return v.unbound == 0u && v.blend_weight > 0.0 && v.medium.fog_enabled != 0u
-        && v.medium.fog_density > 0.0 && all(v.bounds_max.xyz > v.bounds_min.xyz);
-}
 fn local_medium_active(v: LocalMedium) -> bool {
     return world_medium_active(v.medium) && all(v.bounds_max.xyz > v.bounds_min.xyz);
 }
@@ -307,11 +274,9 @@ fn hash_vector(h: u32, v: vec4<f32>) -> u32 {
     return hash_word(hash_word(hash_word(hash_word(h, bitcast<u32>(v.x)), bitcast<u32>(v.y)), bitcast<u32>(v.z)), bitcast<u32>(v.w));
 }
 
-var<workgroup> wg_volume_rows: array<u32, 64>;
 var<workgroup> wg_global_rows: array<u32, 64>;
 var<workgroup> wg_local_rows: array<u32, 64>;
 var<workgroup> wg_light_offsets: array<u32, 256>;
-var<workgroup> wg_volume_count: atomic<u32>;
 var<workgroup> wg_global_count: atomic<u32>;
 var<workgroup> wg_local_count: atomic<u32>;
 var<workgroup> wg_light_count: atomic<u32>;
@@ -346,19 +311,12 @@ fn medium_hash_of(seed: u32, m: WorldMedium) -> u32 {
 @compute @workgroup_size(256)
 fn cs_classify(@builtin(local_invocation_index) lid: u32) {
     if lid == 0u {
-        atomicStore(&wg_volume_count, 0u);
         atomicStore(&wg_global_count, 0u);
         atomicStore(&wg_local_count, 0u);
         atomicStore(&wg_light_count, 0u);
         atomicStore(&wg_light_hash, 0u);
     }
     workgroupBarrier();
-    for (var i = lid; i < arrayLength(&volumes); i += SCAN_THREADS) {
-        if volumes[i].blend_weight > 0.0 && legacy_volume_active(volumes[i]) {
-            let slot = atomicAdd(&wg_volume_count, 1u);
-            if slot < 64u { wg_volume_rows[slot] = i; }
-        }
-    }
     for (var i = lid; i < arrayLength(&global_media); i += SCAN_THREADS) {
         if global_media[i].enabled != 0u && world_medium_active(global_media[i]) {
             atomicAdd(&wg_light_hash, medium_hash_of(hash_word(0x9e3779b9u, i), global_media[i]));
@@ -411,17 +369,10 @@ fn cs_classify(@builtin(local_invocation_index) lid: u32) {
         }
     }
     workgroupBarrier();
-    let volume_total = atomicLoad(&wg_volume_count);
     let global_total = atomicLoad(&wg_global_count);
     let local_total = atomicLoad(&wg_local_count);
     let light_total = atomicLoad(&wg_light_count);
     // Rows are unique, so each element's rank is the count of smaller rows.
-    if lid < min(volume_total, 64u) {
-        let row = wg_volume_rows[lid];
-        var rank = 0u;
-        for (var j = 0u; j < min(volume_total, 64u); j++) { rank += select(0u, 1u, wg_volume_rows[j] < row); }
-        media_list.volumes[rank] = row;
-    }
     if lid < min(global_total, 64u) {
         let row = wg_global_rows[lid];
         var rank = 0u;
@@ -436,7 +387,6 @@ fn cs_classify(@builtin(local_invocation_index) lid: u32) {
     }
     if lid != 0u { return; }
 
-    media_list.volume_count = volume_total;
     media_list.global_count = global_total;
     media_list.local_count = local_total;
     media_list.light_count = light_total;
@@ -445,7 +395,7 @@ fn cs_classify(@builtin(local_invocation_index) lid: u32) {
     if media_list.previous_light_hash != light_hash { media_list.history_compatible = 0u; }
     media_list.previous_light_hash = light_hash;
     media_list.has_medium = select(0u, 1u, media_list.render_enabled != 0u &&
-        ((fog.fog_enabled != 0u && fog.fog_density > 0.0) || media_list.volume_count + media_list.global_count + media_list.local_count > 0u));
+        media_list.global_count + media_list.local_count > 0u);
     let was_active = media_list.last_active;
     if media_list.has_medium != media_list.last_active { media_list.history_compatible = 0u; }
     media_list.last_active = media_list.has_medium;
@@ -470,11 +420,9 @@ fn cs_classify(@builtin(local_invocation_index) lid: u32) {
 }
 
 // An overflow scans all rows instead of silently losing light or extinction.
-fn volume_count() -> u32 { return select(media_list.volume_count, arrayLength(&volumes), media_list.volume_count > 64u); }
 fn global_count() -> u32 { return select(media_list.global_count, arrayLength(&global_media), media_list.global_count > 64u); }
 fn local_count() -> u32 { return select(media_list.local_count, arrayLength(&local_media), media_list.local_count > 64u); }
 fn light_count() -> u32 { return media_list.light_count; }
-fn volume_index(i: u32) -> u32 { if media_list.volume_count > 64u { return i; } return media_list.volumes[i]; }
 fn global_index(i: u32) -> u32 { if media_list.global_count > 64u { return i; } return media_list.globals[i]; }
 fn local_index(i: u32) -> u32 { if media_list.local_count > 64u { return i; } return media_list.locals[i]; }
 fn light_index(i: u32) -> u32 { return media_list.lights[i]; }
@@ -631,40 +579,6 @@ fn add_world_medium(accum: FogMedium, m: WorldMedium, p: vec3<f32>, shape: f32) 
 
 fn fog_medium_at(p: vec3<f32>, view_depth: f32) -> FogMedium {
     var m: FogMedium;
-    if fog.fog_enabled != 0u && view_depth >= fog.fog_start_distance {
-        m.extinction = density_at(p, fog, FLAT);
-        if fog.fog_mode == 2u { m.smoke = m.extinction; }
-        m.albedo = clamp(fog.fog_color, vec3<f32>(0.0), vec3<f32>(1.0)) * m.extinction;
-        m.emissive = fog.fog_emissive * m.extinction;
-        m.scattering_weight = dot(m.albedo, vec3<f32>(1.0 / 3.0));
-        m.anisotropy = fog.fog_scattering_anisotropy * m.scattering_weight;
-    }
-    for (var i = 0u; i < volume_count(); i++) {
-        let v = volumes[volume_index(i)];
-        if !legacy_volume_active(v) { continue; }
-        if any(p < v.bounds_min.xyz) || any(p > v.bounds_max.xyz) { continue; }
-        // A bounded volume's box is its extent; its authored max distance is the
-        // grid range (resolve), not a second cutoff that would clip the box.
-        if view_depth < v.medium.fog_start_distance { continue; }
-        let edge = min(p - v.bounds_min.xyz, v.bounds_max.xyz - p);
-        let fade = smoothstep(0.0, max(v.blend_radius, 0.001), min(edge.x, min(edge.y, edge.z)));
-        var shape = fade;
-        if v.medium.fog_mode == 2u {
-            // A billowing pocket tapers before the AABB corners; the box is
-            // still its authoritative extent, not an opaque rectangular slab.
-            let q = (2.0 * p - v.bounds_min.xyz - v.bounds_max.xyz) / (v.bounds_max.xyz - v.bounds_min.xyz);
-            shape *= 1.0 - smoothstep(0.35, 1.0, dot(q, q));
-        }
-        let d = density_at(p, v.medium, FLAT) * clamp(v.blend_weight, 0.0, 1.0) * shape;
-        // Overlapping media add extinction/scattering, not camera-weighted screen effects.
-        m.extinction += d;
-        if v.medium.fog_mode == 2u { m.smoke += d; }
-        m.albedo += clamp(v.medium.fog_color, vec3<f32>(0.0), vec3<f32>(1.0)) * d;
-        m.emissive += v.medium.fog_emissive * d;
-        let weight = dot(clamp(v.medium.fog_color, vec3<f32>(0), vec3<f32>(1)) * d, vec3<f32>(1.0 / 3.0));
-        m.anisotropy += v.medium.fog_scattering_anisotropy * weight;
-        m.scattering_weight += weight;
-    }
     for (var i = 0u; i < global_count(); i++) {
         let config = global_media[global_index(i)];
         if world_medium_active(config) { m = add_world_medium(m, config, p, 1.0); }
@@ -723,7 +637,6 @@ fn global_optical_depth(config: FogUniforms, planet: vec4<f32>, p: vec3<f32>, di
 
 fn medium_transmittance(p: vec3<f32>, dir: vec3<f32>, distance: f32) -> f32 {
     var tau = 0.0;
-    if fog.fog_enabled != 0u { tau += global_optical_depth(fog, FLAT, p, dir, distance); }
     for (var i = 0u; i < global_count(); i++) {
         let m = global_media[global_index(i)];
         if world_medium_active(m) { tau += global_optical_depth(world_config(m), m.planet, p, dir, distance); }
@@ -744,22 +657,6 @@ fn medium_transmittance(p: vec3<f32>, dir: vec3<f32>, distance: f32) -> f32 {
                 let q = p + dir * (segment.x + (f32(j) + 0.5) * step);
                 tau += density_at(q, config, v.medium.planet) * local_shape(q, v) * step;
             }
-        }
-    }
-    for (var i = 0u; i < volume_count(); i++) {
-        let v = volumes[volume_index(i)];
-        if !legacy_volume_active(v) { continue; }
-        let segment = ray_box(p, dir, v.bounds_min.xyz, v.bounds_max.xyz, distance);
-        let step = (segment.y - segment.x) / f32(count);
-        for (var j = 0u; j < count; j++) {
-            let q = p + dir * (segment.x + (f32(j) + 0.5) * step);
-            let edge = min(q - v.bounds_min.xyz, v.bounds_max.xyz - q);
-            var shape = smoothstep(0.0, max(v.blend_radius, 0.001), min(edge.x, min(edge.y, edge.z)));
-            if v.medium.fog_mode == 2u {
-                let relative = (2.0 * q - v.bounds_min.xyz - v.bounds_max.xyz) / (v.bounds_max.xyz - v.bounds_min.xyz);
-                shape *= 1.0 - smoothstep(0.35, 1.0, dot(relative, relative));
-            }
-            tau += density_at(q, v.medium, FLAT) * clamp(v.blend_weight, 0.0, 1.0) * shape * step;
         }
     }
     return exp(-min(tau, 80.0));

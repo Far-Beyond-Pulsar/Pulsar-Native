@@ -1,17 +1,29 @@
 //! SceneDB-owned volumetric-fog parameters.
 //!
-//! Fog used to be available only as part of Helio's post-process uniform
-//! resource.  That made it impossible for the scene database to own the
-//! authored environment state.  This record is the persistent, packed row;
+//! The fog's own rows (not a block of the post-process settings): the scene
+//! database owns the authored environment state. This record is the
+//! persistent, packed row;
 //! the froxel grids and per-frame light integration remain pass-owned
 //! transient resources.
 
 /// World-space participating medium. One world unit is one metre. Overlaps add.
 /// `extinction` is sigma_a + sigma_s in m^-1, `albedo` is sigma_s / sigma_t,
 /// and `emission` is scene-linear radiance emitted per metre (independent of density).
-/// Mode: 0 uniform, 1 exponential height, 2 animated smoke with a height envelope.
+/// Mode: one of [`fog_mode`].
 /// Heights are along world Y, or above a planet (`planet`, `around_planet`).
 /// Zeroed/deleted rows are inert. No camera-distance gates apply to these media.
+/// [`GlobalFogRow::mode`] values: the shader's medium modes.
+pub mod fog_mode {
+    /// Constant density everywhere inside the medium.
+    pub const UNIFORM: u32 = 0;
+    /// Density decays exponentially with height above the medium's base.
+    pub const HEIGHT: u32 = 1;
+    /// Animated smoke with a height envelope.
+    pub const SMOKE: u32 = 2;
+    /// How many modes there are.
+    pub const COUNT: u32 = 3;
+}
+
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct GlobalFogRow {
