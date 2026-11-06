@@ -18,6 +18,7 @@ mod feature;
 #[cfg(feature = "host-rows")]
 pub mod host_rows;
 pub mod scene_rows;
+pub mod sky_texture;
 pub use atmosphere::ATMOSPHERES;
 pub use atmosphere::{
     AtmosphereCompositePass, AtmospherePass, AtmosphereRow, CloudLayer, CloudRepresentation,

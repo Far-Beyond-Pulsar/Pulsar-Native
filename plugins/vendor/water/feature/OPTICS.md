@@ -7,6 +7,13 @@ variation over the projected grid cell. Glints use a Poisson facet estimate,
 spatial LOD blending, and temporal blending to avoid hard cell and frame
 transitions.
 
+The surface also reads the joined SceneDB light list. Point and spot lights
+contribute GGX highlights above and below water and diffuse lighting on foam,
+using their color, intensity, range falloff, and spot cones. Directional rows
+are excluded from this local-light term because the sky path supplies the sun.
+Local-light shadows, IES profiles, and light functions are not yet sampled by
+the water surface; underwater volume scattering remains sun-driven.
+
 Refraction validates displaced depth against foreground depth and fades invalid
 samples back to the unshifted scene. Water-column transmission uses
 Beer-Lambert extinction with view/sun inscatter. Crest scattering and shoreline

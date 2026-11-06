@@ -1,5 +1,5 @@
-pub(crate) mod new_file_dialog;
-pub(crate) mod panels;
+mod content;
+mod new_file_dialog;
+mod sidebar;
 
 pub use new_file_dialog::render_new_file_dialog;
-pub use panels::*;
