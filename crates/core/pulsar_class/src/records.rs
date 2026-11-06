@@ -129,12 +129,11 @@ pub fn migrate_component_records(root: &mut Value) -> RecordMigrations {
 
         let object = &mut root["objects"][index];
         if lists.is_empty() {
-            let made: Vec<(Value, &'static str)> =
-                pulsar_plugins::registered::<RecordMigrationRegistration>()
-                    .filter_map(|migration| {
-                        Some((migration.from_props?(object)?, migration.description))
-                    })
-                    .collect();
+            let made: Vec<(Value, &'static str)> = pulsar_plugins::registered::<
+                RecordMigrationRegistration,
+            >()
+            .filter_map(|migration| Some((migration.from_props?(object)?, migration.description)))
+            .collect();
             if !made.is_empty() {
                 let (entries, descriptions): (Vec<Value>, Vec<&'static str>) =
                     made.into_iter().unzip();

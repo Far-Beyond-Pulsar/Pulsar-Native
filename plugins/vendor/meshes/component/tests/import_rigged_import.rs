@@ -7,17 +7,17 @@ use meshes_component as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use asset_import::{importer_for, ImportDb, ImportMode, Imported, OptionValues, Previous};
+use asset_import::{ImportDb, ImportMode, Imported, OptionValues, Previous, importer_for};
 use editor_task_queue::{TaskId, TaskStatus};
 use parking_lot::Mutex;
-use skeletal_assets::animation::{evaluate_world_transforms, AnimationClip};
+use skeletal_assets::animation::{AnimationClip, evaluate_world_transforms};
 use skeletal_assets::assets::{
-    load_animseq_asset, load_skeleton_asset, AnimSeqAsset, SkeletonAsset,
+    AnimSeqAsset, SkeletonAsset, load_animseq_asset, load_skeleton_asset,
 };
 use skeletal_assets::math::Vec3;
 use skeletal_assets::skinning::{joint_matrices, skin_lod};
 use skeletal_assets::skmesh::{
-    load_skmesh_asset, save_skmesh_asset, validate_mesh, SkeletalMeshAsset,
+    SkeletalMeshAsset, load_skmesh_asset, save_skmesh_asset, validate_mesh,
 };
 
 // ── The model ──────────────────────────────────────────────────────────────
@@ -444,10 +444,12 @@ fn an_animation_the_source_lost_stays_on_disk_and_in_the_record() {
     });
     let second = project.import(&earlier);
     assert!(gone.exists());
-    assert!(second
-        .outputs
-        .iter()
-        .any(|o| o.source_name.as_deref() == Some("Gone")));
+    assert!(
+        second
+            .outputs
+            .iter()
+            .any(|o| o.source_name.as_deref() == Some("Gone"))
+    );
 }
 
 #[test]
@@ -492,8 +494,8 @@ fn a_static_model_still_imports_to_a_plain_mesh_with_no_extra_outputs() {
     let project = Project::new();
     let root = project.root().to_path_buf();
     let source = root.join("cube.fbx");
-    let cube =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../assets/meshes/primitives/SM_Cube.fbx");
+    let cube = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../assets/meshes/primitives/SM_Cube.fbx");
     std::fs::copy(cube, &source).unwrap();
     let options = Arc::new(Mutex::new(OptionValues::new()));
 

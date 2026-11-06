@@ -169,9 +169,11 @@ fn missing_live_texture_is_an_error_but_disconnected_texture_is_not_loaded() {
     );
     adapted(&graph, 0);
     graph.nodes.get_mut("texture").unwrap().properties.clear();
-    assert!(material_graph::texture_assets(&graph)
-        .unwrap_err()
-        .contains("no texture asset"));
+    assert!(
+        material_graph::texture_assets(&graph)
+            .unwrap_err()
+            .contains("no texture asset")
+    );
 }
 
 #[test]
@@ -634,10 +636,12 @@ fn malformed_vector_properties_fail_during_graph_compilation() {
         let mut output = node("output", "fragment_output");
         output.properties.insert("base_color".into(), value);
         graph.add_node(output);
-        assert!(compile_shader(&graph)
-            .unwrap_err()
-            .to_string()
-            .contains("numeric components"));
+        assert!(
+            compile_shader(&graph)
+                .unwrap_err()
+                .to_string()
+                .contains("numeric components")
+        );
     }
 }
 

@@ -911,8 +911,8 @@ const _: [(); SECTION_ROW_BYTES as usize] = [(); std::mem::size_of::<AssetSectio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytemuck::{Pod, Zeroable};
     use crate::components::LODLevelGpu;
+    use bytemuck::{Pod, Zeroable};
     use helio_core::GpuCameraUniforms;
     use std::sync::Arc;
 

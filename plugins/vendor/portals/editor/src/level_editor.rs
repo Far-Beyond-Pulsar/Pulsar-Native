@@ -277,13 +277,14 @@ fn portal_ghost_geometry(
         world,
         &mut |object, triangle| {
             let placement = *placements.entry(object).or_insert_with(|| {
-                engine_backend::scene::hierarchy_transform::world_matrix_of(world, object)
-                    .filter(|owner_world| {
+                engine_backend::scene::hierarchy_transform::world_matrix_of(world, object).filter(
+                    |owner_world| {
                         owner_world
                             .transform_point3(DVec3::ZERO)
                             .distance_squared(target_position)
                             <= RADIUS_SQUARED
-                    })
+                    },
+                )
             });
             let Some(owner_world) = placement else {
                 return true;

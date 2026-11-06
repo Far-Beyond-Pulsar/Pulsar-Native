@@ -204,7 +204,11 @@ mod tests {
         fn options_schema(&self, _ext: &str) -> Option<asset_import::OptionsSchema> {
             None
         }
-        fn asset_path(&self, dir: &std::path::Path, source: &std::path::Path) -> std::path::PathBuf {
+        fn asset_path(
+            &self,
+            dir: &std::path::Path,
+            source: &std::path::Path,
+        ) -> std::path::PathBuf {
             dir.join(source.file_stem().unwrap_or_default())
                 .with_extension("mesh")
         }

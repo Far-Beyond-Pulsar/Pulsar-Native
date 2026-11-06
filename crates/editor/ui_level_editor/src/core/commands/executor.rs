@@ -783,13 +783,13 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 {
                     let mut world = state.scene.world_mut();
                     for id in &ids {
+                        // Every component that authors a movability (a
+                        // mesh, a light: a `movability` property of that
+                        // type) and holds another one.
                         let targets: Vec<(usize, String)> =
                             components::get_component_class_names(&world, id)
                                 .into_iter()
                                 .enumerate()
-                                // Every component that authors a movability (a
-                                // mesh, a light: a `movability` property of
-                                // that type) and holds another one.
                                 .filter(|(index, class_name)| {
                                     components::read_live_component_property(
                                         &world,
@@ -800,8 +800,8 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                                     )
                                     .and_then(|value| {
                                         value
-                                            .downcast_ref::<helio_component::components::ObjectMovability>()
-                                            .copied()
+                                    .downcast_ref::<helio_component::components::ObjectMovability>()
+                                    .copied()
                                     })
                                     .is_some_and(|current| current != movability)
                                 })

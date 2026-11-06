@@ -1,9 +1,8 @@
-
 // The meshes' model importer registers itself with the import service.
 use meshes_component as _;
 use std::path::Path;
 
-use asset_import::{importer_for, ImportOutput, Imported, OptionValues, Previous};
+use asset_import::{ImportOutput, Imported, OptionValues, Previous, importer_for};
 use skeletal_assets::animation::evaluate_world_transforms;
 use skeletal_assets::assets::{load_animseq_asset, load_skeleton_asset};
 use skeletal_assets::skinning::{joint_matrices, skin_lod};
@@ -382,7 +381,7 @@ fn distinct_meshes_and_zero_weight_fallback_keep_each_skin_palette() {
 
 #[test]
 fn retained_legacy_clips_cannot_be_claimed_by_another_skin() {
-    use skeletal_assets::assets::{save_animseq_asset, AnimSeqAsset};
+    use skeletal_assets::assets::{AnimSeqAsset, save_animseq_asset};
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let mut single: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();

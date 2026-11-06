@@ -22,11 +22,11 @@ use engine_backend::scene::SceneWorldExt;
 // Every installed plugin registers with the renderer, as in the editor.
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::ObjectMovability;
+use installed_plugins as _;
 use installed_plugins::meshes_component::components::{
     LODLevel, MeshAssetPath, MeshGeometryKey, StaticMeshComponent, StaticMeshMaterialSlot,
     StaticMeshMaterialSlots,
 };
-use installed_plugins as _;
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
@@ -420,9 +420,10 @@ fn emissive_surface() -> installed_plugins::meshes_component::mesh_cache::Import
 /// A mesh built in code and inserted as a typed value: the cube's geometry,
 /// sections and bounds, every slot overridden with [`emissive_surface`].
 fn typed_mesh() -> StaticMeshComponent {
-    let upload =
-        installed_plugins::meshes_component::mesh_files::load_mesh_asset_upload(std::path::Path::new(&mesh_asset()))
-            .expect("SM_Cube.fbx loads");
+    let upload = installed_plugins::meshes_component::mesh_files::load_mesh_asset_upload(
+        std::path::Path::new(&mesh_asset()),
+    )
+    .expect("SM_Cube.fbx loads");
     let radius = upload
         .geometry
         .vertices

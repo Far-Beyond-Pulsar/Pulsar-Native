@@ -16,13 +16,13 @@ use std::time::{Duration, Instant};
 
 use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform};
 use helio_component::components::ObjectMovability;
-use meshes_component::components::{MeshAssetPath, StaticMeshComponent};
 use helio_core::{GpuCameraUniforms, PrepareContext, ResourceRegistry};
 use helio_pass_object_batch::scene_join::{
-    BufferHandle, SceneBufferProjection, SceneDerivation, ENTITY_GENERATIONS_KEY, MATERIALS_KEY,
-    OBJECTS_KEY,
+    BufferHandle, ENTITY_GENERATIONS_KEY, MATERIALS_KEY, OBJECTS_KEY, SceneBufferProjection,
+    SceneDerivation,
 };
 use helio_pass_object_batch::{BatchRun, ObjectBatchPass};
+use meshes_component::components::{MeshAssetPath, StaticMeshComponent};
 use pulsar_scenedb::{Entity, SceneDb};
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {

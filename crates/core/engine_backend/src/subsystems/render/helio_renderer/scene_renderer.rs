@@ -25,7 +25,10 @@ use crate::scene::{SharedScene, SpaceSync};
 /// A change applied to a renderer's host parts when they are made (and to
 /// the existing ones): what a test or tool sets on a plugin's part, by key
 /// (a later setup with the same key replaces it).
-pub type HostPartSetup = (&'static str, Arc<dyn Fn(&mut dyn RenderHostPart) + Send + Sync>);
+pub type HostPartSetup = (
+    &'static str,
+    Arc<dyn Fn(&mut dyn RenderHostPart) + Send + Sync>,
+);
 
 /// Who owns the renderer's device.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

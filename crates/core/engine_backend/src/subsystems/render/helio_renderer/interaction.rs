@@ -754,7 +754,8 @@ pub struct ContentGeometryRegistration {
     /// its content of this kind: `None` when it has no content to test
     /// (picking falls back to the box), `Some(None)` for a miss, `Some(t)`
     /// for the nearest hit.
-    pub hit: fn(world: &World, object: Entity, origin: Vec3, direction: Vec3) -> Option<Option<f32>>,
+    pub hit:
+        fn(world: &World, object: Entity, origin: Vec3, direction: Vec3) -> Option<Option<f32>>,
     /// Every enabled triangle of this kind in `world`, in its object's local
     /// space, until `visit` returns `false`: `visit(object, triangle)`.
     pub triangles: fn(world: &World, visit: &mut dyn FnMut(Entity, [Vec3; 3]) -> bool),

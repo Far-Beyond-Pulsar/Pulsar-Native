@@ -16,11 +16,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use meshes_component::components::{
-    MESH_ASSET_KIND, StaticMeshComponent, mesh_asset_residency,
-    mesh_source_for_file, prefetch_mesh_asset,
-};
 use helio_component::components::ObjectMovability;
+use meshes_component::components::{
+    MESH_ASSET_KIND, StaticMeshComponent, mesh_asset_residency, mesh_source_for_file,
+    prefetch_mesh_asset,
+};
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{AssetState, World};
 

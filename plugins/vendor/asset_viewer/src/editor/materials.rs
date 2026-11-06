@@ -223,22 +223,24 @@ impl AssetViewerPanel {
                     material_paths
                         .into_iter()
                         .map(|material| {
-                            materials_component::graph_preview::compile_graph_preview(&root, &material)
-                                .map(|preview| {
-                                    preview
-                                        .and_then(|preview| {
-                                            super::graph_material::build(
-                                                &context,
-                                                &preview,
-                                                &[Some(vertex_layout.clone())],
-                                            )
-                                        })
-                                        .map_err(|error| {
-                                            log::warn!("graph material {material:?}: {error}")
-                                        })
-                                        .ok()
-                                })
-                                .flatten()
+                            materials_component::graph_preview::compile_graph_preview(
+                                &root, &material,
+                            )
+                            .map(|preview| {
+                                preview
+                                    .and_then(|preview| {
+                                        super::graph_material::build(
+                                            &context,
+                                            &preview,
+                                            &[Some(vertex_layout.clone())],
+                                        )
+                                    })
+                                    .map_err(|error| {
+                                        log::warn!("graph material {material:?}: {error}")
+                                    })
+                                    .ok()
+                            })
+                            .flatten()
                         })
                         .collect::<Vec<_>>()
                 })
@@ -298,7 +300,8 @@ impl AssetViewerPanel {
             .iter()
             .map(|row| row.material.clone())
             .collect();
-        if let Err(error) = meshes_component::mesh_cache::set_default_materials(path, &assignments) {
+        if let Err(error) = meshes_component::mesh_cache::set_default_materials(path, &assignments)
+        {
             log::error!("Could not save default materials for {:?}: {error}", path);
         }
     }

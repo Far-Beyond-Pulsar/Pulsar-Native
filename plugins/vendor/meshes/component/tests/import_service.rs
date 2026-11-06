@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use asset_import::{
-    ignore_sources, submit_import, submit_reimport, unignore_sources, unlink_source, ImportDb,
-    ImportMode, OptionValues, TRASH_DIR,
+    ImportDb, ImportMode, OptionValues, TRASH_DIR, ignore_sources, submit_import, submit_reimport,
+    unignore_sources, unlink_source,
 };
 use editor_task_queue::{TaskId, TaskStatus};
 use parking_lot::Mutex;
@@ -57,7 +57,10 @@ fn link_records_the_source_and_reimport_follows_edits() {
     let mut bytes = std::fs::read(&source).unwrap();
     bytes.push(0);
     std::fs::write(&source, bytes).unwrap();
-    assert_eq!(db.status(&root, record), asset_import::LinkStatus::OutOfDate);
+    assert_eq!(
+        db.status(&root, record),
+        asset_import::LinkStatus::OutOfDate
+    );
 }
 
 #[test]

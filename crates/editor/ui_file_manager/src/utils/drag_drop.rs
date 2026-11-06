@@ -103,7 +103,9 @@ impl FileManagerDrawer {
             .into_iter()
             .filter_map(|path| {
                 let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-                asset_import::importer_for(&ext).is_some().then_some((ext, path))
+                asset_import::importer_for(&ext)
+                    .is_some()
+                    .then_some((ext, path))
             })
             .fold(Default::default(), |mut by_ext, (ext, path)| {
                 by_ext.entry(ext).or_default().push(path);

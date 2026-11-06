@@ -30,7 +30,9 @@ use installed_plugins::meshes_component::components::{
     StaticMeshMaterialSlots, VirtualGeometryComponent,
 };
 use installed_plugins::meshes_component::mesh_cache::MeshSection;
-use installed_plugins::meshes_component::vg_settings::{VirtualGeometryMode, VirtualGeometrySettings};
+use installed_plugins::meshes_component::vg_settings::{
+    VirtualGeometryMode, VirtualGeometrySettings,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use ui_level_editor::commands::{execute_command, SceneCommand};
@@ -420,21 +422,31 @@ fn virtual_geometry_matches_the_classic_render_and_off_restores_it() {
     // Classic: no VirtualGeometryComponent, so the mesh never becomes VG-active.
     let (classic_state, _) = scene(None);
     let mut classic_renderer = harness.renderer(&classic_state);
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut classic_renderer, Some(vg_settings(VirtualGeometryMode::Auto)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut classic_renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
     let classic = harness.frames(&mut classic_renderer, 12);
     classic.dump("classic");
     assert!(
         classic.difference(&classic).covered > 1000,
         "the classic sphere is not drawn"
     );
-    assert!(!installed_plugins::meshes_component::host_part::virtual_geometry_runtime(&classic_renderer)
+    assert!(
+        !installed_plugins::meshes_component::host_part::virtual_geometry_runtime(
+            &classic_renderer
+        )
         .expect("the viewport renderer is built")
-        .any_ready());
+        .any_ready()
+    );
 
     // VG-active.
     let (state, _) = scene(Some(VirtualGeometryComponent::default()));
     let mut renderer = harness.renderer(&state);
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(vg_settings(VirtualGeometryMode::Auto)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
     let active = harness.until_ready(&mut renderer);
     active.dump("active");
     let d = active.difference(&classic);
@@ -458,10 +470,13 @@ fn virtual_geometry_matches_the_classic_render_and_off_restores_it() {
         ..VirtualGeometryComponent::default()
     }));
     let mut root_renderer = harness.renderer(&root_state);
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut root_renderer, Some(VirtualGeometrySettings {
-        tau_pixels: 16.0,
-        ..vg_settings(VirtualGeometryMode::Auto)
-    }));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut root_renderer,
+        Some(VirtualGeometrySettings {
+            tau_pixels: 16.0,
+            ..vg_settings(VirtualGeometryMode::Auto)
+        }),
+    );
     let root_only = harness.until_ready(&mut root_renderer);
     root_only.dump("root_only");
     let r = root_only.difference(&classic);
@@ -474,7 +489,10 @@ fn virtual_geometry_matches_the_classic_render_and_off_restores_it() {
     );
 
     // Off: back to the classic path, same as the classic scene.
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(vg_settings(VirtualGeometryMode::Off)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Off)),
+    );
     let off = harness.frames(&mut renderer, 16);
     off.dump("off");
     let o = off.difference(&classic);
@@ -531,7 +549,10 @@ fn authored_lod_is_ignored_while_virtual_geometry_is_active() {
     // VG globally Off: the LOD applies, the cube replaces the sphere.
     let off_state = build();
     let mut off_renderer = harness.renderer(&off_state);
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut off_renderer, Some(vg_settings(VirtualGeometryMode::Off)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut off_renderer,
+        Some(vg_settings(VirtualGeometryMode::Off)),
+    );
     let mut off = harness.frames(&mut off_renderer, 16);
     off.dump("lod_off");
     let cube_vs_sphere = off.difference(&sphere);
@@ -544,7 +565,10 @@ fn authored_lod_is_ignored_while_virtual_geometry_is_active() {
     // VG Auto: once the asset is ready the instance is VG-active and the LOD is inert.
     let state = build();
     let mut renderer = harness.renderer(&state);
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(vg_settings(VirtualGeometryMode::Auto)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
     let _ = harness.until_ready(&mut renderer);
     let active = harness.frames(&mut renderer, 16);
     active.dump("lod_active");
@@ -557,7 +581,10 @@ fn authored_lod_is_ignored_while_virtual_geometry_is_active() {
     );
 
     // And turning VG off hands the instance back to its LOD.
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(vg_settings(VirtualGeometryMode::Off)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Off)),
+    );
     off = harness.frames(&mut renderer, 16);
     let back = off.difference(&sphere);
     println!("LOD back after VG Off vs sphere: {back:?}");
@@ -572,7 +599,10 @@ fn every_mode_renders_without_validation_errors() {
     let Some(harness) = setup() else { return };
     let (state, _) = scene(Some(VirtualGeometryComponent::default()));
     let mut renderer = harness.renderer(&state);
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(vg_settings(VirtualGeometryMode::Auto)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
     let _ = harness.until_ready(&mut renderer);
 
     let mut frames = Vec::new();
@@ -586,7 +616,10 @@ fn every_mode_renders_without_validation_errors() {
         let scope = harness
             .device
             .push_error_scope(wgpu::ErrorFilter::Validation);
-        installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(vg_settings(mode)));
+        installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+            &mut renderer,
+            Some(vg_settings(mode)),
+        );
         let frame = harness.frames(&mut renderer, 10);
         let error = pollster::block_on(scope.pop());
         assert!(error.is_none(), "{mode:?}: GPU validation error: {error:?}");
@@ -638,7 +671,10 @@ fn virtual_geometry_debug_views_register_and_render() {
     let Some(harness) = setup() else { return };
     let (state, _) = scene(Some(VirtualGeometryComponent::default()));
     let mut renderer = harness.renderer(&state);
-    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(&mut renderer, Some(vg_settings(VirtualGeometryMode::Auto)));
+    installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
     let _ = harness.until_ready(&mut renderer);
     let mailbox = renderer.editor_mailbox();
 

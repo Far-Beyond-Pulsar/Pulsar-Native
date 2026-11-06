@@ -15,26 +15,26 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use crate::mesh_cache;
 use engine_fs::virtual_fs;
 use helio_asset_compat::{ConvertedScene, ImportedClip, ImportedKey, ImportedRig};
-use crate::mesh_cache;
 use plugin_editor_api::SourceSurface;
 use skeletal_assets::animation::{
     AnimationClip, BoneTrack, KeyInterpolation, Keyframe, KeyframeTangent,
 };
 use skeletal_assets::assets::{
-    load_animseq_asset, load_skeleton_asset, save_animseq_asset, save_skeleton_asset, AnimSeqAsset,
-    SkeletonAsset, ANIMSEQ_EXTENSION, SKELETON_EXTENSION,
+    ANIMSEQ_EXTENSION, AnimSeqAsset, SKELETON_EXTENSION, SkeletonAsset, load_animseq_asset,
+    load_skeleton_asset, save_animseq_asset, save_skeleton_asset,
 };
 use skeletal_assets::ids::{AnimSequenceId, SkeletalMeshId, SkeletonId};
 use skeletal_assets::math::{Transform, Vec3};
 use skeletal_assets::skeleton::{Bone, Skeleton};
 use skeletal_assets::skmesh::{
-    load_skmesh_asset, save_skmesh_asset, validate_mesh, Joint, MaterialSlot, MeshLod, MeshSection,
-    SkeletalMeshAsset, SkinnedVertex, SKMESH_EXTENSION,
+    Joint, MaterialSlot, MeshLod, MeshSection, SKMESH_EXTENSION, SkeletalMeshAsset, SkinnedVertex,
+    load_skmesh_asset, save_skmesh_asset, validate_mesh,
 };
 
-use asset_import::db::{relative_key, ImportOutput};
+use asset_import::db::{ImportOutput, relative_key};
 use asset_import::{Imported, ImportedPart, Previous};
 
 /// [`ImportOutput::kind`] of the skeleton.

@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use helio_component::asset_component::AssetComponentRegistration;
 use crate::mesh_cache::{MeshAssetUpload, MeshMaterialSlot, MeshSection};
 use crate::mesh_files::load_mesh_asset_upload;
+use helio_component::asset_component::AssetComponentRegistration;
 use helio_component::subsystems::resolve_asset_path;
 use pulsar_scenedb::gpu::{BufferKey, GpuMirrorHandle, InternedGpuLease};
 use pulsar_scenedb::handle_ledger::HandleId;
@@ -105,8 +105,10 @@ impl pulsar_scenedb::handle_ledger::ContentAddressed for MeshAssetPath {
         let Some(project_root) = engine_state::get_project_path() else {
             return HandleId::ZERO;
         };
-        let abs_path =
-            helio_component::subsystems::resolve_asset_path(std::path::Path::new(&project_root), path);
+        let abs_path = helio_component::subsystems::resolve_asset_path(
+            std::path::Path::new(&project_root),
+            path,
+        );
         crate::mesh_cache::content_id_for_path(&abs_path)
             .map(HandleId)
             .unwrap_or(HandleId::ZERO)

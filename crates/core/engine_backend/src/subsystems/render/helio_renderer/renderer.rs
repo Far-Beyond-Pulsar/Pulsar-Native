@@ -710,7 +710,8 @@ impl HelioRenderer {
         if let Some(inner) = self.inner.as_mut() {
             inner.scene.set_up_host_parts(setup.as_ref());
         }
-        self.host_part_setups.retain(|(existing, _)| *existing != key);
+        self.host_part_setups
+            .retain(|(existing, _)| *existing != key);
         self.host_part_setups.push((key, setup));
     }
 

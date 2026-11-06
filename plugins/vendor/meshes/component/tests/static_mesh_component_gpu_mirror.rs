@@ -14,8 +14,8 @@
 //! insert via `World::insert`, the same real entry point hydrate itself
 //! calls after loading.
 
-use meshes_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
 use helio_mesh_api::PackedVertex;
+use meshes_component::components::{MeshAssetPath, MeshGeometryKey, StaticMeshComponent};
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
     EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,

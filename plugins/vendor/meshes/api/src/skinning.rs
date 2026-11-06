@@ -32,7 +32,8 @@ pub struct SkinnedMeshAccess {
     /// the animation keeps the rest. An empty list returns every bone to
     /// the animation. False when the instance is not ready or an entry is
     /// bad.
-    pub drive_bones: fn(world: &mut World, instance: Entity, bones: Vec<(usize, [[f32; 4]; 4])>) -> bool,
+    pub drive_bones:
+        fn(world: &mut World, instance: Entity, bones: Vec<(usize, [[f32; 4]; 4])>) -> bool,
     /// Return every bone of `instance` to its animation.
     pub release_bones: fn(world: &mut World, instance: Entity),
 }

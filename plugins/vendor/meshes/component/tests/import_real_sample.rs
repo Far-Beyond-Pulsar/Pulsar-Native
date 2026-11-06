@@ -10,7 +10,7 @@ use meshes_component as _;
 
 use std::path::{Path, PathBuf};
 
-use asset_import::{importer_for, Imported, OptionValues, Previous};
+use asset_import::{Imported, OptionValues, Previous, importer_for};
 use skeletal_assets::assets::{load_animseq_asset, load_skeleton_asset};
 use skeletal_assets::skmesh::{load_skmesh_asset, validate_mesh};
 

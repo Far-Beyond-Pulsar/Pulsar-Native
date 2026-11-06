@@ -654,11 +654,7 @@ pub fn resident_slot(
             let slot = if bias == 0 {
                 upload_cooked(&mut store, mirror, &cooked)?
             } else {
-                upload_cooked(
-                    &mut store,
-                    mirror,
-                    &cooked.without_top_mips(bias),
-                )?
+                upload_cooked(&mut store, mirror, &cooked.without_top_mips(bias))?
             };
             (
                 slot,

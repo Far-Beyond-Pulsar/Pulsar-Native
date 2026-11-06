@@ -83,7 +83,9 @@ fn each_mesh_of_a_source_gets_its_own_file() {
     // Each file holds only its own geometry, with the node transform baked in.
     let read = |name: &str| {
         let bytes = std::fs::read(root.join(name)).unwrap();
-        meshes_component::mesh_cache::decode_asset(&bytes).unwrap().0
+        meshes_component::mesh_cache::decode_asset(&bytes)
+            .unwrap()
+            .0
     };
     let crate_mesh = read("props_Crate.mesh");
     let barrel = read("props_Barrel.mesh");

@@ -27,10 +27,7 @@ pub struct GraphPreview {
 fn graph_file(path: &Path) -> Option<PathBuf> {
     let file = if path.is_dir() {
         path.join(SHADER_GRAPH_FILE)
-    } else if path
-        .file_name()
-        .is_some_and(|n| n == SHADER_GRAPH_FILE)
-    {
+    } else if path.file_name().is_some_and(|n| n == SHADER_GRAPH_FILE) {
         path.to_path_buf()
     } else {
         return None;
@@ -86,10 +83,7 @@ fn compile_file(file: &Path, project_root: &Path) -> Result<GraphPreview, String
     let mut snippet = compile_material_graph(&graph, &bindings)?;
     // The standalone viewer has no scene material row, so specialize the
     // stable material fields to its own densely bound texture table.
-    for (ordinal, field) in crate::graph::GRAPH_TEXTURE_FIELDS
-        .iter()
-        .enumerate()
-    {
+    for (ordinal, field) in crate::graph::GRAPH_TEXTURE_FIELDS.iter().enumerate() {
         snippet = snippet
             .replace(
                 &format!("scene_textures[material.{field}]"),

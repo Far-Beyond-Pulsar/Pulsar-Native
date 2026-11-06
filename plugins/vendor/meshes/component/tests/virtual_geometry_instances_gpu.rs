@@ -2,17 +2,17 @@
 //! scene-join-shaped inputs: which static-mesh instances become VG-active,
 //! with which flags, and which objects the authored LOD must skip.
 
-use meshes_component::components::VgOverrideGpu;
-use meshes_component::virtual_geometry_instances::{
-    LOD_SUPPRESSED_KEY, VG_ASSET_READY_FLAG_READY, VG_ASSET_READY_KEY, VG_INSTANCE_COUNT_KEY,
-    VG_INSTANCES_KEY, VgAssetReadyRow, VgInstanceKeys, VirtualGeometryInstances,
-};
 use helio_core::{
     BufferHandle, BufferKey, SceneBufferProjection, SceneDerivation, SceneDerivationContext,
 };
 use helio_vg_format::{
     GpuVgInstance, INST_CONE_CULL, INST_ENABLED, INST_FORCE_ROOT_ONLY, INST_LOD_SUPPRESS,
     INST_SHADOW_CASTER, INST_TIER_SHIFT, TierLock,
+};
+use meshes_component::components::VgOverrideGpu;
+use meshes_component::virtual_geometry_instances::{
+    LOD_SUPPRESSED_KEY, VG_ASSET_READY_FLAG_READY, VG_ASSET_READY_KEY, VG_INSTANCE_COUNT_KEY,
+    VG_INSTANCES_KEY, VgAssetReadyRow, VgInstanceKeys, VirtualGeometryInstances,
 };
 use std::sync::Arc;
 

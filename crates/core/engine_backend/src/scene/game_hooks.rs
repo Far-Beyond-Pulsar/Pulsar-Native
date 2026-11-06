@@ -28,7 +28,8 @@ pub struct TickPhaseRegistration {
     pub before_systems: Option<fn(world: &mut World, delta_seconds: f32)>,
     /// After the scripts released the world: publish what the tick
     /// collected on `hub`.
-    pub after_scripts: Option<fn(world: &mut World, hub: &EventHub, resolve: ScriptVariableResolver)>,
+    pub after_scripts:
+        Option<fn(world: &mut World, hub: &EventHub, resolve: ScriptVariableResolver)>,
 }
 
 inventory::collect!(TickPhaseRegistration);

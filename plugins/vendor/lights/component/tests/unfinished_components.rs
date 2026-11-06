@@ -4,9 +4,9 @@
 
 // Link the components into this test binary.
 #[allow(unused_imports)]
-use meshes_component as _;
-#[allow(unused_imports)]
 use lights_component::ReflectionCaptureComponent as _;
+#[allow(unused_imports)]
+use meshes_component as _;
 
 #[test]
 fn unfinished_components_declare_why_and_their_issue() {

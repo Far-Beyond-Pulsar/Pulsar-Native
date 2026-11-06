@@ -3,7 +3,7 @@
 //! whose members stay fixed in its own space.
 
 use engine_backend::scene::frames::make_frame;
-use engine_backend::scene::{first_fixed_in_group, SceneWorldExt, SpawnObject};
+use engine_backend::scene::{SceneWorldExt, SpawnObject, first_fixed_in_group};
 use helio_component::components::ObjectMovability;
 use meshes_component::components::StaticMeshComponent;
 use pulsar_scenedb::{Entity, World};

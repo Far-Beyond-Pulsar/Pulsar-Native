@@ -388,13 +388,15 @@ mod tests {
             ConfigValue::from(1_i64 << 30),
         )]));
         assert_eq!(huge.max_visible_clusters, MAX_VISIBLE_CLUSTERS_LIMIT);
-        assert!(VirtualGeometrySettings {
-            tau_pixels: f32::NAN,
-            ..Default::default()
-        }
-        .sanitized()
-        .tau_pixels
-        .is_finite());
+        assert!(
+            VirtualGeometrySettings {
+                tau_pixels: f32::NAN,
+                ..Default::default()
+            }
+            .sanitized()
+            .tau_pixels
+            .is_finite()
+        );
     }
 
     #[test]

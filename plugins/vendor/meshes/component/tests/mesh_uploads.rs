@@ -101,11 +101,13 @@ fn fbx_import_and_native_cache_preserve_uvs_normals_and_sections() {
         .join("../../../../assets/meshes/primitives/SM_Cube.fbx");
     let asset = meshes_component::mesh_files::load_mesh_asset_upload(&path).expect("bundled FBX");
     assert!(!asset.sections.is_empty());
-    assert!(asset
-        .geometry
-        .vertices
-        .iter()
-        .any(|v| v.tex_coords0 != asset.geometry.vertices[0].tex_coords0));
+    assert!(
+        asset
+            .geometry
+            .vertices
+            .iter()
+            .any(|v| v.tex_coords0 != asset.geometry.vertices[0].tex_coords0)
+    );
     assert!(asset.geometry.vertices.iter().all(|v| v.normal != 0));
     let bytes = meshes_component::mesh_cache::encode_asset(&asset, 123);
     let (decoded, id) = meshes_component::mesh_cache::decode_asset(&bytes).unwrap();
@@ -158,10 +160,11 @@ fn inspect_local_mesh_uvs_and_sections() {
         assert_eq!(min, [0.0; 2]);
         assert_eq!(max, [0.0; 2]);
     }
-    assert!(asset
-        .geometry
-        .indices
-        .iter()
-        .all(|i| (*i as usize) < vertices.len()));
+    assert!(
+        asset
+            .geometry
+            .indices
+            .iter()
+            .all(|i| (*i as usize) < vertices.len())
+    );
 }
-

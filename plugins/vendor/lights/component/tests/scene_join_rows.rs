@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform, Visibility, attachments};
 use helio_component::components::ObjectMovability;
-use meshes_component::components::{MeshAssetPath, StaticMeshComponent};
 use helio_pass_object_batch::scene_join::{
     BufferHandle, BufferKey, ENTITY_GENERATIONS_KEY, SceneBufferProjection, SceneDerivation,
     SceneDerivationContext,
 };
 use lights_component::LightComponent;
+use meshes_component::components::{MeshAssetPath, StaticMeshComponent};
 use pulsar_scenedb::{Entity, SceneDb};
 
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {

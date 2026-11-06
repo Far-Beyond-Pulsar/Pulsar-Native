@@ -140,7 +140,12 @@ mod test_importer {
             dir.join(source.file_stem().unwrap_or_default())
                 .with_extension("mesh")
         }
-        fn stored_options(&self, _asset: &Path, _ext: &str, _saved: Option<&Value>) -> OptionValues {
+        fn stored_options(
+            &self,
+            _asset: &Path,
+            _ext: &str,
+            _saved: Option<&Value>,
+        ) -> OptionValues {
             OptionValues::new()
         }
         fn serialize_options(&self, _options: &OptionValues) -> Value {

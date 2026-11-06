@@ -384,8 +384,10 @@ fn preset_passes(
 /// meshes through the materials' api only.
 fn material_assets(project: &Path, present: bool) {
     use helio_component::asset_component::{asset_sources_for_file, load_asset_now};
-    use installed_plugins::meshes_component::components::{StaticMeshMaterialSlot, resolve_slot_material};
-    use helio_mats::asset::{MATERIAL_ASSET_KIND, SurfaceMaterialDocument, SurfaceValues};
+    use helio_mats::asset::{SurfaceMaterialDocument, SurfaceValues, MATERIAL_ASSET_KIND};
+    use installed_plugins::meshes_component::components::{
+        resolve_slot_material, StaticMeshMaterialSlot,
+    };
     let red = [1.0, 0.0, 0.0, 1.0];
     let file = project.join("materials/red.mat");
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();

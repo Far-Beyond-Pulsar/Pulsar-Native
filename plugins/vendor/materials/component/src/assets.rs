@@ -204,7 +204,10 @@ fn load_graph(source: &str, bytes: &[u8]) -> Result<GraphMaterial, String> {
         let texture_source = helio_component::texture_assets::texture_source_for_file(&path);
         let image = helio_component::texture_assets::decode_image_file(&path)
             .map_err(|error| format!("texture '{asset}': {error}"))?;
-        let id = AssetId::of(helio_component::texture_assets::TEXTURE_ASSET_KIND, &texture_source);
+        let id = AssetId::of(
+            helio_component::texture_assets::TEXTURE_ASSET_KIND,
+            &texture_source,
+        );
         texture_sources.push(texture_source);
         textures.push((asset, id, Arc::new(image)));
     }
@@ -359,9 +362,14 @@ fn compiled_graph(
     for (asset, texture, image) in &graph.textures {
         // A texture's GPU copy follows the material's version: the material
         // reloads when one of its textures changes.
-        let slot =
-            helio_component::texture_assets::resident_slot(*texture, version, image, use_of(asset), mirror)
-                .map_err(|error| format!("texture '{asset}': {error}"))?;
+        let slot = helio_component::texture_assets::resident_slot(
+            *texture,
+            version,
+            image,
+            use_of(asset),
+            mirror,
+        )
+        .map_err(|error| format!("texture '{asset}': {error}"))?;
         let ordinal = *bindings
             .get(asset)
             .ok_or_else(|| format!("texture '{asset}' is not sampled by the graph"))?

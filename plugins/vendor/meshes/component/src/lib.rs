@@ -101,7 +101,10 @@ pub fn scene_join_keys(context: &ObjectJoinContext) -> SceneJoinKeys {
     }
 }
 
-fn register_columns(store: &mut pulsar_scenedb::gpu::SceneGpuStore, device: &std::sync::Arc<wgpu::Device>) {
+fn register_columns(
+    store: &mut pulsar_scenedb::gpu::SceneGpuStore,
+    device: &std::sync::Arc<wgpu::Device>,
+) {
     // Capacities are initial capacities only; growable registration owns
     // GPU storage and deduplication.
     StaticMeshComponent::register_gpu_columns_growable(store, 4096, device);
@@ -140,8 +143,9 @@ inventory::submit! {
 
 /// The box around `object`'s enabled meshes' local bounding spheres.
 fn mesh_local_bounds(world: &World, object: Entity) -> Option<(glam::Vec3, glam::Vec3)> {
-    let meshes =
-        pulsar_scene_model::attachments::enabled_components_of::<StaticMeshComponent>(world, object);
+    let meshes = pulsar_scene_model::attachments::enabled_components_of::<StaticMeshComponent>(
+        world, object,
+    );
     let mut local: Option<(glam::Vec3, glam::Vec3)> = None;
     for (_, mesh) in meshes {
         let [x, y, z, radius] = mesh.bounds_local;
@@ -160,9 +164,15 @@ fn mesh_local_bounds(world: &World, object: Entity) -> Option<(glam::Vec3, glam:
 }
 
 /// A local ray against `object`'s enabled meshes' triangles.
-fn mesh_hit(world: &World, object: Entity, origin: glam::Vec3, direction: glam::Vec3) -> Option<Option<f32>> {
-    let meshes =
-        pulsar_scene_model::attachments::enabled_components_of::<StaticMeshComponent>(world, object);
+fn mesh_hit(
+    world: &World,
+    object: Entity,
+    origin: glam::Vec3,
+    direction: glam::Vec3,
+) -> Option<Option<f32>> {
+    let meshes = pulsar_scene_model::attachments::enabled_components_of::<StaticMeshComponent>(
+        world, object,
+    );
     let has_geometry = meshes.iter().any(|(_, mesh)| {
         mesh.vertices.len() >= 3 && (mesh.indices.is_empty() || mesh.indices.len() >= 3)
     });
@@ -200,9 +210,11 @@ fn mesh_triangles(world: &World, visit: &mut dyn FnMut(Entity, [glam::Vec3; 3]) 
                     .get(index as usize)
                     .map(|vertex| glam::Vec3::from_array(vertex.position))
             };
-            let (Some(a), Some(b), Some(c)) =
-                (corner(triangle[0]), corner(triangle[1]), corner(triangle[2]))
-            else {
+            let (Some(a), Some(b), Some(c)) = (
+                corner(triangle[0]),
+                corner(triangle[1]),
+                corner(triangle[2]),
+            ) else {
                 continue;
             };
             if !visit(owner, [a, b, c]) {

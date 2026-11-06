@@ -111,7 +111,14 @@ fn convert(
     )?;
     let stored_options = importer.serialize_options(&chosen_options);
     drop(chosen_options);
-    run_companions(project_root, importer, source, companions, &mut imported, task);
+    run_companions(
+        project_root,
+        importer,
+        source,
+        companions,
+        &mut imported,
+        task,
+    );
 
     task.report_progress(0.9, "Recording");
     match mode {

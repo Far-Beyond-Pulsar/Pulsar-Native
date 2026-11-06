@@ -50,4 +50,3 @@ pub fn component_instances_from_props(
         .collect();
     records
 }
-

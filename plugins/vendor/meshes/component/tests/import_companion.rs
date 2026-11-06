@@ -64,7 +64,8 @@ fn accepted_companions_run_record_outputs_and_fill_only_empty_slots() {
     let root = dir.path();
     let source = root.join("cube.fbx");
     std::fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../assets/meshes/primitives/SM_Cube.fbx"),
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../assets/meshes/primitives/SM_Cube.fbx"),
         &source,
     )
     .unwrap();
@@ -84,10 +85,12 @@ fn accepted_companions_run_record_outputs_and_fill_only_empty_slots() {
     let db = ImportDb::load(root);
     let record = db.find_source("cube.fbx").unwrap();
     assert_eq!(record.companions, ["test.stub"]);
-    assert!(record
-        .outputs
-        .iter()
-        .any(|o| o.path == "made.thing" && o.kind == "thing"));
+    assert!(
+        record
+            .outputs
+            .iter()
+            .any(|o| o.path == "made.thing" && o.kind == "thing")
+    );
     let mesh = std::fs::read(root.join("cube.mesh")).unwrap();
     let (decoded, _) = meshes_component::mesh_cache::decode_asset(&mesh).unwrap();
     assert_eq!(decoded.material_slots[0].material_asset, "made.thing");

@@ -48,9 +48,10 @@ fn compile(graph: &GraphDescription) -> (tempfile::TempDir, GraphPreview) {
         serde_json::json!({ "main_graph": graph }).to_string(),
     )
     .unwrap();
-    let preview = materials_component::graph_preview::compile_graph_preview(dir.path(), "M.material")
-        .expect("a graph material")
-        .expect("compiles");
+    let preview =
+        materials_component::graph_preview::compile_graph_preview(dir.path(), "M.material")
+            .expect("a graph material")
+            .expect("compiles");
     (dir, preview)
 }
 

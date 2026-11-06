@@ -199,10 +199,10 @@ pub fn render_mesh_thumbnail(path: &Path) -> Option<image::RgbaImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use helio_mesh_api::{MeshUpload, PackedVertex};
     use meshes_component::mesh_cache::{
         ImportedSurfaceMaterial, MeshAssetUpload, MeshMaterialSlot, MeshSection, encode_asset,
     };
-    use helio_mesh_api::{MeshUpload, PackedVertex};
 
     #[test]
     fn a_mesh_thumbnail_shows_the_section_colour() {

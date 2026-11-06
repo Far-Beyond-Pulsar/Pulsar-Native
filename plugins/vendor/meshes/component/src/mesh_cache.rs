@@ -40,9 +40,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
+pub use asset_import::options::{FieldConstraints, ImportField, OptionsSchema};
 use bytemuck::Zeroable;
 use helio_mesh_api::{MeshUpload, PackedVertex};
-pub use asset_import::options::{FieldConstraints, ImportField, OptionsSchema};
 use pulsar_reflection::{RUNTIME_TYPE_REGISTRY, RuntimeTypeInfo, TypeStructure};
 
 const MAGIC: &[u8; 4] = b"PMSH";
@@ -182,7 +182,6 @@ impl Default for MeshAssetUpload {
 // ---------------------------------------------------------------------------
 // Engine-native import-schema types (bridge from solid_rs::configurator).
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Conversion from solid_rs schema types
