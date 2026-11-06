@@ -2,10 +2,67 @@ use gpui::*;
 use std::path::{Path, PathBuf};
 use ui::ActiveTheme;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ViewMode {
+    /// Large icons in a grid.
     Grid,
+    /// One row per item with type, date and size columns.
     List,
+    /// A dense table with sortable column headers.
+    Details,
+    /// Very small rows: name and size only.
+    Compact,
+    /// Wide cards in columns: icon, name, and a line of details.
+    Tiles,
+}
+
+impl ViewMode {
+    pub const ALL: [ViewMode; 5] = [
+        ViewMode::Grid,
+        ViewMode::List,
+        ViewMode::Details,
+        ViewMode::Compact,
+        ViewMode::Tiles,
+    ];
+
+    /// The value stored in the `view_mode` preference.
+    pub fn key(self) -> &'static str {
+        match self {
+            ViewMode::Grid => "grid",
+            ViewMode::List => "list",
+            ViewMode::Details => "details",
+            ViewMode::Compact => "compact",
+            ViewMode::Tiles => "tiles",
+        }
+    }
+
+    /// Unknown values fall back to the grid.
+    pub fn from_key(key: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|mode| mode.key() == key)
+            .unwrap_or(ViewMode::Grid)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ViewMode::Grid => "Grid",
+            ViewMode::List => "List",
+            ViewMode::Details => "Details",
+            ViewMode::Compact => "Compact",
+            ViewMode::Tiles => "Tiles",
+        }
+    }
+
+    /// Row height of the list-like modes.
+    pub fn row_height(self) -> f32 {
+        match self {
+            ViewMode::Compact => 24.,
+            ViewMode::Details => 28.,
+            ViewMode::Tiles => 52.,
+            _ => 36.,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

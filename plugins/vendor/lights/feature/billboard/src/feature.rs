@@ -9,6 +9,16 @@ use crate::BillboardPass;
 /// The editor's light icon: the sprite a billboard shows by default.
 static SPOTLIGHT_PNG: &[u8] = include_bytes!("../spotlight.png");
 
+/// Source dimensions used to fit the editor icon, shared with viewport picking.
+pub fn light_icon_dimensions() -> [f32; 2] {
+    static DIMENSIONS: std::sync::OnceLock<[f32; 2]> = std::sync::OnceLock::new();
+    *DIMENSIONS.get_or_init(|| {
+        image::load_from_memory(SPOTLIGHT_PNG)
+            .map(|image| [image.width() as f32, image.height() as f32])
+            .unwrap_or([1.0, 1.0])
+    })
+}
+
 /// Camera-facing sprites ([`crate`]).
 pub struct BillboardFeature;
 

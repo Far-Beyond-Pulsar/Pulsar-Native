@@ -3740,6 +3740,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "exr"
+version = "1.74.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "711fe42c9964295e01ee3fba3f9fe0e1d24b98886950d68efe81b1c76e21adf3"
+dependencies = [
+ "bit_field",
+ "half",
+ "lebe",
+ "miniz_oxide",
+ "num-complex",
+ "pulp",
+ "smallvec",
+ "zune-inflate",
+]
+
+[[package]]
 name = "ez_logging"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6195,6 +6211,7 @@ name = "helio-pass-sky"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "half",
  "helio-components",
  "helio-core",
  "helio-feature-api",
@@ -6202,13 +6219,18 @@ dependencies = [
  "helio-light-api",
  "helio-pass-sky",
  "helio-scene-join",
+ "image",
  "naga",
  "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
  "serde_json",
+ "sha2 0.10.9",
+ "tracing",
+ "ureq 2.12.1",
  "wgpu",
+ "zip",
 ]
 
 [[package]]
@@ -7200,6 +7222,7 @@ dependencies = [
  "bytemuck",
  "byteorder-lite",
  "color_quant",
+ "exr",
  "gif",
  "image-webp",
  "moxcms",
@@ -7771,6 +7794,12 @@ checksum = "40a8225d44241fd324a8af2806ba635fc7c8a7e9a7de4d5cf3ef54e71f5926fc"
 dependencies = [
  "leak",
 ]
+
+[[package]]
+name = "lebe"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
 name = "lens-examples"
@@ -9278,6 +9307,7 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
 dependencies = [
+ "bytemuck",
  "num-traits",
 ]
 
@@ -11637,6 +11667,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulp"
+version = "0.22.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "046aa45b989642ec2e4717c8e72d677b13edd831a4d3b6cf37d9a3e54912496a"
+dependencies = [
+ "bytemuck",
+ "cfg-if",
+ "libm",
+ "num-complex",
+ "paste",
+ "pulp-wasm-simd-flag",
+ "raw-cpuid",
+ "reborrow",
+ "version_check",
+]
+
+[[package]]
+name = "pulp-wasm-simd-flag"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d8f70e07b9c3962945a74e59ca1c511bba65b6419468acc217c457d93f3c740"
+
+[[package]]
 name = "pulsar-config"
 version = "0.1.0"
 dependencies = [
@@ -12575,6 +12628,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "raw-cpuid"
+version = "11.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186"
+dependencies = [
+ "bitflags 2.13.1",
+]
+
+[[package]]
 name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12665,6 +12727,12 @@ name = "readmouse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be105c72a1e6a5a1198acee3d5b506a15676b74a02ecd78060042a447f408d94"
+
+[[package]]
+name = "reborrow"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 
 [[package]]
 name = "redox_syscall"
@@ -14286,6 +14354,7 @@ dependencies = [
  "bytemuck",
  "engine_backend",
  "engine_class_derive",
+ "engine_state",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
@@ -16787,6 +16856,7 @@ dependencies = [
  "ui_flamegraph",
  "ui_friends",
  "ui_git_manager",
+ "ui_keybindings",
  "ui_level_editor",
  "ui_loading_screen",
  "ui_log_viewer",
@@ -16975,6 +17045,22 @@ version = "0.1.0"
 dependencies = [
  "gpui-ce",
  "tracing",
+]
+
+[[package]]
+name = "ui_keybindings"
+version = "0.1.0"
+dependencies = [
+ "engine_state",
+ "gpui-ce",
+ "inventory",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ui",
+ "ui_common",
+ "window_manager",
 ]
 
 [[package]]
@@ -17362,6 +17448,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
 dependencies = [
  "base64 0.22.1",
+ "flate2",
  "log",
  "once_cell",
  "rustls",
@@ -19613,6 +19700,15 @@ name = "zune-core"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d56377fd46368984a170bc5aac5567e52ca5da874caa60bea39fcbca78fb658b"
+
+[[package]]
+name = "zune-inflate"
+version = "0.2.54"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73ab332fe2f6680068f3582b16a24f90ad7096d5d39b974d1c0aff0125116f02"
+dependencies = [
+ "simd-adler32",
+]
 
 [[package]]
 name = "zune-jpeg"

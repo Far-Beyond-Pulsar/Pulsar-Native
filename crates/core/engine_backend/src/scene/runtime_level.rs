@@ -292,8 +292,8 @@ impl RuntimeLevel {
         for id in &report.unresolved {
             tracing::warn!(object = %id, "Placed class instance has no class in this project");
         }
-        // One sky and one directional light per level; extras are kept but
-        // disabled, logged.
+        // Plugin singleton rules are repaired on load; directional lights
+        // are unrestricted.
         crate::scene::level_rules::enforce_on_load(world);
         // Components are hydrated now: everything that defines a space (a sublevel
         // placement is a component) gets its slot.

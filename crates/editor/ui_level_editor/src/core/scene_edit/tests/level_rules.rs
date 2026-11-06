@@ -4,8 +4,8 @@
 use lights_component::{LightComponent, LightType};
 use sky_component::AtmosphereComponent;
 
-use crate::commands::{execute_command, SceneCommand, TypedComponent};
-use crate::scene_edit::{components, objects, sky, wind, ObjectType, SceneObjectData, Transform};
+use crate::commands::{SceneCommand, TypedComponent, execute_command};
+use crate::scene_edit::{ObjectType, SceneObjectData, Transform, components, objects, sky, wind};
 use crate::state::LevelEditorState;
 
 fn object(name: &str) -> SceneObjectData {
@@ -347,21 +347,19 @@ fn sun_count(state: &LevelEditorState) -> usize {
 }
 
 #[test]
-fn a_second_directional_light_is_refused_with_a_message() {
+fn multiple_directional_lights_can_be_added_and_turned_on() {
     let mut state = LevelEditorState::new();
-    let sun = add_light(&mut state, "Sun", light(LightType::Directional, true), true);
-    assert!(sun.changed, "{}", sun.no_op_reason);
-    let sun = sun.affected_ids[0].clone();
-
-    // Adding another, on a new object or on an existing one.
+    let first = add_light(&mut state, "Sun", light(LightType::Directional, true), true);
+    assert!(first.changed, "{}", first.no_op_reason);
     let second = add_light(
         &mut state,
         "Sun 2",
         light(LightType::Directional, true),
         true,
     );
-    assert!(!second.changed);
-    assert_eq!(second.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
+    assert!(second.changed, "{}", second.no_op_reason);
+    assert_eq!(sun_count(&state), 2);
+
     let other = add_object(&mut state, "Other");
     let result = execute_command(
         &mut state,
@@ -371,89 +369,12 @@ fn a_second_directional_light_is_refused_with_a_message() {
             value: Some(Box::new(light(LightType::Directional, true))),
         },
     );
-    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
-    // The class default is a point light: allowed.
-    let point = execute_command(
-        &mut state,
-        SceneCommand::AddComponent {
-            id: other.clone(),
-            class_name: "LightComponent".into(),
-            value: None,
-        },
-    );
-    assert!(point.changed, "{}", point.no_op_reason);
-
-    // Turning the point light directional is refused and leaves it a point light.
-    let result = set_light(
-        &mut state,
-        &other,
-        "light_type",
-        Box::new(LightType::Directional),
-    );
-    assert!(!result.changed);
-    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
-    assert_eq!(
-        light_at(&state, &other).general.light_type,
-        LightType::Point
-    );
-    // Its other edits still go through.
-    assert!(set_light(&mut state, &other, "intensity", Box::new(5.0f32)).changed);
-
-    // Duplicating the sun.
-    let result = execute_command(
-        &mut state,
-        SceneCommand::DuplicateComponent {
-            id: sun.clone(),
-            component_index: 0,
-        },
-    );
-    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
-    let copy = objects::duplicate_object(&mut state.scene.world_mut(), &sun).unwrap();
-    assert_eq!(components::component_count(&state.scene.world(), &copy), 0);
-    assert_eq!(sun_count(&state), 1);
-
-    // With the sun disabled, the point light may become the sun.
-    assert!(
-        execute_command(
-            &mut state,
-            SceneCommand::SetComponentEnabled {
-                id: sun.clone(),
-                component_index: 0,
-                enabled: false,
-            },
-        )
-        .changed
-    );
-    assert!(
-        set_light(
-            &mut state,
-            &other,
-            "light_type",
-            Box::new(LightType::Directional)
-        )
-        .changed
-    );
-    // ... and the old sun cannot be switched back on.
-    let result = execute_command(
-        &mut state,
-        SceneCommand::SetComponentEnabled {
-            id: sun.clone(),
-            component_index: 0,
-            enabled: true,
-        },
-    );
-    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
-    assert!(!components::set_component_enabled(
-        &mut state.scene.world_mut(),
-        &sun,
-        0,
-        true
-    ));
-    assert_eq!(sun_count(&state), 1);
+    assert!(result.changed, "{}", result.no_op_reason);
+    assert_eq!(sun_count(&state), 3);
 }
 
 #[test]
-fn a_disabled_directional_light_is_allowed_but_cannot_be_turned_on_beside_the_sun() {
+fn directional_lights_can_be_enabled_independently() {
     let mut state = LevelEditorState::new();
     assert!(add_light(&mut state, "Sun", light(LightType::Directional, true), true).changed);
 
@@ -467,8 +388,8 @@ fn a_disabled_directional_light_is_allowed_but_cannot_be_turned_on_beside_the_su
     assert!(off.changed, "{}", off.no_op_reason);
     let off = off.affected_ids[0].clone();
     let result = set_light(&mut state, &off, "enabled", Box::new(true));
-    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
-    assert!(!light_at(&state, &off).general.enabled);
+    assert!(result.changed, "{}", result.no_op_reason);
+    assert!(light_at(&state, &off).general.enabled);
 
     // Its instance switched off.
     let parked = add_light(
@@ -486,18 +407,18 @@ fn a_disabled_directional_light_is_allowed_but_cannot_be_turned_on_beside_the_su
             enabled: true,
         },
     );
-    assert_eq!(result.no_op_reason, lights_component::ONE_DIRECTIONAL_LIGHT);
-    assert_eq!(sun_count(&state), 1);
+    assert!(result.changed, "{}", result.no_op_reason);
+    assert_eq!(sun_count(&state), 3);
 }
 
 #[test]
-fn a_level_file_with_two_directional_lights_loads_with_one_casting() {
+fn a_level_file_with_two_directional_lights_loads_with_both_casting() {
     let mut state = LevelEditorState::new();
     let first = add_light(&mut state, "Sun", light(LightType::Directional, true), true)
         .affected_ids[0]
         .clone();
     let second = add_object(&mut state, "Second sun");
-    // Only a file can hold two: write the second past the rules.
+    // Multiple directional lights are authored across separate objects.
     {
         let mut world = state.scene.world_mut();
         let owner = engine_backend::scene::SceneWorldExt::entity_for(&*world, &second).unwrap();
@@ -513,17 +434,10 @@ fn a_level_file_with_two_directional_lights_loads_with_one_casting() {
     crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
     let world = &loaded.world;
     let suns = lights_component::directional_lights(world);
-    assert_eq!(suns.len(), 1);
-    let owner = engine_backend::scene::attachments::owner_of(world, suns[0]).unwrap();
-    assert_eq!(
-        engine_backend::scene::SceneWorldExt::stable_id_of(world, owner),
-        Some(first.as_str())
-    );
-    // The other is kept, still directional, its instance disabled.
+    assert_eq!(suns.len(), 2);
+    assert!(suns.contains(&components::instance_at(world, &first, 0).unwrap()));
     let other = components::instance_at(world, &second, 0).unwrap();
-    assert!(!engine_backend::scene::attachments::is_enabled(
-        world, other
-    ));
+    assert!(engine_backend::scene::attachments::is_enabled(world, other));
     let kept = world.get::<LightComponent>(other).unwrap();
     assert_eq!(kept.general.light_type, LightType::Directional);
     assert!(kept.general.enabled);

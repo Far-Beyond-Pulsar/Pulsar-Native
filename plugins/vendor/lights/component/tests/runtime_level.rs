@@ -360,11 +360,9 @@ fn legacy_script_component_levels_load_as_class_instances() {
     );
 }
 
-/// One directional light per level: a file with two loads with the
-/// first casting and the second kept as authored, its instance
-/// disabled.
+/// Multiple directional lights retain their enabled state on load.
 #[test]
-fn a_level_with_two_directional_lights_loads_with_one() {
+fn a_level_with_two_directional_lights_loads_with_both() {
     use lights_component::LightType;
     let mut sun = LightComponent::default();
     sun.general.light_type = LightType::Directional;
@@ -380,8 +378,11 @@ fn a_level_with_two_directional_lights_loads_with_one() {
     let world = &scene.world;
     let lights =
         pulsar_scene_model::attachments::instances(world, world.entity_for("sun").unwrap());
-    assert_eq!(lights_component::directional_lights(world), [lights[0]]);
-    assert!(!pulsar_scene_model::attachments::is_enabled(
+    assert_eq!(
+        lights_component::directional_lights(world),
+        [lights[0], lights[1]]
+    );
+    assert!(pulsar_scene_model::attachments::is_enabled(
         world, lights[1]
     ));
     let kept = world.get::<LightComponent>(lights[1]).unwrap();
