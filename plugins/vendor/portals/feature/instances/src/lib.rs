@@ -318,7 +318,10 @@ impl PortalInstancePass {
                 template,
                 &self.base_shader,
                 graph.as_deref().unwrap_or(""),
-                &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+                &[
+                    helio_mesh_api::DRAW_ROWS_SNIPPET,
+                    helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
+                ],
                 self.material_binding,
                 "PortalInstance Graph Shader",
             );
@@ -350,7 +353,10 @@ fn portal_shader_source(material_binding: helio_mats::MaterialBindingConfig) -> 
         &base_shader_text(),
         "",
         material_binding.max_textures,
-        &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+        &[
+            helio_mesh_api::DRAW_ROWS_SNIPPET,
+            helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
+        ],
     );
     if material_binding.uses_binding_arrays() {
         Cow::Owned(source)
@@ -934,7 +940,10 @@ mod material_tests {
             &super::base_shader_text(),
             graph,
             256,
-            &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+            &[
+                helio_mesh_api::DRAW_ROWS_SNIPPET,
+                helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
+            ],
         )
     }
 

@@ -1,7 +1,8 @@
 //!use helio_prelude
+//!use light_list
 //! Tiled light culling (Forward+ style).
 //!
-//! Divides the screen into TILE_SIZE×TILE_SIZE tiles.  Each workgroup thread
+//! Divides the screen into LIGHT_TILE_SIZE×LIGHT_TILE_SIZE tiles.  Each workgroup thread
 //! is responsible for one tile: it iterates all lights, tests whether each
 //! light's sphere of influence intersects the tile frustum (constructed from
 //! the tile's four corner NDC coordinates), and writes matching light indices
@@ -11,12 +12,12 @@
 //! GPU cost: O(sparse_capacity) when light data changes, plus
 //! O(num_tiles × active_lights). Empty entity slots are never scanned per tile.
 //!
-//! Tile data layout (per tile slot of MAX_LIGHTS_PER_TILE entries):
-//!   tile_light_lists[tile_idx * MAX_LIGHTS_PER_TILE + i]  = light_index_i
+//! Tile data layout (per tile slot of LIGHT_MAX_PER_TILE entries):
+//!   tile_light_lists[tile_idx * LIGHT_MAX_PER_TILE + i]  = light_index_i
 //!   tile_light_counts[tile_idx]                           = number of lights
 
-const TILE_SIZE: u32 = 16u;
-const MAX_LIGHTS_PER_TILE: u32 = 64u;
+// The tile shape (`LIGHT_TILE_SIZE`, `LIGHT_MAX_PER_TILE`) and the light
+// row (`GpuLight`) are the light list's (`//!use light_list`).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bind group 0 — uniforms & scene data
@@ -40,33 +41,6 @@ struct LightCullParams {
 }
 @group(0) @binding(1) var<uniform> params: LightCullParams;
 
-struct GpuLight {
-    position_range:  vec4<f32>,  // xyz = world pos, w = range
-    direction_outer: vec4<f32>,
-    color_intensity: vec4<f32>,
-    shadow_index:    u32,
-    light_type:      u32,        // 0 = directional, 1 = point, 2 = spot
-    inner_angle:     f32,
-    _pad:            u32,
-    // Light shafts — consumed by helio-pass-volumetric-fog. Padding is three
-    // scalars, not vec3<u32>, to keep the struct at 96 bytes (vec3 aligns to 16).
-    god_rays_enabled:  u32,
-    god_rays_density:  f32,
-    god_rays_weight:   f32,
-    god_rays_decay:    f32,
-    god_rays_exposure: f32,
-    flare_enabled:      u32,
-    flare_type:         u32,
-    flare_intensity:    f32,
-    flare_scale:        f32,
-    flare_tint_r:       f32,
-    flare_tint_g:       f32,
-    flare_tint_b:       f32,
-    ies_profile_index:    i32,
-    light_function_index: i32,
-    ies_angle_scale:      f32,
-    ies_angle_offset:     f32,
-}
 @group(0) @binding(2) var<storage, read> lights: array<GpuLight>;
 
 // SceneDB's `Transform` component, entity-indexed the same way `lights` is
@@ -162,7 +136,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // NDC x ∈ [-1, +1] left→right, y ∈ [-1, +1] bottom→top.
     let fw = f32(params.screen_width);
     let fh = f32(params.screen_height);
-    let ts = f32(TILE_SIZE);
+    let ts = f32(LIGHT_TILE_SIZE);
     let ndc_left  = (f32(tile_x) * ts / fw) * 2.0 - 1.0;
     let ndc_right = min((f32(tile_x + 1u) * ts / fw) * 2.0 - 1.0, 1.0);
     // Note: screen y goes top-down, NDC y goes bottom-up.
@@ -200,9 +174,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
 
         // Directional lights have infinite range — always visible.
-        if light.light_type == 0u {
-            if count < MAX_LIGHTS_PER_TILE {
-                tile_light_lists[tile_idx * MAX_LIGHTS_PER_TILE + count] = i;
+        if light.light_type == LIGHT_DIRECTIONAL {
+            if count < LIGHT_MAX_PER_TILE {
+                tile_light_lists[tile_idx * LIGHT_MAX_PER_TILE + count] = i;
                 count += 1u;
             }
             continue;
@@ -232,8 +206,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let range  = light.position_range.w;
 
         if sphere_inside_tile_frustum(pos_vs, range, planes) {
-            if count < MAX_LIGHTS_PER_TILE {
-                tile_light_lists[tile_idx * MAX_LIGHTS_PER_TILE + count] = i;
+            if count < LIGHT_MAX_PER_TILE {
+                tile_light_lists[tile_idx * LIGHT_MAX_PER_TILE + count] = i;
                 count += 1u;
             }
         }

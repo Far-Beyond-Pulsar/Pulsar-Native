@@ -1,4 +1,6 @@
 //!use helio_prelude
+//!use light_list
+//!use shadow_atlas
 /// GPU shadow matrix computation
 ///
 /// Computes shadow light-space matrices entirely on GPU to eliminate CPU overhead.
@@ -15,48 +17,11 @@ const FACES_PER_LIGHT: u32 = 6u;
 const CSM_SPLITS: vec4f = vec4f(16.0, 80.0, 300.0, 1400.0);
 const SCENE_DEPTH: f32 = 4000.0;
 
-// Light types (must match LightType in libhelio/src/light.rs)
-const LIGHT_TYPE_DIRECTIONAL: u32 = 0u;
-const LIGHT_TYPE_POINT: u32 = 1u;
-const LIGHT_TYPE_SPOT: u32 = 2u;
-
 // ── Input/Output structs ──────────────────────────────────────────────────────
 
-/// Must match GpuLight in libhelio/src/light.rs (64 bytes)
-struct GpuLight {
-    position_range:   vec4f,  // xyz = position, w = range
-    direction_outer:  vec4f,  // xyz = direction, w = cos(outer_angle)
-    color_intensity:  vec4f,  // xyz = color, w = intensity
-    shadow_index:     u32,    // u32::MAX = no shadow, otherwise shadow matrix base index
-    light_type:       u32,    // 0=Directional, 1=Point, 2=Spot
-    inner_angle:      f32,    // cos(inner_angle) for spot lights
-    _pad:             u32,
-    // Light shafts — consumed by helio-pass-volumetric-fog. Padding is three
-    // scalars, not vec3<u32>, to keep the struct at 96 bytes (vec3 aligns to 16).
-    god_rays_enabled:  u32,
-    god_rays_density:  f32,
-    god_rays_weight:   f32,
-    god_rays_decay:    f32,
-    god_rays_exposure: f32,
-    flare_enabled:      u32,
-    flare_type:         u32,
-    flare_intensity:    f32,
-    flare_scale:        f32,
-    flare_tint_r:       f32,
-    flare_tint_g:       f32,
-    flare_tint_b:       f32,
-    ies_profile_index:    i32,
-    light_function_index: i32,
-    ies_angle_scale:      f32,
-    ies_angle_offset:     f32,
-}
 
-/// Must match GpuShadowMatrix in uniforms.rs (64 bytes)
-struct GpuShadowMatrix {
-    mat: mat4x4f,
-    atlas: vec4f,
-    policy: vec4u,
-}
+// The light list's rows (`GpuLight`, `LIGHT_*`) in, the shadow atlas's
+// per-face rows (`LightMatrix`, `helio_light_api::GpuShadowMatrix`) out.
 
 
 struct ShadowMatrixParams {
@@ -69,7 +34,7 @@ struct ShadowMatrixParams {
 // ── Bindings ──────────────────────────────────────────────────────────────────
 
 @group(0) @binding(0) var<storage, read>       lights:         array<GpuLight>;
-@group(0) @binding(1) var<storage, read_write> shadow_mats:    array<GpuShadowMatrix>;
+@group(0) @binding(1) var<storage, read_write> shadow_matrices: array<LightMatrix>;
 @group(0) @binding(2) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(3) var<uniform>             params:         ShadowMatrixParams;
 @group(0) @binding(4) var<storage, read_write> shadow_dirty:   array<atomic<u32>>;  // Atomic dirty flags per caster slot
@@ -140,7 +105,7 @@ fn compute_point_light_matrices(light_idx: u32, position: vec3f, range: f32) {
     );
 
     for (var i = 0u; i < 6u; i++) {
-        shadow_mats[base + i].mat = proj * views[i];
+        shadow_matrices[base + i].mat = proj * views[i];
     }
 }
 
@@ -158,7 +123,7 @@ fn compute_spot_matrix(light_idx: u32, position: vec3f, direction: vec3f, range:
     let view = mat4_look_at_rh(position, position + dir, up);
     let proj = mat4_perspective_rh(fov, 1.0, 0.05, max(range, 0.1));
 
-    shadow_mats[base].mat = proj * view;
+    shadow_matrices[base].mat = proj * view;
 }
 
 // ── Directional light cascades (CSM with sphere-fit + texel snap) ─────────────
@@ -235,7 +200,7 @@ fn compute_directional_cascades(light_idx: u32, direction: vec3f) {
         }
 
         // Snap radius to texel boundaries
-        let texel_size = (2.0 * radius) / f32(max(shadow_mats[base + cascade_idx].policy.z, 128u));
+        let texel_size = (2.0 * radius) / f32(max(shadow_matrices[base + cascade_idx].policy.z, 128u));
         let radius_snap = ceil(radius / texel_size) * texel_size;
 
         // Texel-snapped light view
@@ -255,12 +220,12 @@ fn compute_directional_cascades(light_idx: u32, direction: vec3f) {
         let light_view = mat4_look_at_rh(stable_centroid - dir * SCENE_DEPTH, stable_centroid, up);
         let proj = mat4_orthographic_rh(-radius_snap, radius_snap, -radius_snap, radius_snap, 0.1, SCENE_DEPTH * 2.0);
 
-        shadow_mats[base + cascade_idx].mat = proj * light_view;
+        shadow_matrices[base + cascade_idx].mat = proj * light_view;
     }
 
     // Fill slots 4-5 with identity (point light faces 4-5 unused for directional)
     for (var i = 4u; i < 6u; i++) {
-        shadow_mats[base + i].mat = mat4x4f(
+        shadow_matrices[base + i].mat = mat4x4f(
             vec4f(1.0, 0.0, 0.0, 0.0),
             vec4f(0.0, 1.0, 0.0, 0.0),
             vec4f(0.0, 0.0, 1.0, 0.0),
@@ -292,7 +257,7 @@ fn fnv_hash_mat(m: mat4x4f) -> u32 {
 fn fnv_hash_mats_6(base_idx: u32) -> u32 {
     var hash: u32 = 2166136261u;
     for (var i = 0u; i < 6u; i++) {
-        let mat_hash = fnv_hash_mat(shadow_mats[base_idx + i].mat);
+        let mat_hash = fnv_hash_mat(shadow_matrices[base_idx + i].mat);
         hash ^= (mat_hash & 0xFFu);
         hash = hash * 16777619u;
         hash ^= ((mat_hash >> 8u) & 0xFFu);
@@ -320,11 +285,11 @@ fn compute_shadow_matrices(@builtin(global_invocation_id) gid: vec3u) {
     if light.color_intensity.w <= 0.0 || light.shadow_index == 0xFFFFFFFFu { return; }
 
     // Compute matrices based on light type
-    if light.light_type == LIGHT_TYPE_POINT {
+    if light.light_type == LIGHT_POINT {
         compute_point_light_matrices(light_idx, light.position_range.xyz, light.position_range.w);
-    } else if light.light_type == LIGHT_TYPE_DIRECTIONAL {
+    } else if light.light_type == LIGHT_DIRECTIONAL {
         compute_directional_cascades(light_idx, light.direction_outer.xyz);
-    } else if light.light_type == LIGHT_TYPE_SPOT {
+    } else if light.light_type == LIGHT_SPOT {
         compute_spot_matrix(light_idx, light.position_range.xyz, light.direction_outer.xyz, light.position_range.w, light.direction_outer.w);
     }
 

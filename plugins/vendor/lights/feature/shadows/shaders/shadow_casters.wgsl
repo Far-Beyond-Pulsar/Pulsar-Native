@@ -1,29 +1,6 @@
-// GPU view scoring, bounded selection, persistent tile allocation and commit.
-struct GpuLight {
-    position_range:   vec4f,
-    direction_outer:  vec4f,
-    color_intensity:  vec4f,
-    shadow_index:     u32,
-    light_type:       u32,
-    inner_angle:      f32,
-    _pad:             u32,
-    god_rays_enabled:  u32,
-    god_rays_density:  f32,
-    god_rays_weight:   f32,
-    god_rays_decay:    f32,
-    god_rays_exposure: f32,
-    flare_enabled:      u32,
-    flare_type:         u32,
-    flare_intensity:    f32,
-    flare_scale:        f32,
-    flare_tint_r:       f32,
-    flare_tint_g:       f32,
-    flare_tint_b:       f32,
-    ies_profile_index:    i32,
-    light_function_index: i32,
-    ies_angle_scale:      f32,
-    ies_angle_offset:     f32,
-}
+//!use light_list
+// GPU view scoring, bounded selection, persistent tile allocation and commit,
+// over the light list's rows (`GpuLight`, `light_shadow_requested`).
 
 
 struct Params {
@@ -45,9 +22,6 @@ struct Table { header:vec4u, slots:array<Resident,256> }
 @group(0) @binding(3) var<storage,read> committed:Table;
 @group(0) @binding(4) var<storage,read_write> candidates:array<Candidate>;
 const NONE:u32=0xffffffffu;
-fn requested(l:GpuLight)->bool {
-    return select(l.shadow_index!=NONE,(l._pad&4u)!=0u,(l._pad&8u)!=0u);
-}
 fn plane_outside(p:vec4f,c:vec3f,r:f32)->bool { return dot(p,vec4f(c,1.0)) < -r*length(p.xyz); }
 // Shadow lights are chosen for a view slightly wider than the screen, so a light
 // that is about to turn into view already has its map when it arrives.
@@ -101,8 +75,8 @@ fn score_lights(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocati
     if i>=min(params.rows,arrayLength(&lights)) { return; }
     candidates[i]=Candidate(0u,0u,0u,0.0);
     let l=lights[i];
-    if !(l.color_intensity.w>0.0)||!requested(l)||(l._pad&48u)==48u { return; }
-    let incumbent=(l._pad&8u)!=0u && l.shadow_index!=NONE && l.shadow_index/6u<params.capacity;
+    if !(l.color_intensity.w>0.0)||!light_shadow_requested(l)||(l._pad&48u)==48u { return; }
+    let incumbent=(l._pad&8u)!=0u && l.shadow_index!=LIGHT_NO_SHADOW && l.shadow_index/6u<params.capacity;
     // An incumbent that left the (widened) view keeps its tiles at the lowest priority
     // while the pool has room, instead of being dropped and re-rendered on return.
     var offscreen=false;
@@ -361,7 +335,7 @@ fn pack_tiles(@builtin(local_invocation_index) t:u32) {
 fn commit_lights(@builtin(global_invocation_id) gid:vec3u) {
     let i=gid.x;if i>=min(params.rows,arrayLength(&lights)){return;}
     let l=lights[i];if !(l.color_intensity.w>0.0){return;}
-    let wants=requested(l);var flags=(l._pad&~4u)|8u|select(0u,4u,wants);
+    let wants=light_shadow_requested(l);var flags=(l._pad&~4u)|8u|select(0u,4u,wants);
     if (flags&1u)==0u {flags|=1u|select(0u,2u,wants);}
     lights[i]._pad=flags;
     var index=NONE;

@@ -2,12 +2,12 @@
 //! — writes positions (and the Y-sort `depth` field) directly into the
 //! shared `instances` storage buffer every frame, entirely on the GPU.
 //!
-//! Deliberately has no Cargo dependency on `helio-pass-sprite-batch` or
-//! `helio-pass-sprite-cull`: it only needs `Arc<wgpu::Buffer>` handles
-//! (instance data + alive flags, the same two `SpriteCullPass` binds) plus
-//! its own per-slot velocity buffer, matching how all three sprite passes
-//! stay decoupled from each other — wired together by whoever builds the
-//! render graph, not by importing each other's types.
+//! Uses none of the other sprite passes' types: it only needs
+//! `Arc<wgpu::Buffer>` handles (instance data + alive flags, the same two
+//! `SpriteCullPass` binds) plus its own per-slot velocity buffer, wired
+//! together by whoever builds the render graph. The one thing it takes from
+//! `helio-pass-sprite-cull` is the sprite row's WGSL
+//! ([`helio_pass_sprite_cull::SPRITE_INSTANCE_SNIPPET`]).
 //!
 //! # Ordering and the "don't call `update_sprite` afterward" rule
 //!
@@ -74,10 +74,11 @@ impl SpriteSimulatePass {
     ) -> Self {
         let slot_count = initial_velocities.len() as u32;
 
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "Sprite Simulate Shader",
             helio_core::include_wgsl!("../shaders/sprite_simulate.wgsl"),
+            &[helio_pass_sprite_cull::SPRITE_INSTANCE_SNIPPET],
         );
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

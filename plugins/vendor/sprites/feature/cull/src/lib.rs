@@ -36,12 +36,12 @@
 //! *dispatch* should track what's actually there. There is no per-instance
 //! CPU work in `prepare()`/`execute()` regardless of pool size either way.
 //!
-//! The instance byte layout this reads (`position`/`size`/`depth` at
-//! specific offsets in `shaders/sprite_cull.wgsl`) is a *protocol*, not a
-//! Cargo-level type dependency — it must stay byte-identical to
-//! `helio_pass_sprite_batch::SpriteInstance`'s `#[repr(C)]` layout, the same
-//! way `helio-pass-shadow-cull`'s shader hardcodes `helio-core`'s
-//! `GpuInstance` layout without depending on that crate for it.
+//! The instance byte layout is a *protocol*, not a Cargo-level type
+//! dependency: it must stay byte-identical to
+//! `helio_pass_sprite_batch::SpriteInstance`'s `#[repr(C)]` layout. Its one
+//! WGSL declaration is [`SPRITE_INSTANCE_SNIPPET`], here because this is the
+//! lowest of the sprites' crates: the batch's and the simulation's shaders
+//! take it from this crate too.
 //!
 //! # Fixed capacity
 //!
@@ -52,6 +52,14 @@
 use bytemuck::{Pod, Zeroable};
 use helio_core::{CommandRecorder, PassContext, PrepareContext, RenderPass, Result};
 use std::sync::Arc;
+
+/// A sprite's row in WGSL (`//!use sprite_instance`): `struct
+/// SpriteInstance`, `helio_pass_sprite_batch::SpriteInstance` field for
+/// field (80 bytes). Read by the cull (`sprite_cull.wgsl`), the batch's draw
+/// shaders (`sprite.wgsl`, `sprite_scene.wgsl`) and the simulation
+/// (`sprite_simulate.wgsl`); each declares only its own binding of the rows.
+pub const SPRITE_INSTANCE_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use sprite_instance", "../shaders/sprite_instance.wgsl");
 
 const WG_SIZE: u32 = 256;
 /// `DrawIndexedIndirectArgs` is 5 × u32 = 20 bytes: index_count,
@@ -140,10 +148,11 @@ impl SpriteCullPass {
         let max_blocks = max_visible.div_ceil(WG_SIZE).max(1);
 
         // ── Cull ────────────────────────────────────────────────────────────
-        let cull_shader = helio_core::shader::module(
+        let cull_shader = helio_core::shader::module_with(
             device,
             "Sprite Cull Shader",
             helio_core::include_wgsl!("../shaders/sprite_cull.wgsl"),
+            &[SPRITE_INSTANCE_SNIPPET],
         );
         let cull_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Sprite Cull BGL"),

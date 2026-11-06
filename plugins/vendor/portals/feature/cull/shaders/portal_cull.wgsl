@@ -1,4 +1,5 @@
 //!use helio_prelude
+//!use portal_view
 //!use mesh_draw_rows
 // Per-portal-*chain* GPU frustum culling — selects which instances get a
 // duplicate draw through each active portal chain (a sequence of up to
@@ -53,14 +54,6 @@ struct CullUniforms {
 // `helio_mesh_api::{coordinate_space, set_coordinate_space}`.
 @group(0) @binding(4) var<storage, read> coordinate_spaces: array<mat4x4<f32>>;
 
-// One active portal's render data. Must match libhelio::GpuPortalView (144 bytes).
-struct GpuPortalView {
-    transform:         mat4x4<f32>,
-    inverse_transform: mat4x4<f32>,
-    half_extent:       vec2<f32>,
-    coordinate_space:  u32,
-    _pad:              u32,
-}
 @group(0) @binding(5) var<storage, read> portal_views: array<GpuPortalView>;
 
 // SceneDB's variable-length chain field: one handle row per chain and one

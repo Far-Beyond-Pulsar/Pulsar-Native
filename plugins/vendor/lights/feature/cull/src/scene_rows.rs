@@ -56,15 +56,13 @@ pub struct LightJoin {
     keys: LightJoinKeys,
     billboards: bool,
     pipeline: wgpu::ComputePipeline,
-    directional_pipeline: wgpu::ComputePipeline,
     uniforms: wgpu::Buffer,
     /// Bound in place of the hidden flags while none are registered.
     empty: wgpu::Buffer,
     lights: JoinOutput,
-    directional: JoinOutput,
+    directional: crate::DirectionalLightPick,
     billboard_rows: JoinOutput,
     bind: Option<(Vec<wgpu::Buffer>, wgpu::BindGroup)>,
-    directional_bind: Option<(wgpu::Buffer, wgpu::BindGroup)>,
     last_inputs: Option<u64>,
     reported: Vec<BufferKey>,
 }
@@ -88,28 +86,10 @@ impl LightJoin {
                 cache: None,
             },
         );
-        let directional_pipeline = helio_core::shader::create_compute_pipeline(
-            device,
-            wgpu::ComputePipelineDescriptor {
-                label: Some("Light Join Directional"),
-                layout: None,
-                module: &module,
-                entry_point: Some("cs_directional_light"),
-                compilation_options: Default::default(),
-                cache: None,
-            },
-        );
-        let mut directional = JoinOutput::new(
-            device,
-            "Light Join Directional",
-            std::mem::size_of::<crate::DirectionalLightRow>() as u64,
-        );
-        directional.ensure(device, 1);
         Self {
             keys,
             billboards,
             pipeline,
-            directional_pipeline,
             uniforms: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Light Join Uniforms"),
                 size: std::mem::size_of::<Uniforms>() as u64,
@@ -123,10 +103,9 @@ impl LightJoin {
                 mapped_at_creation: false,
             }),
             lights: JoinOutput::new(device, "Light Join Lights", LIGHT_ROW_BYTES),
-            directional,
+            directional: crate::DirectionalLightPick::new(device),
             billboard_rows: JoinOutput::new(device, "Light Join Billboards", BILLBOARD_ROW_BYTES),
             bind: None,
-            directional_bind: None,
             last_inputs: None,
             reported: Vec::new(),
         }
@@ -193,7 +172,6 @@ impl SceneDerivation for LightJoin {
             helio_core::cpu_scope!("LightJoin");
             self.last_inputs = Some(light_signature);
             encoder.clear_buffer(&self.lights.buffer, 0, None);
-            encoder.clear_buffer(&self.directional.buffer, 0, None);
             if self.billboards {
                 encoder.clear_buffer(&self.billboard_rows.buffer, 0, None);
             }
@@ -250,37 +228,12 @@ impl SceneDerivation for LightJoin {
                 pass.set_bind_group(0, bind_group, &[]);
                 pass.dispatch_workgroups(light_rows.div_ceil(WORKGROUP).max(1), 1, 1);
                 drop(pass);
-
-                if self
-                    .directional_bind
-                    .as_ref()
-                    .is_none_or(|(lights, _)| *lights != self.lights.buffer)
-                {
-                    let layout = self.directional_pipeline.get_bind_group_layout(0);
-                    let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("Light Join Directional"),
-                        layout: &layout,
-                        entries: &[
-                            entry(6, &self.lights.buffer),
-                            entry(8, &self.directional.buffer),
-                        ],
-                    });
-                    self.directional_bind = Some((self.lights.buffer.clone(), bind_group));
-                }
-                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("Light Join Directional"),
-                    timestamp_writes: None,
-                });
-                pass.set_pipeline(&self.directional_pipeline);
-                pass.set_bind_group(
-                    0,
-                    &self.directional_bind.as_ref().expect("bound above").1,
-                    &[],
-                );
-                pass.dispatch_workgroups(1, 1, 1);
+                self.directional
+                    .record(ctx.device, encoder, &self.lights.buffer);
+            } else {
+                self.directional.clear(encoder);
             }
             self.lights.content_generation += 1;
-            self.directional.content_generation += 1;
             self.billboard_rows.content_generation += 1;
             recorded = true;
         }

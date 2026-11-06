@@ -1,4 +1,5 @@
 //!use helio_prelude
+//!use portal_view
 //! Screen-space portal-opening mask — two tiny sub-passes run back to back
 //! (see `helio-pass-portal-instances::mask::PortalMaskPass::execute`):
 //!
@@ -24,16 +25,6 @@
 //!    opening, while depth stays untouched (and the mask stays 0) anywhere
 //!    the portal itself is blocked from view — so the duplicate pass's own
 //!    depth+mask test still correctly rejects content there too.
-
-
-/// Must match libhelio::GpuPortalView (144 bytes) — see gbuffer_portal.wgsl.
-struct GpuPortalView {
-    transform:         mat4x4<f32>,
-    inverse_transform: mat4x4<f32>,
-    half_extent:       vec2<f32>,
-    coordinate_space:  u32,
-    _pad:              u32,
-}
 
 // ── Stamp ────────────────────────────────────────────────────────────────────
 

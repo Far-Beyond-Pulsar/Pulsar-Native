@@ -236,7 +236,7 @@ pub struct GiPass {
     rays: wgpu::ComputePipeline,
     fallback_atmosphere: wgpu::Buffer,
     fallback_sky_table: wgpu::Buffer,
-    fallback_lights: wgpu::Buffer,
+    fallback_directional: wgpu::Buffer,
     /// The sun's transmittance a medium published when this pass was built
     /// (`helio_frame_api::lighting::sun_transmittance`), if any.
     sun_transmittance: Option<SunTransmittance>,
@@ -288,7 +288,6 @@ impl GiPass {
                 GI_COMMON_SNIPPET,
                 GI_SAMPLE_SNIPPET,
                 sun_transmittance::SNIPPET,
-                helio_light_api::LIGHT_LIST_SNIPPET,
             ],
         );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -331,7 +330,12 @@ impl GiPass {
                 ATMOSPHERE_SKY_TABLE_BYTES,
                 uniform,
             ),
-            fallback_lights: buffer(device, "GI no lights", 128, wgpu::BufferUsages::STORAGE),
+            fallback_directional: buffer(
+                device,
+                "GI no directional light",
+                std::mem::size_of::<helio_light_api::DirectionalLightRow>() as u64,
+                wgpu::BufferUsages::STORAGE,
+            ),
             sun_transmittance: None,
             fallback_sun: sun_transmittance::stand_in(device),
             group: None,
@@ -397,8 +401,9 @@ impl GiPass {
 
     /// Records the frame `begin` started: the sun, last frame's hits
     /// integrated, the probes that came in reset, this frame's rays, the
-    /// hits cleared for the tracers. `atmosphere`, `sky_table` and `lights`
-    /// are the atmosphere's and the scene's (none: no atmosphere, no sun);
+    /// hits cleared for the tracers. `atmosphere` and `sky_table` are the
+    /// atmosphere's, `directional` the lights' directional light
+    /// (`helio_light_api::DIRECTIONAL_LIGHT`) (none: no atmosphere, no sun);
     /// `sun` the sun's transmittance map and its frame (none: unshadowed).
     pub fn record(
         &mut self,
@@ -406,17 +411,17 @@ impl GiPass {
         cmds: &mut helio_core::CommandRecorder<'_>,
         atmosphere: Option<&wgpu::Buffer>,
         sky_table: Option<&wgpu::Buffer>,
-        lights: Option<&wgpu::Buffer>,
+        directional: Option<&wgpu::Buffer>,
         sun: Option<(&wgpu::TextureView, &wgpu::Buffer)>,
     ) {
         let atmosphere = atmosphere.unwrap_or(&self.fallback_atmosphere);
         let sky_table = sky_table.unwrap_or(&self.fallback_sky_table);
-        let lights = lights.unwrap_or(&self.fallback_lights);
+        let directional = directional.unwrap_or(&self.fallback_directional);
         let (cloud_map, cloud_frame) = sun.unwrap_or((&self.fallback_sun.0, &self.fallback_sun.1));
         let key = [
             atmosphere.clone(),
             sky_table.clone(),
-            lights.clone(),
+            directional.clone(),
             cloud_frame.clone(),
         ];
         if self
@@ -455,7 +460,7 @@ impl GiPass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 6,
-                        resource: lights.as_entire_binding(),
+                        resource: directional.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 7,
@@ -596,9 +601,11 @@ impl RenderPass for GiPass {
             .registry
             .get::<&wgpu::Buffer>(ResourceKey::new(ATMOSPHERE_SKY_TABLE))
             .cloned();
-        let lights = ctx
+        let directional = ctx
             .scene_buffers
-            .get(helio_core::BufferKey::of(helio_light_api::LIGHT_LIST))
+            .get(helio_core::BufferKey::of(
+                helio_light_api::DIRECTIONAL_LIGHT,
+            ))
             .map(|h| h.buffer.clone());
         let sun = self.sun_transmittance.and_then(|sun| {
             ctx.registry
@@ -612,7 +619,7 @@ impl RenderPass for GiPass {
             &mut cmds,
             atmosphere.as_ref(),
             sky_table.as_ref(),
-            lights.as_ref(),
+            directional.as_ref(),
             sun.as_ref().map(|(map, frame)| (map, frame)),
         );
         Ok(())

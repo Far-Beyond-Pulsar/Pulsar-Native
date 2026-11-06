@@ -22,7 +22,6 @@ fn sky_shaders_validate() {
         CLOUDS_SNIPPET,
         ATMOSPHERE_SKY_TABLE_SNIPPET,
         SUN_TRANSMITTANCE_SNIPPET,
-        helio_light_api::LIGHT_LIST_SNIPPET,
     ];
     for (label, source) in [
         (

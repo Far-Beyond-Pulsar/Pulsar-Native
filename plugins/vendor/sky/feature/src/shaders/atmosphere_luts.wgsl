@@ -1,6 +1,5 @@
 //!use helio_prelude
 //!use atmosphere
-//!use light_list
 // Atmosphere LUT kernels (see atmosphere_common.wgsl). Every kernel reads
 // the frame `resolve` wrote; all leave their outputs untouched while no
 // atmosphere is active.
@@ -18,8 +17,9 @@ struct Resolve {
 
 @group(0) @binding(0) var<uniform> resolve_input: Resolve;
 @group(0) @binding(1) var<storage, read> atmospheres: array<AtmosphereParams>;
-// The lights' light list (`//!use light_list`).
-@group(0) @binding(2) var<storage, read> lights: array<GpuLight>;
+// The lights' directional light (`helio_light_api::DIRECTIONAL_LIGHT`): [0]
+// toward it with w 1 (zero: none), [1] its radiance.
+@group(0) @binding(2) var<storage, read> directional_light: array<vec4<f32>, 2>;
 @group(0) @binding(3) var<storage, read> cameras: array<Camera, 2>;
 @group(0) @binding(4) var<storage, read_write> frame: AtmosphereFrame;
 @group(0) @binding(5) var lut_sampler: sampler;
@@ -53,17 +53,12 @@ fn resolve() {
     if resolve_input.clock.y > 0.5 {
         params.clouds_enabled = 0u;
     }
-    // Sun: the light list's (the lights' rule, `light_is_sun`: the first
-    // such light; `direction_outer` is the direction the light travels).
+    // Sun: the lights' directional light.
     var sun = vec3<f32>(0.0, 1.0, 0.0);
     var illuminance = vec3<f32>(0.0);
-    for (var i = 0u; i < arrayLength(&lights); i++) {
-        let light = lights[i];
-        if light_is_sun(light) {
-            sun = -normalize(light.direction_outer.xyz);
-            illuminance = light.color_intensity.rgb * light.color_intensity.w;
-            break;
-        }
+    if directional_light[0].w > 0.5 {
+        sun = directional_light[0].xyz;
+        illuminance = directional_light[1].rgb;
     }
     var center = params.center;
     if params.placement == 0u { center = vec3<f32>(0.0, -params.bottom_radius * 1000.0, 0.0); }

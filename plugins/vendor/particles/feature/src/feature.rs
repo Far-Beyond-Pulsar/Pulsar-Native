@@ -14,6 +14,8 @@ impl Feature for CoronaFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<CoronaPass>();
         // The host supplies the rows every frame.
         registrar.node(host_input("corona_emitters"));
         registrar.node(

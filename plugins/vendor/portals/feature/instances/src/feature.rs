@@ -20,6 +20,13 @@ impl Feature for PortalFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<PortalMaskPass>();
+        registrar.swappable::<PortalEditorOverlayPass>();
+        registrar.swap_group(&[
+            helio_core::graph::type_name_of::<PortalCullPass>(),
+            helio_core::graph::type_name_of::<PortalInstancePass>(),
+        ]);
         const CATEGORY: &str = "Passes: Geometry";
 
         registrar.node(

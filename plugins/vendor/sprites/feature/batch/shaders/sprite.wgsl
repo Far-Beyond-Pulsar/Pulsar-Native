@@ -1,3 +1,4 @@
+//!use sprite_instance
 // ── Sprite Batch ─────────────────────────────────────────────────────────────
 //
 // Vertex-pulling, not vertex-buffer instancing: the unit quad (binding 0,
@@ -27,16 +28,6 @@ struct SpriteCamera {
 @group(0) @binding(1) var atlas_tex: texture_2d_array<f32>;
 @group(0) @binding(2) var atlas_samp: sampler;
 
-struct SpriteInstance {
-    position: vec2<f32>,
-    size: vec2<f32>,
-    rotation: f32,
-    depth: f32,
-    _pad_uv: vec2<f32>,
-    uv_rect: vec4<f32>,
-    color: vec4<f32>,
-    atlas_layer: u32,
-}
 @group(0) @binding(3) var<storage, read> instances: array<SpriteInstance>;
 @group(0) @binding(4) var<storage, read> draw_order: array<u32>;
 

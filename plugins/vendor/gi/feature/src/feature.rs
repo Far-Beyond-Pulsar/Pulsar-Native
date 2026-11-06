@@ -53,6 +53,10 @@ impl Feature for GiFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<GiPass>();
+        registrar.swappable::<GiMeshTracePass>();
+        registrar.swappable::<GiResolvePass>();
         registrar.node(
             node(
                 "gi",

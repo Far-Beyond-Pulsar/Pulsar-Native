@@ -338,10 +338,11 @@ impl SpriteBatchPass {
         queue: &wgpu::Queue,
         surface_format: wgpu::TextureFormat,
     ) -> Self {
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "Sprite Batch Shader",
             helio_core::include_wgsl!("../shaders/sprite.wgsl"),
+            &[helio_pass_sprite_cull::SPRITE_INSTANCE_SNIPPET],
         );
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -579,7 +580,12 @@ impl SpriteBatchPass {
             entries: &entries,
         });
         let source = scene_overlay_source(material_binding);
-        let shader = helio_core::shader::module(device, "Sprite Scene Shader", &source);
+        let shader = helio_core::shader::module_with(
+            device,
+            "Sprite Scene Shader",
+            &source,
+            &[helio_pass_sprite_cull::SPRITE_INSTANCE_SNIPPET],
+        );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Sprite Scene PL"),
             bind_group_layouts: &[Some(&pass.bgl), Some(&textures_bgl)],

@@ -18,6 +18,20 @@ impl Feature for DeferredLightingFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<DeferredLightPass>();
+        // The lighting loops per screen tile (the binning's counts), for the
+        // performance overlay's tile and shading-cost views.
+        registrar.prepare(std::sync::Arc::new(|env| {
+            helio_frame_api::diagnostics::offer_tile_counter(
+                env,
+                helio_frame_api::diagnostics::TileCounter {
+                    resource: helio_light_api::TILE_LIGHT_COUNTS,
+                    tile_px: helio_light_api::TILE_SIZE,
+                    after_node: helio_feature_api::pass_kind("deferred_light"),
+                },
+            );
+        }));
         let point = LightingModel::Deferred
             .point()
             .expect("deferred lighting has a point");

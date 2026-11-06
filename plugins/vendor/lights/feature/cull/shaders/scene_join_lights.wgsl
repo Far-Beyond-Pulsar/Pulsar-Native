@@ -40,14 +40,8 @@ struct LightJoinUniforms {
 @group(0) @binding(5) var<storage, read> sources: array<Light>;
 @group(0) @binding(6) var<storage, read_write> lights_out: array<Light>;
 @group(0) @binding(7) var<storage, read_write> billboards_out: array<Billboard>;
-// The directional light (`helio_light_api::DIRECTIONAL_LIGHT`): [0] the
-// direction toward it and 1, [1] its radiance; zero without one.
-@group(0) @binding(8) var<storage, read_write> directional_out: array<vec4<f32>>;
 
 const ENABLED_WORD: u32 = 3u;
-/// `rest`'s `light_type` word, and the directional light's type.
-const LIGHT_TYPE_WORD: u32 = 1u;
-const DIRECTIONAL: u32 = 0u;
 const ENABLED_BIT: u32 = 0x80000000u;
 
 @compute @workgroup_size(64)
@@ -92,33 +86,4 @@ fn cs_join_lights(@builtin(global_invocation_id) gid: vec3<u32>) {
             array<f32, 4>(light.color_intensity[0], light.color_intensity[1], light.color_intensity[2], 1.0),
         );
     }
-}
-
-/// The light list's directional light: the first directional light with any
-/// intensity (`direction_outer` is the direction the light travels). One
-/// thread, after `cs_join_lights`.
-@compute @workgroup_size(1)
-fn cs_directional_light() {
-    var sun = vec4<f32>(0.0);
-    var radiance = vec4<f32>(0.0);
-    for (var i = 0u; i < arrayLength(&lights_out); i++) {
-        let light = lights_out[i];
-        let direction = vec3<f32>(
-            light.direction_outer[0],
-            light.direction_outer[1],
-            light.direction_outer[2],
-        );
-        if light.rest[LIGHT_TYPE_WORD] == DIRECTIONAL && light.color_intensity[3] > 0.0 && dot(direction, direction) > 0.0 {
-            sun = vec4<f32>(-normalize(direction), 1.0);
-            radiance = vec4<f32>(
-                light.color_intensity[0] * light.color_intensity[3],
-                light.color_intensity[1] * light.color_intensity[3],
-                light.color_intensity[2] * light.color_intensity[3],
-                0.0,
-            );
-            break;
-        }
-    }
-    directional_out[0] = sun;
-    directional_out[1] = radiance;
 }

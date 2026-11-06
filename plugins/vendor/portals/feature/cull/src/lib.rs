@@ -87,7 +87,7 @@ pub use components::PORTAL_PROJECTION_COUNTS;
 pub use components::PORTAL_VIEWS;
 pub use contract::{
     portal_counts, GpuPortalView, PortalCounts, MAX_PORTAL_CHAINS, PORTAL_CHAIN_HANDLE_BUFFER,
-    PORTAL_CHAIN_PORTAL_POOL_BUFFER, PORTAL_COUNTS,
+    PORTAL_CHAIN_PORTAL_POOL_BUFFER, PORTAL_COUNTS, PORTAL_VIEW_SNIPPET,
 };
 pub use helio_core::CoordinateSpacesFrameData;
 
@@ -167,7 +167,7 @@ impl PortalCullPass {
             device,
             "PortalCull Shader",
             helio_core::include_wgsl!("../shaders/portal_cull.wgsl"),
-            &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+            &[helio_mesh_api::DRAW_ROWS_SNIPPET, PORTAL_VIEW_SNIPPET],
         );
 
         let uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {

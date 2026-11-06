@@ -1,8 +1,9 @@
 //!use helio_prelude
-// Camera and the depth convention come from the prelude. GpuLight is the
-// GPU-derived 64-byte prefix of SceneDB's 128-byte light row; no other light
-// fields are read here.
-struct GpuLight {
+// Camera and the depth convention come from the prelude. CompactLight is
+// HLFS's own 64-byte row, the prefix of the light list's 128-byte `GpuLight`
+// (`helio_light_api::LIGHT_LIST_SNIPPET`) that `compact_lights.wgsl` copies
+// out each frame; no other light fields are read here.
+struct CompactLight {
     position_range: vec4<f32>, direction_outer: vec4<f32>, color_intensity: vec4<f32>,
     shadow_index: u32, light_type: u32, inner_angle: f32, _pad: u32,
 }
@@ -19,7 +20,7 @@ struct Globals {
 }
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<storage, read> cameras: array<Camera, 2>;
-@group(0) @binding(2) var<storage, read> lights: array<GpuLight>;
+@group(0) @binding(2) var<storage, read> lights: array<CompactLight>;
 @group(0) @binding(7) var blue_noise: texture_2d_array<f32>;
 // Live light rows in row order (compact_lights.wgsl `list_live`): [0] is the
 // count, [1+k] the row of the k-th live light. `globals.light_count` stays
@@ -213,7 +214,7 @@ struct LightProposal {
     // sampling chooses one of its IDs with its actual conditional probability.
     weights: array<f32,4>,
 }
-fn proposal_weight(light: GpuLight, center: vec3<f32>) -> f32 {
+fn proposal_weight(light: CompactLight, center: vec3<f32>) -> f32 {
     let power=luminance(max(light.color_intensity.rgb*light.color_intensity.w,vec3<f32>(0.0)));
     if power<=0.0 { return 0.0; }
     let delta=light.position_range.xyz-center;

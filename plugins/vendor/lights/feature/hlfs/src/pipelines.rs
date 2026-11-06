@@ -19,6 +19,14 @@ macro_rules! wgsl_text {
     };
 }
 
+/// The lights' snippets HLFS's shaders opt into: `shadows.wgsl` reads the
+/// shadow atlas (`//!use shadow_atlas`), the light compaction the light
+/// list's rows (`//!use light_list`). Every HLFS module is built with them.
+pub(crate) const SNIPPETS: &[helio_core::shader::ShaderSnippet] = &[
+    helio_light_api::LIGHT_LIST_SNIPPET,
+    helio_light_api::SHADOW_ATLAS_SNIPPET,
+];
+
 pub(crate) fn shader_source(stage: &str) -> String {
     shader_source_for_sampler(stage, false)
 }
@@ -214,10 +222,11 @@ impl VisibilityPipelines {
     ) -> Self {
         match mode {
             HlfsMode::ScreenSpace => {
-                let shader = helio_core::shader::module(
+                let shader = helio_core::shader::module_with(
                     device,
                     "HLFS ScreenSpace visibility",
                     &shader_source_for_transmission("screen_space", presampled, transmission),
+                    SNIPPETS,
                 );
                 let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("HLFS ScreenSpace visibility"),
@@ -242,10 +251,11 @@ impl VisibilityPipelines {
                 }
             }
             HlfsMode::RayTraced => {
-                let shader = helio_core::shader::module(
+                let shader = helio_core::shader::module_with(
                     device,
                     "HLFS RayTraced visibility",
                     &shader_source_for_transmission("ray_traced", presampled, transmission),
+                    SNIPPETS,
                 );
                 let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("HLFS RayTraced visibility"),
@@ -376,10 +386,11 @@ impl Pipelines {
                 entry(3, uniform(), S::COMPUTE),
             ],
         );
-        let compact_shader = helio_core::shader::module(
+        let compact_shader = helio_core::shader::module_with(
             device,
             "HLFS light compaction",
             helio_core::include_wgsl!("../shaders/compact_lights.wgsl"),
+            SNIPPETS,
         );
         let compact_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("HLFS light compaction"),
@@ -542,7 +553,8 @@ impl Pipelines {
                 })
                 .collect::<Vec<_>>(),
         );
-        let module = |name| helio_core::shader::module(device, name, &shader_source(name));
+        let module =
+            |name| helio_core::shader::module_with(device, name, &shader_source(name), SNIPPETS);
         let grid_shader = module("grid");
         let temporal_shader = module("temporal");
         let layout =
@@ -684,10 +696,11 @@ fn composite_pipeline(
     } else {
         "composite"
     };
-    let composite_shader = helio_core::shader::module(
+    let composite_shader = helio_core::shader::module_with(
         device,
         stage,
         &shader_source_for_transmission(stage, presampled, transmission),
+        SNIPPETS,
     );
     let mut layouts = vec![Some(common), Some(gbuffer), Some(composite)];
     if mode == HlfsMode::RayTraced {

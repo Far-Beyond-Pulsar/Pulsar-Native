@@ -59,9 +59,9 @@ struct DirectionalLight {
 }
 
 // Whether `light` is a sun: a directional light with intensity and a
-// direction (the rule the lights' join picks the directional light by; a
-// reader of a light list a host wrote itself, with no join, takes the first
-// such light).
+// direction. The lights' directional-light kernel picks the first such light
+// (`helio_pass_light_cull::directional`) into `DIRECTIONAL_LIGHT`, for every
+// host; a reader wanting the sun reads that row, never scans the list.
 fn light_is_sun(light: GpuLight) -> bool {
     return light.light_type == LIGHT_DIRECTIONAL && light.color_intensity.w > 0.0
         && dot(light.direction_outer.xyz, light.direction_outer.xyz) > 0.0;

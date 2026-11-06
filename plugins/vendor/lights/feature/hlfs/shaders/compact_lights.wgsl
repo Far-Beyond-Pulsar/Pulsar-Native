@@ -1,16 +1,11 @@
-struct SourceLight {
-    position_range: vec4<f32>, direction_outer: vec4<f32>, color_intensity: vec4<f32>,
-    shadow_index: u32, light_type: u32, inner_angle: f32, _pad: u32,
-    god_rays_enabled: u32, god_rays_density: f32, god_rays_weight: f32, god_rays_decay: f32,
-    god_rays_exposure: f32, flare_enabled: u32, flare_type: u32, flare_intensity: f32,
-    flare_scale: f32, flare_tint_r: f32, flare_tint_g: f32, flare_tint_b: f32,
-    ies_profile_index: i32, light_function_index: i32, ies_angle_scale: f32, ies_angle_offset: f32,
-}
+//!use light_list
+// The light list's rows (`GpuLight`, `//!use light_list`) compacted to
+// HLFS's 64-byte prefix (`common.wgsl`'s `CompactLight`).
 struct CompactLight {
     position_range: vec4<f32>, direction_outer: vec4<f32>, color_intensity: vec4<f32>,
     shadow_index: u32, light_type: u32, inner_angle: f32, _pad: u32,
 }
-@group(0) @binding(0) var<storage,read> source_lights: array<SourceLight>;
+@group(0) @binding(0) var<storage,read> source_lights: array<GpuLight>;
 @group(0) @binding(1) var<storage,read_write> compact_lights: array<CompactLight>;
 
 @compute @workgroup_size(256)
@@ -30,7 +25,7 @@ var<workgroup> chunk_offsets: array<u32,256>;
 
 // A row that can light anything. Vacant SceneDB rows are zeroed, and the
 // light grid rejects exactly these, so leaving them out changes no result.
-fn is_live(light: SourceLight) -> bool {
+fn is_live(light: GpuLight) -> bool {
     if light.color_intensity.w<=0.0 || all(light.color_intensity.rgb<=vec3<f32>(0.0)) { return false; }
     return light.light_type==0u || light.position_range.w>0.0;
 }

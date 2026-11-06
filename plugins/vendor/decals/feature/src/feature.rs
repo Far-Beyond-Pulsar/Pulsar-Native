@@ -14,6 +14,8 @@ impl Feature for DecalFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<DecalPass>();
         registrar.node(
             pass_node(
                 "decal",

@@ -1,5 +1,6 @@
 enable wgpu_binding_array;
 //!use helio_prelude
+//!use portal_view
 //!use specular_aa
 //!use mesh_draw_rows
 //!use pbr_eval
@@ -69,14 +70,6 @@ struct Globals {
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
-}
-
-struct GpuPortalView {
-    transform:         mat4x4<f32>,
-    inverse_transform: mat4x4<f32>,
-    half_extent:       vec2<f32>,
-    coordinate_space:  u32,
-    _pad:              u32,
 }
 
 /// SceneDB's variable-length portal-chain field.

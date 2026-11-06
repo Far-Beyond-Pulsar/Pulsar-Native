@@ -18,6 +18,8 @@ impl Feature for HlfsFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<HlfsPass>();
         registrar.prepare(Arc::new(|env| {
             if lighting_model(env) == Some(LightingModel::LightField) {
                 let format = HlfsPass::preferred_output_format(env.device);

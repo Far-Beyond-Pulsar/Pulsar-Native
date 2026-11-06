@@ -19,7 +19,7 @@ var<workgroup> max_depth: atomic<u32>;
 var<workgroup> packed: array<u32, 256>;
 var<workgroup> sorted_fine: array<u32, 64>;
 
-fn sphere_in_tile(light: GpuLight, lo: vec2<u32>, hi: vec2<u32>, zlo: f32, zhi: f32) -> bool {
+fn sphere_in_tile(light: CompactLight, lo: vec2<u32>, hi: vec2<u32>, zlo: f32, zhi: f32) -> bool {
     // SceneDB buffers are sparse: unoccupied rows are zeroed, including
     // light_type (directional). They must not fill every tile or force overflow.
     if light.color_intensity.w<=0.0 || all(light.color_intensity.rgb<=vec3<f32>(0.0)) { return false; }

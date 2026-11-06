@@ -27,7 +27,7 @@ fn surface_at(pixel: vec2<u32>) -> Surface {
     s.specular_factor=specular_modulation(s);
     return s;
 }
-fn incident(light: GpuLight, position: vec3<f32>) -> Incident {
+fn incident(light: CompactLight, position: vec3<f32>) -> Incident {
     if light.light_type==0u {
         return Incident(safe_normalize(-light.direction_outer.xyz),max(light.color_intensity.rgb*light.color_intensity.w,vec3<f32>(0.0)));
     }

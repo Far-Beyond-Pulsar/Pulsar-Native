@@ -4,18 +4,6 @@
 # The list may only shrink: the test fails on a copy missing here and on a
 # line whose copy is gone.
 
-# The perf overlay (a frame diagnostic) profiles the default BRDF with its own
-# copy and counts lights from the lights' buffers by name: waits on a
-# diagnostics seam where a kind registers what the overlay measures (its
-# cost probe, its counters), as the timing groups also wait on.
-crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay/shaders/profile_material.wgsl | fn distribution_ggx | waits on a registered material cost probe
-crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay/shaders/profile_material.wgsl | fn fresnel_schlick | waits on a registered material cost probe
-crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay/shaders/profile_material.wgsl | fn geometry_schlick_ggx | waits on a registered material cost probe
-crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay/shaders/profile_material.wgsl | fn geometry_smith | waits on a registered material cost probe
-crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay/src/analysis.rs | "scene_lights" | waits on registered diagnostic counters
-crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay/src/analysis.rs | "tile_light_counts" | waits on registered diagnostic counters
-crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay/src/rendering.rs | "tile_light_counts" | waits on registered diagnostic counters
-
 # Fog reads the post-process volumes' rows for the post settings' fog block:
 # waits on the post plugin splitting that block out of the post settings ABI
 # (a media contract), or a post api crate.

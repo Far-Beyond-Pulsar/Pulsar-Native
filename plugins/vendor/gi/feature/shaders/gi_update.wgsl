@@ -1,4 +1,3 @@
-//!use light_list
 //!use atmosphere
 //!use atmosphere_sky_table
 //!use gi_common
@@ -17,7 +16,9 @@
 @group(0) @binding(4) var<storage, read> gi_lists: array<u32>;
 // The sun: towards it (xyz), its illuminance at the eye (rgb).
 @group(0) @binding(5) var<storage, read_write> gi_sun: array<vec4<f32>, 2>;
-@group(0) @binding(6) var<storage, read> scene_lights: array<GpuLight>;
+// The lights' directional light (`helio_light_api::DIRECTIONAL_LIGHT`): [0]
+// toward it with w 1 (zero: none), [1] its radiance.
+@group(0) @binding(6) var<storage, read> directional_light: array<vec4<f32>, 2>;
 @group(0) @binding(7) var<uniform> atmosphere: AtmosphereFrame;
 @group(0) @binding(8) var<uniform> atmosphere_sky_table: array<vec4<f32>, 2304>;
 // A ray's hit's light beyond the sun's and the probes' (`GiMeshTracePass`:
@@ -35,8 +36,7 @@ const PI: f32 = 3.14159265;
 const LUMINANCE: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 
 // The sun: the atmosphere's, through the air to the eye; without one, the
-// light list's sun (the lights' rule, `light_is_sun`: the first such light,
-// as the lights' join picks its directional light).
+// lights' directional light.
 @compute @workgroup_size(1)
 fn gi_sun_main() {
     if atmosphere.planet.w > 0.5 {
@@ -45,16 +45,13 @@ fn gi_sun_main() {
         gi_sun[1] = vec4<f32>(atmosphere.sun_illuminance.rgb * atmosphere_transmittance_towards(atmosphere, vec3<f32>(0.0), towards), 0.0);
         return;
     }
+    if directional_light[0].w > 0.5 {
+        gi_sun[0] = vec4<f32>(directional_light[0].xyz, 0.0);
+        gi_sun[1] = vec4<f32>(directional_light[1].rgb, 0.0);
+        return;
+    }
     gi_sun[0] = vec4<f32>(0.0, 1.0, 0.0, 0.0);
     gi_sun[1] = vec4<f32>(0.0);
-    for (var i = 0u; i < arrayLength(&scene_lights); i++) {
-        let light = scene_lights[i];
-        if light_is_sun(light) {
-            gi_sun[0] = vec4<f32>(-normalize(light.direction_outer.xyz), 0.0);
-            gi_sun[1] = vec4<f32>(light.color_intensity.rgb * light.color_intensity.w, 0.0);
-            return;
-        }
-    }
 }
 
 // The sky's radiance along unit direction `d` from eye-relative point

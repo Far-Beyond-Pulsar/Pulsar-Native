@@ -2,6 +2,9 @@
 //!use pbr_eval
 //!use atmosphere
 //!use atmosphere_sky_table
+//!use frame_indirect_specular
+//!use light_list
+//!use shadow_atlas
 
 //! Deferred lighting pass.
 //!
@@ -48,39 +51,6 @@ struct Globals {
     pixel_count: u32,
     _pad_0: u32,
 }
-
-/// GpuLight (64 bytes, matches libhelio::GpuLight)
-struct GpuLight {
-    position_range:  vec4<f32>,  // xyz = position, w = range
-    direction_outer: vec4<f32>,  // xyz = direction, w = spot outer cos angle
-    color_intensity: vec4<f32>,  // xyz = color, w = intensity
-    shadow_index:    u32,        // -1u32 if no shadow
-    light_type:      u32,        // LightType enum (0=directional, 1=point, 2=spot)
-    inner_angle:     f32,        // spot inner cos angle
-    _pad:            u32,
-    // Light shafts — consumed by helio-pass-volumetric-fog. Padding is three
-    // scalars, not vec3<u32>, to keep the struct at 96 bytes (vec3 aligns to 16).
-    god_rays_enabled:  u32,
-    god_rays_density:  f32,
-    god_rays_weight:   f32,
-    god_rays_decay:    f32,
-    god_rays_exposure: f32,
-    flare_enabled:      u32,
-    flare_type:         u32,
-    flare_intensity:    f32,
-    flare_scale:        f32,
-    flare_tint_r:       f32,
-    flare_tint_g:       f32,
-    flare_tint_b:       f32,
-    ies_profile_index:    i32,
-    light_function_index: i32,
-    ies_angle_scale:      f32,
-    ies_angle_offset:     f32,
-}
-
-struct LightMatrix { mat: mat4x4<f32>,
-    atlas: vec4f,
-    policy: vec4u, }
 
 /// Per-cascade shadow configuration (16 bytes, matches libhelio::CascadeConfig)
 struct CascadeConfig {
@@ -364,17 +334,6 @@ fn hash22(p: vec2<f32>) -> f32 {
     return fract((p3.x + p3.y) * d);
 }
 
-fn point_light_face(dir: vec3<f32>) -> u32 {
-    let a = abs(dir);
-    if a.x >= a.y && a.x >= a.z {
-        return select(0u, 1u, dir.x < 0.0);
-    } else if a.y >= a.x && a.y >= a.z {
-        return select(2u, 3u, dir.y < 0.0);
-    } else {
-        return select(4u, 5u, dir.z < 0.0);
-    }
-}
-
 // Normal-offset bias constant (world-space units).
 // Shifts the shadow query point along the surface normal before projecting into
 // light space, eliminating self-shadowing without any visible surface gap.
@@ -552,24 +511,7 @@ fn sample_cascade_shadow_pcss(
 // held no pane: an untinted rim and stair-stepped edges, most visible in the
 // coarse cascades, where a half-resolution texel covers several centimetres.
 fn glass_tint(uv:vec2f, layer:i32, receiver:f32)->vec3f {
-    let face=u32(layer);
-    if !budget_valid(face,16u) {return vec3f(1);}
-    let physical=i32(budget_layer(face));
-    if physical>=i32(textureNumLayers(shadow_transmittance)) {return vec3f(1);}
-    let dims=vec2f(textureDimensions(shadow_transmittance));
-    let p=budget_uv(uv,face,dims)*dims-0.5;
-    let base=floor(p);let f=fract(p);var tint=vec3f(0);
-    let m=shadow_matrices[face];
-    let offset=select(m.atlas.xy,vec2f(0),m.policy.w==0u);
-    let size=select(m.atlas.z,1.0,m.policy.w==0u);
-    for(var i=0;i<4;i++) {
-        let o=vec2i(i&1,i>>1);
-        let pixel=clamp(vec2i(base)+o,vec2i(offset*dims),vec2i((offset+vec2f(size))*dims)-1);
-        let t=textureLoad(shadow_transmittance,pixel,physical,0);
-        let w=select(1.0-f.x,f.x,o.x==1)*select(1.0-f.y,f.y,o.y==1);
-        tint+=w*select(vec3f(1),1.0-t.rgb,receiver<t.a);
-    }
-    return mix(vec3f(1),tint,budget_strength(face));
+    return budget_glass_tint(shadow_transmittance,uv,layer,receiver);
 }
 
 fn light_transmittance(light_idx: u32, world_pos: vec3<f32>, N: vec3<f32>) -> vec3<f32> {
@@ -1508,7 +1450,10 @@ fn fs_reflection(in: VSOut) -> @location(0) vec4<f32> {
     let depth = textureLoad(gbuf_depth, pix, 0);
     if helio_is_sky(depth) { discard; }
 
-    let ssr_hit = textureLoad(specular_layer_0, pix, 0);
+    // The specular layers at this pixel, whatever their resolution (SSR traces
+    // at half): premultiplied rgb and coverage.
+    let uv = in.clip_pos.xy / vec2<f32>(textureDimensions(gbuf_depth));
+    let ssr_hit = indirect_specular_at(specular_layer_0, uv);
     if globals.debug_mode == 30u {
         return vec4<f32>(vec3<f32>(ssr_hit.a), 1.0);
     }
@@ -1588,12 +1533,12 @@ fn fs_reflection(in: VSOut) -> @location(0) vec4<f32> {
 
     // Screen-space hits are of the host's view; a remapped pixel has none of its own.
     if !remapped && globals.enable_reflections != 0u && ssr_hit.a > 0.0 {
-        spec_ind = mix(spec_ind, ssr_hit.rgb * F_ibl, ssr_hit.a);
+        spec_ind = spec_ind * (1.0 - ssr_hit.a) + ssr_hit.rgb * F_ibl;
     }
 
-    let planar_hit = textureLoad(specular_layer_1, pix, 0);
+    let planar_hit = indirect_specular_at(specular_layer_1, uv);
     if !remapped && globals.enable_reflections != 0u && planar_hit.a > 0.0 {
-        spec_ind = mix(spec_ind, planar_hit.rgb * F_ibl, planar_hit.a);
+        spec_ind = spec_ind * (1.0 - planar_hit.a) + planar_hit.rgb * F_ibl;
     }
 
     let contribution = select(spec_ind * ao_combined, spec_ind, has_lightmap);
@@ -1604,57 +1549,20 @@ fn fs_reflection(in: VSOut) -> @location(0) vec4<f32> {
     return vec4<f32>(contribution + added, 0.0);
 }
 
-// Logical face metadata maps all filtering into a guarded physical tile.
-fn budget_resolution(layer:u32)->f32 {
-    if layer>=arrayLength(&shadow_matrices) {return 128.0;}
-    let m=shadow_matrices[layer];
-    return select(max(f32(m.policy.z),128.0),1024.0,m.policy.w==0u);
-}
-fn budget_layer(layer:u32)->u32 {
-    return select(shadow_matrices[layer].policy.x,layer,shadow_matrices[layer].policy.w==0u);
-}
-fn budget_uv(uv:vec2f,layer:u32,dims:vec2f)->vec2f {
-    let m=shadow_matrices[layer];
-    let offset=select(m.atlas.xy,vec2f(0),m.policy.w==0u);
-    let size=select(m.atlas.z,1.0,m.policy.w==0u);
-    let half_texel=0.5/dims;
-    return clamp(offset+uv*size,offset+half_texel,offset+vec2f(size)-half_texel);
-}
-fn budget_valid(layer:u32,disabled:u32)->bool {
-    if layer>=arrayLength(&shadow_matrices) {return false;}
-    let m=shadow_matrices[layer];
-    return m.policy.w==0u || (m.policy.w==2u && m.atlas.z>0.0 && (m.policy.y&disabled)==0u);
-}
-fn budget_strength(layer:u32)->f32 {
-    let m=shadow_matrices[layer];return select(m.atlas.w,1.0,m.policy.w==0u);
-}
-
+// One comparison against the dynamic or the static casters' atlas, and an
+// occluder depth from either (the shadow atlas's `budget_*`; 32 and 16 are
+// the caster-kind bits each atlas holds).
 fn budget_compare_dynamic(uv:vec2f,layer:u32,depth:f32)->f32 {
-    if !budget_valid(layer,32u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(shadow_atlas) {return 1.0;}
-    let value=textureSampleCompareLevel(shadow_atlas,shadow_sampler,budget_uv(uv,layer,vec2f(textureDimensions(shadow_atlas))),i32(budget_layer(layer)),depth);
-    return mix(1.0,value,budget_strength(layer));
+    return budget_compare(shadow_atlas,shadow_sampler,uv,layer,depth,32u);
 }
 fn budget_depth_dynamic(pixel:vec2i,layer:u32)->f32 {
-    if !budget_valid(layer,32u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(shadow_atlas) {return 1.0;}
-    let dims=vec2f(textureDimensions(shadow_atlas));
-    let uv=(vec2f(pixel)+0.5)/budget_resolution(layer);
-    return textureLoad(shadow_atlas,vec2i(budget_uv(uv,layer,dims)*dims),i32(budget_layer(layer)),0);
+    return budget_depth(shadow_atlas,pixel,layer,32u);
 }
-
 fn budget_compare_static(uv:vec2f,layer:u32,depth:f32)->f32 {
-    if !budget_valid(layer,16u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(static_shadow_atlas) {return 1.0;}
-    let value=textureSampleCompareLevel(static_shadow_atlas,shadow_sampler,budget_uv(uv,layer,vec2f(textureDimensions(static_shadow_atlas))),i32(budget_layer(layer)),depth);
-    return mix(1.0,value,budget_strength(layer));
+    return budget_compare(static_shadow_atlas,shadow_sampler,uv,layer,depth,16u);
 }
 fn budget_depth_static(pixel:vec2i,layer:u32)->f32 {
-    if !budget_valid(layer,16u) {return 1.0;}
-    if budget_layer(layer)>=textureNumLayers(static_shadow_atlas) {return 1.0;}
-    let dims=vec2f(textureDimensions(static_shadow_atlas));
-    let uv=(vec2f(pixel)+0.5)/budget_resolution(layer);
-    return textureLoad(static_shadow_atlas,vec2i(budget_uv(uv,layer,dims)*dims),i32(budget_layer(layer)),0);
+    return budget_depth(static_shadow_atlas,pixel,layer,16u);
 }
 
 // Bounded screen-space fallback, shared by resident and nonresident lights so

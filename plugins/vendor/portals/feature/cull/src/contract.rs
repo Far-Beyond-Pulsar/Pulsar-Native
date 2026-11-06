@@ -9,6 +9,15 @@
 
 use bytemuck::{Pod, Zeroable};
 
+/// [`GpuPortalView`] in WGSL (`//!use portal_view`): `struct GpuPortalView`,
+/// field for field (144 bytes). Read by the cull (`portal_cull.wgsl`) and
+/// by `helio-pass-portal-instances`' duplicate draw (`gbuffer_portal.wgsl`),
+/// opening mask (`portal_mask.wgsl`) and editor overlay
+/// (`portal_editor_overlay.wgsl`); each declares only its own binding of
+/// the rows.
+pub const PORTAL_VIEW_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use portal_view", "../shaders/portal_view.wgsl");
+
 /// Legacy dense-row reserve used by existing demo setup code. It is not a
 /// projection or recursion cap: the resolver/bridge accept runtime-sized
 /// chain vectors, SceneDB grows the handle/payload buffers, and callers that

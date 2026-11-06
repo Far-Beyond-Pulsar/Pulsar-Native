@@ -29,12 +29,28 @@ use pulsar_scenedb::gpu::{GpuMirrorHandle, TextureStore};
 /// The materials' feature: the texture table ([`SceneMaterialTextures`]).
 pub struct MaterialsFeature;
 
+/// The materials' surface for the frame's shading-cost probe (the default
+/// PBR's BRDF through `pbr_eval`), under the frame's marker.
+pub const SURFACE_PROBE: helio_core::shader::ShaderSnippet = helio_core::wgsl_snippet!(
+    helio_frame_api::diagnostics::SURFACE_PROBE_MARKER,
+    "../shaders/surface_probe.wgsl"
+);
+
 impl Feature for MaterialsFeature {
     fn id(&self) -> &'static str {
         "pulsar.materials"
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What the performance overlay times as a surface's shading cost.
+        registrar.prepare(Arc::new(|env| {
+            helio_frame_api::diagnostics::offer_surface_probe(
+                env,
+                helio_frame_api::diagnostics::SurfaceProbe {
+                    snippets: vec![SURFACE_PROBE, helio_mats::PBR_EVAL_SNIPPET],
+                },
+            );
+        }));
         // The host input's node (the kind `helio_frame_api::host_input`
         // gives it): it declares the input and supplies it.
         registrar.node(

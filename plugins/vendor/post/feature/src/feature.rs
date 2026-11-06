@@ -16,6 +16,8 @@ impl Feature for PostVolumesFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<PostProcessVolumeBlendPass>();
         registrar.consumes(crate::POST_PROCESS_VOLUMES);
         registrar.consumes(crate::CAMERA_POSTPROCESS);
         registrar.node(

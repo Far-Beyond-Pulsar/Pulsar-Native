@@ -55,6 +55,12 @@ impl Feature for FoliageFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swap_group(&[
+            helio_core::graph::type_name_of::<FoliagePlacePass>(),
+            helio_core::graph::type_name_of::<FoliageGBufferPass>(),
+            helio_core::graph::type_name_of::<FoliageBoxesPass>(),
+        ]);
         // Foliage grows on the first ground a terrain offered while the graph
         // was built (the voxel terrain's, say); with none, on its built-in one.
         registrar.finish(Arc::new(|env, graph| {

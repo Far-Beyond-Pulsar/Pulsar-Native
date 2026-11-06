@@ -60,20 +60,6 @@ pub fn pack(n: Vec3) -> u32 {
     e.x as u32 | ((e.y as u32) << 10) | ((e.z as u32) << 20)
 }
 
-/// A directional light straight down, illuminance `e` (Helio's `GpuLight`).
-pub fn sun_down(e: f32) -> [u32; 32] {
-    let mut light = [0u32; 32];
-    light[4..8].copy_from_slice(&[
-        0f32.to_bits(),
-        (-1f32).to_bits(),
-        0f32.to_bits(),
-        0f32.to_bits(),
-    ]);
-    light[8..12].copy_from_slice(&[1f32.to_bits(), 1f32.to_bits(), 1f32.to_bits(), e.to_bits()]);
-    light[13] = 0;
-    light
-}
-
 /// A point light at `at` of `intensity` (white) and `range` (`GpuLight`).
 pub fn point_light(at: Vec3, intensity: f32, range: f32) -> [u32; 32] {
     let mut light = [0u32; 32];

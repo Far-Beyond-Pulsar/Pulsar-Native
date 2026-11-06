@@ -21,6 +21,11 @@ impl Feature for SpriteFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swap_group(&[
+            helio_core::graph::type_name_of::<SpriteCullPass>(),
+            helio_core::graph::type_name_of::<SpriteBatchPass>(),
+        ]);
         // The culler and the batcher hand each other buffers and are one unit.
         registrar.node(
             pass_node(

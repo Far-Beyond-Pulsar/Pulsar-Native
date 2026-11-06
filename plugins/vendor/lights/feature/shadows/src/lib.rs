@@ -188,10 +188,14 @@ impl ShadowMatrixPass {
             &layout,
             &[lights, &desired, camera, &uniform_buf, dirty, hashes],
         );
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "Shadow matrices",
             helio_core::include_wgsl!("../shaders/shadow_matrices.wgsl"),
+            &[
+                helio_light_api::LIGHT_LIST_SNIPPET,
+                helio_light_api::SHADOW_ATLAS_SNIPPET,
+            ],
         );
         let matrix_pipeline = pipeline(device, &layout, &shader, "compute_shadow_matrices");
         let caster_layout = bgl(device, "Shadow allocation", &[rw, Uniform, rw, ro, rw]);
@@ -224,10 +228,11 @@ impl ShadowMatrixPass {
             &caster_layout,
             &[lights, &params, &proposed, &committed, &candidates],
         );
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "Shadow residency",
             helio_core::include_wgsl!("../shaders/shadow_casters.wgsl"),
+            &[helio_light_api::LIGHT_LIST_SNIPPET],
         );
         let pipelines = [
             "score_lights",

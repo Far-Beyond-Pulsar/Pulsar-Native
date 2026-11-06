@@ -19,6 +19,9 @@ impl Feature for FogFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<VolumetricFogPass>();
+        registrar.swappable::<FogCompositePass>();
         registrar.node(
             pass_node(
                 "volumetric_fog",

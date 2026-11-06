@@ -9,7 +9,15 @@ fn the_portal_draw_validates_with_every_material_class() {
     let registry = helio_mats::RadiantTemplateRegistry::new();
     for class in registry.keys() {
         let template = registry.get(class).unwrap();
-        let native = template.compose(program, "", 4, &[helio_mesh_api::DRAW_ROWS_SNIPPET]);
+        let native = template.compose(
+            program,
+            "",
+            4,
+            &[
+                helio_mesh_api::DRAW_ROWS_SNIPPET,
+                helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
+            ],
+        );
         for source in [
             native.clone(),
             helio_mats::apply_webgpu_material_bindings(&native, 4),

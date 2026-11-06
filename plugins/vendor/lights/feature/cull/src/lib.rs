@@ -10,8 +10,10 @@
 //! These buffers are published into `ResourceRegistry` so `DeferredLightPass` can
 //! skip every light that doesn't touch the current pixel's tile.
 
+pub mod directional;
 pub mod feature;
 pub mod scene_rows;
+pub use directional::{DirectionalLightDerivation, DirectionalLightPick};
 pub use feature::LightCullFeature;
 
 use bytemuck::{Pod, Zeroable};
@@ -87,10 +89,11 @@ impl LightCullPass {
             .checked_mul(num_tiles_y)
             .expect("tile grid overflow: viewport dimensions too large");
 
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "LightCull Shader",
             helio_core::include_wgsl!("../shaders/light_cull.wgsl"),
+            &[LIGHT_LIST_SNIPPET],
         );
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

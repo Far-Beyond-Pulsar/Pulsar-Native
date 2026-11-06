@@ -1,3 +1,4 @@
+//!use sprite_instance
 // ── Sprite GPU Culling ──────────────────────────────────────────────────────
 //
 // One thread per pool slot. Alive + in-view slots are atomically compacted
@@ -15,17 +16,6 @@ struct CullUniforms {
     max_visible: u32,
     _pad0: u32,
     scene_mode: u32,
-}
-
-struct SpriteInstance {
-    position: vec2<f32>,
-    size: vec2<f32>,
-    rotation: f32,
-    depth: f32,
-    _pad_uv: vec2<f32>,
-    uv_rect: vec4<f32>,
-    color: vec4<f32>,
-    atlas_layer: u32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: CullUniforms;

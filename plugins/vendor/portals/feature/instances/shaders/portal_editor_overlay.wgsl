@@ -1,4 +1,5 @@
 //!use helio_prelude
+//!use portal_view
 //! Editor-only portal-surface indicator.
 //!
 //! In game mode a portal is meant to be perfectly seamless — nothing marks
@@ -16,16 +17,6 @@
 //! marker grid over the portal's true footprint without ever fully hiding
 //! the duplicated content behind it. Only runs when the pass's `editor_mode`
 //! flag is set — zero draws, zero cost, in game builds.
-
-
-/// Must match libhelio::GpuPortalView (144 bytes) — see gbuffer_portal.wgsl.
-struct GpuPortalView {
-    transform:         mat4x4<f32>,
-    inverse_transform: mat4x4<f32>,
-    half_extent:       vec2<f32>,
-    coordinate_space:  u32,
-    _pad:              u32,
-}
 
 struct GlyphInstance {
     world_position: vec4<f32>,

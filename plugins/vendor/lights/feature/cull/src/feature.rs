@@ -19,6 +19,11 @@ impl Feature for LightCullFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<LightCullPass>();
+        // The directional light of a light list a host wrote itself (the
+        // lights' join records its own): what the sky, GI and media read.
+        registrar.scene_derivation(crate::DirectionalLightDerivation::FACTORY);
         registrar.node(
             pass_node(
                 "light_cull",

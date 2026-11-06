@@ -18,14 +18,18 @@ fn read(gpu: &Gpu, buffer: &wgpu::Buffer) -> Vec<u32> {
     common::read(&gpu.device, &gpu.queue, buffer)
 }
 
-/// A directional light straight down, illuminance `e`.
+/// The lights' directional light straight down, illuminance `e`
+/// (`helio_light_api::DIRECTIONAL_LIGHT`).
 fn sun_down(gpu: &Gpu, e: f32) -> wgpu::Buffer {
     use wgpu::util::DeviceExt;
-    let light = common::sun_down(e);
+    let row = helio_light_api::DirectionalLightRow {
+        toward: [0.0, 1.0, 0.0, 1.0],
+        radiance: [e, e, e, 0.0],
+    };
     gpu.device
         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sun"),
-            contents: bytemuck::cast_slice(&light),
+            contents: bytemuck::bytes_of(&row),
             usage: wgpu::BufferUsages::STORAGE,
         })
 }
@@ -58,13 +62,13 @@ fn frame(
     eye: DVec3,
     n: u64,
     sky: f32,
-    lights: Option<&wgpu::Buffer>,
+    directional: Option<&wgpu::Buffer>,
     tracer: Option<&dyn Fn(&[u32]) -> Vec<u32>>,
 ) {
     pass.begin(&gpu.queue, eye, n, Vec3::splat(sky), Vec3::splat(sky));
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     let mut cmds = helio_core::CommandRecorder::from_encoder(&mut encoder);
-    pass.record(&gpu.device, &mut cmds, None, None, lights, None);
+    pass.record(&gpu.device, &mut cmds, None, None, directional, None);
     drop(cmds);
     gpu.queue.submit([encoder.finish()]);
     if let Some(trace) = tracer {

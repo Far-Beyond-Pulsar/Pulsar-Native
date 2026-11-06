@@ -69,10 +69,11 @@ pub struct PortalEditorOverlayPass {
 
 impl PortalEditorOverlayPass {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
-        let shader = helio_core::shader::module(
+        let shader = helio_core::shader::module_with(
             device,
             "PortalEditorOverlay Shader",
             helio_core::include_wgsl!("../shaders/portal_editor_overlay.wgsl"),
+            &[helio_pass_portal_cull::PORTAL_VIEW_SNIPPET],
         );
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

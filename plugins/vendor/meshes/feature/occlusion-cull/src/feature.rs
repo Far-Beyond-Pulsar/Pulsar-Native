@@ -20,6 +20,12 @@ impl Feature for MeshCulling {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<IndirectDispatchPass>();
+        registrar.swap_group(&[
+            helio_core::graph::type_name_of::<HiZBuildPass>(),
+            helio_core::graph::type_name_of::<OcclusionCullPass>(),
+        ]);
         const CATEGORY: &str = "Passes: Scene Prep";
 
         registrar.node(

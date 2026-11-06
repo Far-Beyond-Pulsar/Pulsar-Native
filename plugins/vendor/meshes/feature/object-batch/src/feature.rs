@@ -16,6 +16,8 @@ impl Feature for ObjectBatchFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // What shader hot reload may swap without rebuilding the graph.
+        registrar.swappable::<ObjectBatchPass>();
         registrar.node(
             pass_node(
                 "object_batch",

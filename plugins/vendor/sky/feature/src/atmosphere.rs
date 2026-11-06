@@ -618,7 +618,7 @@ impl AtmospherePass {
             device,
             "Atmosphere LUTs",
             helio_core::include_wgsl!("shaders/atmosphere_luts.wgsl"),
-            &[ATMOSPHERE_SNIPPET, helio_light_api::LIGHT_LIST_SNIPPET],
+            &[ATMOSPHERE_SNIPPET],
         );
         let compute = wgpu::ShaderStages::COMPUTE;
         let storage = |read_only| wgpu::BufferBindingType::Storage { read_only };
@@ -802,7 +802,7 @@ impl AtmospherePass {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        // Bound while a scene has no atmosphere or light rows yet.
+        // Bound while a scene has no atmosphere rows or directional light yet.
         let no_rows = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Atmosphere no rows"),
             size: 128,
@@ -862,7 +862,7 @@ impl RenderPass for AtmospherePass {
     }
 
     fn scene_buffers(&self) -> &'static [&'static str] {
-        &["atmospheres", helio_light_api::LIGHT_LIST]
+        &["atmospheres", helio_light_api::DIRECTIONAL_LIGHT]
     }
 
     fn name(&self) -> &'static str {
@@ -937,11 +937,11 @@ impl RenderPass for AtmospherePass {
             .scene_buffers
             .get(BufferKey::of("atmospheres"))
             .map_or(&self.no_rows, |h| &h.buffer);
-        let lights = ctx
+        let directional = ctx
             .scene_buffers
-            .get(BufferKey::of(helio_light_api::LIGHT_LIST))
+            .get(BufferKey::of(helio_light_api::DIRECTIONAL_LIGHT))
             .map_or(&self.no_rows, |h| &h.buffer);
-        let key = (atmospheres.clone(), lights.clone(), ctx.camera.clone());
+        let key = (atmospheres.clone(), directional.clone(), ctx.camera.clone());
         if self.shared_key.as_ref() != Some(&key) {
             self.shared_group = Some(ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Atmosphere shared"),
@@ -957,7 +957,7 @@ impl RenderPass for AtmospherePass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
-                        resource: lights.as_entire_binding(),
+                        resource: directional.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,

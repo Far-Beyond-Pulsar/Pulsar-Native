@@ -538,8 +538,8 @@ fn point_shadow_cube_matches_real_matrix_producer_and_shadow_strength_adapter() 
     let matrices = buffer(&device, &[0; 576], storage);
     // Use the real shadow producer's math, including its handedness and face order.
     let producer = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("real point shadow matrices"),
-        source: wgpu::ShaderSource::Wgsl(helio_core::shader::resolve(&format!("{}\n{}",include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
-            "@compute @workgroup_size(1) fn test_point_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }")).into_owned().into()) });
+        source: wgpu::ShaderSource::Wgsl(helio_core::shader::resolve_with(&format!("{}\n{}",include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
+            "@compute @workgroup_size(1) fn test_point_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }"), &[helio_light_api::LIGHT_LIST_SNIPPET, helio_light_api::SHADOW_ATLAS_SNIPPET]).into_owned().into()) });
     let producer = pipeline(&device, &producer, "test_point_matrices");
     let producer_bg = group(&device, &producer, &[(0, &lights), (1, &matrices)]);
     let shader = helio_core::shader::module(
@@ -799,9 +799,9 @@ impl ShadowProducer {
         });
         let matrices = buffer(device, &[0; 576], wgpu::BufferUsages::STORAGE);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None, source: wgpu::ShaderSource::Wgsl(helio_core::shader::resolve(&format!("{}\n{}",
+            label: None, source: wgpu::ShaderSource::Wgsl(helio_core::shader::resolve_with(&format!("{}\n{}",
                 include_str!("../../../lights/feature/shadows/shaders/shadow_matrices.wgsl"),
-                "@compute @workgroup_size(1) fn test_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }")).into_owned().into()),
+                "@compute @workgroup_size(1) fn test_matrices() { compute_point_light_matrices(0u, vec3f(0), 20.0); }"), &[helio_light_api::LIGHT_LIST_SNIPPET, helio_light_api::SHADOW_ATLAS_SNIPPET]).into_owned().into()),
         });
         let pipeline = pipeline(device, &shader, "test_matrices");
         let bg = group(device, &pipeline, &[(0, lights), (1, &matrices)]);

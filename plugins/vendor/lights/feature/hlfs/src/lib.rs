@@ -1068,7 +1068,7 @@ mod tests {
         ] {
             for presampled in [false, true] {
                 let source = super::pipelines::shader_source_for_sampler(stage, presampled);
-                let source = helio_core::shader::resolve(&source);
+                let source = helio_core::shader::resolve_with(&source, super::pipelines::SNIPPETS);
                 let module = naga::front::wgsl::parse_str(&source)
                     .unwrap_or_else(|e| panic!("{stage}: {}", e.emit_to_string(&source)));
                 naga::valid::Validator::new(

@@ -209,6 +209,9 @@ impl DeferredLightPass {
                 helio_mats::PBR_EVAL_SNIPPET,
                 ATMOSPHERE_SNIPPET,
                 ATMOSPHERE_SKY_TABLE_SNIPPET,
+                helio_frame_api::lighting::INDIRECT_SPECULAR_SNIPPET,
+                helio_light_api::LIGHT_LIST_SNIPPET,
+                helio_light_api::SHADOW_ATLAS_SNIPPET,
             ],
         );
 

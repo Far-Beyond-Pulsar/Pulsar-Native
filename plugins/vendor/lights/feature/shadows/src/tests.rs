@@ -20,6 +20,7 @@ const SNIPPETS: &[helio_core::shader::ShaderSnippet] = &[
     helio_light_api::SUN_OCCLUSION_SNIPPET,
     helio_light_api::LIGHT_LIST_SNIPPET,
     helio_light_api::SHADOW_ATLAS_SNIPPET,
+    helio_frame_api::lighting::INDIRECT_SPECULAR_SNIPPET,
 ];
 
 /// The lights' shadow shaders as their passes build them. (What casts into
@@ -34,6 +35,7 @@ fn production_shadow_shaders_validate() {
         "shadows/shaders/shadow_casters.wgsl",
         "shadows/shaders/shadow_matrices.wgsl",
         "deferred/shaders/deferred_lighting.wgsl",
+        "cull/shaders/light_cull.wgsl",
     ] {
         let source = std::fs::read_to_string(root.join(path))
             .unwrap()
