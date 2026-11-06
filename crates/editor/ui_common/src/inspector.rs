@@ -14,14 +14,14 @@
 //! they are on screen.
 
 use crate::inspector_model::{
-    category_color, category_default_collapsed, flatten, CardDesc, CollapseState, InspectorItem,
-    Query,
+    CardDesc, CollapseState, InspectorItem, Query, category_color, category_default_collapsed,
+    flatten,
 };
 use gpui::{prelude::*, *};
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::scroll::{Scrollbar, ScrollbarState};
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable as _};
+use ui::{ActiveTheme, Icon, IconName, Sizable as _, h_flex, v_flex};
 
 /// What the host is asked to render.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,6 +118,14 @@ impl<V: Render + 'static> Inspector<V> {
     /// changed; search and collapse changes relayout by themselves.
     pub fn set_cards(&mut self, cards: Vec<CardDesc>) {
         self.cards = cards;
+        self.relayout();
+    }
+
+    /// Start a compact panel with every card collapsed. Hosts can call this
+    /// after their initial card set; user toggles remain intact afterwards.
+    pub fn collapse_all(&mut self) {
+        let keys = self.cards.iter().map(|card| card.key.clone());
+        self.collapse.set_all_cards(keys, true);
         self.relayout();
     }
 

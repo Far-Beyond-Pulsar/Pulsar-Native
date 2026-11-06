@@ -9,18 +9,21 @@ use std::sync::Arc;
 
 use gpui::{prelude::*, *};
 use ui::{
+    ActiveTheme, Sizable,
     button::{Button, ButtonVariants as _},
     dropdown::{SearchableList, SearchableListEvent},
     h_flex,
     input::{InputEvent, InputState, NumberInput},
     popover::Popover,
-    v_flex, ActiveTheme, Sizable,
+    v_flex,
 };
+use ui_common::inspector::{Inspector, InspectorRow};
+use ui_common::inspector_model::CardDesc;
 
 use engine_fs::world_roles::{EngineRole, ROLES};
 
-use crate::state::LevelEditorState;
 use crate::WorldSettingsPanel;
+use crate::state::LevelEditorState;
 
 mod environment_section;
 mod input_section;
@@ -65,6 +68,8 @@ pub struct WorldSettingsPanelImpl {
     environment_selection: Option<environment_section::EnvironmentSelection>,
     environment_sidebar_scroll: gpui::UniformListScrollHandle,
     environment_detail_scroll: gpui::ScrollHandle,
+    inspector: Inspector<WorldSettingsPanel>,
+    inspector_initialized: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -202,6 +207,15 @@ impl WorldSettingsPanelImpl {
             ));
         }
 
+        let inspector = Inspector::new(
+            "world-settings-inspector",
+            "Search world settings…",
+            0,
+            |panel: &mut WorldSettingsPanel| &mut panel.world_settings.inspector,
+            window,
+            cx,
+        );
+
         let mut panel = Self {
             state: state.clone(),
             gravity_x_input,
@@ -220,6 +234,8 @@ impl WorldSettingsPanelImpl {
             environment_selection: None,
             environment_sidebar_scroll: gpui::UniformListScrollHandle::new(),
             environment_detail_scroll: gpui::ScrollHandle::new(),
+            inspector,
+            inspector_initialized: false,
             _subscriptions: subscriptions,
         };
         panel.load_blueprint_catalog(cx);
@@ -293,25 +309,27 @@ impl WorldSettingsPanelImpl {
 
     fn watch_blueprint_index(&self, cx: &mut Context<WorldSettingsPanel>) {
         let mut events = engine_fs::subscribe();
-        cx.spawn(async move |this, cx| loop {
-            let Ok(event) = events.recv().await else {
-                continue;
-            };
-            if !is_blueprint_index_path(&event.path) {
-                continue;
-            }
+        cx.spawn(async move |this, cx| {
+            loop {
+                let Ok(event) = events.recv().await else {
+                    continue;
+                };
+                if !is_blueprint_index_path(&event.path) {
+                    continue;
+                }
 
-            cx.update(|cx| {
-                let _ = this.update(cx, |panel, cx| {
-                    for role_picker in &mut panel.world_settings.role_pickers {
-                        role_picker.catalog = BlueprintCatalogState::Loading;
-                    }
-                    panel
-                        .world_settings
-                        .load_blueprint_catalog_with_rebuild(cx, false);
-                    cx.notify();
+                cx.update(|cx| {
+                    let _ = this.update(cx, |panel, cx| {
+                        for role_picker in &mut panel.world_settings.role_pickers {
+                            role_picker.catalog = BlueprintCatalogState::Loading;
+                        }
+                        panel
+                            .world_settings
+                            .load_blueprint_catalog_with_rebuild(cx, false);
+                        cx.notify();
+                    });
                 });
-            });
+            }
         })
         .detach();
     }
@@ -352,78 +370,103 @@ impl WorldSettingsPanelImpl {
             window,
             cx,
         );
-        let pipeline_section = self.render_pipeline_section(cx);
-        // The registered level components' sections (a disabled plugin's
-        // are not registered).
-        let level_sections: Vec<(&'static str, AnyElement)> =
+        let mut cards = vec![world_settings_card("pipeline", "Render Pipeline")];
+        cards.extend(
             crate::extend::level_component_sections()
                 .into_iter()
                 .map(|section| {
-                    (
-                        section.title,
-                        self.render_level_component_section(section, window, cx),
-                    )
-                })
-                .collect();
-        let environment_tools = self.render_environment_tools(cx);
-        let state = self.state.read();
-        let settings = &state.scene.world_settings;
-        let input_row = self.render_input_mapping_row(settings.player_input_mapping.as_deref(), cx);
-        let role_rows: Vec<AnyElement> = self
-            .role_pickers
-            .iter()
-            .map(|role_picker| {
-                self.render_role_row(role_picker, settings.role_blueprint(role_picker.role), cx)
-            })
-            .collect();
+                    world_settings_card(&format!("component:{}", section.class_name), section.title)
+                }),
+        );
+        cards.extend([
+            world_settings_card("environment", "Environment Mixer"),
+            world_settings_card("simulation", "Simulation"),
+            world_settings_card("gameplay", "Gameplay Roles"),
+        ]);
+        self.inspector.set_cards(cards);
+        if !self.inspector_initialized {
+            self.inspector.collapse_all();
+            self.inspector_initialized = true;
+        }
         v_flex()
             .size_full()
             .min_h_0()
             .bg(cx.theme().background)
             .child(self.render_header(cx))
-            .child(
-                div().flex_1().min_h_0().overflow_y_scroll().child(
-                    v_flex()
-                        .w_full()
-                        .p_4()
-                        .gap_4()
-                        .child(self.render_section_title("Render Pipeline"))
-                        .child(pipeline_section)
-                        .children(level_sections.into_iter().flat_map(|(title, section)| {
-                            [self.render_section_title(title).into_any_element(), section]
-                        }))
-                        .child(self.render_section_title("Environment Mixer"))
-                        .child(environment_tools)
-                        .child(self.render_section_title("General"))
-                        .child(self.render_numeric_row(
-                            "Time Scale",
-                            &self.time_scale_input,
-                            "x",
-                            cx,
-                        ))
-                        .child(self.render_numeric_row(
-                            "Fixed Timestep",
-                            &self.fixed_timestep_input,
-                            "s",
-                            cx,
-                        ))
-                        .child(self.render_gravity_row(cx))
-                        .child(self.render_toggle_row(
-                            "Physics Enabled",
-                            settings.physics_enabled,
-                            ToggleSetting::Physics,
-                            cx,
-                        ))
-                        .child(self.render_toggle_row(
-                            "Auto Simulation",
-                            settings.auto_simulation,
-                            ToggleSetting::AutoSimulation,
-                            cx,
-                        ))
-                        .child(self.render_section_title("Gameplay Roles"))
-                        .child(v_flex().gap_3().children(role_rows).child(input_row)),
-                ),
-            )
+            .child(self.inspector.render(render_world_settings_row, cx))
+    }
+
+    fn render_inspector_card(
+        &mut self,
+        card: usize,
+        window: &mut Window,
+        cx: &mut Context<WorldSettingsPanel>,
+    ) -> AnyElement {
+        let Some(key) = self.inspector.card(card).map(|card| card.key.clone()) else {
+            return div().into_any_element();
+        };
+        let body = match key.as_str() {
+            "pipeline" => self.render_pipeline_section(cx),
+            "environment" => self.render_environment_tools(cx),
+            "simulation" => {
+                let (physics_enabled, auto_simulation) = {
+                    let state = self.state.read();
+                    (
+                        state.scene.world_settings.physics_enabled,
+                        state.scene.world_settings.auto_simulation,
+                    )
+                };
+                v_flex()
+                    .gap_3()
+                    .child(self.render_numeric_row("Time Scale", &self.time_scale_input, "x", cx))
+                    .child(self.render_numeric_row(
+                        "Fixed Timestep",
+                        &self.fixed_timestep_input,
+                        "s",
+                        cx,
+                    ))
+                    .child(self.render_gravity_row(cx))
+                    .child(self.render_toggle_row(
+                        "Physics Enabled",
+                        physics_enabled,
+                        ToggleSetting::Physics,
+                        cx,
+                    ))
+                    .child(self.render_toggle_row(
+                        "Auto Simulation",
+                        auto_simulation,
+                        ToggleSetting::AutoSimulation,
+                        cx,
+                    ))
+                    .into_any_element()
+            }
+            "gameplay" => {
+                let state = self.state.read();
+                let settings = &state.scene.world_settings;
+                let rows = self.role_pickers.iter().map(|role_picker| {
+                    self.render_role_row(role_picker, settings.role_blueprint(role_picker.role), cx)
+                });
+                v_flex()
+                    .gap_3()
+                    .children(rows)
+                    .child(
+                        self.render_input_mapping_row(settings.player_input_mapping.as_deref(), cx),
+                    )
+                    .into_any_element()
+            }
+            _ if key.starts_with("component:") => {
+                let class_name = &key["component:".len()..];
+                let Some(section) = crate::extend::level_component_sections()
+                    .into_iter()
+                    .find(|section| section.class_name == class_name)
+                else {
+                    return div().into_any_element();
+                };
+                self.render_level_component_section(section, window, cx)
+            }
+            _ => div().into_any_element(),
+        };
+        v_flex().w_full().p_3().child(body).into_any_element()
     }
 
     pub(crate) fn render_environment_config(
@@ -469,13 +512,6 @@ impl WorldSettingsPanelImpl {
                     .text_color(cx.theme().foreground)
                     .child("World Settings"),
             )
-    }
-
-    fn render_section_title(&self, title: &'static str) -> impl IntoElement {
-        div()
-            .text_sm()
-            .font_weight(FontWeight::SEMIBOLD)
-            .child(title)
     }
 
     fn render_numeric_row(
@@ -650,6 +686,47 @@ fn sync_numeric_input(
     });
 }
 
+fn world_settings_card(key: &str, title: &str) -> CardDesc {
+    let search_terms = match key {
+        "pipeline" => "render pipeline graph",
+        "environment" => "environment mixer sky atmosphere wind fog lighting",
+        "simulation" => "time scale fixed timestep gravity physics simulation",
+        "gameplay" => {
+            "game mode player controller player character game state input mapping blueprint trait"
+        }
+        _ => key,
+    };
+    CardDesc {
+        key: key.to_string(),
+        title: title.to_string(),
+        props: vec![ui_common::inspector_model::PropDesc {
+            name: format!("{key} {search_terms}"),
+            display_name: title.to_string(),
+            category: None,
+            category_color: None,
+            category_default_collapsed: false,
+            category_order: None,
+            extra_rows: 0,
+        }],
+        custom: false,
+        note: None,
+    }
+}
+
+fn render_world_settings_row(
+    panel: &mut WorldSettingsPanel,
+    row: InspectorRow,
+    window: &mut Window,
+    cx: &mut Context<WorldSettingsPanel>,
+) -> AnyElement {
+    match row {
+        InspectorRow::Property { card, .. } => {
+            panel.world_settings.render_inspector_card(card, window, cx)
+        }
+        _ => div().into_any_element(),
+    }
+}
+
 fn make_numeric_input(
     value: f32,
     placeholder: &'static str,
@@ -806,7 +883,7 @@ fn catalog_status(
 #[cfg(test)]
 mod tests {
     use super::{
-        blueprint_label, catalog_message, load_role_blueprints, BlueprintCatalogState, EngineRole,
+        BlueprintCatalogState, EngineRole, blueprint_label, catalog_message, load_role_blueprints,
     };
 
     #[test]
