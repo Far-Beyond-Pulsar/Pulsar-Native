@@ -16,6 +16,9 @@ impl Feature for VgFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // Virtual-geometry instances are traced only through their proxies
+        // (a ray-tracing projection with a VG runtime).
+        registrar.untraced_geometry(helio_mesh_api::VG_INSTANCES);
         // Last of the classic geometry: its resolve depth-tests against the
         // combined classic depth (portals and foliage included). Builds nothing
         // unless the host set up virtual geometry and the device supports it.

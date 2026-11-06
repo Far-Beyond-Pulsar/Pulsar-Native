@@ -55,6 +55,9 @@ impl Feature for FoliageFeature {
     }
 
     fn register(&self, registrar: &mut FeatureRegistrar<'_>) {
+        // Blades and tufts are placed on the GPU from the layers: no
+        // acceleration structure holds them.
+        registrar.untraced_geometry(helio_foliage_api::FOLIAGE_LAYERS.name());
         // What shader hot reload may swap without rebuilding the graph.
         registrar.swap_group(&[
             helio_core::graph::type_name_of::<FoliagePlacePass>(),

@@ -69,15 +69,6 @@ pub fn init(cx: &mut gpui::App) {
     // engine title bar.
     ui_common::popout_decorations::install(cx);
 
-    // The shader editor is linked as a built-in provider, so its dynamic
-    // plugin `on_load` hook is never run. Register its format renderer before
-    // the file drawer can request material previews.
-    shader_editor_plugin::register_material_thumbnail_renderer();
-
-    // Plugins tell the import pipeline what extra work they can do for an
-    // import; the pipeline itself knows nothing about what that work is.
-    asset_import::register_companion(shader_editor_plugin::material_import_companion());
-
     // Register global keybindings for actions that must work anywhere in the app
     #[cfg(target_os = "windows")]
     let toggle_palette = gpui::KeyBinding::new::<ToggleCommandPalette>(

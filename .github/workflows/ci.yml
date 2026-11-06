@@ -279,7 +279,6 @@ jobs:
             "physics_plugin",
             "plugin_matter",
             "script_editor_plugin",
-            "shader_editor_plugin",
             "skeletal_animation_plugin",
             "ui_editor_plugin"
           )
@@ -288,6 +287,12 @@ jobs:
           )
           if ($missingBuiltins.Count -ne 0) {
             throw "ui_core lost built-in plugin integrations: $($missingBuiltins -join ', ')"
+          }
+
+          # The material graph editor is the materials plugin's (pulsar.materials,
+          # registered as a plugin editor provider): the shell must not link it.
+          if ($uiCoreDependencies -contains "materials_graph_editor") {
+            throw "ui_core depends on materials_graph_editor; it is the materials plugin's editor"
           }
 
           # Scripting languages are plugins on equal footing: the editor shell

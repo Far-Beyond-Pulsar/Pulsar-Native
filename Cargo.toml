@@ -119,6 +119,7 @@ members = [
     "plugins/vendor/materials/feature",
     "plugins/vendor/materials/component",
     "plugins/vendor/materials/editor",
+    "plugins/vendor/materials/graph_editor",
     "plugins/vendor/lights/api",
     "plugins/vendor/lights/feature/*",
     "plugins/vendor/lights/host",
@@ -161,7 +162,6 @@ exclude = [
     "plugins/vendor/blueprint_editor",
     "plugins/vendor/code_editor",
     "plugins/vendor/matter_editor",
-    "plugins/vendor/shader_editor",
     "plugins/vendor/table_editor",
 ]
 
@@ -382,6 +382,7 @@ friends_engine        = { path = "crates/core/friends_engine" }
 
 # ---------- Plugin System ----------
 plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
+materials_graph_editor = { path = "plugins/vendor/materials/graph_editor" }
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------

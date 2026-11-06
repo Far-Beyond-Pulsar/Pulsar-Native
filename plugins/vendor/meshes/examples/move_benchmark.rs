@@ -643,6 +643,8 @@ impl Bench {
 
         if let Some(acceleration) = self.acceleration.as_mut() {
             let t = Instant::now();
+            // Refuse geometry the renderer draws but the projection cannot trace.
+            acceleration.set_untraced_geometry(self.renderer.untraced_geometry());
             acceleration
                 .prepare(&self.scene_db.world)
                 .expect("RT preparation");

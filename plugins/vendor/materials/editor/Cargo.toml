@@ -2,7 +2,7 @@
 name = "materials_plugin"
 version = "0.1.0"
 edition = "2024"
-description = "Materials (pulsar.materials): the editor plugin -- its metadata, over the plugin's component crate"
+description = "Materials (pulsar.materials): the editor plugin -- its metadata, the material graph editor's registration, over the plugin's component crate"
 
 [lib]
 name = "materials_plugin"
@@ -15,6 +15,15 @@ builtin = []
 [dependencies]
 materials_component = { workspace = true }
 plugin_editor_api = { workspace = true }
+# The material graph editor (the `.material` asset's editor).
+materials_graph_editor = { workspace = true }
+plugin_manager = { workspace = true }
+asset_import = { workspace = true }
+pulsar_plugins = { workspace = true }
+gpui-ce = { workspace = true }
+ui = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

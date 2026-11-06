@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Plugin editor providers count only while their plugin is enabled.
+pulsar_plugins = { workspace = true }
 plugin_editor_api = { workspace = true }
 pulsar_world_registry = { workspace = true }
 profiling = { workspace = true }
