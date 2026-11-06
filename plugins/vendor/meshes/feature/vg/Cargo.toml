@@ -6,6 +6,8 @@ description = "Virtual geometry's graph glue as a Helio feature: the pass chain,
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+# The instances' buffer, declared untraced geometry.
+helio-mesh-api = { workspace = true }
 helio-mats = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-core = { workspace = true }

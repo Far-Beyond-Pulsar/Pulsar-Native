@@ -127,6 +127,10 @@ pub struct SceneDbRayTracing {
     /// Whether objects the projection cannot represent are left out
     /// ([`Self::partial`]) instead of failing the build.
     partial: bool,
+    /// Geometry the renderer draws that this projection does not trace
+    /// ([`Self::set_untraced_geometry`]); a full projection refuses a scene
+    /// holding its rows.
+    untraced: Vec<&'static str>,
     /// Objects left out, by the key they were left out with: their moves
     /// change nothing.
     skipped: HashMap<Entity, CasterKey>,
@@ -173,6 +177,7 @@ impl SceneDbRayTracing {
 
     fn with_partial(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, partial: bool) -> Self {
         Self {
+            untraced: Vec::new(),
             texture_means: helio_scene_derivations::texture_means::TextureMeans::new(&device),
             blas: BlasManager::new(device.clone()),
             tlas: TlasManager::new(device.clone(), 1),
@@ -203,6 +208,18 @@ impl SceneDbRayTracing {
     /// classic meshes ([`crate::ray_proxies`]). An instance whose proxy is
     /// still building is left out (rays pass it); in a full projection
     /// ([`Self::new`]) that fails the build until it is ready.
+    /// The geometry the renderer draws that this projection does not trace:
+    /// a host passes its renderer's `Renderer::untraced_geometry` (what the
+    /// features declared), and a full projection refuses a scene holding
+    /// those rows instead of tracing it without them.
+    pub fn set_untraced_geometry(&mut self, untraced: &[&'static str]) {
+        if self.untraced != untraced {
+            self.untraced = untraced.to_vec();
+            // Re-check the scene against the new list.
+            self.cursors = None;
+        }
+    }
+
     pub fn with_virtual_geometry(mut self, runtime: helio_vg_stream::VgRuntime) -> Self {
         self.vg = Some(VgRayProxies::new(runtime));
         self.cursors = None;
@@ -321,7 +338,7 @@ impl SceneDbRayTracing {
             return Ok(false);
         }
         if !self.partial {
-            reject_unsupported_geometry(world, self.vg.is_some())?;
+            reject_unsupported_geometry(world, &self.untraced, self.vg.is_some())?;
         }
         self.changes.clear();
         for cursor in &mut cursors.others {
@@ -399,7 +416,7 @@ impl SceneDbRayTracing {
         self.skipped.clear();
         let error = rt_error;
         if !self.partial {
-            reject_unsupported_geometry(world, self.vg.is_some())?;
+            reject_unsupported_geometry(world, &self.untraced, self.vg.is_some())?;
         }
         let store = world
             .gpu_mirror()
@@ -757,20 +774,22 @@ fn rt_error(message: &str) -> helio_core::Error {
     helio_core::Error::InvalidPassConfig(format!("SceneDB RT: {message}"))
 }
 
-/// These geometry families need their own explicit projection. Never
-/// silently omit known non-triangle or multi-material scene content.
-/// `virtual_geometry`: VG instances are projected through proxies.
-fn reject_unsupported_geometry(world: &World, virtual_geometry: bool) -> helio_core::Result<()> {
+/// Geometry the renderer draws that this projection does not trace (the
+/// features' declarations, `Renderer::untraced_geometry`: foliage layers,
+/// virtual-geometry instances without proxies). A full projection never
+/// silently traces a scene without content it cannot see: it refuses one
+/// holding such rows. `virtual_geometry`: VG instances are traced through
+/// their proxies.
+fn reject_unsupported_geometry(
+    world: &World,
+    untraced: &[&'static str],
+    virtual_geometry: bool,
+) -> helio_core::Result<()> {
     let store = world
         .gpu_mirror()
         .ok_or_else(|| rt_error("GPU mirror is required"))?
         .store();
-    for name in [
-        "sectioned_objects",
-        "foliage_layers",
-        "voxel_volumes",
-        helio_mesh_api::VG_INSTANCES,
-    ] {
+    for &name in untraced {
         if virtual_geometry && name == helio_mesh_api::VG_INSTANCES {
             continue;
         }

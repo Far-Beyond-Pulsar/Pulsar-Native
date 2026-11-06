@@ -192,6 +192,7 @@ pub mod tool_bridge;
 pub use ::inventory;
 pub use builtin::{
     BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
+    PluginEditorProvider,
 };
 pub use dependencies::{plan_load_order, DependencyError, LoadPlan};
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};

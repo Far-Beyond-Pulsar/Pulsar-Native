@@ -4,9 +4,6 @@
 [submodule "plugins/vendor/code_editor"]
 	path = plugins/vendor/code_editor
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor
-[submodule "plugins/vendor/shader_editor"]
-	path = plugins/vendor/shader_editor
-	url = https://github.com/Far-Beyond-Pulsar/Plugin_Shaders
 [submodule "plugins/vendor/table_editor"]
 	path = plugins/vendor/table_editor
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_DBTable

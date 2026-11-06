@@ -296,6 +296,8 @@ pub fn run_scene_animated(
         // and TLAS while the camera moves; only per-frame lights change.
         if scene_rays {
             crate::v3_demo_common::flush_scene_db(&scene_db, &queue);
+            // Refuse geometry the renderer draws but the projection cannot trace.
+            acceleration.set_untraced_geometry(renderer.untraced_geometry());
             acceleration
                 .prepare(&scene_db.world)
                 .expect("cathedral RT geometry");
@@ -556,6 +558,8 @@ pub fn run_scene_animated(
             crate::v3_demo_common::flush_scene_db(&scene_db, &queue);
             let after_flush = std::time::Instant::now();
             if scene_rays {
+                // Refuse geometry the renderer draws but the projection cannot trace.
+                acceleration.set_untraced_geometry(renderer.untraced_geometry());
                 acceleration
                     .prepare(&scene_db.world)
                     .expect("animated capture geometry");

@@ -343,6 +343,8 @@ impl ApplicationHandler for App {
         };
         if let Some(acceleration) = acceleration.as_mut() {
             v3_demo_common::flush_scene_db(&scene_db, &queue);
+            // Refuse geometry the renderer draws but the projection cannot trace.
+            acceleration.set_untraced_geometry(renderer.untraced_geometry());
             acceleration
                 .prepare(&scene_db.world)
                 .expect("cathedral RT geometry");

@@ -210,6 +210,8 @@ impl ApplicationHandler for App {
                 }
                 flush_scene_db(&s.scene_db, &s.queue);
                 if let Some(acceleration) = &mut s.acceleration {
+                    // Refuse geometry the renderer draws but the projection cannot trace.
+                    acceleration.set_untraced_geometry(s.renderer.untraced_geometry());
                     acceleration
                         .prepare(&s.scene_db.world)
                         .expect("scene acceleration");

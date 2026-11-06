@@ -5812,6 +5812,7 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-feature-api",
+ "helio-foliage-api",
  "helio-frame-api",
  "helio-pass-foliage-place",
  "log",
@@ -6348,6 +6349,7 @@ dependencies = [
  "helio-frame-api",
  "helio-light-host",
  "helio-mats",
+ "helio-mesh-api",
  "helio-mesh-host",
  "helio-pass-vg-bvh",
  "helio-pass-vg-cull",
@@ -8466,11 +8468,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "materials_graph_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "chrono",
+ "engine_fs",
+ "engine_state",
+ "futures",
+ "gpui-ce",
+ "graphy",
+ "graphy-blueprint",
+ "graphy-gpui",
+ "graphy-render",
+ "image",
+ "log",
+ "naga",
+ "parking_lot",
+ "plugin_editor_api",
+ "profiling 0.1.0",
+ "psgc",
+ "pulsar_reflection",
+ "serde",
+ "serde_json",
+ "smol",
+ "tool_registry",
+ "tool_registry_macros",
+ "tracing",
+ "ui",
+ "ui_common",
+ "uuid",
+ "wgpu",
+ "wgsl_std",
+]
+
+[[package]]
 name = "materials_plugin"
 version = "0.1.0"
 dependencies = [
+ "asset_import",
+ "gpui-ce",
  "materials_component",
+ "materials_graph_editor",
  "plugin_editor_api",
+ "plugin_manager",
+ "pulsar_plugins",
+ "serde_json",
+ "tracing",
+ "ui",
 ]
 
 [[package]]
@@ -11187,6 +11233,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_events",
  "pulsar_lsp",
+ "pulsar_plugins",
  "pulsar_world_registry",
  "serde_json",
  "sha2 0.11.0",
@@ -14170,43 +14217,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shader_editor_plugin"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "chrono",
- "engine_fs",
- "engine_state",
- "futures",
- "gpui-ce",
- "graphy",
- "graphy-blueprint",
- "graphy-gpui",
- "graphy-render",
- "image",
- "log",
- "naga",
- "parking_lot",
- "plugin_editor_api",
- "profiling 0.1.0",
- "psgc",
- "pulsar_reflection",
- "serde",
- "serde_json",
- "smol",
- "tool_registry",
- "tool_registry_macros",
- "tracing",
- "ui",
- "ui_common",
- "uuid",
- "wgpu",
- "wgsl_std",
- "windows 0.62.2",
-]
-
-[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -17001,7 +17011,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "shader_editor_plugin",
  "skeletal_animation_plugin",
  "smol",
  "tempfile",

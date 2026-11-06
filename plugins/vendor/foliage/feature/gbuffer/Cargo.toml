@@ -10,6 +10,8 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+# The layers' buffer, declared untraced geometry.
+helio-foliage-api = { workspace = true }
 helio-frame-api = { workspace = true }
 helio-feature-api = { workspace = true }
 helio-core         = { workspace = true }
