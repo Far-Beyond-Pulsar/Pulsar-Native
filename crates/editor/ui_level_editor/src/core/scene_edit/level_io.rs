@@ -570,15 +570,15 @@ fn finish_prepared_hydration_with_registry(
             unresolved
         );
     }
-    // One sky and one directional light per level; extras are kept but
-    // disabled, logged.
+    // Keep one atmosphere and one global wind; directional lights are
+    // multiple by design.
     engine_backend::scene::level_rules::enforce_on_load(world);
 }
 
 #[cfg(test)]
 mod interactive_hydration_tests {
     use super::*;
-    use std::sync::{mpsc, Arc, Mutex};
+    use std::sync::{Arc, Mutex, mpsc};
     use std::time::Duration;
 
     #[test]

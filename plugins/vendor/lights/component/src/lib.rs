@@ -8,8 +8,8 @@
 //!   (`helio_pass_light_cull::scene_rows`, the light list, its directional
 //!   light and the editor's light icons), installed in the engine's object
 //!   joins ([`ObjectJoinRegistration`](engine_backend::scene::helio_bridge::ObjectJoinRegistration)).
-//! - Its level rule: a level casts one directional light
-//!   ([`directional_lights`], [`ONE_DIRECTIONAL_LIGHT`]).
+//! - Directional lights are not a level singleton: a level may hold several
+//!   (the sky draws each as an emitter; [`directional_lights`] in level order).
 //! - The registrations of the plugin's Helio features (the shadow views,
 //!   the light binning, the lighting models, the billboards) and their
 //!   settings ([`helio_light_api::SHADOWS`]) with the engine.
@@ -30,7 +30,6 @@ pub use light::*;
 pub use reflection_capture::*;
 
 use engine_backend::scene::helio_bridge::{ObjectJoinContext, ObjectJoinRegistration};
-use engine_backend::scene::level_rules::LevelSingletonRegistration;
 use helio_pass_light_cull::scene_rows::{LightJoin, LightJoinKeys};
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::gpu::BufferKey;
@@ -39,9 +38,6 @@ use pulsar_scenedb::{Entity, World};
 /// The light component's class name.
 pub const LIGHT_CLASS: &str = "LightComponent";
 
-/// Why a second directional light was refused.
-pub const ONE_DIRECTIONAL_LIGHT: &str = "This level already has a directional light; a level has one. Disable it or change its type first.";
-
 /// Whether `light`, on an enabled instance, is a directional light that
 /// casts.
 pub fn is_directional(light: &LightComponent) -> bool {
@@ -49,10 +45,8 @@ pub fn is_directional(light: &LightComponent) -> bool {
 }
 
 /// Every casting directional light: the enabled `LightComponent` instances
-/// whose light is enabled and directional. Never more than one in a level
-/// the editor built or the loader repaired (whatever reads the sun, an
-/// atmosphere, a terrain, the lights' directional light, takes the first).
-/// In level order.
+/// whose light is enabled and directional, in level order (the first is the
+/// primary sun of whatever reads one).
 pub fn directional_lights(world: &World) -> Vec<Entity> {
     engine_backend::scene::level_rules::attached_in_level_order(
         world,
@@ -63,24 +57,6 @@ pub fn directional_lights(world: &World) -> Vec<Entity> {
             })
             .map(|(instance, _)| instance),
     )
-}
-
-// A level casts one directional light: adding one, turning a light
-// directional, or enabling one while another casts is refused; a disabled
-// directional light is allowed (it casts nothing until it is the only one).
-inventory::submit! {
-    LevelSingletonRegistration {
-        origin: pulsar_plugins::origin!(),
-        class_name: LIGHT_CLASS,
-        refusal: ONE_DIRECTIONAL_LIGHT,
-        instances: directional_lights,
-        is: |value| value.downcast_ref::<LightComponent>().is_some_and(is_directional),
-        held: |world, instance| world.get::<LightComponent>(instance).is_some_and(is_directional),
-        // The class default is a point light.
-        default_is: false,
-        enabled_only: true,
-        edits_checked: true,
-    }
 }
 
 /// The lights' join over the engine's rows: the light list from the light
@@ -183,9 +159,10 @@ mod tests {
     }
 
     #[test]
-    fn registers_the_directional_light_rule_and_its_join() {
+    fn registers_no_directional_light_rule_and_its_join() {
+        // Directional lights are not a level singleton (several suns).
         assert!(
-            inventory::iter::<engine_backend::scene::level_rules::LevelSingletonRegistration>
+            !inventory::iter::<engine_backend::scene::level_rules::LevelSingletonRegistration>
                 .into_iter()
                 .any(|rule| rule.class_name == super::LIGHT_CLASS)
         );

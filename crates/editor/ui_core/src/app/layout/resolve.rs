@@ -53,7 +53,8 @@ use std::sync::Arc;
 use gpui::{App, Axis, Entity, EntityId, Pixels, Window};
 use plugin_manager::{PluginManagerError, RestoreOutcome};
 use ui::dock::{
-    DockArea, DockPlacement, PanelInfo, PanelState, PanelView, TabPanel, TileMeta, ZoomedState,
+    DockArea, DockPlacement, LazyPanel, PanelInfo, PanelState, PanelView, TabPanel, TileMeta,
+    ZoomedState,
 };
 
 use super::dormant::{AnchorKey, DormantLeaf, DormantRoot, PendingDormant};
@@ -194,6 +195,13 @@ pub(super) trait LeafResolver {
     /// Keep a leaf that resolved to [`Unresolved::Dormant`] for the next save.
     fn shelve(&mut self, dormant: PendingDormant);
 
+    /// A sleeping stand-in for a tab that need not be awake yet: only its saved
+    /// state is held, and it is rebuilt when first displayed. `active` says the
+    /// tab is the displayed one of its group. `None` builds it now.
+    fn sleeping(&mut self, _leaf: &PanelState, _active: bool) -> Option<Self::Leaf> {
+        None
+    }
+
     /// Whether a tab that is not the displayed one of its group may be built
     /// later, one per frame, instead of during this resolve. Building an
     /// editor is the cost of a restore, and a hidden tab is not needed to
@@ -284,6 +292,10 @@ pub(super) fn resolve_tree<R: LeafResolver>(
                 // panel made, not a loss.
                 if child.is_ephemeral() {
                     tracing::debug!("layout: skipping ephemeral tab {}", child.panel_name);
+                    continue;
+                }
+                if let Some(panel) = resolver.sleeping(child, ix == *active_index) {
+                    results[ix] = Some(Ok(panel));
                     continue;
                 }
                 if ix != *active_index && resolver.should_defer(child) {
@@ -579,6 +591,17 @@ pub(super) fn build_deferred(
     resolve_in_order(&mut resolver, state)
 }
 
+/// How a sleeping tab rebuilds its panel when it is displayed.
+pub(crate) fn lazy_builder(project_root: PathBuf) -> ui::dock::LazyBuilder {
+    // A tab that was never built still shows its file type's icon.
+    ui::dock::set_icon_resolver(|path| {
+        let manager = plugin_manager::global()?;
+        let manager = manager.read();
+        manager.get_file_type_for_path(path).map(|ft| ft.icon.clone())
+    });
+    Arc::new(move |state, window, cx| build_deferred(state, &project_root, window, cx).ok())
+}
+
 /// Every file a tab in `state`'s tree names as its owner.
 fn collect_owners(state: &PanelState, out: &mut HashSet<String>) {
     if let Some((owner, _)) = state.owner() {
@@ -698,9 +721,13 @@ impl LeafResolver for Resolver<'_> {
         self.dormant.push(dormant);
     }
 
-    fn should_defer(&self, leaf: &PanelState) -> bool {
-        // Pop-outs build everything: their window opens at commit.
-        self.claim_live
+    fn sleeping(&mut self, leaf: &PanelState, active: bool) -> Option<Self::Leaf> {
+        // Only the displayed tab of the centre group wakes at startup (it has
+        // the initial focus); every other tab is restored asleep and wakes when
+        // it is displayed. Pop-outs build everything: their window opens at
+        // commit.
+        let eligible = self.claim_live
+            && !(active && self.root == DormantRoot::Center)
             && leaf.owner().is_none()
             && (leaf.file().is_some() || leaf.restore_key().is_some())
             && !leaf.file().is_some_and(|file| self.owners.contains(file))
@@ -709,23 +736,14 @@ impl LeafResolver for Resolver<'_> {
                 .snapshot
                 .panels
                 .iter()
-                .any(|live| live.panel.panel_name(self.cx) == leaf.panel_name)
-    }
-
-    fn defer(
-        &mut self,
-        sibling: &Self::Leaf,
-        index: usize,
-        anchor: Option<AnchorKey>,
-        state: PanelState,
-    ) {
-        self.deferred.push(DeferredTab {
-            root: self.root,
-            sibling: sibling.clone(),
-            index,
-            anchor,
-            state,
-        });
+                .any(|live| live.panel.panel_name(self.cx) == leaf.panel_name);
+        eligible.then(|| {
+            LazyPanel::sleeping(
+                leaf.clone(),
+                lazy_builder(self.project_root.clone()),
+                self.cx,
+            )
+        })
     }
 }
 

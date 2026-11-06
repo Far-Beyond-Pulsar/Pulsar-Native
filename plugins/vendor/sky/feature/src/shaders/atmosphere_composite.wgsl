@@ -28,6 +28,14 @@
 @group(0) @binding(7) var multi_scattering_lut: texture_2d<f32>;
 @group(0) @binding(8) var cloud_color: texture_2d<f32>;
 @group(0) @binding(9) var cloud_depth: texture_2d<f32>;
+@group(0) @binding(10) var moon_albedo: texture_2d<f32>;
+// The sky texture layer: an equirectangular panorama (linear light, mipped)
+// and its sampler (repeats around the horizon, clamps at the poles).
+@group(0) @binding(11) var sky_texture: texture_2d<f32>;
+@group(0) @binding(12) var sky_sampler: sampler;
+
+const SOLID_EMITTER_DISK: u32 = 253u;
+const TEXTURED_EMITTER_DISK: u32 = 254u;
 
 // A cloud footprint reaching the sky (`cloud_trace.wgsl`), km.
 const CLOUD_UNLIMITED: f32 = 60000.0;
@@ -63,14 +71,21 @@ fn march_from_space(eye: vec3<f32>, d: vec3<f32>, limit: f32) -> Scattering {
     out.radiance = vec3<f32>(0.0);
     out.transmittance = vec3<f32>(1.0);
     if end <= segment.x { return out; }
-    out = atmosphere_integrate(p, frame.sun.xyz, transmittance_lut, multi_scattering_lut, lut_sampler,
-        eye, d, segment.x, end, SPACE_STEPS, false);
-    if segment.z > 0.5 && limit >= segment.y {
-        let n = normalize(eye + d * segment.y);
-        let mu_s = dot(n, frame.sun.xyz);
-        out.radiance += out.transmittance
-            * atmosphere_sun_transmittance_lut(p, transmittance_lut, lut_sampler, p.bottom_radius, mu_s)
-            * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        let base = i * 3u;
+        let light_dir = frame.directional_lights[base].xyz;
+        let energy = frame.directional_lights[base + 1u].rgb;
+        let s = atmosphere_integrate(p, light_dir, transmittance_lut, multi_scattering_lut, lut_sampler,
+            eye, d, segment.x, end, SPACE_STEPS, false);
+        out.radiance += s.radiance * energy;
+        if i == 0u { out.transmittance = s.transmittance; }
+        if segment.z > 0.5 && limit >= segment.y {
+            let n = normalize(eye + d * segment.y);
+            let mu_s = dot(n, light_dir);
+            out.radiance += s.transmittance * energy
+                * atmosphere_sun_transmittance_lut(p, transmittance_lut, lut_sampler, p.bottom_radius, mu_s)
+                * max(mu_s, 0.0) * p.ground_albedo / ATMOSPHERE_PI;
+        }
     }
     return out;
 }
@@ -114,6 +129,194 @@ fn clouds_in_front(uv: vec2<f32>, distance: f32) -> vec4<f32> {
     return unmatched;
 }
 
+// How much the scene's directional lights light the day: each light's
+// luminance, scaled by how far above the horizon it stands, summed over all of
+// them. The sun (~2) is daylight; a dim moon light (0.025) is not, whether or
+// not it is up. Light below the horizon contributes nothing.
+fn sky_daylight() -> f32 {
+    var daylight = 0.0;
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        let base = i * 3u;
+        let luminance = dot(frame.directional_lights[base + 1u].rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+        daylight += luminance * smoothstep(-0.05, 0.15, frame.directional_lights[base].y);
+    }
+    return daylight;
+}
+
+// 1 when the lights leave the sky dark, 0 in full daylight, with a smooth
+// twilight between. The stars, shooting stars and the sky texture all fade by
+// this, so they follow the lights' brightness rather than a horizon test.
+fn sky_darkness() -> f32 {
+    return 1.0 - smoothstep(0.05, 0.6, sky_daylight());
+}
+
+fn directional_disk_radiance(d: vec3<f32>, through: vec3<f32>) -> vec3<f32> {
+    var radiance = vec3<f32>(0.0);
+    let radius = max(frame.params.sun_angular_radius, 1e-5);
+    let solid_angle = max(2.0 * ATMOSPHERE_PI * (1.0 - cos(radius)), 1e-8);
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        let base = i * 3u;
+        let emitter = frame.directional_lights[base + 2u];
+        let kind = u32(emitter.z);
+        if emitter.w > 0.5 && (kind == SOLID_EMITTER_DISK || kind == TEXTURED_EMITTER_DISK) {
+            continue;
+        }
+        let light_dir = frame.directional_lights[base].xyz;
+        if dot(d, light_dir) <= cos(radius) { continue; }
+        let energy = frame.directional_lights[base + 1u].rgb;
+        let edge = clamp((dot(d, light_dir) - cos(radius)) / max(1.0 - cos(radius), 1e-7), 0.0, 1.0);
+        radiance += energy / solid_angle * (0.4 + 0.6 * sqrt(edge)) * through;
+    }
+    return radiance;
+}
+
+fn hash2(p: vec2<f32>, seed: u32) -> vec3<f32> {
+    let h = vec3<f32>(
+        dot(p, vec2<f32>(127.1, 311.7)) + f32(seed) * 0.013,
+        dot(p, vec2<f32>(269.5, 183.3)) + f32(seed) * 0.017,
+        dot(p, vec2<f32>(419.2, 371.9)) + f32(seed) * 0.019);
+    return fract(sin(h) * 43758.5453);
+}
+
+// `pixel_angle`: the angle one pixel spans. A star is never drawn thinner than
+// about a pixel (its light spread to match), or sampling a sub-pixel star
+// would make it blink between pixels as the camera moves.
+fn night_radiance(d: vec3<f32>, pixel_angle: f32) -> vec3<f32> {
+    let p = frame.params;
+    if p.night_sky_enabled == 0u || dot(d, vec3<f32>(0.0, 1.0, 0.0)) < -0.02 {
+        return vec3<f32>(0.0);
+    }
+    let count = clamp(p.star_count, 0.0, 20000.0);
+    let gx = max(sqrt(max(count, 1.0) * 12.56637), 1.0);
+    let gy = gx * 0.5;
+    let lon = atan2(d.x, d.z) / (2.0 * ATMOSPHERE_PI) + 0.5;
+    let lat = asin(clamp(d.y, -1.0, 1.0)) / ATMOSPHERE_PI + 0.5;
+    let cell = vec2<f32>(gx, gy);
+    let q = vec2<f32>(lon, lat) * cell;
+    let base = floor(q);
+    let cell_uv = fract(q);
+    var result = vec3<f32>(0.0);
+    let occupancy = clamp(count / max(gx * gy, 1.0), 0.0, 1.0);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let id = base + vec2<f32>(f32(x), f32(y));
+            let h = hash2(id, p.star_seed);
+            if h.z > occupancy { continue; }
+            let jitter = h.xy;
+            let delta = (vec2<f32>(f32(x), f32(y)) + jitter - cell_uv) / cell;
+            let angular = length(vec2<f32>(delta.x * 6.2831853 * cos((lat - 0.5) * 3.14159265), delta.y * 3.14159265));
+            let true_radius = mix(0.00016, 0.00072, pow(h.y, 3.0));
+            let radius = max(true_radius, pixel_angle * 0.9);
+            let spread = (true_radius * true_radius) / (radius * radius);
+            if angular >= radius { continue; }
+            let twinkle = select(1.0, 0.58 + 0.42 * sin(frame.cloud_meso_offset.w * p.star_twinkle_speed * (1.5 + h.x * 3.0) + h.z * 6.2831853), h.x < p.star_twinkle_fraction);
+            let core = 1.0 - smoothstep(radius * 0.12, radius, angular);
+            let halo = exp(-angular * angular / max(radius * radius * 4.0, 1e-9)) * 0.22;
+            let temperature = mix(vec3<f32>(0.62, 0.76, 1.0), vec3<f32>(1.0, 0.82, 0.62), h.z);
+            result += temperature * (core + halo) * twinkle * p.star_brightness * mix(0.35, 1.0, h.y) * spread;
+        }
+    }
+    if p.shooting_stars_enabled != 0u && p.shooting_star_rate > 0.0 {
+        let period = 60.0 / max(p.shooting_star_rate, 0.001);
+        let slot = floor(frame.cloud_meso_offset.w / period);
+        let age = frame.cloud_meso_offset.w - slot * period;
+        let event = hash2(vec2<f32>(slot, 31.7), p.star_seed + 991u);
+        let start_lon = event.x * 6.2831853;
+        let start_lat = (event.y - 0.5) * 2.3;
+        let start = vec3<f32>(cos(start_lat) * sin(start_lon), sin(start_lat), cos(start_lat) * cos(start_lon));
+        let side = normalize(cross(start, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(0.001, 0.0, 0.0));
+        let travel = min(p.shooting_star_speed * age * 0.1, p.shooting_star_length);
+        let center = normalize(start + side * travel);
+        let along = dot(d - center, side);
+        let across = length(d - center - side * along);
+        let event_live = select(1.0, 0.0, age > 0.6 / max(p.shooting_star_speed, 0.05));
+        let trail = smoothstep(-p.shooting_star_length, -p.shooting_star_length * 0.65, along)
+            * (1.0 - smoothstep(-0.02, 0.0, along))
+            * exp(-across * across / 0.000008) * event_live;
+        let head = exp(-dot(d - center, d - center) / 0.000012) * event_live;
+        result += vec3<f32>(0.58, 0.76, 1.0) * (trail * 24.0 + head * 70.0);
+    }
+    return result;
+}
+
+// The panorama's orientation in the world: yaw about Y, then pitch about X,
+// then roll about Z (`sky_texture::rotation` is the CPU twin).
+fn sky_texture_rotation() -> mat3x3<f32> {
+    let p = frame.params;
+    let cy = cos(p.sky_texture_yaw);
+    let sy = sin(p.sky_texture_yaw);
+    let cx = cos(p.sky_texture_pitch);
+    let sx = sin(p.sky_texture_pitch);
+    let cz = cos(p.sky_texture_roll);
+    let sz = sin(p.sky_texture_roll);
+    let ry = mat3x3<f32>(vec3<f32>(cy, 0.0, -sy), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(sy, 0.0, cy));
+    let rx = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, cx, sx), vec3<f32>(0.0, -sx, cx));
+    let rz = mat3x3<f32>(vec3<f32>(cz, sz, 0.0), vec3<f32>(-sz, cz, 0.0), vec3<f32>(0.0, 0.0, 1.0));
+    return ry * rx * rz;
+}
+
+// The sky texture layer along `d` (before the air in front of it): the
+// panorama's linear radiance times intensity and opacity. `pixel_angle` is
+// the angle one pixel spans, for the mip level.
+fn sky_texture_radiance(d: vec3<f32>, pixel_angle: f32) -> vec3<f32> {
+    let p = frame.params;
+    if p.sky_texture_source == 0u || p.sky_texture_opacity <= 0.0 { return vec3<f32>(0.0); }
+    let t = transpose(sky_texture_rotation()) * d;
+    let uv = vec2<f32>(
+        atan2(t.x, -t.z) / (2.0 * ATMOSPHERE_PI) + 0.5,
+        0.5 - asin(clamp(t.y, -1.0, 1.0)) / ATMOSPHERE_PI);
+    let width = f32(textureDimensions(sky_texture).x);
+    let lod = log2(max(pixel_angle * width / (2.0 * ATMOSPHERE_PI), 1.0));
+    let color = textureSampleLevel(sky_texture, sky_sampler, uv, lod).rgb;
+    return color * max(p.sky_texture_intensity, 0.0) * clamp(p.sky_texture_opacity, 0.0, 1.0);
+}
+
+fn emitter_disk_radiance(d: vec3<f32>) -> vec3<f32> {
+    var radiance = vec3<f32>(0.0);
+    for (var i = 0u; i < frame.directional_light_count.x; i++) {
+        let base = i * 3u;
+        let emitter = frame.directional_lights[base + 2u];
+        let emitter_type = u32(emitter.z);
+        if emitter.w < 0.5
+            || (emitter_type != SOLID_EMITTER_DISK && emitter_type != TEXTURED_EMITTER_DISK) {
+            continue;
+        }
+        let toward_light = frame.directional_lights[base].xyz;
+        let radius = max(emitter.x, 0.0001);
+        if dot(d, toward_light) < cos(radius) { continue; }
+        let right = normalize(cross(toward_light, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(0.001, 0.0, 0.0));
+        let up = normalize(cross(right, toward_light));
+        let x = dot(d, right) / sin(radius);
+        let y = dot(d, up) / sin(radius);
+        let r2 = x * x + y * y;
+        if r2 > 1.0 { continue; }
+        let z = sqrt(max(1.0 - r2, 0.0));
+        let normal = normalize(right * x + up * y + toward_light * z);
+        let uv = vec2<f32>(atan2(x, z) / (2.0 * ATMOSPHERE_PI) + 0.5,
+            0.5 - asin(clamp(y, -1.0, 1.0)) / ATMOSPHERE_PI);
+        let light_energy = frame.directional_lights[base + 1u].rgb;
+        let brightness = emitter.y;
+        if emitter_type == TEXTURED_EMITTER_DISK {
+            let albedo = textureSampleLevel(moon_albedo, lut_sampler, uv, 0.0).rgb;
+            // Every other directional source illuminates the visible disk;
+            // the emitter light itself controls moonlight on the scene.
+            var disk_light = vec3<f32>(0.0);
+            for (var j = 0u; j < frame.directional_light_count.x; j++) {
+                if i == j { continue; }
+                let solar_base = j * 3u;
+                let solar_dir = frame.directional_lights[solar_base].xyz;
+                let solar_energy = frame.directional_lights[solar_base + 1u].rgb;
+                disk_light += solar_energy * max(dot(-normal, solar_dir), 0.08);
+            }
+            radiance += albedo * disk_light * brightness;
+        } else {
+            // A textureless emitter remains a visible, scalable solid disk.
+            radiance += light_energy * brightness;
+        }
+    }
+    return radiance;
+}
+
 @fragment
 fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     if frame.planet.w < 0.5 { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
@@ -123,7 +326,6 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     let ndc = vec2<f32>(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
     let ray = atmosphere_view_ray(camera.view, camera.proj, ndc);
     let d = normalize(ray);
-    let sun = frame.sun_illuminance.rgb;
     let eye = frame.eye.xyz;
     let r = length(eye);
     let in_space = r > frame.params.top_radius;
@@ -133,22 +335,29 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
         var through = vec3<f32>(1.0);
         if in_space {
             let air = march_from_space(eye, d, 3.0e38);
-            radiance = air.radiance * sun;
+            radiance = air.radiance;
             through = air.transmittance;
         } else {
             through = transmittance(r, dot(eye / r, d));
             let angles = sky_view_direction_angles(frame, d);
             radiance = textureSampleLevel(sky_view_lut, lut_sampler,
-                sky_view_uv(frame.params, r, angles.x, angles.y), 0.0).rgb * sun;
+                sky_view_uv(frame.params, r, angles.x, angles.y), 0.0).rgb;
         }
-        // The sun's disk, through the air in front of it, unless the planet
-        // hides it.
-        let cos_sun = dot(d, frame.sun.xyz);
-        if cos_sun > frame.sun.w && ray_sphere(eye, d, frame.params.bottom_radius).x < 0.0 {
-            let solid_angle = 2.0 * ATMOSPHERE_PI * (1.0 - frame.sun.w);
-            let edge = clamp((cos_sun - frame.sun.w) / max(1.0 - frame.sun.w, 1e-7), 0.0, 1.0);
-            let limb = 0.4 + 0.6 * sqrt(edge);
-            radiance += sun / solid_angle * limb * through;
+        // Every untextured directional emitter gets the atmosphere's normal
+        // angular radius; textured or enlarged emitters use their own size.
+        if ray_sphere(eye, d, frame.params.bottom_radius).x < 0.0 {
+            // Backdrop panorama under the air, the emitter disks and the stars.
+            let dims = textureDimensions(depth_texture);
+            let pixel_angle = 2.0 / (camera.proj[1][1] * f32(dims.y));
+            radiance += sky_texture_radiance(d, pixel_angle) * through * sky_darkness();
+            radiance += directional_disk_radiance(d, through);
+            radiance += emitter_disk_radiance(d) * through;
+        }
+        // Procedural stars fade by the lights' brightness (they are gated by
+        // `night_sky_enabled` inside), independent of the sky texture.
+        let darkness = sky_darkness();
+        if darkness > 0.001 {
+            radiance += night_radiance(d, abs(2.0 / (camera.proj[1][1] * f32(textureDimensions(depth_texture).y)))) * darkness;
         }
         let clouds = clouds_in_front(in.uv, CLOUD_UNLIMITED);
         return vec4<f32>(radiance * (1.0 - clouds.a) + clouds.rgb, 0.0);
@@ -158,7 +367,7 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     let clear = 1.0 - clouds.a;
     if in_space {
         let air = march_from_space(eye, d, distance);
-        return vec4<f32>(air.radiance * sun * clear + clouds.rgb, dot(air.transmittance, vec3<f32>(1.0 / 3.0)) * clear);
+        return vec4<f32>(air.radiance * clear + clouds.rgb, dot(air.transmittance, vec3<f32>(1.0 / 3.0)) * clear);
     }
     let range = frame.sun_illuminance.w;
     // Slices hold values at their centres; the first fades in from the eye.
@@ -168,5 +377,5 @@ fn fs_composite(in: VertexOut) -> @location(0) vec4<f32> {
     if slice < 0.0 {
         aerial = mix(vec4<f32>(0.0, 0.0, 0.0, 1.0), aerial, clamp(slice + 1.0, 0.0, 1.0));
     }
-    return vec4<f32>(aerial.rgb * sun * clear + clouds.rgb, aerial.a * clear);
+    return vec4<f32>(aerial.rgb * clear + clouds.rgb, aerial.a * clear);
 }

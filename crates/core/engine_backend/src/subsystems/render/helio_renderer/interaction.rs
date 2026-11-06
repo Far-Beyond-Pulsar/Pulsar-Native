@@ -186,6 +186,10 @@ impl SceneInteraction {
                     return None;
                 }
                 let transform = world_transform_of(world, entity)?;
+                if matches!(object_type, ObjectType::Light(_)) {
+                    let distance = light_icon_hit(self.view, transform, origin, direction)?;
+                    return Some((distance, Some(entity) != selected, id.0.clone()));
+                }
                 let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
                 let broad_phase = ray_aabb(origin, direction, min, max)?;
                 let (has_geometry, triangle_hit) =
@@ -952,6 +956,26 @@ fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
     let t = (p - o).dot(n) / denominator;
     (t >= 0.0 && t.is_finite()).then_some(o + d * t)
 }
+/// Match the light join's 0.04 screen-scale quad and the billboard shader's
+/// camera-plane orientation and aspect fit. Object scale/rotation do not
+/// affect editor icons. Ray distance lets meshes occlude the icon.
+fn light_icon_hit(view: View, transform: Transform, origin: Vec3, direction: Vec3) -> Option<f32> {
+    let center = view.relative(transform.position);
+    let depth = (center - view.position).dot(view.forward);
+    if depth <= 0.001 || depth >= view.far {
+        return None;
+    }
+    let hit = ray_plane_intersection(origin, direction, center, view.forward)?;
+    // Projection rows are scaled camera right/up in either projection mode.
+    let right = view.matrix.row(0).truncate().normalize_or_zero();
+    let up = view.matrix.row(1).truncate().normalize_or_zero();
+    let dimensions = Vec2::from_array(helio_pass_billboard::feature::light_icon_dimensions());
+    let half_size = dimensions / dimensions.max_element() * (0.02 * depth);
+    let offset = hit - center;
+    (offset.dot(right).abs() <= half_size.x && offset.dot(up).abs() <= half_size.y)
+        .then_some((hit - origin).dot(direction))
+}
+
 fn is_pickable(object_type: ObjectType) -> bool {
     matches!(object_type, ObjectType::Mesh(_) | ObjectType::Light(_))
 }
@@ -1393,6 +1417,69 @@ mod tests {
                     }),
             )
             .unwrap();
+    }
+
+    #[test]
+    fn light_icons_pick_the_visible_extent_at_any_distance() {
+        for depth in [2.0, 100.0, 1000.0] {
+            let mut world = World::new();
+            let entity = world
+                .spawn_object(
+                    SpawnObject::new("light")
+                        .with_id("light")
+                        .with_object_type(ObjectType::Light(crate::scene::LightType::Point))
+                        .with_transform(Transform {
+                            position: [depth * 0.3, 0.0, -depth],
+                            scale: [0.01; 3],
+                            ..Default::default()
+                        }),
+                )
+                .unwrap();
+            let interaction = SceneInteraction::default();
+            let dimensions =
+                Vec2::from_array(helio_pass_billboard::feature::light_icon_dimensions());
+            let half_width = 0.02 * depth as f32 * dimensions.x / dimensions.max_element();
+            let ray = Vec3::new(depth as f32 * 0.3 + half_width * 0.9, 0.0, -depth as f32);
+            assert_eq!(
+                interaction.pick(&world, DVec3::ZERO, ray),
+                Some("light".into())
+            );
+            let miss = Vec3::new(depth as f32 * 0.3 + half_width * 1.1, 0.0, -depth as f32);
+            assert_eq!(interaction.pick(&world, DVec3::ZERO, miss), None);
+            world.insert(
+                entity,
+                Visibility {
+                    visible: false,
+                    locked: false,
+                },
+            );
+            assert_eq!(interaction.pick(&world, DVec3::ZERO, ray), None);
+        }
+    }
+
+    #[test]
+    fn mesh_in_front_occludes_light_icon_selection() {
+        let mut world = World::new();
+        world
+            .spawn_object(
+                SpawnObject::new("light")
+                    .with_id("light")
+                    .with_object_type(ObjectType::Light(crate::scene::LightType::Point))
+                    .with_transform(Transform {
+                        position: [0.0, 0.0, -100.0],
+                        ..Default::default()
+                    }),
+            )
+            .unwrap();
+        spawn_cube(&mut world, "mesh", -10.0);
+        assert_eq!(
+            SceneInteraction::default().pick(&world, DVec3::ZERO, -Vec3::Z),
+            Some("mesh".into())
+        );
+        assert_eq!(
+            SceneInteraction::default().pick(&world, DVec3::ZERO, Vec3::Z),
+            None
+        );
     }
 
     #[test]

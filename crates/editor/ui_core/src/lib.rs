@@ -6,6 +6,7 @@
 // are included in the binary and discovered by `register_all_windows`.
 use ui_about as _;
 use ui_documentation as _;
+use ui_keybindings as _;
 use ui_fab_search as _;
 use ui_flamegraph as _;
 use ui_git_manager as _;
@@ -58,7 +59,9 @@ pub use ui::OpenSettings;
 /// actions to registry name lookups.
 pub fn init(cx: &mut gpui::App) {
     use gpui::UpdateGlobal as _;
-    use ui_common::menu::{AboutApp, GoBack, GoForward, Preferences, Settings, ShowDocumentation};
+    use ui_common::menu::{
+        AboutApp, GoBack, GoForward, Preferences, Settings, ShowDocumentation, ShowShortcuts,
+    };
 
     root::register_window_wrappers(cx);
 
@@ -95,6 +98,7 @@ pub fn init(cx: &mut gpui::App) {
         gpui::KeyBinding::new::<ToggleFileManager>("ctrl-space", ToggleFileManager {}, None),
         gpui::KeyBinding::new::<GoBack>("alt-left", GoBack {}, None),
         gpui::KeyBinding::new::<GoForward>("alt-right", GoForward {}, None),
+        gpui::KeyBinding::new::<ShowShortcuts>("ctrl-k ctrl-s", ShowShortcuts {}, None),
     ]);
 
     // Undo/Redo for whichever editor has focus, each on its own document's
@@ -125,6 +129,11 @@ pub fn init(cx: &mut gpui::App) {
     cx.on_action(|_: &ShowDocumentation, cx| {
         window_manager::WindowRegistry::update_global(cx, |reg, cx| {
             reg.open("DocumentationWindow", cx)
+        });
+    });
+    cx.on_action(|_: &ShowShortcuts, cx| {
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("KeybindingsWindow", cx)
         });
     });
 }
