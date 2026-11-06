@@ -341,7 +341,7 @@ fn apply_sun(state: &mut LevelEditorState, sun: Sun) -> CommandResult {
         }
     };
 
-    let mut set = |state: &mut LevelEditorState, prop: &str, value: Box<dyn std::any::Any>| {
+    let mut set = |state: &mut LevelEditorState, prop: &str, value: Box<dyn std::any::Any + Send>| {
         execute_command(
             state,
             SceneCommand::SetComponentProperty {
