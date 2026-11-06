@@ -19,9 +19,34 @@ pub fn create(state: &mut LevelEditorState, id: &str) -> CommandResult {
 
 /// Add an object at a viewport context-menu's captured world-space point.
 pub fn create_at(state: &mut LevelEditorState, id: &str, position: [f64; 3]) -> CommandResult {
+    let previous_selection = state.scene.selected_object();
     state.pending_create_position = Some(position);
     let result = crate::extend::create(state, id);
     state.pending_create_position = None;
+    // Keep the override effective for extensions that create through a custom
+    // command instead of `extend::add_object`. This is a no-op when the
+    // creation helper already applied the point.
+    let created_id = result
+        .affected_ids
+        .first()
+        .cloned()
+        .or_else(|| {
+            state
+                .scene
+                .selected_object()
+                .filter(|selected| Some(selected) != previous_selection.as_ref())
+        });
+    if let Some(created_id) = created_id {
+        crate::commands::execute_command(
+            state,
+            crate::commands::SceneCommand::SetTransform {
+                id: created_id,
+                position: Some(position),
+                rotation: None,
+                scale: None,
+            },
+        );
+    }
     result
 }
 

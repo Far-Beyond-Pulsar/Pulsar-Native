@@ -38,7 +38,8 @@ fn world_position_on_ground_plane(
         cos_pitch,
         cos_yaw * sin_pitch,
     ];
-    let tan_half_fov = (60.0_f32.to_radians() * 0.5).tan();
+    // Helio's editor camera uses a 45 degree vertical perspective FOV.
+    let tan_half_fov = (45.0_f32.to_radians() * 0.5).tan();
     let aspect = width / height;
     let ray = [
         forward[0] + right[0] * ndc_x * tan_half_fov * aspect + up[0] * ndc_y * tan_half_fov,
@@ -46,8 +47,15 @@ fn world_position_on_ground_plane(
         forward[2] + right[2] * ndc_x * tan_half_fov * aspect + up[2] * ndc_y * tan_half_fov,
     ];
     let origin = camera.position;
-    let distance = if ray[1] < -1e-5 {
-        (-origin[1] as f32 / ray[1]).max(0.0)
+    let plane_distance = if ray[1] < -1e-5 {
+        -origin[1] as f32 / ray[1]
+    } else {
+        f32::NAN
+    };
+    // If the camera is on the ground plane, the mathematical intersection is
+    // the camera itself (distance zero), which made every menu create at 0,0,0.
+    let distance = if plane_distance.is_finite() && plane_distance > 0.1 {
+        plane_distance
     } else {
         10.0
     };
@@ -188,10 +196,9 @@ impl ViewportPanel {
             let build_context_menu = build_context_menu.clone();
             Rc::new(move |position, window: &mut Window, cx: &mut gpui::App| {
                 let world_position = placement_bounds.borrow().and_then(|bounds| {
-                    placement_gpu.try_lock().ok().and_then(|gpu| {
-                        let camera = gpu.editor_camera_state()?;
-                        world_position_on_ground_plane(position, bounds, camera)
-                    })
+                    let gpu = placement_gpu.lock().ok()?;
+                    let camera = gpu.editor_camera_state()?;
+                    world_position_on_ground_plane(position, bounds, camera)
                 });
                 let menu = PopupMenu::build(window, cx, |menu, window, cx| {
                     build_context_menu(menu, window, cx, world_position)
