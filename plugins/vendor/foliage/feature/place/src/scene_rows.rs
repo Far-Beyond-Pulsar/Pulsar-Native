@@ -5,7 +5,7 @@
 //! foliage passes read: the first foliage component's own wind, under the
 //! level's global wind, under the first foliage component that opts out of
 //! the global wind (its wind's `_pad[0]`).
-use helio_scene_join::{placement::*, BufferKey, RowJoin, RowJoinKeys, RowTable};
+use helio_scene_join::{placement::*, BufferKey, Placement, RowJoin, RowJoinKeys, RowTable};
 
 use helio_foliage_api::{GLOBAL_WIND_MARK_WORD, WIND_SOURCE_ROW_BYTES};
 
@@ -22,6 +22,10 @@ const FOLIAGE_OWN_WIND_WORD: u32 = FOLIAGE_TYPE_WORDS + 4 + 10;
 /// from the live leading rows, so the table's capacity costs only a short
 /// per-workgroup scan.
 pub const MAX_FOLIAGE_TYPES: u32 = 64;
+
+/// A layer: a world-aligned square centred on its owner (`rows_layers.wgsl`).
+const LAYERS_PLACEMENT: Placement =
+    Placement::new("foliage_layers", include_str!("../shaders/rows_layers.wgsl")).from_owner();
 
 pub const FOLIAGE_TYPES_KEY: BufferKey = BufferKey::of("foliage_types");
 pub const FOLIAGE_LAYERS_KEY: BufferKey = BufferKey::of("foliage_layers");
@@ -59,8 +63,9 @@ pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, sources: FoliageRowS
                 sources.foliage,
                 FOLIAGE_SOURCE_ROW_BYTES,
                 8,
-                GATE_HIDDEN | SQUARE_LAYER,
+                GATE_HIDDEN,
             )
+            .placed_by(LAYERS_PLACEMENT)
             .packed(crate::MAX_FOLIAGE_LAYERS)
             .slice(FOLIAGE_TYPE_WORDS, 0)
             .gated_on(0),

@@ -7,7 +7,12 @@
 //! Each row carries its emitter's identity (its source row + 1, in the
 //! `spawn_cursor` word): the pass restarts a row's particles when another
 //! emitter takes it.
-use helio_scene_join::{placement::*, BufferKey, RowJoin, RowJoinKeys, RowTable};
+use helio_scene_join::{placement::*, BufferKey, Placement, RowJoin, RowJoinKeys, RowTable};
+
+/// The owner's transform and the next range of the particle pool
+/// (`rows_emitters.wgsl`).
+const EMITTER_PLACEMENT: Placement =
+    Placement::new("corona_emitters", include_str!("rows_emitters.wgsl")).from_owner();
 
 /// `CoronaEmitterSourceRow`: the emitter row (60 words) with its transform
 /// and particle offset left to the join and the requested particles in
@@ -31,8 +36,9 @@ pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, emitters: BufferKey)
             emitters,
             CORONA_EMITTER_SOURCE_ROW_BYTES,
             60,
-            GATE_HIDDEN | POOL_RANGE,
+            GATE_HIDDEN,
         )
+        .placed_by(EMITTER_PLACEMENT)
         .packed(crate::CORONA_MAX_EMITTERS)
         .gated_on(CORONA_COUNT_WORD)
         .pool(crate::CORONA_MAX_PARTICLES)],

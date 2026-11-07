@@ -2,7 +2,12 @@
 //! [`crate::MAX_DECALS`] rows, each with a non-zero box whose transform maps
 //! world space into the owner-placed box (a row join, see
 //! `helio_scene_join::RowJoin`).
-use helio_scene_join::{placement::*, BufferKey, RowJoin, RowJoinKeys, RowTable};
+use helio_scene_join::{placement::*, BufferKey, Placement, RowJoin, RowJoinKeys, RowTable};
+
+/// A box whose transform maps world space into the owner-placed box
+/// (`rows_decals.wgsl`).
+const DECAL_PLACEMENT: Placement =
+    Placement::new("decals", include_str!("rows_decals.wgsl")).from_owner();
 
 /// `DecalSourceRow`: local size vec4, then the `DecalRow` row (32 words)
 /// with its transform left to the join.
@@ -22,8 +27,9 @@ pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, decals: BufferKey) -
             decals,
             DECAL_SOURCE_ROW_BYTES,
             32,
-            GATE_HIDDEN | OWNER_BOX,
+            GATE_HIDDEN,
         )
+        .placed_by(DECAL_PLACEMENT)
         .packed(crate::MAX_DECALS)],
     )
 }

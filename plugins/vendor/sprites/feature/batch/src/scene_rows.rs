@@ -2,7 +2,12 @@
 //! sprite with a size, at its owner's X and Y (2D), turned by its roll,
 //! scaled by its X and Y scale; each keeps its source row (the sprite passes
 //! cull every row).
-use helio_scene_join::{placement::*, BufferKey, RowJoin, RowJoinKeys, RowTable};
+use helio_scene_join::{placement::*, BufferKey, Placement, RowJoin, RowJoinKeys, RowTable};
+
+/// A 2D sprite at its owner's X and Y, turned by its roll (`rows_sprites.wgsl`):
+/// it reads the owner's transform but writes world-space 2D positions.
+const SPRITE_PLACEMENT: Placement =
+    Placement::new("sprites", include_str!("rows_sprites.wgsl")).reads_owner();
 
 /// `SpriteSourceRow`: the sprite passes' row (`SpriteRow`, 20 words) at
 /// the 2D origin.
@@ -24,8 +29,9 @@ pub fn scene_rows(device: &wgpu::Device, keys: RowJoinKeys, sprites: BufferKey) 
             sprites,
             SPRITE_SOURCE_ROW_BYTES,
             20,
-            GATE_HIDDEN | PLANAR_2D,
+            GATE_HIDDEN,
         )
+        .placed_by(SPRITE_PLACEMENT)
         .gated_on(SPRITE_SIZE_WORD)],
     )
 }

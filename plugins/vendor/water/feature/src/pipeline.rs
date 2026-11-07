@@ -186,7 +186,8 @@ pub(crate) fn water_depth_target(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Depth32Float,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        // Sampled by `WaterReactivityPass` to find where the surface drew.
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -1867,6 +1868,7 @@ impl WaterSimPass {
             surface_queries: crate::surface_query::WaterSurfaceQueries::new(device),
             reflection_capture: None,
             ocean_rest_height: 0.0,
+            shore_swell: 1.0,
             shore_map: None,
             shore_map_dirty: false,
             _shore_texture: shore_texture,

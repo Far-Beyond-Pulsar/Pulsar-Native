@@ -6,6 +6,7 @@ use helio_feature_api::{pass_node, Feature, FeatureRegistrar};
 use helio_frame_api::lighting::{inputs_order, InputsOrder};
 use helio_frame_api::{FrameNode, Phase, Slot};
 
+use crate::reactivity::WaterReactivityPass;
 use crate::transmission::WaterTransmissionPass;
 use crate::WaterSimPass;
 
@@ -21,6 +22,12 @@ impl Feature for WaterFeature {
         // What shader hot reload may swap without rebuilding the graph.
         registrar.swappable::<WaterSimPass>();
         registrar.swappable::<WaterTransmissionPass>();
+        // The sea is animated shading with no motion vectors, so TSR needs its
+        // reactivity mask: ask the preset for it (the transparent pass writes
+        // it, `WaterReactivityPass` adds the water, the resolve reads it).
+        registrar.prepare(std::sync::Arc::new(|env| {
+            env.insert_setting(helio_frame_api::color::ReactiveMask);
+        }));
         registrar.node(
             pass_node(
                 "water_transmission",
@@ -58,6 +65,29 @@ impl Feature for WaterFeature {
             )
             .with_marker_after()
             .drawer(Phase::Overlay, 30),
+        );
+        registrar.node(
+            pass_node(
+                "water_reactivity",
+                "Water: TSR Reactivity",
+                "Passes: Post",
+                "Tells TSR where the water is, so it drops history there instead of                  reprojecting animated waves along the sea floor's velocity. Builds                  nothing unless the frame has a reactive mask (TSR).",
+                |build| {
+                    // After the transparent pass, which clears and first writes
+                    // the mask; without one there is nothing to add to.
+                    if build
+                        .env
+                        .setting::<helio_frame_api::color::ReactiveMask>()
+                        .is_some()
+                    {
+                        build
+                            .graph
+                            .add_pass(Box::new(WaterReactivityPass::new(build.env.device)));
+                    }
+                    Ok(())
+                },
+            )
+            .drawer(Phase::Transparent, 50),
         );
     }
 }

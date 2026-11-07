@@ -65,11 +65,21 @@ fn shore_field(world_xz: vec2f, layer: i32) -> vec4f {
     );
 }
 
+// Waves are flat where the terrain is above the rest height and build with
+// depth from the waterline: a crest never rides up over dry ground (the
+// surface draw only hides water the terrain is in front of, so any
+// displacement over the land would show as sheets and dashes on the beach).
+// The shoreline wave trains' scale (`WaterSimPass::set_shore_swell`), carried in the
+// shore params' enabled word: 1.0 is full breakers (and the default), 0.5 none.
+fn shore_swell_scale() -> f32 {
+    return clamp((shore_params.state.x - 0.5) * 2.0, 0.0, 1.0);
+}
+
 fn shore_ocean_damp(world_xz: vec2f) -> vec4f {
     if shore_params.state.x < 0.5 { return vec4f(1.0); }
     let depth = max(-shore_field(world_xz, 0).x, 0.0);
     let swell = smoothstep(2.0, 26.0, depth);
-    let chop = smoothstep(-0.4, 2.0, depth) * mix(0.55, 1.0, smoothstep(0.0, 10.0, depth));
+    let chop = smoothstep(0.0, 2.0, depth) * mix(0.55, 1.0, smoothstep(0.0, 10.0, depth));
     return vec4f(swell, chop, chop, chop);
 }
 
@@ -82,7 +92,7 @@ fn shore_wave(world_xz: vec2f) -> ShoreWave {
     let depth = -field.x;
     let env = (1.0 - smoothstep(70.0, 180.0, field.y))
             * smoothstep(0.35, 0.8, length(field.zw))
-            * smoothstep(-0.9, 0.5, depth);
+            * smoothstep(0.0, 0.6, depth);
     if env <= 1e-4 { return result; }
     let has_front = dot(travel.yz, travel.yz) > 0.25;
     let fallback_dir = -field.zw / max(length(field.zw), 1e-3);
@@ -105,7 +115,7 @@ fn shore_wave(world_xz: vec2f) -> ShoreWave {
         let k = omega / celerity;
         let amp_scale = select(1.0, 0.45, train == 1u);
         let amplitude_cap = (0.42 * max(depth, 0.0) + 0.14) * select(1.0, 0.5, train == 1u);
-        let amplitude = min(0.55 * amp_scale * wave_env * shoal * group, amplitude_cap);
+        let amplitude = min(0.55 * amp_scale * wave_env * shoal * group, amplitude_cap) * shore_swell_scale();
         let phase = omega * (travel.x + shore_params.state.y) + phase_noise * select(1.0, 1.37, train == 1u) + f32(train) * 2.1;
         let c = 0.5 + 0.5 * cos(phase);
         let s = sin(phase);
