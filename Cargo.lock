@@ -540,6 +540,7 @@ dependencies = [
  "anyhow",
  "editor_task_queue 0.1.0",
  "engine_fs",
+ "glam 0.33.5",
  "helio-asset-compat",
  "helio_component",
  "parking_lot",
