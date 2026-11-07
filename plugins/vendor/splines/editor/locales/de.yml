@@ -1,7 +1,0 @@
-# splines plugin, level editor UI - de
-
-LevelEditor.Spline.PointCount: "Punkte"
-LevelEditor.SplinePanel.Clear: "Spline löschen"
-LevelEditor.SplinePanel.Title: "Spline"
-LevelEditor.ToolMode.Spline: "Spline"
-LevelEditor.ToolMode.SplineDesc: "Klicken, um Punkte zu setzen, Umschalt-Klick zum Löschen"

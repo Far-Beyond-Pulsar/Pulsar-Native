@@ -1,6 +1,0 @@
-# meshes plugin, level editor UI - hi
-
-LevelEditor.Create.Cube: "घन"
-LevelEditor.Create.Cylinder: "बेलन"
-LevelEditor.Create.Plane: "समतल"
-LevelEditor.Create.Sphere: "गोला"

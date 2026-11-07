@@ -1,6 +1,0 @@
-# meshes plugin, level editor UI - ru
-
-LevelEditor.Create.Cube: "Куб"
-LevelEditor.Create.Cylinder: "Цилиндр"
-LevelEditor.Create.Plane: "Плоскость"
-LevelEditor.Create.Sphere: "Сфера"

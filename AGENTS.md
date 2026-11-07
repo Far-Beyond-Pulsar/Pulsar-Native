@@ -48,8 +48,17 @@ runtime is the editor. For the full context, see `.agents/`.
 
 ```toml
 default-members = ["crates/core/engine"]
-members = ["crates/core/*", "crates/editor/*", "crates/subsystems/*", "crates/agent-providers/*"]
+members = ["crates/core/*", "crates/editor/*", "crates/subsystems/*", "crates/agent-providers/*",
+           "plugins/vendor/<kind>/{api,component,feature,editor,examples,...}", ...]
 ```
+
+The plugins under `plugins/vendor/` (every object kind, physics, animation,
+input, UI, Blueprints, ...) are their own repositories (`Plugin_<Kind>`),
+git submodules whose crates are members of this workspace; Helio is the
+`crates/renderer/helio` submodule. Clone with `--recursive` (or run
+`just submodule-init`): cargo cannot load the workspace without them. The
+table of plugins and their repositories is in `.agents/CRATES.md`
+("plugins/vendor/ — Plugins").
 
 ## Key commands
 

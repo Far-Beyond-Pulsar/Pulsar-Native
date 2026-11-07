@@ -229,19 +229,30 @@ jobs:
             }
           }
 
-          # Pulsar owns the built-in library integrations, while external plugin
-          # repositories own their standalone applications. Letting Cargo
-          # auto-enroll those repositories as workspace members makes their
-          # identically named examples race for target/*/examples/standalone.
-          # Only members inside a plugin submodule are external: the in-tree
-          # plugins under plugins/vendor (the object kinds, the asset viewer,
-          # render_bps) are Pulsar's own crates.
+          # Pulsar chooses which crates of a plugin repository join its
+          # workspace (the plugins' library crates, their tests and examples),
+          # while the repositories own anything else they carry (standalone
+          # applications, whose identically named examples would race for
+          # target/*/examples/standalone). So the root manifest names every
+          # member inside a plugin submodule by its path, never by a glob (a
+          # glob would enroll whatever directory a plugin repository adds,
+          # its `.github` included), and no other member may be inside one.
           $workspaceRoot = ($metadata["workspace_root"] -replace "\\", "/").TrimEnd("/")
           $pluginSubmodules = @(
             git config --file .gitmodules --get-regexp '\.path$' |
               ForEach-Object { ($_ -split ' ', 2)[1] } |
               Where-Object { $_ -like "plugins/vendor/*" }
           )
+          $manifestText = (Get-Content Cargo.toml | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+          if ($manifestText -notmatch '(?s)\[workspace\]\s*members\s*=\s*\[(.*?)\]') {
+            throw "could not read [workspace].members from Cargo.toml"
+          }
+          $memberEntries = @([regex]::Matches($Matches[1], '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+          $inSubmodule = { param($path) @($pluginSubmodules | Where-Object { $path -eq $_ -or $path.StartsWith("$_/") }).Count -ne 0 }
+          $globs = @($memberEntries | Where-Object { $_.Contains("*") -and (& $inSubmodule ($_ -replace '\*.*$', '')) })
+          if ($globs.Count -ne 0) {
+            throw "Workspace members glob into plugin repositories; name each crate: $($globs -join ', ')"
+          }
           $workspaceMemberIds = @($metadata["workspace_members"])
           $vendorWorkspaceMembers = @(
             $metadata["packages"] | Where-Object {
@@ -250,17 +261,19 @@ jobs:
               @($pluginSubmodules | Where-Object {
                 $manifest.StartsWith("$workspaceRoot/$_/")
               }).Count -ne 0
+            }
+          )
+          if ($vendorWorkspaceMembers.Count -eq 0) {
+            throw "no workspace member inside a plugin submodule: are the submodules checked out?"
+          }
+          $enrolled = @(
+            $vendorWorkspaceMembers | Where-Object {
+              $dir = (Split-Path -Parent $_["manifest_path"]) -replace "\\", "/"
+              $memberEntries -notcontains $dir.Substring($workspaceRoot.Length + 1)
             } | ForEach-Object { $_["name"] } | Sort-Object
           )
-          # The explicit root-workspace members from plugin repositories: their
-          # built-in integrations, and the GPUI-free Blueprint compiler tested
-          # against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("animation_component", "blueprint_compiler", "input_plugin", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin")
-          $workspaceMemberDifference = @(
-            Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
-          )
-          if ($workspaceMemberDifference.Count -ne 0) {
-            throw "External plugin apps leaked into the Pulsar workspace: $($vendorWorkspaceMembers -join ', ')"
+          if ($enrolled.Count -ne 0) {
+            throw "Plugin crates joined the Pulsar workspace without their own [workspace].members entry (exclude them, or name them): $($enrolled -join ', ')"
           }
 
           $uiCorePackages = @($metadata["packages"] | Where-Object {

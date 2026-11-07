@@ -1,6 +1,0 @@
-# meshes plugin, level editor UI - ko
-
-LevelEditor.Create.Cube: "큐브"
-LevelEditor.Create.Cylinder: "원기둥"
-LevelEditor.Create.Plane: "평면"
-LevelEditor.Create.Sphere: "구"

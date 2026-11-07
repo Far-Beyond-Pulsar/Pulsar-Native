@@ -1,8 +1,0 @@
-[package]
-name = "helio-water-api"
-version = "0.1.0"
-edition = "2021"
-description = "The water feature's public contract: the terrain elevation seam its shoreline bakes from."
-license = "MIT OR Apache-2.0"
-
-[dependencies]

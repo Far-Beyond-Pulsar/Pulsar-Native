@@ -1,7 +1,0 @@
-# splines plugin, level editor UI - zh-HK
-
-LevelEditor.Spline.PointCount: "點數"
-LevelEditor.SplinePanel.Clear: "清除樣條"
-LevelEditor.SplinePanel.Title: "樣條"
-LevelEditor.ToolMode.Spline: "樣條曲線"
-LevelEditor.ToolMode.SplineDesc: "點擊放置點，Shift+點擊清除"

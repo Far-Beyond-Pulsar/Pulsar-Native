@@ -1,5 +1,0 @@
-# lights plugin, level editor UI - hi
-
-LevelEditor.Create.DirectionalLight: "दिशात्मक लाइट"
-LevelEditor.Create.PointLight: "पॉइंट लाइट"
-LevelEditor.Create.SpotLight: "स्पॉट लाइट"
