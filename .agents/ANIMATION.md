@@ -34,7 +34,7 @@ the v1 migrations assign one once and report it.
 |---|---|---|---|---|---|
 | `.skeleton` | `skeleton` | `assets::SkeletonAsset` | 1 | bones, bind pose, sockets | `preview_mesh` (hint) |
 | `.skmesh` | `skmesh` | `skmesh::SkeletalMeshAsset` | 1 | skin, LODs, material slots | **Skeleton** (authority) |
-| `.animseq` | `animseq` | `assets::AnimSeqAsset` | 1–4 (written lazily) | tracks, curves, root motion, notifies, **notify states**, **payload schemas** | Skeleton; `preview_mesh` (hint) |
+| `.animseq` | `animseq` | `assets::AnimSeqAsset` | 1–5 (written lazily) | tracks, curves, root motion, notifies, **notify states**, **payload schemas** | Skeleton; `preview_mesh` (hint) |
 | `.blendspace` | `blendspace` | `blend_space::BlendSpaceAsset` | 2 | 1D/2D axes, samples, sync | Skeleton, Sequence per sample |
 | `.montage` | `anim_montage` | `montage::AnimationMontageAsset` | 2 | slot tracks, segments, sections, blends, interrupt policy, notifies | Skeleton, Sequence per segment |
 | `.animgraph` | `anim_graph` | `anim_graph::AnimationGraphAsset` | 2 | Graphy `GraphDescription`, parameters, sub-graphs | Skeleton; Sequence, Blend Space, Montage, IK Rig, Retarget, Pose DB, linked Graph per node property |
@@ -68,13 +68,54 @@ parse failure.
     pose model cannot hold (several into the output, into a player, from the
     output, to a missing node) are dropped, listed in the migration notes and
     kept under `migrated_dropped_connections`.
-- `.animseq` keeps writing version 1/2/3 unless a v4 feature is present
-  (notify states, payload schemas, or a notify with a `schema`), so untouched
-  files are not rewritten.
+- `.animseq` keeps older versions unless its features require v4 (notify
+  states, payload schemas, or a notify with a `schema`) or v5 (transform
+  interpolation data, below), so unchanged legacy features keep their version.
 - The editor/index call `parse_migrating` and only rewrites a file when an id
   had to be assigned; format upgrades happen on the user's next save.
 - `.animgraph` is written with all object keys sorted (`codec::to_stable_pretty`)
   because Graphy documents hold hash maps; saves are deterministic and diffable.
+
+### Transform interpolation (`.animseq` v5)
+
+A `Keyframe` carries an outgoing mode independently for translation, rotation
+and scale (`Linear`, `Step`, `CubicSpline`), incoming/outgoing derivatives per
+second, and an optional rotation quaternion in `[x, y, z, w]` order. The writer
+selects v5 when any interpolation data is present; old files with only Euler
+linear keys retain their version and sampling behavior. v1–v4 remain readable,
+including files from the earlier unversioned spline implementation. Old readers
+reject v5 instead of silently discarding its curves. No binary layout changes:
+`.animseq` is JSON; `.skmesh` is unaffected.
+
+Previously flattened or projected imports need reimporting from the source to
+recover authored tangents. Loading an old linear asset never guesses missing
+spline data or silently upgrades its interpolation.
+
+`helio_asset_compat::extract_rigs` decodes glTF's in/value/out triplets and merges
+only the authored channel times per bone. To split a rotation cubic exactly it
+keeps **raw quaternion polynomial values and derivatives**, including radial
+components. Normalization happens after Hermite evaluation, never on tangent
+vectors or intermediate subdivision keys. The shared runtime/editor Hermite
+helper multiplies derivatives by the actual interval duration. Translation
+values and derivatives receive the same import unit scale; scale and quaternion
+components retain their source units. Each channel holds before/after its own
+keys even if another channel has a wider range. Close distinct times are kept.
+
+`BoneTrack::sample` and `runtime::clip::CompiledClip` use the same cubic math.
+Quaternion linear keys use shortest-arc slerp; legacy Euler keys keep their
+existing interpolation. Invalid/zero cubic quaternions hold the interval's start
+rotation. Exact keys bypass interpolation. Sampling creates no heap objects per
+bone. Parsing/saving refuses non-finite key data; an invalid save leaves the
+previous file intact.
+
+The Sequence timeline already displays compact tangent guides. Insertion splits
+cubics using their value and derivative; pose edits retain derivatives and keep
+quaternion values in sync with Euler controls. Moving keys keeps derivatives in
+per-second units. A full component curve inspector with draggable tangent
+editing remains a separate UI improvement; the dope sheet is not a curve editor.
+Regression coverage includes a small embedded-buffer glTF fixture in
+`asset_import/tests/fixtures/cubic_spline.gltf`, independently evaluated with
+f64 de Casteljau reference values through import, save/reopen, pose and skinning.
 
 ### Notify payload schemas and states
 
