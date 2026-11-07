@@ -878,7 +878,7 @@ mod tests {
     #[test]
     fn gltf_triplets_preserve_raw_quaternions_timing_and_translation_units() {
         let loaded = crate::load_scene_bytes_with_config(
-            include_bytes!("../tests/fixtures/cubic_spline.gltf"),
+            include_bytes!("../../component/tests/fixtures/cubic_spline.gltf"),
             "gltf",
             None,
             crate::LoadConfig::default().with_import_scale(glam::Vec3::splat(2.0)),
