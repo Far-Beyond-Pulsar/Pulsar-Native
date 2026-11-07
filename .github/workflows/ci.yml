@@ -272,7 +272,10 @@ jobs:
           $uiCoreDependencies = @(
             $uiCorePackages[0]["dependencies"] | ForEach-Object { $_["name"] }
           )
-          $expectedBuiltins = @(
+          # The built-in plugins describe themselves (pulsar-plugin.toml) and
+          # submit their editor providers from their own crates; the installed
+          # set (plugins/installed) links them, and the editor shell names none.
+          $builtins = @(
             "asset_viewer_plugin",
             "editor_table_plugin",
             "input_plugin",
@@ -282,11 +285,22 @@ jobs:
             "skeletal_animation_plugin",
             "ui_editor_plugin"
           )
-          $missingBuiltins = @(
-            $expectedBuiltins | Where-Object { $uiCoreDependencies -notcontains $_ }
+          $installedPackages = @($metadata["packages"] | Where-Object {
+            $_["name"] -eq "installed_plugins"
+          })
+          if ($installedPackages.Count -ne 1) {
+            throw "Expected exactly one installed_plugins package; found $($installedPackages.Count)"
+          }
+          $installedDependencies = @(
+            $installedPackages[0]["dependencies"] | ForEach-Object { $_["name"] }
           )
-          if ($missingBuiltins.Count -ne 0) {
-            throw "ui_core lost built-in plugin integrations: $($missingBuiltins -join ', ')"
+          $notInstalled = @($builtins | Where-Object { $installedDependencies -notcontains $_ })
+          if ($notInstalled.Count -ne 0) {
+            throw "the installed set lost built-in plugins: $($notInstalled -join ', ')"
+          }
+          $linkedByShell = @($builtins | Where-Object { $uiCoreDependencies -contains $_ })
+          if ($linkedByShell.Count -ne 0) {
+            throw "ui_core links plugins by name: $($linkedByShell -join ', ')"
           }
 
           # The material graph editor is the materials plugin's (pulsar.materials,
