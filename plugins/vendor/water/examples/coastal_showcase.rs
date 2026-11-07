@@ -171,7 +171,7 @@ impl ApplicationHandler for App {
 
         let sky_id = spawn_sky(&mut scene_db.world, [1.0, 0.92, 0.78]);
         let time_of_day = std::env::var("WATER_TIME_OF_DAY").unwrap_or_else(|_| "day".into());
-        // WATER_TIME_OF_DAY: day | dawn | sunset | overcast | night. Each carries
+        // WATER_TIME_OF_DAY: morning | noon | night. Each carries
         // its own light, exposure, cloud cover, panorama and water tint.
         struct Tod {
             sun_direction: [f32; 3],
@@ -186,10 +186,12 @@ impl ApplicationHandler for App {
             extinction: [f32; 3],
         }
         let tod = match time_of_day.as_str() {
-            "dawn" => Tod { sun_direction: [0.45, -0.42, 0.78], sun_color: [1.0, 0.7, 0.5], sun_intensity: 3.0, ambient: [0.62, 0.5, 0.52], ambient_intensity: 1.5, exposure: 3.0, cloud: 0.45, hdri_opacity: 0.85, water_color: [0.02, 0.07, 0.10], extinction: [0.30, 0.10, 0.05] },
-            "sunset" => Tod { sun_direction: [-0.5, -0.36, 0.78], sun_color: [1.0, 0.62, 0.4], sun_intensity: 3.4, ambient: [0.62, 0.44, 0.4], ambient_intensity: 1.5, exposure: 3.2, cloud: 0.4, hdri_opacity: 0.85, water_color: [0.02, 0.06, 0.09], extinction: [0.30, 0.10, 0.05] },
-            "overcast" => Tod { sun_direction: [0.4, -0.8, -0.4], sun_color: [0.85, 0.9, 1.0], sun_intensity: 0.8, ambient: [0.35, 0.38, 0.45], ambient_intensity: 0.9, exposure: 3.0, cloud: 0.95, hdri_opacity: 0.9, water_color: [0.03, 0.07, 0.08], extinction: [0.32, 0.12, 0.07] },
-            "night" => Tod { sun_direction: [0.2, -0.7, -0.3], sun_color: [0.36, 0.47, 0.72], sun_intensity: 0.5, ambient: [0.12, 0.16, 0.3], ambient_intensity: 0.7, exposure: 3.4, cloud: 0.35, hdri_opacity: 0.95, water_color: [0.004, 0.02, 0.05], extinction: [0.38, 0.13, 0.03] },
+            // Morning: warm, low sun over the sea, bright fill so the beach reads.
+            "morning" => Tod { sun_direction: [0.45, -0.42, 0.78], sun_color: [1.0, 0.7, 0.5], sun_intensity: 3.0, ambient: [0.62, 0.5, 0.52], ambient_intensity: 1.5, exposure: 3.0, cloud: 0.45, hdri_opacity: 0.85, water_color: [0.02, 0.07, 0.10], extinction: [0.30, 0.10, 0.05] },
+            // Night: a dim moon (the stars, galaxy and nebula fade by the lights'
+            // brightness, so it stays near 0.04), the beach lit by cool fill.
+            "night" => Tod { sun_direction: [0.3, -0.5, 0.8], sun_color: [0.55, 0.65, 0.95], sun_intensity: 0.04, ambient: [0.2, 0.28, 0.5], ambient_intensity: 3.0, exposure: 5.0, cloud: 0.05, hdri_opacity: 1.0, water_color: [0.004, 0.02, 0.05], extinction: [0.38, 0.13, 0.03] },
+            // Noon: the default.
             _ => Tod { sun_direction: [0.7, -0.58, -0.42], sun_color: [1.0, 0.93, 0.8], sun_intensity: 4.5, ambient: [0.14, 0.18, 0.26], ambient_intensity: 0.11, exposure: 2.3, cloud: 0.3, hdri_opacity: 0.0, water_color: [0.015, 0.11, 0.15], extinction: [0.26, 0.08, 0.04] },
         };
         let (sun_direction, sun_color, sun_intensity, ambient) = (tod.sun_direction, tod.sun_color, tod.sun_intensity, tod.ambient);
@@ -205,6 +207,14 @@ impl ApplicationHandler for App {
             ..Default::default()
         };
         spawn_light(&mut scene_db.world, sun);
+        if time_of_day == "night" {
+            // The moon stays dim so the stars and galaxy show; cool fill lights from
+            // above (not directional, so they do not brighten the sky) let the
+            // beach, rocks and ship read in the moonlit scene.
+            for (position, intensity) in [([-30.0, 38.0, 30.0], 380.0), ([30.0, 30.0, 8.0], 240.0), ([0.0, 45.0, -20.0], 190.0)] {
+                spawn_light(&mut scene_db.world, point_light(position, [0.55, 0.68, 1.0], intensity, 600.0));
+            }
+        }
         if let Some(mut sky) = scene_db
             .world
             .get_mut::<helio_pass_sky::host_rows::AtmosphereComponent>(sky_id)
@@ -222,7 +232,34 @@ impl ApplicationHandler for App {
             let hdri = std::env::var("WATER_HDRI_PATH")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| Path::new(&assets).join("hdri").join(format!("{time_of_day}.hdr")));
-            if tod.hdri_opacity > 0.0 && hdri.exists() {
+            if time_of_day == "night" {
+                // Stars, the Milky Way and a nebula: the built-in galaxy + nebula
+                // panorama (CC0 Deep-Space Skybox) under dense procedural stars,
+                // tilted so the galactic band arcs across the frame.
+                sky.star_count = 9000.0;
+                sky.star_brightness = 3.2;
+                sky.shooting_star_rate = 0.05;
+                if helio_pass_sky::sky_texture::presets_available() {
+                    sky.sky_texture_source = helio_pass_sky::sky_texture::source::GALAXY_NEBULA;
+                    helio_pass_sky::sky_texture::set_requested(sky.sky_texture_source);
+                    sky.sky_texture_intensity = 28.0;
+                    sky.sky_texture_opacity = 1.0;
+                    // WATER_SKY_ROT="yaw,pitch,roll" (radians) re-orients the band.
+                    let rot: Vec<f32> = std::env::var("WATER_SKY_ROT")
+                        .ok()
+                        .map(|v| v.split(',').filter_map(|n| n.trim().parse().ok()).collect())
+                        .filter(|v: &Vec<f32>| v.len() == 3)
+                        .unwrap_or_else(|| vec![3.0, 0.3, 1.0]);
+                    sky.sky_texture_yaw = rot[0];
+                    sky.sky_texture_pitch = rot[1];
+                    sky.sky_texture_roll = rot[2];
+                } else if hdri.exists() {
+                    sky.sky_texture_source = helio_pass_sky::sky_texture::custom_source(&hdri);
+                    helio_pass_sky::sky_texture::set_requested(sky.sky_texture_source);
+                    sky.sky_texture_intensity = 2.0;
+                    sky.sky_texture_opacity = tod.hdri_opacity;
+                }
+            } else if tod.hdri_opacity > 0.0 && hdri.exists() {
                 sky.sky_texture_source = helio_pass_sky::sky_texture::custom_source(&hdri);
                 helio_pass_sky::sky_texture::set_requested(sky.sky_texture_source);
                 sky.sky_texture_intensity = 1.0;
@@ -323,7 +360,9 @@ impl ApplicationHandler for App {
 
         let view = std::env::var("WATER_CAPTURE_VIEW").unwrap_or_default();
         let (mut cam_pos, cam_yaw, cam_pitch) = match std::env::var("WATER_CAPTURE_VIEW").as_deref() {
-            Ok("underwater") => (glam::Vec3::new(0.0, -2.0, 30.0), 0.0, 0.12),
+            // 1.4 m under the surface in the cove, looking steeply up so the edge of the
+            // Snell window is in frame.
+            Ok("underwater") => (glam::Vec3::new(0.0, -1.5, -42.0), 0.0, 0.14),
             Ok("waterline") => (glam::Vec3::new(9.0, 0.9, 5.0), -0.35, 0.0),
             // Driftwood and shells in the foreground, stacks and cliffs behind.
             Ok("driftwood") => (glam::Vec3::new(-12.0, 0.7, 20.0), 0.55, -0.02),
