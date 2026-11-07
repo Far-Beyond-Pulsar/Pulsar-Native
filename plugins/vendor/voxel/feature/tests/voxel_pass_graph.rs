@@ -818,7 +818,12 @@ fn orbital_atmosphere_has_no_wedges_outside_the_shell() {
         let eye = up.as_dvec3() * distance;
         let outer_angle = ((radius + AIR_THICKNESS) / distance).asin();
         let half_fov_tan = outer_angle.tan() * 1.25;
-        editor.set_sky(up, Some(earth_air()));
+        // The atmosphere alone: the night sky (stars, shooting stars) is its
+        // own layer, drawn outside the shell on purpose.
+        let mut air = earth_air();
+        air.night_sky_enabled = 0;
+        air.shooting_stars_enabled = 0;
+        editor.set_sky(up, Some(air));
         let camera = Camera::perspective_look_to(
             eye,
             -up,
