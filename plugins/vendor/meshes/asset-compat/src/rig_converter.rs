@@ -98,6 +98,7 @@ pub struct ImportedTrack {
 pub struct ImportedKey {
     pub time: f32,
     pub translation: [f32; 3],
+    /// Unit pose quaternion `[x, y, z, w]`; raw spline components are below.
     pub rotation: [f32; 4],
     pub scale: [f32; 3],
     /// Per-channel interpolation and derivatives survive import into `.animseq`.
@@ -110,7 +111,9 @@ pub struct ImportedKey {
     pub rotation_out_tangent: [f32; 4],
     pub scale_in_tangent: [f32; 3],
     pub scale_out_tangent: [f32; 3],
-    /// glTF source quaternion value, needed because the editor transform uses Euler angles.
+    /// Quaternion components `[x, y, z, w]` before normalization. At a time
+    /// introduced by another channel these are the raw cubic polynomial value;
+    /// preserving its magnitude and derivative makes subdivision exact.
     pub rotation_quaternion: [f32; 4],
 }
 
@@ -257,7 +260,7 @@ fn extract_skin_rig(
     Ok(ImportedRig {
         source_skin: skin_index,
         name: skin.name.clone(),
-        animations: extract_animations(scene, &bones, &bone_of, scale),
+        animations: extract_animations(scene, &bones, &bone_of, scale)?,
         bones,
         joints,
         lods,
@@ -429,6 +432,24 @@ struct Curve<'a> {
 }
 
 impl Curve<'_> {
+    fn is_valid(&self) -> bool {
+        let width = self.stride
+            * if self.interpolation == Interpolation::CubicSpline {
+                3
+            } else {
+                1
+            };
+        !self.times.is_empty()
+            && (self.interpolation != Interpolation::CubicSpline || self.times.len() >= 2)
+            && self.times.iter().all(|t| t.is_finite())
+            && self.times.windows(2).all(|t| t[0] < t[1])
+            && self.times.len().checked_mul(width) == Some(self.values.len())
+            && self.values.iter().all(|v| v.is_finite())
+            && (self.stride != 4
+                || (0..self.times.len())
+                    .all(|i| self.key(i).iter().map(|v| (*v as f64).powi(2)).sum::<f64>() > 1e-16))
+    }
+
     /// Value stored for key `k`: for a cubic spline, the middle element of its
     /// `[in tangent, value, out tangent]` triple.
     fn key(&self, k: usize) -> &[f32] {
@@ -454,7 +475,13 @@ impl Curve<'_> {
         self.values.get(start..start + self.stride).unwrap_or(&[])
     }
 
-    fn mode(&self) -> ImportedInterpolation {
+    fn mode(&self, time: f32) -> ImportedInterpolation {
+        // A channel holds outside its own range, even when another channel
+        // adds keys before or after it to the bone's shared timeline.
+        if self.times.len() == 1 || time < self.times[0] || time >= self.times[self.times.len() - 1]
+        {
+            return ImportedInterpolation::Step;
+        }
         match self.interpolation {
             Interpolation::Step => ImportedInterpolation::Step,
             Interpolation::CubicSpline => ImportedInterpolation::CubicSpline,
@@ -462,11 +489,12 @@ impl Curve<'_> {
         }
     }
 
-    /// Value and first derivative at `time`. Derivatives use source time units,
-    /// as required by glTF Hermite interpolation.
+    /// Raw value and first derivative at `time`, in source time units. Do not
+    /// normalize quaternion components here: normalization is nonlinear and
+    /// would change a cubic when the other channels subdivide its interval.
     fn sample_with_derivative(&self, time: f32) -> Option<(Vec<f32>, Vec<f32>)> {
         let n = self.times.len();
-        if n == 0 || self.key(0).len() != self.stride {
+        if n == 0 || time.is_nan() || self.key(0).len() != self.stride {
             return None;
         }
         if n == 1 || time < self.times[0] {
@@ -488,7 +516,10 @@ impl Curve<'_> {
         }
         let next = self.times.partition_point(|t| *t <= time);
         let (a, b) = (next - 1, next);
-        let span = (self.times[b] - self.times[a]).max(1e-9);
+        let span = self.times[b] - self.times[a];
+        if !span.is_finite() || span <= 0.0 {
+            return None;
+        }
         let t = (time - self.times[a]) / span;
         let (ka, kb) = (self.key(a), self.key(b));
         if ka.len() != self.stride || kb.len() != self.stride {
@@ -522,21 +553,6 @@ impl Curve<'_> {
                         / span,
                 );
             }
-            if self.stride == 4 {
-                let length = value.iter().map(|v| v * v).sum::<f32>().sqrt();
-                if length > 1e-8 {
-                    let unit: Vec<f32> = value.iter().map(|v| *v / length).collect();
-                    let radial = unit
-                        .iter()
-                        .zip(&derivative)
-                        .map(|(q, d)| q * d)
-                        .sum::<f32>();
-                    for i in 0..4 {
-                        derivative[i] = (derivative[i] - unit[i] * radial) / length;
-                        value[i] = unit[i];
-                    }
-                }
-            }
             return Some((value, derivative));
         }
         if self.stride == 4 {
@@ -561,43 +577,18 @@ impl Curve<'_> {
         }
         if let Some(index) = self.times.iter().position(|key_time| *key_time == time) {
             let value = self.key(index);
-            let mut incoming = self.tangent(index, true).to_vec();
-            let mut outgoing = self.tangent(index, false).to_vec();
+            let incoming = self.tangent(index, true).to_vec();
+            let outgoing = self.tangent(index, false).to_vec();
             if value.len() != self.stride
                 || incoming.len() != self.stride
                 || outgoing.len() != self.stride
             {
                 return None;
             }
-            if self.stride == 4 {
-                normalize_quaternion_derivative(value, &mut incoming);
-                normalize_quaternion_derivative(value, &mut outgoing);
-            }
             return Some((incoming, outgoing));
         }
         self.sample_with_derivative(time)
             .map(|(_, derivative)| (derivative.clone(), derivative))
-    }
-}
-
-fn normalize_quaternion_derivative(value: &[f32], derivative: &mut [f32]) {
-    let length = value.iter().map(|v| v * v).sum::<f32>().sqrt();
-    if length <= 1e-8 || value.len() != 4 || derivative.len() != 4 {
-        return;
-    }
-    let unit = [
-        value[0] / length,
-        value[1] / length,
-        value[2] / length,
-        value[3] / length,
-    ];
-    let radial = unit
-        .iter()
-        .zip(derivative.iter())
-        .map(|(q, d)| q * d)
-        .sum::<f32>();
-    for i in 0..4 {
-        derivative[i] = (derivative[i] - unit[i] * radial) / length;
     }
 }
 
@@ -645,7 +636,7 @@ fn extract_animations(
     bones: &[ImportedBone],
     bone_of: &HashMap<NodeId, usize>,
     scale: f32,
-) -> Vec<ImportedClip> {
+) -> crate::Result<Vec<ImportedClip>> {
     let mut clips = Vec::new();
     for (n, animation) in scene.animations.iter().enumerate() {
         let mut curves: HashMap<usize, BoneCurves> = HashMap::new();
@@ -665,6 +656,12 @@ fn extract_animations(
                 values: &channel.values,
                 stride,
             };
+            if !curve.is_valid() {
+                return Err(crate::AssetError::InvalidData(format!(
+                    "animation '{}' has malformed key times or output values",
+                    animation.name
+                )));
+            }
             let entry = curves.entry(bone).or_default();
             match slot {
                 0 => entry.translation = Some(curve),
@@ -693,7 +690,7 @@ fn extract_animations(
             .flat_map(|c| c.times.iter().copied())
             .collect();
             times.sort_by(f32::total_cmp);
-            times.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+            times.dedup();
 
             let keys = times
                 .into_iter()
@@ -713,7 +710,6 @@ fn extract_animations(
                         Some(t) => [t[0] * scale, t[1] * scale, t[2] * scale],
                         None => bind.translation,
                     };
-                    let r = pick(&bone_curves.rotation, &bind.rotation);
                     let s = pick(&bone_curves.scale, &bind.scale);
                     let (translation_in, translation_out) = bone_curves
                         .translation
@@ -725,6 +721,19 @@ fn extract_animations(
                         .as_ref()
                         .and_then(|c| c.sample(time))
                         .unwrap_or_else(|| bind.rotation.to_vec());
+                    // Keep the public pose quaternion normalized while the
+                    // separate polynomial value retains its magnitude. This
+                    // normalization never changes the stored derivatives.
+                    let length = rotation_value
+                        .iter()
+                        .map(|v| (*v as f64).powi(2))
+                        .sum::<f64>()
+                        .sqrt();
+                    let r = if length.is_finite() && length > 1e-8 {
+                        std::array::from_fn(|i| (rotation_value[i] as f64 / length) as f32)
+                    } else {
+                        [0.0, 0.0, 0.0, 1.0]
+                    };
                     let (rotation_in, rotation_out) = bone_curves
                         .rotation
                         .as_ref()
@@ -738,20 +747,20 @@ fn extract_animations(
                     ImportedKey {
                         time,
                         translation: t,
-                        rotation: [r[0], r[1], r[2], r[3]],
+                        rotation: r,
                         scale: [s[0], s[1], s[2]],
                         translation_interpolation: bone_curves
                             .translation
                             .as_ref()
-                            .map_or(ImportedInterpolation::Linear, |c| c.mode()),
+                            .map_or(ImportedInterpolation::Linear, |c| c.mode(time)),
                         rotation_interpolation: bone_curves
                             .rotation
                             .as_ref()
-                            .map_or(ImportedInterpolation::Linear, |c| c.mode()),
+                            .map_or(ImportedInterpolation::Linear, |c| c.mode(time)),
                         scale_interpolation: bone_curves
                             .scale
                             .as_ref()
-                            .map_or(ImportedInterpolation::Linear, |c| c.mode()),
+                            .map_or(ImportedInterpolation::Linear, |c| c.mode(time)),
                         translation_in_tangent: [
                             translation_in[0] * scale,
                             translation_in[1] * scale,
@@ -797,12 +806,128 @@ fn extract_animations(
             tracks,
         });
     }
-    clips
+    Ok(clips)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cubic_quaternion_values_and_derivatives_remain_raw_for_exact_subdivision() {
+        let values = [
+            0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 2., 1., 0., 1., -1., 2., 0., 0., 1., 0., 0.,
+            0., 0., 0.,
+        ];
+        let curve = Curve {
+            interpolation: Interpolation::CubicSpline,
+            times: &[1., 3.],
+            values: &values,
+            stride: 4,
+        };
+        assert_eq!(curve.sample(2.).unwrap(), vec![0.25, -0.25, 1.25, 0.25]);
+        assert_eq!(curve.tangents_at(1.).unwrap().1, vec![1., 0., 2., 1.]);
+        assert_eq!(curve.tangents_at(3.).unwrap().0, vec![0., 1., -1., 2.]);
+        let (incoming, outgoing) = curve.tangents_at(2.).unwrap();
+        assert_eq!(incoming, outgoing);
+        assert_eq!(incoming, vec![-0.25, -0.25, 0.5, -1.5]);
+        assert_eq!(curve.mode(0.), ImportedInterpolation::Step);
+        assert_eq!(curve.mode(1.), ImportedInterpolation::CubicSpline);
+        assert_eq!(curve.mode(3.), ImportedInterpolation::Step);
+        assert_eq!(curve.sample(0.).unwrap(), vec![0., 0., 0., 1.]);
+        assert!(curve.sample(f32::NAN).is_none());
+    }
+
+    #[test]
+    fn malformed_curve_data_is_rejected_before_extraction() {
+        let valid = Curve {
+            interpolation: Interpolation::CubicSpline,
+            times: &[0., 2.],
+            values: &[1.; 18],
+            stride: 3,
+        };
+        assert!(valid.is_valid());
+        // The shared Solid bridge also accepts FBX, whose times can start
+        // before zero. Do not impose glTF's nonnegative-time rule here.
+        assert!(Curve {
+            times: &[-1., 2.],
+            ..valid
+        }
+        .is_valid());
+        for times in [&[][..], &[0., 0.], &[2., 0.], &[0., f32::NAN]] {
+            assert!(!Curve { times, ..valid }.is_valid());
+        }
+        assert!(!Curve {
+            values: &[1.; 17],
+            ..valid
+        }
+        .is_valid());
+        assert!(!Curve {
+            values: &[f32::INFINITY; 18],
+            ..valid
+        }
+        .is_valid());
+        let quaternion = Curve {
+            values: &[0.; 24],
+            stride: 4,
+            ..valid
+        };
+        assert!(!quaternion.is_valid());
+    }
+
+    #[test]
+    fn gltf_triplets_preserve_raw_quaternions_timing_and_translation_units() {
+        let loaded = crate::load_scene_bytes_with_config(
+            include_bytes!("../tests/fixtures/cubic_spline.gltf"),
+            "gltf",
+            None,
+            crate::LoadConfig::default().with_import_scale(glam::Vec3::splat(2.0)),
+        )
+        .unwrap();
+        let clip = &loaded.rigs[0].animations[0];
+        assert_eq!(clip.tracks.len(), 2);
+        let root = &clip.tracks[0];
+        assert_eq!(root.keys.len(), 8);
+        assert_eq!(clip.tracks[1].keys.len(), 3);
+        for key in clip.tracks.iter().flat_map(|track| &track.keys) {
+            let length = key.rotation.iter().map(|v| v * v).sum::<f32>().sqrt();
+            assert!(
+                (length - 1.0).abs() < 1e-6,
+                "pose quaternion stays unit length"
+            );
+        }
+        assert_eq!(root.keys[0].translation_out_tangent, [4.0, 2.0, -2.0]);
+        assert_eq!(root.keys[1].rotation_out_tangent, [1.0, 0.0, 2.0, 1.0]);
+        assert_eq!(root.keys[6].rotation_in_tangent, [0.0, 1.0, -1.0, 2.0]);
+        assert_eq!(root.keys[2].translation, [0.2, 0.0, 0.0]);
+        assert_eq!(
+            root.keys[2].scale_out_tangent,
+            [1.0, 0.0, -2.0],
+            "scale derivatives do not receive translation unit conversion"
+        );
+        assert_eq!(
+            root.keys[6].rotation_interpolation,
+            ImportedInterpolation::Step
+        );
+        assert_eq!(root.keys[3].time, 0.50000024, "close distinct keys survive");
+        // Independent Bezier/de Casteljau reference for the inserted .5 s
+        // rotation key. Its magnitude must survive until runtime normalization.
+        let (u, dt) = (1.0f64 / 7.0, 1.75f64);
+        let p0 = [0., 0., 0., 1.];
+        let p3 = [0., 0., 1., 0.];
+        let out = [1., 0., 2., 1.];
+        let incoming = [0., 1., -1., 2.];
+        let lerp = |a: f64, b: f64| (1.0 - u) * a + u * b;
+        for i in 0..4 {
+            let p1 = p0[i] + dt * out[i] / 3.0;
+            let p2 = p3[i] - dt * incoming[i] / 3.0;
+            let expected = lerp(
+                lerp(lerp(p0[i], p1), lerp(p1, p2)),
+                lerp(lerp(p1, p2), lerp(p2, p3[i])),
+            );
+            assert!((root.keys[2].rotation_quaternion[i] as f64 - expected).abs() < 2e-6);
+        }
+    }
 
     #[test]
     fn weights_are_cleaned_and_normalized() {
